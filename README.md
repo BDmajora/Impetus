@@ -44,11 +44,11 @@ Impetus ships as a single jar containing several subsystems, each with its own m
 | :----- | :------ |
 | `impetus` | The core rendering engine and chunk pipeline |
 | `umbra` | The bundled shader pipeline, descended from Iris / Oculus |
-| `fulgor` | Lighting engine, superseding Phosphor and Alfheim |
-| `coarctatio` | Memory and allocation reductions across vanilla systems |
-| `equilibrium` | Chunk and world access caching |
+| `fulgor` | Lighting engine, superseding Phosphor and Alfheim, with parallel light passes in the manner of ScalableLux |
+| `coarctatio` | Memory and allocation reductions across vanilla systems, including FerriteCore's block-state and model deduplication techniques |
+| `equilibrium` | Chunk and world access caching, plus world generation fast paths |
 | `dynamiclights` | Dynamic light sources for held and dropped items |
-| `extras` | Optional rendering feature toggles, including the Render Budget and GPU Booster pair for weaker machines |
+| `extras` | Optional feature toggles: the Render Budget and GPU Booster pair for weaker machines, parallel server ticking, parallel particles, baked block entities, wire limits and thread scheduling |
 
 Impetus suppresses the mixin configurations of superseded lighting mods (Phosphor, Alfheim) when it detects
 them, since running two lighting engines at once corrupts world lighting. Remove those mods rather than
@@ -116,6 +116,15 @@ independent, original implementations.
 * **LlamaLad7**, for MixinExtras
 * **orf**, for GpuShift (MIT), whose adaptive render-budget design the Extras page's Render Budget group reimplements for 1.12.2
 * **Mr.Toad**, for GPUBooster, ported to 1.12.2 with permission as the Extras page's GPU Booster group
+* **AxalotL** and the MCMT / JMT-MCMT authors, for Async (GPL-3), whose parallel entity ticking design the Extras page's Parallel Ticking group reimplements for 1.12.2
+* **Harvey_Husky**, for AsyncParticles (LGPL-3), the model for the parallel particle ticking, light cache and off-screen culling
+* **fzzyhmstrs**, for Particle Core (MIT), the model for the particle collision cache
+* **FoundationGames** (Enhanced Block Entities, LGPL-3) and the **Better Block Entities** team (LGPL-3), whose baked block entity approach the Extras page's Baked Block Entities group reimplements from the vanilla entity models
+* **malte0811**, for FerriteCore (MIT), whose block-state and model deduplication techniques Coarctatio carries
+* **Steveplays28**, for Noisium (LGPL-3), the model for Equilibrium's world generation fast paths
+* **TonimatasDEV**, for Packet Fixer (MIT), the model for the Extras page's Network group
+* **Spottedleaf** (Starlight) and **ishland** (ScalableLux, LGPL-3), whose parallel light scheduling Fulgor adopts
+* **wisecase2**, for StutterFix (MIT), the model for the Extras page's Thread Scheduling group
 * **Asek3**, for developing Rubidium, the original port of Sodium 0.5 to Forge
 * **CelestialAbyss**, for developing the Embeddium logo, and **input-Here** for visual touchups
 * **Ven ([@basdxz](https://github.com/basdxz))**, for help with translucency sorting, suggesting the general approach for async occlusion culling, and other suggestions during development

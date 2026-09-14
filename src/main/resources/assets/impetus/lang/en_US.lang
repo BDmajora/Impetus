@@ -238,6 +238,8 @@ impetus.options.fulgor.deduplicate_updates.name=Collapse Duplicate Updates
 impetus.options.fulgor.deduplicate_updates.tooltip=A bulk change schedules the same block from every neighbour that touched it. This drops the repeats so each position is evaluated once per batch.\n\nUse /fulgor to see what share of scheduled updates is being collapsed; under heavy building it is usually most of them.\n\nTakes effect after a restart.
 impetus.options.fulgor.block_light_info.name=Cache Block Light Properties
 impetus.options.fulgor.block_light_info.tooltip=Most blocks emit and block a fixed amount of light no matter where they are, but asking them costs several virtual calls that a large modpack makes impossible to optimise.\n\nThis works out once per block whether its answer can vary, and takes the short path when it cannot.\n\nDisabled automatically when Dynamic Lights or Fluidlogged API is installed, since both make light depend on the position.\n\nTakes effect after a restart.
+impetus.options.fulgor.parallel_updates.name=Parallel Light Updates
+impetus.options.fulgor.parallel_updates.tooltip=Splits a large batch of pending light updates by chunk and runs the chunks across a pool of threads, after ScalableLux's parallel Starlight.\n\nA pass reaches at most fifteen blocks from a scheduled position, so chunks four or more apart never see each other's writes and run at once; closer ones wait their turn. Each pass settles its region to the same fixpoint the single pass would, so the lighting is identical, only sooner. Pays off when many chunks light at once: generation, a fast flight, a large explosion. Small batches still run on the calling thread.\n\nTakes effect after a restart.
 impetus.options.fulgor.chunk_boundaries.name=Fix Chunk Boundary Lighting
 impetus.options.fulgor.chunk_boundaries.tooltip=Vanilla drops a light update that would cross into a chunk which is not loaded, and never revisits it. That is where the light seams along chunk borders in newly generated terrain come from.\n\nThis records what was skipped and replays it when the neighbour arrives.\n\nTakes effect after a restart.
 impetus.options.fulgor.section_light.name=Send Carved-Out Section Light
@@ -337,6 +339,14 @@ impetus.options.equilibrium.world_raycast.name=Raycast
 impetus.options.equilibrium.world_raycast.tooltip=Block ray tracing steps through the world without allocating a vector and a block position per step.\n\nTakes effect after a restart.
 impetus.options.equilibrium.world_tick_scheduler.name=Tick Scheduler
 impetus.options.equilibrium.world_tick_scheduler.tooltip=The set of pending scheduled block ticks is a fastutil open hash set rather than a java.util.HashSet, which removes a node allocation per scheduled tick and a pointer chase from every lookup. Redstone, liquids and crops schedule thousands of these per second on a busy world.\n\nTakes effect after a restart.
+impetus.options.equilibrium.worldgen.name=World Generation
+impetus.options.equilibrium.worldgen.tooltip=World generation optimizations, after Noisium's approach of bypassing the abstractions between the generator and the storage it fills. Every rule here keeps generation bit-for-bit identical to vanilla.\n\nTakes effect after a restart.
+impetus.options.equilibrium.worldgen_primer_state_cache.name=Primer State Cache
+impetus.options.equilibrium.worldgen_primer_state_cache.tooltip=The chunk primer remembers the last state it encoded and the last id it decoded. Terrain writes long runs of stone and water, and surface replacement reads columns back one block at a time, so most of the identity-map lookups per block become a reference compare.\n\nTakes effect after a restart.
+impetus.options.equilibrium.worldgen_chunk_copy.name=Direct Chunk Fill
+impetus.options.equilibrium.worldgen_chunk_copy.tooltip=Copying a finished primer into a chunk no longer reads back the slot it is about to write. Every slot of a new section starts as air, so the block and tick counters are updated directly and the state goes straight into the palette storage.\n\nTakes effect after a restart.
+impetus.options.equilibrium.worldgen_int_cache.name=Per-Thread Layer Scratch
+impetus.options.equilibrium.worldgen_int_cache.tooltip=Pools the biome layer scratch arrays per thread instead of in one locked global pool. Vanilla's pool hands every in-use array back on reset, so two threads walking the layers at once (a parallel spawn pass and a chunk generating, or two dimensions) would reclaim each other's buffers mid-use.\n\nTakes effect after a restart.
 
 #
 # Extras
@@ -398,6 +408,16 @@ impetus.options.extras.particles.dripping.name=Dripping Water & Lava
 impetus.options.extras.particles.dripping.tooltip=Spawns the drips that fall from water and lava overhead.
 impetus.options.extras.particles.firework.name=Firework Particles
 impetus.options.extras.particles.firework.tooltip=Spawns firework sparks. A large rocket volley is one of the densest particle effects in the game.
+impetus.options.extras.particles.parallel.name=Parallel Ticking
+impetus.options.extras.particles.parallel.tooltip=Ticks particles across a small pool of worker threads instead of the client thread, after Harvey_Husky's AsyncParticles.\n\nThe client thread waits for the batch, so nothing else touches the world meanwhile; the only shared table, the spawn queue, is made concurrent. Layers under 256 particles keep vanilla's loop since the hand-off would cost more than it saves. Worth the most in the scenes the particle budget also targets: mob farms, machines and weather.
+impetus.options.extras.particles.parallel_modded.name=Modded Particles
+impetus.options.extras.particles.parallel_modded.tooltip=Also ticks particle classes from other mods on the pool. Off (the default) keeps them on the client thread, since a modded particle may write to a shared list or map during its tick. Vanilla particles are unaffected either way.
+impetus.options.extras.particles.light_cache.name=Light Cache
+impetus.options.extras.particles.light_cache.tooltip=Samples each particle's light once when it ticks rather than once every frame it is drawn. Vanilla walks the chunk's light arrays for every particle on every frame, so at high frame rates this is most of what the render pass spends; the sample is at most one tick old. Dynamic lights are still applied at draw time.
+impetus.options.extras.particles.cull_offscreen.name=Cull Off-Screen Particles
+impetus.options.extras.particles.cull_offscreen.tooltip=Tests each vanilla particle against the view frustum before its quad is built, so particles behind the camera or off to the side cost nothing to draw. Modded particles are always drawn, since one may render outside the box it reports.
+impetus.options.extras.particles.collision_cache.name=Collision Cache
+impetus.options.extras.particles.collision_cache.tooltip=Particle Core's open-air shortcut. Every colliding particle sweeps the blocks around it each tick; a particle drifting inside a cell that has nothing to collide with keeps that answer until it leaves the cell (or every ten ticks), so smoke, flames and drips in open air skip the sweep almost entirely.
 
 impetus.options.extras.details.sky.name=Sky
 impetus.options.extras.details.sky.tooltip=Draws the sky box.\n\nThis takes the sun, moon and stars with it — vanilla draws them all in the same pass. Use the switches below to keep the sky while dropping what is on it.
@@ -512,6 +532,50 @@ impetus.options.extras.booster.fast_math.name=Fast Math
 impetus.options.extras.booster.fast_math.tooltip=Cheaper angle wrapping and log2 in MathHelper.\n\nWrapping an angle into ±180 is done for every rendered entity several times a frame, and vanilla does it with a floating-point remainder that the JVM cannot inline. This uses a divide and a floor instead, with identical results for any angle a mob can carry. The sine table is not here because Equilibrium's compact table already covers it.
 impetus.options.extras.booster.stream_uploads.name=Streamed Vertex Uploads
 impetus.options.extras.booster.stream_uploads.tooltip=Draws GUI, item, entity, particle and block entity geometry through one streamed vertex buffer instead of client-side arrays.\n\nVanilla hands the driver a pointer into Java memory for every Tessellator draw, which the driver must copy before it can return, and which some drivers route through a slow compatibility path. On OpenGL 4.4 hardware the bytes go straight into a persistently mapped ring with no driver call in between; older hardware gets the classic orphaned streaming buffer. Gains depend on the driver; if anything draws wrong after enabling it, this is the switch to turn off first.
+
+impetus.options.extras.parallel.enabled.name=Parallel Ticking
+impetus.options.extras.parallel.enabled.tooltip=Ticks the integrated server's entities across a pool of worker threads instead of one, after AxalotL's Async (in turn from MCMT).\n\nEntities are grouped by 4x4-chunk region so neighbours stay on one thread, and the world's shared tables (block writes, entity lists, chunk map, scheduled ticks) are guarded so the threads cannot corrupt them. Players, projectiles, falling blocks, boats, shulkers and the dragon always tick on the main thread; TNT, drops, orbs and hopper carts do too by default (parallel_ticking.synchronizedEntities in impetus-extras.cfg).\n\nExperimental: a mob's behaviour can differ subtly when its neighbours tick at the same moment, and a mod that assumes one thread may break. Needs a relaunch to take effect.
+impetus.options.extras.parallel.threads.name=Worker Threads
+impetus.options.extras.parallel.threads.tooltip=How many threads tick entities. Auto uses about three quarters of the machine's cores, leaving one for the render thread; more than the core count only adds contention. Applies to the next batch.
+impetus.options.extras.parallel.entities.name=Entities
+impetus.options.extras.parallel.entities.tooltip=Ticks vanilla entities in parallel. This is where the time goes on a busy server: mob farms, villages, animal pens, item-heavy machines. Off leaves the pool idle while the other switches still apply.
+impetus.options.extras.parallel.modded_entities.name=Modded Entities
+impetus.options.extras.parallel.modded_entities.tooltip=Also ticks entities registered by other mods in parallel. Off (the default) keeps every modded entity on the main thread, since their code has never been asked to share the world with another thread. Try it on a pack you can afford to crash; add any offender to parallel_ticking.synchronizedEntities as modid:name or modid:* to exempt it.
+impetus.options.extras.parallel.random_ticks.name=Random Ticks
+impetus.options.extras.parallel.random_ticks.tooltip=Runs block random ticks (crop growth, fire, leaf decay, grass spread) through the pool. The positions are still chosen in vanilla's order on the main thread; only each block's reaction is spread out, and every block write still funnels through the world lock.
+impetus.options.extras.parallel.spawning.name=Mob Spawning
+impetus.options.extras.parallel.spawning.tooltip=Evaluates natural spawn attempts one chunk per task. The per-type caps and eligible chunk sweep stay serial and identical to vanilla; the placement search, light and collision checks run in parallel, and each spawn registers through the world lock.
+
+impetus.options.extras.baked.enabled.name=Baked Block Entities
+impetus.options.extras.baked.enabled.tooltip=Draws resting chests, ender chests, signs, beds and shulker boxes as part of the terrain mesh instead of through their block entity renderers, after FoundationGames' Enhanced Block Entities and the Better Block Entities design.\n\nA block entity renderer rebuilds and submits its model every frame; the mesh draws it once per chunk rebuild. The geometry is baked from the renderer's own model, so nothing looks different, except that it now gets smooth lighting and is visible from any distance. A chest that opens hands itself back to its renderer for the animation and returns to the mesh when it closes. Sign text is still drawn by the renderer.
+impetus.options.extras.baked.chests.name=Chests
+impetus.options.extras.baked.chests.tooltip=Chests and trapped chests, single and double. Both halves of a double chest are baked from the large model and split at the seam, so section culling stays exact.
+impetus.options.extras.baked.ender_chests.name=Ender Chests
+impetus.options.extras.baked.ender_chests.tooltip=Ender chests, which share the chest model under their own texture.
+impetus.options.extras.baked.signs.name=Signs
+impetus.options.extras.baked.signs.tooltip=Sign boards and posts, standing and wall-mounted. The text is still drawn by the renderer over the baked board, since it needs the font renderer either way.
+impetus.options.extras.baked.beds.name=Beds
+impetus.options.extras.baked.beds.tooltip=Beds in every colour. Beds never animate, so the renderer is skipped entirely for a placed bed.
+impetus.options.extras.baked.shulker_boxes.name=Shulker Boxes
+impetus.options.extras.baked.shulker_boxes.tooltip=Closed shulker boxes in every colour and facing. A box that opens hands itself back to its renderer until it closes again.
+
+impetus.options.extras.network.large_packets.name=Large Packets
+impetus.options.extras.network.large_packets.tooltip=Lifts the wire caps a large pack outgrows, after TonimatasDEV's Packet Fixer: the 21-bit frame length (2 MB per packet), the 2 MB compressed packet and NBT limits, 32 KB strings, the 1 MB clientbound and 32 KB serverbound mod payloads, and the 2 MB chunk data cap.\n\nThese are the "Badly compressed packet", "Tried to read NBT tag that was too big", "Payload may not be larger than" and "Chunk Packet trying to allocate too much memory" crashes. The integrated server and the client both carry the change; a remote server needs its own fix to send anything larger than vanilla allows.
+impetus.options.extras.network.read_timeout.name=Read Timeout
+impetus.options.extras.network.read_timeout.tooltip=Seconds a connection may go silent before either side drops it. Vanilla's 30 is easy to miss while a heavy pack finishes joining or the world is generating.
+impetus.options.extras.network.login_timeout.name=Login Timeout
+impetus.options.extras.network.login_timeout.tooltip=Seconds the server gives a client to finish logging in before "Took too long to log in". Vanilla's 30 is the time to receive and reconcile the registries of every mod.
+impetus.options.extras.network.keep_alive_timeout.name=Keep-Alive Timeout
+impetus.options.extras.network.keep_alive_timeout.tooltip=Seconds a client may take to answer a keep-alive before "Timed out". Vanilla's 15 is missed by a long client-side stall such as a large chunk batch or a garbage collection pause.
+
+impetus.options.extras.threads.render_priority.name=Render Thread Priority
+impetus.options.extras.threads.render_priority.tooltip=Java scheduling priority of the client thread, which runs rendering, input and sound, after wisecase2's StutterFix. Normal (5) is what the game uses; raising it asks the operating system to prefer the frame over background work such as chunk building and the integrated server. StutterFix's own default is 10 on machines with more than four cores. How much the OS honours it varies, and on Linux it is ignored unless the JVM runs with -XX:ThreadPriorityPolicy=1.
+impetus.options.extras.threads.server_priority.name=Server Thread Priority
+impetus.options.extras.threads.server_priority.tooltip=Java scheduling priority of the integrated server thread. Normal (5) is vanilla; StutterFix suggests 8, above the chunk builders and below the render thread, so ticks keep up under load without stealing frames.
+impetus.options.extras.threads.chunk_builder_priority.name=Chunk Builder Priority
+impetus.options.extras.threads.chunk_builder_priority.tooltip=Java scheduling priority of the chunk mesh builder threads. Impetus starts them at 3; lowering to 1 keeps chunk loading from ever contending with the frame at the cost of slower loading, which is StutterFix's "priority cut-off" for the lower half of its workers. Applies when the renderer next reloads.
+impetus.options.extras.threads.remove_yield.name=Remove Render Yield
+impetus.options.extras.threads.remove_yield.tooltip=Skips the Thread.yield() the render loop makes once per frame. Yielding offers the core to any other runnable thread, which on a loaded machine hands it to a worker and delays the next frame; StutterFix reports steadier frame times without it. Off by default since some drivers and mods rely on the pause.
 
 impetus.quick_setup.title=Impetus Quick Setup
 impetus.quick_setup.body=Impetus can trade a little distant detail for frame time on weaker machines. Pick a preset to turn on the Render Budget and GPU Booster together, or leave both off. Everything here can be changed later under Video Settings > Extras, or by pressing F9 in game. This screen only appears once.

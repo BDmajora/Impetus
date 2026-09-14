@@ -44,6 +44,14 @@ public final class FulgorConfig {
     public boolean warnOnIllegalThreadAccess;
     // Adds a Fulgor line to the F3 debug overlay.
     public boolean showDebugOverlay;
+    // ScalableLux's idea: a batch of scheduled positions is split by chunk and run across a pool, with chunks whose reach could meet kept apart in time; same result, less wall time
+    public boolean parallelLightUpdates;
+    // Pool width for parallel passes; 0 picks a third of the cores like ScalableLux
+    public int parallelLightThreads;
+    // Batches below this many positions run on the calling thread, since the hand-off costs more than it saves
+    public int parallelMinPositions;
+    // Batches spread over fewer chunks than this run on the calling thread, since there is nothing to run side by side
+    public int parallelMinChunks;
 
     private FulgorConfig(Properties props) {
         this.enabled = bool(props, "enabled", true);
@@ -57,6 +65,18 @@ public final class FulgorConfig {
         this.maxScheduledUpdates = integer(props, "maxScheduledUpdates", 1 << 22, 1 << 12, Integer.MAX_VALUE);
         this.warnOnIllegalThreadAccess = bool(props, "warnOnIllegalThreadAccess", true);
         this.showDebugOverlay = bool(props, "showDebugOverlay", false);
+        this.parallelLightUpdates = bool(props, "parallelLightUpdates", true);
+        this.parallelLightThreads = integer(props, "parallelLightThreads", 0, 0, 64);
+        this.parallelMinPositions = integer(props, "parallelMinPositions", 1024, 1, Integer.MAX_VALUE);
+        this.parallelMinChunks = integer(props, "parallelMinChunks", 3, 2, Integer.MAX_VALUE);
+    }
+
+    // The pool width to use: the configured count, or a third of the cores with at least one
+    public int parallelLightThreads() {
+        if (this.parallelLightThreads > 0) {
+            return this.parallelLightThreads;
+        }
+        return Math.max(1, Runtime.getRuntime().availableProcessors() / 3);
     }
 
     // Loads on first use and caches; every reader shares the one instance
@@ -121,6 +141,10 @@ public final class FulgorConfig {
         values.put("maxScheduledUpdates", Integer.toString(this.maxScheduledUpdates));
         values.put("warnOnIllegalThreadAccess", Boolean.toString(this.warnOnIllegalThreadAccess));
         values.put("showDebugOverlay", Boolean.toString(this.showDebugOverlay));
+        values.put("parallelLightUpdates", Boolean.toString(this.parallelLightUpdates));
+        values.put("parallelLightThreads", Integer.toString(this.parallelLightThreads));
+        values.put("parallelMinPositions", Integer.toString(this.parallelMinPositions));
+        values.put("parallelMinChunks", Integer.toString(this.parallelMinChunks));
 
         Properties out = new Properties();
         out.putAll(values);

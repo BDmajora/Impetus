@@ -8,7 +8,7 @@
     "url": "",
     "updateUrl": "",
     "authorList": ["bdmajora"],
-    "credits": "embeddedt (Celeritas/Embeddium), the Sodium project, the Iris project, orf (GpuShift), and Mr.Toad (GPUBooster)",
+    "credits": "embeddedt (Celeritas/Embeddium), the Sodium project, the Iris project, orf (GpuShift), Mr.Toad (GPUBooster), AxalotL (Async), Harvey_Husky (AsyncParticles), fzzyhmstrs (Particle Core), FoundationGames (Enhanced Block Entities), malte0811 (FerriteCore), Steveplays28 (Noisium), TonimatasDEV (Packet Fixer), Spottedleaf and ishland (Starlight/ScalableLux), wisecase2 (StutterFix)",
     "logoFile": "assets/impetus/textures/gui/impetus.png",
     "screenshots": [],
     "dependencies": []

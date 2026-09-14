@@ -126,6 +126,12 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                                     BlockRenderLayer.SOLID, blockState, blockPos);
                         }
 
+                        // Baked block entity models (chests, signs, beds, shulker boxes) need the world and position behind the state, which getQuads cannot carry
+                        boolean bakedEntity = com.bdmajora.extras.client.bakedentities.BakedEntities.isBaked(block);
+                        if (bakedEntity) {
+                            com.bdmajora.extras.client.bakedentities.BakedEntityContext.set(slice, blockPos);
+                        }
+
                         for (BlockRenderLayer layer : VintageChunkBuildContext.LAYERS) {
                             boolean renderHere = forcedLayer != null
                                     ? layer == forcedLayer
@@ -141,6 +147,10 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                                     buildContext.recordVanillaBlockAttribution(layer, blockState, blockPos);
                                 }
                             }
+                        }
+
+                        if (bakedEntity) {
+                            com.bdmajora.extras.client.bakedentities.BakedEntityContext.clear();
                         }
 
                         if (FluidloggedCompat.IS_LOADED) {

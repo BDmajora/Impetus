@@ -16,6 +16,9 @@ import java.util.function.Supplier;
 
 public class ChunkBuilder {
     static final Logger LOGGER = LogManager.getLogger("ChunkBuilder");
+
+    // Priority given to each worker at creation; two below normal keeps them from competing with the render thread, and the Extras thread-scheduling page can move it
+    public static volatile int WORKER_PRIORITY = Math.max(Thread.MIN_PRIORITY, Thread.NORM_PRIORITY - 2);
     // Megabytes of heap required per builder thread, used to cap the worker count on a small heap
     private static final int MBS_PER_CHUNK_BUILDER = 64;
 
@@ -61,7 +64,7 @@ public class ChunkBuilder {
                 WorkerRunnable worker = new WorkerRunnable(context);
 
                 WorkerThread thread = new WorkerThread(worker, "Chunk Render Task Executor #" + i, context);
-                thread.setPriority(Math.max(0, Thread.NORM_PRIORITY - 2));
+                thread.setPriority(Math.max(Thread.MIN_PRIORITY, Math.min(Thread.MAX_PRIORITY, WORKER_PRIORITY)));
                 thread.start();
 
                 this.threads.add(thread);

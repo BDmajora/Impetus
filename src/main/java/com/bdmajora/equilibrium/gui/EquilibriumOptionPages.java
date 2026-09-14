@@ -93,6 +93,8 @@ public final class EquilibriumOptionPages {
             case "entity":
             case "math":
                 return OptionImpact.MEDIUM;
+            case "worldgen":
+                return OptionImpact.MEDIUM;
             case "ai":
             case "alloc":
             case "block":

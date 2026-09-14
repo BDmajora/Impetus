@@ -33,7 +33,11 @@
     "world.inline_block_access.WorldMixin",
     "world.inline_height.WorldMixin",
     "world.raycast.WorldMixin",
-    "world.tick_scheduler.WorldServerMixin"
+    "world.tick_scheduler.WorldServerMixin",
+    "worldgen.chunk_copy.ChunkMixin",
+    "worldgen.chunk_copy.ExtendedBlockStorageAccessor",
+    "worldgen.int_cache.IntCacheMixin",
+    "worldgen.primer_state_cache.ChunkPrimerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

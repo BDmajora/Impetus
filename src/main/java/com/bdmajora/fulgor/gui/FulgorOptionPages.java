@@ -64,6 +64,11 @@ public final class FulgorOptionPages {
                         OptionImpact.MEDIUM,
                         (config, value) -> config.cacheBlockLightInfo = value,
                         config -> config.cacheBlockLightInfo))
+                .add(restartToggle("parallel_light_updates",
+                        "impetus.options.fulgor.parallel_updates",
+                        OptionImpact.HIGH,
+                        (config, value) -> config.parallelLightUpdates = value,
+                        config -> config.parallelLightUpdates))
                 .build());
 
         groups.add(OptionGroup.createBuilder()

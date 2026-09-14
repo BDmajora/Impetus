@@ -2,6 +2,7 @@ package com.bdmajora.extras.gui;
 
 import com.bdmajora.extras.Extras;
 import com.bdmajora.extras.ExtrasConfig;
+import com.bdmajora.extras.async.ParallelProcessor;
 import com.bdmajora.extras.client.AdaptiveSync;
 import com.bdmajora.extras.client.particle.ParticleClassRegistry;
 import com.bdmajora.impetus.api.options.OptionIdentifier;
@@ -57,6 +58,10 @@ public final class ExtrasOptionPages {
         groups.add(entityRendering());
         groups.add(renderBudget());
         groups.add(gpuBooster());
+        groups.add(parallelTicking());
+        groups.add(bakedBlockEntities());
+        groups.add(network());
+        groups.add(threadScheduling());
         groups.add(overlay());
         groups.add(toasts());
         groups.add(qualityOfLife());
@@ -107,6 +112,11 @@ public final class ExtrasOptionPages {
     private static OptionGroup particles(OptionImpl<ExtrasConfig, Boolean> master) {
         BooleanSupplier enabled = master::getValue;
 
+        OptionImpl<ExtrasConfig, Boolean> parallel = toggle("particles.parallel",
+                (config, value) -> config.particle.parallelTick = value,
+                config -> config.particle.parallelTick, OptionImpact.HIGH, null, enabled);
+        BooleanSupplier parallelOn = () -> enabled.getAsBoolean() && parallel.getValue();
+
         return OptionGroup.createBuilder()
                 .setId(group("particles"))
                 .add(master)
@@ -128,6 +138,15 @@ public final class ExtrasOptionPages {
                         config -> config.particle.drippingWaterLava, null, null, enabled))
                 .add(toggle("particles.firework", (config, value) -> config.particle.fireworkParticles = value,
                         config -> config.particle.fireworkParticles, null, null, enabled))
+                .add(parallel)
+                .add(toggle("particles.parallel_modded", (config, value) -> config.particle.parallelModded = value,
+                        config -> config.particle.parallelModded, OptionImpact.VARIES, null, parallelOn))
+                .add(toggle("particles.light_cache", (config, value) -> config.particle.lightCache = value,
+                        config -> config.particle.lightCache, OptionImpact.MEDIUM, null, enabled))
+                .add(toggle("particles.cull_offscreen", (config, value) -> config.particle.cullOffscreen = value,
+                        config -> config.particle.cullOffscreen, OptionImpact.MEDIUM, null, enabled))
+                .add(toggle("particles.collision_cache", (config, value) -> config.particle.collisionCache = value,
+                        config -> config.particle.collisionCache, OptionImpact.MEDIUM, null, enabled))
                 .build();
     }
 
@@ -329,6 +348,122 @@ public final class ExtrasOptionPages {
                 .add(toggle("booster.stream_uploads", (config, value) -> config.gpuBooster.streamUploads = value,
                         config -> config.gpuBooster.streamUploads, OptionImpact.VARIES, null, enabled))
                 .build();
+    }
+
+    // Parallel server ticking (Async's design); the master needs a relaunch since it decides what a world is built with, the rest is live and gates on it
+    private static OptionGroup parallelTicking() {
+        OptionImpl<ExtrasConfig, Boolean> master = toggle("parallel.enabled",
+                (config, value) -> config.async.enabled = value,
+                config -> config.async.enabled, OptionImpact.HIGH, OptionFlag.REQUIRES_GAME_RESTART, null);
+        BooleanSupplier enabled = master::getValue;
+
+        OptionImpl<ExtrasConfig, Boolean> entities = toggle("parallel.entities",
+                (config, value) -> config.async.entities = value,
+                config -> config.async.entities, OptionImpact.HIGH, null, enabled);
+        BooleanSupplier entitiesOn = () -> enabled.getAsBoolean() && entities.getValue();
+
+        return OptionGroup.createBuilder()
+                .setId(group("parallel_ticking"))
+                .add(master)
+                .add(slider("parallel.threads", 0, Math.min(ExtrasConfig.AsyncSettings.THREADS_MAX, ParallelProcessor.maxThreads()), 1,
+                        value -> value == 0
+                                ? TextComponent.literal("Auto (" + ParallelProcessor.desiredThreads() + ")")
+                                : TextComponent.literal(value + (value == 1 ? " thread" : " threads")),
+                        (config, value) -> config.async.threads = value,
+                        config -> config.async.threads, OptionImpact.MEDIUM, null, enabled))
+                .add(entities)
+                .add(toggle("parallel.modded_entities", (config, value) -> config.async.moddedEntities = value,
+                        config -> config.async.moddedEntities, OptionImpact.VARIES, null, entitiesOn))
+                .add(toggle("parallel.random_ticks", (config, value) -> config.async.randomTicks = value,
+                        config -> config.async.randomTicks, OptionImpact.MEDIUM, null, enabled))
+                .add(toggle("parallel.spawning", (config, value) -> config.async.spawning = value,
+                        config -> config.async.spawning, OptionImpact.LOW, null, enabled))
+                .build();
+    }
+
+    // Block entities drawn as terrain (Enhanced Block Entities' design); every switch reloads the renderer since the mesh has to pick the blocks up or drop them
+    private static OptionGroup bakedBlockEntities() {
+        OptionImpl<ExtrasConfig, Boolean> master = toggle("baked.enabled",
+                (config, value) -> config.bakedEntities.enabled = value,
+                config -> config.bakedEntities.enabled, OptionImpact.HIGH, OptionFlag.REQUIRES_RENDERER_RELOAD, null);
+        BooleanSupplier enabled = master::getValue;
+
+        return OptionGroup.createBuilder()
+                .setId(group("baked_block_entities"))
+                .add(master)
+                .add(toggle("baked.chests", (config, value) -> config.bakedEntities.chests = value,
+                        config -> config.bakedEntities.chests, OptionImpact.HIGH, OptionFlag.REQUIRES_RENDERER_RELOAD, enabled))
+                .add(toggle("baked.ender_chests", (config, value) -> config.bakedEntities.enderChests = value,
+                        config -> config.bakedEntities.enderChests, OptionImpact.LOW, OptionFlag.REQUIRES_RENDERER_RELOAD, enabled))
+                .add(toggle("baked.signs", (config, value) -> config.bakedEntities.signs = value,
+                        config -> config.bakedEntities.signs, OptionImpact.MEDIUM, OptionFlag.REQUIRES_RENDERER_RELOAD, enabled))
+                .add(toggle("baked.beds", (config, value) -> config.bakedEntities.beds = value,
+                        config -> config.bakedEntities.beds, OptionImpact.LOW, OptionFlag.REQUIRES_RENDERER_RELOAD, enabled))
+                .add(toggle("baked.shulker_boxes", (config, value) -> config.bakedEntities.shulkerBoxes = value,
+                        config -> config.bakedEntities.shulkerBoxes, OptionImpact.MEDIUM, OptionFlag.REQUIRES_RENDERER_RELOAD, enabled))
+                .build();
+    }
+
+    // Wire limits and timeouts (Packet Fixer's set); all live, read per packet
+    private static OptionGroup network() {
+        return OptionGroup.createBuilder()
+                .setId(group("network"))
+                .add(toggle("network.large_packets", (config, value) -> config.network.largePackets = value,
+                        config -> config.network.largePackets, null, null, null))
+                .add(slider("network.read_timeout",
+                        ExtrasConfig.NetworkSettings.TIMEOUT_MIN, ExtrasConfig.NetworkSettings.TIMEOUT_MAX, 5,
+                        value -> TextComponent.literal(value + "s"),
+                        (config, value) -> config.network.readTimeoutSeconds = value,
+                        config -> config.network.readTimeoutSeconds, null, null, null))
+                .add(slider("network.login_timeout",
+                        ExtrasConfig.NetworkSettings.TIMEOUT_MIN, ExtrasConfig.NetworkSettings.TIMEOUT_MAX, 5,
+                        value -> TextComponent.literal(value + "s"),
+                        (config, value) -> config.network.loginTimeoutSeconds = value,
+                        config -> config.network.loginTimeoutSeconds, null, null, null))
+                .add(slider("network.keep_alive_timeout",
+                        ExtrasConfig.NetworkSettings.TIMEOUT_MIN, ExtrasConfig.NetworkSettings.TIMEOUT_MAX, 5,
+                        value -> TextComponent.literal(value + "s"),
+                        (config, value) -> config.network.keepAliveTimeoutSeconds = value,
+                        config -> config.network.keepAliveTimeoutSeconds, null, null, null))
+                .build();
+    }
+
+    // Thread priorities and the render loop's yield (StutterFix's set); opt-in, every default is the game's own behaviour
+    private static OptionGroup threadScheduling() {
+        return OptionGroup.createBuilder()
+                .setId(group("thread_scheduling"))
+                .add(slider("threads.render_priority",
+                        ExtrasConfig.ThreadSettings.PRIORITY_MIN, ExtrasConfig.ThreadSettings.PRIORITY_MAX, 1,
+                        ExtrasOptionPages::priorityLabel,
+                        (config, value) -> config.threads.renderThreadPriority = value,
+                        config -> config.threads.renderThreadPriority, OptionImpact.VARIES, null, null))
+                .add(slider("threads.server_priority",
+                        ExtrasConfig.ThreadSettings.PRIORITY_MIN, ExtrasConfig.ThreadSettings.PRIORITY_MAX, 1,
+                        ExtrasOptionPages::priorityLabel,
+                        (config, value) -> config.threads.serverThreadPriority = value,
+                        config -> config.threads.serverThreadPriority, OptionImpact.VARIES, null, null))
+                .add(slider("threads.chunk_builder_priority",
+                        ExtrasConfig.ThreadSettings.PRIORITY_MIN, ExtrasConfig.ThreadSettings.PRIORITY_MAX, 1,
+                        ExtrasOptionPages::priorityLabel,
+                        (config, value) -> config.threads.chunkBuilderPriority = value,
+                        config -> config.threads.chunkBuilderPriority, OptionImpact.VARIES, OptionFlag.REQUIRES_RENDERER_RELOAD, null))
+                .add(toggle("threads.remove_yield", (config, value) -> config.threads.removeRenderYield = value,
+                        config -> config.threads.removeRenderYield, OptionImpact.VARIES, null, null))
+                .build();
+    }
+
+    // Java's 1-10 scale with the three named points called out
+    private static TextComponent priorityLabel(int value) {
+        if (value == Thread.MIN_PRIORITY) {
+            return TextComponent.literal(value + " (lowest)");
+        }
+        if (value == Thread.NORM_PRIORITY) {
+            return TextComponent.literal(value + " (normal)");
+        }
+        if (value == Thread.MAX_PRIORITY) {
+            return TextComponent.literal(value + " (highest)");
+        }
+        return TextComponent.literal(Integer.toString(value));
     }
 
     // FPS counter and coordinates HUD; layout options gate on the counter being shown

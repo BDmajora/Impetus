@@ -1,7 +1,11 @@
 package com.bdmajora.extras;
 
+import com.bdmajora.extras.async.ParallelProcessor;
+import com.bdmajora.extras.client.ThreadTuning;
+import com.bdmajora.extras.client.bakedentities.BakedEntities;
 import com.bdmajora.extras.client.booster.GpuBooster;
 import com.bdmajora.extras.client.particle.ParticleClassRegistry;
+import com.bdmajora.extras.client.particle.ParticleTicker;
 import com.github.bsideup.jabel.Desugar;
 import net.minecraft.client.resources.I18n;
 import net.minecraftforge.common.config.Configuration;
@@ -22,6 +26,10 @@ public final class ExtrasConfig {
     private static final String CAT_EXTRA = "extra";
     private static final String CAT_RENDER_BUDGET = "render_budget";
     private static final String CAT_GPU_BOOSTER = "gpu_booster";
+    private static final String CAT_ASYNC = "parallel_ticking";
+    private static final String CAT_BAKED_ENTITIES = "baked_block_entities";
+    private static final String CAT_NETWORK = "network";
+    private static final String CAT_THREADS = "thread_scheduling";
 
     public final AnimationSettings animation = new AnimationSettings();
     public final ParticleSettings particle = new ParticleSettings();
@@ -30,6 +38,10 @@ public final class ExtrasConfig {
     public final ExtraSettings extra = new ExtraSettings();
     public final RenderBudgetSettings renderBudget = new RenderBudgetSettings();
     public final GpuBoosterSettings gpuBooster = new GpuBoosterSettings();
+    public final AsyncSettings async = new AsyncSettings();
+    public final BakedEntitySettings bakedEntities = new BakedEntitySettings();
+    public final NetworkSettings network = new NetworkSettings();
+    public final ThreadSettings threads = new ThreadSettings();
 
     private final List<BooleanProperty> booleans = Arrays.asList(
             // --- Animations -------------------------------------------------------------------
@@ -78,6 +90,16 @@ public final class ExtrasConfig {
                     v -> particle.drippingWaterLava = v, () -> particle.drippingWaterLava),
             bool(CAT_PARTICLE, "fireworkParticles", true, "Firework spark particles",
                     v -> particle.fireworkParticles = v, () -> particle.fireworkParticles),
+            bool(CAT_PARTICLE, "parallelTick", true, "Tick particles across a worker pool instead of the client thread",
+                    v -> particle.parallelTick = v, () -> particle.parallelTick),
+            bool(CAT_PARTICLE, "parallelModded", false, "Also tick modded particle classes on the pool; off keeps them on the client thread",
+                    v -> particle.parallelModded = v, () -> particle.parallelModded),
+            bool(CAT_PARTICLE, "lightCache", true, "Sample each particle's light once per tick instead of once per frame",
+                    v -> particle.lightCache = v, () -> particle.lightCache),
+            bool(CAT_PARTICLE, "cullOffscreen", true, "Skip building quads for vanilla particles outside the view frustum",
+                    v -> particle.cullOffscreen = v, () -> particle.cullOffscreen),
+            bool(CAT_PARTICLE, "collisionCache", true, "Remember that a particle's block cell has nothing to collide with instead of sweeping it every tick",
+                    v -> particle.collisionCache = v, () -> particle.collisionCache),
 
             // --- Details ----------------------------------------------------------------------
             bool(CAT_DETAIL, "sky", true, "Render the sky box",
@@ -186,7 +208,37 @@ public final class ExtrasConfig {
             bool(CAT_GPU_BOOSTER, "fastMath", true, "Cheaper angle wrapping and log2 in MathHelper",
                     v -> gpuBooster.fastMath = v, () -> gpuBooster.fastMath),
             bool(CAT_GPU_BOOSTER, "streamUploads", true, "Draw immediate-mode geometry through a streamed vertex buffer instead of client-side arrays",
-                    v -> gpuBooster.streamUploads = v, () -> gpuBooster.streamUploads)
+                    v -> gpuBooster.streamUploads = v, () -> gpuBooster.streamUploads),
+            // --- Parallel ticking -------------------------------------------------------------
+            bool(CAT_ASYNC, "enabled", true, "Master switch for parallel server ticking (entities, random ticks, mob spawning across the worker pool); takes effect on the next launch",
+                    v -> async.enabled = v, () -> async.enabled),
+            bool(CAT_ASYNC, "entities", true, "Tick vanilla entities in parallel across the worker pool",
+                    v -> async.entities = v, () -> async.entities),
+            bool(CAT_ASYNC, "moddedEntities", false, "Also tick modded entities in parallel; off keeps them on the main thread",
+                    v -> async.moddedEntities = v, () -> async.moddedEntities),
+            bool(CAT_ASYNC, "randomTicks", true, "Run block random ticks (crop growth, fire spread, ...) in parallel",
+                    v -> async.randomTicks = v, () -> async.randomTicks),
+            bool(CAT_ASYNC, "spawning", true, "Evaluate natural mob spawn attempts in parallel per chunk",
+                    v -> async.spawning = v, () -> async.spawning),
+            // --- Baked block entities ---------------------------------------------------------
+            bool(CAT_BAKED_ENTITIES, "enabled", true, "Master switch: draw resting chests, ender chests, signs, beds and shulker boxes as terrain instead of through their block entity renderers",
+                    v -> bakedEntities.enabled = v, () -> bakedEntities.enabled),
+            bool(CAT_BAKED_ENTITIES, "chests", true, "Bake chests and trapped chests, single and double",
+                    v -> bakedEntities.chests = v, () -> bakedEntities.chests),
+            bool(CAT_BAKED_ENTITIES, "enderChests", true, "Bake ender chests",
+                    v -> bakedEntities.enderChests = v, () -> bakedEntities.enderChests),
+            bool(CAT_BAKED_ENTITIES, "signs", true, "Bake sign boards and posts (text still comes from the renderer)",
+                    v -> bakedEntities.signs = v, () -> bakedEntities.signs),
+            bool(CAT_BAKED_ENTITIES, "beds", true, "Bake beds",
+                    v -> bakedEntities.beds = v, () -> bakedEntities.beds),
+            bool(CAT_BAKED_ENTITIES, "shulkerBoxes", true, "Bake closed shulker boxes",
+                    v -> bakedEntities.shulkerBoxes = v, () -> bakedEntities.shulkerBoxes),
+            // --- Network ----------------------------------------------------------------------
+            bool(CAT_NETWORK, "largePackets", true, "Lift vanilla's packet, payload, NBT, string and chunk data size caps (2 MB frames, 32 KB strings, 1 MB payloads)",
+                    v -> network.largePackets = v, () -> network.largePackets),
+            // --- Thread scheduling ------------------------------------------------------------
+            bool(CAT_THREADS, "removeRenderYield", false, "Skip the Thread.yield() the render loop makes once per frame",
+                    v -> threads.removeRenderYield = v, () -> threads.removeRenderYield)
     );
 
     private final List<IntProperty> integers = Arrays.asList(
@@ -228,7 +280,28 @@ public final class ExtrasConfig {
             new IntProperty(CAT_RENDER_BUDGET, "blockEntityDistance", RenderBudgetSettings.BLOCK_ENTITY_DISTANCE_DEFAULT,
                     RenderBudgetSettings.BLOCK_ENTITY_DISTANCE_MIN, RenderBudgetSettings.BLOCK_ENTITY_DISTANCE_MAX,
                     "Distance in blocks past which decorative block entities and item frames may be skipped under pressure (vanilla stops most at 64 anyway)",
-                    v -> renderBudget.blockEntityDistance = v, () -> renderBudget.blockEntityDistance)
+                    v -> renderBudget.blockEntityDistance = v, () -> renderBudget.blockEntityDistance),
+            new IntProperty(CAT_ASYNC, "threads", 0, 0, AsyncSettings.THREADS_MAX,
+                    "Worker threads for parallel ticking (0 = automatic, about three quarters of the cores)",
+                    v -> async.threads = v, () -> async.threads),
+            new IntProperty(CAT_NETWORK, "readTimeoutSeconds", NetworkSettings.READ_TIMEOUT_DEFAULT, NetworkSettings.TIMEOUT_MIN, NetworkSettings.TIMEOUT_MAX,
+                    "Seconds a connection may go silent before it is dropped (vanilla 30)",
+                    v -> network.readTimeoutSeconds = v, () -> network.readTimeoutSeconds),
+            new IntProperty(CAT_NETWORK, "loginTimeoutSeconds", NetworkSettings.LOGIN_TIMEOUT_DEFAULT, NetworkSettings.TIMEOUT_MIN, NetworkSettings.TIMEOUT_MAX,
+                    "Seconds a client may take to finish logging in (vanilla 30)",
+                    v -> network.loginTimeoutSeconds = v, () -> network.loginTimeoutSeconds),
+            new IntProperty(CAT_NETWORK, "keepAliveTimeoutSeconds", NetworkSettings.KEEP_ALIVE_TIMEOUT_DEFAULT, NetworkSettings.TIMEOUT_MIN, NetworkSettings.TIMEOUT_MAX,
+                    "Seconds a client may take to answer a keep-alive (vanilla 15)",
+                    v -> network.keepAliveTimeoutSeconds = v, () -> network.keepAliveTimeoutSeconds),
+            new IntProperty(CAT_THREADS, "renderThreadPriority", ThreadSettings.PRIORITY_NORMAL, ThreadSettings.PRIORITY_MIN, ThreadSettings.PRIORITY_MAX,
+                    "Java priority of the client (render) thread, 1-10 (5 = unchanged)",
+                    v -> threads.renderThreadPriority = v, () -> threads.renderThreadPriority),
+            new IntProperty(CAT_THREADS, "serverThreadPriority", ThreadSettings.PRIORITY_NORMAL, ThreadSettings.PRIORITY_MIN, ThreadSettings.PRIORITY_MAX,
+                    "Java priority of the integrated server thread, 1-10 (5 = unchanged)",
+                    v -> threads.serverThreadPriority = v, () -> threads.serverThreadPriority),
+            new IntProperty(CAT_THREADS, "chunkBuilderPriority", ThreadSettings.CHUNK_BUILDER_DEFAULT, ThreadSettings.PRIORITY_MIN, ThreadSettings.PRIORITY_MAX,
+                    "Java priority of the chunk builder threads, 1-10 (3 = unchanged)",
+                    v -> threads.chunkBuilderPriority = v, () -> threads.chunkBuilderPriority)
     );
 
     private Configuration config;
@@ -246,6 +319,11 @@ public final class ExtrasConfig {
                 config.save();
             }
             GpuBooster.apply(options.gpuBooster);
+            ParallelProcessor.install(options.async);
+            ParallelProcessor.apply(options.async);
+            ParticleTicker.apply(options.particle);
+            BakedEntities.apply(options.bakedEntities);
+            ThreadTuning.apply(options.threads);
             return options;
         } catch (Exception e) {
             Extras.LOGGER.error("Could not read {}, falling back to defaults", file, e);
@@ -287,6 +365,8 @@ public final class ExtrasConfig {
                 new String[0], "Particle classes the user has switched off"));
         registry.loadDiscoveredClasses(config.getStringList("discoveredClasses", CAT_PARTICLE_CLASSES,
                 new String[0], "Cache of discovered particle classes; rebuilt automatically"));
+        async.synchronizedEntities = config.getStringList("synchronizedEntities", CAT_ASYNC,
+                AsyncSettings.DEFAULT_SYNCHRONIZED, "Entity ids (or namespace:*) that always tick on the main thread");
     }
 
     // Flushes every setting back to disk
@@ -311,10 +391,15 @@ public final class ExtrasConfig {
                 .set(registry.getDisabledClassesArray());
         config.get(CAT_PARTICLE_CLASSES, "discoveredClasses", new String[0])
                 .set(registry.getDiscoveredClassesArray());
+        config.get(CAT_ASYNC, "synchronizedEntities", AsyncSettings.DEFAULT_SYNCHRONIZED).set(async.synchronizedEntities);
 
         config.save();
         registry.markClean();
         GpuBooster.apply(gpuBooster);
+        ParallelProcessor.apply(async);
+        ParticleTicker.apply(particle);
+        BakedEntities.apply(bakedEntities);
+        ThreadTuning.apply(threads);
     }
 
     private static <T extends Enum<T>> T readEnum(Configuration config, String category, String key,
@@ -541,6 +626,12 @@ public final class ExtrasConfig {
         public boolean potionParticles = true;
         public boolean drippingWaterLava = true;
         public boolean fireworkParticles = true;
+        // Parallel ticking and the tick-time light sample (see client.particle.ParticleTicker), after AsyncParticles
+        public boolean parallelTick = true;
+        public boolean parallelModded = false;
+        public boolean lightCache = true;
+        public boolean cullOffscreen = true;
+        public boolean collisionCache = true;
     }
 
     // Celestial and environmental detail switches
@@ -656,6 +747,61 @@ public final class ExtrasConfig {
         public boolean fastRandom = true;
         public boolean fastMath = true;
         public boolean streamUploads = true;
+    }
+
+    // Parallel server ticking (see async.ParallelProcessor), after AxalotL's Async; on by default for vanilla entities, random ticks and spawning, with modded entities the one opt-in since their code was never written to share the world; the master needs a relaunch since the concurrent collections go in at world construction, everything else is live
+    public static final class AsyncSettings {
+        public static final int THREADS_MAX = 64;
+        // TNT and drops interact with everything around them, hopper carts write into block entities, and orbs merge; all stay serial unless the user says otherwise
+        public static final String[] DEFAULT_SYNCHRONIZED = {
+                "minecraft:tnt", "minecraft:item", "minecraft:xp_orb", "minecraft:hopper_minecart"
+        };
+
+        public boolean enabled = true;
+        public int threads = 0;
+        public boolean entities = true;
+        public boolean moddedEntities = false;
+        public boolean randomTicks = true;
+        public boolean spawning = true;
+        public String[] synchronizedEntities = DEFAULT_SYNCHRONIZED.clone();
+    }
+
+    // Block entities drawn as terrain (see client.bakedentities), after Enhanced Block Entities; on by default since a resting chest drawn by the chunk mesh is strictly cheaper than one drawn by its renderer every frame
+    public static final class BakedEntitySettings {
+        public boolean enabled = true;
+        public boolean chests = true;
+        public boolean enderChests = true;
+        public boolean signs = true;
+        public boolean beds = true;
+        public boolean shulkerBoxes = true;
+    }
+
+    // Wire limits and timeouts (see network.NetworkLimits), after Packet Fixer; on by default since every cap here is one a large pack hits as a crash or a disconnect
+    public static final class NetworkSettings {
+        public static final int TIMEOUT_MIN = 5;
+        public static final int TIMEOUT_MAX = 600;
+        public static final int READ_TIMEOUT_DEFAULT = 120;
+        public static final int LOGIN_TIMEOUT_DEFAULT = 120;
+        public static final int KEEP_ALIVE_TIMEOUT_DEFAULT = 120;
+
+        public boolean largePackets = true;
+        public int readTimeoutSeconds = READ_TIMEOUT_DEFAULT;
+        public int loginTimeoutSeconds = LOGIN_TIMEOUT_DEFAULT;
+        public int keepAliveTimeoutSeconds = KEEP_ALIVE_TIMEOUT_DEFAULT;
+    }
+
+    // Thread priorities and the render loop's yield (see client.ThreadTuning), after StutterFix; every default is what the game does already, so this is strictly opt-in
+    public static final class ThreadSettings {
+        public static final int PRIORITY_MIN = Thread.MIN_PRIORITY;
+        public static final int PRIORITY_NORMAL = Thread.NORM_PRIORITY;
+        public static final int PRIORITY_MAX = Thread.MAX_PRIORITY;
+        // Impetus starts its chunk builders two below normal
+        public static final int CHUNK_BUILDER_DEFAULT = Thread.NORM_PRIORITY - 2;
+
+        public int renderThreadPriority = PRIORITY_NORMAL;
+        public int serverThreadPriority = PRIORITY_NORMAL;
+        public int chunkBuilderPriority = CHUNK_BUILDER_DEFAULT;
+        public boolean removeRenderYield = false;
     }
 
     // Declarative property bindings

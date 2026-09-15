@@ -12,6 +12,7 @@ import com.bdmajora.impetus.umbra.gl.blending.ProgramAlphaTest;
 import com.bdmajora.impetus.umbra.gl.blending.ProgramBlendState;
 import com.bdmajora.impetus.umbra.gl.program.DrawBuffers;
 import com.bdmajora.impetus.umbra.gl.program.ProgramUniforms;
+import com.bdmajora.impetus.umbra.gl.sampler.ShadowSamplerKinds;
 import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;
 import com.bdmajora.impetus.umbra.shaderpack.ProgramSource;
 import com.bdmajora.impetus.umbra.shaderpack.ShaderPack;
@@ -191,6 +192,9 @@ public final class UmbraTerrainProgramOverride {
             MatrixUniforms.addMatrixUniforms(uniforms);
             com.bdmajora.impetus.umbra.uniforms.custom.ActiveCustomUniforms.assignTo(uniforms);
             ((UmbraTerrainShaderInterface) program.getInterface()).setUniforms(uniforms.buildUniforms());
+            // Read off the linked program like the uniforms: gbuffers_terrain/water may sample shadowtex0 as a plain sampler2D, and the bind path then needs the raw-depth sampler on that unit
+            ((UmbraTerrainShaderInterface) program.getInterface())
+                    .setShadowSamplerKinds(ShadowSamplerKinds.detect(program.handle()));
             UmbraRenderingPipeline.reportGlError("terrain '" + programId.getSourceName() + "' uniforms");
 
             return program;

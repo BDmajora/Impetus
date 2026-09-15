@@ -103,7 +103,8 @@ public final class CelestialUniforms {
                 double y = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * tickDelta - camera.y;
                 double z = entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * tickDelta - camera.z;
                 Vector4f position = new Vector4f((float) x, (float) y, (float) z, 1.0f);
-                new Matrix4f(CapturedRenderingState.INSTANCE.getGbufferModelView()).transform(position);
+                // Camera-relative input, so the camera-centred matrix, not the raw feet-relative capture
+                new Matrix4f(CapturedRenderingState.INSTANCE.getGbufferModelViewCameraCentered()).transform(position);
                 return new Vector3f(position.x, position.y, position.z);
             }
         }

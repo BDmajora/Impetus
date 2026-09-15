@@ -671,9 +671,9 @@ public final class CommonUniforms {
         return new Vector3f(scale, scale, scale);
     }
 
-    // Camera translation for the current draw
+    // Camera translation for the current draw; the feet point, since geometry is submitted relative to it (Iris pairs this with Sodium's region offsets, not with pack-facing player space)
     private static Vector3f getUmbraCameraTranslation() {
-        return CameraUniforms.getCameraPositionFract(CameraUniforms.getCurrentCameraPositionUnshifted()).negate();
+        return CameraUniforms.getCameraPositionFract(CameraUniforms.getCurrentRenderOriginUnshifted()).negate();
     }
 
     // The texture bound on unit 0

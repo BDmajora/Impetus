@@ -18,6 +18,7 @@ import com.bdmajora.impetus.umbra.gl.blending.ProgramAlphaTest;
 import com.bdmajora.impetus.umbra.gl.blending.ProgramBlendState;
 import com.bdmajora.impetus.umbra.gl.program.DrawBuffers;
 import com.bdmajora.impetus.umbra.gl.program.ProgramUniforms;
+import com.bdmajora.impetus.umbra.gl.sampler.ShadowSamplerKinds;
 import com.bdmajora.impetus.umbra.pipeline.UmbraShadowRenderer;
 import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;
 
@@ -36,6 +37,8 @@ public class UmbraTerrainShaderInterface implements ChunkShaderInterface {
     private final ProgramAlphaTest alphaTest;
     // The pack's OptiFine uniform set (gbufferModelView and inverse, cameraPosition, time counters) uploaded every bind; without it the world-space round trip multiplies by a zero matrix and the world disappears. Attached after link, hence not final
     private ProgramUniforms uniforms;
+    // How this program declared shadowtex0/1; attached after link like the uniforms, comparison-only until then
+    private ShadowSamplerKinds shadowSamplerKinds = ShadowSamplerKinds.ALL_COMPARE;
 
     private GlPrimitiveType primitiveType = GlPrimitiveType.TRIANGLES;
     private boolean restoreAfterDraw;
@@ -76,6 +79,11 @@ public class UmbraTerrainShaderInterface implements ChunkShaderInterface {
         this.uniforms = uniforms;
     }
 
+    // Records the declared shadow sampler types the bind path applies
+    public void setShadowSamplerKinds(ShadowSamplerKinds kinds) {
+        this.shadowSamplerKinds = kinds == null ? ShadowSamplerKinds.ALL_COMPARE : kinds;
+    }
+
     // Binds the gbuffer framebuffer and per-pass state before drawing terrain
     @Override
     public void setupState(TerrainRenderPass pass) {
@@ -90,6 +98,8 @@ public class UmbraTerrainShaderInterface implements ChunkShaderInterface {
                 restoreOptifineWaterState();
             }
             pipeline.onTerrainDraw(this.drawBuffers, this.blendState, this.alphaTest, translucentPass);
+            // After onTerrainDraw, which rebinds the comparison default on the shadow units; skipped in the shadow pass where those units hold the map being rendered and nothing samples them
+            pipeline.applyShadowSamplerKinds(this.shadowSamplerKinds, true);
             this.restoreAfterDraw = true;
             this.activeDrawBufferSlots = this.drawBuffers.length;
         }

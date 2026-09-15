@@ -45,12 +45,14 @@ public final class MatrixUniforms {
     public static void addMatrixUniforms(UniformCollector uniforms) {
         CapturedRenderingState state = CapturedRenderingState.INSTANCE;
         uniforms
-                .uniformMatrix(UniformUpdateFrequency.PER_FRAME, "gbufferModelView", state::getGbufferModelView)
+                // The pack-facing pair is re-based so the camera sits at the player-space origin (Iris 1.17+ convention) rather than at eyeHeight above it (OptiFine 1.12's, which put every "ray from the origin" a modern pack marches — Complementary's light shafts — at the player's feet); the iris_ vanilla stand-ins keep the raw capture since 1.12 geometry is submitted feet-relative
+                .uniformMatrix(UniformUpdateFrequency.PER_FRAME, "gbufferModelView",
+                        state::getGbufferModelViewCameraCentered)
                 .uniformMatrix(UniformUpdateFrequency.PER_FRAME, "iris_ModelViewMatrix", state::getGbufferModelView)
                 .uniformMatrix(UniformUpdateFrequency.PER_FRAME, "iris_ModelViewMat", state::getGbufferModelView)
-                // Plain inverse, no translation surgery: OptiFine 1.12.2 uploads the raw inverse of the modelview captured after setupCameraTransform, which has no world translation, so the inverse is already the ViewToPlayer matrix packs expect (the earlier m30/m31/m32 zeroing deviated, the m03/m13/m23 variant was a no-op)
+                // Plain inverse of the re-based matrix, no translation surgery; its translation column is the camera offset, which is what ViewToPlayer needs to land in camera-relative space
                 .uniformMatrix(UniformUpdateFrequency.PER_FRAME, "gbufferModelViewInverse",
-                        () -> invertedOrIdentity("gbufferModelViewInverse", state.getGbufferModelView()))
+                        () -> invertedOrIdentity("gbufferModelViewInverse", state.getGbufferModelViewCameraCentered()))
                 // Stand-ins for `gl_ModelViewMatrixInverse`, a different family from `gbufferModelViewInverse`: Umbra uploads these PER DRAW from the pose stack, and deriving them from gbufferModelView keeps only the camera half so every entity loses its own model transform (same defect as the normal matrix below)
                 .uniformMatrix(UniformUpdateFrequency.DYNAMIC, "iris_ModelViewMatrixInverse",
                         MatrixUniforms::getLiveModelViewInverse)
@@ -89,12 +91,14 @@ public final class MatrixUniforms {
                 .uniformMatrix(UniformUpdateFrequency.ONCE, "iris_LightmapTextureMatrix",
                         () -> LIGHTMAP_TEXTURE_MATRIX)
                 .uniformMatrix(UniformUpdateFrequency.PER_FRAME, "gbufferPreviousModelView",
-                        new Previous(state::getGbufferModelView))
+                        new Previous(state::getGbufferModelViewCameraCentered))
                 .uniformMatrix(UniformUpdateFrequency.PER_FRAME, "gbufferPreviousProjection",
                         new Previous(state::getGbufferProjection))
-                .uniformMatrix(UniformUpdateFrequency.PER_FRAME, "shadowModelView", state::getShadowModelView)
+                // Re-based like gbufferModelView: the pack reconstructs `position = shadowModelViewInverse * shadowProjectionInverse * ftransform()` from feet-relative geometry, so this pair yields camera-relative positions, and `shadowProjection * shadowModelView * position` lands on the same clip position the raw matrices produced
+                .uniformMatrix(UniformUpdateFrequency.PER_FRAME, "shadowModelView",
+                        state::getShadowModelViewCameraCentered)
                 .uniformMatrix(UniformUpdateFrequency.PER_FRAME, "shadowModelViewInverse",
-                        () -> invertedOrIdentity("shadowModelViewInverse", state.getShadowModelView()))
+                        () -> invertedOrIdentity("shadowModelViewInverse", state.getShadowModelViewCameraCentered()))
                 .uniformMatrix(UniformUpdateFrequency.PER_FRAME, "shadowProjection", state::getShadowProjection)
                 .uniformMatrix(UniformUpdateFrequency.PER_FRAME, "shadowProjectionInverse",
                         () -> invertedOrIdentity("shadowProjectionInverse", state.getShadowProjection()))

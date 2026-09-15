@@ -19,6 +19,7 @@ import com.bdmajora.impetus.umbra.gl.program.GlProgram;
 import com.bdmajora.impetus.umbra.gl.program.UmbraProgram;
 import com.bdmajora.impetus.umbra.gl.program.ProgramBuilder;
 import com.bdmajora.impetus.umbra.gl.program.ProgramUniforms;
+import com.bdmajora.impetus.umbra.gl.sampler.ShadowSamplerKinds;
 import com.bdmajora.impetus.umbra.gl.shader.GlShader;
 import com.bdmajora.impetus.umbra.gl.shader.ShaderType;
 import com.bdmajora.impetus.umbra.gl.texture.InternalTextureFormat;
@@ -231,6 +232,8 @@ public class UmbraRenderingPipeline {
         float viewportScale = 1.0f;
         float viewportOffsetX;
         float viewportOffsetY;
+        // How this pass's program declared shadowtex0/1, applied to the shadow units after it binds (see applyShadowSamplerKinds)
+        ShadowSamplerKinds shadowSamplerKinds = ShadowSamplerKinds.ALL_COMPARE;
 
         FullscreenPass(String name, UmbraProgram program, ProgramUniforms uniforms, UmbraFramebuffer framebuffer,
                        int[] colorSamplers, int[] drawBuffers, ProgramBlendState blendState,
@@ -274,6 +277,11 @@ public class UmbraRenderingPipeline {
     private final int shadowNearestHwSampler;
     private final int shadowMippedLinearHwSampler;
     private final int shadowMippedNearestHwSampler;
+    // The same four flavours WITHOUT depth comparison, bound on a shadow depth unit only for programs that declared that sampler as a plain sampler2D (see ShadowSamplerKinds); with the comparison sampler there Complementary's texelFetch light-shaft march read "lit" everywhere on this context
+    private final int shadowLinearRawSampler;
+    private final int shadowNearestRawSampler;
+    private final int shadowMippedLinearRawSampler;
+    private final int shadowMippedNearestRawSampler;
     // ONE baked frame schedule like Umbra: buffers the chain flips an odd number of times (Complementary's colortex2 TAA history) are copied alt->main at frame end (SwapPass), so every frame starts from "main = latest" and all baked FBOs and sampler snapshots stay valid; TAA works since a history pass reads main and writes alt
     private UmbraFramebuffer gbufferFramebuffer;
     private UmbraFramebuffer translucentGbufferFramebuffer;
@@ -319,6 +327,8 @@ public class UmbraRenderingPipeline {
     // Fullscreen programs plus their uniforms, compiled once and cached by name (null means it failed); owns the GL programs, destroyed here not per-pass
     private final java.util.Map<String, UmbraProgram> compiledPrograms = new java.util.HashMap<>();
     private final java.util.Map<String, ProgramUniforms> compiledUniforms = new java.util.HashMap<>();
+    // Per compiled fullscreen program, how it declared the shadow depth samplers; read once from the linked program like the uniforms
+    private final java.util.Map<String, ShadowSamplerKinds> compiledShadowSamplerKinds = new java.util.HashMap<>();
     // The pack's fixed-function gbuffer programs (sky/entities/particles/weather/clouds/hand), phase-switched.
     private final GbufferPrograms gbufferPrograms;
     // The pack's custom textures (texture.*/customTexture.* directives) and their unit overrides.
@@ -350,6 +360,8 @@ public class UmbraRenderingPipeline {
         // Indirect dispatch (indirect.<pass> directive): GL buffer id, or -1 for direct dispatch.
         final int indirectBuffer;
         final long indirectOffset;
+        // Sampler objects also govern a compute stage's texture fetches, so a compute reading raw shadow depth needs the same per-program choice
+        ShadowSamplerKinds shadowSamplerKinds = ShadowSamplerKinds.ALL_COMPARE;
 
         ComputePass(String name, GlProgram program, ProgramUniforms uniforms, int groupsX, int groupsY, int groupsZ,
                     float renderScaleX, float renderScaleY, int localSizeX, int localSizeY,
@@ -456,6 +468,9 @@ public class UmbraRenderingPipeline {
         Minecraft mc = Minecraft.getMinecraft();
         this.renderTargets = new UmbraRenderTargets(mc.displayWidth, mc.displayHeight);
         this.shaderDefines = pack.getEnvironmentDefines();
+        // The scene-aware light shaft diagnostic only applies to a pack running that mode (Complementary's LIGHTSHAFT_BEHAVIOUR=1)
+        LightShaftProbe.setPackGate(pack.getShaderPackOptions().getOptionSet().getStringOptions().containsKey("LIGHTSHAFT_BEHAVIOUR")
+                && "1".equals(pack.getShaderPackOptions().getOptionValues().getStringValueOrDefault("LIGHTSHAFT_BEHAVIOUR")));
         // The GPU identity macros need a live GL context, so they are added here rather than baked into the pack's environment defines; without them every hardware-workaround gate took its "unknown vendor" branch (Clarity's `immut` expanded to nothing)
         com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.withGpuIdentity(this.shaderDefines,
                 LWJGL.glGetString(GL11.GL_VENDOR), LWJGL.glGetString(GL11.GL_RENDERER));
@@ -471,10 +486,14 @@ public class UmbraRenderingPipeline {
             // Transparent, so a pack doing `mix(color, overlay.rgb, overlay.a)` gets its colour back unchanged.
             this.noOverlayTexture = new PlainTexture(0, 0, 0, 0);
             this.stubShadowMap = new StubShadowMap();
-            this.shadowLinearHwSampler = createShadowHardwareSampler(true, false);
-            this.shadowNearestHwSampler = createShadowHardwareSampler(false, false);
-            this.shadowMippedLinearHwSampler = createShadowHardwareSampler(true, true);
-            this.shadowMippedNearestHwSampler = createShadowHardwareSampler(false, true);
+            this.shadowLinearHwSampler = createShadowSampler(true, false, true);
+            this.shadowNearestHwSampler = createShadowSampler(false, false, true);
+            this.shadowMippedLinearHwSampler = createShadowSampler(true, true, true);
+            this.shadowMippedNearestHwSampler = createShadowSampler(false, true, true);
+            this.shadowLinearRawSampler = createShadowSampler(true, false, false);
+            this.shadowNearestRawSampler = createShadowSampler(false, false, false);
+            this.shadowMippedLinearRawSampler = createShadowSampler(true, true, false);
+            this.shadowMippedNearestRawSampler = createShadowSampler(false, true, false);
 
             List<ProgramSource> fullscreenSources = collectFullscreenSources(pack);
             // colortexNFormat / clear directives may live in ANY program stage, and Umbra/OptiFine scan every one; Sildur declares its HDR formats in gbuffers_textured.fsh, and a fullscreen-only scan left every target RGBA8 and clamped its lighting
@@ -593,8 +612,8 @@ public class UmbraRenderingPipeline {
         return Math.max(CUSTOM_TEX_FIRST_UNIT - 1, LWJGL.glGetInteger(GL_MAX_TEXTURE_IMAGE_UNITS) - 1);
     }
 
-    // A sampler object with depth-compare on, for shadow2D lookups
-    private static int createShadowHardwareSampler(boolean linear, boolean mipmapped) {
+    // A sampler object for a shadow depth unit: depth-compare on for the shadow2D flavour, off for the raw-depth flavour a plain sampler2D declaration needs; a bound sampler object replaces the texture's own parameters wholesale, so the raw flavour reads stored depth even though the texture itself carries the compare mode
+    private static int createShadowSampler(boolean linear, boolean mipmapped, boolean compare) {
         int sampler = LWJGL.glGenSamplers();
         LWJGL.glSamplerParameteri(sampler, GL11.GL_TEXTURE_MAG_FILTER, linear ? GL11.GL_LINEAR : GL11.GL_NEAREST);
         LWJGL.glSamplerParameteri(sampler, GL11.GL_TEXTURE_MIN_FILTER, mipmapped
@@ -602,7 +621,8 @@ public class UmbraRenderingPipeline {
                 : (linear ? GL11.GL_LINEAR : GL11.GL_NEAREST));
         LWJGL.glSamplerParameteri(sampler, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
         LWJGL.glSamplerParameteri(sampler, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
-        LWJGL.glSamplerParameteri(sampler, GL14.GL_TEXTURE_COMPARE_MODE, GL14.GL_COMPARE_R_TO_TEXTURE);
+        LWJGL.glSamplerParameteri(sampler, GL14.GL_TEXTURE_COMPARE_MODE,
+                compare ? GL14.GL_COMPARE_R_TO_TEXTURE : GL11.GL_NONE);
         return sampler;
     }
 
@@ -1409,8 +1429,15 @@ public class UmbraRenderingPipeline {
         this.compiledPrograms.put(name, program);
         if (program != null) {
             this.compiledUniforms.put(name, buildUniforms(name, program));
+            this.compiledShadowSamplerKinds.put(name, ShadowSamplerKinds.detect(program.getProgram().getGlId()));
         }
         return program;
+    }
+
+    // The kinds recorded for a compiled fullscreen program, comparison-only when it never compiled
+    private ShadowSamplerKinds shadowSamplerKindsFor(String name) {
+        ShadowSamplerKinds kinds = this.compiledShadowSamplerKinds.get(name);
+        return kinds != null ? kinds : ShadowSamplerKinds.ALL_COMPARE;
     }
 
     private FullscreenPass buildCompositePass(ShaderPack pack, ProgramSource source, BufferFlipper flipper,
@@ -1448,6 +1475,7 @@ public class UmbraRenderingPipeline {
             FullscreenPass pass = new FullscreenPass(name, program, this.compiledUniforms.get(name), framebuffer,
                     colorSamplers, drawBuffers, ProgramBlendState.from(pack.getProperties(), name),
                     flipsBefore, flipsAfter, mipmappedBuffers, computes);
+            pass.shadowSamplerKinds = shadowSamplerKindsFor(name);
             applyPassViewport(pass, drawBuffers);
             applyPassViewportScale(pass, pack);
             return pass;
@@ -1475,10 +1503,12 @@ public class UmbraRenderingPipeline {
             BitSet flips = flipper.snapshot();
             BitSet mipmappedBuffers = parseMipmappedBuffers(source.get());
             int[] colorSamplers = snapshotFrontTextures(flipper);
-            return new FullscreenPass(name, program, this.compiledUniforms.get(name), null,
+            FullscreenPass pass = new FullscreenPass(name, program, this.compiledUniforms.get(name), null,
                     colorSamplers, DrawBuffers.DEFAULT.clone(),
                     ProgramBlendState.from(pack.getProperties(), name), flips, (BitSet) flips.clone(),
                     mipmappedBuffers, java.util.Collections.<ComputePass>emptyList());
+            pass.shadowSamplerKinds = shadowSamplerKindsFor(name);
+            return pass;
         } catch (Exception e) {
             LOGGER.error("[Umbra] Failed to build final pass; falling back to colortex0 blit: {}", e.getMessage());
             return null;
@@ -1949,6 +1979,7 @@ public class UmbraRenderingPipeline {
             // Re-assert colortex4..7 read bindings, since sky/entity/hand phases sample gaux buffers and the prior phase may have disturbed the units; if this program also writes a samplable target, bind a copied scratch side so it never reads the active render target
             bindGbufferColorSamplers(prepareGbufferFeedbackSamplers(drawBuffers));
             entry.getUniforms().update();
+            applyShadowSamplerKinds(entry.getShadowSamplerKinds(), true);
             drawGbufferBuffers(this.currentGbuffer, drawBuffers);
             entry.getBlendState().apply(drawBuffers);
             // alphaTest.<program>: packs doing their own discard turn the fixed-function test off (Photon), others tighten it to GREATER 0.0001 (Complementary); held until the next setPhase
@@ -2190,6 +2221,13 @@ public class UmbraRenderingPipeline {
 
         if (this.shadowRenderer != null) {
             this.shadowRenderer.render();
+            if (LightShaftProbe.active()) {
+                // The pack's scene-aware probe samples exactly what the shadow pass just wrote, so replay it here before anything else touches those textures
+                LightShaftProbe.INSTANCE.sampleShadow(this.shadowRenderer.getDepthTextureId(),
+                        this.shadowRenderer.getColorTexture1Id(), this.shadowRenderer.getResolution());
+            }
+            // Iris binds the finished shadow map to every shadowcomp program at use; here the units still held the frame-start 1x1 stubs until after the dispatch, so a shadowcomp stage sampling shadowtex0/shadowcolor0 read the stub
+            bindShadowSamplers();
             dispatchComputePasses();
 
             this.currentGbuffer.bind();
@@ -2307,6 +2345,7 @@ public class UmbraRenderingPipeline {
         entry.setHandLightmap(getBlockLightmapCoord(packedLight), getSkyLightmapCoord(packedLight));
         bindShaderPackResources();
         entry.getUniforms().update();
+        applyShadowSamplerKinds(entry.getShadowSamplerKinds(), true);
         resyncTextureUnitZero();
         return true;
     }
@@ -2406,6 +2445,17 @@ public class UmbraRenderingPipeline {
 
         for (FullscreenPass pass : this.passes) {
             runPass(pass, mc);
+        }
+
+        if (LightShaftProbe.active() && !this.passes.isEmpty()) {
+            // The factor texel lives on whichever colortex5 side the chain leaves current, the one next frame's deferred1 vertex stage reads
+            FullscreenPass last = this.passes.get(this.passes.size() - 1);
+            UmbraRenderTarget factorTarget = this.renderTargets.get(5);
+            if (factorTarget != null) {
+                LightShaftProbe.INSTANCE.sampleScreen(this.renderTargets.getDepthTexture().getTextureId(),
+                        last.flipsAfter.get(5) ? factorTarget.getAltTexture() : factorTarget.getMainTexture(),
+                        this.renderTargets.getWidth(), this.renderTargets.getHeight());
+            }
         }
 
         if (this.blitSourceFramebuffer != null) {
@@ -2550,6 +2600,7 @@ public class UmbraRenderingPipeline {
                     snapshotFrontTextures(this.renderTargets.getBufferFlipper()), drawBuffers,
                     ProgramBlendState.from(pack.getProperties(), name),
                     new BitSet(), new BitSet(), new BitSet(), computes);
+            pass.shadowSamplerKinds = shadowSamplerKindsFor(name);
             pass.viewportWidth = this.shadowRenderer.getResolution();
             pass.viewportHeight = this.shadowRenderer.getResolution();
             return pass;
@@ -2655,13 +2706,15 @@ public class UmbraRenderingPipeline {
                 CommonUniforms.addCommonUniforms(uniforms);
                 MatrixUniforms.addMatrixUniforms(uniforms);
                 com.bdmajora.impetus.umbra.uniforms.custom.ActiveCustomUniforms.assignTo(uniforms);
-                built.add(new ComputePass(name, program, uniforms.buildUniforms(),
+                ComputePass compute = new ComputePass(name, program, uniforms.buildUniforms(),
                         workGroups[0], workGroups[1], workGroups[2],
                         renderScale != null ? renderScale[0] : Float.NaN,
                         renderScale != null ? renderScale[1] : Float.NaN,
                         localSize != null ? localSize[0] : 1,
                         localSize != null ? localSize[1] : 1,
-                        indirectBuffer, indirectOffset));
+                        indirectBuffer, indirectOffset);
+                compute.shadowSamplerKinds = ShadowSamplerKinds.detect(program.getGlId());
+                built.add(compute);
             } catch (Exception e) {
                 LOGGER.error("[Umbra] Failed to build compute pass '{}'; it will be skipped: {}", name, e.getMessage());
             }
@@ -2908,6 +2961,7 @@ public class UmbraRenderingPipeline {
             pass.program.bind();
             bindShaderPackResources();
             pass.uniforms.update();
+            applyShadowSamplerKinds(pass.shadowSamplerKinds, false);
             if (pass.indirectBuffer != -1) {
                 // Indirect dispatch: group counts read from the pack-declared SSBO at the given offset.
                 LWJGL.glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, pass.indirectBuffer);
@@ -3029,6 +3083,8 @@ public class UmbraRenderingPipeline {
         pass.program.bind();
         bindShaderPackResources();
         pass.uniforms.update();
+        // Last, since nothing above touches the shadow units but the previous pass may have left the other flavour there
+        applyShadowSamplerKinds(pass.shadowSamplerKinds, false);
         if (this.modernPack) {
             // The [0,1] quad maps to NDC via an ortho projection with modelview/texture identity, so ftransform() = ortho*[0,1] = NDC and gl_TextureMatrix[0]*gl_MultiTexCoord0 passes through; saved and restored so the hand and GUI after the chain are unaffected
             pushFullscreenFixedFunctionMatrices();
@@ -3285,7 +3341,7 @@ public class UmbraRenderingPipeline {
         }
         int sampler0 = shadowHardwareSamplerFor(0);
         int sampler1 = shadowHardwareSamplerFor(1);
-        // OptiFine 1.12 packs declare sampler2DShadow shadowtex0/1 directly under shadowHardwareFiltering, so the plain names keep the comparison sampler; only SEPARATE_HARDWARE_SAMPLERS packs expect raw depth there with comparison on the *HW aliases (Umbra UmbraSamplers)
+        // OptiFine 1.12 packs declare sampler2DShadow shadowtex0/1 directly under shadowHardwareFiltering, so the plain names default to the comparison sampler; only SEPARATE_HARDWARE_SAMPLERS packs expect raw depth there with comparison on the *HW aliases (Umbra UmbraSamplers). A program that declares one of them as a plain sampler2D instead (Complementary's composite1 texelFetches shadowtex0 for its light shafts) gets the raw flavour swapped in at bind time by applyShadowSamplerKinds
         int plain0 = this.separateHardwareSamplers ? 0 : sampler0;
         int plain1 = this.separateHardwareSamplers ? 0 : sampler1;
         bindShadowDepthUnit(SHADOW_TEX_0_UNIT, depth0, plain0);
@@ -3328,6 +3384,25 @@ public class UmbraRenderingPipeline {
             return this.shadowNearest[index] ? this.shadowMippedNearestHwSampler : this.shadowMippedLinearHwSampler;
         }
         return this.shadowNearest[index] ? this.shadowNearestHwSampler : this.shadowLinearHwSampler;
+    }
+
+    // The raw-depth sampler with the same filtering flavour, for a unit a program samples through a plain sampler2D
+    private int shadowRawSamplerFor(int index) {
+        if (this.shadowMipmap[index]) {
+            return this.shadowNearest[index] ? this.shadowMippedNearestRawSampler : this.shadowMippedLinearRawSampler;
+        }
+        return this.shadowNearest[index] ? this.shadowNearestRawSampler : this.shadowLinearRawSampler;
+    }
+
+    // Re-points the two shadow depth units at the sampler object matching how the program about to draw DECLARED each of them: raw depth for a plain sampler2D, comparison for sampler2DShadow; called after every program bind, since bindShadowSamplers restores the comparison default on both units in between. Gbuffer-stage programs read the OptiFine units 4/5, everything else 19/20, and under SEPARATE_HARDWARE_SAMPLERS the plain units already carry no sampler object (the pack asked for raw depth there itself)
+    public void applyShadowSamplerKinds(ShadowSamplerKinds kinds, boolean gbufferStage) {
+        if (this.destroyed || this.separateHardwareSamplers || kinds == null) {
+            return;
+        }
+        LWJGL.glBindSampler(gbufferStage ? GBUFFER_SHADOW_TEX_0_UNIT : SHADOW_TEX_0_UNIT,
+                kinds.isRaw(0) ? shadowRawSamplerFor(0) : shadowHardwareSamplerFor(0));
+        LWJGL.glBindSampler(gbufferStage ? GBUFFER_SHADOW_TEX_1_UNIT : SHADOW_TEX_1_UNIT,
+                kinds.isRaw(1) ? shadowRawSamplerFor(1) : shadowHardwareSamplerFor(1));
     }
 
     // Binds colortex4..7 (gaux1..4, aux units 7..10) for the gbuffer phase; MakeUp reads gaux4 in gbuffers_terrain as the fog colour, and a stale unit 7 blew the horizon out and dragged auto-exposure down. Units 0..3 (atlas, lightmap, PBR) are left alone, custom overrides use their own high units, re-asserted on every phase switch
@@ -3464,6 +3539,7 @@ public class UmbraRenderingPipeline {
         this.destroyed = true;
         this.worldRenderingActive = false;
         this.centerDepthSampler.destroy();
+        LightShaftProbe.INSTANCE.destroy();
         this.colorSpaceConverter.destroy();
         if (this.shaderStorageBuffers != null) {
             this.shaderStorageBuffers.destroy();
@@ -3512,6 +3588,7 @@ public class UmbraRenderingPipeline {
         }
         this.compiledPrograms.clear();
         this.compiledUniforms.clear();
+        this.compiledShadowSamplerKinds.clear();
         this.setupPasses.clear();
         this.beginPasses.clear();
         this.shadowCompPasses.clear();
@@ -3560,6 +3637,10 @@ public class UmbraRenderingPipeline {
         LWJGL.glDeleteSamplers(this.shadowNearestHwSampler);
         LWJGL.glDeleteSamplers(this.shadowMippedLinearHwSampler);
         LWJGL.glDeleteSamplers(this.shadowMippedNearestHwSampler);
+        LWJGL.glDeleteSamplers(this.shadowLinearRawSampler);
+        LWJGL.glDeleteSamplers(this.shadowNearestRawSampler);
+        LWJGL.glDeleteSamplers(this.shadowMippedLinearRawSampler);
+        LWJGL.glDeleteSamplers(this.shadowMippedNearestRawSampler);
         this.renderTargets.destroy();
     }
 }

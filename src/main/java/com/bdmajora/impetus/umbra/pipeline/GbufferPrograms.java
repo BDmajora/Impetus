@@ -7,6 +7,7 @@ import com.bdmajora.impetus.umbra.gl.program.GlProgram;
 import com.bdmajora.impetus.umbra.gl.program.UmbraProgram;
 import com.bdmajora.impetus.umbra.gl.program.ProgramUniforms;
 import com.bdmajora.impetus.umbra.gl.program.ShaderProgramCompiler;
+import com.bdmajora.impetus.umbra.gl.sampler.ShadowSamplerKinds;
 import com.bdmajora.impetus.umbra.gl.blending.BlendMode;
 import com.bdmajora.impetus.umbra.gl.blending.ProgramAlphaTest;
 import com.bdmajora.impetus.umbra.gl.blending.ProgramBlendState;
@@ -45,15 +46,23 @@ public class GbufferPrograms {
         final ProgramBlendState blendState;
         final ProgramAlphaTest alphaTest;
         final int handLightmapLocation;
+        // How the program declared shadowtex0/1, so the bind path can put a raw-depth sampler on a unit it reads through a plain sampler2D
+        final ShadowSamplerKinds shadowSamplerKinds;
 
         Entry(UmbraProgram program, ProgramUniforms uniforms, int[] drawBuffers, ProgramBlendState blendState,
-              ProgramAlphaTest alphaTest, int handLightmapLocation) {
+              ProgramAlphaTest alphaTest, int handLightmapLocation, ShadowSamplerKinds shadowSamplerKinds) {
             this.program = program;
             this.uniforms = uniforms;
             this.drawBuffers = drawBuffers == null ? DrawBuffers.DEFAULT.clone() : drawBuffers.clone();
             this.blendState = blendState;
             this.alphaTest = alphaTest;
             this.handLightmapLocation = handLightmapLocation;
+            this.shadowSamplerKinds = shadowSamplerKinds;
+        }
+
+        // Which shadow depth units this program samples as raw depth rather than a comparison
+        public ShadowSamplerKinds getShadowSamplerKinds() {
+            return this.shadowSamplerKinds;
         }
 
         // The linked program
@@ -170,7 +179,8 @@ public class GbufferPrograms {
             MatrixUniforms.addMatrixUniforms(builder);
             com.bdmajora.impetus.umbra.uniforms.custom.ActiveCustomUniforms.assignTo(builder);
             int[] drawBuffers = UmbraRenderingPipeline.sanitizeDrawBuffers(source.getName(), program.getDrawBuffers());
-            return new Entry(program, builder.buildUniforms(), drawBuffers, blendState, alphaTest, handLightmapLocation);
+            return new Entry(program, builder.buildUniforms(), drawBuffers, blendState, alphaTest, handLightmapLocation,
+                    ShadowSamplerKinds.detect(glProgram.getGlId()));
         } catch (Exception e) {
             LOGGER.error("[Umbra] Failed to compile gbuffer program '{}'; its phases render vanilla-style: {}",
                     source.getName(), e.getMessage());

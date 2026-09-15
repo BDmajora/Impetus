@@ -6,7 +6,7 @@ import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.joml.Vector3i;
 
-// Camera-position tracking matching Iris's precision contract: a BOUNDED float cameraPosition plus exact integer and fractional parts of the unshifted position, since a float loses sub-block precision tens of thousands of blocks out
+// Camera-position tracking matching Iris's precision contract: a BOUNDED float cameraPosition plus exact integer and fractional parts of the unshifted position, since a float loses sub-block precision tens of thousands of blocks out. The tracker follows the view entity's FEET (vanilla's render origin); every accessor adds CapturedRenderingState's camera offset so packs see the CAMERA point like Iris 1.17+, where the render origin is the camera itself (see CapturedRenderingState.cameraOffset)
 public final class CameraUniforms {
     private static final CameraPositionTracker TRACKER = new CameraPositionTracker();
 
@@ -18,24 +18,32 @@ public final class CameraUniforms {
         notifier.addListener(TRACKER::update);
     }
 
-    // Shifted position, for cameraPosition
+    // Shifted camera position, for cameraPosition
     public static Vector3d getCurrentCameraPosition() {
-        return TRACKER.getCurrentCameraPosition();
+        return new Vector3d(TRACKER.getCurrentCameraPosition()).add(CapturedRenderingState.INSTANCE.getCameraOffset());
     }
 
-    // Last frame's shifted position
+    // Last frame's shifted camera position; the previous offset pairs with it since both roll once per frame
     public static Vector3d getPreviousCameraPosition() {
-        return TRACKER.getPreviousCameraPosition();
+        return new Vector3d(TRACKER.getPreviousCameraPosition())
+                .add(CapturedRenderingState.INSTANCE.getPreviousCameraOffset());
     }
 
-    // Raw world position
+    // Raw world camera position
     public static Vector3d getCurrentCameraPositionUnshifted() {
-        return TRACKER.getCurrentCameraPositionUnshifted();
+        return new Vector3d(TRACKER.getCurrentCameraPositionUnshifted())
+                .add(CapturedRenderingState.INSTANCE.getCameraOffset());
     }
 
-    // Last frame's raw position
+    // Last frame's raw camera position
     public static Vector3d getPreviousCameraPositionUnshifted() {
-        return TRACKER.getPreviousCameraPositionUnshifted();
+        return new Vector3d(TRACKER.getPreviousCameraPositionUnshifted())
+                .add(CapturedRenderingState.INSTANCE.getPreviousCameraOffset());
+    }
+
+    // The feet point itself, for the few pipeline-side consumers that pair a position with feet-relative geometry rather than with the pack-facing matrices
+    public static Vector3d getCurrentRenderOriginUnshifted() {
+        return TRACKER.getCurrentCameraPositionUnshifted();
     }
 
     // Integer part, for the split-precision uniform
@@ -54,7 +62,7 @@ public final class CameraUniforms {
                 (float) (originalPos.z - Math.floor(originalPos.z)));
     }
 
-    // Interpolated eye position from the render view entity
+    // Interpolated FEET position of the render view entity, vanilla's render origin; the camera offset is added by the accessors above
     private static Vector3d getUnshiftedCameraPosition() {
         Entity camera = Minecraft.getMinecraft().getRenderViewEntity();
         if (camera == null) {

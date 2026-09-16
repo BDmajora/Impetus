@@ -61,6 +61,10 @@ public final class Coarctatio {
             lines.add("  Property maps:    " + CompactPropertyMaps.statistics());
         }
 
+        if (CoarctatioConfig.get().dynamicModels) {
+            lines.addAll(com.bdmajora.coarctatio.client.model.dynamic.DynamicModels.statistics());
+        }
+
         return lines;
     }
 

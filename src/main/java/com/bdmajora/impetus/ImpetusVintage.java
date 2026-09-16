@@ -13,6 +13,7 @@ import net.minecraftforge.fml.common.Loader;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.Mod.EventHandler;
 import net.minecraftforge.fml.common.event.FMLConstructionEvent;
+import net.minecraftforge.fml.common.event.FMLPostInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
@@ -57,8 +58,16 @@ public class ImpetusVintage {
         VERSION = Loader.instance().getIndexedModList().get(MODID).getVersion();
         MinecraftForge.EVENT_BUS.register(this);
 
+        // Dynamic model loading bakes on demand, so CTM's per-model wrapping has to be listening before the first bake, which happens before init
+        if (CoarctatioConfig.get().dynamicModels) {
+            com.bdmajora.coarctatio.client.model.dynamic.compat.CtmModelWrapping.register();
+        }
+
         // The lighting engine branches on these on its hot path and every world is constructed after this point; earlier, the mod list is not yet answerable
         Fulgor.detectCompatibility();
+
+        // As early as a mod can run: the remapper has its mappings by now and most mod classes are still to be loaded through it
+        com.bdmajora.coarctatio.launch.RemapperCompactor.run();
 
         // Seed the engine's hot-path option snapshot from the loaded config.
         com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions.apply(CONFIG);
@@ -97,6 +106,12 @@ public class ImpetusVintage {
 
         // Runs here rather than earlier: every class a coremod will ask LaunchWrapper for has been transformed by now, so weakening its byte cache costs nothing and reclaims the largest block of startup memory
         ClassLoaderCleaner.run();
+    }
+
+    // Post-init is the earliest point every mod's blocks answer isSideSolid the way they will in-game
+    @EventHandler
+    public void onPostInit(FMLPostInitializationEvent event) {
+        Fulgor.onPostInit();
     }
 
     // Drives per-frame work that has no better home: toasts and the pack scanner

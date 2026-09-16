@@ -27,6 +27,7 @@ import com.bdmajora.impetus.engine.impl.util.position.SectionPos;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3i;
 import com.bdmajora.fulgor.FulgorRenderBridge;
+import com.bdmajora.fulgor.lighting.FaceLightRules;
 import com.bdmajora.impetus.ImpetusVintage;
 import com.bdmajora.impetus.impl.compat.fluidlogged.FluidloggedCompat;
 import com.bdmajora.impetus.impl.render.terrain.ImpetusWorldRenderer;
@@ -76,6 +77,9 @@ public class WorldSlice implements ImpetusBlockAccess {
     private final World world;
     private final WorldType worldType;
     private final int defaultSkyLightValue;
+
+    // Fulgor's face-aware neighbour brightness, snapshotted per slice since the option needs a restart anyway
+    private final boolean fixRenderLighting = FulgorRenderBridge.fixRenderLighting();
 
 
     // Local Section->BlockState table.
@@ -382,7 +386,7 @@ public class WorldSlice implements ImpetusBlockAccess {
         return section.getLightLevel(relX & 15, relY & 15, relZ & 15, type);
     }
 
-    // Vanilla's neighbour-max rule for translucent blocks, over cloned data
+    // Vanilla's neighbour-max rule for translucent blocks, over cloned data; with Fulgor's render fix a block is lit through its open faces only
     private int getLightFromNeighborsFor(EnumSkyBlock type, BlockPos pos) {
         if(!this.hasSkyLight() && type == EnumSkyBlock.SKY) {
             return this.defaultSkyLightValue;
@@ -393,6 +397,23 @@ public class WorldSlice implements ImpetusBlockAccess {
         int relZ = pos.getZ() - this.baseZ;
 
         IBlockState state = this.getBlockStateRelative(relX, relY, relZ);
+
+        if (this.fixRenderLighting) {
+            int faces = FaceLightRules.openFaces(state);
+            int level = getLightFor(type, relX, relY, relZ);
+            if (faces == 0) {
+                return level;
+            }
+            for (EnumFacing facing : EnumFacing.VALUES) {
+                if (level >= 15) {
+                    break;
+                }
+                if ((faces & (1 << facing.ordinal())) != 0) {
+                    level = FaceLightRules.fold(level, getLightFor(type, relX + facing.getXOffset(), relY + facing.getYOffset(), relZ + facing.getZOffset()), type);
+                }
+            }
+            return level;
+        }
 
         if(!state.useNeighborBrightness()) {
             return getLightFor(type, relX, relY, relZ);

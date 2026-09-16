@@ -11,7 +11,7 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 
 // Reaches AtomicStryker's Dynamic Lights without compiling against it, for held and dropped sources; bound via invokeExact so it inlines, and a missing class just leaves it unavailable
-final class DynamicLightsBridge {
+public final class DynamicLightsBridge {
     private static final String CLASS_NAME = "atomicstryker.dynamiclights.client.DynamicLights";
 
     private static final MethodHandle GET_LIGHT_VALUE = resolve();
@@ -20,12 +20,12 @@ final class DynamicLightsBridge {
     }
 
     // True only when the mod was found and the handle resolved
-    static boolean isAvailable() {
+    public static boolean isAvailable() {
         return GET_LIGHT_VALUE != null;
     }
 
     // Asks the mod for luminance at a position; rethrows with the position since a bare handle trace is useless
-    static int getLightValue(IBlockState state, IBlockAccess world, BlockPos pos) {
+    public static int getLightValue(IBlockState state, IBlockAccess world, BlockPos pos) {
         try {
             return (int) GET_LIGHT_VALUE.invokeExact(state.getBlock(), state, world, pos);
         } catch (Throwable t) {

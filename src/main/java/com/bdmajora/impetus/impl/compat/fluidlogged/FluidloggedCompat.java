@@ -34,6 +34,8 @@ public class FluidloggedCompat {
                     ForgeHooksClient.setRenderLayer(layer);
                     var buffer = context.getBufferForLayer(layer);
                     dispatcher.renderBlock(renderState, pos, blockAccess, buffer);
+                    // The shader material of these quads is the fluid's (water, lava), not the block's it sits inside; attributing them to the fence or trapdoor drew the water as a plain textured block
+                    context.recordVanillaBlockAttribution(layer, renderState, pos);
                 }
             }
         }

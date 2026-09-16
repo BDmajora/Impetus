@@ -62,6 +62,11 @@ public final class ExtrasOptionPages {
         groups.add(bakedBlockEntities());
         groups.add(network());
         groups.add(threadScheduling());
+        groups.add(occlusionCulling());
+        groups.add(hud());
+        groups.add(textAndModels());
+        groups.add(leaves());
+        groups.add(loading());
         groups.add(overlay());
         groups.add(toasts());
         groups.add(qualityOfLife());
@@ -410,6 +415,12 @@ public final class ExtrasOptionPages {
                 .setId(group("network"))
                 .add(toggle("network.large_packets", (config, value) -> config.network.largePackets = value,
                         config -> config.network.largePackets, null, null, null))
+                .add(toggle("network.flush_consolidation", (config, value) -> config.network.flushConsolidation = value,
+                        config -> config.network.flushConsolidation, OptionImpact.MEDIUM, null, null))
+                .add(toggle("network.fast_varints", (config, value) -> config.network.fastVarInts = value,
+                        config -> config.network.fastVarInts, OptionImpact.LOW, null, null))
+                .add(toggle("network.pooled_compression", (config, value) -> config.network.pooledCompression = value,
+                        config -> config.network.pooledCompression, OptionImpact.LOW, null, null))
                 .add(slider("network.read_timeout",
                         ExtrasConfig.NetworkSettings.TIMEOUT_MIN, ExtrasConfig.NetworkSettings.TIMEOUT_MAX, 5,
                         value -> TextComponent.literal(value + "s"),
@@ -449,6 +460,101 @@ public final class ExtrasOptionPages {
                         config -> config.threads.chunkBuilderPriority, OptionImpact.VARIES, OptionFlag.REQUIRES_RENDERER_RELOAD, null))
                 .add(toggle("threads.remove_yield", (config, value) -> config.threads.removeRenderYield = value,
                         config -> config.threads.removeRenderYield, OptionImpact.VARIES, null, null))
+                .build();
+    }
+
+    // Ray-cast occlusion of entities and block entities (tr7zw's / Meldexun's Entity Culling); the size caps and slack gate on the master
+    private static OptionGroup occlusionCulling() {
+        OptionImpl<ExtrasConfig, Boolean> master = toggle("occlusion.enabled",
+                (config, value) -> config.occlusion.enabled = value,
+                config -> config.occlusion.enabled, OptionImpact.HIGH, null, null);
+        BooleanSupplier enabled = master::getValue;
+        return OptionGroup.createBuilder()
+                .setId(group("occlusion_culling"))
+                .add(master)
+                .add(toggle("occlusion.entities", (config, value) -> config.occlusion.entities = value,
+                        config -> config.occlusion.entities, OptionImpact.HIGH, null, enabled))
+                .add(toggle("occlusion.block_entities", (config, value) -> config.occlusion.blockEntities = value,
+                        config -> config.occlusion.blockEntities, OptionImpact.MEDIUM, null, enabled))
+                .add(slider("occlusion.max_entity_size", 1, 32, 1,
+                        value -> TextComponent.literal(value + " blocks"),
+                        (config, value) -> config.occlusion.maxEntitySize = value,
+                        config -> config.occlusion.maxEntitySize, null, null, enabled))
+                .add(slider("occlusion.max_block_entity_size", 1, 32, 1,
+                        value -> TextComponent.literal(value + " blocks"),
+                        (config, value) -> config.occlusion.maxBlockEntitySize = value,
+                        config -> config.occlusion.maxBlockEntitySize, null, null, enabled))
+                .add(slider("occlusion.raycast_slack", 0, 300, 25,
+                        value -> TextComponent.literal(String.format("%.2f blocks", value / 100.0D)),
+                        (config, value) -> config.occlusion.raycastSlack = value,
+                        config -> config.occlusion.raycastSlack, null, null, enabled))
+                .build();
+    }
+
+    // HUD framebuffer caching (Exordium / Gnetum family)
+    private static OptionGroup hud() {
+        OptionImpl<ExtrasConfig, Boolean> master = toggle("hud.cache",
+                (config, value) -> config.hud.cacheEnabled = value,
+                config -> config.hud.cacheEnabled, OptionImpact.MEDIUM, null, null);
+        return OptionGroup.createBuilder()
+                .setId(group("hud"))
+                .add(master)
+                .add(slider("hud.cache_fps", ExtrasConfig.HudSettings.CACHE_FPS_MIN, ExtrasConfig.HudSettings.CACHE_FPS_MAX, 5,
+                        value -> TextComponent.literal(value + " fps"),
+                        (config, value) -> config.hud.cacheFps = value,
+                        config -> config.hud.cacheFps, null, null, master::getValue))
+                .build();
+    }
+
+    // Glyph batching (ImmediatelyFast), lightmap caching (BadOptimizations) and model matrices (Valkyrie)
+    private static OptionGroup textAndModels() {
+        return OptionGroup.createBuilder()
+                .setId(group("text_and_models"))
+                .add(toggle("text.batch_glyphs", (config, value) -> config.text.batchGlyphs = value,
+                        config -> config.text.batchGlyphs, OptionImpact.MEDIUM, null, null))
+                .add(toggle("client_tick.lightmap_caching", (config, value) -> config.clientTick.lightmapCaching = value,
+                        config -> config.clientTick.lightmapCaching, OptionImpact.LOW, null, null))
+                .add(toggle("entity_models.matrix_transforms", (config, value) -> config.entityModels.matrixTransforms = value,
+                        config -> config.entityModels.matrixTransforms, OptionImpact.MEDIUM, null, null))
+                .build();
+    }
+
+    // Fancy-leaf face culling (More Culling / Cull Less Leaves); a change needs the chunk meshes rebuilt
+    private static OptionGroup leaves() {
+        OptionImpl<ExtrasConfig, ExtrasConfig.LeafCulling> mode = OptionImpl.createBuilder(ExtrasConfig.LeafCulling.class, STORAGE)
+                .setId(option("leaves.culling_mode", ExtrasConfig.LeafCulling.class))
+                .setName(TextComponent.translatable(LANG + "leaves.culling_mode.name"))
+                .setTooltip(TextComponent.translatable(LANG + "leaves.culling_mode.tooltip"))
+                .setControl(opt -> new CyclingControl<>(opt, ExtrasConfig.LeafCulling.values(), localizedNames(ExtrasConfig.LeafCulling.values())))
+                .setBinding((config, value) -> config.leaves.cullingMode = value, config -> config.leaves.cullingMode)
+                .setImpact(OptionImpact.LOW)
+                .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                .build();
+        return OptionGroup.createBuilder()
+                .setId(group("leaves"))
+                .add(mode)
+                .add(slider("leaves.culling_depth", ExtrasConfig.LeafSettings.DEPTH_MIN, ExtrasConfig.LeafSettings.DEPTH_MAX, 1,
+                        value -> TextComponent.literal(value + " blocks"),
+                        (config, value) -> config.leaves.cullingDepth = value,
+                        config -> config.leaves.cullingDepth, null, OptionFlag.REQUIRES_RENDERER_RELOAD,
+                        () -> mode.getValue() == ExtrasConfig.LeafCulling.DEPTH))
+                .build();
+    }
+
+    // World-load and misc hitches (VanillaFix, Chibi, Universal Tweaks)
+    private static OptionGroup loading() {
+        return OptionGroup.createBuilder()
+                .setId(group("loading"))
+                .add(toggle("loading.skip_world_load_gc", (config, value) -> config.loading.skipWorldLoadGc = value,
+                        config -> config.loading.skipWorldLoadGc, OptionImpact.MEDIUM, null, null))
+                .add(toggle("loading.smooth_dimension_change", (config, value) -> config.loading.smoothDimensionChange = value,
+                        config -> config.loading.smoothDimensionChange, null, null, null))
+                .add(toggle("loading.release_screenshot_buffers", (config, value) -> config.loading.releaseScreenshotBuffers = value,
+                        config -> config.loading.releaseScreenshotBuffers, null, null, null))
+                .add(toggle("loading.async_screenshots", (config, value) -> config.loading.asyncScreenshots = value,
+                        config -> config.loading.asyncScreenshots, null, null, null))
+                .add(toggle("loading.driver_atlas_limit", (config, value) -> config.loading.driverAtlasLimit = value,
+                        config -> config.loading.driverAtlasLimit, null, OptionFlag.REQUIRES_GAME_RESTART, null))
                 .build();
     }
 

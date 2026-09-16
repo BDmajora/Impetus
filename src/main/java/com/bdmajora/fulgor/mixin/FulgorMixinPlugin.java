@@ -58,24 +58,42 @@ public class FulgorMixinPlugin implements IMixinConfigPlugin {
                 ? mixinClassName.substring(PACKAGE.length())
                 : mixinClassName;
 
+        boolean async = this.config.asyncLightUpdates;
+
         switch (name) {
             case "world.WorldMixin":
             case "world.ChunkMixin":
             case "world.ChunkSkylightMixin":
             case "world.ChunkProviderServerMixin":
             case "network.SPacketChunkDataMixin":
-            case "client.MinecraftMixin":
-                // The engine itself; without all of these some paths would defer and others propagate immediately, worse than either
-                return this.config.deferredLightUpdates;
+                // The deferred engine itself; without all of these some paths would defer and others propagate immediately, worse than either
+                return !async && this.config.deferredLightUpdates;
             case "world.AnvilChunkLoaderMixin":
-                // Also flushes before saving, so it is needed whenever the engine is.
-                return this.config.deferredLightUpdates || this.config.fixChunkBoundaryLighting;
+                // Also flushes before saving, so it is needed whenever the deferred engine is.
+                return !async && (this.config.deferredLightUpdates || this.config.fixChunkBoundaryLighting);
+            case "client.MinecraftMixin":
+                // The per-tick drain serves both engines
+                return async || this.config.deferredLightUpdates;
+            case "async.world.WorldMixin":
+            case "async.world.ChunkMixin":
+            case "async.world.ChunkLightingMixin":
+            case "async.world.ChunkSectionMixin":
+            case "async.world.PlayerChunkMapEntryMixin":
+            case "async.world.WorldEntitySpawnerMixin":
+            case "async.world.AnvilChunkLoaderMixin":
+            case "async.block.BlockStateMixin":
+                // The async engine, all or nothing for the same reason
+                return async;
             case "world.ExtendedBlockStorageMixin":
                 return this.config.sendNonTrivialSectionLight;
             case "block.BlockMixin":
                 return this.config.cacheBlockLightInfo;
             case "client.RenderGlobalMixin":
                 return this.config.optimizeRenderLightUpdates;
+            case "client.WorldNeighborLightMixin":
+            case "client.ChunkCacheNeighborLightMixin":
+            case "client.BlockLightmapMixin":
+                return this.config.fixRenderLighting;
             default:
                 Fulgor.LOGGER.warn("No config switch is wired up for {}, applying it", mixinClassName);
                 return true;

@@ -153,12 +153,9 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                             com.bdmajora.extras.client.bakedentities.BakedEntityContext.clear();
                         }
 
+                        // The compat hook renders the contained fluid and attributes its quads to the fluid's own state
                         if (FluidloggedCompat.IS_LOADED) {
                             FluidloggedCompat.renderFluidState(slice, blockPos, blockState, buildContext, dispatcher);
-                            // The compat hook picks its own layer(s), so sweep all of them; recording is a no-op for layers whose quad count did not change
-                            for (BlockRenderLayer layer : VintageChunkBuildContext.LAYERS) {
-                                buildContext.recordVanillaBlockAttribution(layer, blockState, blockPos);
-                            }
                         }
 
                         if (blockState.isOpaqueCube()) {

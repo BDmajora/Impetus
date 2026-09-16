@@ -38,7 +38,14 @@
     "sky_colors.BiomeMixin",
     "sky_colors.BiomeSwampMixin",
     "booster.EntityRandomMixin",
-    "booster.MathHelperFastMixin"
+    "booster.MathHelperFastMixin",
+    "network.NettyCompressionEncoderMixin",
+    "network.PacketBufferVarIntMixin",
+    "network.NetworkManagerFlushMixin",
+    "network.NetworkSystemAccessor",
+    "network.MinecraftServerFlushMixin",
+    "culling.EntityCullableMixin",
+    "culling.TileEntityCullableMixin"
   ],
   "client": [
     "animation.TextureMapMixin",
@@ -95,7 +102,25 @@
     "render.weather.EntityRendererWeatherMixin",
     "steady_debug_hud.GuiOverlayDebugMixin",
     "threads.MinecraftYieldMixin",
-    "toast.GuiToastMixin"
+    "toast.GuiToastMixin",
+    "culling.RenderManagerCullMixin",
+    "culling.TileEntityRendererDispatcherCullMixin",
+    "hud.GuiIngameInvoker",
+    "hud.GuiIngameForgeInvoker",
+    "hud.EntityRendererHudCacheMixin",
+    "hud.GuiIngameCaptureMixin",
+    "hud.GuiIngameForgeCaptureMixin",
+    "hud.FramebufferCaptureMixin",
+    "hud.GlStateManagerCaptureMixin",
+    "text.FontRendererBatchMixin",
+    "lightmap.EntityRendererLightmapMixin",
+    "models.ModelRendererMatrixMixin",
+    "leaves.BlockLeavesCullMixin",
+    "loading.MinecraftLoadWorldGcMixin",
+    "loading.NetHandlerPlayClientRespawnMixin",
+    "loading.ScreenShotHelperMixin",
+    "atlas.MinecraftTextureSizeMixin",
+    "atlas.SplashProgressTextureSizeMixin"
   ],
   "injectors": {
     "defaultRequire": 1

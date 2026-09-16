@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.impl.render.terrain.compile.light;
 
+import com.bdmajora.fulgor.FulgorRenderBridge;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.IBlockAccess;
 import com.bdmajora.impetus.engine.impl.model.light.data.LightDataAccess;
@@ -47,9 +48,9 @@ public class LightDataCache extends LightDataAccess {
             sl = LightDataAccess.unpackSky(packedCoords);
         }
 
-        // FIX: Do not apply AO from blocks that emit light
+        // FIX: Do not apply AO from blocks that emit light; under Fulgor's render fix a level-one emitter keeps its smooth lighting (MC-249343 / MC-50734, after Pulsar)
         float ao;
-        if (lu == 0) {
+        if (lu == 0 || (lu == 1 && FulgorRenderBridge.fixRenderLighting())) {
             // `const float ambientOcclusionLevel` lets a pack dial vanilla's baked AO down (usually to 0) so its own AO is not stacked on top; Umbra does this by rewriting shade brightness in a mixin
             ao = com.bdmajora.impetus.umbra.material.WorldRenderingSettings
                     .applyAmbientOcclusionLevel(state.getAmbientOcclusionLightValue());

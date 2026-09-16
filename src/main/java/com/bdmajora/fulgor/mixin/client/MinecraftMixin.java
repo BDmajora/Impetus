@@ -1,8 +1,8 @@
 package com.bdmajora.fulgor.mixin.client;
 
+import com.bdmajora.fulgor.Fulgor;
 import com.bdmajora.fulgor.FulgorConfig;
 import com.bdmajora.fulgor.api.LightUpdateProcessor;
-import com.bdmajora.fulgor.api.LightingEngineProvider;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.client.renderer.RenderGlobal;
@@ -16,7 +16,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Flushes pending light updates once per client tick in two ordered stages: world engine first (writes light, queues renderer notifications), then renderer drain; reversed, the terrain renderer would copy a stale batch out of chunk sections
+// Flushes pending light updates once per client tick in two ordered stages: world engine first (writes light, queues renderer notifications), then renderer drain; reversed, the terrain renderer would copy a stale batch out of chunk sections. Runs before updateEntities and the world tick but after the packet drain and the player's own edits, so those are lit before the frame
 @SideOnly(Side.CLIENT)
 @Mixin(Minecraft.class)
 public abstract class MinecraftMixin {
@@ -42,7 +42,7 @@ public abstract class MinecraftMixin {
 
         this.profiler.endStartSection("lighting");
 
-        ((LightingEngineProvider) this.world).fulgor$getLightingEngine().processLightUpdates();
+        Fulgor.processClientLightUpdates(this.world);
     }
 
     // Stage two, just before the "level" section, right after renderGlobal.updateClouds(), the call whose light-update drain Fulgor took over

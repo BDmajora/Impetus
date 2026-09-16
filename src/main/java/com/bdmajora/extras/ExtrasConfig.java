@@ -30,6 +30,13 @@ public final class ExtrasConfig {
     private static final String CAT_BAKED_ENTITIES = "baked_block_entities";
     private static final String CAT_NETWORK = "network";
     private static final String CAT_THREADS = "thread_scheduling";
+    private static final String CAT_OCCLUSION = "occlusion_culling";
+    private static final String CAT_HUD = "hud";
+    private static final String CAT_TEXT = "text";
+    private static final String CAT_CLIENT_TICK = "client_tick";
+    private static final String CAT_ENTITY_MODELS = "entity_models";
+    private static final String CAT_LEAVES = "leaves";
+    private static final String CAT_LOADING = "loading";
 
     public final AnimationSettings animation = new AnimationSettings();
     public final ParticleSettings particle = new ParticleSettings();
@@ -42,6 +49,13 @@ public final class ExtrasConfig {
     public final BakedEntitySettings bakedEntities = new BakedEntitySettings();
     public final NetworkSettings network = new NetworkSettings();
     public final ThreadSettings threads = new ThreadSettings();
+    public final OcclusionSettings occlusion = new OcclusionSettings();
+    public final HudSettings hud = new HudSettings();
+    public final TextSettings text = new TextSettings();
+    public final ClientTickSettings clientTick = new ClientTickSettings();
+    public final EntityModelSettings entityModels = new EntityModelSettings();
+    public final LeafSettings leaves = new LeafSettings();
+    public final LoadingSettings loading = new LoadingSettings();
 
     private final List<BooleanProperty> booleans = Arrays.asList(
             // --- Animations -------------------------------------------------------------------
@@ -236,9 +250,45 @@ public final class ExtrasConfig {
             // --- Network ----------------------------------------------------------------------
             bool(CAT_NETWORK, "largePackets", true, "Lift vanilla's packet, payload, NBT, string and chunk data size caps (2 MB frames, 32 KB strings, 1 MB payloads)",
                     v -> network.largePackets = v, () -> network.largePackets),
+            bool(CAT_NETWORK, "flushConsolidation", true, "Queue packets sent during a server tick and flush each connection once at the end of the tick instead of per packet",
+                    v -> network.flushConsolidation = v, () -> network.flushConsolidation),
+            bool(CAT_NETWORK, "fastVarInts", true, "Table-driven varint sizing and single-write varint encoding",
+                    v -> network.fastVarInts = v, () -> network.fastVarInts),
+            bool(CAT_NETWORK, "pooledCompression", true, "Compress and decompress packets without copying them into fresh arrays",
+                    v -> network.pooledCompression = v, () -> network.pooledCompression),
             // --- Thread scheduling ------------------------------------------------------------
             bool(CAT_THREADS, "removeRenderYield", false, "Skip the Thread.yield() the render loop makes once per frame",
-                    v -> threads.removeRenderYield = v, () -> threads.removeRenderYield)
+                    v -> threads.removeRenderYield = v, () -> threads.removeRenderYield),
+            // --- Occlusion culling ------------------------------------------------------------
+            bool(CAT_OCCLUSION, "enabled", true, "Master switch: skip drawing entities and block entities a worker thread has ray-cast as hidden behind blocks",
+                    v -> occlusion.enabled = v, () -> occlusion.enabled),
+            bool(CAT_OCCLUSION, "entities", true, "Cull hidden entities",
+                    v -> occlusion.entities = v, () -> occlusion.entities),
+            bool(CAT_OCCLUSION, "blockEntities", true, "Cull hidden block entities (chests, signs, ...)",
+                    v -> occlusion.blockEntities = v, () -> occlusion.blockEntities),
+            // --- HUD --------------------------------------------------------------------------
+            bool(CAT_HUD, "cacheEnabled", false, "Draw the HUD into a framebuffer at a capped rate and composite it every frame; crosshair and vignette stay live",
+                    v -> hud.cacheEnabled = v, () -> hud.cacheEnabled),
+            // --- Text -------------------------------------------------------------------------
+            bool(CAT_TEXT, "batchGlyphs", true, "Draw each string's glyphs in one batch instead of one immediate-mode quad per glyph",
+                    v -> text.batchGlyphs = v, () -> text.batchGlyphs),
+            // --- Client tick ------------------------------------------------------------------
+            bool(CAT_CLIENT_TICK, "lightmapCaching", true, "Skip rebuilding and uploading the lightmap while nothing but the torch flicker has changed",
+                    v -> clientTick.lightmapCaching = v, () -> clientTick.lightmapCaching),
+            // --- Entity models ----------------------------------------------------------------
+            bool(CAT_ENTITY_MODELS, "matrixTransforms", true, "Position each model box with one matrix multiply instead of up to six translate/rotate calls",
+                    v -> entityModels.matrixTransforms = v, () -> entityModels.matrixTransforms),
+            // --- Loading ----------------------------------------------------------------------
+            bool(CAT_LOADING, "skipWorldLoadGc", true, "Skip the forced full garbage collection on world load and unload",
+                    v -> loading.skipWorldLoadGc = v, () -> loading.skipWorldLoadGc),
+            bool(CAT_LOADING, "smoothDimensionChange", true, "Skip the 'Loading terrain' screen on dimension change and respawn",
+                    v -> loading.smoothDimensionChange = v, () -> loading.smoothDimensionChange),
+            bool(CAT_LOADING, "releaseScreenshotBuffers", true, "Free the screenshot readback buffers after each screenshot instead of keeping them forever",
+                    v -> loading.releaseScreenshotBuffers = v, () -> loading.releaseScreenshotBuffers),
+            bool(CAT_LOADING, "asyncScreenshots", true, "Encode and write screenshots on a background thread",
+                    v -> loading.asyncScreenshots = v, () -> loading.asyncScreenshots),
+            bool(CAT_LOADING, "driverAtlasLimit", true, "Ask the driver for its maximum texture size instead of probing proxy uploads from 16384 down",
+                    v -> loading.driverAtlasLimit = v, () -> loading.driverAtlasLimit)
     );
 
     private final List<IntProperty> integers = Arrays.asList(
@@ -301,7 +351,22 @@ public final class ExtrasConfig {
                     v -> threads.serverThreadPriority = v, () -> threads.serverThreadPriority),
             new IntProperty(CAT_THREADS, "chunkBuilderPriority", ThreadSettings.CHUNK_BUILDER_DEFAULT, ThreadSettings.PRIORITY_MIN, ThreadSettings.PRIORITY_MAX,
                     "Java priority of the chunk builder threads, 1-10 (3 = unchanged)",
-                    v -> threads.chunkBuilderPriority = v, () -> threads.chunkBuilderPriority)
+                    v -> threads.chunkBuilderPriority = v, () -> threads.chunkBuilderPriority),
+            new IntProperty(CAT_OCCLUSION, "maxEntitySize", OcclusionSettings.MAX_ENTITY_SIZE_DEFAULT, 1, 32,
+                    "Entities wider or taller than this many blocks are never culled",
+                    v -> occlusion.maxEntitySize = v, () -> occlusion.maxEntitySize),
+            new IntProperty(CAT_OCCLUSION, "maxBlockEntitySize", OcclusionSettings.MAX_BLOCK_ENTITY_SIZE_DEFAULT, 1, 32,
+                    "Block entities whose render box exceeds this many blocks on any axis are never culled",
+                    v -> occlusion.maxBlockEntitySize = v, () -> occlusion.maxBlockEntitySize),
+            new IntProperty(CAT_OCCLUSION, "raycastSlack", OcclusionSettings.SLACK_DEFAULT, 0, 300,
+                    "Hundredths of a block at the end of each ray that never occlude, so a target inside a block is not hidden by that block",
+                    v -> occlusion.raycastSlack = v, () -> occlusion.raycastSlack),
+            new IntProperty(CAT_HUD, "cacheFps", HudSettings.CACHE_FPS_DEFAULT, HudSettings.CACHE_FPS_MIN, HudSettings.CACHE_FPS_MAX,
+                    "How many times per second the cached HUD is redrawn",
+                    v -> hud.cacheFps = v, () -> hud.cacheFps),
+            new IntProperty(CAT_LEAVES, "cullingDepth", LeafSettings.DEPTH_DEFAULT, LeafSettings.DEPTH_MIN, LeafSettings.DEPTH_MAX,
+                    "Depth mode: how many solid blocks must lie behind a leaf face before it is dropped",
+                    v -> leaves.cullingDepth = v, () -> leaves.cullingDepth)
     );
 
     private Configuration config;
@@ -359,6 +424,9 @@ public final class ExtrasConfig {
         renderBudget.profile = readEnum(config, CAT_RENDER_BUDGET, "profile",
                 BudgetProfile.values(), BudgetProfile.BALANCED,
                 "Render budget profile (0 = Quality, 1 = Balanced, 2 = Performance)");
+        leaves.cullingMode = readEnum(config, CAT_LEAVES, "cullingMode",
+                LeafCulling.values(), LeafCulling.DEFAULT,
+                "Fancy leaf face culling (0 = Default, 1 = Check surrounding, 2 = Depth)");
 
         ParticleClassRegistry registry = ParticleClassRegistry.getInstance();
         registry.loadDisabledClasses(config.getStringList("disabledClasses", CAT_PARTICLE_CLASSES,
@@ -385,6 +453,7 @@ public final class ExtrasConfig {
         config.get(CAT_EXTRA, "timeOverride", 0).set(extra.timeOverride.ordinal());
         config.get(CAT_EXTRA, "weatherOverride", 0).set(extra.weatherOverride.ordinal());
         config.get(CAT_RENDER_BUDGET, "profile", BudgetProfile.BALANCED.ordinal()).set(renderBudget.profile.ordinal());
+        config.get(CAT_LEAVES, "cullingMode", 0).set(leaves.cullingMode.ordinal());
 
         ParticleClassRegistry registry = ParticleClassRegistry.getInstance();
         config.get(CAT_PARTICLE_CLASSES, "disabledClasses", new String[0])
@@ -442,6 +511,25 @@ public final class ExtrasConfig {
         // Whether this corner sits on the right edge
         public boolean isRight() {
             return this == TOP_RIGHT || this == BOTTOM_RIGHT;
+        }
+    }
+
+    // Which interior leaf faces the mesher drops in fancy mode
+    public enum LeafCulling implements Localized {
+        DEFAULT("impetus.options.extras.leaf_culling.default"),
+        CHECK("impetus.options.extras.leaf_culling.check"),
+        DEPTH("impetus.options.extras.leaf_culling.depth");
+
+        private final String key;
+
+        LeafCulling(String key) {
+            this.key = key;
+        }
+
+        // Lang key for the cycler label
+        @Override
+        public String translationKey() {
+            return this.key;
         }
     }
 
@@ -776,7 +864,7 @@ public final class ExtrasConfig {
         public boolean shulkerBoxes = true;
     }
 
-    // Wire limits and timeouts (see network.NetworkLimits), after Packet Fixer; on by default since every cap here is one a large pack hits as a crash or a disconnect
+    // Wire limits and timeouts (see network.NetworkLimits), after Packet Fixer, plus Krypton's flush consolidation, varint and compression paths; on by default since every cap here is one a large pack hits as a crash or a disconnect and the Krypton parts change nothing on the wire
     public static final class NetworkSettings {
         public static final int TIMEOUT_MIN = 5;
         public static final int TIMEOUT_MAX = 600;
@@ -785,6 +873,9 @@ public final class ExtrasConfig {
         public static final int KEEP_ALIVE_TIMEOUT_DEFAULT = 120;
 
         public boolean largePackets = true;
+        public boolean flushConsolidation = true;
+        public boolean fastVarInts = true;
+        public boolean pooledCompression = true;
         public int readTimeoutSeconds = READ_TIMEOUT_DEFAULT;
         public int loginTimeoutSeconds = LOGIN_TIMEOUT_DEFAULT;
         public int keepAliveTimeoutSeconds = KEEP_ALIVE_TIMEOUT_DEFAULT;
@@ -802,6 +893,64 @@ public final class ExtrasConfig {
         public int serverThreadPriority = PRIORITY_NORMAL;
         public int chunkBuilderPriority = CHUNK_BUILDER_DEFAULT;
         public boolean removeRenderYield = false;
+    }
+
+    // Occlusion culling of entities and block entities (see client.culling), after tr7zw's and Meldexun's Entity Culling; on by default since a hidden mob costs its full draw and a farm's worth of them is the difference between a playable base and not
+    public static final class OcclusionSettings {
+        public static final int MAX_ENTITY_SIZE_DEFAULT = 4;
+        public static final int MAX_BLOCK_ENTITY_SIZE_DEFAULT = 4;
+        public static final int SLACK_DEFAULT = 100;
+
+        public boolean enabled = true;
+        public boolean entities = true;
+        public boolean blockEntities = true;
+        public int maxEntitySize = MAX_ENTITY_SIZE_DEFAULT;
+        public int maxBlockEntitySize = MAX_BLOCK_ENTITY_SIZE_DEFAULT;
+        public int raycastSlack = SLACK_DEFAULT;
+    }
+
+    // HUD framebuffer caching (see client.hud.HudCache), the idea behind Exordium and Gnetum; off by default since mod overlays that animate per frame visibly step at the cache rate
+    public static final class HudSettings {
+        public static final int CACHE_FPS_MIN = 10;
+        public static final int CACHE_FPS_DEFAULT = 30;
+        public static final int CACHE_FPS_MAX = 120;
+
+        public boolean cacheEnabled = false;
+        public int cacheFps = CACHE_FPS_DEFAULT;
+    }
+
+    // Glyph batching (see client.text.GlyphBatch), after ImmediatelyFast; on by default, the output is pixel-identical
+    public static final class TextSettings {
+        public boolean batchGlyphs = true;
+    }
+
+    // Per-tick client work that can be skipped when its inputs have not changed, after BadOptimizations
+    public static final class ClientTickSettings {
+        public boolean lightmapCaching = true;
+    }
+
+    // Model box transforms as one matrix multiply, after Valkyrie; on by default
+    public static final class EntityModelSettings {
+        public boolean matrixTransforms = true;
+    }
+
+    // Fancy-leaf interior face culling, after More Culling and Cull Less Leaves; default mode changes nothing since any culling shows on a canopy's silhouette from some angle
+    public static final class LeafSettings {
+        public static final int DEPTH_MIN = 1;
+        public static final int DEPTH_DEFAULT = 2;
+        public static final int DEPTH_MAX = 4;
+
+        public LeafCulling cullingMode = LeafCulling.DEFAULT;
+        public int cullingDepth = DEPTH_DEFAULT;
+    }
+
+    // World load and misc client hitches, after VanillaFix, Chibi and Universal Tweaks; all on, none change what is drawn
+    public static final class LoadingSettings {
+        public boolean skipWorldLoadGc = true;
+        public boolean smoothDimensionChange = true;
+        public boolean releaseScreenshotBuffers = true;
+        public boolean asyncScreenshots = true;
+        public boolean driverAtlasLimit = true;
     }
 
     // Declarative property bindings

@@ -149,10 +149,11 @@ public class ImpetusVideoOptionsScreen extends GuiScreen {
         this.controller.render(new VintageDrawContext(), mouseX, mouseY, partialTicks);
     }
 
-    // Skips vanilla's dirt background when a world is loaded
+    // In a world the frame behind the screen is blurred and darkened so the options read against it; out of one vanilla's dirt background stays
     @Override
     public void drawWorldBackground(int tint) {
         if (this.mc.world != null) {
+            ScreenBlurBackdrop.draw(this.width, this.height);
             return;
         }
 

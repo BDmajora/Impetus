@@ -1,5 +1,12 @@
 package com.bdmajora.fulgor;
 
+import com.bdmajora.fulgor.api.LightingEngineProvider;
+import com.bdmajora.fulgor.async.AsyncLightStats;
+import com.bdmajora.fulgor.async.AsyncLitWorld;
+import com.bdmajora.fulgor.async.WorldLightManager;
+import com.bdmajora.fulgor.async.engine.FaceOcclusion;
+import net.minecraft.world.World;
+import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.Loader;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -39,6 +46,35 @@ public final class Fulgor {
 
         // The config switch also gates the Block mixin, so without it the fast path's cast would fail rather than merely mislead
         cachedBlockLightInfo = FulgorConfig.get().cacheBlockLightInfo && !dynamicLights && !fluidloggedApi;
+
+        if (isAsync()) {
+            MinecraftForge.EVENT_BUS.register(new FulgorEvents());
+        }
+    }
+
+    // Post-init, once every mod has finished shaping its blocks: the per-face transparency scan the async engine reads through LightInfo
+    public static void onPostInit() {
+        if (isAsync()) {
+            FaceOcclusion.registerDefaults();
+        }
+    }
+
+    // Whether the Starlight-style async engine is the one in use rather than the Phosphor-style deferred one
+    public static boolean isAsync() {
+        FulgorConfig config = FulgorConfig.get();
+        return config.enabled && config.asyncLightUpdates;
+    }
+
+    // One call per client tick that serves both engines: the deferred engine flushes its queues, the async one drains its lanes on this thread
+    public static void processClientLightUpdates(World world) {
+        if (world instanceof LightingEngineProvider) {
+            ((LightingEngineProvider) world).fulgor$getLightingEngine().processLightUpdates();
+        } else if (world instanceof AsyncLitWorld) {
+            WorldLightManager manager = ((AsyncLitWorld) world).fulgor$getLightManager();
+            if (manager != null) {
+                manager.processClientUpdates();
+            }
+        }
     }
 
     // Whether AtomicStryker's Dynamic Lights was detected at startup
@@ -73,9 +109,20 @@ public final class Fulgor {
 
     // Human-readable engine statistics, one entry per line; shared by the log and /fulgor
     public static List<String> statistics() {
-        long scheduled = SCHEDULED.sum();
-
         List<String> lines = new ArrayList<>();
+        if (isAsync()) {
+            lines.add("Fulgor lighting statistics (async engine)");
+            lines.add("  Block changes queued:  " + AsyncLightStats.BLOCK_CHANGES.sum());
+            lines.add("  Chunk batches queued:  " + AsyncLightStats.CHUNKS_QUEUED.sum());
+            lines.add("  Initial chunk passes:  " + AsyncLightStats.INITIAL_LIGHTS.sum());
+            lines.add("  Sky tasks:             " + AsyncLightStats.SKY_TASKS.sum() + " (" + AsyncLightStats.SKY_WORKER_NANOS.sum() / 1_000_000L + " ms)");
+            lines.add("  Block tasks:           " + AsyncLightStats.BLOCK_TASKS.sum() + " (" + AsyncLightStats.BLOCK_WORKER_NANOS.sum() / 1_000_000L + " ms)");
+            lines.add("  Positions evaluated:   " + AsyncLightStats.POSITIONS_PROCESSED.sum());
+            lines.add("  Queue overflows:       " + AsyncLightStats.QUEUE_OVERFLOWS.sum());
+            return lines;
+        }
+
+        long scheduled = SCHEDULED.sum();
         lines.add("Fulgor lighting statistics");
         lines.add("  Updates scheduled:   " + scheduled);
         lines.add("  Collapsed as dupes:  " + DEDUPLICATED.sum() + " (" + percentOfScheduled(DEDUPLICATED.sum()) + ")");
@@ -85,6 +132,11 @@ public final class Fulgor {
 
     // Single line added to F3; the deduplication rate is the share of lighting work that never happened, since vanilla would have evaluated all of it
     public static String debugOverlayLine() {
+        if (isAsync()) {
+            return String.format("Fulgor: %s changes, %s chunk passes, %s/%s ms sky/block (/fulgor for detail)",
+                    compact(AsyncLightStats.BLOCK_CHANGES.sum()), compact(AsyncLightStats.INITIAL_LIGHTS.sum()),
+                    AsyncLightStats.SKY_WORKER_NANOS.sum() / 1_000_000L, AsyncLightStats.BLOCK_WORKER_NANOS.sum() / 1_000_000L);
+        }
         return String.format("Fulgor: %s updates, %s deduped (/fulgor for detail)",
                 compact(SCHEDULED.sum()), percentOfScheduled(DEDUPLICATED.sum()));
     }

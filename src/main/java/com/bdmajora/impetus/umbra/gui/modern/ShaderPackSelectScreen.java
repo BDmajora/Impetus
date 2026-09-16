@@ -174,10 +174,11 @@ public class ShaderPackSelectScreen extends GuiScreen {
         }
     }
 
-    // Skips vanilla's dirt background when a world is loaded
+    // In a world the frame behind the screen is blurred and darkened, the same backdrop as the video options screen
     @Override
     public void drawWorldBackground(int tint) {
         if (this.mc.world != null) {
+            com.bdmajora.impetus.impl.gui.ScreenBlurBackdrop.draw(this.width, this.height);
             return;
         }
 

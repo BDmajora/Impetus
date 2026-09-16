@@ -21,6 +21,8 @@ public final class CoarctatioConfig {
 
     // BiblioCraft assumes the vanilla block state table exists; inherited from FoamFix, same wall.
     private static final String DEFAULT_BLOCK_STATE_BLACKLIST = "jds.bibliocraft";
+    // Betweenlands and Dynamic Trees walk every one of their models at ModelBakeEvent (VintageFix's list).
+    private static final String DEFAULT_EAGER_NAMESPACES = "thebetweenlands,dynamictrees";
 
     private static CoarctatioConfig instance;
 
@@ -73,6 +75,50 @@ public final class CoarctatioConfig {
     public int poolSizeLimit;
     // Adds a Coarctatio line to the F3 debug overlay.
     public boolean showDebugOverlay;
+    // Builds an ItemStack's capability dispatcher on the first capability query instead of in every constructor.
+    public boolean lazyItemStackCapabilities;
+    // Shares one instance per small numeric NBT value across every compound and list.
+    public boolean poolNbtPrimitives;
+    // Caches the hash of enum and integer block properties, which vanilla recomputes from their value sets on every call.
+    public boolean cachePropertyHashes;
+    // Caches each block state's hash, which vanilla recomputes from its property map on every call.
+    public boolean cacheStateHashes;
+    // Indexes resource packs once per reload instead of a native or filesystem lookup per probe.
+    public boolean resourceExistenceCache;
+    // Throws the resource manager's file-not-found without filling a stack trace.
+    public boolean stacklessResourceExceptions;
+    // Packs the texture atlas with a shelf algorithm instead of vanilla's recursive slot search.
+    public boolean fastAtlasStitching;
+    // Lets the collector reclaim structure templates that world generation has moved past.
+    public boolean softStructureTemplates;
+    // Interns the class, package and annotation names Forge's mod scan keeps for the session.
+    public boolean internLoaderStrings;
+    // Keeps each mod jar's annotation scan between launches, keyed by the jar's size and modification time.
+    public boolean modScanCache;
+    // Loads and bakes models on first use instead of all of them at startup, with the atlas built from a scan of the packs; the switch to flip first if models misbehave, since it changes what mods see at ModelBakeEvent
+    public boolean dynamicModels;
+    // With dynamic models, bakes every item model on a background thread after a reload so the inventory never bakes on the render thread.
+    public boolean dynamicModelsPrebakeItems;
+    // Namespaces whose models are still loaded up front under dynamic models, for mods that expect all of theirs to exist at ModelBakeEvent.
+    public String[] dynamicModelsEagerNamespaces;
+    // Writes item-model quads directly in the default vertex format instead of through Forge's unpacking builder.
+    public boolean fastItemLayerBaking;
+    // Decodes every atlas sprite's PNG across the common pool before the atlas loop, which otherwise decodes them one at a time on the client thread (StellarCore).
+    public boolean parallelTextureLoad;
+    // Backs the ore dictionary's two lookup maps with primitive collections instead of boxed Integers and List<Integer> (StellarCore).
+    public boolean primitiveOreDictionary;
+    // Pools the UV arrays and texture-name strings of unbaked model parts, and stores each element's faces in an EnumMap (StellarCore).
+    public boolean canonicalizeModelParts;
+    // Shares the runtime deobfuscator's per-class member maps between classes with identical ones and drops the empty ones (Chibi's optimizeFMLRemapper).
+    public boolean compactRemapperCaches;
+    // Reuses one instance per thread of the tick, capability-attach and neighbour-notify events instead of constructing one per post (Chibi's makeEventsSingletons); experimental, off by default.
+    public boolean recycleEvents;
+    // Skips the sound handler's two debug walks over the whole sound registry after every resource reload (UniversalTweaks).
+    public boolean skipSoundDebugChecks;
+    // Uses the shared plain missing model for models that fail to load instead of a per-model one rendering the location as text (UniversalTweaks); off by default since a few mods rely on the fancy one.
+    public boolean plainMissingModels;
+    // Returns a registry name that already carries a namespace as given, without the per-name "alternative prefix" warning (UniversalTweaks).
+    public boolean quietPrefixWarnings;
 
     private CoarctatioConfig(Properties props) {
         this.deduplicateResourceLocations = bool(props, "deduplicateResourceLocations", true);
@@ -98,6 +144,28 @@ public final class CoarctatioConfig {
         this.lazySearchTrees = bool(props, "lazySearchTrees", true);
         this.poolSizeLimit = integer(props, "poolSizeLimit", 262144, 1024, Integer.MAX_VALUE);
         this.showDebugOverlay = bool(props, "showDebugOverlay", true);
+        this.lazyItemStackCapabilities = bool(props, "lazyItemStackCapabilities", true);
+        this.poolNbtPrimitives = bool(props, "poolNbtPrimitives", true);
+        this.cachePropertyHashes = bool(props, "cachePropertyHashes", true);
+        this.cacheStateHashes = bool(props, "cacheStateHashes", true);
+        this.resourceExistenceCache = bool(props, "resourceExistenceCache", true);
+        this.stacklessResourceExceptions = bool(props, "stacklessResourceExceptions", true);
+        this.fastAtlasStitching = bool(props, "fastAtlasStitching", true);
+        this.softStructureTemplates = bool(props, "softStructureTemplates", true);
+        this.internLoaderStrings = bool(props, "internLoaderStrings", true);
+        this.modScanCache = bool(props, "modScanCache", true);
+        this.dynamicModels = bool(props, "dynamicModels", true);
+        this.dynamicModelsPrebakeItems = bool(props, "dynamicModelsPrebakeItems", true);
+        this.dynamicModelsEagerNamespaces = list(props, "dynamicModelsEagerNamespaces", DEFAULT_EAGER_NAMESPACES);
+        this.fastItemLayerBaking = bool(props, "fastItemLayerBaking", true);
+        this.parallelTextureLoad = bool(props, "parallelTextureLoad", true);
+        this.primitiveOreDictionary = bool(props, "primitiveOreDictionary", true);
+        this.canonicalizeModelParts = bool(props, "canonicalizeModelParts", true);
+        this.compactRemapperCaches = bool(props, "compactRemapperCaches", true);
+        this.recycleEvents = bool(props, "recycleEvents", false);
+        this.skipSoundDebugChecks = bool(props, "skipSoundDebugChecks", true);
+        this.plainMissingModels = bool(props, "plainMissingModels", false);
+        this.quietPrefixWarnings = bool(props, "quietPrefixWarnings", true);
     }
 
     // Loads on first use and caches; every reader shares the one instance
@@ -174,6 +242,28 @@ public final class CoarctatioConfig {
         values.put("lazySearchTrees", Boolean.toString(this.lazySearchTrees));
         values.put("poolSizeLimit", Integer.toString(this.poolSizeLimit));
         values.put("showDebugOverlay", Boolean.toString(this.showDebugOverlay));
+        values.put("lazyItemStackCapabilities", Boolean.toString(this.lazyItemStackCapabilities));
+        values.put("poolNbtPrimitives", Boolean.toString(this.poolNbtPrimitives));
+        values.put("cachePropertyHashes", Boolean.toString(this.cachePropertyHashes));
+        values.put("cacheStateHashes", Boolean.toString(this.cacheStateHashes));
+        values.put("resourceExistenceCache", Boolean.toString(this.resourceExistenceCache));
+        values.put("stacklessResourceExceptions", Boolean.toString(this.stacklessResourceExceptions));
+        values.put("fastAtlasStitching", Boolean.toString(this.fastAtlasStitching));
+        values.put("softStructureTemplates", Boolean.toString(this.softStructureTemplates));
+        values.put("internLoaderStrings", Boolean.toString(this.internLoaderStrings));
+        values.put("modScanCache", Boolean.toString(this.modScanCache));
+        values.put("dynamicModels", Boolean.toString(this.dynamicModels));
+        values.put("dynamicModelsPrebakeItems", Boolean.toString(this.dynamicModelsPrebakeItems));
+        values.put("dynamicModelsEagerNamespaces", String.join(",", this.dynamicModelsEagerNamespaces));
+        values.put("fastItemLayerBaking", Boolean.toString(this.fastItemLayerBaking));
+        values.put("parallelTextureLoad", Boolean.toString(this.parallelTextureLoad));
+        values.put("primitiveOreDictionary", Boolean.toString(this.primitiveOreDictionary));
+        values.put("canonicalizeModelParts", Boolean.toString(this.canonicalizeModelParts));
+        values.put("compactRemapperCaches", Boolean.toString(this.compactRemapperCaches));
+        values.put("recycleEvents", Boolean.toString(this.recycleEvents));
+        values.put("skipSoundDebugChecks", Boolean.toString(this.skipSoundDebugChecks));
+        values.put("plainMissingModels", Boolean.toString(this.plainMissingModels));
+        values.put("quietPrefixWarnings", Boolean.toString(this.quietPrefixWarnings));
 
         Properties out = new Properties();
         out.putAll(values);

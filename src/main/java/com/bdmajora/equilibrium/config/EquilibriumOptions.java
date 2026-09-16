@@ -124,6 +124,17 @@ public final class EquilibriumOptions {
     private static Map<String, Entry> build() {
         Builder builder = new Builder();
 
+        // ------------------------------------------------------ advancements
+        builder.add("mixin.advancements", true,
+                "Advancement trigger optimizations");
+        builder.add("mixin.advancements.inventory_trigger", true,
+                "Every inventory change fires inventory_changed for every advancement listening to "
+                        + "it, and each one walks the whole inventory matching every predicate against "
+                        + "every stack. Changes that cannot satisfy any advancement are dropped before "
+                        + "any scan, the slot tallies are computed once per change, and the changed "
+                        + "stack must match a predicate before the inventory is walked (Universal "
+                        + "Tweaks, Icterine).");
+
         // ---------------------------------------------------------------- ai
         builder.add("mixin.ai", true,
                 "Mob AI optimizations");
@@ -176,6 +187,10 @@ public final class EquilibriumOptions {
                 "Block reads no longer ask the world what type it is on every access in order to find "
                         + "out whether it is the debug world. The answer is fixed when the world is "
                         + "constructed, so it is resolved once.");
+        builder.add("mixin.chunk.tile_entity_map", true,
+                "A chunk's tile entity map is keyed by the packed long of the position rather than "
+                        + "the BlockPos object, dropping the hash and equals dispatch and the node per "
+                        + "entry on a map probed by every tile entity lookup. Iteration order is kept.");
 
         // ------------------------------------------------------- collections
         builder.add("mixin.collections", true,
@@ -190,6 +205,12 @@ public final class EquilibriumOptions {
                 "Various entity optimizations");
         builder.add("mixin.entity.collisions", true,
                 "Various entity collision optimizations");
+        builder.add("mixin.entity.collisions.reduced_radius", true,
+                "World.MAX_ENTITY_RADIUS is a global any mod with a large entity raises for everyone, "
+                        + "and every bounding-box query pads by it, so one such mod makes each mob's "
+                        + "per-tick pushing check scan up to nine chunks. Vanilla's own entities, whose "
+                        + "size is known, run the check with vanilla's two-block padding again. Does "
+                        + "nothing until a mod raises the radius.");
         builder.add("mixin.entity.collisions.movement", true,
                 "Gathering the blocks an entity could collide with resolves a chunk section once per "
                         + "column rather than once per block. The search walks a column at a time, so "
@@ -203,6 +224,28 @@ public final class EquilibriumOptions {
                 "Entity queries resolve each chunk once instead of testing whether it is loaded and then "
                         + "fetching the chunk that test just found.")
                 .requires("mixin.util.chunk_access", true);
+        builder.add("mixin.entity.flag_cache", true,
+                "The synced flags byte behind isSneaking, isSprinting, isInvisible, isGlowing, isBurning "
+                        + "and isElytraFlying is read once and kept until the data manager writes it, "
+                        + "instead of going through the data manager's lock and a Byte unboxing on every "
+                        + "call. Rendering asks several of these per entity per frame.");
+        builder.add("mixin.entity.fast_spawn_preparation", true,
+                "Forge constructs every spawned entity through Constructor.newInstance. A method "
+                        + "handle lambda bound to the (World) constructor is spun once per entity type "
+                        + "instead, which the JIT can inline; types the lookup cannot reach keep Forge's "
+                        + "factory.");
+        builder.add("mixin.entity.tracker_vertical_range", false,
+                "Whether a player receives an entity's updates is decided on horizontal distance alone, "
+                        + "so a player at bedrock is sent every mob on the surface above. The tracking "
+                        + "range is applied vertically as well.",
+                "Entities more than their tracking range above or below a player are not sent to them, "
+                        + "which shows on tall builds.");
+        builder.add("mixin.entity.xp_orb_merging", false,
+                "Once a second an experience orb absorbs every orb within a block and the survivor "
+                        + "hands its whole value over in one pickup. A mob farm otherwise leaves dozens "
+                        + "of orbs per kill, each a ticking, tracked entity that costs the player a "
+                        + "two-tick pickup cooldown.",
+                "One merged orb repairs Mending gear all at once and pickup sounds play once per merged orb.");
         builder.add("mixin.entity.fast_hand_swing", true,
                 "Skip the hand swing progress and animation maths when the hand is not swinging. The "
                         + "division vanilla performs there needs the swing duration, and working that out "
@@ -239,6 +282,33 @@ public final class EquilibriumOptions {
         // ------------------------------------------------------------- world
         builder.add("mixin.world", true,
                 "Various world related optimizations");
+        builder.add("mixin.world.chunk_gen_limit", false,
+                "Chunk sending generates up to 49 chunks per tick as long as it stays under 50 ms, "
+                        + "which is the whole tick. The cap becomes 24 chunks and 25 ms so terrain "
+                        + "loading spreads over more ticks and entities keep their share of each one.",
+                "Terrain loads more slowly on a server that had headroom to spare.");
+        builder.add("mixin.world.entity_cleanup", true,
+                "Once a dimension has had no players for 300 ticks it stops ticking entities, and with "
+                        + "them the step that removes entities and tile entities unloaded with their "
+                        + "chunks, so those lists grow until a player returns. The removal step runs on "
+                        + "those ticks anyway.");
+        builder.add("mixin.world.entity_tick_budget", false,
+                "Once the previous server tick ran over 40 ms, ordinary living entities, items and "
+                        + "orbs more than 96 blocks from every player tick every other tick until the "
+                        + "server catches up. Nothing near a player, ridden, or a boss is touched, and "
+                        + "at normal tick times nothing changes.",
+                "Far-off mobs, drops and farms run at half speed while the server is behind.");
+        builder.add("mixin.world.ghost_chunks", true,
+                "Beds, farmland and Forge fluids read neighbouring blocks on update, and a read into an "
+                        + "unloaded chunk loads it, so a bed or field on a chunk border keeps its "
+                        + "neighbour loaded and generating forever. Those reads now treat an unloaded "
+                        + "chunk as absent: a bed skips the update, farmland sees no water there, and a "
+                        + "fluid waits until its surroundings are loaded, as vanilla liquids already do.");
+        builder.add("mixin.world.spawn_chunks", true,
+                "Skips generating the 625-chunk spawn area before the world opens. Only the chunk "
+                        + "holding the spawn point is prepared; the rest load on demand, and once loaded "
+                        + "are kept resident exactly as vanilla keeps its spawn chunks.",
+                "Spawn-area redstone and farms only run once a player has been near them since launch.");
         builder.add("mixin.world.block_entity_ticking", true,
                 "Various tile entity ticking optimizations");
         builder.add("mixin.world.block_entity_ticking.sleeping", true,

@@ -8,6 +8,10 @@ public final class StringPool {
     public static final ShardedStringCache NBT_KEYS =
             new ShardedStringCache("NBT keys", CoarctatioConfig.get().poolSizeLimit);
 
+    // Class, package and annotation names Forge's discovery scan produces, tens of thousands of them alive for the session; separate from NBT so a chatty save cannot evict them
+    public static final ShardedStringCache LOADER =
+            new ShardedStringCache("Loader names", CoarctatioConfig.get().poolSizeLimit);
+
     // Static-only
     private StringPool() {
     }

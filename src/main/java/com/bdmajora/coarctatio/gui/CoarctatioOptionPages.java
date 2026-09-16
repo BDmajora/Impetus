@@ -183,6 +183,121 @@ public final class CoarctatioOptionPages {
                         config -> config.compactRuntimeCollections))
                 .build());
 
+        // The model and resource loader: what is loaded when, and what the loader keeps
+        groups.add(OptionGroup.createBuilder()
+                .setId(OptionIdentifier.create(MOD_ID, "loading"))
+                .add(restartToggle("dynamic_models",
+                        "impetus.options.coarctatio.dynamic_models",
+                        OptionImpact.HIGH,
+                        (config, value) -> config.dynamicModels = value,
+                        config -> config.dynamicModels))
+                .add(restartToggle("dynamic_models_prebake_items",
+                        "impetus.options.coarctatio.dynamic_models_prebake",
+                        OptionImpact.MEDIUM,
+                        (config, value) -> config.dynamicModelsPrebakeItems = value,
+                        config -> config.dynamicModelsPrebakeItems))
+                .add(restartToggle("fast_item_layer_baking",
+                        "impetus.options.coarctatio.fast_item_baking",
+                        OptionImpact.MEDIUM,
+                        (config, value) -> config.fastItemLayerBaking = value,
+                        config -> config.fastItemLayerBaking))
+                .add(restartToggle("resource_existence_cache",
+                        "impetus.options.coarctatio.resource_existence",
+                        OptionImpact.MEDIUM,
+                        (config, value) -> config.resourceExistenceCache = value,
+                        config -> config.resourceExistenceCache))
+                .add(restartToggle("stackless_resource_exceptions",
+                        "impetus.options.coarctatio.stackless_exceptions",
+                        OptionImpact.MEDIUM,
+                        (config, value) -> config.stacklessResourceExceptions = value,
+                        config -> config.stacklessResourceExceptions))
+                .add(restartToggle("fast_atlas_stitching",
+                        "impetus.options.coarctatio.atlas_stitching",
+                        OptionImpact.MEDIUM,
+                        (config, value) -> config.fastAtlasStitching = value,
+                        config -> config.fastAtlasStitching))
+                .add(restartToggle("intern_loader_strings",
+                        "impetus.options.coarctatio.loader_strings",
+                        OptionImpact.LOW,
+                        (config, value) -> config.internLoaderStrings = value,
+                        config -> config.internLoaderStrings))
+                .add(restartToggle("mod_scan_cache",
+                        "impetus.options.coarctatio.mod_scan_cache",
+                        OptionImpact.HIGH,
+                        (config, value) -> config.modScanCache = value,
+                        config -> config.modScanCache))
+                .add(restartToggle("parallel_texture_load",
+                        "impetus.options.coarctatio.parallel_texture_load",
+                        OptionImpact.MEDIUM,
+                        (config, value) -> config.parallelTextureLoad = value,
+                        config -> config.parallelTextureLoad))
+                .add(restartToggle("compact_remapper_caches",
+                        "impetus.options.coarctatio.remapper_caches",
+                        OptionImpact.MEDIUM,
+                        (config, value) -> config.compactRemapperCaches = value,
+                        config -> config.compactRemapperCaches))
+                .add(restartToggle("skip_sound_debug_checks",
+                        "impetus.options.coarctatio.sound_debug",
+                        OptionImpact.LOW,
+                        (config, value) -> config.skipSoundDebugChecks = value,
+                        config -> config.skipSoundDebugChecks))
+                .add(restartToggle("quiet_prefix_warnings",
+                        "impetus.options.coarctatio.prefix_warnings",
+                        OptionImpact.LOW,
+                        (config, value) -> config.quietPrefixWarnings = value,
+                        config -> config.quietPrefixWarnings))
+                .add(restartToggle("plain_missing_models",
+                        "impetus.options.coarctatio.missing_models",
+                        OptionImpact.LOW,
+                        (config, value) -> config.plainMissingModels = value,
+                        config -> config.plainMissingModels))
+                .add(restartToggle("canonicalize_model_parts",
+                        "impetus.options.coarctatio.model_parts",
+                        OptionImpact.LOW,
+                        (config, value) -> config.canonicalizeModelParts = value,
+                        config -> config.canonicalizeModelParts))
+                .build());
+
+        // Per-object caches and pools on the game's hot paths
+        groups.add(OptionGroup.createBuilder()
+                .setId(OptionIdentifier.create(MOD_ID, "runtime"))
+                .add(restartToggle("lazy_item_stack_capabilities",
+                        "impetus.options.coarctatio.item_stack_capabilities",
+                        OptionImpact.MEDIUM,
+                        (config, value) -> config.lazyItemStackCapabilities = value,
+                        config -> config.lazyItemStackCapabilities))
+                .add(restartToggle("primitive_ore_dictionary",
+                        "impetus.options.coarctatio.ore_dictionary",
+                        OptionImpact.LOW,
+                        (config, value) -> config.primitiveOreDictionary = value,
+                        config -> config.primitiveOreDictionary))
+                .add(restartToggle("recycle_events",
+                        "impetus.options.coarctatio.recycle_events",
+                        OptionImpact.LOW,
+                        (config, value) -> config.recycleEvents = value,
+                        config -> config.recycleEvents))
+                .add(restartToggle("pool_nbt_primitives",
+                        "impetus.options.coarctatio.nbt_primitives",
+                        OptionImpact.MEDIUM,
+                        (config, value) -> config.poolNbtPrimitives = value,
+                        config -> config.poolNbtPrimitives))
+                .add(restartToggle("cache_property_hashes",
+                        "impetus.options.coarctatio.property_hashes",
+                        OptionImpact.LOW,
+                        (config, value) -> config.cachePropertyHashes = value,
+                        config -> config.cachePropertyHashes))
+                .add(restartToggle("cache_state_hashes",
+                        "impetus.options.coarctatio.state_hashes",
+                        OptionImpact.LOW,
+                        (config, value) -> config.cacheStateHashes = value,
+                        config -> config.cacheStateHashes))
+                .add(restartToggle("soft_structure_templates",
+                        "impetus.options.coarctatio.structure_templates",
+                        OptionImpact.MEDIUM,
+                        (config, value) -> config.softStructureTemplates = value,
+                        config -> config.softStructureTemplates))
+                .build());
+
         // Read live every frame, so no restart flag and no impact; an F3 line costs nothing worth warning about
         groups.add(OptionGroup.createBuilder()
                 .setId(OptionIdentifier.create(MOD_ID, "diagnostics"))

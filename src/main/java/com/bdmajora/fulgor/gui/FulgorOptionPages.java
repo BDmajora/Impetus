@@ -49,6 +49,11 @@ public final class FulgorOptionPages {
                         OptionImpact.HIGH,
                         (config, value) -> config.enabled = value,
                         config -> config.enabled))
+                .add(restartToggle("async_light_updates",
+                        "impetus.options.fulgor.async_updates",
+                        OptionImpact.HIGH,
+                        (config, value) -> config.asyncLightUpdates = value,
+                        config -> config.asyncLightUpdates))
                 .add(restartToggle("deferred_light_updates",
                         "impetus.options.fulgor.deferred_updates",
                         OptionImpact.HIGH,
@@ -78,6 +83,16 @@ public final class FulgorOptionPages {
                         OptionImpact.LOW,
                         (config, value) -> config.fixChunkBoundaryLighting = value,
                         config -> config.fixChunkBoundaryLighting))
+                .add(liveToggle("async_send_chunks_without_light",
+                        "impetus.options.fulgor.async_send_without_light",
+                        OptionImpact.LOW,
+                        (config, value) -> config.asyncSendChunksWithoutLight = value,
+                        config -> config.asyncSendChunksWithoutLight))
+                .add(restartToggle("fix_render_lighting",
+                        "impetus.options.fulgor.render_lighting",
+                        OptionImpact.LOW,
+                        (config, value) -> config.fixRenderLighting = value,
+                        config -> config.fixRenderLighting))
                 .add(restartToggle("send_non_trivial_section_light",
                         "impetus.options.fulgor.section_light",
                         OptionImpact.LOW,

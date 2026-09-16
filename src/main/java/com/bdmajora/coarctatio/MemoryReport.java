@@ -37,6 +37,10 @@ public final class MemoryReport {
     private static final AtomicLong SPRITE_BYTES = new AtomicLong();
     private static final AtomicLong CLASS_LOADER_BYTES = new AtomicLong();
     private static final AtomicLong PACKED_STATE_COUNT = new AtomicLong();
+    private static final AtomicLong REMAPPER_ENTRIES = new AtomicLong();
+
+    // One merged remapper map for a class extending a vanilla one: ImmutableMap entries for a few hundred members, well under the ~20 KB a TileEntity subclass carries
+    private static final long REMAPPER_MAP_BYTES = 8192;
 
     private MemoryReport() {
     }
@@ -56,6 +60,11 @@ public final class MemoryReport {
         PACKED_STATE_COUNT.addAndGet(states);
     }
 
+    // Estimated: remapper cache entries rebuilt through the sharing map at construction; entries made afterwards are not counted
+    public static void recordRemapperEntries(long entries) {
+        REMAPPER_ENTRIES.addAndGet(entries);
+    }
+
     // One line per feature plus a total, shared by the log dump and /coarctatio; features that saved nothing are skipped to keep the report short
     public static List<String> lines() {
         List<Line> entries = new ArrayList<>();
@@ -72,6 +81,7 @@ public final class MemoryReport {
         entries.add(estimated("State property maps", CompactPropertyMaps.compacted(), PROPERTY_MAP_SAVED_BYTES));
         entries.add(measured("Texture pixel data", SPRITE_BYTES.get()));
         entries.add(measured("Class loader cache", CLASS_LOADER_BYTES.get()));
+        entries.add(estimated("Remapper caches", REMAPPER_ENTRIES.get(), REMAPPER_MAP_BYTES));
 
         long total = 0;
         List<String> out = new ArrayList<>();

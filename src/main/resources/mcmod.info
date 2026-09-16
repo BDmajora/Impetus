@@ -8,7 +8,7 @@
     "url": "",
     "updateUrl": "",
     "authorList": ["bdmajora"],
-    "credits": "embeddedt (Celeritas/Embeddium), the Sodium project, the Iris project, orf (GpuShift), Mr.Toad (GPUBooster), AxalotL (Async), Harvey_Husky (AsyncParticles), fzzyhmstrs (Particle Core), FoundationGames (Enhanced Block Entities), malte0811 (FerriteCore), Steveplays28 (Noisium), TonimatasDEV (Packet Fixer), Spottedleaf and ishland (Starlight/ScalableLux), wisecase2 (StutterFix)",
+    "credits": "embeddedt (Celeritas/Embeddium), the Sodium project, the Iris project, orf (GpuShift), Mr.Toad (GPUBooster), AxalotL (Async), Harvey_Husky (AsyncParticles), fzzyhmstrs (Particle Core), FoundationGames (Enhanced Block Entities), malte0811 (FerriteCore), Steveplays28 (Noisium), TonimatasDEV (Packet Fixer), Spottedleaf and ishland (Starlight/ScalableLux), Sumire Labs (Pulsar), wisecase2 (StutterFix), asie (FoamFix), Rongmario (Chibi), Kasumi_Nova and Circulate233 (StellarCore), embeddedt and Runemoro (VintageFix dynamic resources), ACGaming (Universal Tweaks), Mephodio (Icterine), VidTu (Ksyxis), tr7zw and Meldexun (Entity Culling), Desoroxxx (Valkyrie), astei (Krypton), RaphiMC (ImmediatelyFast), imthosea (BadOptimizations), fxmorin (More Culling), isXander (Cull Less Leaves), jaredlll08 (Clumps), decce6 (Gnetum)",
     "logoFile": "assets/impetus/textures/gui/impetus.png",
     "screenshots": [],
     "dependencies": []

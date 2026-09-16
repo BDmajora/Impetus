@@ -12,11 +12,22 @@
     "world.ChunkProviderServerMixin",
     "world.ChunkSkylightMixin",
     "world.ExtendedBlockStorageMixin",
-    "world.WorldMixin"
+    "world.WorldMixin",
+    "async.block.BlockStateMixin",
+    "async.world.AnvilChunkLoaderMixin",
+    "async.world.ChunkLightingMixin",
+    "async.world.ChunkMixin",
+    "async.world.ChunkSectionMixin",
+    "async.world.PlayerChunkMapEntryMixin",
+    "async.world.WorldEntitySpawnerMixin",
+    "async.world.WorldMixin"
   ],
   "client": [
+    "client.BlockLightmapMixin",
+    "client.ChunkCacheNeighborLightMixin",
     "client.MinecraftMixin",
-    "client.RenderGlobalMixin"
+    "client.RenderGlobalMixin",
+    "client.WorldNeighborLightMixin"
   ],
   "injectors": {
     "defaultRequire": 1

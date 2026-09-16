@@ -44,11 +44,11 @@ Impetus ships as a single jar containing several subsystems, each with its own m
 | :----- | :------ |
 | `impetus` | The core rendering engine and chunk pipeline |
 | `umbra` | The bundled shader pipeline, descended from Iris / Oculus |
-| `fulgor` | Lighting engine, superseding Phosphor and Alfheim, with parallel light passes in the manner of ScalableLux |
-| `coarctatio` | Memory and allocation reductions across vanilla systems, including FerriteCore's block-state and model deduplication techniques |
-| `equilibrium` | Chunk and world access caching, plus world generation fast paths |
+| `fulgor` | Lighting engine, superseding Phosphor and Alfheim: a deferred Phosphor-style engine with parallel light passes in the manner of ScalableLux, and a Starlight-style asynchronous engine after Pulsar that lights chunks on worker threads and persists their light |
+| `coarctatio` | Memory and allocation reductions across vanilla systems, including FerriteCore's block-state and model deduplication techniques, lazy item capabilities, resource lookup caches, a between-launch mod scan cache, parallel texture decoding, a primitive ore dictionary, compacted remapper caches and opt-in on-demand model loading with a pack-scan atlas |
+| `equilibrium` | Chunk and world access caching, world generation fast paths, and the server-side tick optimizations: advancement triggers, crafting and furnace caches, ghost-chunk guards, spawn preload skipping and the opt-in tick budget |
 | `dynamiclights` | Dynamic light sources for held and dropped items |
-| `extras` | Optional feature toggles: the Render Budget and GPU Booster pair for weaker machines, parallel server ticking, parallel particles, baked block entities, wire limits and thread scheduling |
+| `extras` | Optional feature toggles: the Render Budget and GPU Booster pair for weaker machines, parallel server ticking, parallel particles, baked block entities, ray-cast occlusion culling, HUD caching, text batching, network flush consolidation, wire limits and thread scheduling |
 
 Impetus suppresses the mixin configurations of superseded lighting mods (Phosphor, Alfheim) when it detects
 them, since running two lighting engines at once corrupts world lighting. Remove those mods rather than
@@ -124,7 +124,23 @@ independent, original implementations.
 * **Steveplays28**, for Noisium (LGPL-3), the model for Equilibrium's world generation fast paths
 * **TonimatasDEV**, for Packet Fixer (MIT), the model for the Extras page's Network group
 * **Spottedleaf** (Starlight) and **ishland** (ScalableLux, LGPL-3), whose parallel light scheduling Fulgor adopts
+* **Sumire Labs**, for Pulsar (LGPL-3), the Starlight-derived asynchronous lighting engine Fulgor's async mode is ported from, and the SuperNova lineage it descends from
 * **wisecase2**, for StutterFix (MIT), the model for the Extras page's Thread Scheduling group
+* **asie**, for FoamFix (MIT), whose ghost-chunk guards, spawner check cache and idle entity cleanup Equilibrium carries
+* **Rongmario**, again, for Chibi / LoliASM (LGPL-3), the model for the lazy item capabilities, furnace recipe index, entity factory, loader string interning, remapper cache compaction, recycled events and the world-load and screenshot tweaks
+* **Kasumi_Nova** and **Circulate233**, for StellarCore (MIT), the model for the numeric tag pool, the hash caches, the long-keyed tile entity map, the HUD caching approach, parallel texture decoding, the primitive ore dictionary and model part pooling
+* **embeddedt**, again, for VintageFix (LGPL-3), the model for the mod scan cache, resource existence caches, stackless resource exceptions, shelf stitching, soft structure templates, fast item baking and the dynamic model loading design (with Runemoro, whose Dynamic Resources it descends from)
+* **ACGaming** and the Universal Tweaks contributors (jchung01, Darkhax, EverNife, Barteks2x) (MIT), the model for the advancement trigger, crafting cache, pathfinding chunk guard, entity radius check, chunk generation limit, sound debug skip, quiet prefix check and plain missing models
+* **Mephodio**, for Icterine (MIT), the origin of the advancement trigger optimisation
+* **VidTu**, for Ksyxis (MIT), the model for skipping the spawn chunk preload
+* **tr7zw** and **Meldexun**, for Entity Culling (MIT), the model for the ray-cast occlusion culling of entities and block entities, and tr7zw again for Exordium
+* **Luna Lage (Desoroxxx)** and Red Studio, for Valkyrie (LGPL-3), the model for the ModelRenderer matrix path
+* **Andrew Steinborn (astei)**, for Krypton (LGPL-3), the model for flush consolidation, the varint, frame decoder and compression paths
+* **RaphiMC**, for ImmediatelyFast (LGPL-3), the model for text glyph batching
+* **imthosea**, for BadOptimizations (LGPL-3), the model for lightmap and entity flag caching
+* **fxmorin**, for More Culling (LGPL-3), the model for item frame LOD and leaf face culling, and **isXander** for Cull Less Leaves (MIT)
+* **jaredlll08**, for Clumps (MIT), the model for experience orb merging
+* **decce6** for Gnetum and **Moulberry** for HUDCaching, the family the HUD cache belongs to
 * **Asek3**, for developing Rubidium, the original port of Sodium 0.5 to Forge
 * **CelestialAbyss**, for developing the Embeddium logo, and **input-Here** for visual touchups
 * **Ven ([@basdxz](https://github.com/basdxz))**, for help with translucency sorting, suggesting the general approach for async occlusion culling, and other suggestions during development

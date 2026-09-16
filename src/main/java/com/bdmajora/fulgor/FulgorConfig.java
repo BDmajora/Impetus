@@ -52,6 +52,12 @@ public final class FulgorConfig {
     public int parallelMinPositions;
     // Batches spread over fewer chunks than this run on the calling thread, since there is nothing to run side by side
     public int parallelMinChunks;
+    // Pulsar's Starlight-style engine in place of the Phosphor-style one: per-chunk BFS with its own light storage, run on two worker threads on the server and from the tick on the client; initial chunk lighting leaves the server thread entirely
+    public boolean asyncLightUpdates;
+    // Pulsar's render-side lighting fixes: a slab or stair takes neighbour brightness only through its open face (MC-92), the slab lightmap hack that sampled the block below goes, and a level-one emitter keeps smooth lighting (MC-249343); read by the mesher and two client mixins
+    public boolean fixRenderLighting;
+    // Lets the server send a chunk before its initial pass has finished; wrong light sent to a 1.12.2 client stays wrong until a block changes, so off by default and it only delays freshly generated chunks by a few milliseconds
+    public boolean asyncSendChunksWithoutLight;
 
     private FulgorConfig(Properties props) {
         this.enabled = bool(props, "enabled", true);
@@ -69,6 +75,9 @@ public final class FulgorConfig {
         this.parallelLightThreads = integer(props, "parallelLightThreads", 0, 0, 64);
         this.parallelMinPositions = integer(props, "parallelMinPositions", 1024, 1, Integer.MAX_VALUE);
         this.parallelMinChunks = integer(props, "parallelMinChunks", 3, 2, Integer.MAX_VALUE);
+        this.asyncLightUpdates = bool(props, "asyncLightUpdates", true);
+        this.asyncSendChunksWithoutLight = bool(props, "asyncSendChunksWithoutLight", false);
+        this.fixRenderLighting = bool(props, "fixRenderLighting", true);
     }
 
     // The pool width to use: the configured count, or a third of the cores with at least one
@@ -145,6 +154,9 @@ public final class FulgorConfig {
         values.put("parallelLightThreads", Integer.toString(this.parallelLightThreads));
         values.put("parallelMinPositions", Integer.toString(this.parallelMinPositions));
         values.put("parallelMinChunks", Integer.toString(this.parallelMinChunks));
+        values.put("asyncLightUpdates", Boolean.toString(this.asyncLightUpdates));
+        values.put("asyncSendChunksWithoutLight", Boolean.toString(this.asyncSendChunksWithoutLight));
+        values.put("fixRenderLighting", Boolean.toString(this.fixRenderLighting));
 
         Properties out = new Properties();
         out.putAll(values);

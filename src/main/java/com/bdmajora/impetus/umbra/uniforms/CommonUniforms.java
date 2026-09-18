@@ -44,6 +44,7 @@ import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.joml.Vector4i;
+import com.bdmajora.impetus.umbra.compat.dh.DhCompat;
 import com.bdmajora.impetus.umbra.gl.uniform.UniformCollector;
 import com.bdmajora.impetus.umbra.gl.uniform.UniformUpdateFrequency;
 import com.bdmajora.impetus.umbra.material.WorldRenderingSettings;
@@ -297,8 +298,9 @@ public final class CommonUniforms {
                 .uniform1f(UniformUpdateFrequency.PER_FRAME, "pixelSizeY", CommonUniforms::getPixelSizeY)
                 .uniform1f(UniformUpdateFrequency.ONCE, "near", () -> 0.05f)
                 .uniform1f(UniformUpdateFrequency.PER_FRAME, "far", CommonUniforms::getFar)
-                .uniform1f(UniformUpdateFrequency.PER_FRAME, "dhFarPlane", CommonUniforms::getFar)
-                .uniform1f(UniformUpdateFrequency.ONCE, "dhNearPlane", () -> 0.05f)
+                // Distant Horizons' planes and LOD distance (blocks) while it renders, so composite passes can unproject dhDepthTex0; the vanilla equivalents otherwise, the same fallbacks Iris reports without DH
+                .uniform1f(UniformUpdateFrequency.PER_FRAME, "dhFarPlane", CommonUniforms::getDhFarPlane)
+                .uniform1f(UniformUpdateFrequency.PER_FRAME, "dhNearPlane", CommonUniforms::getDhNearPlane)
                 .uniform1i(UniformUpdateFrequency.PER_FRAME, "dhRenderDistance", CommonUniforms::getDhRenderDistance)
                 .uniform1i(UniformUpdateFrequency.PER_FRAME, "vxRenderDistance", CommonUniforms::getVxRenderDistance)
                 .uniform3f(UniformUpdateFrequency.PER_FRAME, "fogColor", CapturedRenderingState.INSTANCE::getFogColor)
@@ -1081,9 +1083,19 @@ public final class CommonUniforms {
         return new Vector4f(fogColor.x, fogColor.y, fogColor.z, 1.0f);
     }
 
-    // Distant Horizons render distance; 0 without the mod
+    // Distant Horizons' LOD render distance in blocks; the vanilla render distance in blocks without it
     private static int getDhRenderDistance() {
-        return Minecraft.getMinecraft().gameSettings.renderDistanceChunks;
+        return DhCompat.getRenderDistance();
+    }
+
+    // DH's far plane in blocks, else vanilla's
+    private static float getDhFarPlane() {
+        return DhCompat.hasRenderingEnabled() ? DhCompat.getFarPlane() : getFar();
+    }
+
+    // DH's near plane in blocks, else vanilla's
+    private static float getDhNearPlane() {
+        return DhCompat.hasRenderingEnabled() ? DhCompat.getNearPlane() : 0.05f;
     }
 
     // Voxel render distance in chunks

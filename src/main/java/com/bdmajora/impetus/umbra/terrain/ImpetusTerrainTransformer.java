@@ -110,7 +110,7 @@ public final class ImpetusTerrainTransformer {
     }
 
     // gl_FragData replacement, emitted only when the body references gl_FragData/gl_FragColor since the location-0 array collides with named layout(location=N) outputs (photon); array size from the driver, since 16 failed to link on Mesa/Arc
-    private static String fragDataBlock() {
+    static String fragDataBlock() {
         return String.join("\n",
                 "layout(location = 0) out vec4 iris_FragData[" + DrawBuffers.fragmentOutputArraySize() + "];",
                 "#define gl_FragColor iris_FragData[0]",
@@ -120,7 +120,7 @@ public final class ImpetusTerrainTransformer {
     }
 
     // In-shader stand-in for the fixed-function alpha test with Umbra's per-pass defaults (SOLID no discard, CUTOUT 0.5, TRANSLUCENT 0.0001) instead of the old per-vertex material-byte cutoff, which could discard the whole world if the packed bits read 3
-    private static String alphaDiscard(String snippet) {
+    static String alphaDiscard(String snippet) {
         return snippet == null ? "" : snippet;
     }
 
@@ -236,7 +236,7 @@ public final class ImpetusTerrainTransformer {
     private static final Pattern DECLARED_VERSION = Pattern.compile("#version\\s+(\\d+)");
 
     // The compatibility version for a modern pack: never below 330 (the prologue needs it), never below the pack's OWN declaration (Photon declares 400 and relies on implicit int-to-uint), and 430 when the source uses image load/store
-    private static String compatFor(String prologue, String packBody) {
+    static String compatFor(String prologue, String packBody) {
         int version = 330;
         Matcher declared = DECLARED_VERSION.matcher(packBody);
         if (declared.find()) {
@@ -294,17 +294,17 @@ public final class ImpetusTerrainTransformer {
     }
 
     // Removes the pack's #version so the transform can emit its own
-    private static String stripVersion(String source) {
+    static String stripVersion(String source) {
         return VERSION.matcher(source).replaceFirst("");
     }
 
     // Renames the pack's void main() to irisMain so the generated main can wrap it, EVERY occurrence since a flattened source holds several in mutually exclusive #ifdef branches and this runs before preprocessing
-    private static String renameMain(String source) {
+    static String renameMain(String source) {
         return source.replaceAll("\\bvoid\\s+main\\s*\\(\\s*(void)?\\s*\\)", "void irisMain()");
     }
 
     // varying becomes out/in PRESERVING any prefix qualifier: GLSL 120 permits invariant and centroid, and packs ship `flat varying` (illegal but NVIDIA-accepted); anchoring at ^\s*varying skipped those and a surviving `flat varying` at 330 core is C7560/C7561, which killed miniature-shader's gbuffers_terrain. 330 keeps the same qualifier order, so `flat varying` becomes `flat out`
-    private static String convertVaryings(String source, String direction) {
+    static String convertVaryings(String source, String direction) {
         return source.replaceAll(
                 "(?m)^(\\s*)((?:(?:invariant|flat|smooth|noperspective|centroid)\\s+)*)varying\\b",
                 "$1$2" + direction);
@@ -325,7 +325,7 @@ public final class ImpetusTerrainTransformer {
     }
 
     // The keyword modernisations both stages need for 330 core, the pure renames with no stage-specific handling
-    private static String modernizeCommon(String source) {
+    static String modernizeCommon(String source) {
         source = rewriteFogParameters(source);
         source = ModernPackTransformer.rewriteUnsignedStrictness(source);
         // OptiFine's block sampler is often literally named "texture", clashing with the 330 texture() builtin; rename it to "gtexture" first (word boundary spares texture2D/texture2DLod), then modernize the legacy sampling functions
@@ -341,7 +341,7 @@ public final class ImpetusTerrainTransformer {
     }
 
     // gl_Fog.* onto the pipeline's fog uniforms
-    private static String rewriteFogParameters(String source) {
+    static String rewriteFogParameters(String source) {
         return FogParameters.rewrite(source);
     }
 }

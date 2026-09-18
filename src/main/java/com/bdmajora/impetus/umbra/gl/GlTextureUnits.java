@@ -59,6 +59,19 @@ public final class GlTextureUnits {
         }
     }
 
+    // Binds a 2D texture on a unit so that REAL GL and GlStateManager's cache both end up on it whatever either believed before: other code binding raw on a cached unit (Distant Horizons puts its block atlas on unit 1 raw) leaves the cache stale, after which a plain cached bind of the same id is skipped and the unit keeps the stranger's texture
+    public static void forceBindTexture2D(int unit, int texture) {
+        if (unit >= CACHED_UNITS) {
+            bindTexture2D(unit, texture);
+            return;
+        }
+        GlStateManager.setActiveTexture(GL13.GL_TEXTURE0 + unit);
+        LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, texture);
+        // Records the id when the cache disagreed, a no-op when it already agreed; real GL is right either way
+        GlStateManager.bindTexture(texture);
+        resetToUnit0();
+    }
+
     // Binds a 2D texture to a unit and leaves the selector on unit 0 with the cache correct; goes through GlStateManager for cached units and raw beyond, since no cached slot describes those
     public static void bindTexture2D(int unit, int texture) {
         if (unit < CACHED_UNITS) {

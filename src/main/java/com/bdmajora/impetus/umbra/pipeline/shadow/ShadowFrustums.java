@@ -4,6 +4,7 @@ import com.bdmajora.impetus.engine.impl.render.viewport.frustum.Frustum;
 import com.bdmajora.impetus.umbra.pipeline.ShadowContentSettings;
 import com.bdmajora.impetus.umbra.uniforms.CapturedRenderingState;
 import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 
 // Picks the shadow section filter per Iris's decision tree: distance-only when the pack voxelises and stated no preference, SafeZoneCullingFrustum for reversed, the advanced frustum otherwise
@@ -18,6 +19,14 @@ public final class ShadowFrustums {
     // shadowDistance and voxelDistance are the pack's directives in blocks (0 when undeclared), packVoxelizes is inferred from a geometry stage or custom images, renderDistance is the player's in blocks, sunPathRotation feeds the light vector
     public static Frustum create(ShadowContentSettings.Culling culling, float shadowDistance, float voxelDistance,
                                  boolean packVoxelizes, int renderDistance, float sunPathRotation) {
+        return create(culling, shadowDistance, voxelDistance, packVoxelizes, renderDistance, sunPathRotation,
+                CapturedRenderingState.INSTANCE.getGbufferProjection());
+    }
+
+    // Same with an explicit view projection: the camera's normally, DH's (its far plane) when LODs cast into the map
+    public static Frustum create(ShadowContentSettings.Culling culling, float shadowDistance, float voxelDistance,
+                                 boolean packVoxelizes, int renderDistance, float sunPathRotation,
+                                 Matrix4fc viewProjection) {
         // Culling explicitly off: draw it all.
         if (culling == ShadowContentSettings.Culling.OFF) {
             return NON_CULLING;
@@ -32,7 +41,7 @@ public final class ShadowFrustums {
         }
 
         Vector3f lightVector = shadowLightVectorFromOrigin(sunPathRotation);
-        Matrix4f projView = new Matrix4f(CapturedRenderingState.INSTANCE.getGbufferProjection())
+        Matrix4f projView = new Matrix4f(viewProjection)
                 .mul(CapturedRenderingState.INSTANCE.getGbufferModelView());
 
         if (culling == ShadowContentSettings.Culling.REVERSED) {

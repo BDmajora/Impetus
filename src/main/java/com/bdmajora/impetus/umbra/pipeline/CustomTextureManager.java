@@ -314,6 +314,11 @@ public class CustomTextureManager {
         return texture != null ? texture.getGlTextureId() : TextureUtil.MISSING_TEXTURE.getGlTextureId();
     }
 
+    // The lightmap's GL id for callers binding it on a unit of their own (the DH compat puts it on the pack's `lightmap` unit)
+    public static int getLightmapTextureId() {
+        return resolveLightmap();
+    }
+
     // The live lightmap texture, EntityRenderer.lightmapTexture, found by FIELD TYPE since the class has exactly one DynamicTexture field and that works under MCP and SRG alike
     private static int resolveLightmap() {
         try {

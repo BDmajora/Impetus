@@ -13,6 +13,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.joml.Matrix4f;
 import com.bdmajora.impetus.umbra.gl.framebuffer.UmbraFramebuffer;
+import com.bdmajora.impetus.umbra.compat.dh.DhCompat;
 import com.bdmajora.impetus.umbra.gl.program.DrawBuffers;
 import com.bdmajora.impetus.umbra.gl.blending.ProgramBlendState;
 import com.bdmajora.impetus.umbra.gl.program.GlProgram;
@@ -85,6 +86,9 @@ public class UmbraRenderingPipeline {
     private static final int NOISE_TEX_UNIT = 23;
     private static final int SHADOW_TEX_0_HW_UNIT = 24;
     private static final int SHADOW_TEX_1_HW_UNIT = 25;
+    // Distant Horizons' LOD depth (dhDepthTex0/1), above every fixed and pack-allocated unit and shared by both layouts; a sampler may address any unit below GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS (48 minimum on 3.3), the per-stage limit only caps how many a stage samples. Without DH they alias depthtex0/1 as before
+    private static final int DH_DEPTH_TEX_0_UNIT = 35;
+    private static final int DH_DEPTH_TEX_1_UNIT = 36;
     // OptiFine 1.12 gbuffers-stage units from Shaders.useProgram(): texture/lightmap/normals/specular 0..3, shadow maps 4/5, depthtex0 6, gaux1..4 7..10, depthtex1 12, shadowcolor0/1 13/14, noisetex 15
     private static final int GBUFFER_DEPTH_TEX_0_UNIT = 6;
     private static final int GBUFFER_DEPTH_TEX_1_UNIT = 12;
@@ -155,10 +159,10 @@ public class UmbraRenderingPipeline {
         }
         putSharedSampler(FULLSCREEN_SAMPLER_UNITS, "depthtex0", DEPTH_TEX_0_UNIT);
         putSharedSampler(FULLSCREEN_SAMPLER_UNITS, "gdepthtex", DEPTH_TEX_0_UNIT);
-        putSharedSampler(FULLSCREEN_SAMPLER_UNITS, "dhDepthTex", DEPTH_TEX_0_UNIT);
-        putSharedSampler(FULLSCREEN_SAMPLER_UNITS, "dhDepthTex0", DEPTH_TEX_0_UNIT);
+        putSharedSampler(FULLSCREEN_SAMPLER_UNITS, "dhDepthTex", DH_DEPTH_TEX_0_UNIT);
+        putSharedSampler(FULLSCREEN_SAMPLER_UNITS, "dhDepthTex0", DH_DEPTH_TEX_0_UNIT);
         putSharedSampler(FULLSCREEN_SAMPLER_UNITS, "depthtex1", DEPTH_TEX_1_UNIT);
-        putSharedSampler(FULLSCREEN_SAMPLER_UNITS, "dhDepthTex1", DEPTH_TEX_1_UNIT);
+        putSharedSampler(FULLSCREEN_SAMPLER_UNITS, "dhDepthTex1", DH_DEPTH_TEX_1_UNIT);
         putSharedSampler(FULLSCREEN_SAMPLER_UNITS, "depthtex2", DEPTH_TEX_2_UNIT);
         // Shadow samplers are parked on unused units so a shadow-reading pack samples nothing instead of colortex0 (sampler uniforms default to unit 0); the shadow pass is a later phase
         putSharedSampler(FULLSCREEN_SAMPLER_UNITS, "shadowcolor1", SHADOW_COLOR_1_UNIT);
@@ -181,10 +185,10 @@ public class UmbraRenderingPipeline {
 
         putGbufferSampler("depthtex0", GBUFFER_DEPTH_TEX_0_UNIT);
         putGbufferSampler("gdepthtex", GBUFFER_DEPTH_TEX_0_UNIT);
-        putGbufferSampler("dhDepthTex", GBUFFER_DEPTH_TEX_0_UNIT);
-        putGbufferSampler("dhDepthTex0", GBUFFER_DEPTH_TEX_0_UNIT);
+        putGbufferSampler("dhDepthTex", DH_DEPTH_TEX_0_UNIT);
+        putGbufferSampler("dhDepthTex0", DH_DEPTH_TEX_0_UNIT);
         putGbufferSampler("depthtex1", GBUFFER_DEPTH_TEX_1_UNIT);
-        putGbufferSampler("dhDepthTex1", GBUFFER_DEPTH_TEX_1_UNIT);
+        putGbufferSampler("dhDepthTex1", DH_DEPTH_TEX_1_UNIT);
         putGbufferSampler("shadowcolor1", GBUFFER_SHADOW_COLOR_1_UNIT);
         putGbufferSampler("shadowcolor0", GBUFFER_SHADOW_COLOR_0_UNIT);
         putGbufferSampler("shadowcolor", GBUFFER_SHADOW_COLOR_0_UNIT);
@@ -402,6 +406,8 @@ public class UmbraRenderingPipeline {
     private BitSet activeGbufferSamplerFlips = new BitSet();
     // The shadow-map pass, or null when the pack declares no shadow program.
     private final UmbraShadowRenderer shadowRenderer;
+    // Distant Horizons: the pack's dh_* programs and the LOD framebuffers over this pipeline's gbuffer, null only if construction failed before it was built
+    private DhCompat dhCompat;
     private final FrameUpdateNotifier frameUpdateNotifier = new FrameUpdateNotifier();
 
     // centerDepthSmooth producer + its pack-configurable smoothing half-life (seconds).
@@ -593,6 +599,8 @@ public class UmbraRenderingPipeline {
             buildSwapPasses(flipper);
             buildClearPasses();
 
+            // After the schedule: the LOD framebuffers attach the gbuffer's front textures as baked above; dhShadow.enabled defaults on like Iris
+            this.dhCompat = new DhCompat(this, pack, pack.getProperties().getDhShadowEnabled().orElse(Boolean.TRUE));
 
             // Pipeline setup creates and checks Umbra FBOs as a side effect; give Minecraft's main target back before vanilla's next post-render GL check
             LWJGL.glUseProgram(0);
@@ -947,8 +955,14 @@ public class UmbraRenderingPipeline {
             resolution = 1024;
         }
         float distance = parseConstFloat(activeText, "shadowDistance", parseDefineFloat(text, "SHADOWHPL", 160.0f));
-        float nearPlane = parseConstFloat(activeText, "shadowNearPlane", UmbraShadowRenderer.DEFAULT_NEAR_PLANE);
-        float farPlane = parseConstFloat(activeText, "shadowFarPlane", UmbraShadowRenderer.DEFAULT_FAR_PLANE);
+        // With Distant Horizons LODs casting into the map and no declared planes, the ortho depth range spans the LOD distance like Iris's -1 "auto" planes do, or a mountain LOD a few hundred blocks along the light is clipped out of the map; OptiFine's defaults otherwise
+        boolean dhShadows = DhCompat.hasRenderingEnabled()
+                && pack.getProgramSet().get(ProgramId.DhShadow).isPresent()
+                && pack.getProperties().getDhShadowEnabled().orElse(Boolean.TRUE);
+        float nearPlane = parseConstFloat(activeText, "shadowNearPlane",
+                dhShadows ? -DhCompat.getRenderDistance() : UmbraShadowRenderer.DEFAULT_NEAR_PLANE);
+        float farPlane = parseConstFloat(activeText, "shadowFarPlane",
+                dhShadows ? DhCompat.getRenderDistance() : UmbraShadowRenderer.DEFAULT_FAR_PLANE);
         float intervalSize = parseConstFloat(activeText, "shadowIntervalSize", UmbraShadowRenderer.DEFAULT_INTERVAL_SIZE);
         Float shadowMapFov = parseConstFloat(activeText, "shadowMapFov");
         if (shadowMapFov == null) {
@@ -2200,6 +2214,82 @@ public class UmbraRenderingPipeline {
         GlTextureUnits.resetToUnit0();
     }
 
+    // The Distant Horizons compat for this pipeline
+    public DhCompat getDhCompat() {
+        return this.dhCompat;
+    }
+
+    // The shadow renderer, or null when the pack draws no shadow map
+    public UmbraShadowRenderer getShadowRenderer() {
+        return this.shadowRenderer;
+    }
+
+    // A framebuffer for a Distant Horizons LOD pass: the gbuffer colour targets the DH program writes, at the front side baked for the phase it runs in (before or after the deferred chain), attached densely in draw-buffer order; DH's own depth texture is attached by the compat, so LOD depth lands in dhDepthTex0 rather than depthtex0. Owned by the caller
+    public UmbraFramebuffer createDhFramebuffer(int[] drawBuffers, boolean translucent) {
+        int[] sanitized = DrawBuffers.sanitize(drawBuffers, GBUFFER_ATTACHMENT_LIMIT);
+        BitSet flips = translucent ? this.translucentGbufferSamplerFlips : this.preTranslucentGbufferSamplerFlips;
+        UmbraFramebuffer framebuffer = new UmbraFramebuffer();
+        int[] dense = new int[sanitized.length];
+        for (int slot = 0; slot < sanitized.length; slot++) {
+            int logicalIndex = sanitized[slot];
+            if (logicalIndex < 0) {
+                dense[slot] = -1;
+                continue;
+            }
+            framebuffer.addColorAttachment(logicalIndex, slot, frontTexture(flips, logicalIndex));
+            dense[slot] = slot;
+        }
+        framebuffer.drawBuffers(dense);
+        return framebuffer;
+    }
+
+    // Called by the DH compat right before DH draws a LOD pass (Iris's LodRendererEvents binds its own framebuffer here): the same sampler and blend setup a terrain draw gets, on the LOD framebuffer instead of the shared gbuffer; the framebuffer's draw buffers were fixed at creation
+    public void onDhLodDraw(UmbraFramebuffer framebuffer, int[] drawBuffers, ProgramBlendState blendState,
+                            boolean translucentPass) {
+        if (!this.worldRenderingActive) {
+            return;
+        }
+        int[] sanitized = DrawBuffers.sanitize(drawBuffers, GBUFFER_ATTACHMENT_LIMIT);
+        bindDepthSamplers();
+        bindShadowSamplers();
+        bindNoiseTexture();
+        bindGbufferPbrSamplers();
+        bindGbufferColorSamplers(prepareGbufferFeedbackSamplers(sanitized));
+        framebuffer.bind();
+        if (translucentPass) {
+            restoreGbufferTranslucentBlend(sanitized);
+        } else {
+            restoreGbufferOpaqueBlend(sanitized);
+        }
+        blendState.apply(sanitized);
+        bindCustomImages();
+        // Iris runs DH programs with no fixed-function alpha test (core profile); here the compatibility context would still cull a pack's low-alpha dithered fade, so it goes off for the pass and back afterwards. Recorded once per pass: DH's generic objects re-enter here mid-pass and must not overwrite what the pass found
+        if (!this.dhAlphaTestRecorded) {
+            this.dhAlphaTestRecorded = true;
+            this.dhAlphaTestWasEnabled = LWJGL.glGetBoolean(GL11.GL_ALPHA_TEST);
+        }
+        GlStateManager.disableAlpha();
+        LWJGL.glDisable(GL11.GL_ALPHA_TEST);
+    }
+
+    // After a LOD pass: indexed blend back off and the alpha test as it was; the gbuffer itself is rebound by whatever draws next, as after a terrain draw
+    public void afterDhLodDraw(int drawBufferSlots) {
+        if (!this.worldRenderingActive) {
+            return;
+        }
+        disableIndexedBlend(drawBufferSlots);
+        if (this.dhAlphaTestRecorded && this.dhAlphaTestWasEnabled) {
+            GlStateManager.enableAlpha();
+            LWJGL.glEnable(GL11.GL_ALPHA_TEST);
+        }
+        this.dhAlphaTestRecorded = false;
+        GlTextureUnits.resetToUnit0();
+    }
+
+    // The alpha-test state a DH LOD pass found, put back after it
+    private boolean dhAlphaTestWasEnabled;
+    private boolean dhAlphaTestRecorded;
+
     // Called right after setupCameraTransform / updateRenderInfo, when vanilla has just read the camera matrices into ActiveRenderInfo's buffers, so copy them for the uniform providers
     public void captureRenderingState() {
         if (!this.worldRenderingActive) {
@@ -3284,7 +3374,19 @@ public class UmbraRenderingPipeline {
         bindDepthSampler(DEPTH_TEX_2_UNIT, this.renderTargets.getDepthTextureNoHand());
         bindDepthSampler(GBUFFER_DEPTH_TEX_0_UNIT, this.renderTargets.getDepthTexture());
         bindDepthSampler(GBUFFER_DEPTH_TEX_1_UNIT, this.renderTargets.getDepthTextureNoTranslucents());
+        bindDhDepthSamplers();
         GlTextureUnits.resetToUnit0();
+    }
+
+    // dhDepthTex0/1: DH's LOD depth and its pre-translucent copy once DH has rendered a frame, else the terrain depth textures so a DH-aware pack sampling them without DH reads sane depth
+    private void bindDhDepthSamplers() {
+        int lodDepth = this.dhCompat == null ? -1 : this.dhCompat.getDepthTex();
+        int lodDepthNoTranslucent = this.dhCompat == null ? -1 : this.dhCompat.getDepthTexNoTranslucent();
+        LWJGL.glBindSampler(DH_DEPTH_TEX_0_UNIT, 0);
+        LWJGL.glBindSampler(DH_DEPTH_TEX_1_UNIT, 0);
+        bindTextureUnit(DH_DEPTH_TEX_0_UNIT, lodDepth > 0 ? lodDepth : this.renderTargets.getDepthTexture().getTextureId());
+        bindTextureUnit(DH_DEPTH_TEX_1_UNIT, lodDepthNoTranslucent > 0 ? lodDepthNoTranslucent
+                : this.renderTargets.getDepthTextureNoTranslucents().getTextureId());
     }
 
     // normals and specular atlases, or the neutral fallbacks
@@ -3487,7 +3589,8 @@ public class UmbraRenderingPipeline {
         for (int unit : new int[]{SHADOW_COLOR_0_UNIT, SHADOW_COLOR_1_UNIT, SHADOW_TEX_0_UNIT, SHADOW_TEX_1_UNIT,
                 SHADOW_TEX_0_HW_UNIT, SHADOW_TEX_1_HW_UNIT, NOISE_TEX_UNIT, GBUFFER_DEPTH_TEX_0_UNIT,
                 GBUFFER_DEPTH_TEX_1_UNIT, GBUFFER_SHADOW_COLOR_0_UNIT, GBUFFER_SHADOW_COLOR_1_UNIT,
-                GBUFFER_SHADOW_TEX_0_UNIT, GBUFFER_SHADOW_TEX_1_UNIT, GBUFFER_NOISE_TEX_UNIT}) {
+                GBUFFER_SHADOW_TEX_0_UNIT, GBUFFER_SHADOW_TEX_1_UNIT, GBUFFER_NOISE_TEX_UNIT,
+                DH_DEPTH_TEX_0_UNIT, DH_DEPTH_TEX_1_UNIT}) {
             LWJGL.glBindSampler(unit, 0);
             bindTextureUnit(unit, 0);
         }
@@ -3603,6 +3706,10 @@ public class UmbraRenderingPipeline {
             swap.from.destroy();
         }
         this.swapPasses.clear();
+        if (this.dhCompat != null) {
+            this.dhCompat.clearPipeline();
+            this.dhCompat = null;
+        }
         if (this.translucentGbufferFramebuffer != null && this.translucentGbufferFramebuffer != this.gbufferFramebuffer) {
             this.translucentGbufferFramebuffer.destroy();
         }

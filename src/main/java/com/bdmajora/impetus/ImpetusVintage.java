@@ -100,6 +100,8 @@ public class ImpetusVintage {
         ClientCommandHandler.instance.registerCommand(new FulgorStatsCommand());
         ClientCommandHandler.instance.registerCommand(new EquilibriumStatsCommand());
 
+        // Distant Horizons: bind to its API when present so the pack's dh_* programs shade LODs; before the pack parses, since DISTANT_HORIZONS is part of its define environment
+        com.bdmajora.impetus.umbra.compat.dh.DhCompat.run();
         // Phase 1: parse the selected shader pack only; no rendering changes here, and if no pack is selected or loading fails Impetus renders exactly as before
         Umbra.initialize(PlatformUtil.getGameDir().toPath());
         ResourcePackScanner.scanIfChanged(Minecraft.getMinecraft());

@@ -57,6 +57,11 @@ public enum ProgramId {
     // Falls back to shadow_entities rather than plain shadow like Iris, so a pack overriding entity shadows gets it applied to lightning too
     ShadowLightning("shadow_lightning", ShadowEntities),
     ShadowBlock("shadow_block", Shadow),
+    // --- Distant Horizons LOD family (Iris's ProgramGroup.Dh): dh_terrain shades opaque LODs, dh_water the deferred translucent ones, dh_shadow casts them into the shadow map and dh_generic draws DH's beacon beams and clouds; water and generic fall back to terrain, the others have no fallback so a pack without them compiles no LOD override
+    DhTerrain("dh_terrain"),
+    DhWater("dh_water", DhTerrain),
+    DhShadow("dh_shadow"),
+    DhGeneric("dh_generic", DhTerrain),
 
     // --- Single composite/deferred/final entries (numbered variants come from ProgramArrayId) ---
     Final("final");

@@ -10,6 +10,7 @@ import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3d;
 import org.joml.Vector3f;
+import com.bdmajora.impetus.umbra.compat.dh.DhCompat;
 import com.bdmajora.impetus.umbra.gl.program.ProgramUniforms;
 import com.bdmajora.impetus.umbra.gl.uniform.UniformCollector;
 import com.bdmajora.impetus.umbra.gl.uniform.UniformUpdateFrequency;
@@ -63,11 +64,14 @@ public final class MatrixUniforms {
                 .uniformMatrix(UniformUpdateFrequency.PER_FRAME, "iris_ProjMat", state::getGbufferProjection)
                 .uniformMatrix(UniformUpdateFrequency.PER_FRAME, "gbufferProjectionInverse",
                         () -> invertedOrIdentity("gbufferProjectionInverse", state.getGbufferProjection()))
-                .uniformMatrix(UniformUpdateFrequency.PER_FRAME, "dhProjection", state::getGbufferProjection)
+                // The projection Distant Horizons' LODs rendered with (camera FOV, DH near/far), the camera's own without DH; a pack unprojects dhDepthTex0 with these
+                .uniformMatrix(UniformUpdateFrequency.PER_FRAME, "dhProjection", DhCompat::getProjection)
                 .uniformMatrix(UniformUpdateFrequency.PER_FRAME, "dhProjectionInverse",
-                        () -> invertedOrIdentity("dhProjectionInverse", state.getGbufferProjection()))
+                        () -> invertedOrIdentity("dhProjectionInverse", DhCompat.getProjection()))
                 .uniformMatrix(UniformUpdateFrequency.PER_FRAME, "dhPreviousProjection",
-                        new Previous(state::getGbufferProjection))
+                        new Previous(DhCompat::getProjection))
+                .uniformMatrix(UniformUpdateFrequency.PER_FRAME, "dhPreviousProjectionInverse",
+                        new Previous(() -> invertedOrIdentity("dhPreviousProjectionInverse", DhCompat.getProjection())))
                 // Umbra swaps the shadow projection in here during the shadow pass (ExtendedShader#umbra$setupState); these are the `gl_ProjectionMatrixInverse` stand-ins, so a shadow program must invert the shadow ortho or depth unprojection yields garbage, while the pack-facing `gbufferProjectionInverse` stays camera-only by definition
                 .uniformMatrix(UniformUpdateFrequency.PER_FRAME, "iris_ProjectionMatrixInverse",
                         MatrixUniforms::getActiveProjectionInverse)

@@ -72,6 +72,17 @@ public final class ShaderMacros {
         com.bdmajora.impetus.umbra.features.FeatureFlags.addUsableDefines(macros);
         // IS_IRIS, IRIS_VERSION and the IRIS_FEATURE_* prefix are the pack-facing contract, NOT our naming: renaming them drops every pack onto its OptiFine path (Complementary's "not supported on Optifine" screen); IS_IRIS gates Iris-exclusive uniform DECLARATIONS, all of which CommonUniforms uploads at MC_VERSION 11202
         macros.put("IS_IRIS", "");
+        // Distant Horizons presence, the same two defines Iris's StandardMacros emits: packs gate their dh_* programs and the dhDepthTex reads on DISTANT_HORIZONS, and DISTANT_HORIZONS_TEXTURES tells them dh_sampleTexture() exists; only while DH is installed AND rendering, since a pack compiled with them expects real LOD depth
+        if (com.bdmajora.impetus.umbra.compat.dh.DhCompat.hasRenderingEnabled()) {
+            macros.put("DISTANT_HORIZONS", "");
+            macros.put("DISTANT_HORIZONS_TEXTURES", "");
+        }
+        // The DH material ids a dh_* program reads off dhMaterialId (EDhApiBlockMaterial's indices), unconditional like Iris so shared includes compile without DH
+        String[] dhMaterials = {"UNKNOWN", "LEAVES", "STONE", "WOOD", "METAL", "DIRT", "LAVA", "DEEPSLATE", "SNOW",
+                "SAND", "TERRACOTTA", "NETHER_STONE", "WATER", "GRASS", "AIR", "ILLUMINATED"};
+        for (int i = 0; i < dhMaterials.length; i++) {
+            macros.put("DH_BLOCK_" + dhMaterials[i], Integer.toString(i));
+        }
         // Iris version as major*10000 + minor*100 + bugfix; Complementary takes the precise cameraPositionFract split at >= 10800 (fixing colored-lighting shimmer far from origin), and 10805 is the lowest value enabling that while leaving every legacy `IRIS_VERSION < N` workaround where undefined left it
         macros.put("IRIS_VERSION", "10805");
         // Umbra render-stage constants (WorldRenderingPhase ordinals, exact Umbra order) for the renderStage uniform.

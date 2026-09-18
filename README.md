@@ -97,6 +97,16 @@ The bundled shader pipeline originates from Oculus 1.7 / Iris. Iris-protocol ide
 `IRIS_VERSION` define and `iris`-namespaced shader-format identifiers) are intentionally preserved so that
 existing shader packs continue to load and function unchanged.
 
+### Distant Horizons
+
+With Distant Horizons installed, a pack's `dh_terrain`, `dh_water`, `dh_shadow` and `dh_generic` programs
+shade DH's LODs the way they do under Iris: LODs render into the pack's gbuffers with DH's own depth exposed
+as `dhDepthTex0`/`dhDepthTex1`, the `dhProjection`, `dhNearPlane`, `dhFarPlane` and `dhRenderDistance`
+uniforms are live, the `DISTANT_HORIZONS` and `DH_BLOCK_*` defines are set, and `dhShadow.enabled` /
+`dhClouds` in `shaders.properties` are honoured. DH must be a build that knows the `impetus` mod id (its
+1.12.2 Cleanroom branch registers an Impetus accessor); without it DH renders its LODs with its own shaders
+in front of the pack.
+
 ## License
 
 Impetus is licensed under the [GNU Lesser General Public License version 3](LICENSE), as it only uses code

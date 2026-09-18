@@ -120,6 +120,8 @@ dependencies {
     }
     "modRuntimeOnly"("curse.maven:ae2-223794:2747063")
     modCompileOnly("maven.modrinth:fluidlogged-api:3.0.6")
+    // Distant Horizons API, for the umbra DH compat (compat.dh); only loaded when DH is present
+    modCompileOnly("maven.modrinth:distanthorizonsapi:7.0.0")
 }
 
 tasks.named<JavaCompile>("compileJava") {

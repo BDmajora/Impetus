@@ -171,6 +171,8 @@ public final class Umbra {
 
     // Render-thread hook for renderWorld HEAD: builds the frame pipeline on the first frame after a pack change and returns it; null when shaders are off OR the build failed, both meaning render vanilla
     public static synchronized UmbraRenderingPipeline beginFrame() {
+        // Distant Horizons' rendering toggle: a flip reloads the pack (its define environment and LOD programs are baked at load), which lands in the rebuild below
+        com.bdmajora.impetus.umbra.compat.dh.DhCompat.checkFrame();
         if (pipelineNeedsInit) {
             pipelineNeedsInit = false;
             destroyPipelines();
@@ -219,9 +221,9 @@ public final class Umbra {
         pipelineNeedsInit = true;
     }
 
-    // Whether a pack is parsed and active; this is what IrisApi reports to other mods, so it means "shaders are running", not "a pack is selected"
+    // Whether a pack is parsed and active; this is what IrisApi reports to other mods, so it means "shaders are running", not "a pack is selected", and a pack whose pipeline failed to build is not running
     public static boolean isShaderPackInUse() {
-        return currentPack != null;
+        return currentPack != null && !renderingPipelineFailed;
     }
 
     // The parsed pack, or null when shaders are disabled

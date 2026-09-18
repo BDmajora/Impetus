@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.umbra.pipeline;
 
+import com.bdmajora.impetus.umbra.compat.dh.DhCompat;
 import com.bdmajora.impetus.umbra.gl.GlTextureUnits;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GlStateManager;
@@ -25,6 +26,7 @@ import com.bdmajora.impetus.lwjgl.GL11;
 import com.bdmajora.impetus.lwjgl.GL12;
 import com.bdmajora.impetus.lwjgl.GL13;
 import com.bdmajora.impetus.lwjgl.GL14;
+import com.bdmajora.impetus.lwjgl.GL15;
 import com.bdmajora.impetus.lwjgl.GL30;
 import com.bdmajora.impetus.lwjgl.GL33;
 
@@ -105,6 +107,8 @@ public class UmbraShadowRenderer {
 
     private final Matrix4f shadowModelView = new Matrix4f();
     private final Matrix4f shadowProjection = new Matrix4f();
+    // The section filter built for the current pass, kept for the DH compat's LOD culling
+    private com.bdmajora.impetus.engine.impl.render.viewport.frustum.Frustum cullingFrustum;
 
     // shadowSource compiles into the fixed-function entity flavour; samplerUnits already carries the gbuffers-stage overrides since the shadow pass belongs to that stage; hardwareFiltering, mipmapDepth and nearestDepth are PER TEXTURE (0 = shadowtex0, 1 = shadowtex1), and separateHardwareSamplers moves compare onto the *HW aliases
     public UmbraShadowRenderer(int resolution, float shadowDistance, float nearPlane, float farPlane,
@@ -253,6 +257,49 @@ public class UmbraShadowRenderer {
         return this.resolution;
     }
 
+    // The shadow framebuffer (shadowcolor0/1 + shadowtex0), for the Distant Horizons compat to draw LODs into during the pass
+    public UmbraFramebuffer getFramebuffer() {
+        return this.framebuffer;
+    }
+
+    // The section filter of the current (or last) shadow pass, camera-relative; the DH compat culls its LOD columns with the same one
+    public com.bdmajora.impetus.engine.impl.render.viewport.frustum.Frustum getCullingFrustum() {
+        return this.cullingFrustum;
+    }
+
+    // Whether the active pack draws Distant Horizons LODs into the shadow map this pass
+    private static boolean dhShadowsActive() {
+        UmbraRenderingPipeline pipeline = com.bdmajora.impetus.umbra.Umbra.getRenderingPipeline();
+        return pipeline != null && pipeline.getDhCompat() != null && pipeline.getDhCompat().shouldRenderShadows()
+                && DhCompat.hasRenderingEnabled();
+    }
+
+    // Draws DH's LODs into the shadow map through DH's own renderer, restoring the pass's GL state it changes: DH enables face culling and (for water) blending, binds its VAO/buffers and a program, and rebinds texture units 0 and 1
+    private void renderDhShadows(boolean translucent) {
+        if (!dhShadowsActive()) {
+            return;
+        }
+        try {
+            if (translucent) {
+                DhCompat.renderShadowTranslucent();
+            } else {
+                DhCompat.renderShadowSolid();
+            }
+        } finally {
+            LWJGL.glUseProgram(0);
+            LWJGL.glBindVertexArray(0);
+            LWJGL.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+            LWJGL.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
+            this.framebuffer.bind();
+            LWJGL.glViewport(0, 0, this.resolution, this.resolution);
+            GlStateManager.disableCull();
+            GlStateManager.disableBlend();
+            GlStateManager.depthMask(true);
+            GlStateManager.depthFunc(GL11.GL_LEQUAL);
+            GlTextureUnits.resetToUnit0();
+        }
+    }
+
     // Renders the shadow map, called right AFTER the camera matrices are captured and BEFORE any gbuffer geometry so the deferred chain samples a finished map; leaves the shadow framebuffer and viewport bound for the caller to rebind
     public void render() {
         if (this.failed || this.destroyed) {
@@ -302,14 +349,17 @@ public class UmbraShadowRenderer {
             // Umbra `shadow.culling = reversed` parity: build the DEDICATED shadow render list of every built section in range with no frustum or occlusion culling (isInShadowPass() routes updates and draws onto the shadow RenderListManager); reusing the culled main lists made cave sections blink in the pack's voxelization and the floodfill strobed forever
             RenderDevice.enterManagedCode();
             try {
-                // `shadow.culling`: `off` keeps every loaded section, otherwise a box of the pack's shadowDistance (Umbra BoxCuller), position-only so the section set stays frame-stable; the advanced/safe-zone frustums derive from THIS frame's matrices and are rebuilt every pass
+                // `shadow.culling`: `off` keeps every loaded section, otherwise a box of the pack's shadowDistance (Umbra BoxCuller), position-only so the section set stays frame-stable; the advanced/safe-zone frustums derive from THIS frame's matrices and are rebuilt every pass. With DH LODs in the map the view frustum takes DH's far plane (Iris does the same), or the LODs past the vanilla far plane would never cast
+                boolean dhShadows = dhShadowsActive();
+                this.cullingFrustum = com.bdmajora.impetus.umbra.pipeline.shadow.ShadowFrustums.create(
+                        this.content.getCulling(), this.cullDistance, this.voxelDistance,
+                        this.packVoxelizes,
+                        Minecraft.getMinecraft().gameSettings.renderDistanceChunks * 16,
+                        this.sunPathRotation,
+                        dhShadows ? DhCompat.getProjection() : CapturedRenderingState.INSTANCE.getGbufferProjection());
                 worldRenderer.setupTerrain(
                         new com.bdmajora.impetus.engine.impl.render.viewport.Viewport(
-                                com.bdmajora.impetus.umbra.pipeline.shadow.ShadowFrustums.create(
-                                        this.content.getCulling(), this.cullDistance, this.voxelDistance,
-                                        this.packVoxelizes,
-                                        Minecraft.getMinecraft().gameSettings.renderDistanceChunks * 16,
-                                        this.sunPathRotation),
+                                this.cullingFrustum,
                                 new Vector3d(camera.x, camera.y, camera.z)),
                         ImpetusWorldRenderer.captureCameraState(mc.getRenderPartialTicks()),
                         ++this.shadowListFrame, false, false);
@@ -327,6 +377,8 @@ public class UmbraShadowRenderer {
                 } finally {
                     RenderDevice.exitManagedCode();
                 }
+                // 1b) Distant Horizons' opaque LODs, where Iris's shadow pass reaches them through vanilla's chunk-layer hook
+                renderDhShadows(false);
             }
 
             // 2) Entities + block entities, fixed-function under the shadow matrices.
@@ -346,6 +398,8 @@ public class UmbraShadowRenderer {
                     RenderDevice.exitManagedCode();
                 }
                 GlStateManager.disableBlend();
+                // 4b) DH's deferred translucent LODs (water) into shadowtex0/shadowcolor, unblended like the terrain above
+                renderDhShadows(true);
             }
             generateMipmaps();
         } catch (Throwable t) {

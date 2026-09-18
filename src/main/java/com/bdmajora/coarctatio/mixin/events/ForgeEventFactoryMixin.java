@@ -31,28 +31,29 @@ public abstract class ForgeEventFactoryMixin {
     @Unique
     private static final ThreadLocal<BlockEvent.NeighborNotifyEvent> COARCTATIO_NEIGHBOR_NOTIFY = new ThreadLocal<>();
 
+    // The constructor is AttachCapabilitiesEvent(Class<T>, T), so its erased descriptor takes Object and a constructor redirect must declare exactly that (Mixin validates the handler against the erased signature); the typed object is cast back inside
     @Redirect(method = "gatherCapabilities(Lnet/minecraft/tileentity/TileEntity;)Lnet/minecraftforge/common/capabilities/CapabilityDispatcher;",
             at = @At(value = "NEW", target = "net/minecraftforge/event/AttachCapabilitiesEvent"))
-    private static AttachCapabilitiesEvent<TileEntity> coarctatio$tileEvent(Class<TileEntity> type, TileEntity tile) {
-        return RecycledEvents.tileCapabilities(tile);
+    private static AttachCapabilitiesEvent<TileEntity> coarctatio$tileEvent(Class<?> type, Object tile) {
+        return RecycledEvents.tileCapabilities((TileEntity) tile);
     }
 
     @Redirect(method = "gatherCapabilities(Lnet/minecraft/entity/Entity;)Lnet/minecraftforge/common/capabilities/CapabilityDispatcher;",
             at = @At(value = "NEW", target = "net/minecraftforge/event/AttachCapabilitiesEvent"))
-    private static AttachCapabilitiesEvent<Entity> coarctatio$entityEvent(Class<Entity> type, Entity entity) {
-        return RecycledEvents.entityCapabilities(entity);
+    private static AttachCapabilitiesEvent<Entity> coarctatio$entityEvent(Class<?> type, Object entity) {
+        return RecycledEvents.entityCapabilities((Entity) entity);
     }
 
     @Redirect(method = "gatherCapabilities(Lnet/minecraft/item/ItemStack;Lnet/minecraftforge/common/capabilities/ICapabilityProvider;)Lnet/minecraftforge/common/capabilities/CapabilityDispatcher;",
             at = @At(value = "NEW", target = "net/minecraftforge/event/AttachCapabilitiesEvent"))
-    private static AttachCapabilitiesEvent<ItemStack> coarctatio$stackEvent(Class<ItemStack> type, ItemStack stack) {
-        return RecycledEvents.stackCapabilities(stack);
+    private static AttachCapabilitiesEvent<ItemStack> coarctatio$stackEvent(Class<?> type, Object stack) {
+        return RecycledEvents.stackCapabilities((ItemStack) stack);
     }
 
     @Redirect(method = "gatherCapabilities(Lnet/minecraft/world/chunk/Chunk;)Lnet/minecraftforge/common/capabilities/CapabilityDispatcher;",
             at = @At(value = "NEW", target = "net/minecraftforge/event/AttachCapabilitiesEvent"))
-    private static AttachCapabilitiesEvent<Chunk> coarctatio$chunkEvent(Class<Chunk> type, Chunk chunk) {
-        return RecycledEvents.chunkCapabilities(chunk);
+    private static AttachCapabilitiesEvent<Chunk> coarctatio$chunkEvent(Class<?> type, Object chunk) {
+        return RecycledEvents.chunkCapabilities((Chunk) chunk);
     }
 
     // The dispatcher has copied the providers out by the time the shared gather returns

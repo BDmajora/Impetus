@@ -451,9 +451,19 @@ public final class ShaderProperties {
         return getBoolean("shadow.enabled");
     }
 
+    // dhShadow.enabled — whether Distant Horizons LODs cast into the shadow map (Iris's PackShadowDirectives.isDhShadowEnabled), empty when unstated
+    public Optional<Boolean> getDhShadowEnabled() {
+        return getBoolean("dhShadow.enabled");
+    }
+
     // clouds = off | fast | fancy, empty when the pack leaves the player's own setting alone
     public Optional<String> getCloudMode() {
         return get("clouds").map(s -> s.toLowerCase(Locale.ROOT));
+    }
+
+    // dhClouds = off | fast | fancy: whether Distant Horizons draws its own clouds under this pack (Iris's getDHCloudSetting), empty meaning "follow clouds"
+    public Optional<String> getDhCloudMode() {
+        return get("dhClouds").map(s -> s.toLowerCase(Locale.ROOT));
     }
 
     // Vanilla feature toggles: OptiFine lets a pack suppress vanilla world features it draws itself, each a plain true/false key, absent meaning "leave vanilla alone"

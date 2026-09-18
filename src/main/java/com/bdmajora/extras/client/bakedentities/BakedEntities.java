@@ -1,6 +1,7 @@
 package com.bdmajora.extras.client.bakedentities;
 
 import com.bdmajora.extras.ExtrasConfig;
+import com.bdmajora.extras.mixin.bakedentities.TextureMapRegisteredSpritesAccessor;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockBed;
 import net.minecraft.block.BlockChest;
@@ -127,18 +128,29 @@ public final class BakedEntities {
         return Minecraft.getMinecraft().getTextureMapBlocks().getAtlasSprite(location.toString());
     }
 
-    // Puts every entity sheet the models draw from onto the block atlas; registered unconditionally since a toggle can flip without a restitch
+    // Puts every entity sheet the models draw from onto the block atlas; registered unconditionally since a toggle can flip without a restitch, and only there since other mods' atlases fire the same event
     @SubscribeEvent
     public static void onStitch(TextureStitchEvent.Pre event) {
         TextureMap map = event.getMap();
-        for (ChestTexture texture : ChestTexture.values()) {
-            map.registerSprite(texture.location);
+        if (map != Minecraft.getMinecraft().getTextureMapBlocks()) {
+            return;
         }
-        map.registerSprite(EnderChestBakedModel.TEXTURE);
-        map.registerSprite(SignBakedModel.TEXTURE);
+        for (ChestTexture texture : ChestTexture.values()) {
+            registerSheet(map, texture.location);
+        }
+        registerSheet(map, EnderChestBakedModel.TEXTURE);
+        registerSheet(map, SignBakedModel.TEXTURE);
         for (EnumDyeColor color : EnumDyeColor.values()) {
-            map.registerSprite(BedBakedModel.texture(color));
-            map.registerSprite(ShulkerBoxBakedModel.texture(color));
+            registerSheet(map, BedBakedModel.texture(color));
+            registerSheet(map, ShulkerBoxBakedModel.texture(color));
+        }
+    }
+
+    // Every sheet goes on through EntitySheetSprite, since a plain sprite is rejected by vanilla's loader when the sheet is not square (sign.png is 64x32); a plain registration already made under the name, by a model or the texture scan, would end up on the missing sprite for the same reason, so it is replaced
+    private static void registerSheet(TextureMap map, ResourceLocation location) {
+        EntitySheetSprite sprite = new EntitySheetSprite(location, map.getMipmapLevels());
+        if (!map.setTextureEntry(sprite)) {
+            ((TextureMapRegisteredSpritesAccessor) map).impetus$getRegisteredSprites().put(sprite.getIconName(), sprite);
         }
     }
 

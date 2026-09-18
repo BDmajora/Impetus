@@ -65,6 +65,7 @@
     "bakedentities.TileEntityShulkerBoxAnimationMixin",
     "bakedentities.TileEntityShulkerBoxRendererMixin",
     "bakedentities.TileEntitySignRendererMixin",
+    "bakedentities.TextureMapRegisteredSpritesAccessor",
     "booster.ParticleRandomMixin",
     "booster.WorldVertexBufferUploaderMixin",
     "misc.GuiIngameMixin",

@@ -2,7 +2,6 @@ package com.bdmajora.fulgor.gui;
 
 import com.bdmajora.fulgor.FulgorConfig;
 import com.bdmajora.impetus.api.options.OptionIdentifier;
-import com.bdmajora.impetus.api.options.control.TickBoxControl;
 import com.bdmajora.impetus.api.options.structure.OptionFlag;
 import com.bdmajora.impetus.api.options.structure.OptionGroup;
 import com.bdmajora.impetus.api.options.structure.OptionImpact;
@@ -10,6 +9,7 @@ import com.bdmajora.impetus.api.options.structure.OptionImpl;
 import com.bdmajora.impetus.api.options.structure.OptionPage;
 import com.bdmajora.impetus.api.options.structure.OptionStorage;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
+import com.bdmajora.impetus.impl.gui.ModuleOptions;
 import com.google.common.collect.ImmutableList;
 
 import java.util.ArrayList;
@@ -34,6 +34,8 @@ public final class FulgorOptionPages {
             FulgorConfig.get().save();
         }
     };
+    // Ids sit directly under the mod id and the lang keys are spelled out per option
+    private static final ModuleOptions<FulgorConfig> OPTIONS = new ModuleOptions<>(MOD_ID, "", "", STORAGE);
 
     private FulgorOptionPages() {
     }
@@ -44,6 +46,7 @@ public final class FulgorOptionPages {
 
         groups.add(OptionGroup.createBuilder()
                 .setId(OptionIdentifier.create(MOD_ID, "engine"))
+                .setName(TextComponent.translatable("impetus.options.fulgor.group.engine"))
                 .add(restartToggle("enabled",
                         "impetus.options.fulgor.enabled",
                         OptionImpact.HIGH,
@@ -78,6 +81,7 @@ public final class FulgorOptionPages {
 
         groups.add(OptionGroup.createBuilder()
                 .setId(OptionIdentifier.create(MOD_ID, "correctness"))
+                .setName(TextComponent.translatable("impetus.options.fulgor.group.correctness"))
                 .add(restartToggle("fix_chunk_boundary_lighting",
                         "impetus.options.fulgor.chunk_boundaries",
                         OptionImpact.LOW,
@@ -102,6 +106,7 @@ public final class FulgorOptionPages {
 
         groups.add(OptionGroup.createBuilder()
                 .setId(OptionIdentifier.create(MOD_ID, "client"))
+                .setName(TextComponent.translatable("impetus.options.fulgor.group.client"))
                 .add(restartToggle("optimize_render_light_updates",
                         "impetus.options.fulgor.render_updates",
                         OptionImpact.MEDIUM,
@@ -117,6 +122,7 @@ public final class FulgorOptionPages {
 
         groups.add(OptionGroup.createBuilder()
                 .setId(OptionIdentifier.create(MOD_ID, "diagnostics"))
+                .setName(TextComponent.translatable("impetus.options.fulgor.group.diagnostics"))
                 .add(liveToggle("show_debug_overlay",
                         "impetus.options.fulgor.debug_overlay",
                         null,
@@ -138,32 +144,13 @@ public final class FulgorOptionPages {
     private static OptionImpl<FulgorConfig, Boolean> restartToggle(
             String path, String langKey, OptionImpact impact,
             BiConsumer<FulgorConfig, Boolean> setter, Function<FulgorConfig, Boolean> getter) {
-        return builder(path, langKey, impact, setter, getter)
-                .setFlags(OptionFlag.REQUIRES_GAME_RESTART)
-                .build();
+        return OPTIONS.toggle(path, langKey, setter, getter, impact, OptionFlag.REQUIRES_GAME_RESTART, null);
     }
 
+    // The diagnostics have no performance impact worth labelling, so impact may be null and no badge is shown
     private static OptionImpl<FulgorConfig, Boolean> liveToggle(
             String path, String langKey, OptionImpact impact,
             BiConsumer<FulgorConfig, Boolean> setter, Function<FulgorConfig, Boolean> getter) {
-        return builder(path, langKey, impact, setter, getter).build();
-    }
-
-    private static OptionImpl.Builder<FulgorConfig, Boolean> builder(
-            String path, String langKey, OptionImpact impact,
-            BiConsumer<FulgorConfig, Boolean> setter, Function<FulgorConfig, Boolean> getter) {
-        OptionImpl.Builder<FulgorConfig, Boolean> builder = OptionImpl.createBuilder(boolean.class, STORAGE)
-                .setId(OptionIdentifier.create(MOD_ID, path, boolean.class))
-                .setName(TextComponent.translatable(langKey + ".name"))
-                .setTooltip(TextComponent.translatable(langKey + ".tooltip"))
-                .setControl(TickBoxControl::new)
-                .setBinding(setter, getter);
-
-        // The diagnostics have no performance impact worth labelling, and a badge would only suggest otherwise
-        if (impact != null) {
-            builder.setImpact(impact);
-        }
-
-        return builder;
+        return OPTIONS.toggle(path, langKey, setter, getter, impact, null, null);
     }
 }

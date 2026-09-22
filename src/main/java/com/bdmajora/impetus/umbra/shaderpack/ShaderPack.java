@@ -20,6 +20,16 @@ import com.bdmajora.impetus.umbra.shaderpack.texture.TextureStage;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import com.bdmajora.impetus.engine.impl.notification.ImpetusNotifications;
+import com.bdmajora.impetus.umbra.features.FeatureFlags;
+import com.bdmajora.impetus.umbra.pipeline.ColorSpaceConverter;
+import com.bdmajora.impetus.umbra.shaderpack.texture.CustomTextureTransformer;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -36,11 +46,11 @@ public final class ShaderPack {
     private static final String OVERWORLD_DIR = "/world0";
 
     // Matches `!defined(IS_IRIS) && MC_VERSION < <n>` — the shape detectLegacyPrograms below looks for
-    private static final java.util.regex.Pattern LEGACY_BRANCH_PATTERN = java.util.regex.Pattern.compile(
+    private static final Pattern LEGACY_BRANCH_PATTERN = Pattern.compile(
             "!\\s*defined\\s*\\(?\\s*IS_IRIS\\s*\\)?\\s*&&\\s*MC_VERSION\\s*<\\s*(\\d+)");
     // The extensions that make a pack file a shader STAGE rather than an include; everything else only reaches the driver by being included
     private static final Set<String> STAGE_EXTENSIONS =
-            new java.util.HashSet<>(java.util.Arrays.asList("vsh", "fsh", "gsh", "csh", "tcs", "tes"));
+            new HashSet<>(Arrays.asList("vsh", "fsh", "gsh", "csh", "tcs", "tes"));
 
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
 
@@ -51,7 +61,7 @@ public final class ShaderPack {
     private final ShaderProperties properties;
     private final ProgramSet baseProgramSet;
     // The features this pack DECLARED in iris.features.required/optional that this port honours; distinct from the IRIS_FEATURE_<NAME> defines, which advertise everything supported (Iris draws the same line between hasFeature and isUsable())
-    private final Set<com.bdmajora.impetus.umbra.features.FeatureFlags> activeFeatures;
+    private final Set<FeatureFlags> activeFeatures;
     // The pack's block/item/entity.properties maps preprocessed with the ACTIVE option values, since a pack gates its ID map on its own options
     private final IdMap idMap;
 
@@ -99,15 +109,14 @@ public final class ShaderPack {
                 : parsedProperties.withProfileDisabledPrograms(profileDisabledPrograms);
 
         // Feature-flag validation: a pack *requiring* a flag this port cannot honor fails loudly rather than rendering subtly wrong; optional flags stay undefined for the pack to detect
-        this.activeFeatures = com.bdmajora.impetus.umbra.features.FeatureFlags.parseDeclared(
+        this.activeFeatures = FeatureFlags.parseDeclared(
                 this.properties.getRaw().get("iris.features.required"),
                 this.properties.getRaw().get("iris.features.optional"));
-        java.util.List<String> unsupportedRequired = com.bdmajora.impetus.umbra.features.FeatureFlags
-                .findUnsupported(this.properties.getRaw().get("iris.features.required"));
+        List<String> unsupportedRequired = FeatureFlags.findUnsupported(this.properties.getRaw().get("iris.features.required"));
         if (!unsupportedRequired.isEmpty()) {
             String missing = String.join(", ", unsupportedRequired);
             LOGGER.error("[Umbra] This shader pack requires Umbra features not supported by this port: {}", missing);
-            com.bdmajora.impetus.engine.impl.notification.ImpetusNotifications.warn(
+            ImpetusNotifications.warn(
                     "Shader pack may not work correctly",
                     "Requires unsupported features:",
                     missing);
@@ -122,51 +131,32 @@ public final class ShaderPack {
         this.idMap = new IdMap(this.sources, propertiesDefines);
 
         // Resolve the custom-texture directives to data like Umbra's ShaderPack constructor; a texture that fails to read is logged and dropped, and the sampler sees the normal target or generated noise
-        this.customNoiseTexture = this.properties.getNoiseTexturePath().map(path -> {
-            try {
-                return readTexture(path);
-            } catch (IOException e) {
-                LOGGER.error("[Umbra] Unable to read the custom noise texture at {}: {}", path, e.getMessage());
-                return null;
-            }
-        }).orElse(null);
+        this.customNoiseTexture = this.properties.getNoiseTexturePath().map(this::readTextureOrNull).orElse(null);
 
         this.properties.getCustomTextures().forEach((stage, texturePropertiesMap) -> {
             Map<String, CustomTextureData> innerCustomTextureDataMap = new LinkedHashMap<>();
-            texturePropertiesMap.forEach((samplerName, path) -> {
-                try {
-                    innerCustomTextureDataMap.put(samplerName, readTexture(path));
-                } catch (IOException e) {
-                    LOGGER.error("[Umbra] Unable to read the custom texture at {}: {}", path, e.getMessage());
-                }
-            });
+            texturePropertiesMap.forEach((samplerName, path) -> putTextureIfReadable(innerCustomTextureDataMap, samplerName, path));
             this.customTextureDataMap.put(stage, innerCustomTextureDataMap);
         });
 
-        this.properties.getUmbraCustomTextures().forEach((name, path) -> {
-            try {
-                this.irisCustomTextureDataMap.put(name, readTexture(path));
-            } catch (IOException e) {
-                LOGGER.error("[Umbra] Unable to read the custom texture at {}: {}", path, e.getMessage());
-            }
-        });
+        this.properties.getUmbraCustomTextures().forEach((name, path) -> putTextureIfReadable(this.irisCustomTextureDataMap, name, path));
 
         // Must run before anything compiles: the terrain and composite compile paths ask ShaderMacros.forProgram which programs take their pre-Umbra branch
         ShaderMacros.setPackLegacyPrograms(detectLegacyPrograms(this.sources));
         // Likewise for the raw-custom-texture renames: the gbuffers/terrain/shadow compile paths reach the transform from static contexts with no pack handle
-        com.bdmajora.impetus.umbra.shaderpack.texture.CustomTextureTransformer.setActivePatches(
+        CustomTextureTransformer.setActivePatches(
                 this.properties.getCustomTexturePatches());
     }
 
     // Finds programs containing `!defined(IS_IRIS) && MC_VERSION < <newer than ours>`, the pack's authored path for an OptiFine this old, and compiles them WITHOUT IS_IRIS; across nine packs this selects exactly Sildur's gbuffers_water and composite1 (its 1.12.2 water defers reflection to composite1 via gl_FragData[2], giving see-through water), while BSL's and Complementary's guards do not match. Scans RAW sources since an include says nothing about which program switches
     private static Set<String> detectLegacyPrograms(Map<AbsolutePackPath, String> rawSources) {
-        Set<String> legacy = new java.util.HashSet<>();
+        Set<String> legacy = new HashSet<>();
         for (Map.Entry<AbsolutePackPath, String> entry : rawSources.entrySet()) {
             String name = programName(entry.getKey());
             if (name == null || legacy.contains(name)) {
                 continue;
             }
-            java.util.regex.Matcher matcher = LEGACY_BRANCH_PATTERN.matcher(entry.getValue());
+            Matcher matcher = LEGACY_BRANCH_PATTERN.matcher(entry.getValue());
             while (matcher.find()) {
                 int version;
                 try {
@@ -196,6 +186,24 @@ public final class ShaderPack {
             return null;
         }
         return file.substring(0, dot);
+    }
+
+    // readTexture with the failure logged and swallowed, so one bad texture drops just its sampler
+    private CustomTextureData readTextureOrNull(String path) {
+        try {
+            return readTexture(path);
+        } catch (IOException e) {
+            LOGGER.error("[Umbra] Unable to read the custom texture at {}: {}", path, e.getMessage());
+            return null;
+        }
+    }
+
+    // Stores the sampler's texture only when it could be read
+    private void putTextureIfReadable(Map<String, CustomTextureData> into, String samplerName, String path) {
+        CustomTextureData data = readTextureOrNull(path);
+        if (data != null) {
+            into.put(samplerName, data);
+        }
     }
 
     // Resolves one custom-texture directive value like Iris's readTexture: a namespace:path becomes a resource-location texture looked up at bind time (minecraft:dynamic/lightmap_1 marks the live lightmap), anything else a PNG in the pack with a tolerated leading / (Continuum 2.0.4) and blur/clamp from its .mcmeta
@@ -250,7 +258,7 @@ public final class ShaderPack {
 
     // texture.<stage>.<name> = <path> <type> <format> <w> <h> [<d>] <pixelFormat> <pixelType>
     private CustomTextureData readRawTexture(String[] parts) throws IOException {
-        String textureType = parts[1].toUpperCase(java.util.Locale.ROOT);
+        String textureType = parts[1].toUpperCase(Locale.ROOT);
         if (textureType.equals("TEXTURE_3D")) {
             if (parts.length < 8) {
                 throw new IOException("Malformed raw 3D texture definition");
@@ -325,8 +333,7 @@ public final class ShaderPack {
         }
         // `supportsColorCorrection` means the pack converts to the output colour space itself, so Umbra hands it the COLOR_SPACE_* enumeration to compare `currentColorSpace` against
         if (this.properties.getSupportsColorCorrection().orElse(Boolean.FALSE)) {
-            for (com.bdmajora.impetus.umbra.pipeline.ColorSpaceConverter.ColorSpace space
-                    : com.bdmajora.impetus.umbra.pipeline.ColorSpaceConverter.ColorSpace.values()) {
+            for (ColorSpaceConverter.ColorSpace space : ColorSpaceConverter.ColorSpace.values()) {
                 macros.put("COLOR_SPACE_" + space.name(), Integer.toString(space.ordinal()));
             }
         }
@@ -392,7 +399,7 @@ public final class ShaderPack {
     }
 
     // Whether the pack ASKED for a feature, distinct from whether this port provides it; a pack that never opted into SEPARATE_HARDWARE_SAMPLERS expects shadowtex0/1 to carry hardware comparison themselves
-    public boolean hasFeature(com.bdmajora.impetus.umbra.features.FeatureFlags feature) {
+    public boolean hasFeature(FeatureFlags feature) {
         return this.activeFeatures.contains(feature);
     }
 
@@ -405,7 +412,7 @@ public final class ShaderPack {
     private ProgramSet buildProgramSet() {
         ProgramSet set = new ProgramSet(this.properties);
 
-        for (ProgramId id : ProgramId.values()) {
+        for (ProgramId id : ProgramId.VALUES) {
             ProgramSource source = readProgram(id.getSourceName());
             if (source != null) {
                 set.put(id, source);
@@ -447,10 +454,8 @@ public final class ShaderPack {
     // Reads a program's compute stages, <name>.csh plus _a through _z (Iris extension); the letter scan STOPS at the first missing suffix like Iris's readComputeArray since the suffixes are an ordered chain, returning empty or a 27-entry array that may hold nulls
     private String[] readComputeVariants(String sourceName) {
         String[] computes = new String[ProgramSource.MAX_COMPUTE_VARIANTS];
-        boolean any = false;
-
         computes[0] = readStage(sourceName, "csh");
-        any = computes[0] != null;
+        boolean any = computes[0] != null;
 
         for (int variant = 1; variant < computes.length; variant++) {
             computes[variant] = readStage(ProgramSource.computeVariantName(sourceName, variant), "csh");

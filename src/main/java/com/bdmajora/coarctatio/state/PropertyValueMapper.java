@@ -1,5 +1,6 @@
 package com.bdmajora.coarctatio.state;
 
+import com.bdmajora.coarctatio.MemoryReport;
 import com.bdmajora.coarctatio.CoarctatioConfig;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
@@ -158,7 +159,7 @@ public final class PropertyValueMapper {
         }
 
         this.states[value] = state;
-        com.bdmajora.coarctatio.MemoryReport.recordPackedStates(1);
+        MemoryReport.recordPackedStates(1);
         return value;
     }
 

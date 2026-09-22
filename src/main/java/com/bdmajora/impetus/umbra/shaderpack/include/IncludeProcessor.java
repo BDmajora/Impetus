@@ -2,6 +2,7 @@ package com.bdmajora.impetus.umbra.shaderpack.include;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
@@ -49,6 +50,12 @@ public final class IncludeProcessor {
         stack.push(path);
         try {
             for (String line : lines) {
+                // Almost every line is plain GLSL, so the substring test keeps the regex off them
+                if (!line.contains("#include")) {
+                    out.add(line);
+                    continue;
+                }
+
                 Matcher matcher = INCLUDE_PATTERN.matcher(line);
                 if (matcher.matches()) {
                     AbsolutePackPath target = path.resolve(matcher.group(1).trim());
@@ -76,11 +83,7 @@ public final class IncludeProcessor {
     // Tolerates both line ending styles
     private static List<String> splitLines(String source) {
         // Preserve empty trailing structure; split on any newline form.
-        String[] arr = source.split("\r\n|\r|\n", -1);
-        List<String> list = new ArrayList<>(arr.length);
-        for (String s : arr) {
-            list.add(s);
-        }
+        List<String> list = new ArrayList<>(Arrays.asList(source.split("\r\n|\r|\n", -1)));
         // Drop a single trailing empty element introduced by a terminating newline.
         if (!list.isEmpty() && list.get(list.size() - 1).isEmpty()) {
             list.remove(list.size() - 1);

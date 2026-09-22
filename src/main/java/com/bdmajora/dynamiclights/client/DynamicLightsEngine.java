@@ -1,6 +1,7 @@
 package com.bdmajora.dynamiclights.client;
 
 import com.bdmajora.dynamiclights.DynamicLights;
+import com.bdmajora.dynamiclights.DynamicLightsMode;
 import com.bdmajora.dynamiclights.client.item.ItemLightSources;
 import com.bdmajora.dynamiclights.mixin.RenderGlobalRebuildAccessor;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
@@ -13,7 +14,9 @@ import net.minecraft.entity.monster.EntityCreeper;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.world.World;
 
 import java.util.HashSet;
@@ -127,6 +130,11 @@ public final class DynamicLightsEngine {
 
     // Brightest dynamic light reaching pos on the 0-15 scale; hot path (once per block per section compile), so the empty-set check short-circuits before the lock
     public double getDynamicLightLevel(BlockPos pos) {
+        return getDynamicLightLevel(pos.getX(), pos.getY(), pos.getZ());
+    }
+
+    // Block-coordinate form, so a per-frame caller (particles) need not allocate a BlockPos
+    public double getDynamicLightLevel(int x, int y, int z) {
         if (this.sourceCount == 0) {
             return 0.0D;
         }
@@ -136,7 +144,7 @@ public final class DynamicLightsEngine {
         this.lock.readLock().lock();
         try {
             for (DynamicLightSource source : this.dynamicLightSources) {
-                result = maxDynamicLightLevel(pos, source, result);
+                result = maxDynamicLightLevel(x, y, z, source, result);
             }
         } finally {
             this.lock.readLock().unlock();
@@ -145,8 +153,8 @@ public final class DynamicLightsEngine {
         return result < 0.0D ? 0.0D : Math.min(result, 15.0D);
     }
 
-    // currentLightLevel, or this source's contribution at pos if brighter; linear falloff rather than per-block subtraction since there is no grid to step and a ramp avoids banding on a moving source
-    public static double maxDynamicLightLevel(BlockPos pos, DynamicLightSource lightSource,
+    // currentLightLevel, or this source's contribution at the block if brighter; linear falloff rather than per-block subtraction since there is no grid to step and a ramp avoids banding on a moving source
+    public static double maxDynamicLightLevel(int x, int y, int z, DynamicLightSource lightSource,
                                               double currentLightLevel) {
         int luminance = lightSource.impetus$getLuminance();
         if (luminance <= 0) {
@@ -154,9 +162,9 @@ public final class DynamicLightsEngine {
         }
 
         // Not Entity#getDistanceSq: the source's Y is its eye height, not its feet.
-        double dx = (pos.getX() + 0.5D) - lightSource.impetus$getDynamicLightX();
-        double dy = (pos.getY() + 0.5D) - lightSource.impetus$getDynamicLightY();
-        double dz = (pos.getZ() + 0.5D) - lightSource.impetus$getDynamicLightZ();
+        double dx = (x + 0.5D) - lightSource.impetus$getDynamicLightX();
+        double dy = (y + 0.5D) - lightSource.impetus$getDynamicLightY();
+        double dz = (z + 0.5D) - lightSource.impetus$getDynamicLightZ();
 
         double distanceSquared = dx * dx + dy * dy + dz * dz;
         if (distanceSquared > MAX_RADIUS_SQUARED) {
@@ -324,6 +332,52 @@ public final class DynamicLightsEngine {
 
         ((RenderGlobalRebuildAccessor) renderer)
                 .impetus$markBlocksForUpdate(minX, minY, minZ, minX + 15, minY + 15, minZ + 15, false);
+    }
+
+    // Whether a source may re-light its surroundings yet under the configured rate: returns the stamp to store, or -1 when the delay since lastUpdate has not elapsed (or the mode is off)
+    public static long nextUpdateStamp(long lastUpdate) {
+        DynamicLightsMode mode = DynamicLights.options().mode;
+        if (!mode.isEnabled()) {
+            return -1L;
+        }
+        if (!mode.hasDelay()) {
+            return lastUpdate;
+        }
+        long now = System.currentTimeMillis();
+        return now < lastUpdate + mode.getDelay() ? -1L : now;
+    }
+
+    // The eight sections a source at (x, y, z) reaches: its own, the neighbour on the near side of each axis and the diagonals between them, since a 7.75-block reach spills that far; each is moved from old into lit (either may be null) and rebuilt when a renderer is given
+    public static void walkLitSections(RenderGlobal renderer, double x, double y, double z, LongOpenHashSet old, LongOpenHashSet lit) {
+        int blockX = MathHelper.floor(x);
+        int blockY = MathHelper.floor(y);
+        int blockZ = MathHelper.floor(z);
+        BlockPos.MutableBlockPos chunkPos = new BlockPos.MutableBlockPos(blockX >> 4, blockY >> 4, blockZ >> 4);
+        EnumFacing directionX = (blockX & 15) >= 8 ? EnumFacing.EAST : EnumFacing.WEST;
+        EnumFacing directionY = (blockY & 15) >= 8 ? EnumFacing.UP : EnumFacing.DOWN;
+        EnumFacing directionZ = (blockZ & 15) >= 8 ? EnumFacing.SOUTH : EnumFacing.NORTH;
+
+        visitLitSection(renderer, chunkPos, old, lit);
+        // Walks the four sections of the near layer in a ring, then steps up (or down) and walks the ring again
+        for (int i = 0; i < 7; i++) {
+            switch (i & 3) {
+                case 0 -> chunkPos.move(directionX);
+                case 1 -> chunkPos.move(directionZ);
+                case 2 -> chunkPos.move(directionX.getOpposite());
+                default -> {
+                    chunkPos.move(directionZ.getOpposite());
+                    chunkPos.move(directionY);
+                }
+            }
+            visitLitSection(renderer, chunkPos, old, lit);
+        }
+    }
+
+    private static void visitLitSection(RenderGlobal renderer, BlockPos chunkPos, LongOpenHashSet old, LongOpenHashSet lit) {
+        if (renderer != null) {
+            scheduleChunkRebuild(renderer, chunkPos);
+        }
+        updateTrackedChunks(chunkPos, old, lit);
     }
 
     // Moves chunkPos from the old tracked set into newPos

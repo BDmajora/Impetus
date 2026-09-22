@@ -1,5 +1,6 @@
 package com.bdmajora.equilibrium.common.world;
 
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.init.Blocks;
 import net.minecraft.world.World;
@@ -44,7 +45,7 @@ public final class ChunkSectionCursor {
         }
 
         if (this.synthetic || this.access == null) {
-            return this.world.getBlockState(new net.minecraft.util.math.BlockPos(x, y, z));
+            return this.world.getBlockState(new BlockPos(x, y, z));
         }
 
         int newChunkX = x >> 4;

@@ -6,6 +6,8 @@ import com.bdmajora.impetus.lwjgl.GL12;
 
 import java.nio.ByteBuffer;
 
+import com.bdmajora.impetus.umbra.gl.texture.TextureParameters;
+
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 // One pack colour buffer (colortexN, gcolor in older packs) owning TWO GL textures like OptiFine's dfbColorTexturesA/B, since a pass must read the previous output while writing its own; pass N samples main and renders into alt, then BufferFlipper swaps
@@ -42,10 +44,7 @@ public class UmbraRenderTarget {
     private void setupTexture(int texture, int width, int height, boolean linear) {
         int filter = linear ? GL11.GL_LINEAR : GL11.GL_NEAREST;
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, texture);
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, filter);
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, filter);
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+        TextureParameters.set2D(filter, GL12.GL_CLAMP_TO_EDGE);
         LWJGL.glTexImage2D(GL11.GL_TEXTURE_2D, 0, this.internalFormat.getInternalFormat(), width, height, 0,
                 this.internalFormat.getPixelFormat(), this.internalFormat.getPixelType(), NULL_BUFFER);
     }
@@ -112,8 +111,7 @@ public class UmbraRenderTarget {
     private void resetMipmapState(int texture) {
         int filter = this.linear ? GL11.GL_LINEAR : GL11.GL_NEAREST;
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, texture);
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, filter);
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, filter);
+        TextureParameters.setFilter2D(filter);
     }
 
     // The format the pack requested for this buffer

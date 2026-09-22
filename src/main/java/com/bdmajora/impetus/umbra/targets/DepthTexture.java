@@ -6,6 +6,8 @@ import com.bdmajora.impetus.lwjgl.GL12;
 
 import java.nio.ByteBuffer;
 
+import com.bdmajora.impetus.umbra.gl.texture.TextureParameters;
+
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 // A depth texture programs sample (depthtex0/1/2, shadowtex0/1); several because OptiFine snapshots depth at different points (0 everything, 1 excludes translucents, 2 also excludes the hand) and packs subtract them to find water and hand pixels
@@ -32,10 +34,7 @@ public class DepthTexture extends GlResource {
     // Creates the storage at the current size
     private void allocate() {
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, getGlId());
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+        TextureParameters.set2D(GL11.GL_NEAREST, GL12.GL_CLAMP_TO_EDGE);
         LWJGL.glTexImage2D(GL11.GL_TEXTURE_2D, 0, this.internalFormat, this.width, this.height, 0,
                 this.pixelFormat, this.pixelType, NULL_BUFFER);
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, 0);

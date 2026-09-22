@@ -9,6 +9,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.IBlockAccess;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
@@ -25,32 +26,37 @@ public abstract class BlockLeavesCullMixin {
         if (settings.cullingMode == ExtrasConfig.LeafCulling.DEFAULT || !this.leavesFancy) {
             return;
         }
-        BlockPos sidePos = pos.offset(side);
-        IBlockState sideState = world.getBlockState(sidePos);
-        if (!impetus$hides(sideState)) {
+        // One cursor per thread: this runs for every face of every leaf block on the chunk-build workers, and offset() allocated a BlockPos per neighbour looked at
+        BlockPos.MutableBlockPos cursor = impetus$CURSOR.get();
+        if (!impetus$hides(world.getBlockState(cursor.setPos(pos).move(side)))) {
             return;
         }
         switch (settings.cullingMode) {
-            case CHECK:
+            case CHECK -> {
                 for (EnumFacing other : EnumFacing.VALUES) {
-                    if (other != side && !impetus$hides(world.getBlockState(pos.offset(other)))) {
+                    if (other != side && !impetus$hides(world.getBlockState(cursor.setPos(pos).move(other)))) {
                         return;
                     }
                 }
                 cir.setReturnValue(false);
-                return;
-            case DEPTH:
+            }
+            case DEPTH -> {
+                cursor.setPos(pos).move(side);
                 for (int i = 1; i <= settings.cullingDepth; i++) {
-                    IBlockState behind = world.getBlockState(sidePos.offset(side, i));
-                    if (behind.getBlock().isAir(behind, world, sidePos)) {
+                    cursor.move(side);
+                    IBlockState behind = world.getBlockState(cursor);
+                    if (behind.getBlock().isAir(behind, world, cursor)) {
                         return;
                     }
                 }
                 cir.setReturnValue(false);
-                return;
-            default:
+            }
+            default -> { }
         }
     }
+
+    @Unique
+    private static final ThreadLocal<BlockPos.MutableBlockPos> impetus$CURSOR = ThreadLocal.withInitial(BlockPos.MutableBlockPos::new);
 
     private static boolean impetus$hides(IBlockState state) {
         return state.getBlock() instanceof BlockLeaves || state.isOpaqueCube();

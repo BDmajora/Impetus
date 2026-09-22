@@ -40,28 +40,25 @@ public class ShaderModBridge {
         NVIDIUM_ENABLED = nvidiumEnabled;
     }
 
-    // invokeExact needs the call site descriptor to match exactly (hence the cast); any failure answers false so a broken shader mod degrades to "no shaders"
+    // Nvidium's static flag; false when it is not installed
     public static boolean isNvidiumEnabled() {
-        if(NVIDIUM_ENABLED != null) {
-            try {
-                return (boolean)NVIDIUM_ENABLED.invokeExact();
-            } catch(Throwable e) {
-                return false;
-            }
-        } else {
-            return false;
-        }
+        return invokeBoolean(NVIDIUM_ENABLED);
     }
 
     // Whether a shader pack is loaded RIGHT NOW, not merely installed; used per-frame to pick between the vanilla and shader render paths
     public static boolean areShadersEnabled() {
-        if(SHADERS_ENABLED != null) {
-            try {
-                return (boolean)SHADERS_ENABLED.invokeExact();
-            } catch (Throwable e) {
-                return false;
-            }
-        } else {
+        return invokeBoolean(SHADERS_ENABLED);
+    }
+
+    // invokeExact needs the call site descriptor to match exactly (hence the cast, both handles are ()boolean); any failure answers false so a broken shader mod degrades to "no shaders"
+    private static boolean invokeBoolean(MethodHandle handle) {
+        if (handle == null) {
+            return false;
+        }
+
+        try {
+            return (boolean) handle.invokeExact();
+        } catch (Throwable e) {
             return false;
         }
     }

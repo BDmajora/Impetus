@@ -421,14 +421,14 @@ public record LWJGL3Service(
     // LWJGL3 splits size and type into separate buffers, so they are packed back into the caller's one
     @Override
     public String glGetActiveUniform(int program, int index, int maxLength, java.nio.IntBuffer sizeType) {
-        java.nio.IntBuffer size = java.nio.ByteBuffer.allocateDirect(4)
-                .order(java.nio.ByteOrder.nativeOrder()).asIntBuffer();
-        java.nio.IntBuffer type = java.nio.ByteBuffer.allocateDirect(4)
-                .order(java.nio.ByteOrder.nativeOrder()).asIntBuffer();
-        String name = GL20C.glGetActiveUniform(program, index, maxLength, size, type);
-        sizeType.put(0, size.get(0));
-        sizeType.put(1, type.get(0));
-        return name;
+        try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+            java.nio.IntBuffer size = stack.mallocInt(1);
+            java.nio.IntBuffer type = stack.mallocInt(1);
+            String name = GL20C.glGetActiveUniform(program, index, maxLength, size, type);
+            sizeType.put(0, size.get(0));
+            sizeType.put(1, type.get(0));
+            return name;
+        }
     }
 
     // GL20C
@@ -647,6 +647,11 @@ public record LWJGL3Service(
         };
     }
 
+    @Override
+    public int glGetQueryObjecti(int id, int pname) {
+        return GL15C.glGetQueryObjecti(id, pname);
+    }
+
     // ===================== TEXTURE OPERATIONS =====================
 
     @Override
@@ -706,6 +711,11 @@ public record LWJGL3Service(
     @Override
     public void glReadPixels(int x, int y, int width, int height, int format, int type, java.nio.ByteBuffer pixels) {
         GL11C.glReadPixels(x, y, width, height, format, type, pixels);
+    }
+
+    @Override
+    public void glReadPixels(int x, int y, int width, int height, int format, int type, long pixelsOffset) {
+        GL11C.glReadPixels(x, y, width, height, format, type, pixelsOffset);
     }
 
     // GL30C

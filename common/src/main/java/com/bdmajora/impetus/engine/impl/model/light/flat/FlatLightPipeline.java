@@ -32,11 +32,12 @@ public class FlatLightPipeline implements LightPipeline {
             throw new IllegalStateException();
         }
 
+        int flags = quad.getFlags();
+
         // To match vanilla behavior, use the cull face if it exists/is available
         if (cullFace.isDirection()) {
             lightmap = getOffsetLightmap(x, y, z, cullFace);
         } else {
-            int flags = quad.getFlags();
             // Aligned faces use the light data above them; a parallel face on a full-cube state counts as aligned to match vanilla
             if ((flags & ModelQuadFlags.IS_ALIGNED) != 0 || ((flags & ModelQuadFlags.IS_PARALLEL) != 0 && unpackFC(this.lightCache.get(x, y, z)))) {
                 lightmap = getOffsetLightmap(x, y, z, lightFace);
@@ -47,7 +48,7 @@ public class FlatLightPipeline implements LightPipeline {
 
         Arrays.fill(out.lm, lightmap);
 
-        if ((quad.getFlags() & ModelQuadFlags.IS_VANILLA_SHADED) != 0 || !this.useQuadNormalsForShading) {
+        if ((flags & ModelQuadFlags.IS_VANILLA_SHADED) != 0 || !this.useQuadNormalsForShading) {
             Arrays.fill(out.br, this.diffuseProvider.getDiffuse(lightFace, shade));
         } else {
             this.applySidedBrightnessFromNormals(quad, out, shade);

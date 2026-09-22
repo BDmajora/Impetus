@@ -63,95 +63,85 @@ public class SectionVisibilityBuilder {
     private long computeWithFloodFill() {
         long resultEncoding = 0;
         var blocks = this.blocks;
-        BitSet escapedFaces = new BitSet(GraphDirection.COUNT);
         IntArrayFIFOQueue queue = new IntArrayFIFOQueue();
+
         for (int i : INDICES_TO_INITIATE_FLOODFILL) {
-            if (!blocks.get(i)) {
-                escapedFaces.clear();
-                queue.clear();
-                this.exploreFrom(escapedFaces, queue, i);
-                for (int dir = escapedFaces.nextSetBit(0); dir >= 0; dir = escapedFaces.nextSetBit(dir+1)) {
-                    for (int dir2 = escapedFaces.nextSetBit(0); dir2 >= 0; dir2 = escapedFaces.nextSetBit(dir2+1)) {
+            if (blocks.get(i)) {
+                continue;
+            }
+
+            int escapedFaces = this.exploreFrom(queue, i);
+
+            // Every escaped face sees every other escaped face (and itself)
+            for (int dir = 0; dir < GraphDirection.COUNT; dir++) {
+                if (!GraphDirectionSet.contains(escapedFaces, dir)) {
+                    continue;
+                }
+
+                for (int dir2 = 0; dir2 < GraphDirection.COUNT; dir2++) {
+                    if (GraphDirectionSet.contains(escapedFaces, dir2)) {
                         resultEncoding |= 1L << VisibilityEncoding.bit(dir, dir2);
                     }
                 }
             }
         }
+
         return resultEncoding;
     }
 
-    // One BFS through non-opaque blocks
-    private void exploreFrom(BitSet escapedFaces, IntArrayFIFOQueue queue, int startIndex) {
-        queue.enqueue(startIndex);
+    // One BFS through non-opaque blocks; returns the GraphDirectionSet of faces it escaped through
+    private int exploreFrom(IntArrayFIFOQueue queue, int startIndex) {
         var blocks = this.blocks;
+        int escapedFaces = GraphDirectionSet.NONE;
+
+        queue.clear();
+        queue.enqueue(startIndex);
+
         // Mark the start location as handled
         blocks.set(startIndex, true);
+
         while (!queue.isEmpty()) {
             int idx = queue.dequeueInt();
+
             for (int dir = 0; dir < GraphDirection.COUNT; dir++) {
                 int neighborIdx = getNeighborIndex(idx, dir);
-                if (neighborIdx >= 0) {
-                    // We can move within the section in that direction
-                    if (!blocks.get(neighborIdx)) {
-                        // Mark this location as handled
-                        blocks.set(neighborIdx, true);
-                        queue.enqueue(neighborIdx);
-                    }
-                } else {
+
+                if (neighborIdx < 0) {
                     // We moved out of the section, mark this as an escaping face
-                    escapedFaces.set(dir);
+                    escapedFaces |= GraphDirectionSet.of(dir);
+                } else if (!blocks.get(neighborIdx)) {
+                    // We can move within the section in that direction; mark this location as handled
+                    blocks.set(neighborIdx, true);
+                    queue.enqueue(neighborIdx);
                 }
             }
         }
+
+        return escapedFaces;
     }
 
     // Neighbour index, or -1 off the edge
     private static int getNeighborIndex(int idx, int dir) {
-        switch (dir) {
-            case GraphDirection.UP -> {
-                if (((idx >> Y_SHIFT) & SECTION_AXIS_MASK) == SECTION_AXIS_MASK) {
-                    return -1;
-                } else {
-                    return idx + (1 << Y_SHIFT);
-                }
-            }
-            case GraphDirection.DOWN -> {
-                if (((idx >> Y_SHIFT) & SECTION_AXIS_MASK) == 0) {
-                    return -1;
-                } else {
-                    return idx - (1 << Y_SHIFT);
-                }
-            }
-            case GraphDirection.EAST -> {
-                if (((idx >> X_SHIFT) & SECTION_AXIS_MASK) == SECTION_AXIS_MASK) {
-                    return -1;
-                } else {
-                    return idx + (1 << X_SHIFT);
-                }
-            }
-            case GraphDirection.WEST -> {
-                if (((idx >> X_SHIFT) & SECTION_AXIS_MASK) == 0) {
-                    return -1;
-                } else {
-                    return idx - (1 << X_SHIFT);
-                }
-            }
-            case GraphDirection.SOUTH -> {
-                if (((idx >> Z_SHIFT) & SECTION_AXIS_MASK) == SECTION_AXIS_MASK) {
-                    return -1;
-                } else {
-                    return idx + (1 << Z_SHIFT);
-                }
-            }
-            case GraphDirection.NORTH -> {
-                if (((idx >> Z_SHIFT) & SECTION_AXIS_MASK) == 0) {
-                    return -1;
-                } else {
-                    return idx - (1 << Z_SHIFT);
-                }
-            }
+        return switch (dir) {
+            case GraphDirection.UP -> step(idx, Y_SHIFT, true);
+            case GraphDirection.DOWN -> step(idx, Y_SHIFT, false);
+            case GraphDirection.EAST -> step(idx, X_SHIFT, true);
+            case GraphDirection.WEST -> step(idx, X_SHIFT, false);
+            case GraphDirection.SOUTH -> step(idx, Z_SHIFT, true);
+            case GraphDirection.NORTH -> step(idx, Z_SHIFT, false);
             default -> throw new IllegalArgumentException();
+        };
+    }
+
+    // One block along an axis, or -1 when already at that edge
+    private static int step(int idx, int shift, boolean positive) {
+        int axis = (idx >> shift) & SECTION_AXIS_MASK;
+
+        if (positive) {
+            return axis == SECTION_AXIS_MASK ? -1 : idx + (1 << shift);
         }
+
+        return axis == 0 ? -1 : idx - (1 << shift);
     }
 
     // Flat index into the 16x16x16 bitset

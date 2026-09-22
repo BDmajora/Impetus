@@ -83,26 +83,17 @@ public final class ProgramAlphaTest {
 
     // GREATER, GEQUAL and the rest to GL constants; null when unknown
     private static Integer parseFunction(String name) {
-        switch (name.toUpperCase(Locale.ROOT)) {
-            case "NEVER":
-                return GL11.GL_NEVER;
-            case "LESS":
-                return GL11.GL_LESS;
-            case "EQUAL":
-                return GL11.GL_EQUAL;
-            case "LEQUAL":
-                return GL11.GL_LEQUAL;
-            case "GREATER":
-                return GL11.GL_GREATER;
-            case "NOTEQUAL":
-                return GL11.GL_NOTEQUAL;
-            case "GEQUAL":
-                return GL11.GL_GEQUAL;
-            case "ALWAYS":
-                return GL11.GL_ALWAYS;
-            default:
-                return null;
-        }
+        return switch (name.toUpperCase(Locale.ROOT)) {
+            case "NEVER" -> GL11.GL_NEVER;
+            case "LESS" -> GL11.GL_LESS;
+            case "EQUAL" -> GL11.GL_EQUAL;
+            case "LEQUAL" -> GL11.GL_LEQUAL;
+            case "GREATER" -> GL11.GL_GREATER;
+            case "NOTEQUAL" -> GL11.GL_NOTEQUAL;
+            case "GEQUAL" -> GL11.GL_GEQUAL;
+            case "ALWAYS" -> GL11.GL_ALWAYS;
+            default -> null;
+        };
     }
 
     // Whether anything needs applying
@@ -136,15 +127,15 @@ public final class ProgramAlphaTest {
 
     // GL comparison enum to GLSL operator matching Iris's AlphaTestFunction; null for ALWAYS and NEVER, which compare nothing
     private static String glslOperatorFor(int function) {
-        switch (function) {
-            case GL11.GL_LESS: return "<";
-            case GL11.GL_EQUAL: return "==";
-            case GL11.GL_LEQUAL: return "<=";
-            case GL11.GL_GREATER: return ">";
-            case GL11.GL_NOTEQUAL: return "!=";
-            case GL11.GL_GEQUAL: return ">=";
-            default: return null;
-        }
+        return switch (function) {
+            case GL11.GL_LESS -> "<";
+            case GL11.GL_EQUAL -> "==";
+            case GL11.GL_LEQUAL -> "<=";
+            case GL11.GL_GREATER -> ">";
+            case GL11.GL_NOTEQUAL -> "!=";
+            case GL11.GL_GEQUAL -> ">=";
+            default -> null;
+        };
     }
 
     // The pack-declared reference value, uploaded as the alphaTestRef uniform for packs that do their own discard

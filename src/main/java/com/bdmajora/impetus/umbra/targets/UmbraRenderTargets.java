@@ -14,6 +14,26 @@ import java.util.List;
 public class UmbraRenderTargets {
     // colortex0..15, matching modern Iris. Everything past 7 is created only when a pack actually references it
     public static final int MAX_COLOR_BUFFERS = 16;
+    // The pre-1.8 names of colortex0..7, still accepted everywhere a target is named
+    public static final String[] LEGACY_COLOR_TARGETS =
+            {"gcolor", "gdepth", "gnormal", "composite", "gaux1", "gaux2", "gaux3", "gaux4"};
+
+    // The index of a colour target named either way, or null for anything else (including a malformed colortex suffix)
+    public static Integer colorTargetIndex(String name) {
+        if (name.startsWith("colortex")) {
+            try {
+                return Integer.parseInt(name.substring("colortex".length()));
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        for (int i = 0; i < LEGACY_COLOR_TARGETS.length; i++) {
+            if (LEGACY_COLOR_TARGETS[i].equals(name)) {
+                return i;
+            }
+        }
+        return null;
+    }
 
     private final UmbraRenderTarget[] targets = new UmbraRenderTarget[MAX_COLOR_BUFFERS];
     private final InternalTextureFormat[] formats = new InternalTextureFormat[MAX_COLOR_BUFFERS];

@@ -31,6 +31,7 @@ import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 // Adaptive client render budgeting, a 1.12.2 reimplementation of GpuShift 1.2.8 by orf (MIT): an EMA of frame time against a per-profile target yields a pressure figure, which tightens a particle spawn budget and the distances past which idle mobs, decorative block entities and item frames are skipped; particles are refused evenly by a carry accumulator, mobs by a per-entity hysteresis so nothing flickers at the boundary. Every per-frame path is O(1) with no allocation: the only map is keyed by entity identity and swept on a fixed cadence
 @Mod.EventBusSubscriber(Side.CLIENT)
@@ -66,7 +67,9 @@ public final class RenderBudgetController {
     private static boolean lastSmartEntityCulling;
 
     private static final Map<Entity, Decision> decisions = new IdentityHashMap<>();
-    private static final Map<Class<?>, ParticleCategory> particleCategories = new HashMap<>();
+    // Concurrent, and the carry below guarded, because addEffect runs on the particle pool too: a firework's starter and a huge explosion spawn their children from their own tick
+    private static final Map<Class<?>, ParticleCategory> particleCategories = new ConcurrentHashMap<>();
+    private static final Object PARTICLE_CARRY_LOCK = new Object();
     // Boolean.TRUE for the vanilla decorative renderers that may be skipped, FALSE for everything else, so the per-block-entity cost is one identity lookup
     private static final Map<Class<?>, Boolean> budgetableBlockEntities = new HashMap<>();
     private static double particleCarry;
@@ -192,16 +195,20 @@ public final class RenderBudgetController {
         // 100% means the user handed particles to something else (or wants them all); never re-enable it from here
         boolean particlesUnlimited = particleScale >= 1.0;
 
-        if (profile == ExtrasConfig.BudgetProfile.QUALITY) {
-            if (!particlesUnlimited) {
-                particleScale = Math.max(particleScale, 0.85);
+        switch (profile) {
+            case QUALITY -> {
+                if (!particlesUnlimited) {
+                    particleScale = Math.max(particleScale, 0.85);
+                }
+                entityDistance = Math.max(entityDistance, 128);
             }
-            entityDistance = Math.max(entityDistance, 128);
-        } else if (profile == ExtrasConfig.BudgetProfile.PERFORMANCE) {
-            if (!particlesUnlimited) {
-                particleScale = Math.min(particleScale, 0.45);
+            case PERFORMANCE -> {
+                if (!particlesUnlimited) {
+                    particleScale = Math.min(particleScale, 0.45);
+                }
+                entityDistance = Math.min(entityDistance, 72);
             }
-            entityDistance = Math.min(entityDistance, 72);
+            default -> { }
         }
 
         boolean adaptive = settings.adaptive && pressure >= ADAPTIVE_PRESSURE_THRESHOLD;
@@ -255,18 +262,10 @@ public final class RenderBudgetController {
         }
 
         Minecraft minecraft = Minecraft.getMinecraft();
-        Entity viewer = minecraft.getRenderViewEntity();
-        if (viewer == null) {
-            viewer = minecraft.player;
-        }
-        if (viewer == null || entity == viewer) {
+        double distanceSquared = viewerDistanceSquared(minecraft, entity);
+        if (distanceSquared < 0.0) {
             return false;
         }
-
-        double dx = entity.posX - viewer.posX;
-        double dy = entity.posY - viewer.posY;
-        double dz = entity.posZ - viewer.posZ;
-        double distanceSquared = dx * dx + dy * dy + dz * dz;
         double maxDistance = current.entityCullDistance;
         double exitDistance = Math.max(CLOSE_PROTECTION_DISTANCE, maxDistance - HYSTERESIS_DISTANCE);
         Decision decision = decisions.get(entity);
@@ -317,6 +316,21 @@ public final class RenderBudgetController {
             entitiesSkipped++;
         }
         return decision.cull;
+    }
+
+    // Squared distance from the view entity (the player when there is none) to the entity, or -1 when there is no viewer or the entity IS the viewer, which the callers never cull
+    private static double viewerDistanceSquared(Minecraft minecraft, Entity entity) {
+        Entity viewer = minecraft.getRenderViewEntity();
+        if (viewer == null) {
+            viewer = minecraft.player;
+        }
+        if (viewer == null || entity == viewer) {
+            return -1.0;
+        }
+        double dx = entity.posX - viewer.posX;
+        double dy = entity.posY - viewer.posY;
+        double dz = entity.posZ - viewer.posZ;
+        return dx * dx + dy * dy + dz * dz;
     }
 
     // Whether shouldCullLivingEntity dropped this entity in the current frame; lets the shadow go with the model rather than hover over empty ground
@@ -404,19 +418,10 @@ public final class RenderBudgetController {
             return false;
         }
 
-        Minecraft minecraft = Minecraft.getMinecraft();
-        Entity viewer = minecraft.getRenderViewEntity();
-        if (viewer == null) {
-            viewer = minecraft.player;
-        }
-        if (viewer == null) {
+        double distanceSquared = viewerDistanceSquared(Minecraft.getMinecraft(), frame);
+        if (distanceSquared < 0.0) {
             return false;
         }
-
-        double dx = frame.posX - viewer.posX;
-        double dy = frame.posY - viewer.posY;
-        double dz = frame.posZ - viewer.posZ;
-        double distanceSquared = dx * dx + dy * dy + dz * dz;
         double maxDistance = current.blockEntityCullDistance;
         if (distanceSquared <= maxDistance * maxDistance) {
             return false;
@@ -450,10 +455,12 @@ public final class RenderBudgetController {
             return false;
         }
 
-        particleCarry += current.particleScale;
-        if (particleCarry >= 1.0) {
-            particleCarry -= 1.0;
-            return false;
+        synchronized (PARTICLE_CARRY_LOCK) {
+            particleCarry += current.particleScale;
+            if (particleCarry >= 1.0) {
+                particleCarry -= 1.0;
+                return false;
+            }
         }
 
         particlesSkipped++;

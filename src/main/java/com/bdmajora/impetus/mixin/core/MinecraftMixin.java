@@ -36,14 +36,14 @@ public class MinecraftMixin {
     @Unique
     private final RenderAheadManager impetus$renderAheadManager = new RenderAheadManager();
 
-    // Opens the frame for the render-ahead limiter
-    @Inject(method = "runTick", at = @At("HEAD"))
+    // Opens the frame for the render-ahead limiter. runGameLoop, not runTick: Sodium hooks MinecraftClient.runTick(boolean) because in modern versions that IS the per-frame render, but in 1.12.2 runTick() is the 20 Hz game tick and runGameLoop() the frame, so a fence per tick never bounded anything (a fence three ticks old is 150 ms behind the GPU)
+    @Inject(method = "runGameLoop", at = @At("HEAD"))
     private void preRender(CallbackInfo ci) {
         impetus$renderAheadManager.startFrame(ImpetusVintage.options().advanced.cpuRenderAheadLimit);
     }
 
     // Closes the frame, which is where the limiter may block
-    @Inject(method = "runTick", at = @At("RETURN"))
+    @Inject(method = "runGameLoop", at = @At("RETURN"))
     private void postRender(CallbackInfo ci) {
         impetus$renderAheadManager.endFrame();
     }

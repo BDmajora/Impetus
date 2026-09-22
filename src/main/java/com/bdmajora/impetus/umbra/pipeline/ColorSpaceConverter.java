@@ -6,11 +6,12 @@ import com.bdmajora.impetus.umbra.gl.program.ProgramBuilder;
 import com.bdmajora.impetus.umbra.gl.shader.GlShader;
 import com.bdmajora.impetus.umbra.gl.shader.ShaderType;
 import com.bdmajora.impetus.lwjgl.GL11;
-import com.bdmajora.impetus.lwjgl.GL13;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.Locale;
+
+import com.bdmajora.impetus.umbra.gl.texture.TextureParameters;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
@@ -114,8 +115,7 @@ public final class ColorSpaceConverter {
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, this.scratchTexture);
         LWJGL.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, width, height, 0,
                 GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, null);
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
+        TextureParameters.setFilter2D(GL11.GL_NEAREST);
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, previous);
         this.scratchWidth = width;
         this.scratchHeight = height;

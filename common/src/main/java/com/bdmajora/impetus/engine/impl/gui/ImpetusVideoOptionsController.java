@@ -20,11 +20,14 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Stream;
 
 public class ImpetusVideoOptionsController implements Renderable {
     private static final float ASPECT_RATIO = 5f / 4f;
     private static final int MINIMUM_WIDTH = 550;
+    // The search field sits in the top-right corner of the frame, Sodium 0.6 style, rather than spanning the width; wide enough for a few words, never more than a third of the frame
+    private static final int SEARCH_BAR_MAX_WIDTH = 190;
+    private static final int SEARCH_BAR_HEIGHT = 18;
+    private static final int HEADER_GAP = 6;
 
     private static final AtomicReference<TextComponent> tabFrameSelectedTab = new AtomicReference<>(null);
     private final AtomicReference<Integer> tabFrameScrollBarOffset = new AtomicReference<>(0);
@@ -40,24 +43,28 @@ public class ImpetusVideoOptionsController implements Renderable {
 
     // Title/id of the synthesized search-results page
     private static final TextComponent SEARCH_RESULTS_TITLE = TextComponent.translatable("impetus.search_results");
+    private static final TextComponent SCREEN_TITLE = TextComponent.translatable("impetus.options.title");
 
     private SearchBarWidget searchBar;
+    private TitleWidget title;
     private String searchQuery = "";
     private @Nullable TextComponent preSearchTabTitle;
 
     @Getter
     private boolean hasPendingChanges;
 
-    private boolean firstInit = true;
-
     private int width, height;
+
+    // Every option across every page, flattened once since the page list is fixed after the construction event and the per-frame change scan walks it
+    private final List<Option<?>> allOptions = new ArrayList<>();
 
     public ImpetusVideoOptionsController(Runnable onClose, List<OptionPage> pages, DrawContext font) {
         this.onClose = onClose;
         this.pages.addAll(pages);
-
         OptionGUIConstructionEvent.BUS.post(new OptionGUIConstructionEvent(this.pages));
-
+        for (OptionPage page : this.pages) {
+            this.allOptions.addAll(page.getOptions());
+        }
         this.font = font;
     }
 
@@ -85,10 +92,13 @@ public class ImpetusVideoOptionsController implements Renderable {
         Dim2i applyButtonDim = new Dim2i(tabFrameDim.getLimitX() - 134, tabFrameDim.getLimitY() + 5, 65, 20);
         Dim2i closeButtonDim = new Dim2i(tabFrameDim.getLimitX() - 65, tabFrameDim.getLimitY() + 5, 65, 20);
 
-        // Full-width search field above the tab frame; recreated on rebuild but preserving query and focus.
-        Dim2i searchBarDim = new Dim2i(tabFrameDim.x(), Math.max(2, tabFrameDim.y() - 24), tabFrameDim.width(), 18);
+        // Header row above the tab frame: the screen title on the left, the search field right-aligned; recreated on rebuild but preserving query and focus
+        int headerY = Math.max(2, tabFrameDim.y() - SEARCH_BAR_HEIGHT - HEADER_GAP);
+        int searchWidth = Math.min(SEARCH_BAR_MAX_WIDTH, tabFrameDim.width() / 3);
+        Dim2i searchBarDim = new Dim2i(tabFrameDim.getLimitX() - searchWidth, headerY, searchWidth, SEARCH_BAR_HEIGHT);
         boolean searchFocused = this.searchBar != null && this.searchBar.isFocused();
         this.searchBar = new SearchBarWidget(searchBarDim, this.searchQuery, searchFocused, this::setSearchQuery);
+        this.title = new TitleWidget(new Dim2i(tabFrameDim.x(), headerY, tabFrameDim.width() - searchWidth - HEADER_GAP, SEARCH_BAR_HEIGHT), SCREEN_TITLE);
 
         this.undoButton = new FlatButtonWidget(undoButtonDim, TextComponent.translatable("impetus.options.buttons.undo"), this::undoChanges);
         this.applyButton = new FlatButtonWidget(applyButtonDim, TextComponent.translatable("impetus.options.buttons.apply"), this::applyChanges);
@@ -108,8 +118,13 @@ public class ImpetusVideoOptionsController implements Renderable {
 
     // Enables Apply and Undo only when something changed
     private void updateControls() {
-        boolean hasChanges = this.getAllOptions()
-                .anyMatch(Option::hasChanged);
+        boolean hasChanges = false;
+        for (Option<?> option : this.allOptions) {
+            if (option.hasChanged()) {
+                hasChanges = true;
+                break;
+            }
+        }
 
         this.applyButton.setEnabled(hasChanges);
         this.undoButton.setVisible(hasChanges);
@@ -118,27 +133,19 @@ public class ImpetusVideoOptionsController implements Renderable {
         this.hasPendingChanges = hasChanges;
     }
 
-    // Every option on every page
-    private Stream<Option<?>> getAllOptions() {
-        return this.pages.stream()
-                .flatMap(s -> s.getOptions().stream());
-    }
-
     // Writes each changed option, saves every storage, then runs flag side effects
     private void applyChanges() {
         final HashSet<OptionStorage<?>> dirtyStorages = new HashSet<>();
         final EnumSet<OptionFlag> flags = EnumSet.noneOf(OptionFlag.class);
 
-        this.getAllOptions().forEach((option -> {
+        for (Option<?> option : this.allOptions) {
             if (!option.hasChanged()) {
-                return;
+                continue;
             }
-
             option.applyChanges();
-
             flags.addAll(option.getFlags());
             dirtyStorages.add(option.getStorage());
-        }));
+        }
 
         for (OptionStorage<?> storage : dirtyStorages) {
             storage.save(flags);
@@ -154,8 +161,7 @@ public class ImpetusVideoOptionsController implements Renderable {
 
     // Resets every option to its stored value
     private void undoChanges() {
-        this.getAllOptions()
-                .forEach(Option::reset);
+        this.allOptions.forEach(Option::reset);
     }
 
     // Hides pages with no visible options
@@ -186,7 +192,7 @@ public class ImpetusVideoOptionsController implements Renderable {
                     if (!this.searchQuery.isEmpty()) {
                         var resultsPage = this.buildSearchResultsPage();
                         tabs.computeIfAbsent(resultsPage.getId().getModId(), $ -> new ArrayList<>())
-                                .add(Tab.from(resultsPage, o -> true, optionPageScrollBarOffset, false));
+                                .add(Tab.from(resultsPage, o -> true, optionPageScrollBarOffset));
                     }
                 })
                 .onSetTab(() -> {
@@ -202,6 +208,7 @@ public class ImpetusVideoOptionsController implements Renderable {
                 .shouldRenderOutline(false)
                 // First child so it sees key events before anything else.
                 .addChild(dim -> this.searchBar)
+                .addChild(dim -> this.title)
                 .addChild(parentDim -> this.createTabFrame(tabFrameDim))
                 .addChild(dim -> this.undoButton)
                 .addChild(dim -> this.applyButton)
@@ -234,31 +241,52 @@ public class ImpetusVideoOptionsController implements Renderable {
         this.frame = this.parentFrameBuilder().build();
     }
 
-    // A synthetic page of every option matching the query
+    // A synthetic page of every option matching the query, one group per page the matches came from and headed with that page's name, so a hit for "fog" says which Fog it is
     private OptionPage buildSearchResultsPage() {
         var needle = this.searchQuery.toLowerCase(Locale.ROOT);
-        var matches = new ArrayList<Option<?>>();
+        List<OptionGroup> groups = new ArrayList<>();
 
         for (var page : this.pages) {
+            OptionGroup.Builder group = null;
             for (var option : page.getOptions()) {
-                if (this.matchesQuery(option, needle)) {
-                    matches.add(option);
+                if (!this.matchesQuery(option, needle)) {
+                    continue;
                 }
+                if (group == null) {
+                    group = OptionGroup.createBuilder()
+                            .setId(OptionIdentifier.create(page.getId().getModId(), "search_results/" + page.getId().getPath()))
+                            .setName(page.getName());
+                }
+                group.add(option);
+            }
+            if (group != null) {
+                groups.add(group.build());
             }
         }
 
-        List<OptionGroup> groups;
+        return new OptionPage(OptionIdentifier.create("impetus", "search_results"), SEARCH_RESULTS_TITLE, groups);
+    }
 
-        if (matches.isEmpty()) {
-            groups = List.of();
-        } else {
-            var group = OptionGroup.createBuilder()
-                    .setId(OptionIdentifier.create("impetus", "search_results"));
-            matches.forEach(group::add);
-            groups = List.of(group.build());
+    // A static caption in the header row; the mod accent colour so it pairs with the sidebar headings
+    private static final class TitleWidget extends com.bdmajora.impetus.engine.impl.gui.widgets.AbstractWidget {
+        private final Dim2i dim;
+        private final TextComponent text;
+
+        TitleWidget(Dim2i dim, TextComponent text) {
+            this.dim = dim;
+            this.text = text;
         }
 
-        return new OptionPage(OptionIdentifier.create("impetus", "search_results"), SEARCH_RESULTS_TITLE, groups);
+        @Override
+        public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
+            drawContext.drawString(this.text, this.dim.x(), this.dim.getCenterY() - drawContext.lineHeight() / 2,
+                    drawContext.getModAccentColor("impetus"));
+        }
+
+        @Override
+        public boolean isMouseOver(double mouseX, double mouseY) {
+            return false;
+        }
     }
 
     // Case-insensitive match on name and tooltip

@@ -4,9 +4,8 @@ import com.bdmajora.impetus.api.OptionPageConstructionEvent;
 import com.bdmajora.impetus.api.options.OptionIdentifier;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Function;
-import java.util.stream.Stream;
 
 public class OptionPage {
     private final OptionIdentifier<Void> id;
@@ -19,7 +18,11 @@ public class OptionPage {
         this.name = name;
         this.groups = collectExtraGroups(groups);
 
-        this.options = this.groups.stream().flatMap(g -> g.getOptions().stream()).toList();
+        List<Option<?>> options = new ArrayList<>();
+        for (OptionGroup group : this.groups) {
+            options.addAll(group.getOptions());
+        }
+        this.options = options;
     }
 
     // Fires the construction event and appends whatever other mods add
@@ -27,7 +30,13 @@ public class OptionPage {
         OptionPageConstructionEvent event = new OptionPageConstructionEvent(this.id, this.name);
         OptionPageConstructionEvent.BUS.post(event);
         List<OptionGroup> extraGroups = event.getAdditionalGroups();
-        return extraGroups.isEmpty() ? groups : Stream.of(groups.stream(), extraGroups.stream()).flatMap(Function.identity()).toList();
+        if (extraGroups.isEmpty()) {
+            return groups;
+        }
+        List<OptionGroup> all = new ArrayList<>(groups.size() + extraGroups.size());
+        all.addAll(groups);
+        all.addAll(extraGroups);
+        return all;
     }
 
     // Page id

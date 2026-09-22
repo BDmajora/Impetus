@@ -8,6 +8,8 @@ public class NormI8 {
     private static final int X_COMPONENT_OFFSET = 0;
     private static final int Y_COMPONENT_OFFSET = 8;
     private static final int Z_COMPONENT_OFFSET = 16;
+    // The padding byte, which a tangent uses for its handedness
+    private static final int W_COMPONENT_OFFSET = 24;
 
     // the maximum value of a normal's vector component
     private static final float COMPONENT_RANGE = 127.0f;
@@ -29,6 +31,11 @@ public class NormI8 {
         return (normZ << Z_COMPONENT_OFFSET) | (normY << Y_COMPONENT_OFFSET) | (normX << X_COMPONENT_OFFSET);
     }
 
+    // Four-component form for tangents: xyz as a normal plus the handedness sign in the top byte, the same layout OptiFine's at_tangent expects
+    public static int pack(float x, float y, float z, float w) {
+        return pack(x, y, z) | (encode(w) << W_COMPONENT_OFFSET);
+    }
+
     // encodes a float in -1.0..1.0 as a normalised unsigned integer in 0..255, ready for graphics memory
     private static int encode(float comp) {
         // TODO: is the clamp necessary here? our inputs should always be normalized vector components
@@ -48,5 +55,10 @@ public class NormI8 {
     // unpacks the z component of the packed normal, denormalising it to a float in -1.0..1.0
     public static float unpackZ(int norm) {
         return ((byte) ((norm >> Z_COMPONENT_OFFSET) & 0xFF)) * NORM;
+    }
+
+    // unpacks the fourth component, the tangent handedness
+    public static float unpackW(int norm) {
+        return ((byte) ((norm >> W_COMPONENT_OFFSET) & 0xFF)) * NORM;
     }
 }

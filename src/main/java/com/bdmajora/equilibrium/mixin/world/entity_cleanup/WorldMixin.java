@@ -1,5 +1,6 @@
 package com.bdmajora.equilibrium.mixin.world.entity_cleanup;
 
+import net.minecraft.world.chunk.Chunk;
 import com.bdmajora.equilibrium.common.world.UnloadedEntityRemover;
 import net.minecraft.entity.Entity;
 import net.minecraft.tileentity.TileEntity;
@@ -37,7 +38,7 @@ public abstract class WorldMixin implements UnloadedEntityRemover {
     protected abstract boolean isChunkLoaded(int x, int z, boolean allowEmpty);
 
     @Shadow
-    public abstract net.minecraft.world.chunk.Chunk getChunk(int chunkX, int chunkZ);
+    public abstract Chunk getChunk(int chunkX, int chunkZ);
 
     @Shadow
     public abstract void onEntityRemoved(Entity entityIn);

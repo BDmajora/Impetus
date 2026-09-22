@@ -8,6 +8,9 @@ import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.entity.EntityLivingBase;
 import org.lwjgl.util.glu.Project;
 import org.spongepowered.asm.mixin.Final;
+import net.minecraft.client.particle.ParticleManager;
+import net.minecraft.entity.Entity;
+import com.bdmajora.impetus.umbra.pipeline.DeferredBlockOutline;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.Shadow;
@@ -100,21 +103,6 @@ public class EntityRendererMixin {
         }
     }
 
-    private static void impetus$setPhase(ProgramId phase) {
-        UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
-        if (pipeline != null) {
-            pipeline.setPhase(phase);
-        }
-    }
-
-    // Same, for a phase whose renderStage its ProgramId cannot imply: gbuffers_textured_lit carries both particles and translucent entities, so the call site supplies the stage
-    private static void impetus$setPhase(ProgramId phase, int renderStage) {
-        UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
-        if (pipeline != null) {
-            pipeline.setPhase(phase, renderStage);
-        }
-    }
-
     @Inject(method = "renderWorld", at = @At("HEAD"))
     private void impetus$beginShaderFrame(float partialTicks, long finishTimeNano, CallbackInfo ci) {
         UmbraRenderingPipeline pipeline = Umbra.beginFrame();
@@ -142,7 +130,7 @@ public class EntityRendererMixin {
     @Inject(method = "renderWorldPass",
             at = @At(value = "INVOKE_STRING", target = PROFILER_END_START, args = "ldc=sky"))
     private void impetus$phaseSky(int pass, float partialTicks, long finishTimeNano, CallbackInfo ci) {
-        impetus$setPhase(ProgramId.SkyBasic);
+        Umbra.setPhase(ProgramId.SkyBasic);
     }
 
     // --- Cloud ordering -------------------------------------------------------------------------------------------
@@ -157,34 +145,31 @@ public class EntityRendererMixin {
             return Double.NEGATIVE_INFINITY;
         }
 
-        switch (Extras.options().render.cloudTranslucency) {
-            case ALWAYS:
-                return Double.NEGATIVE_INFINITY;
-            case NEVER:
-                return Double.POSITIVE_INFINITY;
-            default:
-                return CloudPassState.cloudHeight((float) cloudLayer);
-        }
+        return switch (Extras.options().render.cloudTranslucency) {
+            case ALWAYS -> Double.NEGATIVE_INFINITY;
+            case NEVER -> Double.POSITIVE_INFINITY;
+            default -> CloudPassState.cloudHeight((float) cloudLayer);
+        };
     }
 
     // Terrain draws next: reset to the plain fixed-function mask and program 0 so a missing terrain override writes only colortex0 instead of smearing through the last sky program's DRAWBUFFERS
     @Inject(method = "renderWorldPass",
             at = @At(value = "INVOKE_STRING", target = PROFILER_END_START, args = "ldc=terrain"))
     private void impetus$phaseTerrain(int pass, float partialTicks, long finishTimeNano, CallbackInfo ci) {
-        impetus$setPhase(null);
+        Umbra.setPhase(null);
     }
 
     // Matches both "entities" sections (the main one and the post-translucent leftovers).
     @Inject(method = "renderWorldPass",
             at = @At(value = "INVOKE_STRING", target = PROFILER_END_START, args = "ldc=entities"))
     private void impetus$phaseEntities(int pass, float partialTicks, long finishTimeNano, CallbackInfo ci) {
-        impetus$setPhase(ProgramId.Entities);
+        Umbra.setPhase(ProgramId.Entities);
     }
 
     @Inject(method = "renderWorldPass",
             at = @At(value = "INVOKE_STRING", target = PROFILER_END_START, args = "ldc=destroyProgress"))
     private void impetus$phaseBlockDamage(int pass, float partialTicks, long finishTimeNano, CallbackInfo ci) {
-        impetus$setPhase(ProgramId.DamagedBlock);
+        Umbra.setPhase(ProgramId.DamagedBlock);
     }
 
     @Inject(method = "renderWorldPass", at = {
@@ -192,7 +177,7 @@ public class EntityRendererMixin {
             @At(value = "INVOKE_STRING", target = PROFILER_END_START, args = "ldc=particles")})
     private void impetus$phaseParticles(int pass, float partialTicks, long finishTimeNano, CallbackInfo ci) {
         // Umbra resolves particles as gbuffers_particles -> gbuffers_textured_lit, so packs shipping the modern program get it and the rest land where they always did (OptiFine uses plain gbuffers_textured unless "litParticles")
-        impetus$setPhase(ProgramId.Particles);
+        Umbra.setPhase(ProgramId.Particles);
     }
 
     // particles.ordering: vanilla already draws particles after the "translucent" anchor where the deferred chain runs, which is Umbra's "after" and default; only "before" needs the vanilla draw suppressed and re-issued ahead of the chain, and "mixed" resolves to "after" since 1.12.2 cannot split them
@@ -201,8 +186,8 @@ public class EntityRendererMixin {
                     target = "Lnet/minecraft/client/particle/ParticleManager;renderParticles"
                             + "(Lnet/minecraft/entity/Entity;F)V"),
             require = 0)
-    private void impetus$orderParticles(net.minecraft.client.particle.ParticleManager manager,
-                                        net.minecraft.entity.Entity entity, float partialTicks) {
+    private void impetus$orderParticles(ParticleManager manager,
+                                        Entity entity, float partialTicks) {
         if (impetus$particlesDrawnEarly) {
             impetus$particlesDrawnEarly = false;
             return;
@@ -216,18 +201,18 @@ public class EntityRendererMixin {
     @Inject(method = "renderWorldPass",
             at = @At(value = "INVOKE_STRING", target = PROFILER_END_START, args = "ldc=weather"))
     private void impetus$phaseWeather(int pass, float partialTicks, long finishTimeNano, CallbackInfo ci) {
-        impetus$setPhase(ProgramId.Weather);
+        Umbra.setPhase(ProgramId.Weather);
         // `rain.depth`: vanilla draws precipitation with depth writes off, and a pack wanting it in depthtex asks for them back; no restore needed since vanilla calls depthMask(true) right after renderRainSnow
         UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
         if (pipeline != null && pipeline.shouldWriteRainAndSnowToDepthBuffer()) {
-            net.minecraft.client.renderer.GlStateManager.depthMask(true);
+            GlStateManager.depthMask(true);
         }
     }
 
     @Inject(method = "renderWorldPass",
             at = @At(value = "INVOKE_STRING", target = PROFILER_END_START, args = "ldc=forge_render_last"))
     private void impetus$phaseRenderLast(int pass, float partialTicks, long finishTimeNano, CallbackInfo ci) {
-        impetus$setPhase(null);
+        Umbra.setPhase(null);
     }
 
     // --- Mid-frame pipeline stages ---------------------------------------------------------------------------------
@@ -254,9 +239,9 @@ public class EntityRendererMixin {
             }
             // particles.ordering = before: draw them into the pre-deferred gbuffer so the deferred chain lights them.
             if ("before".equals(pipeline.getParticleOrdering())) {
-                net.minecraft.entity.Entity viewEntity = this.mc.getRenderViewEntity();
+                Entity viewEntity = this.mc.getRenderViewEntity();
                 if (viewEntity != null) {
-                    impetus$setPhase(ProgramId.Particles);
+                    Umbra.setPhase(ProgramId.Particles);
                     this.mc.effectRenderer.renderParticles(viewEntity, partialTicks);
                     this.impetus$particlesDrawnEarly = true;
                 }
@@ -281,7 +266,7 @@ public class EntityRendererMixin {
             }
             pipeline.finishWorldRendering();
             // The selection box for packs without gbuffers_line was skipped in the world pass and lands here, darkening the finished image rather than albedo the composite relights (see DeferredBlockOutline)
-            com.bdmajora.impetus.umbra.pipeline.DeferredBlockOutline.drawIfPending();
+            DeferredBlockOutline.drawIfPending();
         }
     }
 
@@ -317,8 +302,7 @@ public class EntityRendererMixin {
                 this.applyBobbing(partialTicks);
             }
 
-            boolean sleeping = this.mc.getRenderViewEntity() instanceof EntityLivingBase
-                    && ((EntityLivingBase) this.mc.getRenderViewEntity()).isPlayerSleeping();
+            boolean sleeping = this.impetus$isViewEntitySleeping();
             boolean renderVanillaHand = !fireForgeHook
                     || !ForgeHooksClient.renderFirstPersonHand(this.mc.renderGlobal, partialTicks, pass);
             if (renderVanillaHand && this.mc.gameSettings.thirdPersonView == 0 && !sleeping
@@ -343,8 +327,7 @@ public class EntityRendererMixin {
         }
 
         this.impetus$setupHandProjection(partialTicks, pass);
-        boolean sleeping = this.mc.getRenderViewEntity() instanceof EntityLivingBase
-                && ((EntityLivingBase) this.mc.getRenderViewEntity()).isPlayerSleeping();
+        boolean sleeping = this.impetus$isViewEntitySleeping();
         this.disableLightmap();
         if (this.mc.gameSettings.thirdPersonView == 0 && !sleeping) {
             this.itemRenderer.renderOverlays(partialTicks);
@@ -353,6 +336,12 @@ public class EntityRendererMixin {
         if (this.mc.gameSettings.viewBobbing) {
             this.applyBobbing(partialTicks);
         }
+    }
+
+    // Vanilla hides the first-person hand and overlays while the view entity is in bed
+    private boolean impetus$isViewEntitySleeping() {
+        Entity viewEntity = this.mc.getRenderViewEntity();
+        return viewEntity instanceof EntityLivingBase living && living.isPlayerSleeping();
     }
 
     private void impetus$setupHandProjection(float partialTicks, int pass) {
@@ -380,6 +369,6 @@ public class EntityRendererMixin {
             pipeline.finishWorldRendering();
         }
         // Safety net, the frame's last word: if the composite anchor never ran, drop the pending outline rather than replay a stale capture with the wrong matrices next frame
-        com.bdmajora.impetus.umbra.pipeline.DeferredBlockOutline.discard();
+        DeferredBlockOutline.discard();
     }
 }

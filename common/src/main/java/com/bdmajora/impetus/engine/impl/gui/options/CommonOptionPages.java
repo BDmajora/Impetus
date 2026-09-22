@@ -28,11 +28,6 @@ public class CommonOptionPages {
         return readOnlyOption(id, name, tooltip, value, false);
     }
 
-    private static OptionImpl<ReadOnlyState, String> displayOnlyOption(OptionIdentifier<Void> id, TextComponent name,
-                                                                       TextComponent tooltip, String value) {
-        return readOnlyOption(id, name, tooltip, value, true);
-    }
-
     private static OptionImpl<ReadOnlyState, String> readOnlyOption(OptionIdentifier<Void> id, TextComponent name,
                                                                     TextComponent tooltip, String value, boolean enabled) {
         return OptionImpl.createBuilder(String.class, readOnlyOpts)

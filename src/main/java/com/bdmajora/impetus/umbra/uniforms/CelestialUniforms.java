@@ -8,7 +8,6 @@ import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector3d;
 import org.joml.Vector4f;
-import com.bdmajora.impetus.umbra.gl.program.ProgramUniforms;
 import com.bdmajora.impetus.umbra.gl.uniform.UniformCollector;
 import com.bdmajora.impetus.umbra.gl.uniform.UniformUpdateFrequency;
 
@@ -69,30 +68,35 @@ public final class CelestialUniforms {
         return new Vector3f(position.x, position.y, position.z);
     }
 
+    // Render-thread scratch for the per-frame uniform suppliers below, whose callers copy the answer out before the next call; the world-space shadow direction above keeps its own allocation since the shadow frustum retains it
+    private static final Matrix4f SCRATCH_MATRIX = new Matrix4f();
+    private static final Vector4f SCRATCH_4 = new Vector4f();
+    private static final Vector3f SCRATCH_3 = new Vector3f();
+
     // Rotates a body by the celestial angle and sun path into view space
     private static Vector3f getCelestialPosition(float y) {
-        Vector4f position = new Vector4f(0.0f, y, 0.0f, 0.0f);
-        Matrix4f celestial = new Matrix4f(CapturedRenderingState.INSTANCE.getGbufferModelView());
+        Vector4f position = SCRATCH_4.set(0.0f, y, 0.0f, 0.0f);
+        Matrix4f celestial = SCRATCH_MATRIX.set(CapturedRenderingState.INSTANCE.getGbufferModelView());
         // renderSky's transform plus the pack's sunPathRotation, which Umbra applies as a Z-rotation between the fixed -90 Y-rotation and the time-of-day X-rotation
         celestial.rotateY((float) Math.toRadians(-90.0));
         celestial.rotateZ((float) Math.toRadians(sunPathRotation));
         celestial.rotateX((float) Math.toRadians(getCelestialAngle() * 360.0f));
         celestial.transform(position);
-        return new Vector3f(position.x, position.y, position.z);
+        return SCRATCH_3.set(position.x, position.y, position.z);
     }
 
     // Eye-space world-up, gbufferModelView * (0, 100, 0, 0) (OptiFine's setUpPosition); w = 0 makes it a direction so translation is ignored
     public static Vector3f getUpPosition() {
-        Vector4f up = new Vector4f(0.0f, 100.0f, 0.0f, 0.0f);
-        new Matrix4f(CapturedRenderingState.INSTANCE.getGbufferModelView()).transform(up);
-        return new Vector3f(up.x, up.y, up.z);
+        Vector4f up = SCRATCH_4.set(0.0f, 100.0f, 0.0f, 0.0f);
+        CapturedRenderingState.INSTANCE.getGbufferModelView().transform(up);
+        return SCRATCH_3.set(up.x, up.y, up.z);
     }
 
     // Always zero; no End flash on 1.12.2
     private static Vector3f getEndFlashPosition() {
         World world = Minecraft.getMinecraft().world;
         if (world == null || world.provider.getDimension() != 1) {
-            return new Vector3f();
+            return SCRATCH_3.zero();
         }
 
         float tickDelta = CapturedRenderingState.INSTANCE.getTickDelta();
@@ -102,13 +106,13 @@ public final class CelestialUniforms {
                 double x = entity.lastTickPosX + (entity.posX - entity.lastTickPosX) * tickDelta - camera.x;
                 double y = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * tickDelta - camera.y;
                 double z = entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * tickDelta - camera.z;
-                Vector4f position = new Vector4f((float) x, (float) y, (float) z, 1.0f);
+                Vector4f position = SCRATCH_4.set((float) x, (float) y, (float) z, 1.0f);
                 // Camera-relative input, so the camera-centred matrix, not the raw feet-relative capture
-                new Matrix4f(CapturedRenderingState.INSTANCE.getGbufferModelViewCameraCentered()).transform(position);
-                return new Vector3f(position.x, position.y, position.z);
+                CapturedRenderingState.INSTANCE.getGbufferModelViewCameraCentered().transform(position);
+                return SCRATCH_3.set(position.x, position.y, position.z);
             }
         }
-        return new Vector3f();
+        return SCRATCH_3.zero();
     }
 
     // World celestial angle, 0..1

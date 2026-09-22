@@ -14,29 +14,12 @@ public class EventHandlerRegistrar<T extends ImpetusEvent> {
         handlerList.add(listener);
     }
 
-    // Returns true if the event was cancelable and got canceled by a listener
+    // Returns true if the event was cancelable and got canceled by a listener; every listener still runs, since cancellation is advisory to the poster, not a short-circuit
     public boolean post(T event) {
-        boolean canceled = false;
-
-        // Skip doing work if the handler list is empty
-        if(!handlerList.isEmpty()) {
-            boolean isCancelable = event.isCancelable();
-            for(Handler<T> handler : handlerList) {
-                handler.acceptEvent(event);
-                if(isCancelable && event.isCanceled()) {
-                    canceled = true;
-                }
-            }
+        for (Handler<T> handler : handlerList) {
+            handler.acceptEvent(event);
         }
-
-        // Dispatch to the platform event bus as well (currently only used on Forge)
-        canceled |= postPlatformSpecificEvent(event);
-        return canceled;
-    }
-
-    // Also posts to Forge's bus when running there
-    private static <T extends ImpetusEvent> boolean postPlatformSpecificEvent(T event) {
-        return false;
+        return event.isCancelable() && event.isCanceled();
     }
 
     @FunctionalInterface

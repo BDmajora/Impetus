@@ -43,14 +43,12 @@ public final class SignBakedModel extends BakedEntityModel {
 
     // The wall branch: spin to the wall, then step back and down onto it
     private List<BakedQuad> bakeWall(EnumFacing facing) {
-        float degrees = 0.0F;
-        if (facing == EnumFacing.NORTH) {
-            degrees = 180.0F;
-        } else if (facing == EnumFacing.WEST) {
-            degrees = 90.0F;
-        } else if (facing == EnumFacing.EAST) {
-            degrees = -90.0F;
-        }
+        float degrees = switch (facing) {
+            case NORTH -> 180.0F;
+            case WEST -> 90.0F;
+            case EAST -> -90.0F;
+            default -> 0.0F;
+        };
         Matrix4f matrix = new Matrix4f();
         matrix.translate(0.5F, 0.5F, 0.5F);
         matrix.rotateY((float) Math.toRadians(-degrees));

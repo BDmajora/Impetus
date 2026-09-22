@@ -73,7 +73,7 @@ public abstract class RenderSectionManager {
     private final int renderDistance;
 
     protected @Nullable Vector3ic lastCameraPosition;
-    protected Vector3d cameraPosition = new Vector3d();
+    protected final Vector3d cameraPosition = new Vector3d();
 
     // Maps translucent geometry planes to their owning sections so camera movement re-sorts only where draw order can actually have changed
     private final TranslucencyTriggerIndex translucencyTriggerIndex = new TranslucencyTriggerIndex();
@@ -81,8 +81,9 @@ public abstract class RenderSectionManager {
     // Dynamic sections without usable plane data (normal-count overflow) keep the legacy coarse movement-based re-sort heuristic
     private final ReferenceOpenHashSet<RenderSection> coarseTriggeredSections = new ReferenceOpenHashSet<>();
 
-    // Precise camera position of the previous trigger evaluation (null until the first frame).
-    private @Nullable Vector3d lastTriggerCameraPosition;
+    // The camera position the trigger planes were last tested from; unset until the first camera-pass update
+    private final Vector3d lastTriggerCameraPosition = new Vector3d();
+    private boolean hasTriggerCameraPosition;
 
     // Movement (squared) beyond which we skip plane tests and re-sort every dynamic section (teleports).
     private static final double TELEPORT_DISTANCE_SQ = 16.0 * 16.0;
@@ -111,14 +112,6 @@ public abstract class RenderSectionManager {
     @Getter
     protected final RenderSectionMetricsTracker sectionMetricsTracker = new RenderSectionMetricsTracker();
 
-    @Deprecated
-    public RenderSectionManager(RenderPassConfiguration<?> configuration, Supplier<ChunkBuildContext> contextSupplier,
-                                BiFunction<RenderDevice, RenderPassConfiguration<?>, ChunkRenderer> chunkRenderer,
-                                int renderDistance, CommandList commandList, int minSection, int maxSection,
-                                int requestedThreads) {
-        this(configuration, contextSupplier, chunkRenderer, renderDistance, commandList, minSection, maxSection, requestedThreads, false);
-    }
-
     public RenderSectionManager(RenderPassConfiguration<?> configuration, Supplier<ChunkBuildContext> contextSupplier,
                                 BiFunction<RenderDevice, RenderPassConfiguration<?>, ChunkRenderer> chunkRenderer,
                                 int renderDistance, CommandList commandList, int minSection, int maxSection,
@@ -131,7 +124,7 @@ public abstract class RenderSectionManager {
 
         this.renderDistance = renderDistance;
 
-        this.regions = new RenderRegionManager(commandList, this.renderPassConfiguration);
+        this.regions = new RenderRegionManager(commandList);
 
         this.minSection = minSection;
         this.maxSection = maxSection;
@@ -194,7 +187,7 @@ public abstract class RenderSectionManager {
 
         this.lastCameraPosition = positionedViewport.getBlockCoord();
         var transform = positionedViewport.getTransform();
-        this.cameraPosition = new Vector3d(transform.x, transform.y, transform.z);
+        this.cameraPosition.set(transform.x, transform.y, transform.z);
 
         this.createTerrainRenderList(positionedViewport, frame, spectator);
 
@@ -208,10 +201,8 @@ public abstract class RenderSectionManager {
         if(lastCameraPosition == null)
             return;
 
-        var previous = this.lastTriggerCameraPosition;
-        this.lastTriggerCameraPosition = new Vector3d(this.cameraPosition);
-
-        if (previous != null && !previous.equals(this.cameraPosition)) {
+        Vector3d previous = this.lastTriggerCameraPosition;
+        if (this.hasTriggerCameraPosition && !previous.equals(this.cameraPosition)) {
             if (previous.distanceSquared(this.cameraPosition) > TELEPORT_DISTANCE_SQ) {
                 // Large jumps (teleports, dimension-ish moves) cross too many planes to be worth testing.
                 this.translucencyTriggerIndex.forEachSection(section -> section.pendingTriggeredSort = true);
@@ -222,6 +213,8 @@ public abstract class RenderSectionManager {
                         section -> section.pendingTriggeredSort = true);
             }
         }
+        previous.set(this.cameraPosition);
+        this.hasTriggerCameraPosition = true;
 
         int camSectionX = PositionUtil.posToSectionCoord(cameraPosition.x);
         int camSectionY = PositionUtil.posToSectionCoord(cameraPosition.y);
@@ -232,15 +225,15 @@ public abstract class RenderSectionManager {
 
     // Queues a sort task for every section the camera's move invalidated
     private void scheduleTranslucencyUpdates(int camSectionX, int camSectionY, int camSectionZ) {
+        if (!this.hasTranslucencySortedSections()) {
+            return;
+        }
         var renderListManager = this.getCurrentRenderListManager();
         var rebuildLists = renderListManager.getRebuildLists().byUpdateType();
         var sortRebuildList = rebuildLists.get(ChunkUpdateType.SORT);
         var importantSortRebuildList = rebuildLists.get(ChunkUpdateType.IMPORTANT_SORT);
         var allowImportant = allowImportantRebuilds();
         var translucentPass = this.renderPassConfiguration.defaultTranslucentMaterial().pass;
-        if (!this.hasTranslucencySortedSections()) {
-            return;
-        }
         for (Iterator<ChunkRenderList> it = renderListManager.getRenderLists().iterator(); it.hasNext(); ) {
             ChunkRenderList entry = it.next();
             var region = entry.getRegion();
@@ -338,7 +331,7 @@ public abstract class RenderSectionManager {
 
     // Whether any section needs dynamic sorting at all
     private boolean hasTranslucencySortedSections() {
-        return this.getCurrentRenderListManager().getRenderLists().getPasses().stream().anyMatch(TerrainRenderPass::isSorted);
+        return this.getCurrentRenderListManager().getRenderLists().hasSortedPass();
     }
 
     protected abstract boolean isSectionVisuallyEmpty(int x, int y, int z);
@@ -370,7 +363,6 @@ public abstract class RenderSectionManager {
         } else {
             renderSection.setPendingUpdate(ChunkUpdateType.INITIAL_BUILD);
         }
-
 
         this.markGraphDirty();
     }
@@ -417,7 +409,8 @@ public abstract class RenderSectionManager {
         RenderDevice device = RenderDevice.INSTANCE;
         CommandList commandList = device.createCommandList();
 
-        boolean shouldProfile = isDebugInfoShown();
+        // Not in the shadow pass: it draws the same passes through this method, and sharing one timer per pass between the two enqueued two query pairs a frame while updateTime dequeued one, so the in-flight queue (and its GL query objects) grew by a pair every frame F3 was open
+        boolean shouldProfile = isDebugInfoShown() && !isInShadowPass();
 
         TimerQueryManager timer = null;
 
@@ -584,7 +577,7 @@ public abstract class RenderSectionManager {
                 sortStates.put(entry.getKey(), Objects.requireNonNull(entry.getValue().sortState()).compactForStorage());
             }
         }
-        render.setTranslucencySortStates(sortStates.isEmpty() ? Collections.emptyMap() : sortStates);
+        render.setTranslucencySortStates(sortStates);
 
         this.updateTranslucencyTriggerRegistration(render, sortStates);
     }
@@ -618,17 +611,17 @@ public abstract class RenderSectionManager {
 
         render.pendingTriggeredSort = false;
 
-        if (dynamic && !missingPlanes && planes != null) {
+        boolean indexed = dynamic && !missingPlanes && planes != null;
+        if (indexed) {
             this.translucencyTriggerIndex.update(render, planes);
-            this.coarseTriggeredSections.remove(render);
         } else {
             this.translucencyTriggerIndex.remove(render);
-
-            if (dynamic) {
-                this.coarseTriggeredSections.add(render);
-            } else {
-                this.coarseTriggeredSections.remove(render);
-            }
+        }
+        // A dynamic section the index cannot cover falls back to the coarse movement heuristic
+        if (dynamic && !indexed) {
+            this.coarseTriggeredSections.add(render);
+        } else {
+            this.coarseTriggeredSections.remove(render);
         }
     }
 
@@ -655,7 +648,7 @@ public abstract class RenderSectionManager {
     }
 
     // Drops results for sections rebuilt again since, keeping only the newest
-    private static List<ChunkJobResult.Success<? extends ChunkTaskOutput>> filterChunkBuildResults(ArrayList<ChunkJobResult.Success<? extends ChunkTaskOutput>> outputs) {
+    private static Collection<ChunkJobResult.Success<? extends ChunkTaskOutput>> filterChunkBuildResults(ArrayList<ChunkJobResult.Success<? extends ChunkTaskOutput>> outputs) {
         var map = new Reference2ReferenceLinkedOpenHashMap<RenderSection, ChunkJobResult.Success<? extends ChunkTaskOutput>>();
 
         for (var holder : outputs) {
@@ -672,7 +665,7 @@ public abstract class RenderSectionManager {
             }
         }
 
-        return new ArrayList<>(map.values());
+        return map.values();
     }
 
     // Drains the builder's finished jobs, aborting failures
@@ -751,7 +744,7 @@ public abstract class RenderSectionManager {
     public ChunkBuilderSortTask createSortTask(RenderSection render, int frame) {
         if(!render.isNeedsDynamicTranslucencySorting())
             return null;
-        return new ChunkBuilderSortTask(render, (float)cameraPosition.x, (float)cameraPosition.y, (float)cameraPosition.z, frame, render.getTranslucencySortStates(), this.renderPassConfiguration);
+        return new ChunkBuilderSortTask(render, (float)cameraPosition.x, (float)cameraPosition.y, (float)cameraPosition.z, frame, render.getTranslucencySortStates());
     }
 
     // Forces a walk next frame
@@ -936,47 +929,6 @@ public abstract class RenderSectionManager {
         return Collections.unmodifiableCollection(this.sectionByPosition.values());
     }
 
-    // Translucency sort stats
-    private Collection<String> getSortingStrings() {
-        List<String> list = new ArrayList<>();
-
-        int[] sectionCounts = new int[TranslucentQuadAnalyzer.Level.VALUES.length];
-
-        for (Iterator<ChunkRenderList> it = this.getCurrentRenderListManager().getRenderLists().iterator(); it.hasNext(); ) {
-            var renderList = it.next();
-            var region = renderList.getRegion();
-            var listIter = renderList.sectionsWithGeometryIterator(false);
-            if(listIter != null) {
-                while(listIter.hasNext()) {
-                    RenderSection section = region.getSection(listIter.nextByteAsInt());
-                    // Do not count sections without translucent data
-                    if(section == null || section.getTranslucencySortStates().isEmpty()) {
-                        continue;
-                    }
-
-                    sectionCounts[section.getHighestSortingLevel().ordinal()]++;
-                }
-            }
-        }
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("Sorting: ");
-        TranslucentQuadAnalyzer.Level[] values = TranslucentQuadAnalyzer.Level.VALUES;
-        for (int i = 0; i < values.length; i++) {
-            TranslucentQuadAnalyzer.Level level = values[i];
-            sb.append(level.name());
-            sb.append('=');
-            sb.append(sectionCounts[level.ordinal()]);
-            if((i + 1) < values.length) {
-                sb.append(", ");
-            }
-        }
-
-        list.add(sb.toString());
-
-        return list;
-    }
-
     // GPU time per pass from the timer queries
     private Object2LongMap<TerrainRenderPass> computeRenderPassTimingsMap() {
         Object2LongOpenHashMap<TerrainRenderPass> map = new Object2LongOpenHashMap<>();
@@ -1059,7 +1011,7 @@ public abstract class RenderSectionManager {
             list.add(entry.getKey().name() + " - " + entry.getIntValue() + " sections, " + time);
         }
 
-        if (renderListManager.getRenderLists().getPasses().stream().anyMatch(TerrainRenderPass::isSorted)) {
+        if (renderListManager.getRenderLists().hasSortedPass()) {
             list.add(debugStats.getSortingString());
         }
 
@@ -1098,10 +1050,8 @@ public abstract class RenderSectionManager {
 
     // Debug switch for one pass
     public void toggleRenderingForTerrainPass(TerrainRenderPass pass) {
-        if(this.disabledRenderPasses.contains(pass)) {
+        if (!this.disabledRenderPasses.add(pass)) {
             this.disabledRenderPasses.remove(pass);
-        } else {
-            this.disabledRenderPasses.add(pass);
         }
     }
 

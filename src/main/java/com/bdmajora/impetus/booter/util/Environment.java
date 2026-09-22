@@ -27,7 +27,6 @@ public class Environment {
     }
 
     static {
-        // List<ITweaker> tweaks = GlobalProperties.get(Blackboard.TWEAKS_KEY);
         List<ITweaker> tweaks = (List<ITweaker>) Launch.blackboard.get("Tweaks");
         side = tweaks.get(0).getClass().getName().endsWith("FMLServerTweaker") ? "SERVER" : "CLIENT";
 

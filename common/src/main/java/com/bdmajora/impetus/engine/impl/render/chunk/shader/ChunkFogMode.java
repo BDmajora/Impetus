@@ -1,7 +1,6 @@
 package com.bdmajora.impetus.engine.impl.render.chunk.shader;
 
 import com.bdmajora.impetus.lwjgl.GL20;
-import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 import com.bdmajora.impetus.engine.impl.gl.shader.ShaderBindingContext;
 
@@ -34,16 +33,11 @@ public enum ChunkFogMode implements ChunkShaderComponent.Factory<ChunkShaderFogC
 
     // GL fog mode constant to enum
     public static ChunkFogMode fromGLMode(int mode) {
-        switch (mode) {
-            case 0:
-                return ChunkFogMode.NONE;
-            case GL20.GL_EXP2:
-            case GL20.GL_EXP:
-                return ChunkFogMode.EXP2;
-            case GL20.GL_LINEAR:
-                return ChunkFogMode.SMOOTH;
-            default:
-                throw new UnsupportedOperationException("Unknown fog mode: " + mode);
-        }
+        return switch (mode) {
+            case 0 -> NONE;
+            case GL20.GL_EXP2, GL20.GL_EXP -> EXP2;
+            case GL20.GL_LINEAR -> SMOOTH;
+            default -> throw new UnsupportedOperationException("Unknown fog mode: " + mode);
+        };
     }
 }

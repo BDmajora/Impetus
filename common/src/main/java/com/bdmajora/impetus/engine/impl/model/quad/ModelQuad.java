@@ -3,7 +3,7 @@ package com.bdmajora.impetus.engine.impl.model.quad;
 import static com.bdmajora.impetus.engine.impl.util.ModelQuadUtil.*;
 
 import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFacing;
-import com.bdmajora.impetus.engine.impl.util.ModelQuadUtil;
+import com.bdmajora.impetus.engine.impl.util.QuadUtil;
 
 // On-heap scratch implementation of ModelQuadViewMutable for holding quad vertex data
 public class ModelQuad implements ModelQuadViewMutable {
@@ -161,7 +161,7 @@ public class ModelQuad implements ModelQuadViewMutable {
     public int getComputedFaceNormal() {
         int n = this.normal;
         if (n == 0) {
-            this.normal = n = ModelQuadUtil.calculateNormal(this);
+            this.normal = n = QuadUtil.calculateNormal(this);
         }
         return n;
     }
@@ -169,7 +169,7 @@ public class ModelQuad implements ModelQuadViewMutable {
     // Derived from the computed normal
     @Override
     public ModelQuadFacing getNormalFace() {
-        return ModelQuadUtil.findNormalFace(getComputedFaceNormal());
+        return QuadUtil.findNormalFace(getComputedFaceNormal());
     }
 
     // Lazily populated on first read

@@ -9,10 +9,7 @@ import com.bdmajora.impetus.engine.impl.gl.device.CommandList;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.LinkedList;
 import java.util.List;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 public class GlBufferArena {
     static final boolean CHECK_ASSERTIONS = false;
@@ -164,18 +161,6 @@ public class GlBufferArena {
         return used;
     }
 
-    // Bytes in live segments
-    @Deprecated
-    public int getDeviceUsedMemory() {
-        return this.used * this.stride;
-    }
-
-    // Buffer capacity
-    @Deprecated
-    public int getDeviceAllocatedMemory() {
-        return this.capacity * this.stride;
-    }
-
     // Long form
     public long getDeviceUsedMemoryL() {
         return (long)this.used * this.stride;
@@ -222,7 +207,7 @@ public class GlBufferArena {
         return result;
     }
 
-    // First-fit walk of the free list
+    // Best-fit walk of the whole segment list; an exact match returns immediately
     private GlBufferSegment findFree(int size) {
         GlBufferSegment entry = this.head;
         GlBufferSegment best = null;
@@ -290,13 +275,10 @@ public class GlBufferArena {
         return this.arenaBuffer;
     }
 
-    // Allocates and uploads each pending buffer, growing the arena when it fills; true if it grew
-    public boolean upload(CommandList commandList, Stream<PendingUpload> stream) {
+    // Allocates and uploads each pending buffer, growing the arena when it fills; true if it grew; the queue is consumed (emptied) by the call
+    public boolean upload(CommandList commandList, List<PendingUpload> queue) {
         // Record the buffer object first so a re-allocation during the upload can be detected and reported through the return flag
         GlBuffer buffer = this.arenaBuffer;
-
-        // A linked list is used as we'll be randomly removing elements and want O(1) performance
-        List<PendingUpload> queue = stream.collect(Collectors.toCollection(LinkedList::new));
 
         // Try to upload all of the data into free segments first
         this.tryUploads(commandList, queue);
@@ -304,9 +286,11 @@ public class GlBufferArena {
         // If we weren't able to upload some buffers, they will have been left behind in the queue
         if (!queue.isEmpty()) {
             // Calculate the amount of memory needed for the remaining uploads
-            int remainingElements = (int)(queue.stream()
-                    .mapToLong(upload -> upload.getDataBuffer().getLength())
-                    .sum() / this.stride);
+            long remainingBytes = 0L;
+            for (PendingUpload upload : queue) {
+                remainingBytes += upload.getDataBuffer().getLength();
+            }
+            int remainingElements = (int) (remainingBytes / this.stride);
 
             // Grow the arena for the remaining uploads; the re-allocation compacts, leaving one continuous free segment
             this.ensureCapacity(commandList, remainingElements);

@@ -57,8 +57,8 @@ public class SparseBindlessBuffer implements DeviceBuffer {
 
     // Commits every page the byte range touches, taking a reference on each
     public void ensureCommitted(long offset, long length) {
-        int firstPage = (int) (offset / PAGE_SIZE);
-        int lastPage = (int) ((offset + length + PAGE_SIZE - 1) / PAGE_SIZE);
+        int firstPage = firstPage(offset);
+        int lastPage = pageEnd(offset, length);
 
         commit(firstPage, lastPage - firstPage, true);
 
@@ -69,8 +69,8 @@ public class SparseBindlessBuffer implements DeviceBuffer {
 
     // Drops a reference on every page the range touches, releasing the ones that hit zero
     public void release(long offset, long length) {
-        int firstPage = (int) (offset / PAGE_SIZE);
-        int lastPage = (int) ((offset + length + PAGE_SIZE - 1) / PAGE_SIZE);
+        int firstPage = firstPage(offset);
+        int lastPage = pageEnd(offset, length);
 
         for (int page = firstPage; page < lastPage; page++) {
             int remaining = this.pageRefCounts.get(page) - 1;
@@ -82,6 +82,16 @@ public class SparseBindlessBuffer implements DeviceBuffer {
                 commit(page, 1, false);
             }
         }
+    }
+
+    // Page holding a byte offset
+    private static int firstPage(long offset) {
+        return (int) (offset / PAGE_SIZE);
+    }
+
+    // One past the last page a byte range touches
+    private static int pageEnd(long offset, long length) {
+        return (int) ((offset + length + PAGE_SIZE - 1) / PAGE_SIZE);
     }
 
     // Physically resident pages, i.e. what this buffer actually costs in VRAM regardless of its address space

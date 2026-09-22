@@ -1,5 +1,11 @@
 package com.bdmajora.impetus.umbra.gl.shader;
 
+import com.bdmajora.impetus.umbra.compat.dh.DhCompat;
+import com.bdmajora.impetus.umbra.features.FeatureFlags;
+import com.bdmajora.impetus.umbra.pbr.TextureFormatLoader;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -10,14 +16,14 @@ public final class ShaderMacros {
     public static final int MC_VERSION = 11202;
 
     // Programs forced to compile as plain OptiFine 1.12.2 (IS_IRIS/IRIS_VERSION withheld) so they take their authored path; only the manual -Dimpetus.umbra.legacyPrograms override, empty by default, since setPackLegacyPrograms detects pairings like Sildur's gbuffers_water/composite1 automatically
-    private static final java.util.Set<String> FORCED_LEGACY_PROGRAMS = parseLegacyPrograms();
+    private static final Set<String> FORCED_LEGACY_PROGRAMS = parseLegacyPrograms();
 
     // Programs the loaded pack itself marked as having an authored pre-Umbra path (see ShaderPack.detectLegacyPrograms); replaced on every pack load
-    private static volatile java.util.Set<String> packLegacyPrograms = java.util.Collections.emptySet();
+    private static volatile Set<String> packLegacyPrograms = Collections.emptySet();
 
     // Installs the pack-detected legacy program list, once per pack load before any program compiles so the terrain and composite paths see the same set
-    public static void setPackLegacyPrograms(java.util.Set<String> names) {
-        java.util.Set<String> lowered = new java.util.HashSet<>();
+    public static void setPackLegacyPrograms(Set<String> names) {
+        Set<String> lowered = new HashSet<>();
         for (String name : names) {
             lowered.add(name.toLowerCase(Locale.ROOT));
         }
@@ -28,9 +34,9 @@ public final class ShaderMacros {
     }
 
     // Program names the pack marks as legacy, which get the 120-era macro set
-    private static java.util.Set<String> parseLegacyPrograms() {
+    private static Set<String> parseLegacyPrograms() {
         String value = System.getProperty("impetus.umbra.legacyPrograms", "");
-        java.util.Set<String> names = new java.util.HashSet<>();
+        Set<String> names = new HashSet<>();
         for (String name : value.split(",")) {
             String trimmed = name.trim();
             if (!trimmed.isEmpty()) {
@@ -67,13 +73,13 @@ public final class ShaderMacros {
         macros.put("MC_NORMAL_MAP", "");
         macros.put("MC_SPECULAR_MAP", "");
         // Resource-pack-declared PBR texture format (optifine/texture.properties `format=`), e.g. MC_TEXTURE_FORMAT_LAB_PBR + _1_3; Umbra parity
-        com.bdmajora.impetus.umbra.pbr.TextureFormatLoader.addFormatMacros(macros);
+        TextureFormatLoader.addFormatMacros(macros);
         // One IRIS_FEATURE_<NAME> define per implemented Iris extension; Complementary's colored lighting gates on IRIS_FEATURE_CUSTOM_IMAGES and its shadowcomp pass never declares voxel_sampler without it
-        com.bdmajora.impetus.umbra.features.FeatureFlags.addUsableDefines(macros);
+        FeatureFlags.addUsableDefines(macros);
         // IS_IRIS, IRIS_VERSION and the IRIS_FEATURE_* prefix are the pack-facing contract, NOT our naming: renaming them drops every pack onto its OptiFine path (Complementary's "not supported on Optifine" screen); IS_IRIS gates Iris-exclusive uniform DECLARATIONS, all of which CommonUniforms uploads at MC_VERSION 11202
         macros.put("IS_IRIS", "");
         // Distant Horizons presence, the same two defines Iris's StandardMacros emits: packs gate their dh_* programs and the dhDepthTex reads on DISTANT_HORIZONS, and DISTANT_HORIZONS_TEXTURES tells them dh_sampleTexture() exists; only while DH is installed AND rendering, since a pack compiled with them expects real LOD depth
-        if (com.bdmajora.impetus.umbra.compat.dh.DhCompat.hasRenderingEnabled()) {
+        if (DhCompat.hasRenderingEnabled()) {
             macros.put("DISTANT_HORIZONS", "");
             macros.put("DISTANT_HORIZONS_TEXTURES", "");
         }

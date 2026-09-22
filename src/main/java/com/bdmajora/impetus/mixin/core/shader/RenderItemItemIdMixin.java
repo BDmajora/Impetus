@@ -3,6 +3,7 @@ package com.bdmajora.impetus.mixin.core.shader;
 import net.minecraft.client.renderer.RenderItem;
 import net.minecraft.client.renderer.block.model.IBakedModel;
 import net.minecraft.item.ItemStack;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -13,13 +14,11 @@ import com.bdmajora.impetus.umbra.material.WorldRenderingSettings;
 import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;
 import com.bdmajora.impetus.umbra.uniforms.CapturedRenderingState;
 
-import java.util.ArrayDeque;
-import java.util.Deque;
-
 @Mixin(RenderItem.class)
 public class RenderItemItemIdMixin {
+    // Primitive stack: one push and pop per rendered object, so no boxing
     @Unique
-    private final Deque<Integer> impetus$itemIdStack = new ArrayDeque<>();
+    private final IntArrayList impetus$itemIdStack = new IntArrayList();
 
     @Inject(method = "renderItem(Lnet/minecraft/item/ItemStack;Lnet/minecraft/client/renderer/block/model/IBakedModel;)V",
             at = @At("HEAD"))
@@ -27,7 +26,8 @@ public class RenderItemItemIdMixin {
         CapturedRenderingState state = CapturedRenderingState.INSTANCE;
         this.impetus$itemIdStack.push(state.getCurrentRenderedItem());
         state.setCurrentRenderedItem(WorldRenderingSettings.getItemId(stack));
-        impetus$pushIdToGpu();
+        // Sends the id change to the bound program; setting it only on CapturedRenderingState leaves it in Java, since the uniform uploads at phase bind and one phase covers every object
+        Umbra.refreshDynamicUniforms();
 
         // Item models use client arrays, which alias generic attribute slots 8..15; a generic array left enabled on slot 9 (gl_MultiTexCoord1, the lightmap) flattens it to one constant and items render fullbright, which is why custom item-frame scenery lights up while vanilla blocks beside it stay correct (see resetVanillaVertexArrayState)
         UmbraRenderingPipeline.resetVanillaVertexArrayState();
@@ -39,17 +39,9 @@ public class RenderItemItemIdMixin {
             at = @At("RETURN"))
     private void impetus$endItem(ItemStack stack, IBakedModel model, CallbackInfo ci) {
         CapturedRenderingState.INSTANCE.setCurrentRenderedItem(
-                this.impetus$itemIdStack.isEmpty() ? -1 : this.impetus$itemIdStack.pop());
+                this.impetus$itemIdStack.isEmpty() ? -1 : this.impetus$itemIdStack.popInt());
         // The restore matters as much as the set: an item model nested in an item frame or armor stand would otherwise leave its id live over the rest of the batch, making every later entity emissive
-        impetus$pushIdToGpu();
+        Umbra.refreshDynamicUniforms();
     }
 
-    // Sends the id change to the bound program; setting it only on CapturedRenderingState leaves it in Java, since the uniform uploads at phase bind and one phase covers every item (see UmbraRenderingPipeline#refreshDynamicUniforms)
-    @Unique
-    private static void impetus$pushIdToGpu() {
-        UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
-        if (pipeline != null) {
-            pipeline.refreshDynamicUniforms();
-        }
-    }
 }

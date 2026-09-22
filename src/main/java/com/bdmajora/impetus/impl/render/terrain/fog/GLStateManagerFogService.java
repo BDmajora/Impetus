@@ -45,8 +45,15 @@ public class GLStateManagerFogService implements FogService {
     @Override
     public float[] getFogColor() {
         EntityRenderer entityRenderer = Minecraft.getMinecraft().entityRenderer;
-        return new float[]{entityRenderer.fogColorRed, entityRenderer.fogColorGreen, entityRenderer.fogColorBlue, 1.0F};
+        float[] color = this.fogColor;
+        color[0] = entityRenderer.fogColorRed;
+        color[1] = entityRenderer.fogColorGreen;
+        color[2] = entityRenderer.fogColorBlue;
+        return color;
     }
+
+    // Asked once per terrain pass, so the array is reused; the uniform copies it out
+    private final float[] fogColor = { 0.0F, 0.0F, 0.0F, 1.0F };
 
     // Maps vanilla's fog mode constants to the chunk shader's
     @Override

@@ -21,26 +21,6 @@ public final class ProgramSource {
                          String geometrySource,
                          String tessControlSource,
                          String tessEvalSource,
-                         String fragmentSource) {
-        this(name, vertexSource, geometrySource, tessControlSource, tessEvalSource, fragmentSource, (String[]) null);
-    }
-
-    public ProgramSource(String name,
-                         String vertexSource,
-                         String geometrySource,
-                         String tessControlSource,
-                         String tessEvalSource,
-                         String fragmentSource,
-                         String computeSource) {
-        this(name, vertexSource, geometrySource, tessControlSource, tessEvalSource, fragmentSource,
-                computeSource == null ? null : new String[]{computeSource});
-    }
-
-    public ProgramSource(String name,
-                         String vertexSource,
-                         String geometrySource,
-                         String tessControlSource,
-                         String tessEvalSource,
                          String fragmentSource,
                          String[] computeSources) {
         this.name = name;

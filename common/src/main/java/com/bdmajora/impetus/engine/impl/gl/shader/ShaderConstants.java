@@ -24,7 +24,8 @@ public class ShaderConstants {
     public static class Builder {
         private static final String EMPTY_VALUE = "";
 
-        private final HashMap<String, String> constants = new HashMap<>();
+        // Insertion-ordered so the emitted #define block, and anything hashing it, is stable across runs
+        private final Map<String, String> constants = new LinkedHashMap<>();
 
         private Builder() {
 
@@ -37,13 +38,10 @@ public class ShaderConstants {
 
         // #define NAME value
         public ShaderConstants.Builder add(String name, String value) {
-            String prev = this.constants.get(name);
-
+            String prev = this.constants.putIfAbsent(name, value);
             if (prev != null) {
                 throw new IllegalArgumentException("Constant " + name + " is already defined with value " + prev);
             }
-
-            this.constants.put(name, value);
             return this;
         }
 

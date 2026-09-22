@@ -2,18 +2,15 @@ package com.bdmajora.coarctatio.mixin;
 
 import com.bdmajora.coarctatio.Coarctatio;
 import com.bdmajora.coarctatio.CoarctatioConfig;
-import org.objectweb.asm.tree.ClassNode;
-import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
-import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
+import com.bdmajora.impetus.booter.mixin.SimpleMixinPlugin;
 import org.spongepowered.asm.service.IClassTracker;
 import org.spongepowered.asm.service.MixinService;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.Set;
 
 // Gates each Coarctatio mixin on its config switch; off means never loaded, so a suspect feature can be disabled without a rebuild
-public class CoarctatioMixinPlugin implements IMixinConfigPlugin {
+public class CoarctatioMixinPlugin extends SimpleMixinPlugin {
     // The event-recycling mixins, added dynamically rather than from the json for the reason given in getMixins
     private static final List<String> RECYCLED_EVENT_MIXINS = Arrays.asList(
             "events.TickEventMixin",
@@ -41,12 +38,6 @@ public class CoarctatioMixinPlugin implements IMixinConfigPlugin {
     @Override
     public void onLoad(String mixinPackage) {
         this.config = CoarctatioConfig.get();
-    }
-
-    // Impetus reobfuscates mixins directly, so there is no refmap to name
-    @Override
-    public String getRefMapperConfig() {
-        return null;
     }
 
     // Maps the mixin's simple name to its switch; anything unlisted is refused
@@ -177,11 +168,6 @@ public class CoarctatioMixinPlugin implements IMixinConfigPlugin {
         }
     }
 
-    // Nothing to negotiate with other configs
-    @Override
-    public void acceptTargets(Set<String> myTargets, Set<String> otherTargets) {
-    }
-
     // Null means use the mixin list from the json
     @Override
     public List<String> getMixins() {
@@ -198,15 +184,5 @@ public class CoarctatioMixinPlugin implements IMixinConfigPlugin {
             }
         }
         return RECYCLED_EVENT_MIXINS;
-    }
-
-    // No pre-apply rewriting needed
-    @Override
-    public void preApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) {
-    }
-
-    // No post-apply rewriting needed
-    @Override
-    public void postApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) {
     }
 }

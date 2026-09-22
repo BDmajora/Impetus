@@ -80,6 +80,11 @@ public class GbufferPrograms {
             return this.drawBuffers.clone();
         }
 
+        // The array itself, already sanitized at construction; for the per-object phase switch, which must not allocate, and the caller never writes to it
+        int[] drawBuffersReadOnly() {
+            return this.drawBuffers;
+        }
+
         // Its blend directives
         public ProgramBlendState getBlendState() {
             return this.blendState;

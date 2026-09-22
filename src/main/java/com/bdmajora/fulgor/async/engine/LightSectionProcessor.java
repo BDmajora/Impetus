@@ -155,21 +155,10 @@ final class LightSectionProcessor {
         BfsLightEngine engine = this.engine;
         int neighbourOffsetX = direction.x;
         int neighbourOffsetZ = direction.z;
-        int incrementX;
-        int incrementZ;
-        int startX;
-        int startZ;
-        if (neighbourOffsetX != 0) {
-            incrementX = 0;
-            incrementZ = 1;
-            startX = direction.x < 0 ? chunkX << 4 : chunkX << 4 | 15;
-            startZ = chunkZ << 4;
-        } else {
-            incrementX = 1;
-            incrementZ = 0;
-            startZ = neighbourOffsetZ < 0 ? chunkZ << 4 : chunkZ << 4 | 15;
-            startX = chunkX << 4;
-        }
+        int incrementX = direction.edgeStepX;
+        int incrementZ = direction.edgeStepZ;
+        int startX = direction.edgeStartX(chunkX, false);
+        int startZ = direction.edgeStartZ(chunkZ, false);
 
         int centerDelayedCount = 0;
         int neighbourDelayedCount = 0;
@@ -231,28 +220,16 @@ final class LightSectionProcessor {
                 continue;
             }
             for (BfsLightEngine.AxisDirection direction : BfsLightEngine.ONLY_HORIZONTAL_DIRECTIONS) {
-                int neighbourOffsetX = direction.x;
-                int neighbourOffsetZ = direction.z;
-                int neighbourCacheIndex = (chunkX + neighbourOffsetX) + 5 * (chunkZ + neighbourOffsetZ) + (5 * 5) * sectionY + engine.chunkSectionIndexOffset;
-                if (engine.nibbleCache[neighbourCacheIndex] == null || !engine.nibbleCache[neighbourCacheIndex].isInitialisedUpdating()) {
+                int neighbourCacheIndex = (chunkX + direction.x) + 5 * (chunkZ + direction.z) + (5 * 5) * sectionY + engine.chunkSectionIndexOffset;
+                SWMRNibbleArray neighbourNibble = engine.nibbleCache[neighbourCacheIndex];
+                if (neighbourNibble == null || !neighbourNibble.isInitialisedUpdating()) {
                     continue;
                 }
 
-                int incrementX;
-                int incrementZ;
-                int startX;
-                int startZ;
-                if (neighbourOffsetX != 0) {
-                    incrementX = 0;
-                    incrementZ = 1;
-                    startX = direction.x < 0 ? (chunkX << 4) - 1 : (chunkX << 4) + 16;
-                    startZ = chunkZ << 4;
-                } else {
-                    incrementX = 1;
-                    incrementZ = 0;
-                    startZ = neighbourOffsetZ < 0 ? (chunkZ << 4) - 1 : (chunkZ << 4) + 16;
-                    startX = chunkX << 4;
-                }
+                int incrementX = direction.edgeStepX;
+                int incrementZ = direction.edgeStepZ;
+                int startX = direction.edgeStartX(chunkX, true);
+                int startZ = direction.edgeStartZ(chunkZ, true);
 
                 long propagateDirection = 1L << direction.oppositeOrdinal;
                 int encodeOffset = engine.coordinateOffset;

@@ -1,5 +1,7 @@
 package com.bdmajora.impetus.impl.render.terrain.compile;
 
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import net.minecraft.client.renderer.BufferBuilder;
 import lombok.Getter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.WorldClient;
@@ -16,6 +18,8 @@ import com.bdmajora.impetus.engine.impl.render.chunk.data.MinecraftBuiltRenderSe
 import com.bdmajora.impetus.engine.impl.render.chunk.sprite.SpriteTransparencyLevel;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.material.Material;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexEncoder;
+import com.bdmajora.impetus.engine.api.util.NormI8;
+import com.bdmajora.impetus.engine.impl.common.util.MathUtil;
 import com.bdmajora.impetus.engine.impl.util.QuadUtil;
 import org.lwjgl.opengl.GL11;
 import com.bdmajora.impetus.ImpetusVintage;
@@ -32,11 +36,11 @@ import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 public class VintageChunkBuildContext extends ChunkBuildContext {
     public static final BlockRenderLayer[] LAYERS = BlockRenderLayer.values();
     private final TextureMapExtension textureAtlas;
-    private final net.minecraft.client.renderer.BufferBuilder[] worldRenderers = new net.minecraft.client.renderer.BufferBuilder[LAYERS.length];
+    private final BufferBuilder[] worldRenderers = new BufferBuilder[LAYERS.length];
     private final boolean[] usedWorldRenderers = new boolean[LAYERS.length];
     // Per layer, block attribution of vanilla-sourced quads (fluids and other non-model renders) as runs of (quadEndExclusive, mcEntityId, renderType, metadata, emission, localX/Y/Z), recorded under a shader pack so mc_Entity and at_midBlock survive the BufferBuilder round-trip
-    private final it.unimi.dsi.fastutil.ints.IntArrayList[] vanillaBlockRuns =
-            new it.unimi.dsi.fastutil.ints.IntArrayList[LAYERS.length];
+    private final IntArrayList[] vanillaBlockRuns =
+            new IntArrayList[LAYERS.length];
     private static final int VANILLA_BLOCK_RUN_STRIDE = 8;
     @Getter
     private int offX, offY, offZ;
@@ -68,10 +72,10 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
     }
 
     // Vanilla buffer for blocks that bypass the Impetus pipeline, one per layer
-    public net.minecraft.client.renderer.BufferBuilder getBufferForLayer(BlockRenderLayer layer) {
+    public BufferBuilder getBufferForLayer(BlockRenderLayer layer) {
         var builder = this.worldRenderers[layer.ordinal()];
         if (builder == null) {
-            builder = new net.minecraft.client.renderer.BufferBuilder(131072);
+            builder = new BufferBuilder(131072);
             this.worldRenderers[layer.ordinal()] = builder;
         }
         if (!this.usedWorldRenderers[layer.ordinal()]) {
@@ -97,7 +101,7 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         }
         var runs = this.vanillaBlockRuns[i];
         if (runs == null) {
-            runs = new it.unimi.dsi.fastutil.ints.IntArrayList();
+            runs = new IntArrayList();
             this.vanillaBlockRuns[i] = runs;
         }
         int quadCount = builder.getVertexCount() / 4;
@@ -175,7 +179,7 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
     }
 
     private void copyBlockData(ByteBuffer source, ChunkBuildBuffers buffers, Material material,
-                               it.unimi.dsi.fastutil.ints.IntArrayList blockRuns) {
+                               IntArrayList blockRuns) {
         int vsize = BLOCK_VERTEX_FORMAT_SIZE;
         int numQuads = source.limit() / (vsize * 4);
         long ptr = LWJGL.memAddress(source);
@@ -190,6 +194,7 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         int runLocalX = 0;
         int runLocalY = 0;
         int runLocalZ = 0;
+        boolean shadersActive = com.bdmajora.impetus.umbra.terrain.UmbraTerrainProgramOverride.areShadersActive();
         for(int q = 0; q < numQuads; q++) {
             boolean hasRun = false;
             if (blockRuns != null) {
@@ -234,14 +239,14 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
                 vertex.vanillaNormal = trueNormal;
                 vertex.trueNormal = trueNormal;
             }
-            if (com.bdmajora.impetus.umbra.terrain.UmbraTerrainProgramOverride.areShadersActive()) {
+            if (shadersActive) {
                 // OptiFine attributes for the vanilla-sourced path: mc_Entity from the attribution runs, mid-tex as the centre of this quad's mapped region (not the sprite centre, see VintageBlockRenderer.populateUmbraVertexData), tangent derived here
                 float midU = uSum * 0.25f;
                 float midV = vSum * 0.25f;
                 int tangent = com.bdmajora.impetus.umbra.vertices.NormalHelper.computeTangent(
-                        com.bdmajora.impetus.umbra.vertices.NormI8.unpackX(trueNormal),
-                        com.bdmajora.impetus.umbra.vertices.NormI8.unpackY(trueNormal),
-                        com.bdmajora.impetus.umbra.vertices.NormI8.unpackZ(trueNormal),
+                        NormI8.unpackX(trueNormal),
+                        NormI8.unpackY(trueNormal),
+                        NormI8.unpackZ(trueNormal),
                         quad[0].x, quad[0].y, quad[0].z, quad[0].u, quad[0].v,
                         quad[1].x, quad[1].y, quad[1].z, quad[1].u, quad[1].v,
                         quad[2].x, quad[2].y, quad[2].z, quad[2].u, quad[2].v);
@@ -272,13 +277,13 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         }
     }
 
-    // Emission is 0-15
+    // The emission byte of at_midBlock; vanilla is 0-15 but a mod's getLightValue may answer past that
     private static int clampBlockEmission(int value) {
-        return value < 0 ? 0 : (value > 255 ? 255 : value);
+        return MathUtil.clamp(value, 0, 255);
     }
 
     // Section-local coordinates are 0-15
     private static int clampSectionCoord(int value) {
-        return value < 0 ? 0 : (value > 15 ? 15 : value);
+        return MathUtil.clamp(value, 0, 15);
     }
 }

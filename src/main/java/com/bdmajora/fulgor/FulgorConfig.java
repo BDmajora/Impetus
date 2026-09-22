@@ -1,26 +1,17 @@
 package com.bdmajora.fulgor;
 
-import net.minecraft.launchwrapper.Launch;
+import com.bdmajora.impetus.booter.util.PropertiesConfig;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Properties;
 
-// Feature switches for the lighting subsystem, a plain Properties file since the mixin plugin reads it during coremod setup before Forge/Minecraft classes are safe
+// Feature switches for the lighting subsystem, a plain Properties file (see PropertiesConfig) since the mixin plugin reads it during coremod setup before Forge/Minecraft classes are safe
 public final class FulgorConfig {
     private static final String FILE_NAME = "impetus-fulgor.cfg";
 
     private static FulgorConfig instance;
 
-    // Where save() writes; null only if the config directory could not be resolved
-    private Path file;
+    // The backing file; set by load before the instance is published
+    private PropertiesConfig file;
 
     // Off means unmodified vanilla lighting; kept separate from the individual switches so "is this Fulgor's fault" needs no understanding of the rest
     public boolean enabled;
@@ -59,25 +50,25 @@ public final class FulgorConfig {
     // Lets the server send a chunk before its initial pass has finished; wrong light sent to a 1.12.2 client stays wrong until a block changes, so off by default and it only delays freshly generated chunks by a few milliseconds
     public boolean asyncSendChunksWithoutLight;
 
-    private FulgorConfig(Properties props) {
-        this.enabled = bool(props, "enabled", true);
-        this.deferredLightUpdates = bool(props, "deferredLightUpdates", true);
-        this.deduplicateUpdates = bool(props, "deduplicateUpdates", true);
-        this.cacheBlockLightInfo = bool(props, "cacheBlockLightInfo", true);
-        this.fixChunkBoundaryLighting = bool(props, "fixChunkBoundaryLighting", true);
-        this.sendNonTrivialSectionLight = bool(props, "sendNonTrivialSectionLight", true);
-        this.optimizeRenderLightUpdates = bool(props, "optimizeRenderLightUpdates", true);
-        this.skipUpdatesWhilePaused = bool(props, "skipUpdatesWhilePaused", true);
-        this.maxScheduledUpdates = integer(props, "maxScheduledUpdates", 1 << 22, 1 << 12, Integer.MAX_VALUE);
-        this.warnOnIllegalThreadAccess = bool(props, "warnOnIllegalThreadAccess", true);
-        this.showDebugOverlay = bool(props, "showDebugOverlay", false);
-        this.parallelLightUpdates = bool(props, "parallelLightUpdates", true);
-        this.parallelLightThreads = integer(props, "parallelLightThreads", 0, 0, 64);
-        this.parallelMinPositions = integer(props, "parallelMinPositions", 1024, 1, Integer.MAX_VALUE);
-        this.parallelMinChunks = integer(props, "parallelMinChunks", 3, 2, Integer.MAX_VALUE);
-        this.asyncLightUpdates = bool(props, "asyncLightUpdates", true);
-        this.asyncSendChunksWithoutLight = bool(props, "asyncSendChunksWithoutLight", false);
-        this.fixRenderLighting = bool(props, "fixRenderLighting", true);
+    private FulgorConfig(PropertiesConfig props) {
+        this.enabled = props.bool("enabled", true);
+        this.deferredLightUpdates = props.bool("deferredLightUpdates", true);
+        this.deduplicateUpdates = props.bool("deduplicateUpdates", true);
+        this.cacheBlockLightInfo = props.bool("cacheBlockLightInfo", true);
+        this.fixChunkBoundaryLighting = props.bool("fixChunkBoundaryLighting", true);
+        this.sendNonTrivialSectionLight = props.bool("sendNonTrivialSectionLight", true);
+        this.optimizeRenderLightUpdates = props.bool("optimizeRenderLightUpdates", true);
+        this.skipUpdatesWhilePaused = props.bool("skipUpdatesWhilePaused", true);
+        this.maxScheduledUpdates = props.integer("maxScheduledUpdates", 1 << 22, 1 << 12, Integer.MAX_VALUE);
+        this.warnOnIllegalThreadAccess = props.bool("warnOnIllegalThreadAccess", true);
+        this.showDebugOverlay = props.bool("showDebugOverlay", false);
+        this.parallelLightUpdates = props.bool("parallelLightUpdates", true);
+        this.parallelLightThreads = props.integer("parallelLightThreads", 0, 0, 64);
+        this.parallelMinPositions = props.integer("parallelMinPositions", 1024, 1, Integer.MAX_VALUE);
+        this.parallelMinChunks = props.integer("parallelMinChunks", 3, 2, Integer.MAX_VALUE);
+        this.asyncLightUpdates = props.bool("asyncLightUpdates", true);
+        this.asyncSendChunksWithoutLight = props.bool("asyncSendChunksWithoutLight", false);
+        this.fixRenderLighting = props.bool("fixRenderLighting", true);
     }
 
     // The pool width to use: the configured count, or a third of the cores with at least one
@@ -98,47 +89,22 @@ public final class FulgorConfig {
 
     // Reads the file if present, otherwise starts from defaults and writes them out
     private static FulgorConfig load() {
-        Path file = configDirectory().resolve(FILE_NAME);
-
-        Properties props = new Properties();
-        if (Files.isRegularFile(file)) {
-            try (InputStream in = Files.newInputStream(file)) {
-                props.load(in);
-            } catch (IOException e) {
-                Fulgor.LOGGER.error("Could not read {}, falling back to defaults", file, e);
-            }
-        }
-
+        PropertiesConfig props = new PropertiesConfig(Fulgor.LOGGER, FILE_NAME, "Impetus / Fulgor lighting subsystem. Delete a line to restore its default.");
+        props.load();
         FulgorConfig config = new FulgorConfig(props);
-        config.file = file;
+        config.file = props;
         config.save();
         return config;
     }
 
     // Every switch except the two diagnostics and skipUpdatesWhilePaused decides whether a mixin applies, so changes take effect next launch (the options screen flags those for restart)
     public void save() {
-        if (this.file != null) {
-            writeBack(this.file);
-        }
+        this.file.save(values());
     }
 
-    // The config directory, created eagerly; falls back to the working directory when minecraftHome is unset
-    private static Path configDirectory() {
-        File home = Launch.minecraftHome;
-        Path dir = (home == null ? Paths.get(".") : home.toPath()).resolve("config");
-
-        try {
-            Files.createDirectories(dir);
-        } catch (IOException e) {
-            Fulgor.LOGGER.warn("Could not create {}, configuration will not persist", dir, e);
-        }
-
-        return dir;
-    }
-
-    // Rewrites the file with every key so a user who never opened it still discovers the switches; user-set values are preserved verbatim
-    private void writeBack(Path file) {
-        Map<String, String> values = new LinkedHashMap<>();
+    // Every key in declaration order, so a rewritten file lists every switch; user-set values are preserved verbatim
+    private Map<String, String> values() {
+        Map<String, String> values = PropertiesConfig.values();
         values.put("enabled", Boolean.toString(this.enabled));
         values.put("deferredLightUpdates", Boolean.toString(this.deferredLightUpdates));
         values.put("deduplicateUpdates", Boolean.toString(this.deduplicateUpdates));
@@ -158,39 +124,6 @@ public final class FulgorConfig {
         values.put("asyncSendChunksWithoutLight", Boolean.toString(this.asyncSendChunksWithoutLight));
         values.put("fixRenderLighting", Boolean.toString(this.fixRenderLighting));
 
-        Properties out = new Properties();
-        out.putAll(values);
-
-        try (OutputStream stream = Files.newOutputStream(file)) {
-            out.store(stream, "Impetus / Fulgor lighting subsystem. Delete a line to restore its default.");
-        } catch (IOException e) {
-            Fulgor.LOGGER.warn("Could not write {}", file, e);
-        }
-    }
-
-    // Lenient boolean parse; anything unrecognised keeps the default
-    private static boolean bool(Properties props, String key, boolean fallback) {
-        String value = props.getProperty(key);
-        if (value == null) {
-            return fallback;
-        }
-        value = value.trim();
-        return "true".equalsIgnoreCase(value) || "false".equalsIgnoreCase(value)
-                ? Boolean.parseBoolean(value)
-                : fallback;
-    }
-
-    // Clamped integer parse; out-of-range and unparseable values keep the default
-    private static int integer(Properties props, String key, int fallback, int min, int max) {
-        String value = props.getProperty(key);
-        if (value == null) {
-            return fallback;
-        }
-        try {
-            int parsed = Integer.parseInt(value.trim());
-            return parsed < min || parsed > max ? fallback : parsed;
-        } catch (NumberFormatException e) {
-            return fallback;
-        }
+        return values;
     }
 }

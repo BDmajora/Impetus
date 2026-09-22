@@ -6,25 +6,19 @@ import java.util.function.Supplier;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// A vec2 uniform (screen/texture sizes, two-component pack constants), diffed against the last upload; cached is set in place since the supplier may mutate and return the same object, and initialized forces the first upload
-public class Vector2Uniform extends Uniform {
-    private final Supplier<Vector2f> value;
-    private final Vector2f cached = new Vector2f();
-    private boolean initialized;
-
+// A vec2 uniform (screen/texture sizes, two-component pack constants), diffed against the last upload by CachedUniform
+public class Vector2Uniform extends CachedUniform<Vector2f> {
     public Vector2Uniform(int location, Supplier<Vector2f> value) {
-        super(location);
-        this.value = value;
+        super(location, value, new Vector2f());
     }
 
-    // Uploads only when the value changed
     @Override
-    public void update() {
-        Vector2f newValue = this.value.get();
-        if (!this.initialized || !this.cached.equals(newValue)) {
-            this.initialized = true;
-            this.cached.set(newValue);
-            LWJGL.glUniform2f(this.location, newValue.x, newValue.y);
-        }
+    protected void store(Vector2f cached, Vector2f newValue) {
+        cached.set(newValue);
+    }
+
+    @Override
+    protected void upload(Vector2f v) {
+        LWJGL.glUniform2f(this.location, v.x, v.y);
     }
 }

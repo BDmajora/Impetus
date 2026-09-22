@@ -1,7 +1,6 @@
 package com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.impl;
 
 import com.bdmajora.impetus.engine.api.util.ColorABGR;
-import com.bdmajora.impetus.engine.api.util.ColorU8;
 import com.bdmajora.impetus.engine.impl.gl.attribute.GlVertexFormat;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexEncoder;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexType;
@@ -9,6 +8,7 @@ import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexTy
 import java.util.Map;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
+import com.bdmajora.impetus.engine.impl.common.util.MathUtil;
 
 // 16-byte terrain vertex read by the mesh shader as one uvec4: shade folded into 24-bit colour on the CPU, light in two bytes; the GlVertexFormat exists only because ChunkVertexType demands one
 public class MeshChunkVertex implements ChunkVertexType {
@@ -118,27 +118,21 @@ public class MeshChunkVertex implements ChunkVertexType {
         return Math.round(value * TEXTURE_MAX_VALUE) & 0xFFFF;
     }
 
-    // Folds the shade factor (stashed in alpha by the mesher) into RGB, freeing the fourth byte for sky light
+    // Folds the shade factor (stashed in alpha by the mesher) into RGB, freeing the fourth byte for sky light; integer scaling truncates like the float path did
     private static int packShadedColor(int color) {
-        float shade = ColorU8.byteToNormalizedFloat(ColorABGR.unpackAlpha(color));
-
-        int r = ColorU8.normalizedFloatToByte(ColorU8.byteToNormalizedFloat(ColorABGR.unpackRed(color)) * shade);
-        int g = ColorU8.normalizedFloatToByte(ColorU8.byteToNormalizedFloat(ColorABGR.unpackGreen(color)) * shade);
-        int b = ColorU8.normalizedFloatToByte(ColorU8.byteToNormalizedFloat(ColorABGR.unpackBlue(color)) * shade);
+        int shade = ColorABGR.unpackAlpha(color);
+        int r = (ColorABGR.unpackRed(color) * shade) / 255;
+        int g = (ColorABGR.unpackGreen(color) * shade) / 255;
+        int b = (ColorABGR.unpackBlue(color) * shade) / 255;
 
         return ColorABGR.pack(r, g, b, 0x00);
     }
 
     // 16-bit lightmap coordinates down to a byte each, clamped to 8..248 so rounding never lands on the lightmap's outermost texels (same reason it samples CLAMP_TO_EDGE)
     private static int packLight(int light) {
-        int sky = clamp((light >>> 16) & 0xFF, 8, 248);
-        int block = clamp(light & 0xFF, 8, 248);
+        int sky = MathUtil.clamp((light >>> 16) & 0xFF, 8, 248);
+        int block = MathUtil.clamp(light & 0xFF, 8, 248);
 
         return block | (sky << 8);
-    }
-
-    // Plain clamp
-    private static int clamp(int value, int min, int max) {
-        return value < min ? min : Math.min(value, max);
     }
 }

@@ -1,9 +1,9 @@
 package com.bdmajora.impetus.api.options.control;
 
+import com.bdmajora.impetus.engine.api.util.ColorARGB;
 import com.bdmajora.impetus.api.options.structure.Option;
 import com.bdmajora.impetus.engine.impl.gui.framework.DrawContext;
 import com.bdmajora.impetus.engine.impl.gui.framework.InteractionContext;
-import com.bdmajora.impetus.engine.impl.gui.theme.DefaultColors;
 import com.bdmajora.impetus.engine.impl.util.Dim2i;
 
 public class SliderControl implements Control<Integer> {
@@ -127,7 +127,7 @@ public class SliderControl implements Control<Integer> {
 
             int accentColor = this.getAccentColor(drawContext);
             drawContext.fill(thumbX, sliderY, thumbX + (THUMB_WIDTH * 2), sliderY + sliderHeight, accentColor);
-            drawContext.fill(sliderX, trackY, sliderX + sliderWidth, trackY + TRACK_HEIGHT, DefaultColors.withAlpha(accentColor, 0xB8));
+            drawContext.fill(sliderX, trackY, sliderX + sliderWidth, trackY + TRACK_HEIGHT, ColorARGB.withAlpha(accentColor, 0xB8));
 
             var label = this.formatter.format(this.getIntValue());
 

@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.umbra.vertices;
 
+import com.bdmajora.impetus.engine.api.util.NormI8;
 import org.joml.Vector3f;
 
 // Pure geometry for the extended vertex data (face normals and tangents); the tangent routine is a semantics-preserving Sodium/Iris port (LGPLv3) building the at_tangent basis from positions and UVs, with no Minecraft dependencies so chunk-build workers can call it

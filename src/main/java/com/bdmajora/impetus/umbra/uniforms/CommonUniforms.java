@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.umbra.uniforms;
 
+import com.bdmajora.impetus.engine.impl.common.util.MathUtil;
 import com.bdmajora.impetus.ImpetusVintage;
 import net.minecraft.block.Block;
 import net.minecraft.block.material.Material;
@@ -56,11 +57,22 @@ import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 // Registers the OptiFine 1.12.2 "common" uniforms, direct reads of world, player or display state, every formula faithful to OptiFine's Shaders and every accessor checked against MCP stable_39; matrix, camera and previous-frame uniforms live in MatrixUniforms via CapturedRenderingState
 public final class CommonUniforms {
+    // Render-thread scratch for the vector suppliers: every consumer (CachedUniform, the custom-uniform evaluator) copies the value out before the next supplier runs, so one instance per shape serves them all without a per-uniform-per-frame allocation
+    private static final Vector2f SCRATCH_2 = new Vector2f();
+    private static final Vector3f SCRATCH_3 = new Vector3f();
+    private static final Vector4f SCRATCH_4 = new Vector4f();
+    private static final Vector2i SCRATCH_2I = new Vector2i();
+    private static final Vector4i SCRATCH_4I = new Vector4i();
+    // Constant answers, never written
+    private static final Vector3f ZERO_3 = new Vector3f();
+    private static final Vector3f WHITE_3 = new Vector3f(1.0f, 1.0f, 1.0f);
+    private static final Vector3f NO_SELECTED_BLOCK = new Vector3f(-256.0f, -256.0f, -256.0f);
+    // w must be 0 when no bolt is present, since packs use it as the "lightning is flashing" flag; spelled out because JOML's Vector4f() is (0, 0, 0, 1)
+    private static final Vector4f NO_LIGHTNING = new Vector4f(0.0f, 0.0f, 0.0f, 0.0f);
+
     private static final float DEFAULT_FRAME_TIME = 1.0f / 60.0f;
     private static final ResourceLocation DARKNESS_EFFECT_ID = new ResourceLocation("darkness");
     private static final int GL_FOG_DENSITY = 0x0B62;
-    private static final int GL_FOG_START = 0x0B63;
-    private static final int GL_FOG_END = 0x0B64;
     private static final int GL_ACTIVE_TEXTURE = 0x84E0;
     private static final int GL_TEXTURE0 = 0x84C0;
     private static final int GL_BLEND_SRC_RGB = 0x80C9;
@@ -495,7 +507,7 @@ public final class CommonUniforms {
     // Sky light at the eye, 0..1
     private static float getEyeSkyBrightness() {
         Vector2i brightness = EyeBrightnessTracker.getEyeBrightness();
-        return clamp(brightness.y / 240.0f, 0.0f, 1.0f);
+        return MathUtil.clamp(brightness.y / 240.0f, 0.0f, 1.0f);
     }
 
     // Frame time clamped so a stall cannot blow up the smoothers
@@ -605,30 +617,29 @@ public final class CommonUniforms {
         return biome == null ? 0.0f : biome.getRainfall();
     }
 
-    // Biome temperature at the camera
+    // Biome temperature at the camera, height-adjusted like vanilla's
     private static float getTemperature() {
         World world = world();
         Entity camera = Minecraft.getMinecraft().getRenderViewEntity();
         if (world == null || camera == null) {
             return 0.0f;
         }
-        return world.getBiome(new BlockPos(camera)).getTemperature(new BlockPos(camera));
+        BlockPos pos = CAMERA_POS.setPos(camera);
+        return world.getBiome(pos).getTemperature(pos);
     }
 
-    // Biome at the camera position, or plains without a world
+    // Biome at the camera position, or null without a world
     private static Biome getCameraBiome() {
         World world = world();
         Entity camera = Minecraft.getMinecraft().getRenderViewEntity();
         if (world == null || camera == null) {
             return null;
         }
-        return world.getBiome(new BlockPos(camera));
+        return world.getBiome(CAMERA_POS.setPos(camera));
     }
 
-    // Plain clamp
-    private static float clamp(float value, float min, float max) {
-        return Math.max(min, Math.min(max, value));
-    }
+    // Scratch position for the per-frame camera biome reads, render thread only
+    private static final BlockPos.MutableBlockPos CAMERA_POS = new BlockPos.MutableBlockPos();
 
     // The client player, or null
     private static EntityPlayer player() {
@@ -658,19 +669,19 @@ public final class CommonUniforms {
     // Model offset for the current draw
     private static Vector3f getUmbraModelOffset() {
         float offset = UmbraChunkVertexType.INSTANCE.getPositionOffset();
-        return new Vector3f(offset, offset, offset);
+        return SCRATCH_3.set(offset, offset, offset);
     }
 
     // Texture scale as a vec2
     private static Vector2f getTextureScaleVector() {
         float scale = getUmbraTextureScale();
-        return new Vector2f(scale, scale);
+        return SCRATCH_2.set(scale, scale);
     }
 
     // Model scale as a vec3
     private static Vector3f getModelScaleVector() {
         float scale = getUmbraModelScale();
-        return new Vector3f(scale, scale, scale);
+        return SCRATCH_3.set(scale, scale, scale);
     }
 
     // Camera translation for the current draw; the feet point, since geometry is submitted relative to it (Iris pairs this with Sodium's region offsets, not with pack-facing player space)
@@ -688,7 +699,7 @@ public final class CommonUniforms {
         int activeTexture = LWJGL.glGetInteger(GL_ACTIVE_TEXTURE);
         LWJGL.glActiveTexture(GL_TEXTURE0);
         try {
-            return new Vector2i(
+            return SCRATCH_2I.set(
                     LWJGL.glGetTexLevelParameteri(GL11.GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH),
                     LWJGL.glGetTexLevelParameteri(GL11.GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT));
         } finally {
@@ -710,9 +721,9 @@ public final class CommonUniforms {
     // The current GL blend factors
     private static Vector4i getBlendFunc() {
         if (LWJGL.glGetInteger(GL11.GL_BLEND) == 0) {
-            return new Vector4i(0, 0, 0, 0);
+            return SCRATCH_4I.set(0, 0, 0, 0);
         }
-        return new Vector4i(
+        return SCRATCH_4I.set(
                 LWJGL.glGetInteger(GL_BLEND_SRC_RGB),
                 LWJGL.glGetInteger(GL_BLEND_DST_RGB),
                 LWJGL.glGetInteger(GL_BLEND_SRC_ALPHA),
@@ -811,21 +822,21 @@ public final class CommonUniforms {
     // Vehicle look direction
     private static Vector3f getVehicleLookVector() {
         Entity vehicle = vehicle();
-        return vehicle == null ? new Vector3f() : toVector3f(vehicle.getLook(CapturedRenderingState.INSTANCE.getTickDelta()));
+        return vehicle == null ? ZERO_3 : toVector3f(vehicle.getLook(CapturedRenderingState.INSTANCE.getTickDelta()));
     }
 
     // Vehicle position relative to the camera
     private static Vector3f getRelativeVehiclePosition() {
         Entity vehicle = vehicle();
         if (vehicle == null) {
-            return new Vector3f();
+            return ZERO_3;
         }
         float tickDelta = CapturedRenderingState.INSTANCE.getTickDelta();
         double x = vehicle.lastTickPosX + (vehicle.posX - vehicle.lastTickPosX) * tickDelta;
         double y = vehicle.lastTickPosY + (vehicle.posY - vehicle.lastTickPosY) * tickDelta;
         double z = vehicle.lastTickPosZ + (vehicle.posZ - vehicle.lastTickPosZ) * tickDelta;
         Vector3d camera = CameraUniforms.getCurrentCameraPositionUnshifted();
-        return new Vector3f((float) (camera.x - x), (float) (camera.y - y), (float) (camera.z - z));
+        return SCRATCH_3.set((float) (camera.x - x), (float) (camera.y - y), (float) (camera.z - z));
     }
 
     // The player's vehicle, or null
@@ -906,7 +917,7 @@ public final class CommonUniforms {
     // Interpolated thunder strength
     private static float getThunderStrength() {
         World world = world();
-        return world == null ? 0.0f : clamp(world.getThunderStrength(CapturedRenderingState.INSTANCE.getTickDelta()), 0.0f, 1.0f);
+        return world == null ? 0.0f : MathUtil.clamp(world.getThunderStrength(CapturedRenderingState.INSTANCE.getTickDelta()), 0.0f, 1.0f);
     }
 
     // Always 0; no heavy fog on 1.12.2
@@ -940,21 +951,21 @@ public final class CommonUniforms {
         RayTraceResult hit = mc.objectMouseOver;
         Entity camera = mc.getRenderViewEntity();
         if (mc.world == null || hit == null || hit.typeOfHit != RayTraceResult.Type.BLOCK || camera == null) {
-            return new Vector3f(-256.0f, -256.0f, -256.0f);
+            return NO_SELECTED_BLOCK;
         }
         BlockPos pos = hit.getBlockPos();
         Vec3d eye = camera.getPositionEyes(CapturedRenderingState.INSTANCE.getTickDelta());
         double cx = pos.getX() + 0.5 - eye.x;
         double cy = pos.getY() + 0.5 - eye.y;
         double cz = pos.getZ() + 0.5 - eye.z;
-        return new Vector3f((float) cx, (float) cy, (float) cz);
+        return SCRATCH_3.set((float) cx, (float) cy, (float) cz);
     }
 
     // Absolute eye position
     private static Vector3f getEyePosition() {
         Entity camera = Minecraft.getMinecraft().getRenderViewEntity();
         if (camera == null) {
-            return new Vector3f();
+            return ZERO_3;
         }
         Vec3d eye = camera.getPositionEyes(CapturedRenderingState.INSTANCE.getTickDelta());
         return toVector3f(eye);
@@ -964,23 +975,24 @@ public final class CommonUniforms {
     private static Vector3f getRelativeEyePosition() {
         Vector3d camera = CameraUniforms.getCurrentCameraPositionUnshifted();
         Vector3f eye = getEyePosition();
-        return new Vector3f((float) (camera.x - eye.x), (float) (camera.y - eye.y), (float) (camera.z - eye.z));
+        // eye may be the shared scratch, so it is fully read before the same scratch is written
+        return SCRATCH_3.set((float) (camera.x - eye.x), (float) (camera.y - eye.y), (float) (camera.z - eye.z));
     }
 
     // Player look direction
     private static Vector3f getPlayerLookVector() {
         Entity camera = Minecraft.getMinecraft().getRenderViewEntity();
-        return camera == null ? new Vector3f() : toVector3f(camera.getLook(CapturedRenderingState.INSTANCE.getTickDelta()));
+        return camera == null ? ZERO_3 : toVector3f(camera.getLook(CapturedRenderingState.INSTANCE.getTickDelta()));
     }
 
     // Player body yaw as a direction
     private static Vector3f getPlayerBodyVector() {
         Entity camera = Minecraft.getMinecraft().getRenderViewEntity();
         if (camera == null) {
-            return new Vector3f();
+            return ZERO_3;
         }
         float yaw = (float) Math.toRadians(camera.rotationYaw);
-        return new Vector3f(-MathHelper.sin(yaw), 0.0f, MathHelper.cos(yaw));
+        return SCRATCH_3.set(-MathHelper.sin(yaw), 0.0f, MathHelper.cos(yaw));
     }
 
     // Nearest lightning bolt relative to the camera, w=1 when one exists
@@ -988,7 +1000,7 @@ public final class CommonUniforms {
         // NB: w must be 0 when no bolt is present, since packs use it as the "lightning is flashing" flag; spell all four out because JOML's Vector4f() is (0, 0, 0, 1)
         World world = world();
         if (world == null) {
-            return new Vector4f(0.0f, 0.0f, 0.0f, 0.0f);
+            return NO_LIGHTNING;
         }
         float tickDelta = CapturedRenderingState.INSTANCE.getTickDelta();
         Vector3d camera = CameraUniforms.getCurrentCameraPositionUnshifted();
@@ -997,10 +1009,10 @@ public final class CommonUniforms {
                 double x = entity.lastTickPosX + (entity.posX - entity.lastTickPosX) * tickDelta;
                 double y = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * tickDelta;
                 double z = entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * tickDelta;
-                return new Vector4f((float) (x - camera.x), (float) (y - camera.y), (float) (z - camera.z), 1.0f);
+                return SCRATCH_4.set((float) (x - camera.x), (float) (y - camera.y), (float) (z - camera.z), 1.0f);
             }
         }
-        return new Vector4f(0.0f, 0.0f, 0.0f, 0.0f);
+        return NO_LIGHTNING;
     }
 
     // Cloud scroll time
@@ -1029,7 +1041,7 @@ public final class CommonUniforms {
     // Window size in pixels
     private static Vector2f getScreenSize() {
         Minecraft mc = Minecraft.getMinecraft();
-        return new Vector2f(mc.displayWidth, mc.displayHeight);
+        return SCRATCH_2.set(mc.displayWidth, mc.displayHeight);
     }
 
     // The fixed-function fog mode (LINEAR, EXP, EXP2), or 0 while disabled, read LIVE from GL like OptiFine since vanilla changes it between sky, terrain and clouds within one frame
@@ -1080,7 +1092,7 @@ public final class CommonUniforms {
     // Current fog colour with alpha
     private static Vector4f getUmbraFogColor() {
         Vector3f fogColor = CapturedRenderingState.INSTANCE.getFogColor();
-        return new Vector4f(fogColor.x, fogColor.y, fogColor.z, 1.0f);
+        return SCRATCH_4.set(fogColor.x, fogColor.y, fogColor.z, 1.0f);
     }
 
     // Distant Horizons' LOD render distance in blocks; the vanilla render distance in blocks without it
@@ -1144,7 +1156,7 @@ public final class CommonUniforms {
     // Light colour of the main hand item
     private static Vector3f getHeldBlockLightColor() {
         return WorldRenderingSettings.isDynamicHandLight()
-                ? heldLightColor(brightestHeldItem()) : new Vector3f(0.0f, 0.0f, 0.0f);
+                ? heldLightColor(brightestHeldItem()) : ZERO_3;
     }
 
     // Off hand stack
@@ -1166,7 +1178,7 @@ public final class CommonUniforms {
     // Light colour of the off hand item
     private static Vector3f getHeldBlockLightColor2() {
         if (!WorldRenderingSettings.isDynamicHandLight()) {
-            return new Vector3f(0.0f, 0.0f, 0.0f);
+            return ZERO_3;
         }
         return heldLightColor(offhandItem());
     }
@@ -1182,12 +1194,12 @@ public final class CommonUniforms {
 
     // White unless the pack maps a colour
     private static Vector3f heldLightColor(ItemStack stack) {
-        return new Vector3f(1.0f, 1.0f, 1.0f);
+        return WHITE_3;
     }
 
     // Vanilla vec to JOML
     private static Vector3f toVector3f(Vec3d vector) {
-        return new Vector3f((float) vector.x, (float) vector.y, (float) vector.z);
+        return SCRATCH_3.set((float) vector.x, (float) vector.y, (float) vector.z);
     }
 
     // Sky colour at the camera
@@ -1195,10 +1207,10 @@ public final class CommonUniforms {
         World world = world();
         Entity camera = Minecraft.getMinecraft().getRenderViewEntity();
         if (world == null || camera == null) {
-            return new Vector3f();
+            return ZERO_3;
         }
         Vec3d sky = world.getSkyColor(camera, CapturedRenderingState.INSTANCE.getTickDelta());
-        return new Vector3f((float) sky.x, (float) sky.y, (float) sky.z);
+        return SCRATCH_3.set((float) sky.x, (float) sky.y, (float) sky.z);
     }
 
     // The client world, or null
@@ -1256,7 +1268,7 @@ public final class CommonUniforms {
         if (effect == null) {
             return 0.0f;
         }
-        return clamp(effect.getDuration() / 20.0f, 0.0f, 1.0f);
+        return MathUtil.clamp(effect.getDuration() / 20.0f, 0.0f, 1.0f);
     }
 
     // Always 0
@@ -1318,19 +1330,19 @@ public final class CommonUniforms {
 
     // Fade around sunrise and sunset, for shadow softening
     private static float getShadowFade() {
-        return clamp(1.0f - (Math.abs(Math.abs(CelestialUniforms.getSunAngle() - 0.5f) - 0.25f) - 0.23f)
+        return MathUtil.clamp(1.0f - (Math.abs(Math.abs(CelestialUniforms.getSunAngle() - 0.5f) - 0.25f) - 0.23f)
                 * 100.0f, 0.0f, 1.0f);
     }
 
     // Complementary spelling of shadowFade
     private static float getShdFade() {
-        return clamp(1.0f - (Math.abs(Math.abs(CelestialUniforms.getSunAngle() - 0.5f) - 0.25f) - 0.225f)
+        return MathUtil.clamp(1.0f - (Math.abs(Math.abs(CelestialUniforms.getSunAngle() - 0.5f) - 0.25f) - 0.225f)
                 * 40.0f, 0.0f, 1.0f);
     }
 
     // Complementary blindness curve
     private static float getBlindFactor() {
-        float blindFactorSqrt = clamp(getBlindness() * 2.0f - 1.0f, 0.0f, 1.0f);
+        float blindFactorSqrt = MathUtil.clamp(getBlindness() * 2.0f - 1.0f, 0.0f, 1.0f);
         return blindFactorSqrt * blindFactorSqrt;
     }
 
@@ -1341,12 +1353,12 @@ public final class CommonUniforms {
 
     // Complementary: daytime weight
     private static float getDay() {
-        return clamp(5.4f - getAdjustedTime(), 0.0f, 1.0f);
+        return MathUtil.clamp(5.4f - getAdjustedTime(), 0.0f, 1.0f);
     }
 
     // Complementary: night weight
     private static float getNight() {
-        return clamp(getAdjustedTime() - 6.0f, 0.0f, 1.0f);
+        return MathUtil.clamp(getAdjustedTime() - 6.0f, 0.0f, 1.0f);
     }
 
     // Complementary: dawn and dusk weight

@@ -5,7 +5,7 @@ import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFacing;
 // Neighbour information for each face of a block, used during smooth lighting to calculate each corner's occlusion
 @SuppressWarnings("UnnecessaryLocalVariable")
 enum AoNeighborInfo {
-    POS_X(new ModelQuadFacing[] { ModelQuadFacing.NEG_Y, ModelQuadFacing.POS_Y, ModelQuadFacing.NEG_Z, ModelQuadFacing.POS_Z }, 0.6F) {
+    POS_X(new ModelQuadFacing[] { ModelQuadFacing.NEG_Y, ModelQuadFacing.POS_Y, ModelQuadFacing.NEG_Z, ModelQuadFacing.POS_Z }) {
         // Bilinear weights of the four corners for a point on this face
         @Override
         public void calculateCornerWeights(float x, float y, float z, float[] out) {
@@ -38,7 +38,7 @@ enum AoNeighborInfo {
             return 1.0f - x;
         }
     },
-    POS_Y(new ModelQuadFacing[] { ModelQuadFacing.POS_X, ModelQuadFacing.NEG_X, ModelQuadFacing.NEG_Z, ModelQuadFacing.POS_Z }, 1.0F) {
+    POS_Y(new ModelQuadFacing[] { ModelQuadFacing.POS_X, ModelQuadFacing.NEG_X, ModelQuadFacing.NEG_Z, ModelQuadFacing.POS_Z }) {
         // Bilinear weights of the four corners for a point on this face
         @Override
         public void calculateCornerWeights(float x, float y, float z, float[] out) {
@@ -71,7 +71,7 @@ enum AoNeighborInfo {
             return 1.0f - y;
         }
     },
-    POS_Z(new ModelQuadFacing[] { ModelQuadFacing.NEG_X, ModelQuadFacing.POS_X, ModelQuadFacing.NEG_Y, ModelQuadFacing.POS_Y }, 0.8F) {
+    POS_Z(new ModelQuadFacing[] { ModelQuadFacing.NEG_X, ModelQuadFacing.POS_X, ModelQuadFacing.NEG_Y, ModelQuadFacing.POS_Y }) {
         // Bilinear weights of the four corners for a point on this face
         @Override
         public void calculateCornerWeights(float x, float y, float z, float[] out) {
@@ -104,7 +104,7 @@ enum AoNeighborInfo {
             return 1.0f - z;
         }
     },
-    NEG_X(new ModelQuadFacing[] { ModelQuadFacing.POS_Y, ModelQuadFacing.NEG_Y, ModelQuadFacing.NEG_Z, ModelQuadFacing.POS_Z }, 0.6F) {
+    NEG_X(new ModelQuadFacing[] { ModelQuadFacing.POS_Y, ModelQuadFacing.NEG_Y, ModelQuadFacing.NEG_Z, ModelQuadFacing.POS_Z }) {
         // Bilinear weights of the four corners for a point on this face
         @Override
         public void calculateCornerWeights(float x, float y, float z, float[] out) {
@@ -137,7 +137,7 @@ enum AoNeighborInfo {
             return x;
         }
     },
-    NEG_Y(new ModelQuadFacing[] { ModelQuadFacing.NEG_X, ModelQuadFacing.POS_X, ModelQuadFacing.NEG_Z, ModelQuadFacing.POS_Z }, 0.5F) {
+    NEG_Y(new ModelQuadFacing[] { ModelQuadFacing.NEG_X, ModelQuadFacing.POS_X, ModelQuadFacing.NEG_Z, ModelQuadFacing.POS_Z }) {
         // Bilinear weights of the four corners for a point on this face
         @Override
         public void calculateCornerWeights(float x, float y, float z, float[] out) {
@@ -170,7 +170,7 @@ enum AoNeighborInfo {
             return y;
         }
     },
-    NEG_Z(new ModelQuadFacing[] { ModelQuadFacing.POS_Y, ModelQuadFacing.NEG_Y, ModelQuadFacing.POS_X, ModelQuadFacing.NEG_X }, 0.8F) {
+    NEG_Z(new ModelQuadFacing[] { ModelQuadFacing.POS_Y, ModelQuadFacing.NEG_Y, ModelQuadFacing.POS_X, ModelQuadFacing.NEG_X }) {
         // Bilinear weights of the four corners for a point on this face
         @Override
         public void calculateCornerWeights(float x, float y, float z, float[] out) {
@@ -204,16 +204,11 @@ enum AoNeighborInfo {
         }
     };
 
-
     private static final AoNeighborInfo[] VALUES = AoNeighborInfo.values();
     // Direction of each corner block from this face, reached by offsetting the origin block's position by the direction vector
     public final ModelQuadFacing[] faces;
-    // Constant brightness modifier emulating the OpenGL lighting model's faux directional light; not currently used
-    public final float strength;
-
-    AoNeighborInfo(ModelQuadFacing[] directions, float strength) {
+    AoNeighborInfo(ModelQuadFacing[] directions) {
         this.faces = directions;
-        this.strength = strength;
     }
 
     // the AoNeighborInfo corresponding to the given direction

@@ -69,16 +69,12 @@ public final class ChestBakedModel extends BakedEntityModel {
     }
 
     private static BlockPos partner(BlockPos pos, Role role) {
-        switch (role) {
-            case PRIMARY_X:
-                return pos.east();
-            case SECONDARY_X:
-                return pos.west();
-            case PRIMARY_Z:
-                return pos.south();
-            default:
-                return pos.north();
-        }
+        return switch (role) {
+            case PRIMARY_X -> pos.east();
+            case SECONDARY_X -> pos.west();
+            case PRIMARY_Z -> pos.south();
+            default -> pos.north();
+        };
     }
 
     // Replays TileEntityChestRenderer's matrix for the primary of the pair, including its one-block nudges for the two facings whose rotation would otherwise put the model on the wrong side

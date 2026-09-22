@@ -1,5 +1,6 @@
 package com.bdmajora.equilibrium.common.crafting;
 
+import net.minecraft.item.ItemStack;
 import net.minecraft.inventory.InventoryCrafting;
 import net.minecraft.item.crafting.CraftingManager;
 import net.minecraft.item.crafting.IRecipe;
@@ -74,8 +75,8 @@ public final class CraftingCache {
         }
 
         @Override
-        public net.minecraft.item.ItemStack getCraftingResult(InventoryCrafting inv) {
-            return net.minecraft.item.ItemStack.EMPTY;
+        public ItemStack getCraftingResult(InventoryCrafting inv) {
+            return ItemStack.EMPTY;
         }
 
         @Override
@@ -84,8 +85,8 @@ public final class CraftingCache {
         }
 
         @Override
-        public net.minecraft.item.ItemStack getRecipeOutput() {
-            return net.minecraft.item.ItemStack.EMPTY;
+        public ItemStack getRecipeOutput() {
+            return ItemStack.EMPTY;
         }
     }
 }

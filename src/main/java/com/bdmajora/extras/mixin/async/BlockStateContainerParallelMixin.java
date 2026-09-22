@@ -1,6 +1,6 @@
 package com.bdmajora.extras.mixin.async;
 
-import com.bdmajora.extras.async.ParallelProcessor;
+import com.bdmajora.extras.async.ParallelBlockStateContainer;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import net.minecraft.block.state.IBlockState;
@@ -12,10 +12,18 @@ import java.util.concurrent.locks.StampedLock;
 
 // Section palette under a StampedLock: a read that overlaps a palette resize can land on a half-swapped bit array, so reads are optimistic and retried under the read lock when a write intervened; the index-taking overloads are left alone since onResize calls them re-entrantly during a write
 @Mixin(BlockStateContainer.class)
-public abstract class BlockStateContainerParallelMixin {
-    // Null on the client and when parallel ticking is off, so the common path costs one null check
+public abstract class BlockStateContainerParallelMixin implements ParallelBlockStateContainer {
+    // Null until ChunkParallelMixin enables it for a section of a parallel server world, so every client section and every section of a world that is not ticked in parallel keeps the lock-free read; the container has no world reference, and gating on the install flag alone put the optimistic read and its fence on every block read of the client (the mesher, particles, entity collision) for nothing. Volatile so a section published to the workers right after creation sees the lock, at the cost of a plain load on x86
     @Unique
-    private final StampedLock impetus$lock = ParallelProcessor.INSTALLED ? new StampedLock() : null;
+    private volatile StampedLock impetus$lock;
+
+    // Called once, before the section is reachable from another thread
+    @Override
+    public void impetus$enableParallelLock() {
+        if (this.impetus$lock == null) {
+            this.impetus$lock = new StampedLock();
+        }
+    }
 
     @WrapMethod(method = "get(III)Lnet/minecraft/block/state/IBlockState;")
     private IBlockState impetus$lockedGet(int x, int y, int z, Operation<IBlockState> original) {

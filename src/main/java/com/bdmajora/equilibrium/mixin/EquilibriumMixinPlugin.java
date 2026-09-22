@@ -3,15 +3,10 @@ package com.bdmajora.equilibrium.mixin;
 import com.bdmajora.equilibrium.Equilibrium;
 import com.bdmajora.equilibrium.config.EquilibriumConfig;
 import com.bdmajora.equilibrium.config.Option;
-import org.objectweb.asm.tree.ClassNode;
-import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
-import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
-
-import java.util.List;
-import java.util.Set;
+import com.bdmajora.impetus.booter.mixin.SimpleMixinPlugin;
 
 // Decides which mixins apply by resolving each package path against the option tree; the package is the switch, so adding a mixin under an existing option needs no change here
-public class EquilibriumMixinPlugin implements IMixinConfigPlugin {
+public class EquilibriumMixinPlugin extends SimpleMixinPlugin {
     // Everything below this prefix is ours; anything else is treated as foreign and refused
     private static final String MIXIN_PACKAGE_ROOT = "com.bdmajora.equilibrium.mixin.";
 
@@ -45,12 +40,6 @@ public class EquilibriumMixinPlugin implements IMixinConfigPlugin {
         Equilibrium.setConfig(config);
     }
 
-    // Impetus reobfuscates mixins directly, so there is no refmap to name
-    @Override
-    public String getRefMapperConfig() {
-        return null;
-    }
-
     // Resolves the mixin's package against the option tree; refuses anything it cannot account for
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
@@ -75,26 +64,5 @@ public class EquilibriumMixinPlugin implements IMixinConfigPlugin {
         }
 
         return option.isEnabled();
-    }
-
-    // Nothing to negotiate with other configs
-    @Override
-    public void acceptTargets(Set<String> myTargets, Set<String> otherTargets) {
-    }
-
-    // Null means use the mixin list from the json rather than adding any dynamically
-    @Override
-    public List<String> getMixins() {
-        return null;
-    }
-
-    // No pre-apply rewriting needed
-    @Override
-    public void preApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) {
-    }
-
-    // No post-apply rewriting needed
-    @Override
-    public void postApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) {
     }
 }

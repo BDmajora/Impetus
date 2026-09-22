@@ -6,7 +6,6 @@ import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.texture.DynamicTexture;
-import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.client.renderer.texture.TextureUtil;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.client.resources.IResourcePack;
@@ -22,7 +21,6 @@ import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextFormattingStyle;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL20;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;
@@ -39,14 +37,18 @@ public class VintageDrawContext implements DrawContext {
     // caches compiled ITextComponents since TextComponent objects are treated as immutable keys
     private final Map<TextComponent, ITextComponent> componentCache;
 
-    // caches generated dynamic texture locations for mod logos, keyed by mod ID
+    // caches generated dynamic texture locations for mod logos, keyed by mod ID; a null value records "no logo" so the container and pack lookups do not repeat every frame
     private static final Map<String, String> MOD_LOGOS = new HashMap<>();
+    // ResourceLocation parses its string on construction, and the sidebar blits the same few icons every frame
+    private static final Map<String, ResourceLocation> ICON_LOCATIONS = new HashMap<>();
 
     // Impetus and its subsystems ship sidebar icons as textures under assets/impetus/textures/gui, bypassing the mcmod.info lookup below which needs a Forge container; keyed by the mod id the option pages register under
     private static final Map<String, String> BUNDLED_LOGOS = new HashMap<>();
 
     static {
         BUNDLED_LOGOS.put("impetus", "impetus:textures/gui/impetus.png");
+        // The Extras pages are Impetus' own, so they share its mark
+        BUNDLED_LOGOS.put("extras", "impetus:textures/gui/impetus.png");
         BUNDLED_LOGOS.put("coarctatio", "impetus:textures/gui/coarctatio.png");
         BUNDLED_LOGOS.put("equilibrium", "impetus:textures/gui/equilibrium.png");
         BUNDLED_LOGOS.put("fulgor", "impetus:textures/gui/fulgor.png");
@@ -148,7 +150,7 @@ public class VintageDrawContext implements DrawContext {
         GlStateManager.tryBlendFuncSeparate(
                 GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA, GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ZERO
         );
-        Minecraft.getMinecraft().getTextureManager().bindTexture(new ResourceLocation(icon));
+        Minecraft.getMinecraft().getTextureManager().bindTexture(ICON_LOCATIONS.computeIfAbsent(icon, ResourceLocation::new));
         Gui.drawModalRectWithCustomSizedTexture(x, y, 0, 0, width, height, (float)width, (float)height);
         GlStateManager.disableBlend();
     }
@@ -239,6 +241,7 @@ public class VintageDrawContext implements DrawContext {
         return Character.toUpperCase(modId.charAt(0)) + modId.substring(1);
     }
 
+    // Bundled icons first, then the mod's own logo file, resolved once per mod id
     @Override
     public @Nullable String getModLogoPath(String modId) {
         String bundled = BUNDLED_LOGOS.get(modId);
@@ -246,36 +249,46 @@ public class VintageDrawContext implements DrawContext {
             return bundled;
         }
 
-        return MOD_LOGOS.computeIfAbsent(modId, id -> {
-            var container = Loader.instance().getIndexedModList().get(id);
-            if (container == null) {
-                return null;
-            }
-            String file = container.getMetadata().logoFile;
-            if (file == null || file.isEmpty()) {
-                return null;
-            }
-            TextureManager tm = Minecraft.getMinecraft().getTextureManager();
-            IResourcePack pack = FMLClientHandler.instance().getResourcePackFor(container.getModId());
+        if (MOD_LOGOS.containsKey(modId)) {
+            return MOD_LOGOS.get(modId);
+        }
 
-            BufferedImage logo = null;
-            try {
-                if (pack != null) {
-                    logo = pack.getPackImage();
-                } else {
-                    InputStream logoResource = this.getClass().getResourceAsStream(file);
-                    if (logoResource != null) {
-                        logo = TextureUtil.readBufferedImage(logoResource);
-                    }
+        String path = loadModLogo(modId);
+        MOD_LOGOS.put(modId, path);
+        return path;
+    }
+
+    // Uploads the mod's logo as a dynamic texture and returns its location, or null when the mod has none
+    private String loadModLogo(String modId) {
+        var container = Loader.instance().getIndexedModList().get(modId);
+        if (container == null) {
+            return null;
+        }
+
+        String file = container.getMetadata().logoFile;
+        if (file == null || file.isEmpty()) {
+            return null;
+        }
+
+        IResourcePack pack = FMLClientHandler.instance().getResourcePackFor(container.getModId());
+        BufferedImage logo = null;
+
+        try {
+            if (pack != null) {
+                logo = pack.getPackImage();
+            } else {
+                InputStream logoResource = this.getClass().getResourceAsStream(file);
+                if (logoResource != null) {
+                    logo = TextureUtil.readBufferedImage(logoResource);
                 }
-            } catch (IOException ignored) {
             }
+        } catch (IOException ignored) {
+        }
 
-            if (logo == null) {
-                return null;
-            }
+        if (logo == null) {
+            return null;
+        }
 
-            return tm.getDynamicTextureLocation("modlogo", new DynamicTexture(logo)).toString();
-        });
+        return Minecraft.getMinecraft().getTextureManager().getDynamicTextureLocation("modlogo", new DynamicTexture(logo)).toString();
     }
 }

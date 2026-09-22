@@ -32,7 +32,7 @@ public record ChunkRebuildLists(Map<ChunkUpdateType, ArrayDeque<RenderSection>> 
     static {
         Map<ChunkUpdateType, ArrayDeque<RenderSection>> rebuildLists = new EnumMap<>(ChunkUpdateType.class);
 
-        for (var type : ChunkUpdateType.values()) {
+        for (var type : ChunkUpdateType.VALUES) {
             rebuildLists.put(type, new ArrayDeque<>());
         }
 

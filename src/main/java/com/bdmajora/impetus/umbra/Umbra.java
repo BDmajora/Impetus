@@ -7,6 +7,7 @@ import com.bdmajora.impetus.umbra.pipeline.UmbraPipeline;
 import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;
 import com.bdmajora.impetus.umbra.shaderpack.ShaderPack;
 import com.bdmajora.impetus.umbra.shaderpack.ShaderPackLoader;
+import com.bdmajora.impetus.umbra.shaderpack.loading.ProgramId;
 import com.bdmajora.impetus.umbra.shaderpack.option.values.MutableOptionValues;
 
 import java.io.IOException;
@@ -16,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 
@@ -95,7 +97,7 @@ public final class Umbra {
             ShaderPack pack;
             if (Files.isDirectory(packPath)) {
                 pack = ShaderPackLoader.loadFromDirectory(packPath, changedConfigs);
-            } else if (Files.isRegularFile(packPath) && name.toLowerCase().endsWith(".zip")) {
+            } else if (Files.isRegularFile(packPath) && name.toLowerCase(Locale.ROOT).endsWith(".zip")) {
                 pack = ShaderPackLoader.loadFromZip(packPath, changedConfigs);
             } else {
                 LOGGER.warn("Selected shader pack '{}' was not found at {}; shaders disabled.", name, packPath);
@@ -206,6 +208,58 @@ public final class Umbra {
         if (renderingPipeline != null) {
             renderingPipeline.destroy();
             renderingPipeline = null;
+        }
+    }
+
+    // Phase switches from the vanilla render mixins; a no-op with no pack loaded
+    public static void setPhase(ProgramId phase) {
+        UmbraRenderingPipeline pipeline = getRenderingPipeline();
+        if (pipeline != null) {
+            pipeline.setPhase(phase);
+        }
+    }
+
+    public static void setPhase(ProgramId phase, int renderStage) {
+        UmbraRenderingPipeline pipeline = getRenderingPipeline();
+        if (pipeline != null) {
+            pipeline.setPhase(phase, renderStage);
+        }
+    }
+
+    // The glowing-eyes and enchantment-glint brackets from the entity layer mixins; no-ops with no pack loaded, so the mixins stay one line each
+    public static void beginEyes() {
+        UmbraRenderingPipeline pipeline = getRenderingPipeline();
+        if (pipeline != null) {
+            pipeline.beginEyes();
+        }
+    }
+
+    public static void endEyes() {
+        UmbraRenderingPipeline pipeline = getRenderingPipeline();
+        if (pipeline != null) {
+            pipeline.endEyes();
+        }
+    }
+
+    public static void beginArmorGlint() {
+        UmbraRenderingPipeline pipeline = getRenderingPipeline();
+        if (pipeline != null) {
+            pipeline.beginArmorGlint();
+        }
+    }
+
+    public static void endArmorGlint() {
+        UmbraRenderingPipeline pipeline = getRenderingPipeline();
+        if (pipeline != null) {
+            pipeline.endArmorGlint();
+        }
+    }
+
+    // Re-uploads the per-object uniforms (entity/item/block-entity ids, entity colour) to the bound program; no-op with no pack loaded
+    public static void refreshDynamicUniforms() {
+        UmbraRenderingPipeline pipeline = getRenderingPipeline();
+        if (pipeline != null) {
+            pipeline.refreshDynamicUniforms();
         }
     }
 

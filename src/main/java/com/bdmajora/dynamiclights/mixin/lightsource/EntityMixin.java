@@ -1,16 +1,14 @@
 package com.bdmajora.dynamiclights.mixin.lightsource;
 
 import com.bdmajora.dynamiclights.DynamicLights;
-import com.bdmajora.dynamiclights.DynamicLightsMode;
 import com.bdmajora.dynamiclights.client.DynamicLightHandlers;
 import com.bdmajora.dynamiclights.client.DynamicLightSource;
 import com.bdmajora.dynamiclights.client.DynamicLightsEngine;
+import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderGlobal;
 import net.minecraft.entity.Entity;
-import net.minecraft.util.EnumFacing;
-import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -37,12 +35,6 @@ public abstract class EntityMixin implements DynamicLightSource {
 
     @Shadow
     public boolean isDead;
-
-    @Shadow
-    public int chunkCoordX;
-
-    @Shadow
-    public int chunkCoordZ;
 
     @Shadow
     public abstract boolean isBurning();
@@ -73,13 +65,7 @@ public abstract class EntityMixin implements DynamicLightSource {
             return;
         }
 
-        if (this.isDead) {
-            this.impetus$setDynamicLightEnabled(false);
-            return;
-        }
-
-        this.impetus$dynamicLightTick();
-        DynamicLightsEngine.updateTracking(this);
+        this.impetus$tickDynamicLight(this.isDead);
     }
 
     // Lights the entity's own model by the brighter of its own glow and the light where it stands.
@@ -148,24 +134,15 @@ public abstract class EntityMixin implements DynamicLightSource {
 
     @Override
     public boolean impetus$shouldUpdateDynamicLight() {
-        DynamicLightsMode mode = DynamicLights.options().mode;
-
-        if (!mode.isEnabled()) {
+        long stamp = DynamicLightsEngine.nextUpdateStamp(this.impetus$lastUpdate);
+        if (stamp < 0) {
             return false;
         }
-
-        if (mode.hasDelay()) {
-            long now = System.currentTimeMillis();
-            if (now < this.impetus$lastUpdate + mode.getDelay()) {
-                return false;
-            }
-            this.impetus$lastUpdate = now;
-        }
-
+        this.impetus$lastUpdate = stamp;
         return true;
     }
 
-    // Re-lights surrounding chunks if the entity moved 0.1+ blocks (keeps a standing player from re-meshing every frame) or changed brightness; eight sections since 7.75-block reach spills into three neighbours and four diagonals, chosen by the direction walk below
+    // Re-lights surrounding chunks if the entity moved 0.1+ blocks (keeps a standing player from re-meshing every frame) or changed brightness
     @Override
     public boolean impetus$updateDynamicLight(RenderGlobal renderer) {
         if (!this.impetus$shouldUpdateDynamicLight()) {
@@ -187,39 +164,11 @@ public abstract class EntityMixin implements DynamicLightSource {
         this.impetus$prevZ = this.posZ;
         this.impetus$lastLuminance = luminance;
 
-        LongOpenHashSet newPos = luminance > 0 ? new LongOpenHashSet() : null;
-
+        LongOpenHashSet newPos = null;
         if (luminance > 0) {
-            double eyeY = this.posY + this.getEyeHeight();
-            BlockPos.MutableBlockPos chunkPos = new BlockPos.MutableBlockPos(
-                    this.chunkCoordX, (int) Math.floor(eyeY) >> 4, this.chunkCoordZ);
-
-            DynamicLightsEngine.scheduleChunkRebuild(renderer, chunkPos);
-            DynamicLightsEngine.updateTrackedChunks(chunkPos, this.impetus$trackedLitChunkPos, newPos);
-
-            double localX = this.posX - Math.floor(this.posX / 16.0D) * 16.0D;
-            double localY = eyeY - Math.floor(eyeY / 16.0D) * 16.0D;
-            double localZ = this.posZ - Math.floor(this.posZ / 16.0D) * 16.0D;
-
-            EnumFacing directionX = localX >= 8.0D ? EnumFacing.EAST : EnumFacing.WEST;
-            EnumFacing directionY = localY >= 8.0D ? EnumFacing.UP : EnumFacing.DOWN;
-            EnumFacing directionZ = localZ >= 8.0D ? EnumFacing.SOUTH : EnumFacing.NORTH;
-
-            for (int i = 0; i < 7; i++) {
-                if (i % 4 == 0) {
-                    chunkPos.move(directionX);
-                } else if (i % 4 == 1) {
-                    chunkPos.move(directionZ);
-                } else if (i % 4 == 2) {
-                    chunkPos.move(directionX.getOpposite());
-                } else {
-                    chunkPos.move(directionZ.getOpposite());
-                    chunkPos.move(directionY);
-                }
-
-                DynamicLightsEngine.scheduleChunkRebuild(renderer, chunkPos);
-                DynamicLightsEngine.updateTrackedChunks(chunkPos, this.impetus$trackedLitChunkPos, newPos);
-            }
+            newPos = new LongOpenHashSet();
+            DynamicLightsEngine.walkLitSections(renderer, this.posX, this.posY + this.getEyeHeight(), this.posZ,
+                    this.impetus$trackedLitChunkPos, newPos);
         }
 
         // Whatever is left in the old set is a chunk this source moved away from and still needs rebuilding to lose the light
@@ -234,8 +183,10 @@ public abstract class EntityMixin implements DynamicLightSource {
             return;
         }
 
-        for (long pos : this.impetus$trackedLitChunkPos) {
-            DynamicLightsEngine.scheduleChunkRebuild(renderer, pos);
+        // Explicit primitive iterator: the enhanced for boxes every position through LongIterator.next()
+        LongIterator positions = this.impetus$trackedLitChunkPos.iterator();
+        while (positions.hasNext()) {
+            DynamicLightsEngine.scheduleChunkRebuild(renderer, positions.nextLong());
         }
     }
 }

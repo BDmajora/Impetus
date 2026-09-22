@@ -13,6 +13,7 @@ import org.joml.Vector3f;
 import com.bdmajora.impetus.umbra.compat.dh.DhCompat;
 import com.bdmajora.impetus.umbra.gl.program.ProgramUniforms;
 import com.bdmajora.impetus.umbra.gl.uniform.UniformCollector;
+import com.bdmajora.impetus.umbra.pipeline.UmbraShadowRenderer;
 import com.bdmajora.impetus.umbra.gl.uniform.UniformUpdateFrequency;
 
 import java.nio.ByteBuffer;
@@ -38,6 +39,23 @@ public final class MatrixUniforms {
             0.0f, 0.00390625f, 0.0f, 0.0f,
             0.0f, 0.0f, 0.00390625f, 0.0f,
             0.03125f, 0.03125f, 0.03125f, 1.0f);
+    // One scratch buffer for the fixed-function readbacks below; render thread only. These ran per DYNAMIC uniform per program bind, and each allocateDirect zeroes memory and registers a Cleaner, thousands of times a frame in an entity-heavy scene
+    private static final FloatBuffer SCRATCH = ByteBuffer.allocateDirect(16 * Float.BYTES)
+            .order(ByteOrder.nativeOrder())
+            .asFloatBuffer();
+    // The live modelview and its inverse, read and inverted once per DYNAMIC walk (ProgramUniforms.dynamicPass) and shared by the five suppliers that want them
+    private static final Matrix4f LIVE_MODELVIEW = new Matrix4f();
+    // Owned by the DYNAMIC-walk cache below, so it must not share the transient inverse scratch
+    private static final Matrix4f LIVE_MODELVIEW_INVERSE = new Matrix4f();
+    private static Matrix4fc liveModelViewInverse = IDENTITY;
+    // Render-thread scratch for every supplier whose answer MatrixUniform uploads at once; a fresh 64-byte matrix per inverse per program per frame added up to thousands of allocations a second
+    private static final Matrix4f INVERSE_SCRATCH = new Matrix4f();
+    private static final Matrix4f MVP_SCRATCH = new Matrix4f();
+    private static final Matrix4f TEXTURE_SCRATCH = new Matrix4f();
+    private static final Matrix3f NORMAL_SCRATCH = new Matrix3f();
+    private static final Vector3f VECTOR_SCRATCH = new Vector3f();
+    private static int liveModelViewPass = -1;
+    private static int liveModelViewInversePass = -1;
 
     private MatrixUniforms() {
     }
@@ -78,7 +96,7 @@ public final class MatrixUniforms {
                 .uniformMatrix(UniformUpdateFrequency.PER_FRAME, "iris_ProjMatInverse",
                         MatrixUniforms::getActiveProjectionInverse)
                 .uniformMatrix(UniformUpdateFrequency.PER_FRAME, "u_ModelViewProjectionMatrix",
-                        () -> new Matrix4f(state.getGbufferProjection()).mul(state.getGbufferModelView()))
+                        () -> MVP_SCRATCH.set(state.getGbufferProjection()).mul(state.getGbufferModelView()))
                 // Umbra computes the normal matrix PER DRAW from that draw's modelview (camera AND model transform); deriving it from gbufferModelView keeps only the camera half so every entity loses its rotation, and PER_FRAME shares one value across every object. DYNAMIC + the live fixed-function modelview is the 1.12 equivalent, as iris_TextureMat already does
                 .uniformMatrix3(UniformUpdateFrequency.DYNAMIC, "iris_DefaultNormalMat",
                         MatrixUniforms::getLiveNormalMatrix)
@@ -127,12 +145,17 @@ public final class MatrixUniforms {
 
     // Double to float
     private static Vector3f toVector3f(Vector3d position) {
-        return new Vector3f((float) position.x, (float) position.y, (float) position.z);
+        return VECTOR_SCRATCH.set((float) position.x, (float) position.y, (float) position.z);
     }
 
     // Inverts a matrix, substituting identity when the result is non-finite: Iris inverts unguarded off an always-invertible pose stack, but this port feeds fixed-function readbacks that can be singular (an all-zero buffer captured early, a degenerate ortho), and JOML's invert() yields Inf/NaN silently; Complementary routes EVERY terrain vertex through these inverses, so one NaN deleted the world while entities kept drawing. Identity is wrong but FINITE, and the log names the uniform
     private static Matrix4fc invertedOrIdentity(String name, Matrix4fc source) {
-        Matrix4f inverse = new Matrix4f(source).invert();
+        return invertedOrIdentity(name, source, INVERSE_SCRATCH);
+    }
+
+    // The same guard writing into a caller-owned matrix, for the one result that outlives its supplier call
+    private static Matrix4fc invertedOrIdentity(String name, Matrix4fc source, Matrix4f dest) {
+        Matrix4f inverse = dest.set(source).invert();
         if (isFinite(inverse)) {
             return inverse;
         }
@@ -155,50 +178,54 @@ public final class MatrixUniforms {
         return true;
     }
 
-    // The inverse of the modelview live RIGHT NOW, this draw's matrix; Iris's per-draw equivalent reads the pose stack (camera times model), which on the compatibility profile is exactly GL_MODELVIEW_MATRIX at draw time
+    // The inverse of the modelview live RIGHT NOW, this draw's matrix; Iris's per-draw equivalent reads the pose stack (camera times model), which on the compatibility profile is exactly GL_MODELVIEW_MATRIX at draw time. Inverted once per DYNAMIC walk
     private static Matrix4fc getLiveModelViewInverse() {
-        return invertedOrIdentity("iris_ModelViewMatrixInverse", getLiveModelView());
+        int pass = ProgramUniforms.dynamicPass();
+        if (pass != liveModelViewInversePass) {
+            liveModelViewInverse = invertedOrIdentity("iris_ModelViewMatrixInverse", getLiveModelView(), LIVE_MODELVIEW_INVERSE);
+            liveModelViewInversePass = pass;
+        }
+        return liveModelViewInverse;
     }
 
-    // The fixed-function modelview as it stands at this instant: camera times model for the draw in progress
+    // The fixed-function modelview as it stands at this instant: camera times model for the draw in progress; queried once per DYNAMIC walk, since nothing changes the matrix between the uniforms of one bind
     private static Matrix4fc getLiveModelView() {
-        FloatBuffer buffer = ByteBuffer.allocateDirect(16 * Float.BYTES)
-                .order(ByteOrder.nativeOrder())
-                .asFloatBuffer();
-        GlStateManager.getFloat(GL_MODELVIEW_MATRIX, buffer);
-        buffer.rewind();
-        return new Matrix4f().set(buffer);
+        int pass = ProgramUniforms.dynamicPass();
+        if (pass != liveModelViewPass) {
+            SCRATCH.clear();
+            GlStateManager.getFloat(GL_MODELVIEW_MATRIX, SCRATCH);
+            SCRATCH.rewind();
+            LIVE_MODELVIEW.set(SCRATCH);
+            liveModelViewPass = pass;
+        }
+        return LIVE_MODELVIEW;
     }
 
     // The inverse of whichever projection the running pass rasterises with; the shadow pass uses its own ortho, so the camera projection would be wrong there
     private static Matrix4fc getActiveProjectionInverse() {
         CapturedRenderingState state = CapturedRenderingState.INSTANCE;
-        boolean shadow = com.bdmajora.impetus.umbra.pipeline.UmbraShadowRenderer.isShadowPass();
+        boolean shadow = UmbraShadowRenderer.isShadowPass();
         Matrix4fc projection = shadow ? state.getShadowProjection() : state.getGbufferProjection();
         return invertedOrIdentity(shadow ? "iris_ProjectionMatrixInverse (shadow ortho)"
                 : "iris_ProjectionMatrixInverse (camera projection)", projection);
     }
 
-    // A non-finite normal matrix cannot delete geometry but poisons every lit fragment, so it goes through the same guard, which also keeps the one-report-per-name behaviour
+    // A non-finite normal matrix cannot delete geometry but poisons every lit fragment, so it shares the guarded inverse above (the transpose of the inverse's upper 3x3)
     private static Matrix3fc getLiveNormalMatrix() {
-        return new Matrix4f(invertedOrIdentity("iris_NormalMatrix", getLiveModelView()))
-                .transpose3x3(new Matrix3f());
+        return getLiveModelViewInverse().transpose3x3(NORMAL_SCRATCH);
     }
 
     // Identity, for packs reading gl_TextureMatrix outside a textured draw
     private static Matrix4fc getDefaultTextureMatrix() {
         int previousTexture = LWJGL.glGetInteger(GL_ACTIVE_TEXTURE);
         int previousMatrixMode = LWJGL.glGetInteger(GL_MATRIX_MODE);
-        FloatBuffer buffer = ByteBuffer.allocateDirect(16 * Float.BYTES)
-                .order(ByteOrder.nativeOrder())
-                .asFloatBuffer();
         try {
             GlStateManager.setActiveTexture(OpenGlHelper.defaultTexUnit);
             GlStateManager.matrixMode(GL_TEXTURE_MODE);
-            buffer.clear();
-            GlStateManager.getFloat(GL_TEXTURE_MATRIX, buffer);
-            buffer.rewind();
-            return new Matrix4f().set(buffer);
+            SCRATCH.clear();
+            GlStateManager.getFloat(GL_TEXTURE_MATRIX, SCRATCH);
+            SCRATCH.rewind();
+            return TEXTURE_SCRATCH.set(SCRATCH);
         } finally {
             GlStateManager.matrixMode(previousMatrixMode);
             GlStateManager.setActiveTexture(previousTexture);
@@ -229,7 +256,8 @@ public final class MatrixUniforms {
                 }
                 this.lastFrame = frame;
             }
-            return new Matrix4f(this.previous);
+            // The uniform uploads it before the next roll, so no copy is needed
+            return this.previous;
         }
     }
 }

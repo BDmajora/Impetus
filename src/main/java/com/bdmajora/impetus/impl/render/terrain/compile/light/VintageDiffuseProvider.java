@@ -57,12 +57,24 @@ public enum VintageDiffuseProvider implements DiffuseProvider {
         return fromEnumFacing(facing);
     }
 
-    // Per-face diffuse via the facing's normal
+    // Per-face diffuse from the table; this runs per quad and LightUtil recomputes the formula on every call
     @Override
     public float getDiffuse(ModelQuadFacing lightFace, boolean shade) {
         if (!shade || directionalShadingDisabled()) {
             return 1.0f;
         }
-        return LightUtil.diffuseLight(toEnumFacing(lightFace));
+        return DIFFUSE_BY_FACING[lightFace.ordinal()];
+    }
+
+    // Vanilla's six per-face constants (0.5 down, 1.0 up, 0.8 N/S, 0.6 E/W) indexed by ModelQuadFacing ordinal; UNASSIGNED gets full brightness
+    private static final float[] DIFFUSE_BY_FACING = buildDiffuseTable();
+
+    private static float[] buildDiffuseTable() {
+        float[] table = new float[ModelQuadFacing.COUNT];
+        for (ModelQuadFacing facing : ModelQuadFacing.DIRECTIONS) {
+            table[facing.ordinal()] = LightUtil.diffuseLight(toEnumFacing(facing));
+        }
+        table[UNASSIGNED.ordinal()] = 1.0f;
+        return table;
     }
 }

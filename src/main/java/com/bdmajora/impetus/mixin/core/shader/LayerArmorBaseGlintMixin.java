@@ -1,7 +1,6 @@
 package com.bdmajora.impetus.mixin.core.shader;
 
 import com.bdmajora.impetus.umbra.Umbra;
-import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;
 import net.minecraft.client.model.ModelBase;
 import net.minecraft.client.renderer.entity.RenderLivingBase;
 import net.minecraft.client.renderer.entity.layers.LayerArmorBase;
@@ -19,10 +18,7 @@ public class LayerArmorBaseGlintMixin {
                                                 float limbSwing, float limbSwingAmount, float partialTicks,
                                                 float ageInTicks, float netHeadYaw, float headPitch, float scale,
                                                 CallbackInfo ci) {
-        UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
-        if (pipeline != null) {
-            pipeline.beginArmorGlint();
-        }
+        Umbra.beginArmorGlint();
     }
 
     @Inject(method = "renderEnchantedGlint", at = @At("RETURN"), require = 0)
@@ -30,9 +26,6 @@ public class LayerArmorBaseGlintMixin {
                                               float limbSwing, float limbSwingAmount, float partialTicks,
                                               float ageInTicks, float netHeadYaw, float headPitch, float scale,
                                               CallbackInfo ci) {
-        UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
-        if (pipeline != null) {
-            pipeline.endArmorGlint();
-        }
+        Umbra.endArmorGlint();
     }
 }

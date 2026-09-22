@@ -12,10 +12,21 @@ public class SortedRenderLists implements ChunkRenderListIterable {
 
     private final ObjectArrayList<ChunkRenderList> lists;
     private final ReferenceOpenHashSet<TerrainRenderPass> passes;
+    private final boolean hasSortedPass;
 
     SortedRenderLists(ObjectArrayList<ChunkRenderList> lists) {
         this.lists = lists;
         this.passes = getAllPassesInLists(lists);
+        this.hasSortedPass = anySorted(this.passes);
+    }
+
+    private static boolean anySorted(Set<TerrainRenderPass> passes) {
+        for (TerrainRenderPass pass : passes) {
+            if (pass.isSorted()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // Union of passes any listed section uses
@@ -44,6 +55,11 @@ public class SortedRenderLists implements ChunkRenderListIterable {
     // Every pass in use
     public Set<TerrainRenderPass> getPasses() {
         return this.passes;
+    }
+
+    // Whether any listed section draws a pass that needs translucency sorting; decided once per list, since the manager asks every frame
+    public boolean hasSortedPass() {
+        return this.hasSortedPass;
     }
 
     // For frames with nothing visible

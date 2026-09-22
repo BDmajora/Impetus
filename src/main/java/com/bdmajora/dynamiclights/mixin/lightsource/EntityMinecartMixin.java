@@ -3,7 +3,6 @@ package com.bdmajora.dynamiclights.mixin.lightsource;
 import com.bdmajora.dynamiclights.DynamicLights;
 import com.bdmajora.dynamiclights.client.DynamicLightHandlers;
 import com.bdmajora.dynamiclights.client.DynamicLightSource;
-import com.bdmajora.dynamiclights.client.DynamicLightsEngine;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.item.EntityMinecart;
@@ -34,13 +33,7 @@ public abstract class EntityMinecartMixin extends Entity implements DynamicLight
             return;
         }
 
-        if (this.isDead) {
-            this.impetus$setDynamicLightEnabled(false);
-            return;
-        }
-
-        this.impetus$dynamicLightTick();
-        DynamicLightsEngine.updateTracking(this);
+        this.impetus$tickDynamicLight(this.isDead);
     }
 
     @Override

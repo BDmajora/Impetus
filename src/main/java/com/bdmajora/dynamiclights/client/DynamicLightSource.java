@@ -40,6 +40,16 @@ public interface DynamicLightSource {
     // Recomputes getLuminance(); called once per tick while the source is alive
     void impetus$dynamicLightTick();
 
+    // The client-tick tail every entity hook shares: a removed source stops being tracked, a live one recomputes its luminance and is tracked or dropped as it crosses zero
+    default void impetus$tickDynamicLight(boolean removed) {
+        if (removed) {
+            impetus$setDynamicLightEnabled(false);
+            return;
+        }
+        impetus$dynamicLightTick();
+        DynamicLightsEngine.updateTracking(this);
+    }
+
     // Whether the configured update delay has elapsed for this source
     boolean impetus$shouldUpdateDynamicLight();
 

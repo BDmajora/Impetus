@@ -1,7 +1,6 @@
 package com.bdmajora.coarctatio.mixin.events;
 
 import com.bdmajora.coarctatio.events.RecyclableEvent;
-import com.google.common.base.Preconditions;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
@@ -46,21 +45,12 @@ public abstract class BlockEventMixin extends Event implements RecyclableEvent {
 
     @Override
     public void setPhase(@Nonnull EventPriority value) {
-        Preconditions.checkNotNull(value, "setPhase argument must not be null");
-        int prev = this.coarctatio$phase == null ? -1 : this.coarctatio$phase.ordinal();
-        Preconditions.checkArgument(prev < value.ordinal(), "Attempted to set event phase to %s when already %s", value, this.coarctatio$phase);
-        this.coarctatio$phase = value;
+        this.coarctatio$phase = RecyclableEvent.advancePhase(this.coarctatio$phase, value);
     }
 
     @Override
-    public void coarctatio$resetEventState() {
+    public void coarctatio$resetPhase() {
         this.coarctatio$phase = null;
-        if (isCancelable()) {
-            setCanceled(false);
-        }
-        if (hasResult()) {
-            setResult(Result.DEFAULT);
-        }
     }
 
     @Override

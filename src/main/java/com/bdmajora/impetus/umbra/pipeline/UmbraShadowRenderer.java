@@ -24,7 +24,6 @@ import com.bdmajora.impetus.umbra.uniforms.CapturedRenderingState;
 import com.bdmajora.impetus.umbra.uniforms.CelestialUniforms;
 import com.bdmajora.impetus.lwjgl.GL11;
 import com.bdmajora.impetus.lwjgl.GL12;
-import com.bdmajora.impetus.lwjgl.GL13;
 import com.bdmajora.impetus.lwjgl.GL14;
 import com.bdmajora.impetus.lwjgl.GL15;
 import com.bdmajora.impetus.lwjgl.GL30;
@@ -34,6 +33,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.Map;
+
+import com.bdmajora.impetus.umbra.gl.texture.TextureParameters;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
@@ -216,8 +217,7 @@ public class UmbraShadowRenderer {
         GlTextureUnits.selectScratch(TEXTURE_SETUP_UNIT);
         try {
             LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, texture);
-            LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
-            LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+            TextureParameters.setFilter2D(GL11.GL_LINEAR);
             LWJGL.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, resolution, resolution, 0,
                     GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
             LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, 0);
@@ -552,38 +552,6 @@ public class UmbraShadowRenderer {
         matrix.get(this.matrixBuffer);
         GlStateManager.loadIdentity();
         GlStateManager.multMatrix(this.matrixBuffer);
-    }
-
-    // The distortion functions the installed packs use; a pack applies its distortion TWICE (shadow.vsh and the composite lookup) so they cancel, and hardcoding COMPLEMENTARY here manufactured a phantom ~19-block offset on packs that actually use LOLIP_P
-    private static final String[] SHADOW_DISTORTION_MODELS = {"COMPLEMENTARY", "LOLIP_P"};
-
-    // Debug: share of the shadow map still at clear depth
-    private static float fractionUntouched(float[] depth) {
-        int cleared = 0;
-        for (float d : depth) {
-            if (d >= 0.99999f) {
-                cleared++;
-            }
-        }
-        return (float) cleared / depth.length;
-    }
-
-    // shadowcolor1 read back as interleaved RGBA; red feeds the light shafts' tint through pow2(rgb * 4.0) with 0.25 neutral, while ALPHA carries the light-shaft height (0.25 + max0(positionYM * 0.05)) that drives vlFactor
-    private float[] readShadowColor1() {
-        int texels = this.resolution * this.resolution;
-        ByteBuffer pixels = ByteBuffer.allocateDirect(texels * 4 * 4).order(ByteOrder.nativeOrder());
-        this.framebuffer.bindAsReadBuffer();
-        this.framebuffer.readBuffer(1);
-        pixels.clear();
-        LWJGL.glReadPixels(0, 0, this.resolution, this.resolution, GL11.GL_RGBA, GL11.GL_FLOAT, pixels);
-        float[] rgba = new float[texels * 4];
-        pixels.asFloatBuffer().get(rgba);
-        return rgba;
-    }
-
-    // Debug formatting
-    private static String pct(int count, int total) {
-        return String.format("%.3f", 100.0 * count / total);
     }
 
     // Copies the shadow framebuffer's depth into destination; requires the shadow FBO bound as this pass's framebuffer, making it a framebuffer read rather than a texture blit

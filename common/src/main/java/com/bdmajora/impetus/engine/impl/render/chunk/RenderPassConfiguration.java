@@ -1,14 +1,11 @@
 package com.bdmajora.impetus.engine.impl.render.chunk;
 
-import com.bdmajora.impetus.engine.impl.render.chunk.compile.sorting.ChunkPrimitiveType;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.material.Material;
-import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexType;
 
 import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Function;
 import java.util.stream.Stream;
 
 public record RenderPassConfiguration<R>(Map<R, Material> chunkRenderTypeToMaterialMap,
@@ -16,18 +13,6 @@ public record RenderPassConfiguration<R>(Map<R, Material> chunkRenderTypeToMater
                                       Material defaultSolidMaterial,
                                       Material defaultCutoutMippedMaterial,
                                       Material defaultTranslucentMaterial) {
-    // The format a pass builds
-    @Deprecated
-    public ChunkVertexType getVertexTypeForPass(TerrainRenderPass pass) {
-        return pass.vertexType();
-    }
-
-    // Quads or triangles for a pass
-    @Deprecated
-    public ChunkPrimitiveType getPrimitiveTypeForPass(TerrainRenderPass pass) {
-        return pass.primitiveType();
-    }
-
     // Platform render type to material
     public Material getMaterialForRenderType(Object type) {
         Objects.requireNonNull(type, "Null render type provided");

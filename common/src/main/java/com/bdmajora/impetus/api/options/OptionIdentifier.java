@@ -44,9 +44,6 @@ public final class OptionIdentifier<T> {
     // Interned, so the same id always yields the same instance
     @SuppressWarnings("unchecked")
     public static synchronized <T> OptionIdentifier<T> create(String modId, String path, Class<T> clz) {
-        if (modId.equals("impetus")) {
-            modId = "impetus";
-        }
         // Interns identifiers so equal (modId, path) pairs share one instance; matches() below relies on reference equality
         OptionIdentifier<T> ourIdentifier = new OptionIdentifier<>(modId, path, clz);
         OptionIdentifier<T> oldIdentifier = (OptionIdentifier<T>)IDENTIFIERS.addOrGet(ourIdentifier);
@@ -60,8 +57,8 @@ public final class OptionIdentifier<T> {
     public static boolean isPresent(@Nullable OptionIdentifier<?> id) {
         return id != null && id != EMPTY;
     }
-    
-    // Same mod and path, ignoring type
+
+    // Same mod and path, ignoring type; reference equality suffices because create interns on (modId, path)
     public boolean matches(OptionIdentifier<?> other) {
         return this == other;
     }
@@ -78,7 +75,7 @@ public final class OptionIdentifier<T> {
         return this.modId + ":" + this.path;
     }
 
-    // By mod, path and type
+    // By mod and path; the type is checked once at interning instead
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -87,7 +84,7 @@ public final class OptionIdentifier<T> {
         return Objects.equals(modId, that.modId) && Objects.equals(path, that.path);
     }
 
-    // By mod, path and type
+    // By mod and path
     @Override
     public int hashCode() {
         return Objects.hash(modId, path);

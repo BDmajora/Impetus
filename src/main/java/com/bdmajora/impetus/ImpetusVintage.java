@@ -182,10 +182,6 @@ public class ImpetusVintage {
         if (FulgorConfig.get().showDebugOverlay) {
             strings.add(Fulgor.debugOverlayLine());
         }
-
-        if (com.bdmajora.impetus.umbra.pipeline.LightShaftProbe.available()) {
-            strings.addAll(com.bdmajora.impetus.umbra.pipeline.LightShaftProbe.INSTANCE.lines());
-        }
     }
 
     // Off-heap usage formatted for the debug screen

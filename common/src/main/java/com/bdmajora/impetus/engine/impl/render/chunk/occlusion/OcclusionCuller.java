@@ -189,17 +189,30 @@ public class OcclusionCuller {
         return planes;
     }
 
-    // Nearest-point distance against the render distance
+    // Nearest-point distance of the section's 16-block box against the render distance
     private static boolean isWithinRenderDistance(CameraTransform camera, OcclusionNode section, float maxDistance) {
-        // origin point of the chunk's bounding box (in view space)
-        int ox = section.getOriginX() - camera.intX;
-        int oy = section.getOriginY() - camera.intY;
-        int oz = section.getOriginZ() - camera.intZ;
+        int ox = section.getOriginX();
+        int oy = section.getOriginY();
+        int oz = section.getOriginZ();
+
+        return isWithinRenderDistance(camera, ox, oy, oz, ox + 16, oy + 16, oz + 16, maxDistance);
+    }
+
+    // Nearest-point distance of a block-space box against the render distance; shared with the section tree's node test
+    static boolean isWithinRenderDistance(CameraTransform camera, int minX, int minY, int minZ,
+                                          int maxX, int maxY, int maxZ, float maxDistance) {
+        // Box corners relative to the camera's integer position (in view space)
+        int ox = minX - camera.intX;
+        int oy = minY - camera.intY;
+        int oz = minZ - camera.intZ;
+        int px = maxX - camera.intX;
+        int py = maxY - camera.intY;
+        int pz = maxZ - camera.intZ;
 
         // Closest point of the bounding box to the camera origin, in view space
-        float dx = nearestToZero(ox, ox + 16) - camera.fracX;
-        float dy = nearestToZero(oy, oy + 16) - camera.fracY;
-        float dz = nearestToZero(oz, oz + 16) - camera.fracZ;
+        float dx = nearestToZero(ox, px) - camera.fracX;
+        float dy = nearestToZero(oy, py) - camera.fracY;
+        float dz = nearestToZero(oz, pz) - camera.fracZ;
 
         return ((((dx * dx) + (dz * dz)) < (maxDistance * maxDistance)) && (Math.abs(dy) < maxDistance));
     }

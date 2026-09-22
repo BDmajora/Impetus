@@ -6,9 +6,9 @@ import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.DisplayMode;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 
 // Enumerates real fullscreen video modes from LWJGL; index 0 is always "Current" (desktop resolution), 1..N are distinct modes sorted by resolution
 public final class FullscreenResolutions {
@@ -26,7 +26,7 @@ public final class FullscreenResolutions {
             try {
                 DisplayMode[] available = Display.getAvailableDisplayModes();
                 // Highest resolution / refresh first.
-                java.util.Arrays.sort(available, (a, b) -> {
+                Arrays.sort(available, (a, b) -> {
                     int byArea = Integer.compare(b.getWidth() * b.getHeight(), a.getWidth() * a.getHeight());
                     return byArea != 0 ? byArea : Integer.compare(b.getFrequency(), a.getFrequency());
                 });

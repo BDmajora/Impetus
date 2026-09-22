@@ -84,6 +84,11 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
 
         buildContext.setupTranslation(minX, minY, minZ);
 
+        // Pack-wide switches read once per section rather than per block
+        boolean voxelizeLightBlocks = com.bdmajora.impetus.umbra.material.WorldRenderingSettings.isVoxelizeLightBlocks();
+        boolean useNewBlockRenderer = USE_NEW_BLOCK_RENDERER;
+        var blockRenderer = buildContext.getBlockRenderer();
+
         try {
             for (int y = minY; y < maxY; y++) {
                 if (cancellationToken.isCancelled()) {
@@ -112,14 +117,14 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                             }
                         }
 
-                        buildContext.getBlockRenderer().resetSharedState();
+                        blockRenderer.resetSharedState();
 
                         // block.properties `layer.<rendertype>`: the pack can move a block to a different chunk render layer than it reports (OptiFine's render layer override)
                         BlockRenderLayer forcedLayer =
                                 com.bdmajora.impetus.umbra.material.WorldRenderingSettings.getForcedRenderLayer(block);
 
                         // `voxelizeLightBlocks`: a block emitting light but drawing nothing is invisible to shadow-pass voxelization, so any INVISIBLE block with a light value (the 1.12.2 stand-in for `minecraft:light`) is attributed to the solid layer
-                        if (com.bdmajora.impetus.umbra.material.WorldRenderingSettings.isVoxelizeLightBlocks()
+                        if (voxelizeLightBlocks
                                 && blockState.getRenderType() == EnumBlockRenderType.INVISIBLE
                                 && blockState.getLightValue(slice, blockPos) > 0) {
                             buildContext.recordVanillaBlockAttribution(
@@ -138,8 +143,8 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                                     : block.canRenderInLayer(blockState, layer);
                             if (renderHere) {
                                 ForgeHooksClient.setRenderLayer(layer);
-                                if (blockState.getRenderType() == EnumBlockRenderType.MODEL && USE_NEW_BLOCK_RENDERER) {
-                                    buildContext.getBlockRenderer().renderBlock(blockState, blockPos, slice, layer);
+                                if (useNewBlockRenderer && blockState.getRenderType() == EnumBlockRenderType.MODEL) {
+                                    blockRenderer.renderBlock(blockState, blockPos, slice, layer);
                                 } else {
                                     var buffer = buildContext.getBufferForLayer(layer);
                                     dispatcher.renderBlock(blockState, blockPos, slice, buffer);

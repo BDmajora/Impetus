@@ -5,8 +5,11 @@ import net.minecraft.block.BlockSlab;
 import net.minecraft.block.BlockStairs;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.util.EnumFacing;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.EnumSkyBlock;
 import net.minecraftforge.fluids.BlockFluidBase;
+
+import java.util.function.ToIntBiFunction;
 
 // Pulsar's answer to MC-92: a block that takes its brightness from its neighbours takes it only through the faces that are actually open, rather than vanilla's maximum over every neighbour, which lit a slab from a torch on the side its solid half faces
 public final class FaceLightRules {
@@ -31,6 +34,19 @@ public final class FaceLightRules {
             return FACE_UP;
         }
         return 0;
+    }
+
+    // The level at pos raised by whatever reaches it through its open faces, one neighbour per open face; stops early at full brightness. lightFor is the caller's own getLightFor, since World and ChunkCache each have one but IBlockAccess declares none
+    public static int foldOpenFaces(int faces, int level, EnumSkyBlock type, BlockPos pos, ToIntBiFunction<EnumSkyBlock, BlockPos> lightFor) {
+        for (EnumFacing facing : EnumFacing.VALUES) {
+            if (level >= 15) {
+                break;
+            }
+            if ((faces & (1 << facing.ordinal())) != 0) {
+                level = fold(level, lightFor.applyAsInt(type, pos.offset(facing)), type);
+            }
+        }
+        return level;
     }
 
     // Folds one open neighbour into the running level: an open face still attenuates by one, except that full skylight stays full so a surface open to the sky reads 15

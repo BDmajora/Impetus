@@ -72,9 +72,6 @@ public abstract class RenderLivingBaseEntityColorMixin {
         }
 
         CapturedRenderingState.INSTANCE.resetEntityColor();
-        UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
-        if (pipeline != null) {
-            pipeline.refreshDynamicUniforms();
-        }
+        Umbra.refreshDynamicUniforms();
     }
 }

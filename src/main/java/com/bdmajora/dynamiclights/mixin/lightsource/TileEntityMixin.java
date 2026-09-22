@@ -1,15 +1,13 @@
 package com.bdmajora.dynamiclights.mixin.lightsource;
 
-import com.bdmajora.dynamiclights.DynamicLights;
-import com.bdmajora.dynamiclights.DynamicLightsMode;
 import com.bdmajora.dynamiclights.client.DynamicLightHandlers;
 import com.bdmajora.dynamiclights.client.DynamicLightSource;
 import com.bdmajora.dynamiclights.client.DynamicLightsEngine;
+import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderGlobal;
 import net.minecraft.tileentity.TileEntity;
-import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.spongepowered.asm.mixin.Mixin;
@@ -94,20 +92,11 @@ public abstract class TileEntityMixin implements DynamicLightSource {
 
     @Override
     public boolean impetus$shouldUpdateDynamicLight() {
-        DynamicLightsMode mode = DynamicLights.options().mode;
-
-        if (!mode.isEnabled()) {
+        long stamp = DynamicLightsEngine.nextUpdateStamp(this.impetus$lastUpdate);
+        if (stamp < 0) {
             return false;
         }
-
-        if (mode.hasDelay()) {
-            long now = System.currentTimeMillis();
-            if (now < this.impetus$lastUpdate + mode.getDelay()) {
-                return false;
-            }
-            this.impetus$lastUpdate = now;
-        }
-
+        this.impetus$lastUpdate = stamp;
         return true;
     }
 
@@ -124,32 +113,11 @@ public abstract class TileEntityMixin implements DynamicLightSource {
 
         this.impetus$lastLuminance = luminance;
 
+        // A block entity never moves, so its section set is computed once and only the rebuild below repeats
         if (this.impetus$trackedLitChunkPos == null) {
             this.impetus$trackedLitChunkPos = new LongOpenHashSet();
-
-            BlockPos.MutableBlockPos chunkPos = new BlockPos.MutableBlockPos(
-                    this.pos.getX() >> 4, this.pos.getY() >> 4, this.pos.getZ() >> 4);
-
-            DynamicLightsEngine.updateTrackedChunks(chunkPos, null, this.impetus$trackedLitChunkPos);
-
-            EnumFacing directionX = (this.pos.getX() & 15) >= 8 ? EnumFacing.EAST : EnumFacing.WEST;
-            EnumFacing directionY = (this.pos.getY() & 15) >= 8 ? EnumFacing.UP : EnumFacing.DOWN;
-            EnumFacing directionZ = (this.pos.getZ() & 15) >= 8 ? EnumFacing.SOUTH : EnumFacing.NORTH;
-
-            for (int i = 0; i < 7; i++) {
-                if (i % 4 == 0) {
-                    chunkPos.move(directionX);
-                } else if (i % 4 == 1) {
-                    chunkPos.move(directionZ);
-                } else if (i % 4 == 2) {
-                    chunkPos.move(directionX.getOpposite());
-                } else {
-                    chunkPos.move(directionZ.getOpposite());
-                    chunkPos.move(directionY);
-                }
-
-                DynamicLightsEngine.updateTrackedChunks(chunkPos, null, this.impetus$trackedLitChunkPos);
-            }
+            DynamicLightsEngine.walkLitSections(null, this.pos.getX(), this.pos.getY(), this.pos.getZ(),
+                    null, this.impetus$trackedLitChunkPos);
         }
 
         this.impetus$scheduleTrackedChunksRebuild(renderer);
@@ -162,8 +130,10 @@ public abstract class TileEntityMixin implements DynamicLightSource {
             return;
         }
 
-        for (long pos : this.impetus$trackedLitChunkPos) {
-            DynamicLightsEngine.scheduleChunkRebuild(renderer, pos);
+        // Explicit primitive iterator: the enhanced for boxes every position through LongIterator.next()
+        LongIterator positions = this.impetus$trackedLitChunkPos.iterator();
+        while (positions.hasNext()) {
+            DynamicLightsEngine.scheduleChunkRebuild(renderer, positions.nextLong());
         }
     }
 }

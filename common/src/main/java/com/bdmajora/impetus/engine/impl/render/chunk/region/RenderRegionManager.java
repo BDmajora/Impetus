@@ -9,7 +9,6 @@ import com.bdmajora.impetus.engine.impl.gl.arena.staging.StagingBuffer;
 import com.bdmajora.impetus.engine.impl.gl.attribute.GlVertexFormat;
 import com.bdmajora.impetus.engine.impl.gl.device.CommandList;
 import com.bdmajora.impetus.engine.impl.gl.device.RenderDevice;
-import com.bdmajora.impetus.engine.impl.render.chunk.RenderPassConfiguration;
 import com.bdmajora.impetus.engine.impl.render.chunk.RenderSection;
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.ChunkBuildOutput;
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.ChunkSortOutput;
@@ -31,12 +30,10 @@ public class RenderRegionManager {
 
     private final StagingBuffer stagingBuffer;
 
-    private final RenderPassConfiguration<?> renderPassConfiguration;
     private final UploadDurationEstimator uploadDurationEstimator = new UploadDurationEstimator();
 
-    public RenderRegionManager(CommandList commandList, RenderPassConfiguration<?> renderPassConfiguration) {
+    public RenderRegionManager(CommandList commandList) {
         this.stagingBuffer = createStagingBuffer(commandList);
-        this.renderPassConfiguration = renderPassConfiguration;
     }
 
     // Deletes empty regions and refreshes the rest
@@ -164,17 +161,27 @@ public class RenderRegionManager {
             for (var entry : uploadsByFormat.entrySet()) {
                 var resources = region.createResources(entry.getKey(), commandList);
                 var uploads = entry.getValue();
-                var geometryArena = resources.getGeometryArena();
 
-                bufferChanged |= geometryArena.upload(commandList, uploads.stream()
-                        .map(PendingSectionUpload::vertexUpload).filter(Objects::nonNull));
+                // Split into the two arenas' queues in one walk; the arena empties the list it is handed
+                List<PendingUpload> vertexUploads = new ArrayList<>(uploads.size());
+                List<PendingUpload> indexUploads = needIndexBuffer ? new ArrayList<>(uploads.size()) : null;
 
-                if (needIndexBuffer) {
-                    bufferChanged |= resources.getOrCreateIndexArena(commandList).upload(commandList, uploads.stream()
-                            .map(PendingSectionUpload::indexUpload).filter(Objects::nonNull));
+                for (PendingSectionUpload upload : uploads) {
+                    if (upload.vertexUpload() != null) {
+                        vertexUploads.add(upload.vertexUpload());
+                    }
+
+                    if (indexUploads != null && upload.indexUpload() != null) {
+                        indexUploads.add(upload.indexUpload());
+                    }
+                }
+
+                bufferChanged |= resources.getGeometryArena().upload(commandList, vertexUploads);
+
+                if (indexUploads != null) {
+                    bufferChanged |= resources.getOrCreateIndexArena(commandList).upload(commandList, indexUploads);
                 }
             }
-
 
             // Any buffer change invalidates the tessellation, which is re-created on next use
             if (bufferChanged) {
@@ -186,7 +193,7 @@ public class RenderRegionManager {
             // Collect the upload results
             for (var uploads : uploadsByFormat.values()) {
                 for (PendingSectionUpload upload : uploads) {
-                    var storage = region.createStorage(upload.pass(), renderPassConfiguration);
+                    var storage = region.createStorage(upload.pass());
                     if (upload instanceof PendingMeshRebuildUpload meshUpload) {
                         // Replace meshes
                         var indexResult = upload.indexUpload() != null ? upload.indexUpload().getResult() : null;
@@ -313,7 +320,6 @@ public class RenderRegionManager {
             return null;
         }
     }
-
 
     // Mapped when supported, else the fallback
     private static StagingBuffer createStagingBuffer(CommandList commandList) {

@@ -4,8 +4,10 @@ import it.unimi.dsi.fastutil.floats.FloatArrayList;
 import it.unimi.dsi.fastutil.ints.Int2ObjectLinkedOpenHashMap;
 import com.bdmajora.impetus.engine.impl.render.chunk.sorting.trigger.NormalPlanes;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexEncoder;
+import com.bdmajora.impetus.engine.impl.util.QuadUtil;
 import org.joml.Vector3f;
 
+import java.util.Arrays;
 import java.util.BitSet;
 
 public class TranslucentQuadAnalyzer {
@@ -38,7 +40,7 @@ public class TranslucentQuadAnalyzer {
 
         NormalPlanes build() {
             var values = this.distances.toFloatArray();
-            java.util.Arrays.sort(values);
+            Arrays.sort(values);
 
             // Deduplicate near-equal offsets; coplanar quads share one watched plane.
             int unique = 0;
@@ -50,7 +52,7 @@ public class TranslucentQuadAnalyzer {
             }
 
             return new NormalPlanes(this.nx, this.ny, this.nz,
-                    unique == values.length ? values : java.util.Arrays.copyOf(values, unique));
+                    unique == values.length ? values : Arrays.copyOf(values, unique));
         }
     }
 
@@ -132,34 +134,22 @@ public class TranslucentQuadAnalyzer {
 
     // Classifies the section: none, static, or dynamic with trigger planes
     public SortState getSortState() {
-        if(quadCenters.isEmpty()) {
+        if (quadCenters.isEmpty()) {
             return SortState.NONE;
-        } else {
-            Level sortLevel;
-
-            // Figure out what sort level is required
-            if(hasDistinctNormals) {
-                // Must use dynamic sort
-                sortLevel = Level.DYNAMIC;
-            } else {
-                // Same plane means NONE sorting, otherwise sort statically to put them in the right order
-                sortLevel = areAllQuadsOnSamePlane() ? Level.NONE : Level.STATIC;
-            }
-
-            SortState finalState;
-
-            if (sortLevel == Level.NONE) {
-                finalState = SortState.NONE;
-            } else if (sortLevel.requiresDynamicSorting()) {
-                // Clone everything
-                finalState = new SortState(sortLevel, quadCenters.toArray(new float[0]), quadNormals.toArray(new float[0]), quadCenters.size(), cloneBits(normalSigns), new Vector3f(globalNormal), buildTriggerPlanes());
-            } else {
-                // Just make a thin wrapper around our backing objects
-                finalState = new SortState(sortLevel, quadCenters.elements(), null, quadCenters.size(), normalSigns, globalNormal, null);
-            }
-
-            return finalState;
         }
+
+        if (hasDistinctNormals) {
+            // Must use dynamic sort, so clone everything the re-sort and trigger index need
+            return new SortState(Level.DYNAMIC, quadCenters.toFloatArray(), quadNormals.toFloatArray(), quadCenters.size(), cloneBits(normalSigns), new Vector3f(globalNormal), buildTriggerPlanes());
+        }
+
+        // Same plane means no sorting, otherwise sort statically once to put them in the right order
+        if (areAllQuadsOnSamePlane()) {
+            return SortState.NONE;
+        }
+
+        // Just make a thin wrapper around our backing objects; compactForStorage drops them again before the state is kept
+        return new SortState(Level.STATIC, quadCenters.elements(), null, quadCenters.size(), normalSigns, globalNormal, null);
     }
 
     // Resets for the next section
@@ -216,50 +206,8 @@ public class TranslucentQuadAnalyzer {
 
     // Face normal of the captured quad from its vertices
     private void calculateNormal() {
-        final Vector3f v0 = vertexPositions[0];
-
-        final float x0 = v0.x;
-        final float y0 = v0.y;
-        final float z0 = v0.z;
-
-        final Vector3f v1 = vertexPositions[1];
-
-        final float x1 = v1.x;
-        final float y1 = v1.y;
-        final float z1 = v1.z;
-
-        final Vector3f v2 = vertexPositions[2];
-
-        final float x2 = v2.x;
-        final float y2 = v2.y;
-        final float z2 = v2.z;
-
-        final Vector3f v3 = vertexPositions[3];
-
-        final float x3 = v3.x;
-        final float y3 = v3.y;
-        final float z3 = v3.z;
-
-        final float dx0 = x2 - x0;
-        final float dy0 = y2 - y0;
-        final float dz0 = z2 - z0;
-        final float dx1 = x3 - x1;
-        final float dy1 = y3 - y1;
-        final float dz1 = z3 - z1;
-
-        float normX = dy0 * dz1 - dz0 * dy1;
-        float normY = dz0 * dx1 - dx0 * dz1;
-        float normZ = dx0 * dy1 - dy0 * dx1;
-
-        float l = (float) Math.sqrt(normX * normX + normY * normY + normZ * normZ);
-
-        if (l != 0) {
-            normX /= l;
-            normY /= l;
-            normZ /= l;
-        }
-
-        currentNormal.set(normX, normY, normZ);
+        final Vector3f v0 = vertexPositions[0], v1 = vertexPositions[1], v2 = vertexPositions[2], v3 = vertexPositions[3];
+        QuadUtil.faceNormal(v0.x, v0.y, v0.z, v1.x, v1.y, v1.z, v2.x, v2.y, v2.z, v3.x, v3.y, v3.z, currentNormal);
     }
 
     // Stores the current quad's centre and normal
@@ -272,20 +220,20 @@ public class TranslucentQuadAnalyzer {
             totalZ += vertex.z;
         }
 
+        float centerX = totalX * 0.25f, centerY = totalY * 0.25f, centerZ = totalZ * 0.25f;
+
         var centers = quadCenters;
         int currentQuadIndex = centers.size() / 3;
-
-        centers.ensureCapacity(centers.size() + 3);
-        centers.add(totalX / 4);
-        centers.add(totalY / 4);
-        centers.add(totalZ / 4);
+        centers.add(centerX);
+        centers.add(centerY);
+        centers.add(centerZ);
 
         // The normal is needed unconditionally: DYNAMIC sections register every quad's plane with the trigger index, not just those seen before the distinct-normal flag tripped
         calculateNormal();
         quadNormals.add(currentNormal.x);
         quadNormals.add(currentNormal.y);
         quadNormals.add(currentNormal.z);
-        accumulatePlane(totalX / 4, totalY / 4, totalZ / 4);
+        accumulatePlane(centerX, centerY, centerZ);
 
         if(!hasDistinctNormals) {
             if(globalNormal.x == 0 && globalNormal.y == 0 && globalNormal.z == 0) {

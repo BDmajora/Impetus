@@ -3,7 +3,7 @@ package com.bdmajora.impetus.engine.impl.gl.shader;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.StringReader;
-import java.util.LinkedList;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -20,7 +20,7 @@ public class ShaderParser {
 
     // Resolves #import lines, recursively
     public static List<String> parseShader(String src, Function<String, String> sourceProvider) {
-        List<String> builder = new LinkedList<>();
+        List<String> builder = new ArrayList<>();
         String line;
 
         try (BufferedReader reader = new BufferedReader(new StringReader(src))) {

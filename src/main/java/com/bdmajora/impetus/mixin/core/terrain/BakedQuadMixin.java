@@ -2,14 +2,14 @@ package com.bdmajora.impetus.mixin.core.terrain;
 
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
-import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.client.renderer.vertex.VertexFormat;
 import net.minecraft.util.EnumFacing;
 import com.bdmajora.impetus.engine.impl.model.quad.BakedQuadView;
+import com.bdmajora.impetus.impl.extensions.VertexFormatExtension;
 import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFacing;
 import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFlags;
 import com.bdmajora.impetus.engine.impl.render.chunk.sprite.SpriteTransparencyLevel;
-import com.bdmajora.impetus.engine.impl.util.ModelQuadUtil;
+import com.bdmajora.impetus.engine.impl.util.QuadUtil;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -54,7 +54,7 @@ public abstract class BakedQuadMixin implements BakedQuadView {
     public ModelQuadFacing getNormalFace() {
         var face = this.normalFace;
         if (face == null) {
-            this.normalFace = face = ModelQuadUtil.findNormalFace(getComputedFaceNormal());
+            this.normalFace = face = QuadUtil.findNormalFace(getComputedFaceNormal());
         }
         return face;
     }
@@ -84,7 +84,7 @@ public abstract class BakedQuadMixin implements BakedQuadView {
     // Derived from the raw array length and the format stride, so it is right for any vertex format
     @Override
     public int getVerticesCount() {
-        return this.getVertexData().length / this.getFormat().getIntegerSize();
+        return this.getVertexData().length / impetus$layout().impetus$intStride();
     }
 
     @Override
@@ -92,34 +92,36 @@ public abstract class BakedQuadMixin implements BakedQuadView {
         return null;
     }
 
+    // The format's cached int layout, through the getter since subclasses may override it; the layout is re-derived if the format itself is mutated
+    @Unique
+    private VertexFormatExtension impetus$layout() {
+        return (VertexFormatExtension) this.getFormat();
+    }
+
     // Position is always the first element of a vertex
     @Override
     public float getX(int idx) {
-        return Float.intBitsToFloat(this.getVertexData()[idx * getFormat().getIntegerSize()]);
+        return Float.intBitsToFloat(this.getVertexData()[idx * impetus$layout().impetus$intStride()]);
     }
 
     // Position is always the first element of a vertex
     @Override
     public float getY(int idx) {
-        return Float.intBitsToFloat(this.getVertexData()[idx * getFormat().getIntegerSize() + 1]);
+        return Float.intBitsToFloat(this.getVertexData()[idx * impetus$layout().impetus$intStride() + 1]);
     }
 
     // Position is always the first element of a vertex
     @Override
     public float getZ(int idx) {
-        return Float.intBitsToFloat(this.getVertexData()[idx * getFormat().getIntegerSize() + 2]);
+        return Float.intBitsToFloat(this.getVertexData()[idx * impetus$layout().impetus$intStride() + 2]);
     }
 
-    // Reads the colour element if the format has one, else opaque white
+    // Reads the colour element if the format has one, else zero
     @Override
     public int getColor(int idx) {
-        var format = getFormat();
-        int offset = format.getColorOffset();
-        if (offset >= 0) {
-            return this.getVertexData()[idx * format.getIntegerSize() + (offset / 4)];
-        } else {
-            return 0;
-        }
+        var layout = impetus$layout();
+        int index = layout.impetus$colorIndex();
+        return index >= 0 ? this.getVertexData()[idx * layout.impetus$intStride() + index] : 0;
     }
 
     @Override
@@ -130,41 +132,31 @@ public abstract class BakedQuadMixin implements BakedQuadView {
     // First UV set; the block atlas coordinates
     @Override
     public float getTexU(int idx) {
-        var format = getFormat();
-        int offset = format.getUvOffsetById(0);
-        return Float.intBitsToFloat(this.getVertexData()[idx * format.getIntegerSize() + (offset / 4)]);
+        var layout = impetus$layout();
+        return Float.intBitsToFloat(this.getVertexData()[idx * layout.impetus$intStride() + layout.impetus$uvIndex()]);
     }
 
     // First UV set; the block atlas coordinates
     @Override
     public float getTexV(int idx) {
-        var format = getFormat();
-        int offset = format.getUvOffsetById(0);
-        return Float.intBitsToFloat(this.getVertexData()[idx * format.getIntegerSize() + (offset / 4) + 1]);
+        var layout = impetus$layout();
+        return Float.intBitsToFloat(this.getVertexData()[idx * layout.impetus$intStride() + layout.impetus$uvIndex() + 1]);
     }
 
     // Second UV set holds packed lightmap coordinates when present, else zero
     @Override
     public int getLight(int idx) {
-        var format = getFormat();
-        if (format.hasUvOffset(1)) {
-            int offset = format.getUvOffsetById(1);
-            return this.getVertexData()[idx * format.getIntegerSize() + (offset / 4)];
-        } else {
-            return 0;
-        }
+        var layout = impetus$layout();
+        int index = layout.impetus$lightIndex();
+        return index >= 0 ? this.getVertexData()[idx * layout.impetus$intStride() + index] : 0;
     }
 
     // Forge's packed per-vertex normal if the format carries one, else zero
     @Override
     public int getForgeNormal(int idx) {
-        var format = getFormat();
-        int offset = format.getNormalOffset();
-        if (offset >= 0) {
-            return this.getVertexData()[idx * format.getIntegerSize() + (offset / 4)];
-        } else {
-            return 0;
-        }
+        var layout = impetus$layout();
+        int index = layout.impetus$normalIndex();
+        return index >= 0 ? this.getVertexData()[idx * layout.impetus$intStride() + index] : 0;
     }
 
     // Mods sometimes leave the face null; treated as up so the quad still shades
@@ -180,7 +172,7 @@ public abstract class BakedQuadMixin implements BakedQuadView {
     public int getComputedFaceNormal() {
         int n = this.normal;
         if (n == 0) {
-            this.normal = n = ModelQuadUtil.calculateNormal(this);
+            this.normal = n = QuadUtil.calculateNormal(this);
         }
         return n;
     }

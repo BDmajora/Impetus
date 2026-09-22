@@ -85,7 +85,7 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
             Iterator<ChunkRenderList> iterator = renderLists.iterator(renderPass.isReverseOrder());
 
             this.currentRenderPass = renderPass;
-            this.currentVertexFormat = this.renderPassConfiguration.getVertexTypeForPass(this.currentRenderPass).getVertexFormat();
+            this.currentVertexFormat = this.currentRenderPass.vertexType().getVertexFormat();
 
             this.configureShaderInterface(shader);
 
@@ -108,7 +108,7 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
                 }
 
                 if (!renderPass.isSorted()) {
-                   getSharedIndexBuffer(renderPassConfiguration.getPrimitiveTypeForPass(renderPass), commandList).ensureCapacity(commandList, this.emitter.getIndexBufferSize());
+                   getSharedIndexBuffer(renderPass.primitiveType(), commandList).ensureCapacity(commandList, this.emitter.getIndexBufferSize());
                 }
 
                 var tessellation = this.prepareTessellation(commandList, region);
@@ -212,8 +212,6 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
             planes |=    BitwiseMath.lessThan(originZ, (boundsMaxZ + 3)) << MODEL_NEG_Z;
         }
 
-
-
         return planes;
     }
 
@@ -264,7 +262,7 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
     protected TessellationBinding[] makeTessellationBindingArray(CommandList commandList, RenderRegion.DeviceResources resources) {
         return new TessellationBinding[] {
                 TessellationBinding.forVertexBuffer(resources.getVertexBuffer(), this.generateVertexAttributeBindings()),
-                TessellationBinding.forElementBuffer(this.currentRenderPass.isSorted() ? resources.getIndexBuffer() : this.getSharedIndexBuffer(this.renderPassConfiguration.getPrimitiveTypeForPass(this.currentRenderPass), commandList).getBufferObject())
+                TessellationBinding.forElementBuffer(this.currentRenderPass.isSorted() ? resources.getIndexBuffer() : this.getSharedIndexBuffer(this.currentRenderPass.primitiveType(), commandList).getBufferObject())
         };
     }
 

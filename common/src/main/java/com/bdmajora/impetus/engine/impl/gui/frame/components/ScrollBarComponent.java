@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.engine.impl.gui.frame.components;
 
+import com.bdmajora.impetus.engine.api.util.ColorARGB;
 import com.bdmajora.impetus.engine.impl.common.util.MathUtil;
 import com.bdmajora.impetus.engine.impl.gui.framework.DrawContext;
 import com.bdmajora.impetus.engine.impl.gui.framework.InteractionContext;
@@ -64,10 +65,37 @@ public class ScrollBarComponent extends AbstractWidget {
     public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
         boolean hovered = this.dim.containsCursor(mouseX, mouseY);
         int trackColor = hovered || this.isDragging ? 0x50000000 : 0x26000000;
-        int thumbColor = DefaultColors.withAlpha(this.accentColor, hovered || this.isDragging ? 0xFF : 0xB8);
+        int thumbColor = ColorARGB.withAlpha(this.accentColor, hovered || this.isDragging ? 0xFF : 0xB8);
 
         drawContext.fill(this.dim.x(), this.dim.y(), this.dim.getLimitX(), this.dim.getLimitY(), trackColor);
         drawContext.fill(this.scrollThumb.x(), this.scrollThumb.y(), this.scrollThumb.getLimitX(), this.scrollThumb.getLimitY(), thumbColor);
+    }
+
+    // The cursor coordinate, track origin and lengths along the scrolling axis, so the click and drag maths is written once for both orientations
+    private double along(double mouseX, double mouseY) {
+        return this.mode == Mode.VERTICAL ? mouseY : mouseX;
+    }
+
+    private int trackStart() {
+        return this.mode == Mode.VERTICAL ? this.dim.y() : this.dim.x();
+    }
+
+    private int trackLength() {
+        return this.mode == Mode.VERTICAL ? this.dim.height() : this.dim.width();
+    }
+
+    private int thumbStart() {
+        return this.mode == Mode.VERTICAL ? this.scrollThumb.y() : this.scrollThumb.x();
+    }
+
+    private int thumbLength() {
+        return this.mode == Mode.VERTICAL ? this.scrollThumb.height() : this.scrollThumb.width();
+    }
+
+    // Content offset for a cursor position along the track, the thumb centred on it
+    private int offsetForCursor(double along) {
+        int thumbLength = this.thumbLength();
+        return (int) ((along - this.trackStart() - (thumbLength / 2)) / (this.trackLength() - thumbLength) * this.maxScrollBarOffset);
     }
 
     // Starts a drag on the thumb, or jumps on the track
@@ -75,20 +103,10 @@ public class ScrollBarComponent extends AbstractWidget {
     public boolean mouseClicked(InteractionContext context, double mouseX, double mouseY, int button) {
         if (this.dim.containsCursor(mouseX, mouseY)) {
             if (this.scrollThumb.containsCursor(mouseX, mouseY)) {
-                if (this.mode == Mode.VERTICAL) {
-                    this.scrollThumbClickOffset = (int) (mouseY - (this.scrollThumb.y() + this.scrollThumb.height() / 2));
-                } else {
-                    this.scrollThumbClickOffset = (int) (mouseX - (this.scrollThumb.x() + this.scrollThumb.width() / 2));
-                }
+                this.scrollThumbClickOffset = (int) (this.along(mouseX, mouseY) - (this.thumbStart() + this.thumbLength() / 2));
                 this.isDragging = true;
             } else {
-                int value;
-                if (this.mode == Mode.VERTICAL) {
-                    value = (int) ((mouseY - this.dim.y() - (this.scrollThumb.height() / 2)) / (this.dim.height() - this.scrollThumb.height()) * this.maxScrollBarOffset);
-                } else {
-                    value = (int) ((mouseX - this.dim.x() - (this.scrollThumb.width() / 2)) / (this.dim.width() - this.scrollThumb.width()) * this.maxScrollBarOffset);
-                }
-                this.setOffset(value);
+                this.setOffset(this.offsetForCursor(this.along(mouseX, mouseY)));
                 this.isDragging = false;
             }
             return true;
@@ -110,13 +128,7 @@ public class ScrollBarComponent extends AbstractWidget {
     @Override
     public boolean mouseDragged(InteractionContext context, double mouseX, double mouseY, int button, double deltaX, double deltaY) {
         if (this.isDragging) {
-            int value;
-            if (this.mode == Mode.VERTICAL) {
-                value = (int) ((mouseY - this.scrollThumbClickOffset - this.dim.y() - (this.scrollThumb.height() / 2)) / (this.dim.height() - this.scrollThumb.height()) * this.maxScrollBarOffset);
-            } else {
-                value = (int) ((mouseX - this.scrollThumbClickOffset - this.dim.x() - (this.scrollThumb.width() / 2)) / (this.dim.width() - this.scrollThumb.width()) * this.maxScrollBarOffset);
-            }
-            this.setOffset(value);
+            this.setOffset(this.offsetForCursor(this.along(mouseX, mouseY) - this.scrollThumbClickOffset));
             return true;
         }
         return false;

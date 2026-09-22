@@ -24,11 +24,10 @@ import java.util.List;
 public final class StreamingUploader {
     public static boolean enabled;
 
-    // Three regions of two mebibytes: a region is only reused after two others filled, and then only once its fence says the GPU is done reading it
-    private static final int REGIONS = 3;
-    private static final int REGION_SIZE = 2 << 20;
+    // Four regions of four mebibytes: a region is only reused after three others filled, and then only once its fence says the GPU is done reading it. The ring is never waited on: a region still in flight sends that one draw down vanilla's path instead (see reserve), since a blocking wait here serialises the CPU behind the GPU for every wrap, which with a heavy shader pack turned a busy scene into a stall per few megabytes of immediate-mode geometry
+    private static final int REGIONS = 4;
+    private static final int REGION_SIZE = 4 << 20;
     private static final int CAPACITY = REGIONS * REGION_SIZE;
-    private static final long FENCE_TIMEOUT_NANOS = 1_000_000_000L;
 
     private static int buffer = -1;
     private static boolean unavailable;
@@ -63,6 +62,11 @@ public final class StreamingUploader {
             return false;
         }
 
+        // Persistent ring: find room before touching any state, so a region the GPU still reads costs nothing but this check and vanilla draws the call from client memory
+        if (persistent && !reserve(bytes)) {
+            return false;
+        }
+
         ByteBuffer data = builder.getByteBuffer();
         data.position(0);
         data.limit(bytes);
@@ -88,15 +92,25 @@ public final class StreamingUploader {
         return true;
     }
 
-    // Appends into the current region, moving to the next one (behind a fence) when this one cannot take the draw
-    private static long writePersistent(ByteBuffer data, int bytes) {
-        if (cursor + bytes > REGION_SIZE) {
-            fences[region] = GL32.glFenceSync(GL32.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-            region = (region + 1) % REGIONS;
-            cursor = 0;
-            awaitRegion(region);
+    // Makes sure the current region can take the draw, fencing the full one and moving on when it cannot; false when the next region's fence has not signalled yet, in which case nothing changes and the caller draws through vanilla. The fence is only checked, never waited on
+    private static boolean reserve(int bytes) {
+        if (cursor + bytes <= REGION_SIZE) {
+            return true;
         }
+        int next = (region + 1) % REGIONS;
+        if (!regionFree(next)) {
+            return false;
+        }
+        if (fences[region] == null) {
+            fences[region] = GL32.glFenceSync(GL32.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+        }
+        region = next;
+        cursor = 0;
+        return true;
+    }
 
+    // Appends into the current region; reserve() has already made the room
+    private static long writePersistent(ByteBuffer data, int bytes) {
         long base = (long) region * REGION_SIZE + cursor;
         mapped.clear();
         mapped.position((int) base);
@@ -105,20 +119,25 @@ public final class StreamingUploader {
         return base;
     }
 
-    // Blocks until the GPU has finished every draw that read this region; on a healthy driver this wait is already over by the time two other regions have been filled
-    private static void awaitRegion(int index) {
+    // Whether the GPU has finished every draw that read this region: a zero-timeout poll of its fence, with the flush bit so the fence itself is submitted and can signal. A failed wait retires the ring for the session
+    private static boolean regionFree(int index) {
         GLSync fence = fences[index];
         if (fence == null) {
-            return;
+            return true;
         }
 
-        int result = GL32.glClientWaitSync(fence, GL32.GL_SYNC_FLUSH_COMMANDS_BIT, FENCE_TIMEOUT_NANOS);
+        int result = GL32.glClientWaitSync(fence, GL32.GL_SYNC_FLUSH_COMMANDS_BIT, 0L);
+        if (result == GL32.GL_TIMEOUT_EXPIRED) {
+            return false;
+        }
         GL32.glDeleteSync(fence);
         fences[index] = null;
         if (result == GL32.GL_WAIT_FAILED) {
             Extras.LOGGER.warn("Fence wait failed on the streamed vertex buffer; falling back to vanilla uploads");
             unavailable = true;
+            return false;
         }
+        return true;
     }
 
     // Orphans the whole buffer when the ring wraps so the driver hands over fresh storage rather than waiting on in-flight draws

@@ -6,6 +6,7 @@ import org.apache.logging.log4j.Logger;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -34,7 +35,7 @@ public final class PropertiesPreprocessor {
         List<String> logicalLines = joinContinuations(source);
         StringBuilder out = new StringBuilder(source.length());
         // Track #define/#undef in ACTIVE regions so cascading defines feed later #if evaluation, required when this runs over shader sources to pick the ACTIVE DRAWBUFFERS/RENDERTARGETS variant like Umbra's preprocessed-source extraction
-        defines = new java.util.HashMap<>(defines);
+        defines = new HashMap<>(defines);
 
         // Each conditional nesting level: [0] = this branch active, [1] = any branch so far taken.
         Deque<boolean[]> stack = new ArrayDeque<>();
@@ -43,70 +44,66 @@ public final class PropertiesPreprocessor {
             String trimmed = line.trim();
             if (trimmed.startsWith("#")) {
                 String directive = stripDirectiveComments(trimmed.substring(1)).trim();
-                if (directive.startsWith("if ") || directive.startsWith("if(")) {
-                    boolean value = parentActive(stack) && evaluate(directive.substring(2), defines);
-                    stack.push(new boolean[]{value, value});
-                } else if (directive.startsWith("ifdef ")) {
-                    boolean value = parentActive(stack) && defines.containsKey(directive.substring("ifdef ".length()).trim());
-                    stack.push(new boolean[]{value, value});
-                } else if (directive.startsWith("ifndef ")) {
-                    boolean value = parentActive(stack) && !defines.containsKey(directive.substring("ifndef ".length()).trim());
-                    stack.push(new boolean[]{value, value});
-                } else if (directive.startsWith("elif")) {
-                    boolean[] frame = stack.peek();
-                    if (frame == null) {
-                        LOGGER.warn("[Umbra] #elif without #if in properties file; ignoring");
-                        continue;
+                String keyword = directiveKeyword(directive);
+                String argument = directive.substring(keyword.length()).trim();
+
+                switch (keyword) {
+                    case "if" -> {
+                        boolean value = parentActive(stack) && evaluate(argument, defines);
+                        stack.push(new boolean[]{value, value});
                     }
-                    stack.pop();
-                    boolean value = !frame[1] && parentActive(stack)
-                            && evaluate(directive.substring("elif".length()), defines);
-                    stack.push(new boolean[]{value, frame[1] || value});
-                } else if (directive.equals("else")) {
-                    boolean[] frame = stack.peek();
-                    if (frame == null) {
-                        LOGGER.warn("[Umbra] #else without #if in properties file; ignoring");
-                        continue;
+                    case "ifdef" -> {
+                        boolean value = parentActive(stack) && defines.containsKey(argument);
+                        stack.push(new boolean[]{value, value});
                     }
-                    stack.pop();
-                    boolean value = !frame[1] && parentActive(stack);
-                    stack.push(new boolean[]{value, true});
-                } else if (directive.startsWith("define ")) {
-                    if (parentActive(stack) && (stack.isEmpty() || stack.peek()[0])) {
-                        String body = directive.substring("define ".length()).trim();
-                        int space = body.indexOf(' ');
-                        int paren = body.indexOf('(');
-                        if (paren >= 0 && (space < 0 || paren < space)) {
-                            // Function-like macro: track presence only (defined() checks), value unusable in #if.
-                            defines.put(body.substring(0, paren), "");
-                        } else if (space < 0) {
-                            defines.put(body, "");
-                        } else {
-                            defines.put(body.substring(0, space), body.substring(space + 1).trim());
+                    case "ifndef" -> {
+                        boolean value = parentActive(stack) && !defines.containsKey(argument);
+                        stack.push(new boolean[]{value, value});
+                    }
+                    case "elif" -> {
+                        boolean[] frame = stack.poll();
+                        if (frame == null) {
+                            LOGGER.warn("[Umbra] #elif without #if in properties file; ignoring");
+                            continue;
+                        }
+                        boolean value = !frame[1] && parentActive(stack) && evaluate(argument, defines);
+                        stack.push(new boolean[]{value, frame[1] || value});
+                    }
+                    case "else" -> {
+                        boolean[] frame = stack.poll();
+                        if (frame == null) {
+                            LOGGER.warn("[Umbra] #else without #if in properties file; ignoring");
+                            continue;
+                        }
+                        boolean value = !frame[1] && parentActive(stack);
+                        stack.push(new boolean[]{value, true});
+                    }
+                    case "define" -> {
+                        if (currentActive(stack)) {
+                            recordDefine(directive, defines);
                         }
                     }
-                    continue;
-                } else if (directive.startsWith("undef ")) {
-                    if (parentActive(stack) && (stack.isEmpty() || stack.peek()[0])) {
-                        defines.remove(directive.substring("undef ".length()).trim());
+                    case "undef" -> {
+                        if (currentActive(stack)) {
+                            defines.remove(argument);
+                        }
                     }
-                    continue;
-                } else if (directive.equals("endif")) {
-                    if (stack.isEmpty()) {
-                        LOGGER.warn("[Umbra] #endif without #if in properties file; ignoring");
-                    } else {
-                        stack.pop();
+                    case "endif" -> {
+                        if (stack.isEmpty()) {
+                            LOGGER.warn("[Umbra] #endif without #if in properties file; ignoring");
+                        } else {
+                            stack.pop();
+                        }
                     }
+                    // Any other #-line is a properties comment; dropped either way
+                    default -> { }
                 }
-                // Any other #-line is a properties comment; drop it either way.
                 continue;
             }
-
-            if (parentActive(stack) && (stack.isEmpty() || stack.peek()[0])) {
+            if (currentActive(stack)) {
                 out.append(expandValues ? expandNumericMacrosInValue(line, defines) : line).append('\n');
             }
         }
-
         if (!stack.isEmpty()) {
             LOGGER.warn("[Umbra] Unterminated #if in properties file ({} level(s) open at EOF)", stack.size());
         }
@@ -211,6 +208,34 @@ public final class PropertiesPreprocessor {
             out.append(c);
         }
         return out.toString();
+    }
+
+    // Records a "#define NAME [value]" directive's body; a function-like macro is tracked for presence only (defined() checks), its value being unusable in #if
+    static void recordDefine(String directive, Map<String, String> defines) {
+        String body = directive.substring("define ".length()).trim();
+        int space = body.indexOf(' ');
+        int paren = body.indexOf('(');
+        if (paren >= 0 && (space < 0 || paren < space)) {
+            defines.put(body.substring(0, paren), "");
+        } else if (space < 0) {
+            defines.put(body, "");
+        } else {
+            defines.put(body.substring(0, space), body.substring(space + 1).trim());
+        }
+    }
+
+    // The directive's leading keyword (`if`, `ifdef`, `endif`, ...), so `#if(` and `#if ` dispatch alike
+    private static String directiveKeyword(String directive) {
+        int end = 0;
+        while (end < directive.length() && Character.isLetter(directive.charAt(end))) {
+            end++;
+        }
+        return directive.substring(0, end);
+    }
+
+    // Whether the innermost branch AND every enclosing one is active, i.e. whether this line is emitted
+    private static boolean currentActive(Deque<boolean[]> stack) {
+        return parentActive(stack) && (stack.isEmpty() || stack.peek()[0]);
     }
 
     // Whether every enclosing conditional level is active; a nested #if inside a false branch stays false regardless of its own condition
@@ -420,22 +445,12 @@ public final class PropertiesPreprocessor {
                 return parseNumber();
             }
             if (Character.isLetter(c) || c == '_') {
-                int start = this.pos;
-                while (this.pos < this.text.length()
-                        && (Character.isLetterOrDigit(this.text.charAt(this.pos)) || this.text.charAt(this.pos) == '_')) {
-                    this.pos++;
-                }
-                String name = this.text.substring(start, this.pos);
+                String name = scanIdentifier();
                 if (name.equals("defined")) {
                     skipWhitespace();
                     boolean parens = eatChar('(');
                     skipWhitespace();
-                    int identStart = this.pos;
-                    while (this.pos < this.text.length()
-                            && (Character.isLetterOrDigit(this.text.charAt(this.pos)) || this.text.charAt(this.pos) == '_')) {
-                        this.pos++;
-                    }
-                    String ident = this.text.substring(identStart, this.pos);
+                    String ident = scanIdentifier();
                     if (parens) {
                         skipWhitespace();
                         if (!eatChar(')')) {
@@ -447,6 +462,16 @@ public final class PropertiesPreprocessor {
                 return resolveDefine(name);
             }
             throw new IllegalArgumentException("Unexpected character '" + c + "'");
+        }
+
+        // Consumes the identifier characters at the cursor and returns them, possibly empty
+        private String scanIdentifier() {
+            int start = this.pos;
+            while (this.pos < this.text.length()
+                    && (Character.isLetterOrDigit(this.text.charAt(this.pos)) || this.text.charAt(this.pos) == '_')) {
+                this.pos++;
+            }
+            return this.text.substring(start, this.pos);
         }
 
         // Scans one numeric literal; JCPP accepts a float literal and truncates toward zero, and packs rely on it (Clarity's `#if MOTION_BLUR > 0.0` only activates at exactly 1.00 under Iris), so rejecting floats failed the conditional and fell back to raw source. Integer suffixes (u, l) are consumed and ignored like JCPP

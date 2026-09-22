@@ -39,7 +39,7 @@ import com.bdmajora.impetus.impl.render.terrain.compile.light.LightDataCache;
 import com.bdmajora.impetus.impl.render.terrain.compile.light.VintageDiffuseProvider;
 import com.bdmajora.impetus.impl.world.cloned.ImpetusBlockAccess;
 import com.bdmajora.impetus.umbra.terrain.UmbraTerrainProgramOverride;
-import com.bdmajora.impetus.umbra.vertices.NormI8;
+import com.bdmajora.impetus.engine.api.util.NormI8;
 import com.bdmajora.impetus.umbra.vertices.NormalHelper;
 import com.bdmajora.impetus.mixin.core.terrain.BlockColorsAccessor;
 
@@ -68,6 +68,13 @@ public class VintageBlockRenderer {
 
     private int currentQuadRenderingFlags;
 
+    // The OptiFine per-block attributes (mc_Entity, emission) and the AO writer, resolved once per block rather than per quad or per vertex
+    private boolean shadersActive;
+    private int currentBlockId;
+    private int currentBlockRenderType;
+    private int currentBlockData;
+    private int currentBlockEmission;
+    private ChunkColorWriter colorWriter = ChunkColorWriter.IMPETUS;
 
     public VintageBlockRenderer(VintageChunkBuildContext context, LightDataCache cache) {
         this.shapes = Minecraft.getMinecraft().getBlockRendererDispatcher().getBlockModelShapes();
@@ -98,6 +105,14 @@ public class VintageBlockRenderer {
         state = state.getBlock().getExtendedState(state, blockAccess, pos);
         this.currentState = state;
         this.currentBlockAccess = blockAccess;
+        this.colorWriter = ChunkColorWriter.active();
+        this.shadersActive = UmbraTerrainProgramOverride.areShadersActive();
+        if (this.shadersActive) {
+            this.currentBlockId = com.bdmajora.impetus.umbra.material.WorldRenderingSettings.getBlockStateId(state);
+            this.currentBlockRenderType = state.getRenderType().ordinal();
+            this.currentBlockData = state.getBlock().getMetaFromState(state);
+            this.currentBlockEmission = clampBlockEmission(state.getLightValue(blockAccess, pos));
+        }
 
         var buffers = this.context.buffers;
         var material = buffers.getRenderPassConfiguration().getMaterialForRenderType(layer);
@@ -184,7 +199,7 @@ public class VintageBlockRenderer {
             var quadMaterial = BakedQuadGroupAnalyzer.chooseOptimalMaterial(this.currentQuadRenderingFlags, material, config, BakedQuadView.of(quad));
             ChunkModelBuilder buffer = (quadMaterial == material) ? defaultBuffer : buffers.get(quadMaterial);
 
-            this.writeGeometry(localX, localY, localZ, buffer, offset, quadMaterial, pos,
+            this.writeGeometry(localX, localY, localZ, buffer, offset, quadMaterial,
                     quadView, colors, light, orientation);
 
             TextureAtlasSprite sprite = (TextureAtlasSprite)quadView.impetus$getSprite();
@@ -199,7 +214,6 @@ public class VintageBlockRenderer {
     private void writeGeometry(int localX, int localY, int localZ, ChunkModelBuilder builder,
                                Vec3d offset,
                                Material material,
-                               BlockPos pos,
                                BakedQuadView quad,
                                int[] colors,
                                QuadLightData light,
@@ -211,16 +225,20 @@ public class VintageBlockRenderer {
 
         int vanillaNormal = normalFace.getPackedNormal();
         int trueNormal = quad.getComputedFaceNormal();
+        float originX = localX + (float) offset.x;
+        float originY = localY + (float) offset.y;
+        float originZ = localZ + (float) offset.z;
+        ChunkColorWriter colorWriter = this.colorWriter;
 
         for (int dstIndex = 0; dstIndex < 4; dstIndex++) {
             int srcIndex = orientation.getVertexIndex(dstIndex);
 
             var out = vertices[dstIndex];
-            out.x = localX + quad.getX(srcIndex) + (float) offset.x;
-            out.y = localY + quad.getY(srcIndex) + (float) offset.y;
-            out.z = localZ + quad.getZ(srcIndex) + (float) offset.z;
+            out.x = originX + quad.getX(srcIndex);
+            out.y = originY + quad.getY(srcIndex);
+            out.z = originZ + quad.getZ(srcIndex);
 
-            out.color = ChunkColorWriter.active().writeColor(ModelQuadUtil.mixARGBColors(colors[srcIndex], quad.getColor(srcIndex)), light.br[srcIndex]);
+            out.color = colorWriter.writeColor(ModelQuadUtil.mixARGBColors(colors[srcIndex], quad.getColor(srcIndex)), light.br[srcIndex]);
 
             out.u = quad.getTexU(srcIndex);
             out.v = quad.getTexV(srcIndex);
@@ -236,8 +254,8 @@ public class VintageBlockRenderer {
             out.midBlockZ = 0.5f - quad.getZ(srcIndex);
         }
 
-        if (UmbraTerrainProgramOverride.areShadersActive()) {
-            populateUmbraVertexData(vertices, quad, trueNormal, pos);
+        if (this.shadersActive) {
+            populateUmbraVertexData(vertices, quad, trueNormal);
         }
 
         var vertexBuffer = builder.getVertexBuffer(normalFace);
@@ -245,7 +263,7 @@ public class VintageBlockRenderer {
     }
 
     // Fills the OptiFine per-vertex attributes (mc_midTexCoord, at_tangent, mc_Entity) UmbraChunkVertexType encodes under a shader pack; all four vertices share the values
-    private void populateUmbraVertexData(ChunkVertexEncoder.Vertex[] vertices, BakedQuadView quad, int trueNormal, BlockPos pos) {
+    private void populateUmbraVertexData(ChunkVertexEncoder.Vertex[] vertices, BakedQuadView quad, int trueNormal) {
         // mc_midTexCoord must be the centre of THIS QUAD's mapped region (sum of UVs * 0.25, as Umbra does), not the sprite centre; Chocapic-derived packs rebuild their sprite basis from it, and the sprite centre smeared torch caps into a 1px band
         float midU = 0.0f, midV = 0.0f;
         for (int i = 0; i < 4; i++) {
@@ -262,20 +280,10 @@ public class VintageBlockRenderer {
                 quad.getX(1), quad.getY(1), quad.getZ(1), quad.getTexU(1), quad.getTexV(1),
                 quad.getX(2), quad.getY(2), quad.getZ(2), quad.getTexU(2), quad.getTexV(2));
 
-        int blockId = 0;
-        int blockRenderType = 0;
-        int blockData = 0;
-        int blockEmission = 0;
-        IBlockState state = this.currentState;
-        if (state != null) {
-            int metadata = state.getBlock().getMetaFromState(state);
-            blockRenderType = state.getRenderType().ordinal();
-            blockId = com.bdmajora.impetus.umbra.material.WorldRenderingSettings.getBlockStateId(state);
-            blockData = metadata;
-            if (this.currentBlockAccess != null) {
-                blockEmission = clampBlockEmission(state.getLightValue(this.currentBlockAccess, pos));
-            }
-        }
+        int blockId = this.currentBlockId;
+        int blockRenderType = this.currentBlockRenderType;
+        int blockData = this.currentBlockData;
+        int blockEmission = this.currentBlockEmission;
 
         for (int i = 0; i < 4; i++) {
             var out = vertices[i];
@@ -289,7 +297,7 @@ public class VintageBlockRenderer {
         }
     }
 
-    // Emission is 0-15
+    // The emission byte of at_midBlock; vanilla is 0-15 but a mod's getLightValue may answer past that
     private static int clampBlockEmission(int value) {
         return value < 0 ? 0 : (value > 255 ? 255 : value);
     }

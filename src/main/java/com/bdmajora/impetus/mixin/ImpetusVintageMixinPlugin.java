@@ -9,7 +9,6 @@ import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 import com.bdmajora.impetus.core.ImpetusLwjgl3ifyCompat;
 
-import java.io.IOException;
 import java.net.URI;
 import java.net.URL;
 import java.nio.file.*;
@@ -49,16 +48,6 @@ public class ImpetusVintageMixinPlugin implements IMixinConfigPlugin {
     public void acceptTargets(Set<String> myTargets, Set<String> otherTargets) {
     }
 
-    // Turns a class file path under the mixin root into a dotted class name
-    private static String mixinClassify(Path baseFolder, Path path) {
-        try {
-            String className = baseFolder.relativize(path).toString().replace('/', '.').replace('\\', '.');
-            return className.substring(0, className.length() - 6);
-        } catch(RuntimeException e) {
-            throw new IllegalStateException("Error relativizing " + path + " to " + baseFolder, e);
-        }
-    }
-
     // Discovers every class under com.bdmajora.impetus.mixin by walking the jar or classes dir, so new mixins need no listing
     @Override
     public List<String> getMixins() {
@@ -94,18 +83,11 @@ public class ImpetusVintageMixinPlugin implements IMixinConfigPlugin {
         }
 
         Set<String> possibleMixinClasses = new HashSet<>();
-        for(Path rootPath : rootPaths) {
-            try(Stream<Path> mixinStream = Files.find(rootPath, Integer.MAX_VALUE, (path, attrs) -> attrs.isRegularFile() && path.getFileName().toString().endsWith(".class"))) {
-                mixinStream
-                        .map(Path::toAbsolutePath)
-                        .filter(MixinClassValidator::isMixinClass)
-                        .map(path -> mixinClassify(rootPath, path))
-                        .forEach(possibleMixinClasses::add);
-            } catch(IOException e) {
-                e.printStackTrace();
-            }
+
+        for (Path rootPath : rootPaths) {
+            possibleMixinClasses.addAll(MixinClassValidator.scanMixinFolder(rootPath));
         }
-        if (possibleMixinClasses.size() == 0) {
+        if (possibleMixinClasses.isEmpty()) {
             throw new IllegalStateException("Found no mixin classes, something went very wrong");
         }
         return new ArrayList<>(possibleMixinClasses);

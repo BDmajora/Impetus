@@ -37,7 +37,7 @@ public final class ProgramSamplers {
     public void update() {
         if (this.initializer != null) {
             for (Uniform1iCall call : this.initializer) {
-                LWJGL.glUniform1i(call.location, call.value);
+                LWJGL.glUniform1i(call.location(), call.value());
             }
             this.initializer = null;
         }
@@ -58,17 +58,6 @@ public final class ProgramSamplers {
     // Units consumed
     public int getActiveSamplers() {
         return this.samplerBindings.size();
-    }
-
-    // One deferred glUniform1i(location, value) issued on the first update(), since it writes into the bound program and nothing is bound at build time
-    private static final class Uniform1iCall {
-        final int location;
-        final int value;
-
-        Uniform1iCall(int location, int value) {
-            this.location = location;
-            this.value = value;
-        }
     }
 
     public static final class Builder {

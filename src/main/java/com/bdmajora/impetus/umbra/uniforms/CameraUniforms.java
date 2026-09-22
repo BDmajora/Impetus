@@ -18,26 +18,34 @@ public final class CameraUniforms {
         notifier.addListener(TRACKER::update);
     }
 
+    // Render-thread scratch, one per accessor so a supplier reading current AND previous sees both; every caller consumes the answer before the next frame
+    private static final Vector3d CURRENT = new Vector3d();
+    private static final Vector3d PREVIOUS = new Vector3d();
+    private static final Vector3d CURRENT_UNSHIFTED = new Vector3d();
+    private static final Vector3d PREVIOUS_UNSHIFTED = new Vector3d();
+    private static final Vector3i INT_PART = new Vector3i();
+    private static final Vector3f FRACT_PART = new Vector3f();
+
     // Shifted camera position, for cameraPosition
     public static Vector3d getCurrentCameraPosition() {
-        return new Vector3d(TRACKER.getCurrentCameraPosition()).add(CapturedRenderingState.INSTANCE.getCameraOffset());
+        return CURRENT.set(TRACKER.getCurrentCameraPosition()).add(CapturedRenderingState.INSTANCE.getCameraOffset());
     }
 
     // Last frame's shifted camera position; the previous offset pairs with it since both roll once per frame
     public static Vector3d getPreviousCameraPosition() {
-        return new Vector3d(TRACKER.getPreviousCameraPosition())
+        return PREVIOUS.set(TRACKER.getPreviousCameraPosition())
                 .add(CapturedRenderingState.INSTANCE.getPreviousCameraOffset());
     }
 
     // Raw world camera position
     public static Vector3d getCurrentCameraPositionUnshifted() {
-        return new Vector3d(TRACKER.getCurrentCameraPositionUnshifted())
+        return CURRENT_UNSHIFTED.set(TRACKER.getCurrentCameraPositionUnshifted())
                 .add(CapturedRenderingState.INSTANCE.getCameraOffset());
     }
 
     // Last frame's raw camera position
     public static Vector3d getPreviousCameraPositionUnshifted() {
-        return new Vector3d(TRACKER.getPreviousCameraPositionUnshifted())
+        return PREVIOUS_UNSHIFTED.set(TRACKER.getPreviousCameraPositionUnshifted())
                 .add(CapturedRenderingState.INSTANCE.getPreviousCameraOffset());
     }
 
@@ -48,7 +56,7 @@ public final class CameraUniforms {
 
     // Integer part, for the split-precision uniform
     public static Vector3i getCameraPositionInt(Vector3d originalPos) {
-        return new Vector3i(
+        return INT_PART.set(
                 (int) Math.floor(originalPos.x),
                 (int) Math.floor(originalPos.y),
                 (int) Math.floor(originalPos.z));
@@ -56,7 +64,7 @@ public final class CameraUniforms {
 
     // Fractional part
     public static Vector3f getCameraPositionFract(Vector3d originalPos) {
-        return new Vector3f(
+        return FRACT_PART.set(
                 (float) (originalPos.x - Math.floor(originalPos.x)),
                 (float) (originalPos.y - Math.floor(originalPos.y)),
                 (float) (originalPos.z - Math.floor(originalPos.z)));

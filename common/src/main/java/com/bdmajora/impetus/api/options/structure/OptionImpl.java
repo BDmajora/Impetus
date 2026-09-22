@@ -266,8 +266,7 @@ public class OptionImpl<S, T> implements Option<T> {
             Objects.requireNonNull(this.binding, "Option binding must be specified");
             Objects.requireNonNull(this.control, "Control must be specified");
 
-            OptionImpl<S, T> impl = new OptionImpl<>(this.storage, this.id, this.name, this.tooltip, this.binding, this.control, this.flags, this.impact, this.enabled);
-            return impl;
+            return new OptionImpl<>(this.storage, this.id, this.name, this.tooltip, this.binding, this.control, this.flags, this.impact, this.enabled);
         }
     }
 }

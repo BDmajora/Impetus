@@ -1,6 +1,5 @@
 package com.bdmajora.impetus.lwjgl.lwjgl2;
 
-import org.lwjgl.BufferUtils;
 import com.bdmajora.impetus.lwjgl.LWJGLService;
 import com.bdmajora.impetus.lwjgl.lwjgl2.memory.MemoryStack;
 import com.bdmajora.impetus.lwjgl.lwjgl2.memory.MemoryUtilities;
@@ -372,13 +371,11 @@ public record LWJGL2Service(
     // LWJGL2 only exposes the buffer form, so a scratch IntBuffer is used
     @Override
     public int glGetVertexAttribi(int index, int pname) {
-        // LWJGL2's GL20 only exposes the buffer form of glGetVertexAttrib.
-        IntBuffer params = MemoryUtilities.memAllocInt(4);
-        try {
+        // LWJGL2's GL20 only exposes the buffer form of glGetVertexAttrib; LWJGL2 insists on room for four values
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            IntBuffer params = stack.mallocInt(4);
             GL20.glGetVertexAttrib(index, pname, params);
             return params.get(0);
-        } finally {
-            MemoryUtilities.memFree(params);
         }
     }
 
@@ -587,10 +584,12 @@ public record LWJGL2Service(
         if (value.length % 3 != 0)
             throw new IllegalArgumentException("Array length must be multiple of 3");
 
-        // general path: multiple vec3s
-        FloatBuffer buffer = BufferUtils.createFloatBuffer(value.length);
-        buffer.put(value).flip();
-        GL20.glUniform3(location, buffer);
+        // general path: multiple vec3s, staged on the stack rather than a fresh direct buffer per call
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            FloatBuffer buffer = stack.mallocFloat(value.length);
+            buffer.put(value).flip();
+            GL20.glUniform3(location, buffer);
+        }
     }
 
     // GL20
@@ -611,10 +610,12 @@ public record LWJGL2Service(
         if (value.length % 4 != 0)
             throw new IllegalArgumentException("Array length must be multiple of 4");
 
-        // general path: multiple vec4s
-        FloatBuffer buffer = BufferUtils.createFloatBuffer(value.length);
-        buffer.put(value).flip();
-        GL20.glUniform4(location, buffer);
+        // general path: multiple vec4s, staged on the stack rather than a fresh direct buffer per call
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            FloatBuffer buffer = stack.mallocFloat(value.length);
+            buffer.put(value).flip();
+            GL20.glUniform4(location, buffer);
+        }
     }
 
     // GL20
@@ -723,6 +724,11 @@ public record LWJGL2Service(
         return timerQueryMode.getQueryObjectui64(id, pname);
     }
 
+    @Override
+    public int glGetQueryObjecti(int id, int pname) {
+        return GL15.glGetQueryObjecti(id, pname);
+    }
+
     // ===================== TEXTURE OPERATIONS =====================
 
     @Override
@@ -733,10 +739,11 @@ public record LWJGL2Service(
     // Array form via a scratch IntBuffer
     @Override
     public void glGenTextures(int[] textures) {
-        IntBuffer buf = MemoryUtilities.memAllocInt(textures.length);
-        GL11.glGenTextures(buf);
-        buf.get(textures);
-        MemoryUtilities.memFree(buf);
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            IntBuffer buf = stack.mallocInt(textures.length);
+            GL11.glGenTextures(buf);
+            buf.get(textures);
+        }
     }
 
     // GL11
@@ -748,9 +755,11 @@ public record LWJGL2Service(
     // Array form via a scratch IntBuffer
     @Override
     public void glDeleteTextures(int[] textures) {
-        IntBuffer buf = (IntBuffer) MemoryUtilities.memAllocInt(textures.length).put(textures).flip();
-        GL11.glDeleteTextures(buf);
-        MemoryUtilities.memFree(buf);
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            IntBuffer buf = stack.mallocInt(textures.length);
+            buf.put(textures).flip();
+            GL11.glDeleteTextures(buf);
+        }
     }
 
     // GL11
@@ -787,6 +796,11 @@ public record LWJGL2Service(
     @Override
     public void glReadPixels(int x, int y, int width, int height, int format, int type, java.nio.ByteBuffer pixels) {
         GL11.glReadPixels(x, y, width, height, format, type, pixels);
+    }
+
+    @Override
+    public void glReadPixels(int x, int y, int width, int height, int format, int type, long pixelsOffset) {
+        GL11.glReadPixels(x, y, width, height, format, type, pixelsOffset);
     }
 
     // GL30
@@ -882,12 +896,10 @@ public record LWJGL2Service(
     // Array form via a scratch IntBuffer
     @Override
     public void glTexParameteriv(int target, int pname, int[] params) {
-        IntBuffer buf = MemoryUtilities.memAllocInt(params.length);
-        try {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            IntBuffer buf = stack.mallocInt(params.length);
             buf.put(params).flip();
             GL11.glTexParameter(target, pname, buf);
-        } finally {
-            MemoryUtilities.memFree(buf);
         }
     }
 
@@ -1120,10 +1132,12 @@ public record LWJGL2Service(
     // Array form via a scratch IntBuffer
     @Override
     public void glGetIntegerv(int pname, int[] params) {
-        IntBuffer buf = MemoryUtilities.memAllocInt(params.length);
-        GL11.glGetInteger(pname, buf);
-        buf.get(params);
-        MemoryUtilities.memFree(buf);
+        // LWJGL2 checks for at least 16 ints of room on the generic glGetInteger
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            IntBuffer buf = stack.mallocInt(Math.max(16, params.length));
+            GL11.glGetInteger(pname, buf);
+            buf.get(params, 0, params.length);
+        }
     }
 
     // GL11

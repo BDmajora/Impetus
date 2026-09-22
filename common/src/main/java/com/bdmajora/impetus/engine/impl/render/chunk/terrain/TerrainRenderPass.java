@@ -6,7 +6,6 @@ import lombok.Getter;
 import lombok.Singular;
 import lombok.experimental.Accessors;
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.sorting.ChunkPrimitiveType;
-import com.bdmajora.impetus.engine.impl.render.chunk.terrain.material.Material;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexType;
 import org.jetbrains.annotations.NotNull;
 
@@ -49,7 +48,7 @@ public class TerrainRenderPass {
                              @NotNull ChunkVertexType vertexType,
                              @NotNull ChunkPrimitiveType primitiveType,
                              @Singular Map<String, String> extraDefines) {
-        if(name == null || name.length() == 0) {
+        if (name == null || name.isEmpty()) {
             throw new IllegalArgumentException("Name not specified for terrain pass");
         }
         Objects.requireNonNull(vertexType);

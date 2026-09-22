@@ -10,23 +10,15 @@ public class BoxBlur {
             throw new IllegalArgumentException("Color buffers must have same dimensions");
         }
 
-        if (isHomogenous(buf.data)) {
-            return;
-        }
+        int[] data = buf.data;
 
-        blurImpl(buf.data, tmp.data, buf.width, buf.height, radius); // X-axis
-        blurImpl(tmp.data, buf.data, buf.width, buf.height, radius); // Y-axis
-    }
-
-    // Used by the biome color fallback ported from older Sodium, avoid using in new code
-    @Deprecated
-    public static void blur(int[] data, int[] tmp, int width, int height, int radius) {
         if (isHomogenous(data)) {
             return;
         }
 
-        blurImpl(data, tmp, width, height, radius); // X-axis
-        blurImpl(tmp, data, width, height, radius); // Y-axis
+        // Each pass transposes, so two passes blur both axes and land back in the original orientation
+        blurImpl(data, tmp.data, buf.width, buf.height, radius);
+        blurImpl(tmp.data, data, buf.width, buf.height, radius);
     }
 
     // One horizontal pass with a running sum
@@ -89,12 +81,8 @@ public class BoxBlur {
 
     // Averages using the multiplier from getAveragingMultiplier() for the matching window size
     public static int averageRGB(int red, int green, int blue, int multiplier) {
-        int value = 0xFF << 24; // Alpha is constant (fully opaque)
-        value |= ((blue * multiplier) >>> 24) << 0;
-        value |= ((green * multiplier) >>> 24) << 8;
-        value |= ((red * multiplier) >>> 24) << 16;
-
-        return value;
+        // Alpha is constant (fully opaque)
+        return 0xFF << 24 | ((red * multiplier) >>> 24) << 16 | ((green * multiplier) >>> 24) << 8 | ((blue * multiplier) >>> 24);
     }
 
     // Every pixel the same, so blurring would change nothing

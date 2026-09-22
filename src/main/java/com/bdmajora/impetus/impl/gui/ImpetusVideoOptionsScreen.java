@@ -22,13 +22,15 @@ import java.util.*;
 public class ImpetusVideoOptionsScreen extends GuiScreen {
     private final GuiScreen prevScreen;
     private final ImpetusVideoOptionsController controller;
+    // One context for the screen's lifetime, so its compiled-component cache survives between frames
+    private final VintageDrawContext drawContext = new VintageDrawContext();
 
     private int lastMouseX, lastMouseY;
 
     public ImpetusVideoOptionsScreen(GuiScreen prevScreen) {
         super();
         this.prevScreen = prevScreen;
-        this.controller = new ImpetusVideoOptionsController(() -> this.mc.displayGuiScreen(this.prevScreen), createPages(this), new VintageDrawContext()) {
+        this.controller = new ImpetusVideoOptionsController(() -> this.mc.displayGuiScreen(this.prevScreen), createPages(this), this.drawContext) {
             // Reloads the renderer, textures or world as the changed options demand
             @Override
             protected void applyFlagSideEffects(Set<OptionFlag> flags) {
@@ -61,22 +63,22 @@ public class ImpetusVideoOptionsScreen extends GuiScreen {
         resetDrag();
     }
 
-    // Assembles every subsystem's page in tab order
+    // Assembles every subsystem's pages in sidebar order; pages group under their namespace, so Extras and its nine topic pages fold as one section beneath Impetus
     private static List<OptionPage> createPages(GuiScreen parent) {
         List<OptionPage> pages = new ArrayList<>();
         pages.add(ImpetusGameOptionPages.general());
         pages.add(ImpetusGameOptionPages.quality());
         pages.add(CommonOptionPages.performance(ImpetusVintage.options()));
-        pages.add(ExtrasOptionPages.extras());
-        pages.add(DynamicLightsOptionPages.dynamicLights());
-        pages.add(CoarctatioOptionPages.memory());
+        pages.addAll(ExtrasOptionPages.pages());
+        pages.addAll(CoarctatioOptionPages.pages());
         pages.add(FulgorOptionPages.lighting());
-        pages.add(EquilibriumOptionPages.optimizations());
+        pages.addAll(EquilibriumOptionPages.pages());
 
-        // Only when a shader mod actually resolved; without it the Umbra heading would sit above nothing
+        // The Umbra group: shader packs (only when a shader mod actually resolved) and, beneath them, dynamic lights, which share the namespace
         if (ShaderModBridge.isShaderModPresent()) {
             pages.add(UmbraOptionPages.shaderPacks(parent));
         }
+        pages.addAll(DynamicLightsOptionPages.pages());
 
         return pages;
     }
@@ -146,7 +148,7 @@ public class ImpetusVideoOptionsScreen extends GuiScreen {
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         this.drawDefaultBackground();
-        this.controller.render(new VintageDrawContext(), mouseX, mouseY, partialTicks);
+        this.controller.render(this.drawContext, mouseX, mouseY, partialTicks);
     }
 
     // In a world the frame behind the screen is blurred and darkened so the options read against it; out of one vanilla's dirt background stays

@@ -1,6 +1,5 @@
 package com.bdmajora.impetus.engine.impl.render.chunk.occlusion;
 
-import com.bdmajora.impetus.engine.impl.render.viewport.CameraTransform;
 import com.bdmajora.impetus.engine.impl.render.viewport.Viewport;
 import org.joml.Vector3ic;
 
@@ -263,7 +262,7 @@ public final class SectionTree {
             int maxBlockY = (this.minY + this.size) << 4;
             int maxBlockZ = (this.minZ + this.size) << 4;
 
-            if (!isWithinRenderDistance(viewport.getTransform(), minBlockX, minBlockY, minBlockZ,
+            if (!OcclusionCuller.isWithinRenderDistance(viewport.getTransform(), minBlockX, minBlockY, minBlockZ,
                     maxBlockX, maxBlockY, maxBlockZ, searchDistance)) {
                 return false;
             }
@@ -275,38 +274,6 @@ public final class SectionTree {
                     maxBlockX + NODE_MARGIN,
                     maxBlockY + NODE_MARGIN,
                     maxBlockZ + NODE_MARGIN);
-        }
-
-        private static boolean isWithinRenderDistance(CameraTransform camera, int minX, int minY, int minZ,
-                                                      int maxX, int maxY, int maxZ, float maxDistance) {
-            int ox = minX - camera.intX;
-            int oy = minY - camera.intY;
-            int oz = minZ - camera.intZ;
-            int px = maxX - camera.intX;
-            int py = maxY - camera.intY;
-            int pz = maxZ - camera.intZ;
-
-            float dx = nearestToZero(ox, px) - camera.fracX;
-            float dy = nearestToZero(oy, py) - camera.fracY;
-            float dz = nearestToZero(oz, pz) - camera.fracZ;
-
-            return ((((dx * dx) + (dz * dz)) < (maxDistance * maxDistance)) && (Math.abs(dy) < maxDistance));
-        }
-
-        // Closest value in a range to zero
-        @SuppressWarnings("ManualMinMaxCalculation")
-        private static int nearestToZero(int min, int max) {
-            int clamped = 0;
-
-            if (min > 0) {
-                clamped = min;
-            }
-
-            if (max < 0) {
-                clamped = max;
-            }
-
-            return clamped;
         }
     }
 }

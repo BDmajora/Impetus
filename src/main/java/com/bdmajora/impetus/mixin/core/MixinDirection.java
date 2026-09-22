@@ -10,43 +10,23 @@ public class MixinDirection {
     @Overwrite
     public static EnumFacing getFacingFromVector(float x, float y, float z) {
         // Vanilla quirk: return NORTH if all entries are zero
-        if (x == 0 && y == 0 && z == 0)
+        if (x == 0 && y == 0 && z == 0) {
             return EnumFacing.NORTH;
+        }
 
         // First choice in ties: negative, positive; Y, Z, X
         float yM = Math.abs(y);
         float zM = Math.abs(z);
         float xM = Math.abs(x);
 
-        if (yM >= zM) {
-            if (yM >= xM) {
-                // Y biggest
-                if (y <= 0) {
-                    return EnumFacing.DOWN;
-                } else /* y > 0 */ {
-                    return EnumFacing.UP;
-                }
-            } else /* zM <= yM < xM */ {
-                // X biggest, fall through
-            }
-        } else /* yM < zM */ {
-            if (zM >= xM) {
-                // Z biggest
-                if (z <= 0) {
-                    return EnumFacing.NORTH;
-                } else /* z > 0 */ {
-                    return EnumFacing.SOUTH;
-                }
-            } else /* yM < zM < xM */ {
-                // X biggest, fall through
-            }
+        if (yM >= zM && yM >= xM) {
+            return y <= 0 ? EnumFacing.DOWN : EnumFacing.UP;
         }
 
-        // X biggest
-        if (x <= 0) {
-            return EnumFacing.WEST;
-        } else /* x > 0 */ {
-            return EnumFacing.EAST;
+        if (zM > yM && zM >= xM) {
+            return z <= 0 ? EnumFacing.NORTH : EnumFacing.SOUTH;
         }
+
+        return x <= 0 ? EnumFacing.WEST : EnumFacing.EAST;
     }
 }

@@ -1,5 +1,6 @@
 package com.bdmajora.coarctatio;
 
+import com.bdmajora.coarctatio.client.model.dynamic.DynamicModels;
 import com.bdmajora.coarctatio.dedup.ModelCaches;
 import com.bdmajora.coarctatio.dedup.ResourceLocationCaches;
 import com.bdmajora.coarctatio.dedup.StringPool;
@@ -62,7 +63,7 @@ public final class Coarctatio {
         }
 
         if (CoarctatioConfig.get().dynamicModels) {
-            lines.addAll(com.bdmajora.coarctatio.client.model.dynamic.DynamicModels.statistics());
+            lines.addAll(DynamicModels.statistics());
         }
 
         return lines;

@@ -17,6 +17,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
+// One sidebar entry and the frame it shows; every tab is its own page now, the earlier "stackable" mode that merged a mod's pages into one scroll made the Impetus group a two-hundred-row list
 @Builder(builderClassName = "Builder", setterPrefix = "set")
 public record Tab<T extends AbstractFrame>(
         OptionIdentifier<Void> id,
@@ -25,8 +26,7 @@ public record Tab<T extends AbstractFrame>(
         Function<Dim2i, T> frameFunction,
         @Nullable OptionPage page,
         @Nullable Predicate<Option<?>> optionFilter,
-        @Nullable AtomicReference<Integer> verticalScrollBarOffset,
-        boolean stackable
+        @Nullable AtomicReference<Integer> verticalScrollBarOffset
 ) {
     // Starts a builder
     public static Tab.Builder<?> createBuilder() {
@@ -40,17 +40,12 @@ public record Tab<T extends AbstractFrame>(
 
     // A scrollable tab for one page
     public static Tab<ScrollableFrame> from(OptionPage page, Predicate<Option<?>> optionFilter, AtomicReference<Integer> verticalScrollBarOffset) {
-        return from(page, optionFilter, verticalScrollBarOffset, true);
-    }
-
-    // Same, with stackable controlling whether it merges into a multi-page view
-    public static Tab<ScrollableFrame> from(OptionPage page, Predicate<Option<?>> optionFilter, AtomicReference<Integer> verticalScrollBarOffset, boolean stackable) {
         Function<Dim2i, ScrollableFrame> frameFunction = dim2i -> ScrollableFrame
                 .createBuilder()
                 .setDimension(dim2i)
                 .setFrame(OptionPageFrame
                         .createBuilder()
-                        .setDimension(new Dim2i(dim2i.x(), dim2i.y(), dim2i.width(), dim2i.height()))
+                        .setDimension(dim2i)
                         .setOptionPage(page)
                         .setOptionFilter(optionFilter)
                         .build())
@@ -63,7 +58,6 @@ public record Tab<T extends AbstractFrame>(
                 .setPage(page)
                 .setOptionFilter(optionFilter)
                 .setVerticalScrollBarOffset(verticalScrollBarOffset)
-                .setStackable(stackable)
                 .setFrameFunction(frameFunction)
                 .build();
     }

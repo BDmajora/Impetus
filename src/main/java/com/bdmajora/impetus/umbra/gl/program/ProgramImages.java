@@ -3,7 +3,6 @@ package com.bdmajora.impetus.umbra.gl.program;
 import com.bdmajora.impetus.umbra.gl.image.ImageBinding;
 import com.bdmajora.impetus.umbra.gl.image.ImageHolder;
 import com.bdmajora.impetus.umbra.gl.image.ImageLimits;
-import com.github.bsideup.jabel.Desugar;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -46,11 +45,6 @@ public class ProgramImages {
     // Units consumed
     public int getActiveImages() {
         return this.imageBindings.size();
-    }
-
-    // One deferred glUniform1i(location, value), issued on the first update()
-    @Desugar
-    private record Uniform1iCall(int location, int value) {
     }
 
     public static final class Builder implements ImageHolder {

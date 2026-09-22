@@ -6,15 +6,13 @@ import com.bdmajora.extras.client.bakedentities.BakedEntities;
 import com.bdmajora.extras.client.booster.GpuBooster;
 import com.bdmajora.extras.client.particle.ParticleClassRegistry;
 import com.bdmajora.extras.client.particle.ParticleTicker;
-import com.github.bsideup.jabel.Desugar;
-import net.minecraft.client.resources.I18n;
+import com.bdmajora.impetus.impl.config.ConfigProperty;
+import com.bdmajora.impetus.impl.gui.Localized;
 import net.minecraftforge.common.config.Configuration;
 
 import java.io.File;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Consumer;
-import java.util.function.Supplier;
 
 // Every Extras setting, persisted to config/impetus-extras.cfg as a normal Forge Configuration since nothing is read during coremod setup; enum constant order is on-disk format, append only
 public final class ExtrasConfig {
@@ -57,316 +55,343 @@ public final class ExtrasConfig {
     public final LeafSettings leaves = new LeafSettings();
     public final LoadingSettings loading = new LoadingSettings();
 
-    private final List<BooleanProperty> booleans = Arrays.asList(
+    private final List<ConfigProperty> booleans = Arrays.asList(
             // --- Animations -------------------------------------------------------------------
-            bool(CAT_ANIMATION, "animation", true, "Master switch for all texture animations",
+            ConfigProperty.bool(CAT_ANIMATION, "animation", true, "Master switch for all texture animations",
                     v -> animation.all = v, () -> animation.all),
-            bool(CAT_ANIMATION, "water", true, "Animate water textures",
+            ConfigProperty.bool(CAT_ANIMATION, "water", true, "Animate water textures",
                     v -> animation.water = v, () -> animation.water),
-            bool(CAT_ANIMATION, "lava", true, "Animate lava textures",
+            ConfigProperty.bool(CAT_ANIMATION, "lava", true, "Animate lava textures",
                     v -> animation.lava = v, () -> animation.lava),
-            bool(CAT_ANIMATION, "fire", true, "Animate fire textures",
+            ConfigProperty.bool(CAT_ANIMATION, "fire", true, "Animate fire textures",
                     v -> animation.fire = v, () -> animation.fire),
-            bool(CAT_ANIMATION, "portal", true, "Animate nether portal textures",
+            ConfigProperty.bool(CAT_ANIMATION, "portal", true, "Animate nether portal textures",
                     v -> animation.portal = v, () -> animation.portal),
-            bool(CAT_ANIMATION, "blockAnimations", true, "Animate other block textures",
+            ConfigProperty.bool(CAT_ANIMATION, "blockAnimations", true, "Animate other block textures",
                     v -> animation.blockAnimations = v, () -> animation.blockAnimations),
             // OptiFine splits these out of the general block-animation switch.
-            bool(CAT_ANIMATION, "redstone", true, "Animate redstone textures",
+            ConfigProperty.bool(CAT_ANIMATION, "redstone", true, "Animate redstone textures",
                     v -> animation.redstone = v, () -> animation.redstone),
-            bool(CAT_ANIMATION, "explosion", true, "Animate explosion textures",
+            ConfigProperty.bool(CAT_ANIMATION, "explosion", true, "Animate explosion textures",
                     v -> animation.explosion = v, () -> animation.explosion),
-            bool(CAT_ANIMATION, "flame", true, "Animate flame textures",
+            ConfigProperty.bool(CAT_ANIMATION, "flame", true, "Animate flame textures",
                     v -> animation.flame = v, () -> animation.flame),
-            bool(CAT_ANIMATION, "smoke", true, "Animate smoke textures",
+            ConfigProperty.bool(CAT_ANIMATION, "smoke", true, "Animate smoke textures",
                     v -> animation.smoke = v, () -> animation.smoke),
-            bool(CAT_ANIMATION, "sculkSensor", true, "Animate sculk-sensor-style textures (modded only on 1.12.2)",
+            ConfigProperty.bool(CAT_ANIMATION, "sculkSensor", true, "Animate sculk-sensor-style textures (modded only on 1.12.2)",
                     v -> animation.sculkSensor = v, () -> animation.sculkSensor),
 
             // --- Particles --------------------------------------------------------------------
-            bool(CAT_PARTICLE, "particles", true, "Master switch for all particles",
+            ConfigProperty.bool(CAT_PARTICLE, "particles", true, "Master switch for all particles",
                     v -> particle.all = v, () -> particle.all),
-            bool(CAT_PARTICLE, "rainSplash", true, "Rain splash particles",
+            ConfigProperty.bool(CAT_PARTICLE, "rainSplash", true, "Rain splash particles",
                     v -> particle.rainSplash = v, () -> particle.rainSplash),
-            bool(CAT_PARTICLE, "blockBreak", true, "Block break particles",
+            ConfigProperty.bool(CAT_PARTICLE, "blockBreak", true, "Block break particles",
                     v -> particle.blockBreak = v, () -> particle.blockBreak),
-            bool(CAT_PARTICLE, "blockBreaking", true, "Block breaking (mining) particles",
+            ConfigProperty.bool(CAT_PARTICLE, "blockBreaking", true, "Block breaking (mining) particles",
                     v -> particle.blockBreaking = v, () -> particle.blockBreaking),
-            bool(CAT_PARTICLE, "voidParticles", true, "Void particles near the world bottom",
+            ConfigProperty.bool(CAT_PARTICLE, "voidParticles", true, "Void particles near the world bottom",
                     v -> particle.voidParticles = v, () -> particle.voidParticles),
-            bool(CAT_PARTICLE, "waterParticles", true, "Water drip, splash and suspended particles",
+            ConfigProperty.bool(CAT_PARTICLE, "waterParticles", true, "Water drip, splash and suspended particles",
                     v -> particle.waterParticles = v, () -> particle.waterParticles),
-            bool(CAT_PARTICLE, "portalParticles", true, "Nether portal particles",
+            ConfigProperty.bool(CAT_PARTICLE, "portalParticles", true, "Nether portal particles",
                     v -> particle.portalParticles = v, () -> particle.portalParticles),
-            bool(CAT_PARTICLE, "potionParticles", true, "Potion effect particles",
+            ConfigProperty.bool(CAT_PARTICLE, "potionParticles", true, "Potion effect particles",
                     v -> particle.potionParticles = v, () -> particle.potionParticles),
-            bool(CAT_PARTICLE, "drippingWaterLava", true, "Dripping water and lava particles",
+            ConfigProperty.bool(CAT_PARTICLE, "drippingWaterLava", true, "Dripping water and lava particles",
                     v -> particle.drippingWaterLava = v, () -> particle.drippingWaterLava),
-            bool(CAT_PARTICLE, "fireworkParticles", true, "Firework spark particles",
+            ConfigProperty.bool(CAT_PARTICLE, "fireworkParticles", true, "Firework spark particles",
                     v -> particle.fireworkParticles = v, () -> particle.fireworkParticles),
-            bool(CAT_PARTICLE, "parallelTick", true, "Tick particles across a worker pool instead of the client thread",
+            ConfigProperty.bool(CAT_PARTICLE, "parallelTick", true, "Tick particles across a worker pool instead of the client thread",
                     v -> particle.parallelTick = v, () -> particle.parallelTick),
-            bool(CAT_PARTICLE, "parallelModded", false, "Also tick modded particle classes on the pool; off keeps them on the client thread",
+            ConfigProperty.bool(CAT_PARTICLE, "parallelModded", false, "Also tick modded particle classes on the pool; off keeps them on the client thread",
                     v -> particle.parallelModded = v, () -> particle.parallelModded),
-            bool(CAT_PARTICLE, "lightCache", true, "Sample each particle's light once per tick instead of once per frame",
+            ConfigProperty.bool(CAT_PARTICLE, "lightCache", true, "Sample each particle's light once per tick instead of once per frame",
                     v -> particle.lightCache = v, () -> particle.lightCache),
-            bool(CAT_PARTICLE, "cullOffscreen", true, "Skip building quads for vanilla particles outside the view frustum",
+            ConfigProperty.bool(CAT_PARTICLE, "cullOffscreen", true, "Skip building quads for vanilla particles outside the view frustum",
                     v -> particle.cullOffscreen = v, () -> particle.cullOffscreen),
-            bool(CAT_PARTICLE, "collisionCache", true, "Remember that a particle's block cell has nothing to collide with instead of sweeping it every tick",
+            ConfigProperty.bool(CAT_PARTICLE, "collisionCache", true, "Remember that a particle's block cell has nothing to collide with instead of sweeping it every tick",
                     v -> particle.collisionCache = v, () -> particle.collisionCache),
 
             // --- Details ----------------------------------------------------------------------
-            bool(CAT_DETAIL, "sky", true, "Render the sky box",
+            ConfigProperty.bool(CAT_DETAIL, "sky", true, "Render the sky box",
                     v -> detail.sky = v, () -> detail.sky),
-            bool(CAT_DETAIL, "stars", true, "Render stars",
+            ConfigProperty.bool(CAT_DETAIL, "stars", true, "Render stars",
                     v -> detail.stars = v, () -> detail.stars),
-            bool(CAT_DETAIL, "sun", true, "Render the sun",
+            ConfigProperty.bool(CAT_DETAIL, "sun", true, "Render the sun",
                     v -> detail.sun = v, () -> detail.sun),
-            bool(CAT_DETAIL, "moon", true, "Render the moon",
+            ConfigProperty.bool(CAT_DETAIL, "moon", true, "Render the moon",
                     v -> detail.moon = v, () -> detail.moon),
-            bool(CAT_DETAIL, "rainSnow", true, "Render falling rain and snow",
+            ConfigProperty.bool(CAT_DETAIL, "rainSnow", true, "Render falling rain and snow",
                     v -> detail.rainSnow = v, () -> detail.rainSnow),
-            bool(CAT_DETAIL, "biomeColors", true, "Biome-specific grass, foliage and water tint",
+            ConfigProperty.bool(CAT_DETAIL, "biomeColors", true, "Biome-specific grass, foliage and water tint",
                     v -> detail.biomeColors = v, () -> detail.biomeColors),
-            bool(CAT_DETAIL, "skyColors", true, "Biome-specific sky colour",
+            ConfigProperty.bool(CAT_DETAIL, "skyColors", true, "Biome-specific sky colour",
                     v -> detail.skyColors = v, () -> detail.skyColors),
-            bool(CAT_DETAIL, "swampColors", true, "Swamp's darkened grass and foliage tint",
+            ConfigProperty.bool(CAT_DETAIL, "swampColors", true, "Swamp's darkened grass and foliage tint",
                     v -> detail.swampColors = v, () -> detail.swampColors),
-            bool(CAT_DETAIL, "voidFog", true, "Void fog near the world bottom",
+            ConfigProperty.bool(CAT_DETAIL, "voidFog", true, "Void fog near the world bottom",
                     v -> detail.voidFog = v, () -> detail.voidFog),
-            bool(CAT_DETAIL, "showCapes", true, "Render player capes",
+            ConfigProperty.bool(CAT_DETAIL, "showCapes", true, "Render player capes",
                     v -> detail.showCapes = v, () -> detail.showCapes),
-            bool(CAT_DETAIL, "heldItemTooltips", true, "Show the item name popup when switching hotbar slots",
+            ConfigProperty.bool(CAT_DETAIL, "heldItemTooltips", true, "Show the item name popup when switching hotbar slots",
                     v -> detail.heldItemTooltips = v, () -> detail.heldItemTooltips),
 
             // --- Render -----------------------------------------------------------------------
-            bool(CAT_RENDER, "fog", true, "Render atmospheric fog",
+            ConfigProperty.bool(CAT_RENDER, "fog", true, "Render atmospheric fog",
                     v -> render.fog = v, () -> render.fog),
-            bool(CAT_RENDER, "lightUpdates", true, "Process client-side light updates",
+            ConfigProperty.bool(CAT_RENDER, "lightUpdates", true, "Process client-side light updates",
                     v -> render.lightUpdates = v, () -> render.lightUpdates),
-            bool(CAT_RENDER, "itemFrames", true, "Render item frames",
+            ConfigProperty.bool(CAT_RENDER, "itemFrames", true, "Render item frames",
                     v -> render.itemFrames = v, () -> render.itemFrames),
-            bool(CAT_RENDER, "armorStands", true, "Render armor stands",
+            ConfigProperty.bool(CAT_RENDER, "armorStands", true, "Render armor stands",
                     v -> render.armorStands = v, () -> render.armorStands),
-            bool(CAT_RENDER, "paintings", true, "Render paintings",
+            ConfigProperty.bool(CAT_RENDER, "paintings", true, "Render paintings",
                     v -> render.paintings = v, () -> render.paintings),
-            bool(CAT_RENDER, "pistons", true, "Render moving pistons",
+            ConfigProperty.bool(CAT_RENDER, "pistons", true, "Render moving pistons",
                     v -> render.pistons = v, () -> render.pistons),
-            bool(CAT_RENDER, "beacons", true, "Render beacon beams",
+            ConfigProperty.bool(CAT_RENDER, "beacons", true, "Render beacon beams",
                     v -> render.beacons = v, () -> render.beacons),
-            bool(CAT_RENDER, "limitBeaconBeamHeight", false, "Stop beacon beams at the world ceiling",
+            ConfigProperty.bool(CAT_RENDER, "limitBeaconBeamHeight", false, "Stop beacon beams at the world ceiling",
                     v -> render.limitBeaconBeamHeight = v, () -> render.limitBeaconBeamHeight),
-            bool(CAT_RENDER, "enchantingTableBooks", true, "Render the enchanting table's floating book",
+            ConfigProperty.bool(CAT_RENDER, "enchantingTableBooks", true, "Render the enchanting table's floating book",
                     v -> render.enchantingTableBooks = v, () -> render.enchantingTableBooks),
-            bool(CAT_RENDER, "playerNameTag", true, "Render player name tags",
+            ConfigProperty.bool(CAT_RENDER, "playerNameTag", true, "Render player name tags",
                     v -> render.playerNameTag = v, () -> render.playerNameTag),
-            bool(CAT_RENDER, "itemFrameNameTag", true, "Render item frame name tags",
+            ConfigProperty.bool(CAT_RENDER, "itemFrameNameTag", true, "Render item frame name tags",
                     v -> render.itemFrameNameTag = v, () -> render.itemFrameNameTag),
-            bool(CAT_RENDER, "droppedItemsFancy", true,
+            ConfigProperty.bool(CAT_RENDER, "droppedItemsFancy", true,
                     "Stack up to five models per dropped item pile instead of always drawing one",
                     v -> render.droppedItemsFancy = v, () -> render.droppedItemsFancy),
-            bool(CAT_RENDER, "preventShaders", false, "Block the vanilla post-processing shader pipeline",
+            ConfigProperty.bool(CAT_RENDER, "preventShaders", false, "Block the vanilla post-processing shader pipeline",
                     v -> render.preventShaders = v, () -> render.preventShaders),
-            bool(CAT_RENDER, "profileEntityRendering", false,
+            ConfigProperty.bool(CAT_RENDER, "profileEntityRendering", false,
                     "Break entity and block-entity rendering out by type in the F3 profiler graph",
                     v -> render.profileEntityRendering = v, () -> render.profileEntityRendering),
 
             // --- Extra ------------------------------------------------------------------------
-            bool(CAT_EXTRA, "showFps", false, "Show the FPS overlay",
+            ConfigProperty.bool(CAT_EXTRA, "showFps", false, "Show the FPS overlay",
                     v -> extra.showFps = v, () -> extra.showFps),
-            bool(CAT_EXTRA, "showFPSExtended", true, "Include average, 1% low and 0.1% low in the FPS overlay",
+            ConfigProperty.bool(CAT_EXTRA, "showFPSExtended", true, "Include average, 1% low and 0.1% low in the FPS overlay",
                     v -> extra.showFpsExtended = v, () -> extra.showFpsExtended),
-            bool(CAT_EXTRA, "showCoords", false, "Show the coordinates overlay",
+            ConfigProperty.bool(CAT_EXTRA, "showCoords", false, "Show the coordinates overlay",
                     v -> extra.showCoords = v, () -> extra.showCoords),
-            bool(CAT_EXTRA, "ignoreReducedDebugInfo", false,
+            ConfigProperty.bool(CAT_EXTRA, "ignoreReducedDebugInfo", false,
                     "Show coordinates even when the server sets the reducedDebugInfo game rule",
                     v -> extra.ignoreReducedDebugInfo = v, () -> extra.ignoreReducedDebugInfo),
-            bool(CAT_EXTRA, "steadyDebugHud", true, "Throttle how often the F3 overlay text is rebuilt",
+            ConfigProperty.bool(CAT_EXTRA, "steadyDebugHud", true, "Throttle how often the F3 overlay text is rebuilt",
                     v -> extra.steadyDebugHud = v, () -> extra.steadyDebugHud),
-            bool(CAT_EXTRA, "useAdaptiveSync", false, "Use adaptive VSync (swap interval -1) when supported",
+            ConfigProperty.bool(CAT_EXTRA, "useAdaptiveSync", false, "Use adaptive VSync (swap interval -1) when supported",
                     v -> extra.useAdaptiveSync = v, () -> extra.useAdaptiveSync),
-            bool(CAT_EXTRA, "toasts", true, "Master switch for toast pop-ups",
+            ConfigProperty.bool(CAT_EXTRA, "toasts", true, "Master switch for toast pop-ups",
                     v -> extra.toasts = v, () -> extra.toasts),
-            bool(CAT_EXTRA, "toastAdvancement", true, "Advancement toasts",
+            ConfigProperty.bool(CAT_EXTRA, "toastAdvancement", true, "Advancement toasts",
                     v -> extra.toastAdvancement = v, () -> extra.toastAdvancement),
-            bool(CAT_EXTRA, "toastRecipe", true, "Recipe unlock toasts",
+            ConfigProperty.bool(CAT_EXTRA, "toastRecipe", true, "Recipe unlock toasts",
                     v -> extra.toastRecipe = v, () -> extra.toastRecipe),
-            bool(CAT_EXTRA, "toastTutorial", true, "Tutorial toasts",
+            ConfigProperty.bool(CAT_EXTRA, "toastTutorial", true, "Tutorial toasts",
                     v -> extra.toastTutorial = v, () -> extra.toastTutorial),
-            bool(CAT_EXTRA, "toastSystem", true, "System toasts",
+            ConfigProperty.bool(CAT_EXTRA, "toastSystem", true, "System toasts",
                     v -> extra.toastSystem = v, () -> extra.toastSystem),
-            bool(CAT_EXTRA, "modNameTooltip", false, "Append the source mod's name to item tooltips",
+            ConfigProperty.bool(CAT_EXTRA, "modNameTooltip", false, "Append the source mod's name to item tooltips",
                     v -> extra.modNameTooltip = v, () -> extra.modNameTooltip),
-            bool(CAT_EXTRA, "paniniProjection", false, "Apply a Panini projection post-effect to widen the view",
+            ConfigProperty.bool(CAT_EXTRA, "paniniProjection", false, "Apply a Panini projection post-effect to widen the view",
                     v -> extra.paniniProjection = v, () -> extra.paniniProjection),
             // --- Render budget ----------------------------------------------------------------
-            bool(CAT_RENDER_BUDGET, "enabled", false, "Adaptive render budgeting: skip distant idle mobs and thin cosmetic particles under frame pressure",
+            ConfigProperty.bool(CAT_RENDER_BUDGET, "enabled", false, "Adaptive render budgeting: skip distant idle mobs and thin cosmetic particles under frame pressure",
                     v -> renderBudget.enabled = v, () -> renderBudget.enabled),
-            bool(CAT_RENDER_BUDGET, "adaptive", true, "Tighten the budget a further step when frames run 20% or more over the profile target",
+            ConfigProperty.bool(CAT_RENDER_BUDGET, "adaptive", true, "Tighten the budget a further step when frames run 20% or more over the profile target",
                     v -> renderBudget.adaptive = v, () -> renderBudget.adaptive),
-            bool(CAT_RENDER_BUDGET, "smartEntityCulling", true, "Skip rendering distant non-player living entities under pressure",
+            ConfigProperty.bool(CAT_RENDER_BUDGET, "smartEntityCulling", true, "Skip rendering distant non-player living entities under pressure",
                     v -> renderBudget.smartEntityCulling = v, () -> renderBudget.smartEntityCulling),
-            bool(CAT_RENDER_BUDGET, "blockEntities", true, "Skip vanilla decorative block entity renderers (chests, signs, heads, banners, beds, shulker boxes) past the block entity distance under pressure",
+            ConfigProperty.bool(CAT_RENDER_BUDGET, "blockEntities", true, "Skip vanilla decorative block entity renderers (chests, signs, heads, banners, beds, shulker boxes) past the block entity distance under pressure",
                     v -> renderBudget.blockEntities = v, () -> renderBudget.blockEntities),
-            bool(CAT_RENDER_BUDGET, "itemFrames", true, "Skip plain item frames past the block entity distance under pressure; glowing, named and map frames are kept",
+            ConfigProperty.bool(CAT_RENDER_BUDGET, "itemFrames", true, "Skip plain item frames past the block entity distance under pressure; glowing, named and map frames are kept",
                     v -> renderBudget.itemFrames = v, () -> renderBudget.itemFrames),
-            bool(CAT_RENDER_BUDGET, "overlay", false, "Show the budget, frame pressure and skipped counts on the HUD",
+            ConfigProperty.bool(CAT_RENDER_BUDGET, "overlay", false, "Show the budget, frame pressure and skipped counts on the HUD",
                     v -> renderBudget.overlay = v, () -> renderBudget.overlay),
-            bool(CAT_RENDER_BUDGET, "quickSetupShown", false, "Whether the one-time quick setup screen has been shown on a world join",
+            ConfigProperty.bool(CAT_RENDER_BUDGET, "quickSetupShown", false, "Whether the one-time quick setup screen has been shown on a world join",
                     v -> renderBudget.quickSetupShown = v, () -> renderBudget.quickSetupShown),
             // --- GPU booster ------------------------------------------------------------------
-            bool(CAT_GPU_BOOSTER, "enabled", false, "Master switch for the GPU Booster set: fast random, fast math and streamed vertex uploads",
+            ConfigProperty.bool(CAT_GPU_BOOSTER, "enabled", false, "Master switch for the GPU Booster set: fast random, fast math and streamed vertex uploads",
                     v -> gpuBooster.enabled = v, () -> gpuBooster.enabled),
-            bool(CAT_GPU_BOOSTER, "fastRandom", true, "Give entities and particles a cheaper random generator than java.util.Random",
+            ConfigProperty.bool(CAT_GPU_BOOSTER, "fastRandom", true, "Give entities and particles a cheaper random generator than java.util.Random",
                     v -> gpuBooster.fastRandom = v, () -> gpuBooster.fastRandom),
-            bool(CAT_GPU_BOOSTER, "fastMath", true, "Cheaper angle wrapping and log2 in MathHelper",
+            ConfigProperty.bool(CAT_GPU_BOOSTER, "fastMath", true, "Cheaper angle wrapping and log2 in MathHelper",
                     v -> gpuBooster.fastMath = v, () -> gpuBooster.fastMath),
-            bool(CAT_GPU_BOOSTER, "streamUploads", true, "Draw immediate-mode geometry through a streamed vertex buffer instead of client-side arrays",
+            ConfigProperty.bool(CAT_GPU_BOOSTER, "streamUploads", true, "Draw immediate-mode geometry through a streamed vertex buffer instead of client-side arrays",
                     v -> gpuBooster.streamUploads = v, () -> gpuBooster.streamUploads),
             // --- Parallel ticking -------------------------------------------------------------
-            bool(CAT_ASYNC, "enabled", true, "Master switch for parallel server ticking (entities, random ticks, mob spawning across the worker pool); takes effect on the next launch",
+            ConfigProperty.bool(CAT_ASYNC, "enabled", true, "Master switch for parallel server ticking (entities, random ticks, mob spawning across the worker pool); takes effect on the next launch",
                     v -> async.enabled = v, () -> async.enabled),
-            bool(CAT_ASYNC, "entities", true, "Tick vanilla entities in parallel across the worker pool",
+            ConfigProperty.bool(CAT_ASYNC, "entities", true, "Tick vanilla entities in parallel across the worker pool",
                     v -> async.entities = v, () -> async.entities),
-            bool(CAT_ASYNC, "moddedEntities", false, "Also tick modded entities in parallel; off keeps them on the main thread",
+            ConfigProperty.bool(CAT_ASYNC, "moddedEntities", false, "Also tick modded entities in parallel; off keeps them on the main thread",
                     v -> async.moddedEntities = v, () -> async.moddedEntities),
-            bool(CAT_ASYNC, "randomTicks", true, "Run block random ticks (crop growth, fire spread, ...) in parallel",
+            ConfigProperty.bool(CAT_ASYNC, "randomTicks", true, "Run block random ticks (crop growth, fire spread, ...) in parallel",
                     v -> async.randomTicks = v, () -> async.randomTicks),
-            bool(CAT_ASYNC, "spawning", true, "Evaluate natural mob spawn attempts in parallel per chunk",
+            ConfigProperty.bool(CAT_ASYNC, "spawning", true, "Evaluate natural mob spawn attempts in parallel per chunk",
                     v -> async.spawning = v, () -> async.spawning),
             // --- Baked block entities ---------------------------------------------------------
-            bool(CAT_BAKED_ENTITIES, "enabled", true, "Master switch: draw resting chests, ender chests, signs, beds and shulker boxes as terrain instead of through their block entity renderers",
+            ConfigProperty.bool(CAT_BAKED_ENTITIES, "enabled", true, "Master switch: draw resting chests, ender chests, signs, beds and shulker boxes as terrain instead of through their block entity renderers",
                     v -> bakedEntities.enabled = v, () -> bakedEntities.enabled),
-            bool(CAT_BAKED_ENTITIES, "chests", true, "Bake chests and trapped chests, single and double",
+            ConfigProperty.bool(CAT_BAKED_ENTITIES, "chests", true, "Bake chests and trapped chests, single and double",
                     v -> bakedEntities.chests = v, () -> bakedEntities.chests),
-            bool(CAT_BAKED_ENTITIES, "enderChests", true, "Bake ender chests",
+            ConfigProperty.bool(CAT_BAKED_ENTITIES, "enderChests", true, "Bake ender chests",
                     v -> bakedEntities.enderChests = v, () -> bakedEntities.enderChests),
-            bool(CAT_BAKED_ENTITIES, "signs", true, "Bake sign boards and posts (text still comes from the renderer)",
+            ConfigProperty.bool(CAT_BAKED_ENTITIES, "signs", true, "Bake sign boards and posts (text still comes from the renderer)",
                     v -> bakedEntities.signs = v, () -> bakedEntities.signs),
-            bool(CAT_BAKED_ENTITIES, "beds", true, "Bake beds",
+            ConfigProperty.bool(CAT_BAKED_ENTITIES, "beds", true, "Bake beds",
                     v -> bakedEntities.beds = v, () -> bakedEntities.beds),
-            bool(CAT_BAKED_ENTITIES, "shulkerBoxes", true, "Bake closed shulker boxes",
+            ConfigProperty.bool(CAT_BAKED_ENTITIES, "shulkerBoxes", true, "Bake closed shulker boxes",
                     v -> bakedEntities.shulkerBoxes = v, () -> bakedEntities.shulkerBoxes),
             // --- Network ----------------------------------------------------------------------
-            bool(CAT_NETWORK, "largePackets", true, "Lift vanilla's packet, payload, NBT, string and chunk data size caps (2 MB frames, 32 KB strings, 1 MB payloads)",
+            ConfigProperty.bool(CAT_NETWORK, "largePackets", true, "Lift vanilla's packet, payload, NBT, string and chunk data size caps (2 MB frames, 32 KB strings, 1 MB payloads)",
                     v -> network.largePackets = v, () -> network.largePackets),
-            bool(CAT_NETWORK, "flushConsolidation", true, "Queue packets sent during a server tick and flush each connection once at the end of the tick instead of per packet",
+            ConfigProperty.bool(CAT_NETWORK, "flushConsolidation", true, "Queue packets sent during a server tick and flush each connection once at the end of the tick instead of per packet",
                     v -> network.flushConsolidation = v, () -> network.flushConsolidation),
-            bool(CAT_NETWORK, "fastVarInts", true, "Table-driven varint sizing and single-write varint encoding",
+            ConfigProperty.bool(CAT_NETWORK, "fastVarInts", true, "Table-driven varint sizing and single-write varint encoding",
                     v -> network.fastVarInts = v, () -> network.fastVarInts),
-            bool(CAT_NETWORK, "pooledCompression", true, "Compress and decompress packets without copying them into fresh arrays",
+            ConfigProperty.bool(CAT_NETWORK, "pooledCompression", true, "Compress and decompress packets without copying them into fresh arrays",
                     v -> network.pooledCompression = v, () -> network.pooledCompression),
             // --- Thread scheduling ------------------------------------------------------------
-            bool(CAT_THREADS, "removeRenderYield", false, "Skip the Thread.yield() the render loop makes once per frame",
+            ConfigProperty.bool(CAT_THREADS, "removeRenderYield", false, "Skip the Thread.yield() the render loop makes once per frame",
                     v -> threads.removeRenderYield = v, () -> threads.removeRenderYield),
             // --- Occlusion culling ------------------------------------------------------------
-            bool(CAT_OCCLUSION, "enabled", true, "Master switch: skip drawing entities and block entities a worker thread has ray-cast as hidden behind blocks",
+            ConfigProperty.bool(CAT_OCCLUSION, "enabled", true, "Master switch: skip drawing entities and block entities a worker thread has ray-cast as hidden behind blocks",
                     v -> occlusion.enabled = v, () -> occlusion.enabled),
-            bool(CAT_OCCLUSION, "entities", true, "Cull hidden entities",
+            ConfigProperty.bool(CAT_OCCLUSION, "entities", true, "Cull hidden entities",
                     v -> occlusion.entities = v, () -> occlusion.entities),
-            bool(CAT_OCCLUSION, "blockEntities", true, "Cull hidden block entities (chests, signs, ...)",
+            ConfigProperty.bool(CAT_OCCLUSION, "blockEntities", true, "Cull hidden block entities (chests, signs, ...)",
                     v -> occlusion.blockEntities = v, () -> occlusion.blockEntities),
             // --- HUD --------------------------------------------------------------------------
-            bool(CAT_HUD, "cacheEnabled", false, "Draw the HUD into a framebuffer at a capped rate and composite it every frame; crosshair and vignette stay live",
+            ConfigProperty.bool(CAT_HUD, "cacheEnabled", false, "Draw the HUD into a framebuffer at a capped rate and composite it every frame; crosshair and vignette stay live",
                     v -> hud.cacheEnabled = v, () -> hud.cacheEnabled),
             // --- Text -------------------------------------------------------------------------
-            bool(CAT_TEXT, "batchGlyphs", true, "Draw each string's glyphs in one batch instead of one immediate-mode quad per glyph",
+            ConfigProperty.bool(CAT_TEXT, "batchGlyphs", true, "Draw each string's glyphs in one batch instead of one immediate-mode quad per glyph",
                     v -> text.batchGlyphs = v, () -> text.batchGlyphs),
             // --- Client tick ------------------------------------------------------------------
-            bool(CAT_CLIENT_TICK, "lightmapCaching", true, "Skip rebuilding and uploading the lightmap while nothing but the torch flicker has changed",
+            ConfigProperty.bool(CAT_CLIENT_TICK, "lightmapCaching", true, "Skip rebuilding and uploading the lightmap while nothing but the torch flicker has changed",
                     v -> clientTick.lightmapCaching = v, () -> clientTick.lightmapCaching),
             // --- Entity models ----------------------------------------------------------------
-            bool(CAT_ENTITY_MODELS, "matrixTransforms", true, "Position each model box with one matrix multiply instead of up to six translate/rotate calls",
+            ConfigProperty.bool(CAT_ENTITY_MODELS, "matrixTransforms", true, "Position each model box with one matrix multiply instead of up to six translate/rotate calls",
                     v -> entityModels.matrixTransforms = v, () -> entityModels.matrixTransforms),
             // --- Loading ----------------------------------------------------------------------
-            bool(CAT_LOADING, "skipWorldLoadGc", true, "Skip the forced full garbage collection on world load and unload",
+            ConfigProperty.bool(CAT_LOADING, "skipWorldLoadGc", true, "Skip the forced full garbage collection on world load and unload",
                     v -> loading.skipWorldLoadGc = v, () -> loading.skipWorldLoadGc),
-            bool(CAT_LOADING, "smoothDimensionChange", true, "Skip the 'Loading terrain' screen on dimension change and respawn",
+            ConfigProperty.bool(CAT_LOADING, "smoothDimensionChange", true, "Skip the 'Loading terrain' screen on dimension change and respawn",
                     v -> loading.smoothDimensionChange = v, () -> loading.smoothDimensionChange),
-            bool(CAT_LOADING, "releaseScreenshotBuffers", true, "Free the screenshot readback buffers after each screenshot instead of keeping them forever",
+            ConfigProperty.bool(CAT_LOADING, "releaseScreenshotBuffers", true, "Free the screenshot readback buffers after each screenshot instead of keeping them forever",
                     v -> loading.releaseScreenshotBuffers = v, () -> loading.releaseScreenshotBuffers),
-            bool(CAT_LOADING, "asyncScreenshots", true, "Encode and write screenshots on a background thread",
+            ConfigProperty.bool(CAT_LOADING, "asyncScreenshots", true, "Encode and write screenshots on a background thread",
                     v -> loading.asyncScreenshots = v, () -> loading.asyncScreenshots),
-            bool(CAT_LOADING, "driverAtlasLimit", true, "Ask the driver for its maximum texture size instead of probing proxy uploads from 16384 down",
+            ConfigProperty.bool(CAT_LOADING, "driverAtlasLimit", true, "Ask the driver for its maximum texture size instead of probing proxy uploads from 16384 down",
                     v -> loading.driverAtlasLimit = v, () -> loading.driverAtlasLimit)
     );
 
-    private final List<IntProperty> integers = Arrays.asList(
-            new IntProperty(CAT_DETAIL, "totalStars", DetailSettings.STARS_DEFAULT,
+    private final List<ConfigProperty> integers = Arrays.asList(
+            ConfigProperty.integer(CAT_DETAIL, "totalStars", DetailSettings.STARS_DEFAULT,
                     DetailSettings.STARS_MIN, DetailSettings.STARS_MAX, "Number of stars to generate",
                     v -> detail.totalStars = v, () -> detail.totalStars),
-            new IntProperty(CAT_RENDER, "fogStart", 100, 0, 200,
+            ConfigProperty.integer(CAT_RENDER, "fogStart", 100, 0, 200,
                     "Fog start distance as a percentage of the fog end (100 = vanilla)",
                     v -> render.fogStart = v, () -> render.fogStart),
-            new IntProperty(CAT_RENDER, "fogDistance", 0, 0, 32,
+            ConfigProperty.integer(CAT_RENDER, "fogDistance", 0, 0, 32,
                     "Fog distance in chunks (0 = follow render distance)",
                     v -> render.fogDistance = v, () -> render.fogDistance),
-            new IntProperty(CAT_RENDER, "cloudScale", RenderSettings.CLOUD_SCALE_VANILLA,
+            ConfigProperty.integer(CAT_RENDER, "cloudScale", RenderSettings.CLOUD_SCALE_VANILLA,
                     RenderSettings.CLOUD_SCALE_MIN, RenderSettings.CLOUD_SCALE_MAX,
                     "Cloud scale in quarter steps (1 = 0.25x, 4 = vanilla, 16 = 4.00x)",
                     v -> render.cloudScale = v, () -> render.cloudScale),
-            new IntProperty(CAT_RENDER, "itemFrameLodDistance", 0, 0, 256,
+            ConfigProperty.integer(CAT_RENDER, "itemFrameLodDistance", 0, 0, 256,
                     "Distance in blocks past which framed items lose their side faces (0 = off)",
                     v -> render.itemFrameLodDistance = v, () -> render.itemFrameLodDistance),
-            new IntProperty(CAT_EXTRA, "steadyDebugHudRefreshInterval",
+            ConfigProperty.integer(CAT_EXTRA, "steadyDebugHudRefreshInterval",
                     ExtraSettings.STEADY_HUD_REFRESH_DEFAULT, ExtraSettings.STEADY_HUD_REFRESH_MIN,
                     ExtraSettings.STEADY_HUD_REFRESH_MAX, "F3 overlay rebuild interval in ticks",
                     v -> extra.steadyDebugHudRefreshInterval = v, () -> extra.steadyDebugHudRefreshInterval),
-            new IntProperty(CAT_EXTRA, "paniniProjectionStrength", 25, 0, 100,
+            ConfigProperty.integer(CAT_EXTRA, "paniniProjectionStrength", 25, 0, 100,
                     "Panini projection strength as a percentage",
                     v -> extra.paniniProjectionStrength = v, () -> extra.paniniProjectionStrength),
-            new IntProperty(CAT_EXTRA, "autosaveInterval", ExtraSettings.AUTOSAVE_VANILLA_TICKS,
+            ConfigProperty.integer(CAT_EXTRA, "autosaveInterval", ExtraSettings.AUTOSAVE_VANILLA_TICKS,
                     ExtraSettings.AUTOSAVE_MIN_TICKS, ExtraSettings.AUTOSAVE_MAX_TICKS,
                     "Singleplayer autosave interval in ticks (900 = vanilla)",
                     v -> extra.autosaveInterval = v, () -> extra.autosaveInterval),
-            new IntProperty(CAT_RENDER_BUDGET, "particleBudget", RenderBudgetSettings.PARTICLE_BUDGET_DEFAULT,
+            ConfigProperty.integer(CAT_RENDER_BUDGET, "particleBudget", RenderBudgetSettings.PARTICLE_BUDGET_DEFAULT,
                     RenderBudgetSettings.PARTICLE_BUDGET_MIN, RenderBudgetSettings.PARTICLE_BUDGET_MAX,
                     "Percentage of cosmetic particles allowed to spawn (100 = no particle budgeting)",
                     v -> renderBudget.particleBudget = v, () -> renderBudget.particleBudget),
-            new IntProperty(CAT_RENDER_BUDGET, "entityCullDistance", RenderBudgetSettings.ENTITY_DISTANCE_DEFAULT,
+            ConfigProperty.integer(CAT_RENDER_BUDGET, "entityCullDistance", RenderBudgetSettings.ENTITY_DISTANCE_DEFAULT,
                     RenderBudgetSettings.ENTITY_DISTANCE_MIN, RenderBudgetSettings.ENTITY_DISTANCE_MAX,
                     "Distance in blocks past which idle living entities may be skipped under pressure",
                     v -> renderBudget.entityCullDistance = v, () -> renderBudget.entityCullDistance),
-            new IntProperty(CAT_RENDER_BUDGET, "blockEntityDistance", RenderBudgetSettings.BLOCK_ENTITY_DISTANCE_DEFAULT,
+            ConfigProperty.integer(CAT_RENDER_BUDGET, "blockEntityDistance", RenderBudgetSettings.BLOCK_ENTITY_DISTANCE_DEFAULT,
                     RenderBudgetSettings.BLOCK_ENTITY_DISTANCE_MIN, RenderBudgetSettings.BLOCK_ENTITY_DISTANCE_MAX,
                     "Distance in blocks past which decorative block entities and item frames may be skipped under pressure (vanilla stops most at 64 anyway)",
                     v -> renderBudget.blockEntityDistance = v, () -> renderBudget.blockEntityDistance),
-            new IntProperty(CAT_ASYNC, "threads", 0, 0, AsyncSettings.THREADS_MAX,
+            ConfigProperty.integer(CAT_ASYNC, "threads", 0, 0, AsyncSettings.THREADS_MAX,
                     "Worker threads for parallel ticking (0 = automatic, about three quarters of the cores)",
                     v -> async.threads = v, () -> async.threads),
-            new IntProperty(CAT_NETWORK, "readTimeoutSeconds", NetworkSettings.READ_TIMEOUT_DEFAULT, NetworkSettings.TIMEOUT_MIN, NetworkSettings.TIMEOUT_MAX,
+            ConfigProperty.integer(CAT_NETWORK, "readTimeoutSeconds", NetworkSettings.READ_TIMEOUT_DEFAULT, NetworkSettings.TIMEOUT_MIN, NetworkSettings.TIMEOUT_MAX,
                     "Seconds a connection may go silent before it is dropped (vanilla 30)",
                     v -> network.readTimeoutSeconds = v, () -> network.readTimeoutSeconds),
-            new IntProperty(CAT_NETWORK, "loginTimeoutSeconds", NetworkSettings.LOGIN_TIMEOUT_DEFAULT, NetworkSettings.TIMEOUT_MIN, NetworkSettings.TIMEOUT_MAX,
+            ConfigProperty.integer(CAT_NETWORK, "loginTimeoutSeconds", NetworkSettings.LOGIN_TIMEOUT_DEFAULT, NetworkSettings.TIMEOUT_MIN, NetworkSettings.TIMEOUT_MAX,
                     "Seconds a client may take to finish logging in (vanilla 30)",
                     v -> network.loginTimeoutSeconds = v, () -> network.loginTimeoutSeconds),
-            new IntProperty(CAT_NETWORK, "keepAliveTimeoutSeconds", NetworkSettings.KEEP_ALIVE_TIMEOUT_DEFAULT, NetworkSettings.TIMEOUT_MIN, NetworkSettings.TIMEOUT_MAX,
+            ConfigProperty.integer(CAT_NETWORK, "keepAliveTimeoutSeconds", NetworkSettings.KEEP_ALIVE_TIMEOUT_DEFAULT, NetworkSettings.TIMEOUT_MIN, NetworkSettings.TIMEOUT_MAX,
                     "Seconds a client may take to answer a keep-alive (vanilla 15)",
                     v -> network.keepAliveTimeoutSeconds = v, () -> network.keepAliveTimeoutSeconds),
-            new IntProperty(CAT_THREADS, "renderThreadPriority", ThreadSettings.PRIORITY_NORMAL, ThreadSettings.PRIORITY_MIN, ThreadSettings.PRIORITY_MAX,
+            ConfigProperty.integer(CAT_THREADS, "renderThreadPriority", ThreadSettings.PRIORITY_NORMAL, ThreadSettings.PRIORITY_MIN, ThreadSettings.PRIORITY_MAX,
                     "Java priority of the client (render) thread, 1-10 (5 = unchanged)",
                     v -> threads.renderThreadPriority = v, () -> threads.renderThreadPriority),
-            new IntProperty(CAT_THREADS, "serverThreadPriority", ThreadSettings.PRIORITY_NORMAL, ThreadSettings.PRIORITY_MIN, ThreadSettings.PRIORITY_MAX,
+            ConfigProperty.integer(CAT_THREADS, "serverThreadPriority", ThreadSettings.PRIORITY_NORMAL, ThreadSettings.PRIORITY_MIN, ThreadSettings.PRIORITY_MAX,
                     "Java priority of the integrated server thread, 1-10 (5 = unchanged)",
                     v -> threads.serverThreadPriority = v, () -> threads.serverThreadPriority),
-            new IntProperty(CAT_THREADS, "chunkBuilderPriority", ThreadSettings.CHUNK_BUILDER_DEFAULT, ThreadSettings.PRIORITY_MIN, ThreadSettings.PRIORITY_MAX,
+            ConfigProperty.integer(CAT_THREADS, "chunkBuilderPriority", ThreadSettings.CHUNK_BUILDER_DEFAULT, ThreadSettings.PRIORITY_MIN, ThreadSettings.PRIORITY_MAX,
                     "Java priority of the chunk builder threads, 1-10 (3 = unchanged)",
                     v -> threads.chunkBuilderPriority = v, () -> threads.chunkBuilderPriority),
-            new IntProperty(CAT_OCCLUSION, "maxEntitySize", OcclusionSettings.MAX_ENTITY_SIZE_DEFAULT, 1, 32,
+            ConfigProperty.integer(CAT_OCCLUSION, "maxEntitySize", OcclusionSettings.MAX_ENTITY_SIZE_DEFAULT, 1, 32,
                     "Entities wider or taller than this many blocks are never culled",
                     v -> occlusion.maxEntitySize = v, () -> occlusion.maxEntitySize),
-            new IntProperty(CAT_OCCLUSION, "maxBlockEntitySize", OcclusionSettings.MAX_BLOCK_ENTITY_SIZE_DEFAULT, 1, 32,
+            ConfigProperty.integer(CAT_OCCLUSION, "maxBlockEntitySize", OcclusionSettings.MAX_BLOCK_ENTITY_SIZE_DEFAULT, 1, 32,
                     "Block entities whose render box exceeds this many blocks on any axis are never culled",
                     v -> occlusion.maxBlockEntitySize = v, () -> occlusion.maxBlockEntitySize),
-            new IntProperty(CAT_OCCLUSION, "raycastSlack", OcclusionSettings.SLACK_DEFAULT, 0, 300,
+            ConfigProperty.integer(CAT_OCCLUSION, "raycastSlack", OcclusionSettings.SLACK_DEFAULT, 0, 300,
                     "Hundredths of a block at the end of each ray that never occlude, so a target inside a block is not hidden by that block",
                     v -> occlusion.raycastSlack = v, () -> occlusion.raycastSlack),
-            new IntProperty(CAT_HUD, "cacheFps", HudSettings.CACHE_FPS_DEFAULT, HudSettings.CACHE_FPS_MIN, HudSettings.CACHE_FPS_MAX,
+            ConfigProperty.integer(CAT_HUD, "cacheFps", HudSettings.CACHE_FPS_DEFAULT, HudSettings.CACHE_FPS_MIN, HudSettings.CACHE_FPS_MAX,
                     "How many times per second the cached HUD is redrawn",
                     v -> hud.cacheFps = v, () -> hud.cacheFps),
-            new IntProperty(CAT_LEAVES, "cullingDepth", LeafSettings.DEPTH_DEFAULT, LeafSettings.DEPTH_MIN, LeafSettings.DEPTH_MAX,
+            ConfigProperty.integer(CAT_LEAVES, "cullingDepth", LeafSettings.DEPTH_DEFAULT, LeafSettings.DEPTH_MIN, LeafSettings.DEPTH_MAX,
                     "Depth mode: how many solid blocks must lie behind a leaf face before it is dropped",
                     v -> leaves.cullingDepth = v, () -> leaves.cullingDepth)
+    );
+
+    private final List<ConfigProperty> enums = Arrays.asList(
+            ConfigProperty.enumeration(CAT_RENDER, "cloudTranslucency", CloudTranslucency.values(), CloudTranslucency.DEFAULT,
+                    "Cloud translucency mode (0 = Default, 1 = Always, 2 = Never)",
+                    v -> render.cloudTranslucency = v, () -> render.cloudTranslucency),
+            ConfigProperty.enumeration(CAT_RENDER, "fogShape", FogShape.values(), FogShape.VANILLA,
+                    "Terrain fog shape (0 = Vanilla, 1 = Cylindrical, 2 = Radial, 3 = Planar)",
+                    v -> render.fogShape = v, () -> render.fogShape),
+            ConfigProperty.enumeration(CAT_EXTRA, "overlayCorner", OverlayCorner.values(), OverlayCorner.TOP_LEFT,
+                    "Overlay corner (0 = Top Left, 1 = Top Right, 2 = Bottom Left, 3 = Bottom Right)",
+                    v -> extra.overlayCorner = v, () -> extra.overlayCorner),
+            ConfigProperty.enumeration(CAT_EXTRA, "textContrast", TextContrast.values(), TextContrast.SHADOW,
+                    "Overlay text contrast (0 = None, 1 = Background, 2 = Shadow)",
+                    v -> extra.textContrast = v, () -> extra.textContrast),
+            ConfigProperty.enumeration(CAT_EXTRA, "timeOverride", TimeOverride.values(), TimeOverride.DEFAULT,
+                    "Client-side time of day (0 = Default, 1 = Day only, 2 = Night only). Creative/cheats only.",
+                    v -> extra.timeOverride = v, () -> extra.timeOverride),
+            ConfigProperty.enumeration(CAT_EXTRA, "weatherOverride", WeatherOverride.values(), WeatherOverride.DEFAULT,
+                    "Client-side weather (0 = Default, 1 = Clear, 2 = Rain, 3 = Thunder). Creative/cheats only.",
+                    v -> extra.weatherOverride = v, () -> extra.weatherOverride),
+            ConfigProperty.enumeration(CAT_RENDER_BUDGET, "profile", BudgetProfile.values(), BudgetProfile.BALANCED,
+                    "Render budget profile (0 = Quality, 1 = Balanced, 2 = Performance)",
+                    v -> renderBudget.profile = v, () -> renderBudget.profile),
+            ConfigProperty.enumeration(CAT_LEAVES, "cullingMode", LeafCulling.values(), LeafCulling.DEFAULT,
+                    "Fancy leaf face culling (0 = Default, 1 = Check surrounding, 2 = Depth)",
+                    v -> leaves.cullingMode = v, () -> leaves.cullingMode)
     );
 
     private Configuration config;
@@ -402,33 +427,9 @@ public final class ExtrasConfig {
     private void loadFrom(Configuration config) {
         booleans.forEach(property -> property.load(config));
         integers.forEach(property -> property.load(config));
+        enums.forEach(property -> property.load(config));
 
-        render.cloudTranslucency = readEnum(config, CAT_RENDER, "cloudTranslucency",
-                CloudTranslucency.values(), CloudTranslucency.DEFAULT,
-                "Cloud translucency mode (0 = Default, 1 = Always, 2 = Never)");
-        render.fogShape = readEnum(config, CAT_RENDER, "fogShape",
-                FogShape.values(), FogShape.VANILLA,
-                "Terrain fog shape (0 = Vanilla, 1 = Cylindrical, 2 = Radial, 3 = Planar)");
-        extra.overlayCorner = readEnum(config, CAT_EXTRA, "overlayCorner",
-                OverlayCorner.values(), OverlayCorner.TOP_LEFT,
-                "Overlay corner (0 = Top Left, 1 = Top Right, 2 = Bottom Left, 3 = Bottom Right)");
-        extra.textContrast = readEnum(config, CAT_EXTRA, "textContrast",
-                TextContrast.values(), TextContrast.SHADOW,
-                "Overlay text contrast (0 = None, 1 = Background, 2 = Shadow)");
-        extra.timeOverride = readEnum(config, CAT_EXTRA, "timeOverride",
-                TimeOverride.values(), TimeOverride.DEFAULT,
-                "Client-side time of day (0 = Default, 1 = Day only, 2 = Night only). Creative/cheats only.");
-        extra.weatherOverride = readEnum(config, CAT_EXTRA, "weatherOverride",
-                WeatherOverride.values(), WeatherOverride.DEFAULT,
-                "Client-side weather (0 = Default, 1 = Clear, 2 = Rain, 3 = Thunder). Creative/cheats only.");
-        renderBudget.profile = readEnum(config, CAT_RENDER_BUDGET, "profile",
-                BudgetProfile.values(), BudgetProfile.BALANCED,
-                "Render budget profile (0 = Quality, 1 = Balanced, 2 = Performance)");
-        leaves.cullingMode = readEnum(config, CAT_LEAVES, "cullingMode",
-                LeafCulling.values(), LeafCulling.DEFAULT,
-                "Fancy leaf face culling (0 = Default, 1 = Check surrounding, 2 = Depth)");
-
-        ParticleClassRegistry registry = ParticleClassRegistry.getInstance();
+ParticleClassRegistry registry = ParticleClassRegistry.getInstance();
         registry.loadDisabledClasses(config.getStringList("disabledClasses", CAT_PARTICLE_CLASSES,
                 new String[0], "Particle classes the user has switched off"));
         registry.loadDiscoveredClasses(config.getStringList("discoveredClasses", CAT_PARTICLE_CLASSES,
@@ -445,15 +446,7 @@ public final class ExtrasConfig {
 
         booleans.forEach(property -> property.save(config));
         integers.forEach(property -> property.save(config));
-
-        config.get(CAT_RENDER, "cloudTranslucency", 0).set(render.cloudTranslucency.ordinal());
-        config.get(CAT_RENDER, "fogShape", 0).set(render.fogShape.ordinal());
-        config.get(CAT_EXTRA, "overlayCorner", 0).set(extra.overlayCorner.ordinal());
-        config.get(CAT_EXTRA, "textContrast", TextContrast.SHADOW.ordinal()).set(extra.textContrast.ordinal());
-        config.get(CAT_EXTRA, "timeOverride", 0).set(extra.timeOverride.ordinal());
-        config.get(CAT_EXTRA, "weatherOverride", 0).set(extra.weatherOverride.ordinal());
-        config.get(CAT_RENDER_BUDGET, "profile", BudgetProfile.BALANCED.ordinal()).set(renderBudget.profile.ordinal());
-        config.get(CAT_LEAVES, "cullingMode", 0).set(leaves.cullingMode.ordinal());
+        enums.forEach(property -> property.save(config));
 
         ParticleClassRegistry registry = ParticleClassRegistry.getInstance();
         config.get(CAT_PARTICLE_CLASSES, "disabledClasses", new String[0])
@@ -469,17 +462,6 @@ public final class ExtrasConfig {
         ParticleTicker.apply(particle);
         BakedEntities.apply(bakedEntities);
         ThreadTuning.apply(threads);
-    }
-
-    private static <T extends Enum<T>> T readEnum(Configuration config, String category, String key,
-                                                  T[] values, T fallback, String comment) {
-        int ordinal = config.getInt(key, category, fallback.ordinal(), 0, values.length - 1, comment);
-        return values[ordinal];
-    }
-
-    private BooleanProperty bool(String category, String key, boolean defaultValue, String comment,
-                                 Consumer<Boolean> setter, Supplier<Boolean> getter) {
-        return new BooleanProperty(category, key, defaultValue, comment, setter, getter);
     }
 
     // Enums, persisted by ordinal so append only
@@ -672,16 +654,6 @@ public final class ExtrasConfig {
         @Override
         public String translationKey() {
             return this.key;
-        }
-    }
-
-    // Something with a lang key; lets the option page build cycling controls generically
-    public interface Localized {
-        String translationKey();
-
-        // Resolves the translation key for display
-        default String localizedName() {
-            return I18n.format(this.translationKey());
         }
     }
 
@@ -951,33 +923,5 @@ public final class ExtrasConfig {
         public boolean releaseScreenshotBuffers = true;
         public boolean asyncScreenshots = true;
         public boolean driverAtlasLimit = true;
-    }
-
-    // Declarative property bindings
-
-    // A boolean config entry bound to its in-memory field, so load and save cannot drift apart
-    @Desugar
-    private record BooleanProperty(String category, String key, boolean defaultValue, String comment,
-                                   Consumer<Boolean> setter, Supplier<Boolean> getter) {
-        void load(Configuration config) {
-            setter.accept(config.getBoolean(key, category, defaultValue, comment));
-        }
-
-        void save(Configuration config) {
-            config.get(category, key, defaultValue).set(getter.get());
-        }
-    }
-
-    // As BooleanProperty, with an inclusive range Configuration clamps to on load
-    @Desugar
-    private record IntProperty(String category, String key, int defaultValue, int min, int max, String comment,
-                               Consumer<Integer> setter, Supplier<Integer> getter) {
-        void load(Configuration config) {
-            setter.accept(config.getInt(key, category, defaultValue, min, max, comment));
-        }
-
-        void save(Configuration config) {
-            config.get(category, key, defaultValue).set(getter.get());
-        }
     }
 }

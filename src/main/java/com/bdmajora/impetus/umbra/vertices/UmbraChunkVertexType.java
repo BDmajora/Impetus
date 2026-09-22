@@ -3,12 +3,12 @@ package com.bdmajora.impetus.umbra.vertices;
 import com.bdmajora.impetus.engine.impl.gl.attribute.GlVertexAttributeFormat;
 import com.bdmajora.impetus.engine.impl.gl.attribute.GlVertexFormat;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexEncoder;
-import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexType;
+import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.impl.VanillaLikeChunkVertex;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 // The terrain vertex format while a pack is active: VanillaLikeChunkVertex's layout plus the OptiFine per-vertex attributes (normal, at_tangent, mc_midTexCoord, mc_Entity); only selected with a pack loaded, so the wider stride costs nothing otherwise
-public class UmbraChunkVertexType implements ChunkVertexType {
+public class UmbraChunkVertexType extends VanillaLikeChunkVertex {
     public static final UmbraChunkVertexType INSTANCE = new UmbraChunkVertexType();
 
     public static final int STRIDE = 56;
@@ -20,11 +20,7 @@ public class UmbraChunkVertexType implements ChunkVertexType {
     private static final int OFFSET_ENTITY = 44;   // 4 x short, mc_Entity.xyzw (see class doc)
     private static final int OFFSET_MID_BLOCK = 52; // at_midBlock: 3 signed bytes (offset * 64) + emission byte
 
-    public static final GlVertexFormat VERTEX_FORMAT = GlVertexFormat.builder(STRIDE)
-            .addElement("a_PosId", 0, GlVertexAttributeFormat.FLOAT, 3, false, false)
-            .addElement("a_Color", 12, GlVertexAttributeFormat.UNSIGNED_BYTE, 4, true, false)
-            .addElement("a_TexCoord", 16, GlVertexAttributeFormat.FLOAT, 2, false, false)
-            .addElement("a_LightCoord", 24, GlVertexAttributeFormat.UNSIGNED_INT, 1, false, true)
+    public static final GlVertexFormat VERTEX_FORMAT = baseFormat(STRIDE)
             .addElement("iris_Normal", OFFSET_NORMAL, GlVertexAttributeFormat.BYTE, 4, true, false)
             .addElement("iris_Tangent", OFFSET_TANGENT, GlVertexAttributeFormat.BYTE, 4, true, false)
             .addElement("iris_MidTexCoord", OFFSET_MID_TEX, GlVertexAttributeFormat.FLOAT, 2, false, false)
@@ -34,24 +30,6 @@ public class UmbraChunkVertexType implements ChunkVertexType {
             .build();
 
     private UmbraChunkVertexType() {
-    }
-
-    // Position is stored as float, so no scale
-    @Override
-    public float getPositionScale() {
-        return 1f;
-    }
-
-    // No offset
-    @Override
-    public float getPositionOffset() {
-        return 0;
-    }
-
-    // UV is stored as float, so no scale
-    @Override
-    public float getTextureScale() {
-        return 1f;
     }
 
     // The attribute layout, including the OptiFine extras
@@ -65,13 +43,7 @@ public class UmbraChunkVertexType implements ChunkVertexType {
     public ChunkVertexEncoder createEncoder() {
         return (ptr, material, vertex, sectionIndex) -> {
             // Base layout identical to VanillaLikeChunkVertex (the transformer prologue decodes this).
-            LWJGL.memPutFloat(ptr + 0, vertex.x);
-            LWJGL.memPutFloat(ptr + 4, vertex.y);
-            LWJGL.memPutFloat(ptr + 8, vertex.z);
-            LWJGL.memPutInt(ptr + 12, vertex.color);
-            LWJGL.memPutFloat(ptr + 16, encodeTexture(vertex.u));
-            LWJGL.memPutFloat(ptr + 20, encodeTexture(vertex.v));
-            LWJGL.memPutInt(ptr + 24, (encodeDrawParameters(material.bits(), sectionIndex) << 0) | (encodeLight(vertex.light) << 16));
+            writeBase(ptr, material, vertex, sectionIndex);
 
             // OptiFine extended attributes, filled in by the meshing pipeline while shaders are active.
             LWJGL.memPutInt(ptr + OFFSET_NORMAL, vertex.trueNormal);
@@ -107,22 +79,5 @@ public class UmbraChunkVertexType implements ChunkVertexType {
     // Short range
     private static short clampShort(int value) {
         return (short) (value < Short.MIN_VALUE ? Short.MIN_VALUE : Math.min(value, Short.MAX_VALUE));
-    }
-
-    // Packs material and section index into one int, matching the vanilla-like format
-    private static int encodeDrawParameters(int materialBits, int sectionIndex) {
-        return (((sectionIndex & 0xFF) << 8) | ((materialBits & 0xFF) << 0));
-    }
-
-    // Packs sky and block light as the shader's lightmap coordinates
-    private static int encodeLight(int light) {
-        int block = light & 0xFF;
-        int sky = (light >> 16) & 0xFF;
-        return ((block << 0) | (sky << 8));
-    }
-
-    // UVs pass through unchanged
-    private static float encodeTexture(float value) {
-        return Math.min(0.99999997F, value);
     }
 }

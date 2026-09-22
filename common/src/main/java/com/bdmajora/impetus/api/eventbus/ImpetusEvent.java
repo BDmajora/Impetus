@@ -14,8 +14,11 @@ public abstract class ImpetusEvent {
         return canceled;
     }
 
-    // Throws on a non-cancelable event
+    // Throws on a non-cancelable event, so a handler cannot believe it stopped something the poster never checks
     public void setCanceled(boolean cancel) {
+        if (!isCancelable()) {
+            throw new UnsupportedOperationException("Event " + getClass().getName() + " is not cancelable");
+        }
         canceled = cancel;
     }
 }

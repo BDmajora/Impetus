@@ -44,10 +44,7 @@ public class PngTexture extends GlResource {
 
         setHandle(LWJGL.glGenTextures());
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, getGlId());
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, filter);
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, filter);
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, wrap);
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, wrap);
+        TextureParameters.set2D(filter, wrap);
         LWJGL.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, this.width, this.height, 0,
                 GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixels);
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, 0);

@@ -66,6 +66,9 @@ public enum ProgramId {
     // --- Single composite/deferred/final entries (numbered variants come from ProgramArrayId) ---
     Final("final");
 
+    // values() clones per call
+    public static final ProgramId[] VALUES = values();
+
     private final String sourceName;
     private final ProgramId fallback;
     private final BlendMode defaultBlendMode;
@@ -102,7 +105,7 @@ public enum ProgramId {
     // File base name to id; null when not a known program
     public static ProgramId bySourceName(String name) {
         String lower = name.toLowerCase(Locale.ROOT);
-        for (ProgramId id : values()) {
+        for (ProgramId id : VALUES) {
             if (id.sourceName.equals(lower)) {
                 return id;
             }

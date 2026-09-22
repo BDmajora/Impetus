@@ -24,6 +24,18 @@ import com.bdmajora.impetus.umbra.gl.uniform.Vector4IntUniform;
 import com.bdmajora.impetus.umbra.gl.uniform.Vector4Uniform;
 import org.joml.Vector2f;
 
+import com.bdmajora.impetus.umbra.uniforms.SystemTimeUniforms;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.IntBuffer;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.IntSupplier;
@@ -34,7 +46,7 @@ import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 // Every uniform bound to one program plus the driver uploading them at Iris's cadence (DYNAMIC every bind, ONCE on first use, PER_TICK/PER_FRAME on change); cadence matters since previous-frame suppliers advance when sampled
 public class ProgramUniforms {
     // The uniforms that change per rendered OBJECT rather than per phase, re-uploaded from the per-object hooks; deliberately tiny rather than the whole DYNAMIC set, see updatePerObject for why
-    private static final java.util.Set<String> PER_OBJECT_UNIFORMS = new java.util.HashSet<>(java.util.Arrays.asList(
+    private static final Set<String> PER_OBJECT_UNIFORMS = new HashSet<>(Arrays.asList(
             "entityId", "blockEntityId", "currentRenderedItemId", "entityColor"));
 
     private final List<Uniform> dynamic;
@@ -45,6 +57,8 @@ public class ProgramUniforms {
     private long lastTick = -1L;
     private int lastFrame = -1;
     private boolean firstUpdate = true;
+    // Bumped before every DYNAMIC walk so suppliers that read GL state (MatrixUniforms' live modelview) can share one readback across the walk instead of querying per uniform; render thread only
+    private static int dynamicPass;
 
     private ProgramUniforms(List<Uniform> dynamic, List<Uniform> once, List<Uniform> perTick, List<Uniform> perFrame,
                             List<Uniform> perObject) {
@@ -65,6 +79,11 @@ public class ProgramUniforms {
         return Minecraft.getMinecraft().world == null ? 0L : Minecraft.getMinecraft().world.getTotalWorldTime();
     }
 
+    // The current DYNAMIC walk's number; equal across every supplier of one update() call
+    public static int dynamicPass() {
+        return dynamicPass;
+    }
+
     // Uploads one cadence bucket
     private static void updateStage(List<Uniform> uniforms) {
         for (int i = 0; i < uniforms.size(); i++) {
@@ -75,7 +94,8 @@ public class ProgramUniforms {
     // Uploads whichever buckets are due this bind
     public void update() {
         long currentTick = currentTick();
-        int currentFrame = com.bdmajora.impetus.umbra.uniforms.SystemTimeUniforms.COUNTER.getFrameCounter();
+        int currentFrame = SystemTimeUniforms.COUNTER.getFrameCounter();
+        dynamicPass++;
         updateStage(this.dynamic);
         if (this.firstUpdate) {
             this.firstUpdate = false;
@@ -102,8 +122,7 @@ public class ProgramUniforms {
     }
 
     public static class Builder implements UniformCollector {
-        private static final org.apache.logging.log4j.Logger LOGGER =
-                org.apache.logging.log4j.LogManager.getLogger("Impetus/Umbra");
+        private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
         // GL uniform type enums (glGetActiveUniform), used for provided-vs-declared validation.
         private static final int GL_ACTIVE_UNIFORMS = 0x8B86;
         private static final int GL_FLOAT_T = 0x1406;
@@ -156,7 +175,7 @@ public class ProgramUniforms {
         private final String name;
         private final int program;
         // Keyed by uniform NAME so a later registration REPLACES an earlier one: addCommonUniforms runs before ActiveCustomUniforms.assignTo, so a pack-declared custom uniform wins over a built-in of the same name (Iris's rule, e.g. Sildur's framemod8); linked so the layout report keeps insertion order
-        private final java.util.LinkedHashMap<String, PendingUniform> pending = new java.util.LinkedHashMap<>();
+        private final LinkedHashMap<String, PendingUniform> pending = new LinkedHashMap<>();
 
         private Builder(String name, int program) {
             this.name = name;
@@ -277,47 +296,28 @@ public class ProgramUniforms {
 
         // The provider family a declared GL type needs, or null for types this port cannot supply; matches Iris's mapping
         private static ProvidedType expectedType(int glType) {
-            switch (glType) {
-                case GL_FLOAT_T:
-                    return ProvidedType.FLOAT;
-                case GL_INT_T:
-                case GL_BOOL_T:
-                case GL_SAMPLER_1D_T:
-                case GL_SAMPLER_2D_T:
-                case GL_SAMPLER_3D_T:
-                case GL_SAMPLER_CUBE_T:
-                case GL_SAMPLER_1D_SHADOW_T:
-                case GL_SAMPLER_2D_SHADOW_T:
-                case GL_UNSIGNED_INT_SAMPLER_2D_T:
-                case GL_UNSIGNED_INT_SAMPLER_3D_T:
-                    return ProvidedType.INT;
-                case GL_FLOAT_VEC2_T:
-                    return ProvidedType.VEC2;
-                case GL_INT_VEC2_T:
-                    return ProvidedType.VEC2I;
-                case GL_FLOAT_VEC3_T:
-                    return ProvidedType.VEC3;
-                case GL_INT_VEC3_T:
-                    return ProvidedType.VEC3I;
-                case GL_FLOAT_VEC4_T:
-                    return ProvidedType.VEC4;
-                case GL_INT_VEC4_T:
-                    return ProvidedType.VEC4I;
-                case GL_FLOAT_MAT3_T:
-                    return ProvidedType.MAT3;
-                case GL_FLOAT_MAT4_T:
-                    return ProvidedType.MAT4;
-                default:
-                    return null;
-            }
+            return switch (glType) {
+                case GL_FLOAT_T -> ProvidedType.FLOAT;
+                case GL_INT_T, GL_BOOL_T, GL_SAMPLER_1D_T, GL_SAMPLER_2D_T, GL_SAMPLER_3D_T, GL_SAMPLER_CUBE_T,
+                     GL_SAMPLER_1D_SHADOW_T, GL_SAMPLER_2D_SHADOW_T, GL_UNSIGNED_INT_SAMPLER_2D_T,
+                     GL_UNSIGNED_INT_SAMPLER_3D_T -> ProvidedType.INT;
+                case GL_FLOAT_VEC2_T -> ProvidedType.VEC2;
+                case GL_INT_VEC2_T -> ProvidedType.VEC2I;
+                case GL_FLOAT_VEC3_T -> ProvidedType.VEC3;
+                case GL_INT_VEC3_T -> ProvidedType.VEC3I;
+                case GL_FLOAT_VEC4_T -> ProvidedType.VEC4;
+                case GL_INT_VEC4_T -> ProvidedType.VEC4I;
+                case GL_FLOAT_MAT3_T -> ProvidedType.MAT3;
+                case GL_FLOAT_MAT4_T -> ProvidedType.MAT4;
+                default -> null;
+            };
         }
 
         // Reads every ACTIVE uniform's declared type so a mismatched provider is disabled with a log line rather than raising GL_INVALID_OPERATION on EVERY upload (the "1282 @ Post render" spam); packs disagree on int vs float for worldTime, isEyeInWater etc. Same as Iris's buildUniforms
-        private java.util.Map<String, ProvidedType> declaredTypes() {
-            java.util.Map<String, ProvidedType> declared = new java.util.HashMap<>();
+        private Map<String, ProvidedType> declaredTypes() {
+            Map<String, ProvidedType> declared = new HashMap<>();
             int activeUniforms = LWJGL.glGetProgrami(this.program, GL_ACTIVE_UNIFORMS);
-            java.nio.IntBuffer sizeType = java.nio.ByteBuffer.allocateDirect(8)
-                    .order(java.nio.ByteOrder.nativeOrder()).asIntBuffer();
+            IntBuffer sizeType = ByteBuffer.allocateDirect(8).order(ByteOrder.nativeOrder()).asIntBuffer();
             for (int index = 0; index < activeUniforms; index++) {
                 String uniformName = LWJGL.glGetActiveUniform(this.program, index, 256, sizeType);
                 if (uniformName == null || uniformName.isEmpty()) {
@@ -333,7 +333,7 @@ public class ProgramUniforms {
 
         // Resolves every pending location and returns the finished set
         public ProgramUniforms buildUniforms() {
-            java.util.Map<String, ProvidedType> declared = declaredTypes();
+            Map<String, ProvidedType> declared = declaredTypes();
             List<Uniform> dynamic = new ArrayList<>();
             List<Uniform> once = new ArrayList<>();
             List<Uniform> perTick = new ArrayList<>();
@@ -359,14 +359,11 @@ public class ProgramUniforms {
                         continue;
                     }
                 }
-                if (entry.frequency == UniformUpdateFrequency.DYNAMIC) {
-                    dynamic.add(uniform);
-                } else if (entry.frequency == UniformUpdateFrequency.ONCE) {
-                    once.add(uniform);
-                } else if (entry.frequency == UniformUpdateFrequency.PER_TICK) {
-                    perTick.add(uniform);
-                } else {
-                    perFrame.add(uniform);
+                switch (entry.frequency) {
+                    case DYNAMIC -> dynamic.add(uniform);
+                    case ONCE -> once.add(uniform);
+                    case PER_TICK -> perTick.add(uniform);
+                    default -> perFrame.add(uniform);
                 }
                 // Also indexed separately while staying in its frequency list: the per-object hooks re-upload just these between draws, and the phase-level update still covers them
                 if (PER_OBJECT_UNIFORMS.contains(entry.uniformName)) {

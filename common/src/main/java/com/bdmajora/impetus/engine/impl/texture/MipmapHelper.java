@@ -5,7 +5,7 @@ import com.bdmajora.impetus.engine.impl.util.color.ColorSRGB;
 
 // Mipmap downsampling blending in linear space (OptiFine's sRGB blend loses brightness) and weighting by alpha (vanilla's flat average dark-edges cutouts); ported from Umbra's MixinMipmapGenerator
 public class MipmapHelper {
-    // Averages two ARGB pixels per channel, in gamma space as vanilla does
+    // Averages two ARGB pixels per channel in linear space, weighted by alpha
     public static int weightedAverageColor(int one, int two) {
         int alphaOne = ColorARGB.unpackAlpha(one);
         int alphaTwo = ColorARGB.unpackAlpha(two);
@@ -24,43 +24,22 @@ public class MipmapHelper {
             return (one & 0x00FFFFFF) | ((alphaOne >> 2) << 24);
         }
 
-        // Use the alpha values to compute relative weights of each color.
+        // Use the alpha values to compute relative weights of each color, and average the alphas themselves
         float scale = 1.0f / (alphaOne + alphaTwo);
-
-        float relativeWeightOne = alphaOne * scale;
-        float relativeWeightTwo = alphaTwo * scale;
-
-        // Convert the color components into linear space, then multiply the corresponding weight.
-        float oneR = ColorSRGB.srgbToLinear(ColorARGB.unpackRed(one)) * relativeWeightOne;
-        float oneG = ColorSRGB.srgbToLinear(ColorARGB.unpackGreen(one)) * relativeWeightOne;
-        float oneB = ColorSRGB.srgbToLinear(ColorARGB.unpackBlue(one)) * relativeWeightOne;
-
-        float twoR = ColorSRGB.srgbToLinear(ColorARGB.unpackRed(two)) * relativeWeightTwo;
-        float twoG = ColorSRGB.srgbToLinear(ColorARGB.unpackGreen(two)) * relativeWeightTwo;
-        float twoB = ColorSRGB.srgbToLinear(ColorARGB.unpackBlue(two)) * relativeWeightTwo;
-
-        // Combine the color components of each color
-        float linearR = oneR + twoR;
-        float linearG = oneG + twoG;
-        float linearB = oneB + twoB;
-
-        // Take the average alpha of both alpha values
-        int averageAlpha = (alphaOne + alphaTwo) >> 1;
-
-        // Convert to sRGB and pack the colors back into an integer.
-        return ColorSRGB.linearToSrgb(linearR, linearG, linearB, averageAlpha);
+        return blendLinear(one, two, alphaOne * scale, alphaTwo * scale, (alphaOne + alphaTwo) >> 1);
     }
 
-    // Computes a non-weighted average of the two sRGB colors in linear space, avoiding brightness losses.
+    // Non-weighted average of the two sRGB colors in linear space, avoiding brightness losses
     private static int averageRgb(int a, int b, int alpha) {
-        float ar = ColorSRGB.srgbToLinear(ColorARGB.unpackRed(a));
-        float ag = ColorSRGB.srgbToLinear(ColorARGB.unpackGreen(a));
-        float ab = ColorSRGB.srgbToLinear(ColorARGB.unpackBlue(a));
+        return blendLinear(a, b, 0.5f, 0.5f, alpha);
+    }
 
-        float br = ColorSRGB.srgbToLinear(ColorARGB.unpackRed(b));
-        float bg = ColorSRGB.srgbToLinear(ColorARGB.unpackGreen(b));
-        float bb = ColorSRGB.srgbToLinear(ColorARGB.unpackBlue(b));
+    // Converts both colours to linear space, weights and sums them, then packs back to sRGB with the given alpha
+    private static int blendLinear(int one, int two, float weightOne, float weightTwo, int alpha) {
+        float r = ColorSRGB.srgbToLinear(ColorARGB.unpackRed(one)) * weightOne + ColorSRGB.srgbToLinear(ColorARGB.unpackRed(two)) * weightTwo;
+        float g = ColorSRGB.srgbToLinear(ColorARGB.unpackGreen(one)) * weightOne + ColorSRGB.srgbToLinear(ColorARGB.unpackGreen(two)) * weightTwo;
+        float b = ColorSRGB.srgbToLinear(ColorARGB.unpackBlue(one)) * weightOne + ColorSRGB.srgbToLinear(ColorARGB.unpackBlue(two)) * weightTwo;
 
-        return ColorSRGB.linearToSrgb((ar + br) * 0.5f, (ag + bg) * 0.5f, (ab + bb) * 0.5f, alpha);
+        return ColorSRGB.linearToSrgb(r, g, b, alpha);
     }
 }

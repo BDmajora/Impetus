@@ -13,6 +13,8 @@ import com.bdmajora.impetus.umbra.terrain.VanillaNameTransformer;
 import com.bdmajora.impetus.umbra.vertices.UmbraVertexAttributes;
 
 import java.util.ArrayList;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -130,39 +132,45 @@ public final class ShaderProgramCompiler {
     // Fixes mc_Entity, mc_midTexCoord and at_tangent to OptiFine's slots so the draw path matches
     private static void bindOptifineAttributes(ProgramBuilder builder, String vertexSource) {
         // Only bind slots for attributes the vertex shader actually declares, matching OptiFine's setupProgram.
-        if (declaresAttribute(vertexSource, UmbraVertexAttributes.MC_ENTITY)) {
+        if (MC_ENTITY_DECLARATION.matcher(vertexSource).find()) {
             builder.bindAttributeLocation(UmbraVertexAttributes.MC_ENTITY_SLOT, UmbraVertexAttributes.MC_ENTITY);
         }
-        if (declaresAttribute(vertexSource, UmbraVertexAttributes.MC_MID_TEX_COORD)) {
+        if (MC_MID_TEX_COORD_DECLARATION.matcher(vertexSource).find()) {
             builder.bindAttributeLocation(UmbraVertexAttributes.MC_MID_TEX_COORD_SLOT, UmbraVertexAttributes.MC_MID_TEX_COORD);
         }
-        if (declaresAttribute(vertexSource, UmbraVertexAttributes.AT_TANGENT)) {
+        if (AT_TANGENT_DECLARATION.matcher(vertexSource).find()) {
             builder.bindAttributeLocation(UmbraVertexAttributes.AT_TANGENT_SLOT, UmbraVertexAttributes.AT_TANGENT);
         }
     }
 
-    // Whether the source mentions the attribute at all; unused ones must not be bound
-    private static boolean declaresAttribute(String source, String attributeName) {
-        // Matches OptiFine's `attribute <type> <name>` scan, tolerant of both GLSL 120 `attribute` and 150 `in`.
-        return source.matches("(?s).*\\b(?:attribute|in)\\s+\\w+\\s+" + attributeName + "\\b.*");
+    // OptiFine's `attribute <type> <name>` scan, tolerant of both GLSL 120 `attribute` and 150 `in`; compiled once rather than per program, and find() replaces the old whole-source matches()
+    private static Pattern attributeDeclaration(String attributeName) {
+        return Pattern.compile("\\b(?:attribute|in)\\s+\\w+\\s+" + attributeName + "\\b");
     }
 
-    // Immediate-mode programs never receive OptiFine's generic attributes (vanilla's draw path submits none), so at_tangent reads (0,0,0,1) and NaN-poisons the TBN, and mc_midTexCoord reads 0 and makes parallax resample garbage (the speckle on entities); at_tangent is replaced with a basis from the normal and mc_midTexCoord aliased to the texcoord, in both vec2 (Photon) and vec4 shapes
+    private static final Pattern MC_ENTITY_DECLARATION = attributeDeclaration(UmbraVertexAttributes.MC_ENTITY);
+    private static final Pattern MC_MID_TEX_COORD_DECLARATION = attributeDeclaration(UmbraVertexAttributes.MC_MID_TEX_COORD);
+    private static final Pattern AT_TANGENT_DECLARATION = attributeDeclaration(UmbraVertexAttributes.AT_TANGENT);
+
+    // The unfed attribute declarations and what each becomes, in order; see neutralizeUnfedVanillaAttributes
+    private static final Pattern AT_TANGENT_INPUT = Pattern.compile("(?m)^\\s*(?:attribute|in)\\s+vec4\\s+at_tangent\\s*;");
+    private static final Pattern MID_TEX_FLOAT_INPUT = Pattern.compile("(?m)^\\s*(?:attribute|in)\\s+float\\s+mc_midTexCoord\\s*;");
+    private static final Pattern MID_TEX_VEC2_INPUT = Pattern.compile("(?m)^\\s*(?:attribute|in)\\s+vec2\\s+mc_midTexCoord\\s*;");
+    private static final Pattern MID_TEX_VEC3_INPUT = Pattern.compile("(?m)^\\s*(?:attribute|in)\\s+vec3\\s+mc_midTexCoord\\s*;");
+    private static final Pattern MID_TEX_VEC4_INPUT = Pattern.compile("(?m)^\\s*(?:attribute|in)\\s+vec4\\s+mc_midTexCoord\\s*;");
+    private static final String AT_TANGENT_FALLBACK = "vec4 iris_tangentFallback() { "
+            + "vec3 n = normalize(gl_Normal); "
+            + "vec3 t = abs(n.y) < 0.99 ? cross(n, vec3(0.0, 1.0, 0.0)) : vec3(1.0, 0.0, 0.0); "
+            + "return vec4(normalize(t), 1.0); }\n"
+            + "#define at_tangent (iris_tangentFallback())";
+
+    // Immediate-mode programs never receive OptiFine's generic attributes (vanilla's draw path submits none), so at_tangent reads (0,0,0,1) and NaN-poisons the TBN, and mc_midTexCoord reads zero; both are rewritten to derive from what the fixed-function path does supply
     private static String neutralizeUnfedVanillaAttributes(String source) {
-        source = source.replaceAll("(?m)^\\s*(?:attribute|in)\\s+vec4\\s+at_tangent\\s*;",
-                "vec4 iris_tangentFallback() { "
-                        + "vec3 n = normalize(gl_Normal); "
-                        + "vec3 t = abs(n.y) < 0.99 ? cross(n, vec3(0.0, 1.0, 0.0)) : vec3(1.0, 0.0, 0.0); "
-                        + "return vec4(normalize(t), 1.0); }\n"
-                        + "#define at_tangent (iris_tangentFallback())");
-        source = source.replaceAll("(?m)^\\s*(?:attribute|in)\\s+float\\s+mc_midTexCoord\\s*;",
-                "#define mc_midTexCoord gl_MultiTexCoord0.x");
-        source = source.replaceAll("(?m)^\\s*(?:attribute|in)\\s+vec2\\s+mc_midTexCoord\\s*;",
-                "#define mc_midTexCoord gl_MultiTexCoord0.xy");
-        source = source.replaceAll("(?m)^\\s*(?:attribute|in)\\s+vec3\\s+mc_midTexCoord\\s*;",
-                "#define mc_midTexCoord vec3(gl_MultiTexCoord0.xy, 0.0)");
-        source = source.replaceAll("(?m)^\\s*(?:attribute|in)\\s+vec4\\s+mc_midTexCoord\\s*;",
-                "#define mc_midTexCoord gl_MultiTexCoord0");
+        source = AT_TANGENT_INPUT.matcher(source).replaceAll(Matcher.quoteReplacement(AT_TANGENT_FALLBACK));
+        source = MID_TEX_FLOAT_INPUT.matcher(source).replaceAll("#define mc_midTexCoord gl_MultiTexCoord0.x");
+        source = MID_TEX_VEC2_INPUT.matcher(source).replaceAll("#define mc_midTexCoord gl_MultiTexCoord0.xy");
+        source = MID_TEX_VEC3_INPUT.matcher(source).replaceAll("#define mc_midTexCoord vec3(gl_MultiTexCoord0.xy, 0.0)");
+        source = MID_TEX_VEC4_INPUT.matcher(source).replaceAll("#define mc_midTexCoord gl_MultiTexCoord0");
         return source;
     }
 

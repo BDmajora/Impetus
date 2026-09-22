@@ -5,15 +5,12 @@ import com.bdmajora.impetus.engine.impl.gl.shader.uniform.GlUniformFloat3v;
 import com.bdmajora.impetus.engine.impl.gl.shader.uniform.GlUniformInt;
 import com.bdmajora.impetus.engine.impl.gl.shader.uniform.GlUniformMatrix4f;
 import com.bdmajora.impetus.engine.impl.gl.tessellation.GlPrimitiveType;
-import com.bdmajora.impetus.engine.impl.render.chunk.compile.sorting.QuadPrimitiveType;
 import com.bdmajora.impetus.engine.impl.render.chunk.shader.ChunkShaderInterface;
 import com.bdmajora.impetus.engine.impl.render.chunk.shader.ChunkShaderTextureSlot;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 import net.minecraft.client.renderer.GlStateManager;
-import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import com.bdmajora.impetus.umbra.Umbra;
-import com.bdmajora.impetus.umbra.uniforms.CapturedRenderingState;
 import com.bdmajora.impetus.umbra.gl.blending.ProgramAlphaTest;
 import com.bdmajora.impetus.umbra.gl.blending.ProgramBlendState;
 import com.bdmajora.impetus.umbra.gl.program.DrawBuffers;
@@ -87,8 +84,7 @@ public class UmbraTerrainShaderInterface implements ChunkShaderInterface {
     // Binds the gbuffer framebuffer and per-pass state before drawing terrain
     @Override
     public void setupState(TerrainRenderPass pass) {
-        this.primitiveType = pass.primitiveType() == QuadPrimitiveType.DIRECT
-                ? GlPrimitiveType.QUADS : GlPrimitiveType.TRIANGLES;
+        this.primitiveType = pass.primitiveType().getGlPrimitiveType();
         // Terrain draws into the frame pipeline's gbuffer; point its draw-buffer mask at this program's DRAWBUFFERS so iris_FragData[k] lands in the requested colortex (skipped in the shadow pass, where onTerrainDraw would rebind the gbuffer over the shadow framebuffer)
         UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
         boolean shadowPass = UmbraShadowRenderer.isShadowPass();

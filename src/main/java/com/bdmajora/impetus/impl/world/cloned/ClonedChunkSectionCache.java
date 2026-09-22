@@ -63,7 +63,7 @@ public class ClonedChunkSectionCache {
             throw new RuntimeException("Chunk is not loaded");
         }
 
-        return new ClonedChunkSection(this.world, x, y, z);
+        return new ClonedChunkSection(this.world, chunk, x, y, z);
     }
 
     // Drops a copy after the section changed

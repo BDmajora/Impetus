@@ -1,5 +1,6 @@
 package com.bdmajora.coarctatio.state;
 
+import net.minecraft.block.properties.IProperty;
 import com.bdmajora.coarctatio.Coarctatio;
 import com.bdmajora.coarctatio.CoarctatioConfig;
 import com.bdmajora.coarctatio.util.ClassDefineTool;
@@ -47,9 +48,9 @@ public final class CompactPropertyMaps {
     }
 
     // sharedKeys comes from PropertyValueMapper#sharedKeys; returns a compact equivalent of original, or original itself.
-    public static ImmutableMap<net.minecraft.block.properties.IProperty<?>, Comparable<?>> compact(
+    public static ImmutableMap<IProperty<?>, Comparable<?>> compact(
             Object[] sharedKeys,
-            ImmutableMap<net.minecraft.block.properties.IProperty<?>, Comparable<?>> original) {
+            ImmutableMap<IProperty<?>, Comparable<?>> original) {
         initialise();
 
         if (constructor == null || sharedKeys == null) {
@@ -60,7 +61,7 @@ public final class CompactPropertyMaps {
         Object[] values = new Object[sharedKeys.length];
         int index = 0;
 
-        for (Map.Entry<net.minecraft.block.properties.IProperty<?>, Comparable<?>> entry : original.entrySet()) {
+        for (Map.Entry<IProperty<?>, Comparable<?>> entry : original.entrySet()) {
             // Guarded rather than assumed: if iteration order ever diverges from the shared key array, values would silently line up against the wrong properties
             if (index >= sharedKeys.length || entry.getKey() != sharedKeys[index]) {
                 DECLINED.incrementAndGet();
@@ -77,8 +78,8 @@ public final class CompactPropertyMaps {
 
         try {
             @SuppressWarnings("unchecked")
-            ImmutableMap<net.minecraft.block.properties.IProperty<?>, Comparable<?>> compacted =
-                    (ImmutableMap<net.minecraft.block.properties.IProperty<?>, Comparable<?>>)
+            ImmutableMap<IProperty<?>, Comparable<?>> compacted =
+                    (ImmutableMap<IProperty<?>, Comparable<?>>)
                             constructor.newInstance(sharedKeys, values);
 
             COMPACTED.incrementAndGet();

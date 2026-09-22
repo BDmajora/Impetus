@@ -1,5 +1,7 @@
 package com.bdmajora.coarctatio.client.model.dynamic;
 
+import net.minecraft.client.resources.IResource;
+import net.minecraft.client.Minecraft;
 import com.bdmajora.coarctatio.Coarctatio;
 import com.bdmajora.coarctatio.CoarctatioConfig;
 import com.bdmajora.coarctatio.client.model.dynamic.compat.TconTextureExistence;
@@ -272,7 +274,7 @@ public final class DynamicModels {
             return;
         }
         ResourceLocation file = new ResourceLocation(sprite.getNamespace(), "textures/" + sprite.getPath() + ".png");
-        try (net.minecraft.client.resources.IResource ignored = net.minecraft.client.Minecraft.getMinecraft().getResourceManager().getResource(file)) {
+        try (IResource ignored = Minecraft.getMinecraft().getResourceManager().getResource(file)) {
             registerWeak(atlas, sprite);
         } catch (Exception ignored) {
             // Fluids registered without textures are drawn by their own renderers

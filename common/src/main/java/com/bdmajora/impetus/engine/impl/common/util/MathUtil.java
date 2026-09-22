@@ -3,7 +3,7 @@ package com.bdmajora.impetus.engine.impl.common.util;
 public class MathUtil {
     // Greater than zero AND a power of two; the zero check matters because the bit trick alone accepts 0
     public static boolean isPowerOfTwo(int n) {
-        return ((n & (n - 1)) == 0);
+        return n > 0 && (n & (n - 1)) == 0;
     }
 
     // Bytes to mebibytes
@@ -36,6 +36,15 @@ public class MathUtil {
     // Plain clamp
     public static int clamp(int value, int min, int max) {
         return Math.min(Math.max(value, min), max);
+    }
+
+    public static float clamp(float value, float min, float max) {
+        return Math.min(Math.max(value, min), max);
+    }
+
+    // Clamp to [0, 1]
+    public static float saturate(float value) {
+        return value < 0.0f ? 0.0f : (value > 1.0f ? 1.0f : value);
     }
 
     // Within a small epsilon

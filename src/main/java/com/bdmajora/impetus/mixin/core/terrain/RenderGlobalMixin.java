@@ -27,6 +27,10 @@ import com.bdmajora.impetus.umbra.Umbra;
 import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;
 import com.bdmajora.impetus.umbra.shaderpack.loading.ProgramId;
 import org.spongepowered.asm.mixin.Final;
+import com.bdmajora.impetus.engine.impl.render.viewport.Viewport;
+import org.joml.Vector3d;
+import net.minecraftforge.client.MinecraftForgeClient;
+import net.minecraft.client.renderer.texture.TextureManager;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.Overwrite;
@@ -53,7 +57,7 @@ public abstract class RenderGlobalMixin implements SimpleWorldRenderer.Provider<
     private RenderManager renderManager;
     @Shadow
     @Final
-    private net.minecraft.client.renderer.texture.TextureManager renderEngine;
+    private TextureManager renderEngine;
     @Shadow
     private int countEntitiesRendered;
     @Shadow
@@ -169,9 +173,8 @@ public abstract class RenderGlobalMixin implements SimpleWorldRenderer.Provider<
 
         try {
             // `frustum.culling = false`: the pack wants off-screen geometry drawn too, so the frustum test is replaced with one that accepts everything (the shadow pass's trick)
-            com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline pipeline =
-                    com.bdmajora.impetus.umbra.Umbra.getRenderingPipeline();
-            com.bdmajora.impetus.engine.impl.render.viewport.Viewport viewport =
+            UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
+            Viewport viewport =
                     (pipeline != null && pipeline.shouldDisableFrustumCulling())
                             ? unculledViewport(((ViewportProvider) camera).impetus$createViewport())
                             : ((ViewportProvider) camera).impetus$createViewport();
@@ -184,12 +187,12 @@ public abstract class RenderGlobalMixin implements SimpleWorldRenderer.Provider<
 
     // Same viewport, but with a frustum that accepts every section (frustum.culling = false).
     @Unique
-    private static com.bdmajora.impetus.engine.impl.render.viewport.Viewport unculledViewport(
-            com.bdmajora.impetus.engine.impl.render.viewport.Viewport source) {
+    private static Viewport unculledViewport(
+            Viewport source) {
         var transform = source.getTransform();
-        return new com.bdmajora.impetus.engine.impl.render.viewport.Viewport(
+        return new Viewport(
                 (minX, minY, minZ, maxX, maxY, maxZ) -> true,
-                new org.joml.Vector3d(transform.x, transform.y, transform.z));
+                new Vector3d(transform.x, transform.y, transform.z));
     }
 
     // Overwrite: schedules Impetus rebuilds for every section the box touches
@@ -322,8 +325,6 @@ public abstract class RenderGlobalMixin implements SimpleWorldRenderer.Provider<
 
     private List<Entity>[] impetus$collectedEntities;
 
-    // --- end TEMP DIAGNOSTIC -----------------------------------------------------------------------------------
-
     @Inject(method = "renderEntities", at = @At(value = "FIELD", target = "Lnet/minecraft/client/renderer/RenderGlobal;renderInfos:Ljava/util/List;", ordinal = 0))
     private void renderEntities(Entity renderViewEntity, ICamera camera, float partialTicks, CallbackInfo ci,
                                 @Local(ordinal = 1) List<Entity> outlineEntityList,
@@ -331,7 +332,7 @@ public abstract class RenderGlobalMixin implements SimpleWorldRenderer.Provider<
                                 @Local(ordinal = 0) double renderViewX,
                                 @Local(ordinal = 1) double renderViewY,
                                 @Local(ordinal = 2) double renderViewZ) {
-        int pass = net.minecraftforge.client.MinecraftForgeClient.getRenderPass();
+        int pass = MinecraftForgeClient.getRenderPass();
         if (pass == 0 || impetus$collectedEntities == null) {
             impetus$entityGatherer.clear();
             impetus$collectedEntities = impetus$entityGatherer.getLoadedEntityList(world);
@@ -347,8 +348,9 @@ public abstract class RenderGlobalMixin implements SimpleWorldRenderer.Provider<
         Entity.setRenderDistanceWeight(MathHelper.clamp((double)this.mc.gameSettings.renderDistanceChunks / 8.0D, 1.0D, 2.5D)
                 * (ImpetusVintage.options().quality.entityDistance / 100.0D));
 
+        boolean isSleeping = renderViewEntity instanceof EntityLivingBase && ((EntityLivingBase) renderViewEntity).isPlayerSleeping();
+
         for(Entity entity : impetus$collectedEntities[pass]) {
-            boolean isSleeping = renderViewEntity instanceof EntityLivingBase && ((EntityLivingBase) renderViewEntity).isPlayerSleeping();
             boolean isPlayerAttachedEntity = player != null && entity.isRidingOrBeingRiddenBy(player);
             boolean isLocalPlayerBody = player != null && entity == player
                     && (this.mc.gameSettings.thirdPersonView != 0 || isSleeping);
@@ -362,7 +364,7 @@ public abstract class RenderGlobalMixin implements SimpleWorldRenderer.Provider<
 
             // Check if any corners of the bounding box are in a visible subchunk
             if(!isLocalPlayerBody && !isPlayerAttachedEntity
-                    && !ImpetusWorldRenderer.instance().isEntityVisible(entity)) {
+                    && !this.renderer.isEntityVisible(entity)) {
                 continue;
             }
 

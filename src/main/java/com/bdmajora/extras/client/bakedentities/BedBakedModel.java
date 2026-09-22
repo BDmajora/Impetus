@@ -46,16 +46,22 @@ public final class BedBakedModel extends BakedEntityModel {
         float degrees = 0.0F;
         float offsetX = 0.0F;
         float offsetZ = 0.0F;
-        if (facing == EnumFacing.SOUTH) {
-            degrees = 180.0F;
-            offsetX = 1.0F;
-            offsetZ = 1.0F;
-        } else if (facing == EnumFacing.WEST) {
-            degrees = -90.0F;
-            offsetZ = 1.0F;
-        } else if (facing == EnumFacing.EAST) {
-            degrees = 90.0F;
-            offsetX = 1.0F;
+        switch (facing) {
+            case SOUTH -> {
+                degrees = 180.0F;
+                offsetX = 1.0F;
+                offsetZ = 1.0F;
+            }
+            case WEST -> {
+                degrees = -90.0F;
+                offsetZ = 1.0F;
+            }
+            case EAST -> {
+                degrees = 90.0F;
+                offsetX = 1.0F;
+            }
+            default -> {
+            }
         }
         Matrix4f matrix = new Matrix4f();
         matrix.translate(offsetX, 0.5625F, offsetZ);

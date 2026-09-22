@@ -16,32 +16,18 @@ public enum BufferStorageFunctions {
             throw new UnsupportedOperationException();
         }
     },
+    // GL 4.4 core or ARB_buffer_storage; the binding resolves the same entry point either way
     CORE {
-        // Implementation for this GL level
-        @Override
-        public void createBufferStorage(GlBufferTarget target, long length, EnumBitField<GlBufferStorageFlags> flags) {
-            LWJGL.glBufferStorage(target.getTargetParameter(), length, flags.getBitField());
-        }
-    },
-    ARB {
-        // Implementation for this GL level
         @Override
         public void createBufferStorage(GlBufferTarget target, long length, EnumBitField<GlBufferStorageFlags> flags) {
             LWJGL.glBufferStorage(target.getTargetParameter(), length, flags.getBitField());
         }
     };
 
-    // Core 4.4, then ARB, then none
+    // Core 4.4 or the ARB extension, else none
     public static BufferStorageFunctions pickBest(RenderDevice device) {
-        if (LWJGL.isOpenGLVersionSupported(4, 4)) {
-            return CORE;
-        } else if (LWJGL.isExtensionSupported(GLExtension.ARB_buffer_storage)) {
-            return ARB;
-        } else {
-            return NONE;
-        }
+        return LWJGL.isOpenGLVersionSupported(4, 4) || LWJGL.isExtensionSupported(GLExtension.ARB_buffer_storage) ? CORE : NONE;
     }
-
 
     public abstract void createBufferStorage(GlBufferTarget target, long length, EnumBitField<GlBufferStorageFlags> flags);
 }

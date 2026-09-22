@@ -12,7 +12,7 @@ final class BspTranslucencySorter {
 
     // Builds a BSP over the quad planes and walks it back-to-front from the camera
     static int[] sort(float[] centers, float[] normals, int quadCount, float cameraX, float cameraY, float cameraZ) {
-        if (quadCount > MAX_BSP_QUADS || centers == null || normals == null
+        if (quadCount <= 0 || quadCount > MAX_BSP_QUADS || centers == null || normals == null
                 || centers.length < quadCount * 3 || normals.length < quadCount * 3) {
             return null;
         }
@@ -33,55 +33,71 @@ final class BspTranslucencySorter {
             }
         }
 
-        int root = 0;
-
         for (int quad = 1; quad < quadCount; quad++) {
-            insert(root, quad, centers, normals, left, right);
+            insert(quad, centers, normals, left, right);
         }
 
         int[] order = new int[quadCount];
-        int[] cursor = new int[] { 0 };
-        emit(root, centers, normals, left, right, cameraX, cameraY, cameraZ, order, cursor);
+        int emitted = emit(centers, normals, left, right, cameraX, cameraY, cameraZ, order);
 
-        return cursor[0] == quadCount ? order : null;
+        return emitted == quadCount ? order : null;
     }
 
-    // Places a quad on the side of the node's plane its centre lies
-    private static void insert(int node, int quad, float[] centers, float[] normals, int[] left, int[] right) {
-        float side = signedDistanceToPlane(quad, node, centers, normals);
-
-        if (side < -PLANE_EPSILON) {
-            if (left[node] == -1) {
-                left[node] = quad;
-            } else {
-                insert(left[node], quad, centers, normals, left, right);
+    // Walks down from the root (quad 0) and hangs the quad on the side of each plane its centre lies; iterative, since a run of coplanar quads degenerates the tree into a chain as deep as the quad count
+    private static void insert(int quad, float[] centers, float[] normals, int[] left, int[] right) {
+        int node = 0;
+        while (true) {
+            int[] side = signedDistanceToPlane(quad, node, centers, normals) < -PLANE_EPSILON ? left : right;
+            int child = side[node];
+            if (child == -1) {
+                side[node] = quad;
+                return;
             }
-        } else {
-            if (right[node] == -1) {
-                right[node] = quad;
-            } else {
-                insert(right[node], quad, centers, normals, left, right);
-            }
+            node = child;
         }
     }
 
-    private static void emit(int node, float[] centers, float[] normals, int[] left, int[] right,
-                             float cameraX, float cameraY, float cameraZ, int[] order, int[] cursor) {
-        if (node == -1) {
-            return;
+    // In-order walk emitting the far side of each plane before the node and the near side after, so the result is back-to-front from the camera; an explicit stack rather than recursion for the same reason insert is iterative. Returns how many quads were emitted
+    private static int emit(float[] centers, float[] normals, int[] left, int[] right,
+                            float cameraX, float cameraY, float cameraZ, int[] order) {
+        int quadCount = order.length;
+        // Each frame is a node whose far child has (state 1) or has not (state 0) been descended into yet
+        int[] nodeStack = new int[quadCount];
+        boolean[] farDone = new boolean[quadCount];
+        int depth = 0;
+        int cursor = 0;
+
+        nodeStack[depth] = 0;
+        farDone[depth] = false;
+        depth++;
+
+        while (depth > 0) {
+            int node = nodeStack[depth - 1];
+            boolean cameraInFront = signedDistanceToPlane(cameraX, cameraY, cameraZ, node, centers, normals) >= 0.0f;
+            int far = cameraInFront ? left[node] : right[node];
+            int near = cameraInFront ? right[node] : left[node];
+
+            if (!farDone[depth - 1]) {
+                farDone[depth - 1] = true;
+                if (far != -1) {
+                    nodeStack[depth] = far;
+                    farDone[depth] = false;
+                    depth++;
+                    continue;
+                }
+            }
+
+            // Far side finished: emit this node, then replace its frame with the near child so the stack never holds more than one path
+            order[cursor++] = node;
+            depth--;
+            if (near != -1) {
+                nodeStack[depth] = near;
+                farDone[depth] = false;
+                depth++;
+            }
         }
 
-        float cameraSide = signedDistanceToPlane(cameraX, cameraY, cameraZ, node, centers, normals);
-
-        if (cameraSide >= 0.0f) {
-            emit(left[node], centers, normals, left, right, cameraX, cameraY, cameraZ, order, cursor);
-            order[cursor[0]++] = node;
-            emit(right[node], centers, normals, left, right, cameraX, cameraY, cameraZ, order, cursor);
-        } else {
-            emit(right[node], centers, normals, left, right, cameraX, cameraY, cameraZ, order, cursor);
-            order[cursor[0]++] = node;
-            emit(left[node], centers, normals, left, right, cameraX, cameraY, cameraZ, order, cursor);
-        }
+        return cursor;
     }
 
     // Quad centre against another quad's plane

@@ -1,5 +1,7 @@
 package com.bdmajora.impetus.engine.impl.render.chunk.compile.sorting;
 
+import com.bdmajora.impetus.engine.impl.gl.tessellation.GlPrimitiveType;
+import com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions;
 import com.bdmajora.impetus.engine.impl.render.chunk.sorting.TranslucentQuadAnalyzer;
 import com.bdmajora.impetus.engine.impl.util.sorting.MergeSort;
 import org.jetbrains.annotations.Nullable;
@@ -36,6 +38,12 @@ public final class QuadPrimitiveType implements ChunkPrimitiveType {
         return VERTICES_PER_PRIMITIVE;
     }
 
+    // Triangles once triangulated, else native quads
+    @Override
+    public GlPrimitiveType getGlPrimitiveType() {
+        return triangulating ? GlPrimitiveType.TRIANGLES : GlPrimitiveType.QUADS;
+    }
+
     // Sequential quad indices
     @Override
     public void generateSimpleIndexBuffer(ByteBuffer indexBuffer, int numPrimitives) {
@@ -49,20 +57,22 @@ public final class QuadPrimitiveType implements ChunkPrimitiveType {
         boolean triangulating = this.triangulating;
 
         for (int primitiveIndex = 0; primitiveIndex < numPrimitives; primitiveIndex++) {
-            int indexOffset = primitiveIndex * elementsPerPrimitive;
-            int vertexOffset = primitiveIndex * VERTICES_PER_PRIMITIVE;
+            writePrimitive(ptr + (long) primitiveIndex * elementsPerPrimitive * 4, primitiveIndex * VERTICES_PER_PRIMITIVE, triangulating);
+        }
+    }
 
-            LWJGL.memPutInt(ptr + (indexOffset + 0) * 4, vertexOffset + 0);
-            LWJGL.memPutInt(ptr + (indexOffset + 1) * 4, vertexOffset + 1);
-            LWJGL.memPutInt(ptr + (indexOffset + 2) * 4, vertexOffset + 2);
+    // One quad's indices at address ptr: a triangle pair (0 1 2, 2 3 0) or the four corners
+    private static void writePrimitive(long ptr, int vertexOffset, boolean triangulating) {
+        LWJGL.memPutInt(ptr, vertexOffset);
+        LWJGL.memPutInt(ptr + 4, vertexOffset + 1);
+        LWJGL.memPutInt(ptr + 8, vertexOffset + 2);
 
-            if (triangulating) {
-                LWJGL.memPutInt(ptr + (indexOffset + 3) * 4, vertexOffset + 2);
-                LWJGL.memPutInt(ptr + (indexOffset + 4) * 4, vertexOffset + 3);
-                LWJGL.memPutInt(ptr + (indexOffset + 5) * 4, vertexOffset + 0);
-            } else {
-                LWJGL.memPutInt(ptr + (indexOffset + 3) * 4, vertexOffset + 3);
-            }
+        if (triangulating) {
+            LWJGL.memPutInt(ptr + 12, vertexOffset + 2);
+            LWJGL.memPutInt(ptr + 16, vertexOffset + 3);
+            LWJGL.memPutInt(ptr + 20, vertexOffset);
+        } else {
+            LWJGL.memPutInt(ptr + 12, vertexOffset + 3);
         }
     }
 
@@ -78,22 +88,8 @@ public final class QuadPrimitiveType implements ChunkPrimitiveType {
         boolean triangulating = this.triangulating;
 
         for (int primitiveIndex = 0; primitiveIndex < primitiveMapping.length; primitiveIndex++) {
-            int indexOffset = primitiveIndex * elementsPerPrimitive;
-
             // Map to the desired primitive
-            int vertexOffset = primitiveMapping[primitiveIndex] * VERTICES_PER_PRIMITIVE;
-
-            LWJGL.memPutInt(ptr + (indexOffset + 0) * 4, vertexOffset + 0);
-            LWJGL.memPutInt(ptr + (indexOffset + 1) * 4, vertexOffset + 1);
-            LWJGL.memPutInt(ptr + (indexOffset + 2) * 4, vertexOffset + 2);
-
-            if (triangulating) {
-                LWJGL.memPutInt(ptr + (indexOffset + 3) * 4, vertexOffset + 2);
-                LWJGL.memPutInt(ptr + (indexOffset + 4) * 4, vertexOffset + 3);
-                LWJGL.memPutInt(ptr + (indexOffset + 5) * 4, vertexOffset + 0);
-            } else {
-                LWJGL.memPutInt(ptr + (indexOffset + 3) * 4, vertexOffset + 3);
-            }
+            writePrimitive(ptr + (long) primitiveIndex * elementsPerPrimitive * 4, primitiveMapping[primitiveIndex] * VERTICES_PER_PRIMITIVE, triangulating);
         }
     }
 
@@ -138,9 +134,19 @@ public final class QuadPrimitiveType implements ChunkPrimitiveType {
         }
 
         float[] centers = chunkData.centers();
+        boolean isStatic = chunkData.level() == TranslucentQuadAnalyzer.Level.STATIC;
+
+        // Quad splitting (BSP exact ordering) can be disabled in Performance options, falling back to per-quad centroid distance sorting
+        if (!isStatic && ImpetusRuntimeOptions.quadSplittingEnabled) {
+            int[] bspOrder = BspTranslucencySorter.sort(centers, chunkData.normals(), quadCount, x, y, z);
+            if (bspOrder != null) {
+                generateIndexBuffer(indexBuffer, bspOrder);
+                return;
+            }
+        }
+
         int[] indicesArray = new int[quadCount];
         float[] distanceArray = new float[quadCount];
-        boolean isStatic = chunkData.level() == TranslucentQuadAnalyzer.Level.STATIC;
         for (int quadIdx = 0; quadIdx < quadCount; ++quadIdx) {
             indicesArray[quadIdx] = quadIdx;
         }
@@ -156,15 +162,6 @@ public final class QuadPrimitiveType implements ChunkPrimitiveType {
                     quadCount,
                     chunkData.normalSigns());
         } else {
-            // Quad splitting (BSP exact ordering) can be disabled in Performance options, falling back to per-quad centroid distance sorting
-            if (com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions.quadSplittingEnabled) {
-                int[] bspOrder = BspTranslucencySorter.sort(centers, chunkData.normals(), quadCount, x, y, z);
-                if (bspOrder != null) {
-                    generateIndexBuffer(indexBuffer, bspOrder);
-                    return;
-                }
-            }
-
             buildDynamicDistanceArray(centers, distanceArray, quadCount, x, y, z);
         }
 

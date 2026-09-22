@@ -23,6 +23,7 @@ abstract class LightEngineCache {
     // One section of slack above and below the light sections so a neighbour index never leaves the array
     private static final int CACHE_SECTIONS = ChunkLightHelper.LIGHT_SECTIONS + 2;
     private static final int CACHE_SIZE = 5 * 5 * CACHE_SECTIONS;
+    static final IBlockState AIR = Blocks.AIR.getDefaultState();
 
     protected final ExtendedBlockStorage[] sectionCache = new ExtendedBlockStorage[CACHE_SIZE];
     protected final SWMRNibbleArray[] nibbleCache = new SWMRNibbleArray[CACHE_SIZE];
@@ -200,12 +201,12 @@ abstract class LightEngineCache {
 
     protected final IBlockState getBlockState(int worldX, int worldY, int worldZ) {
         ExtendedBlockStorage section = this.sectionCache[(worldX >> 4) + 5 * (worldZ >> 4) + (5 * 5) * (worldY >> 4) + this.chunkSectionIndexOffset];
-        return section == null ? Blocks.AIR.getDefaultState() : section.get(worldX & 15, worldY & 15, worldZ & 15);
+        return section == null ? AIR : section.get(worldX & 15, worldY & 15, worldZ & 15);
     }
 
     protected final IBlockState getBlockStateFast(int sectionIndex, int x, int y, int z) {
         ExtendedBlockStorage section = this.sectionCache[sectionIndex];
-        return section == null ? Blocks.AIR.getDefaultState() : section.get(x, y, z);
+        return section == null ? AIR : section.get(x, y, z);
     }
 
     protected int getLightLevel(int worldX, int worldY, int worldZ) {

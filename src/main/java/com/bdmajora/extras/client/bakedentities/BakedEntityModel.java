@@ -1,5 +1,6 @@
 package com.bdmajora.extras.client.bakedentities;
 
+import java.util.function.Function;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.block.model.IBakedModel;
@@ -27,7 +28,7 @@ public abstract class BakedEntityModel implements IBakedModel {
     // Sprite used for breaking particles and the missing-side fallback
     protected abstract TextureAtlasSprite particleSprite();
 
-    protected List<BakedQuad> variant(Object key, java.util.function.Function<Object, List<BakedQuad>> baker) {
+    protected List<BakedQuad> variant(Object key, Function<Object, List<BakedQuad>> baker) {
         return this.variants.computeIfAbsent(key, baker);
     }
 
@@ -95,15 +96,11 @@ public abstract class BakedEntityModel implements IBakedModel {
 
     // Degrees the chest renderer spins the model for each facing
     protected static int chestRotation(EnumFacing facing) {
-        switch (facing) {
-            case NORTH:
-                return 180;
-            case WEST:
-                return 90;
-            case EAST:
-                return -90;
-            default:
-                return 0;
-        }
+        return switch (facing) {
+            case NORTH -> 180;
+            case WEST -> 90;
+            case EAST -> -90;
+            default -> 0;
+        };
     }
 }

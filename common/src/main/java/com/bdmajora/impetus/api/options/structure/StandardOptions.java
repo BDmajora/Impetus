@@ -81,6 +81,7 @@ public final class StandardOptions {
         public static final OptionIdentifier<Void> IMPROVED_TRANSPARENCY = OptionIdentifier.create(IMPETUS_MOD_ID, "improved_transparency");
         public static final OptionIdentifier<Void> FLUID_CULLING = OptionIdentifier.create(IMPETUS_MOD_ID, "fluid_culling");
         public static final OptionIdentifier<Void> FLUID_SHAPING = OptionIdentifier.create(IMPETUS_MOD_ID, "fluid_shaping");
+        public static final OptionIdentifier<Void> INFERRED_FLUIDLOGGING = OptionIdentifier.create(IMPETUS_MOD_ID, "inferred_fluidlogging");
         public static final OptionIdentifier<Void> ENTITY_SORTING = OptionIdentifier.create(IMPETUS_MOD_ID, "entity_sorting");
         public static final OptionIdentifier<Void> FAST_BLOCK_RENDERER = OptionIdentifier.create(IMPETUS_MOD_ID, "fast_block_renderer");
         public static final OptionIdentifier<Void> MEMORY_TRACING = OptionIdentifier.create(IMPETUS_MOD_ID, "memory_tracing");

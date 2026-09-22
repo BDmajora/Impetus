@@ -2,11 +2,14 @@ package com.bdmajora.impetus.booter;
 
 import net.minecraft.launchwrapper.Launch;
 
+import java.io.Closeable;
+import java.net.MalformedURLException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+import java.security.CodeSource;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -133,12 +136,12 @@ public final class BooterBootstrap {
             if (location.startsWith("jar:") && separator > 0) {
                 try {
                     return new URL(location.substring(4, separator));
-                } catch (java.net.MalformedURLException e) {
+                } catch (MalformedURLException e) {
                     log("Malformed jar URL " + location + ": " + e);
                 }
             }
         }
-        java.security.CodeSource source = BooterBootstrap.class.getProtectionDomain().getCodeSource();
+        CodeSource source = BooterBootstrap.class.getProtectionDomain().getCodeSource();
         return source != null ? source.getLocation() : null;
     }
 
@@ -169,22 +172,13 @@ public final class BooterBootstrap {
         return home != null ? home : new File(".");
     }
 
-    // Plain buffered copy; runs once per launch
+    // Runs once per launch; REPLACE_EXISTING overwrites a truncated jar from a crashed boot
     private static void copy(InputStream in, File target) throws IOException {
-        OutputStream out = new FileOutputStream(target);
-        try {
-            byte[] buffer = new byte[8192];
-            int read;
-            while ((read = in.read(buffer)) != -1) {
-                out.write(buffer, 0, read);
-            }
-        } finally {
-            closeQuietly(out);
-        }
+        Files.copy(in, target.toPath(), StandardCopyOption.REPLACE_EXISTING);
     }
 
     // Swallows close errors; nothing useful can be done this early
-    private static void closeQuietly(java.io.Closeable closeable) {
+    private static void closeQuietly(Closeable closeable) {
         try {
             if (closeable != null) {
                 closeable.close();

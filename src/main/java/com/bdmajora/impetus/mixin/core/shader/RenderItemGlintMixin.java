@@ -1,7 +1,6 @@
 package com.bdmajora.impetus.mixin.core.shader;
 
 import com.bdmajora.impetus.umbra.Umbra;
-import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;
 import net.minecraft.client.renderer.RenderItem;
 import net.minecraft.client.renderer.block.model.IBakedModel;
 import org.spongepowered.asm.mixin.Mixin;
@@ -14,17 +13,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class RenderItemGlintMixin {
     @Inject(method = "renderEffect", at = @At("HEAD"), require = 0)
     private void impetus$beginItemGlint(IBakedModel model, CallbackInfo ci) {
-        UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
-        if (pipeline != null) {
-            pipeline.beginArmorGlint();
-        }
+        Umbra.beginArmorGlint();
     }
 
     @Inject(method = "renderEffect", at = @At("RETURN"), require = 0)
     private void impetus$endItemGlint(IBakedModel model, CallbackInfo ci) {
-        UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
-        if (pipeline != null) {
-            pipeline.endArmorGlint();
-        }
+        Umbra.endArmorGlint();
     }
 }

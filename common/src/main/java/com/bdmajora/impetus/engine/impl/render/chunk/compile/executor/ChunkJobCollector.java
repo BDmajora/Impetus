@@ -28,7 +28,7 @@ public class ChunkJobCollector {
 
     // Blocks until every submitted job finished, stealing work meanwhile
     public void awaitCompletion(ChunkBuilder builder) {
-        if (this.submitted.size() == 0) {
+        if (this.submitted.isEmpty()) {
             return;
         }
 

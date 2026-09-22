@@ -1,6 +1,6 @@
 package com.bdmajora.extras;
 
-import net.minecraft.launchwrapper.Launch;
+import com.bdmajora.impetus.booter.util.PropertiesConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -42,15 +42,8 @@ public final class Extras {
         options().writeChanges();
     }
 
-    // config/impetus-extras.cfg under the game directory
+    // config/<FILE_NAME> under the game directory
     private static File configFile() {
-        File home = Launch.minecraftHome;
-        File directory = new File(home == null ? new File(".") : home, "config");
-
-        if (!directory.isDirectory() && !directory.mkdirs()) {
-            LOGGER.warn("Could not create {}, Extras settings will not persist", directory);
-        }
-
-        return new File(directory, FILE_NAME);
+        return PropertiesConfig.configFile(LOGGER, FILE_NAME);
     }
 }

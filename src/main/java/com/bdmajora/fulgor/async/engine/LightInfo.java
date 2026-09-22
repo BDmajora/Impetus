@@ -64,8 +64,9 @@ public final class LightInfo {
     @SuppressWarnings("deprecation")
     public static int compute(IBlockState state) {
         Block block = state.getBlock();
-        int opacity = Math.min(15, Math.max(0, state.getLightOpacity()));
-        int emission = state.getLightValue() & 0xF;
+        int opacity = clampLight(state.getLightOpacity());
+        // Clamped, not masked: a block reporting 16+ is full-bright, not dark
+        int emission = clampLight(state.getLightValue());
         int info = COMPUTED | CONTEXT_FLAGS.get(block.getClass()) | opacity | (emission << EMISSION_SHIFT);
 
         boolean dynamic = block instanceof FaceLightOcclusion;

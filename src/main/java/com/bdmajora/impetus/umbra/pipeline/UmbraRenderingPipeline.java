@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.umbra.pipeline;
 
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import com.bdmajora.impetus.umbra.gl.GlTextureUnits;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.BufferBuilder;
@@ -26,6 +27,7 @@ import com.bdmajora.impetus.umbra.gl.shader.ShaderType;
 import com.bdmajora.impetus.umbra.gl.texture.InternalTextureFormat;
 import com.bdmajora.impetus.umbra.gl.texture.PlainTexture;
 import com.bdmajora.impetus.umbra.gl.texture.StubShadowMap;
+import com.bdmajora.impetus.umbra.shaderpack.ConstDirectives;
 import com.bdmajora.impetus.umbra.shaderpack.ProgramSource;
 import com.bdmajora.impetus.umbra.shaderpack.ShaderPack;
 import com.bdmajora.impetus.umbra.shaderpack.loading.ProgramArrayId;
@@ -120,8 +122,7 @@ public class UmbraRenderingPipeline {
     private static final float LIGHTMAP_TEXTURE_OFFSET = 8.0f / 256.0f;
     // Draw-buffer mask for fixed-function content with no pack program: plain color into colortex0 only.
     private static final int[] FIXED_FUNCTION_MASK = {0};
-    private static final String[] LEGACY_COLOR_TARGETS =
-            {"gcolor", "gdepth", "gnormal", "composite", "gaux1", "gaux2", "gaux3", "gaux4"};
+    private static final String[] LEGACY_COLOR_TARGETS = UmbraRenderTargets.LEGACY_COLOR_TARGETS;
     private static final Pattern MIPMAP_DIRECTIVE =
             Pattern.compile("const\\s+bool\\s+(\\w+?)MipmapEnabled\\s*=\\s*(true|false)\\s*;");
     // Umbra's PackDirectives defaults. The half-lives are in deciseconds (1/10 s = 2 ticks).
@@ -394,10 +395,15 @@ public class UmbraRenderingPipeline {
     private final int[] gbufferAttachments;
     // Logical colortex index -> physical gbuffer attachment point.
     private final Map<Integer, Integer> gbufferAttachmentPoints = new LinkedHashMap<>();
+    // The same mapping as a flat table (-1 for unattached) plus a reusable output array, since drawGbufferBuffers runs on every phase switch
+    private final int[] gbufferAttachmentPointByIndex = new int[UmbraRenderTargets.MAX_COLOR_BUFFERS];
+    private int[] physicalDrawBufferScratch = new int[UmbraRenderTargets.MAX_COLOR_BUFFERS];
     // The gbuffer FBO the world is currently rendering into (switches after the deferred chain runs).
     private UmbraFramebuffer currentGbuffer;
     // Scratch read FBO used to snapshot a gbuffer color target before a program reads and writes it.
     private UmbraFramebuffer gbufferFeedbackCopyFramebuffer;
+    // Per linked program, which of colortex4..7 it declares a sampler for (see prepareGbufferFeedbackSamplers); resolved once per program since glGetUniformLocation is a driver call
+    private final Int2ObjectOpenHashMap<BitSet> gauxSamplersByProgram = new Int2ObjectOpenHashMap<>();
     // Umbra-style colortex flip snapshot used by opaque gbuffers programs, before the deferred chain runs.
     private BitSet preTranslucentGbufferSamplerFlips = new BitSet();
     // Umbra-style colortex flip snapshot used by translucent gbuffers programs, after the deferred chain runs.
@@ -474,9 +480,6 @@ public class UmbraRenderingPipeline {
         Minecraft mc = Minecraft.getMinecraft();
         this.renderTargets = new UmbraRenderTargets(mc.displayWidth, mc.displayHeight);
         this.shaderDefines = pack.getEnvironmentDefines();
-        // The scene-aware light shaft diagnostic only applies to a pack running that mode (Complementary's LIGHTSHAFT_BEHAVIOUR=1)
-        LightShaftProbe.setPackGate(pack.getShaderPackOptions().getOptionSet().getStringOptions().containsKey("LIGHTSHAFT_BEHAVIOUR")
-                && "1".equals(pack.getShaderPackOptions().getOptionValues().getStringValueOrDefault("LIGHTSHAFT_BEHAVIOUR")));
         // The GPU identity macros need a live GL context, so they are added here rather than baked into the pack's environment defines; without them every hardware-workaround gate took its "unknown vendor" branch (Clarity's `immut` expanded to nothing)
         com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.withGpuIdentity(this.shaderDefines,
                 LWJGL.glGetString(GL11.GL_VENDOR), LWJGL.glGetString(GL11.GL_RENDERER));
@@ -580,8 +583,10 @@ public class UmbraRenderingPipeline {
             }
             this.gbufferPrograms = new GbufferPrograms(pack, GBUFFER_SAMPLER_UNITS, gbufferSamplerOverrideUnits());
             this.gbufferAttachments = computeGbufferAttachments(pack, terrainDrawBuffers(pack));
+            Arrays.fill(this.gbufferAttachmentPointByIndex, -1);
             for (int i = 0; i < this.gbufferAttachments.length; i++) {
                 this.gbufferAttachmentPoints.put(this.gbufferAttachments[i], i);
+                this.gbufferAttachmentPointByIndex[this.gbufferAttachments[i]] = i;
                 // A gbuffer FBO mixing attachment sizes renders into their intersection, silently shrinking the world pass; packs size reflection/bloom buffers this way but never gbuffer outputs, so surface it as a pack bug
                 if (this.renderTargets.hasCustomSize(this.gbufferAttachments[i])) {
                     LOGGER.warn("[Umbra] colortex{} declares its own size but is also a gbuffer output; the world pass "
@@ -661,7 +666,7 @@ public class UmbraRenderingPipeline {
     // Every present program source (all gbuffer families, shadow, deferred/composite arrays, final) for directive scanning only; format and clear directives sit in block comments wherever the author chose and Umbra/OptiFine scan the whole pack, and duplicates are idempotent
     private List<ProgramSource> collectAllProgramSources(ShaderPack pack) {
         List<ProgramSource> sources = new ArrayList<>();
-        for (ProgramId id : ProgramId.values()) {
+        for (ProgramId id : ProgramId.VALUES) {
             pack.getProgramSet().get(id).ifPresent(sources::add);
         }
         for (ProgramArrayId id : ProgramArrayId.values()) {
@@ -841,15 +846,15 @@ public class UmbraRenderingPipeline {
                 }
             }
         }
-        applyPackScalarDirectives(scalarText.toString());
+        applyPackScalarDirectives(new ConstDirectives(scalarText.toString()));
     }
 
     // The pack-wide scalar const directives Umbra collects into PackDirectives; sunPathRotation and the shadow directives are read on the shadow path, and the half-lives are in *deciseconds* with ambientOcclusionLevel clamped to 0..1
-    private void applyPackScalarDirectives(String activeText) {
-        this.centerDepthHalfLife = parseConstFloat(activeText, "centerDepthHalflife", DEFAULT_CENTER_DEPTH_HALF_LIFE);
+    private void applyPackScalarDirectives(ConstDirectives consts) {
+        this.centerDepthHalfLife = consts.getFloat("centerDepthHalflife", DEFAULT_CENTER_DEPTH_HALF_LIFE);
 
         // noisetex size; a pack sampling `texture2D(noisetex, uv * 32)` against a 256x256 texture gets the wrong spatial frequency (Body Camera's water normals)
-        int noiseResolution = parseConstInt(activeText, "noiseTextureResolution", NoiseTexture.DEFAULT_RESOLUTION);
+        int noiseResolution = consts.getInt("noiseTextureResolution", NoiseTexture.DEFAULT_RESOLUTION);
         if (noiseResolution > 0) {
             // NoiseTexture allocates resolution^2 * 4 bytes twice, so a pack typo like 65536 would OOM the client; 4096 is far past anything real
             if (noiseResolution > 4096) {
@@ -860,18 +865,17 @@ public class UmbraRenderingPipeline {
         }
 
         // Vanilla's baked AO strength, pushed into WorldRenderingSettings for the block-model AO computation; 1.0 is vanilla, 0.0 disables it so the pack does its own
-        float aoLevel = parseConstFloat(activeText, "ambientOcclusionLevel", 1.0f);
+        float aoLevel = consts.getFloat("ambientOcclusionLevel", 1.0f);
         this.ambientOcclusionLevel = Math.max(0.0f, Math.min(1.0f, aoLevel));
         com.bdmajora.impetus.umbra.material.WorldRenderingSettings
                 .setAmbientOcclusionLevel(this.ambientOcclusionLevel);
 
         // `wetness` and `eyeBrightnessSmooth` smoothing rates.
-        this.wetnessHalfLife = parseConstFloat(activeText, "wetnessHalflife", DEFAULT_WETNESS_HALF_LIFE);
-        this.drynessHalfLife = parseConstFloat(activeText, "drynessHalflife", DEFAULT_DRYNESS_HALF_LIFE);
+        this.wetnessHalfLife = consts.getFloat("wetnessHalflife", DEFAULT_WETNESS_HALF_LIFE);
+        this.drynessHalfLife = consts.getFloat("drynessHalflife", DEFAULT_DRYNESS_HALF_LIFE);
         this.eyeBrightnessHalfLife =
-                parseConstFloat(activeText, "eyeBrightnessHalflife", DEFAULT_EYE_BRIGHTNESS_HALF_LIFE);
+                consts.getFloat("eyeBrightnessHalflife", DEFAULT_EYE_BRIGHTNESS_HALF_LIFE);
         EyeBrightnessTracker.setHalfLives(this.wetnessHalfLife, this.drynessHalfLife, this.eyeBrightnessHalfLife);
-
     }
 
     // Four comma-separated floats
@@ -937,10 +941,10 @@ public class UmbraRenderingPipeline {
         }
         // `text` keeps the raw sources for the `#define`-form directives, which conditional resolution consumes.
         String text = allSources.toString();
-        String activeText = activeSources.toString();
+        ConstDirectives consts = new ConstDirectives(activeSources.toString());
 
         // Tilt of the sun/moon's daily arc, needed by the celestial-position uniforms whether or not the pack draws shadows, so set before the no-shadow early-out
-        float sunPathRotation = parseConstFloat(activeText, "sunPathRotation", 0.0f);
+        float sunPathRotation = consts.getFloat("sunPathRotation", 0.0f);
         CelestialUniforms.setSunPathRotation(sunPathRotation);
 
         Optional<ProgramSource> shadowSource = pack.getProgramSet().get(ProgramId.Shadow);
@@ -948,23 +952,23 @@ public class UmbraRenderingPipeline {
             return null;
         }
         // OptiFine's pre-const spelling of the same settings (`#define SHADOWRES 2048`); Umbra accepts both, and the shaders.properties keys override either
-        int resolution = parseConstInt(activeText, "shadowMapResolution", parseDefineInt(text, "SHADOWRES", 1024));
+        int resolution = consts.getInt("shadowMapResolution", parseDefineInt(text, "SHADOWRES", 1024));
         if (resolution <= 0) {
             // A pack error, but the literal grammar admits a sign and a non-positive texture size would fail allocation; E-LITE declares 10 in its shadows-off branch, which conditional resolution hides, so this only backstops the value reaching GL
             LOGGER.warn("[Umbra] Pack declares shadowMapResolution={}; falling back to 1024", resolution);
             resolution = 1024;
         }
-        float distance = parseConstFloat(activeText, "shadowDistance", parseDefineFloat(text, "SHADOWHPL", 160.0f));
+        float distance = consts.getFloat("shadowDistance", parseDefineFloat(text, "SHADOWHPL", 160.0f));
         // With Distant Horizons LODs casting into the map and no declared planes, the ortho depth range spans the LOD distance like Iris's -1 "auto" planes do, or a mountain LOD a few hundred blocks along the light is clipped out of the map; OptiFine's defaults otherwise
         boolean dhShadows = DhCompat.hasRenderingEnabled()
                 && pack.getProgramSet().get(ProgramId.DhShadow).isPresent()
                 && pack.getProperties().getDhShadowEnabled().orElse(Boolean.TRUE);
-        float nearPlane = parseConstFloat(activeText, "shadowNearPlane",
+        float nearPlane = consts.getFloat("shadowNearPlane",
                 dhShadows ? -DhCompat.getRenderDistance() : UmbraShadowRenderer.DEFAULT_NEAR_PLANE);
-        float farPlane = parseConstFloat(activeText, "shadowFarPlane",
+        float farPlane = consts.getFloat("shadowFarPlane",
                 dhShadows ? DhCompat.getRenderDistance() : UmbraShadowRenderer.DEFAULT_FAR_PLANE);
-        float intervalSize = parseConstFloat(activeText, "shadowIntervalSize", UmbraShadowRenderer.DEFAULT_INTERVAL_SIZE);
-        Float shadowMapFov = parseConstFloat(activeText, "shadowMapFov");
+        float intervalSize = consts.getFloat("shadowIntervalSize", UmbraShadowRenderer.DEFAULT_INTERVAL_SIZE);
+        Float shadowMapFov = consts.getFloat("shadowMapFov");
         if (shadowMapFov == null) {
             Matcher legacyFov = Pattern.compile("(?m)^\\s*#define\\s+SHADOWFOV\\s+([0-9.]+)").matcher(text);
             if (legacyFov.find()) {
@@ -980,14 +984,14 @@ public class UmbraRenderingPipeline {
         distance = pack.getProperties().getShadowDistance().isPresent()
                 ? pack.getProperties().getShadowDistance().getAsInt() : distance;
         // `const float voxelDistance` overrides the shadow distance for voxelization only, since colored-lighting packs want a tighter radius than their shadow map (Umbra PackShadowDirectives)
-        float voxelDistance = parseConstFloat(activeText, "voxelDistance", 0.0f);
+        float voxelDistance = consts.getFloat("voxelDistance", 0.0f);
         // `shadowDistanceRenderMul` scales the shadow pass's CULLING distance, not the projection; Umbra's -1 sentinel falls back to a user setting that does not exist here, so unset or negative means no scaling
-        float shadowDistanceRenderMul = parseConstFloat(activeText, "shadowDistanceRenderMul", -1.0f);
+        float shadowDistanceRenderMul = consts.getFloat("shadowDistanceRenderMul", -1.0f);
         float cullDistance = shadowDistanceRenderMul >= 0.0f ? distance * shadowDistanceRenderMul : distance;
         float voxelRadius = voxelDistance > 0.0f ? voxelDistance : distance;
         com.bdmajora.impetus.umbra.material.WorldRenderingSettings.setVoxelRenderDistanceChunks(
                 Math.max(1, Math.round(voxelRadius / 16.0f)));
-        parseShadowDepthSamplingSettings(activeText);
+        parseShadowDepthSamplingSettings(consts);
         // The FF shadow program (entities/block entities) belongs to the gbuffers custom-texture stage.
         Map<String, Integer> shadowSamplerUnits = new LinkedHashMap<>(GBUFFER_SAMPLER_UNITS);
         shadowSamplerUnits.putAll(gbufferSamplerOverrideUnits());
@@ -1025,32 +1029,6 @@ public class UmbraRenderingPipeline {
         active.append('\n');
     }
 
-    // The GLSL float literal grammar, as permissive as Float#parseFloat (sign, .5 and 1. forms, exponent); the narrower pattern it replaces silently defaulted on `.5` or `1e-3`
-    private static final String FLOAT_LITERAL = "([-+]?(?:[0-9]+\\.?[0-9]*|\\.[0-9]+)(?:[eE][-+]?[0-9]+)?)[fF]?";
-
-    // The LAST match of pattern in text, or null; last-wins is Umbra's and OptiFine's rule (each directive overwrites the previous in file order), and these scans concatenate several stages, so first-match was a silent divergence
-    private static String lastMatch(Pattern pattern, String text, int group) {
-        Matcher matcher = pattern.matcher(text);
-        String value = null;
-        while (matcher.find()) {
-            value = matcher.group(group);
-        }
-        return value;
-    }
-
-    // const int NAME = value; in shader text
-    private static int parseConstInt(String text, String name, int fallback) {
-        String value = lastMatch(Pattern.compile("const\\s+int\\s+" + name + "\\s*=\\s*([-+]?\\d+)"), text, 1);
-        if (value == null) {
-            return fallback;
-        }
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-            return fallback;
-        }
-    }
-
     // OptiFine's legacy #define <NAME> <value> spelling of a shadow directive.
     private static int parseDefineInt(String text, String name, int fallback) {
         Matcher matcher = Pattern.compile("(?m)^\\s*#define\\s+" + name + "\\s+(\\d+)").matcher(text);
@@ -1070,75 +1048,34 @@ public class UmbraRenderingPipeline {
         }
     }
 
-    // const bool NAME = value;, false when absent
-    private static boolean parseConstBool(String text, String name) {
-        return parseOptionalConstBool(text, name).orElse(false);
-    }
-
-    // const bool with presence distinguished from false
-    private static Optional<Boolean> parseOptionalConstBool(String text, String name) {
-        String value = lastMatch(Pattern.compile("const\\s+bool\\s+" + name + "\\s*=\\s*(true|false)"), text, 1);
-        return value != null ? Optional.of(Boolean.parseBoolean(value)) : Optional.empty();
-    }
-
     // Reads the shadowHardwareFiltering and shadowtex filtering constants
-    private void parseShadowDepthSamplingSettings(String text) {
+    private void parseShadowDepthSamplingSettings(ConstDirectives consts) {
         Arrays.fill(this.shadowHardwareFiltering, false);
         Arrays.fill(this.shadowMipmap, false);
         Arrays.fill(this.shadowNearest, false);
 
-        applyBothThenIndexed(text, "shadowHardwareFiltering", "shadowHardwareFiltering", this.shadowHardwareFiltering);
-        applyBothThenIndexed(text, "generateShadowMipmap", "shadowtex", "Mipmap", this.shadowMipmap);
-        parseOptionalConstBool(text, "shadowtexMipmap").ifPresent(value -> this.shadowMipmap[0] = value);
-        applyBothThenIndexed(text, null, "shadowtex", "Nearest", this.shadowNearest);
-        parseOptionalConstBool(text, "shadowtexNearest").ifPresent(value -> this.shadowNearest[0] = value);
+        applyBothThenIndexed(consts, "shadowHardwareFiltering", "shadowHardwareFiltering", "", this.shadowHardwareFiltering);
+        applyBothThenIndexed(consts, "generateShadowMipmap", "shadowtex", "Mipmap", this.shadowMipmap);
+        consts.getOptionalBool("shadowtexMipmap").ifPresent(value -> this.shadowMipmap[0] = value);
+        applyBothThenIndexed(consts, null, "shadowtex", "Nearest", this.shadowNearest);
+        consts.getOptionalBool("shadowtexNearest").ifPresent(value -> this.shadowNearest[0] = value);
         for (int i = 0; i < this.shadowNearest.length; i++) {
             final int index = i;
-            parseOptionalConstBool(text, "shadow" + i + "MinMagNearest")
+            consts.getOptionalBool("shadow" + i + "MinMagNearest")
                     .ifPresent(value -> this.shadowNearest[index] = value);
         }
     }
 
-    // A shared constant sets both entries, then per-index constants override
-    private static void applyBothThenIndexed(String text, String bothName, String indexedPrefix, boolean[] values) {
-        if (bothName != null) {
-            parseOptionalConstBool(text, bothName).ifPresent(value -> Arrays.fill(values, value));
-        }
-        for (int i = 0; i < values.length; i++) {
-            final int index = i;
-            parseOptionalConstBool(text, indexedPrefix + i).ifPresent(value -> values[index] = value);
-        }
-    }
-
-    private static void applyBothThenIndexed(String text, String bothName, String indexedPrefix,
+    // A shared constant sets both entries, then per-index constants (<prefix><i><suffix>) override
+    private static void applyBothThenIndexed(ConstDirectives consts, String bothName, String indexedPrefix,
                                              String indexedSuffix, boolean[] values) {
         if (bothName != null) {
-            parseOptionalConstBool(text, bothName).ifPresent(value -> Arrays.fill(values, value));
+            consts.getOptionalBool(bothName).ifPresent(value -> Arrays.fill(values, value));
         }
         for (int i = 0; i < values.length; i++) {
             final int index = i;
-            parseOptionalConstBool(text, indexedPrefix + i + indexedSuffix)
+            consts.getOptionalBool(indexedPrefix + i + indexedSuffix)
                     .ifPresent(value -> values[index] = value);
-        }
-    }
-
-    // const float NAME = value;
-    private static float parseConstFloat(String text, String name, float fallback) {
-        Float value = parseConstFloat(text, name);
-        return value != null ? value : fallback;
-    }
-
-    // The pack's const float <name>, or null; also accepts const int since packs write `const float shadowDistance = 120;` and both Umbra and OptiFine tolerate it
-    private static Float parseConstFloat(String text, String name) {
-        String value = lastMatch(
-                Pattern.compile("const\\s+(?:float|int)\\s+" + name + "\\s*=\\s*" + FLOAT_LITERAL), text, 1);
-        if (value == null) {
-            return null;
-        }
-        try {
-            return Float.parseFloat(value);
-        } catch (NumberFormatException e) {
-            return null;
         }
     }
 
@@ -1207,22 +1144,26 @@ public class UmbraRenderingPipeline {
 
     // Sets the FBO's draw buffers from a program's logical colortex list
     private void drawGbufferBuffers(UmbraFramebuffer framebuffer, int[] logicalDrawBuffers) {
-        int[] physicalDrawBuffers = new int[logicalDrawBuffers.length];
-        java.util.Set<Integer> written = new java.util.HashSet<>();
+        int[] physicalDrawBuffers = this.physicalDrawBufferScratch;
+        if (physicalDrawBuffers.length < logicalDrawBuffers.length) {
+            physicalDrawBuffers = this.physicalDrawBufferScratch = new int[logicalDrawBuffers.length];
+        }
+        int written = 0;
         for (int i = 0; i < logicalDrawBuffers.length; i++) {
-            Integer attachmentPoint = this.gbufferAttachmentPoints.get(logicalDrawBuffers[i]);
-            if (attachmentPoint == null) {
+            int logical = logicalDrawBuffers[i];
+            int attachmentPoint = logical >= 0 && logical < this.gbufferAttachmentPointByIndex.length ? this.gbufferAttachmentPointByIndex[logical] : -1;
+            if (attachmentPoint < 0) {
                 LOGGER.warn("[Umbra] Gbuffer draw buffer colortex{} is not attached; routing output slot {} to colortex0",
-                        logicalDrawBuffers[i], i);
-                attachmentPoint = this.gbufferAttachmentPoints.get(0);
+                        logical, i);
+                attachmentPoint = Math.max(0, this.gbufferAttachmentPointByIndex[0]);
             } else {
-                written.add(logicalDrawBuffers[i]);
+                written |= 1 << logical;
             }
-            physicalDrawBuffers[i] = attachmentPoint == null ? 0 : attachmentPoint;
+            physicalDrawBuffers[i] = attachmentPoint;
         }
         // Umbra parity: a gbuffer FBO holds ONLY the buffers the current program writes, so a program sampling a colortex it does not write (gbuffers_terrain reading gaux4 for fog) reads a detached texture instead of a feedback loop's garbage
         framebuffer.retainColorAttachments(written);
-        framebuffer.drawBuffers(physicalDrawBuffers);
+        framebuffer.drawBuffers(physicalDrawBuffers, logicalDrawBuffers.length);
     }
 
     // Bakes one frame's ping-pong schedule from the flipper's current state, advancing it as it goes; family order matches Umbra: begin, prepare, (gbuffers), deferred, (translucents), composite, final
@@ -1366,11 +1307,6 @@ public class UmbraRenderingPipeline {
         }
     }
 
-    // Whether a colortex is attached to the gbuffer FBO
-    private boolean isGbufferAttachment(int index) {
-        return this.gbufferAttachmentPoints.containsKey(index);
-    }
-
     // colortex0 clears to fog colour, the rest to transparent black, unless overridden
     private float[] defaultClearColor(int index) {
         if (this.colorBufferClearColors[index] != null) {
@@ -1400,37 +1336,6 @@ public class UmbraRenderingPipeline {
             return TextureStage.SHADOWCOMP;
         }
         return TextureStage.COMPOSITE_AND_FINAL;
-    }
-
-    // For debug logging
-    private static String formatBitSet(BitSet bitSet) {
-        List<Integer> values = new ArrayList<>();
-        for (int bit = bitSet.nextSetBit(0); bit >= 0; bit = bitSet.nextSetBit(bit + 1)) {
-            values.add(bit);
-        }
-        return values.toString();
-    }
-
-    // For debug logging
-    private static String formatClearColor(float[] color) {
-        return color == null ? "fog" : Arrays.toString(color);
-    }
-
-    // For debug logging
-    private static String summarizeSamplers(int[] samplers) {
-        StringBuilder builder = new StringBuilder("[");
-        boolean first = true;
-        for (int i = 0; i < samplers.length; i++) {
-            if (samplers[i] == 0) {
-                continue;
-            }
-            if (!first) {
-                builder.append(", ");
-            }
-            builder.append("colortex").append(i).append("->tex").append(samplers[i]);
-            first = false;
-        }
-        return builder.append(']').toString();
     }
 
     // Compiles a fullscreen program and its uniforms once, cached by source name; null if it failed, cached as absent so we do not retry
@@ -1540,7 +1445,7 @@ public class UmbraRenderingPipeline {
         Matcher matcher = MIPMAP_DIRECTIVE.matcher(GlslPreprocessor.resolveConditionals(fragmentSource.get(),
                 com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.forProgram(this.shaderDefines, source.getName())));
         while (matcher.find()) {
-            Integer index = colorTargetIndex(matcher.group(1));
+            Integer index = UmbraRenderTargets.colorTargetIndex(matcher.group(1));
             if (index == null || index >= UmbraRenderTargets.MAX_COLOR_BUFFERS) {
                 continue;
             }
@@ -1551,23 +1456,6 @@ public class UmbraRenderingPipeline {
             }
         }
         return mipmappedBuffers;
-    }
-
-    // colortexN or gcolor-style sampler name to an index; null for anything else
-    private static Integer colorTargetIndex(String name) {
-        if (name.startsWith("colortex")) {
-            try {
-                return Integer.parseInt(name.substring("colortex".length()));
-            } catch (NumberFormatException e) {
-                return null;
-            }
-        }
-        for (int i = 0; i < LEGACY_COLOR_TARGETS.length; i++) {
-            if (LEGACY_COLOR_TARGETS[i].equals(name)) {
-                return i;
-            }
-        }
-        return null;
     }
 
     // Transforms and compiles one composite-family program
@@ -1989,7 +1877,7 @@ public class UmbraRenderingPipeline {
         } else {
             entry.getProgram().bind();
             bindShaderPackResources();
-            int[] drawBuffers = DrawBuffers.sanitize(entry.getDrawBuffers(), GBUFFER_ATTACHMENT_LIMIT);
+            int[] drawBuffers = entry.drawBuffersReadOnly();
             // Re-assert colortex4..7 read bindings, since sky/entity/hand phases sample gaux buffers and the prior phase may have disturbed the units; if this program also writes a samplable target, bind a copied scratch side so it never reads the active render target
             bindGbufferColorSamplers(prepareGbufferFeedbackSamplers(drawBuffers));
             entry.getUniforms().update();
@@ -2311,11 +2199,6 @@ public class UmbraRenderingPipeline {
 
         if (this.shadowRenderer != null) {
             this.shadowRenderer.render();
-            if (LightShaftProbe.active()) {
-                // The pack's scene-aware probe samples exactly what the shadow pass just wrote, so replay it here before anything else touches those textures
-                LightShaftProbe.INSTANCE.sampleShadow(this.shadowRenderer.getDepthTextureId(),
-                        this.shadowRenderer.getColorTexture1Id(), this.shadowRenderer.getResolution());
-            }
             // Iris binds the finished shadow map to every shadowcomp program at use; here the units still held the frame-start 1x1 stubs until after the dispatch, so a shadowcomp stage sampling shadowtex0/shadowcolor0 read the stub
             bindShadowSamplers();
             dispatchComputePasses();
@@ -2429,7 +2312,7 @@ public class UmbraRenderingPipeline {
             return true;
         }
         entry.getProgram().bind();
-        int[] drawBuffers = DrawBuffers.sanitize(entry.getDrawBuffers(), GBUFFER_ATTACHMENT_LIMIT);
+        int[] drawBuffers = entry.drawBuffersReadOnly();
         drawGbufferBuffers(this.currentGbuffer, drawBuffers);
         entry.getBlendState().apply(drawBuffers);
         entry.setHandLightmap(getBlockLightmapCoord(packedLight), getSkyLightmapCoord(packedLight));
@@ -2535,17 +2418,6 @@ public class UmbraRenderingPipeline {
 
         for (FullscreenPass pass : this.passes) {
             runPass(pass, mc);
-        }
-
-        if (LightShaftProbe.active() && !this.passes.isEmpty()) {
-            // The factor texel lives on whichever colortex5 side the chain leaves current, the one next frame's deferred1 vertex stage reads
-            FullscreenPass last = this.passes.get(this.passes.size() - 1);
-            UmbraRenderTarget factorTarget = this.renderTargets.get(5);
-            if (factorTarget != null) {
-                LightShaftProbe.INSTANCE.sampleScreen(this.renderTargets.getDepthTexture().getTextureId(),
-                        last.flipsAfter.get(5) ? factorTarget.getAltTexture() : factorTarget.getMainTexture(),
-                        this.renderTargets.getWidth(), this.renderTargets.getHeight());
-            }
         }
 
         if (this.blitSourceFramebuffer != null) {
@@ -3187,7 +3059,7 @@ public class UmbraRenderingPipeline {
 
     // Generates mips on targets the pass declared via mipmapEnabled
     private void setupMipmappedBuffers(FullscreenPass pass) {
-        if (pass.mipmappedBuffers.nextSetBit(0) < 0) {
+        if (pass.mipmappedBuffers.isEmpty()) {
             return;
         }
         GlTextureUnits.selectScratch(MIPMAP_SCRATCH_UNIT);
@@ -3537,10 +3409,15 @@ public class UmbraRenderingPipeline {
     }
 
     // Copies targets a gbuffer program both reads and writes, since that is undefined otherwise
+    // Only for targets the BOUND program both writes (drawBuffers) and declares a sampler for: the copy is a full-resolution glCopyTexSubImage2D, and it used to run for every gaux target of every phase switch, terrain program and eye/glint bracket whether or not the program ever read it, which on a pack that writes colortex6 from every gbuffer program was dozens of full-screen copies a frame
     private BitSet prepareGbufferFeedbackSamplers(int[] drawBuffers) {
         BitSet samplerFlips = null;
+        BitSet sampled = sampledGauxTargets();
         for (int logicalIndex : drawBuffers) {
             if (!isGbufferFeedbackSampler(logicalIndex) || this.renderTargets.get(logicalIndex) == null) {
+                continue;
+            }
+            if (sampled != null && !sampled.get(logicalIndex)) {
                 continue;
             }
             copyGbufferFrontToBack(logicalIndex);
@@ -3550,6 +3427,26 @@ public class UmbraRenderingPipeline {
             samplerFlips.flip(logicalIndex);
         }
         return samplerFlips == null ? this.activeGbufferSamplerFlips : samplerFlips;
+    }
+
+    // Which of colortex4..7 (by either name) the program bound right now samples; null when no program is bound, which keeps the old copy-everything behaviour for that caller. Program ids are per pipeline, and the map dies with it
+    private BitSet sampledGauxTargets() {
+        int program = LWJGL.glGetInteger(GL_CURRENT_PROGRAM);
+        if (program == 0) {
+            return null;
+        }
+        BitSet sampled = this.gauxSamplersByProgram.get(program);
+        if (sampled == null) {
+            sampled = new BitSet();
+            for (int i = 4; i <= 7; i++) {
+                if (LWJGL.glGetUniformLocation(program, "colortex" + i) != -1
+                        || LWJGL.glGetUniformLocation(program, LEGACY_COLOR_TARGETS[i]) != -1) {
+                    sampled.set(i);
+                }
+            }
+            this.gauxSamplersByProgram.put(program, sampled);
+        }
+        return sampled;
     }
 
     // Targets packs commonly read back during the gbuffer stage
@@ -3642,7 +3539,6 @@ public class UmbraRenderingPipeline {
         this.destroyed = true;
         this.worldRenderingActive = false;
         this.centerDepthSampler.destroy();
-        LightShaftProbe.INSTANCE.destroy();
         this.colorSpaceConverter.destroy();
         if (this.shaderStorageBuffers != null) {
             this.shaderStorageBuffers.destroy();
@@ -3714,6 +3610,7 @@ public class UmbraRenderingPipeline {
             this.translucentGbufferFramebuffer.destroy();
         }
         this.translucentGbufferFramebuffer = null;
+        this.gauxSamplersByProgram.clear();
         if (this.gbufferFeedbackCopyFramebuffer != null) {
             this.gbufferFeedbackCopyFramebuffer.destroy();
             this.gbufferFeedbackCopyFramebuffer = null;

@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.impl.gui;
 
+import com.bdmajora.impetus.engine.api.util.ColorARGB;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.GlStateManager;
@@ -87,30 +88,23 @@ public final class ScreenBlurBackdrop {
     // GuiScreen.drawGradientRect without a screen instance
     private static void drawTint(int width, int height) {
         GlStateManager.shadeModel(GL11.GL_SMOOTH);
+
         Tessellator tessellator = Tessellator.getInstance();
         BufferBuilder buffer = tessellator.getBuffer();
         buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_COLOR);
-        buffer.pos(width, 0.0, 0.0).color(red(TINT_TOP), green(TINT_TOP), blue(TINT_TOP), alpha(TINT_TOP)).endVertex();
-        buffer.pos(0.0, 0.0, 0.0).color(red(TINT_TOP), green(TINT_TOP), blue(TINT_TOP), alpha(TINT_TOP)).endVertex();
-        buffer.pos(0.0, height, 0.0).color(red(TINT_BOTTOM), green(TINT_BOTTOM), blue(TINT_BOTTOM), alpha(TINT_BOTTOM)).endVertex();
-        buffer.pos(width, height, 0.0).color(red(TINT_BOTTOM), green(TINT_BOTTOM), blue(TINT_BOTTOM), alpha(TINT_BOTTOM)).endVertex();
+        tintVertex(buffer, width, 0.0, TINT_TOP);
+        tintVertex(buffer, 0.0, 0.0, TINT_TOP);
+        tintVertex(buffer, 0.0, height, TINT_BOTTOM);
+        tintVertex(buffer, width, height, TINT_BOTTOM);
         tessellator.draw();
+
         GlStateManager.shadeModel(GL11.GL_FLAT);
     }
 
-    private static int alpha(int argb) {
-        return argb >>> 24;
-    }
-
-    private static int red(int argb) {
-        return (argb >> 16) & 0xFF;
-    }
-
-    private static int green(int argb) {
-        return (argb >> 8) & 0xFF;
-    }
-
-    private static int blue(int argb) {
-        return argb & 0xFF;
+    // One corner of the gradient quad in its ARGB colour
+    private static void tintVertex(BufferBuilder buffer, double x, double y, int argb) {
+        buffer.pos(x, y, 0.0)
+                .color(ColorARGB.unpackRed(argb), ColorARGB.unpackGreen(argb), ColorARGB.unpackBlue(argb), ColorARGB.unpackAlpha(argb))
+                .endVertex();
     }
 }

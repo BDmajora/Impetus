@@ -127,29 +127,14 @@ public final class ParticleTicker {
         }
         CountDownLatch done = new CountDownLatch(tasks);
         for (int i = 0; i < Math.min(workers, tasks); i++) {
-            executor.execute(() -> {
-                Runnable task;
-                while ((task = queue.poll()) != null) {
-                    try {
-                        task.run();
-                    } finally {
-                        done.countDown();
-                    }
-                }
-            });
+            executor.execute(() -> drain(queue, done));
         }
 
         for (Particle particle : sync) {
             tickOne.accept(particle);
         }
-        Runnable task;
-        while ((task = queue.poll()) != null) {
-            try {
-                task.run();
-            } finally {
-                done.countDown();
-            }
-        }
+        // The client thread joins in rather than idling behind the latch
+        drain(queue, done);
         boolean interrupted = false;
         while (done.getCount() > 0L) {
             try {
@@ -175,6 +160,18 @@ public final class ParticleTicker {
         }
         if (throwable != null) {
             throw new RuntimeException(throwable);
+        }
+    }
+
+    // Runs queued slices until none are left, counting each down whether or not it threw
+    private static void drain(Queue<Runnable> queue, CountDownLatch done) {
+        Runnable task;
+        while ((task = queue.poll()) != null) {
+            try {
+                task.run();
+            } finally {
+                done.countDown();
+            }
         }
     }
 

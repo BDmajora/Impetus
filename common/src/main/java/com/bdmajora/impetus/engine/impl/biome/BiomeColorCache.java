@@ -84,13 +84,15 @@ public abstract class BiomeColorCache<BIOME, RESOLVER> {
         return slice;
     }
 
-    protected abstract int resolveColor(RESOLVER resolver, BIOME biome, int relativeX, int relativeY, int relativeZ);
+    protected abstract int resolveColor(RESOLVER resolver, BIOME biome, int worldX, int worldY, int worldZ);
 
     // Fills a slice: resolves every biome colour then box-blurs by the configured radius
     private void updateColorBuffers(int relY, RESOLVER resolver, Slice slice) {
         int worldY = this.minY + relY;
 
+        // A flag rather than a zero sentinel, since 0 is itself a legal (if unlikely) colour
         int firstSeenColor = 0;
+        boolean seenColor = false;
 
         boolean uniqueColor = true;
 
@@ -103,8 +105,9 @@ public abstract class BiomeColorCache<BIOME, RESOLVER> {
 
                 int color = this.resolveColor(resolver, biome, worldX, worldY, worldZ);
 
-                if (firstSeenColor == 0) {
+                if (!seenColor) {
                     firstSeenColor = color;
+                    seenColor = true;
                 } else if (firstSeenColor != color) {
                     uniqueColor = false;
                 }

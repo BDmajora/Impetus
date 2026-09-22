@@ -1,5 +1,6 @@
 package com.bdmajora.equilibrium.common.entity;
 
+import net.minecraft.world.chunk.Chunk;
 import com.google.common.base.Predicate;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
@@ -65,7 +66,7 @@ public final class ReducedRadiusQuery {
         int maxChunkZ = MathHelper.floor((box.maxZ + VANILLA_RADIUS) / 16.0D);
         for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
             for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
-                net.minecraft.world.chunk.Chunk chunk = world.getChunkProvider().getLoadedChunk(chunkX, chunkZ);
+                Chunk chunk = world.getChunkProvider().getLoadedChunk(chunkX, chunkZ);
                 if (chunk != null) {
                     chunk.getEntitiesWithinAABBForEntity(entity, box, list, predicate);
                 }

@@ -9,7 +9,6 @@ import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 import org.jetbrains.annotations.Nullable;
 import com.bdmajora.impetus.impl.render.terrain.ImpetusWorldRenderer;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -50,7 +49,7 @@ public class TogglePassCommand extends CommandBase {
     // Pass names
     @Override
     public List<String> getTabCompletions(MinecraftServer server, ICommandSender sender, String[] args, @Nullable BlockPos targetPos) {
-        return new ArrayList<>(getAllPasses().map(TerrainRenderPass::name).collect(Collectors.toList()));
+        return getAllPasses().map(TerrainRenderPass::name).collect(Collectors.toList());
     }
 
     // Flips one pass's enabled flag for debugging

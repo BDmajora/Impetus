@@ -48,17 +48,12 @@ public final class NbtPrimitivePool {
 
     // The pooled twin of a freshly read tag, or the tag itself when it is not a small numeric
     public static NBTBase canonical(NBTBase tag) {
-        switch (tag.getId()) {
-            case 1:
-                return of(((NBTTagByte) tag).getByte());
-            case 2:
-                return of(((NBTTagShort) tag).getShort());
-            case 3:
-                return of(((NBTTagInt) tag).getInt());
-            case 4:
-                return of(((NBTTagLong) tag).getLong());
-            default:
-                return tag;
-        }
+        return switch (tag.getId()) {
+            case 1 -> of(((NBTTagByte) tag).getByte());
+            case 2 -> of(((NBTTagShort) tag).getShort());
+            case 3 -> of(((NBTTagInt) tag).getInt());
+            case 4 -> of(((NBTTagLong) tag).getLong());
+            default -> tag;
+        };
     }
 }

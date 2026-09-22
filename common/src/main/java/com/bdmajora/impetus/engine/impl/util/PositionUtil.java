@@ -4,11 +4,11 @@ import com.bdmajora.impetus.engine.impl.common.util.MathUtil;
 
 public class PositionUtil {
 
-    private static final int SIZE_BITS_X = 26; // range in MC: -30,000,000 to 30,000,000; Range here - [-33554432,
-    // 33554431]
-    private static final int SIZE_BITS_Z = SIZE_BITS_X; // Same as X
-    private static final int SIZE_BITS_Y = 64 - SIZE_BITS_X - SIZE_BITS_Z; // range in MC: [0, 255]; Range here -
-    // [-2048, 2047]
+    // MC's range is +-30,000,000; 26 bits covers [-33554432, 33554431]
+    private static final int SIZE_BITS_X = 26;
+    private static final int SIZE_BITS_Z = SIZE_BITS_X;
+    // MC's range is [0, 255]; the 12 leftover bits cover [-2048, 2047]
+    private static final int SIZE_BITS_Y = 64 - SIZE_BITS_X - SIZE_BITS_Z;
 
     private static final long BITS_X = (1L << SIZE_BITS_X) - 1L;
     private static final long BITS_Y = (1L << SIZE_BITS_Y) - 1L;
@@ -20,11 +20,7 @@ public class PositionUtil {
 
     // Block position into one long, same layout as vanilla's BlockPos.toLong
     public static long packBlock(int x, int y, int z) {
-        long l = 0L;
-        l |= ((long) x & BITS_X) << BIT_SHIFT_X;
-        l |= ((long) y & BITS_Y) << BIT_SHIFT_Y;
-        l |= ((long) z & BITS_Z) << BIT_SHIFT_Z;
-        return l;
+        return ((long) x & BITS_X) << BIT_SHIFT_X | ((long) y & BITS_Y) << BIT_SHIFT_Y | ((long) z & BITS_Z) << BIT_SHIFT_Z;
     }
 
     // Sign-extended x
@@ -43,6 +39,8 @@ public class PositionUtil {
     }
 
     private static final long MAX_UNSIGNED_32BIT_INT = 4294967295L;
+    private static final long SECTION_XZ_MASK = 4194303L;
+    private static final long SECTION_Y_MASK = 1048575L;
 
     // Chunk column into one long, same layout as vanilla's ChunkPos.asLong
     public static long packChunk(int x, int z) {
@@ -61,7 +59,22 @@ public class PositionUtil {
 
     // Section position into one long
     public static long packSection(int x, int y, int z) {
-        return (((long)x & SECTION_XZ_MASK) << 42L) | (((long)y & SECTION_Y_MASK) << 0L) | (((long)z & SECTION_XZ_MASK) << 20L);
+        return (((long)x & SECTION_XZ_MASK) << 42L) | ((long)y & SECTION_Y_MASK) | (((long)z & SECTION_XZ_MASK) << 20L);
+    }
+
+    // Sign-extended x from packSection's top 22 bits
+    public static int unpackSectionX(long key) {
+        return (int) (key >> 42);
+    }
+
+    // Sign-extended y from the low 20 bits
+    public static int unpackSectionY(long key) {
+        return (int) (key << 44 >> 44);
+    }
+
+    // Sign-extended z from the middle 22 bits
+    public static int unpackSectionZ(long key) {
+        return (int) (key << 22 >> 42);
     }
 
     // World coordinate to section index
@@ -78,7 +91,4 @@ public class PositionUtil {
     public static int sectionToBlockCoord(int sec, int block) {
         return (sec << 4) + block;
     }
-
-    private static final long SECTION_XZ_MASK = 4194303L;
-    private static final long SECTION_Y_MASK = 1048575L;
 }

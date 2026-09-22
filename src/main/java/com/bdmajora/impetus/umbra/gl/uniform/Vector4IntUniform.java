@@ -6,25 +6,19 @@ import java.util.function.Supplier;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// An ivec4 uniform, diffed against the last upload; cached is set in place since the supplier may mutate and return the same object, and initialized forces the first upload
-public class Vector4IntUniform extends Uniform {
-    private final Supplier<Vector4i> value;
-    private final Vector4i cached = new Vector4i();
-    private boolean initialized;
-
+// An ivec4 uniform, diffed against the last upload by CachedUniform
+public class Vector4IntUniform extends CachedUniform<Vector4i> {
     public Vector4IntUniform(int location, Supplier<Vector4i> value) {
-        super(location);
-        this.value = value;
+        super(location, value, new Vector4i());
     }
 
-    // Uploads only when the value changed
     @Override
-    public void update() {
-        Vector4i newValue = this.value.get();
-        if (!this.initialized || !this.cached.equals(newValue)) {
-            this.initialized = true;
-            this.cached.set(newValue);
-            LWJGL.glUniform4i(this.location, newValue.x, newValue.y, newValue.z, newValue.w);
-        }
+    protected void store(Vector4i cached, Vector4i newValue) {
+        cached.set(newValue);
+    }
+
+    @Override
+    protected void upload(Vector4i v) {
+        LWJGL.glUniform4i(this.location, v.x, v.y, v.z, v.w);
     }
 }

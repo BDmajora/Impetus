@@ -10,14 +10,18 @@ import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ResourceLocation;
 import com.bdmajora.impetus.umbra.shaderpack.materialmap.NamespacedId;
 
+import com.bdmajora.impetus.engine.impl.render.chunk.ChunkColorWriter;
+import net.minecraft.util.BlockRenderLayer;
+import java.util.HashMap;
 import java.util.Map;
 
 // Settings the pipeline publishes on construction and clears on destroy, read by chunk-build workers; a much smaller counterpart of Iris's WorldRenderingSettings
 public final class WorldRenderingSettings {
     // block.properties mapping as a flat table indexed by global state id (blockId | meta << 12), holding the pack's id or -1 (Umbra parity for unmapped); null without a pack or block.properties, then the mesher uses raw block id/meta
     private static volatile int[] blockStateIds;
-    private static volatile Map<NamespacedId, Integer> itemIds;
-    private static volatile Map<NamespacedId, Integer> entityIds;
+    // The pack's item/entity tables keyed the way vanilla hands the key over (ResourceLocation, equal by value), converted once at publish so the per-object lookups below allocate nothing
+    private static volatile Map<ResourceLocation, Integer> itemIds;
+    private static volatile Map<ResourceLocation, Integer> entityIds;
     private static volatile int voxelRenderDistanceChunks;
 
     private WorldRenderingSettings() {
@@ -33,24 +37,24 @@ public final class WorldRenderingSettings {
         blockStateIds = table;
     }
 
-    // Item registry name to pack id
-    public static Map<NamespacedId, Integer> getItemIds() {
-        return itemIds;
-    }
-
     // Published by the pipeline
     public static void setItemIds(Map<NamespacedId, Integer> table) {
-        itemIds = table;
-    }
-
-    // Entity registry name to pack id
-    public static Map<NamespacedId, Integer> getEntityIds() {
-        return entityIds;
+        itemIds = byResourceLocation(table);
     }
 
     // Published by the pipeline
     public static void setEntityIds(Map<NamespacedId, Integer> table) {
-        entityIds = table;
+        entityIds = byResourceLocation(table);
+    }
+
+    // Re-keys a pack table by ResourceLocation; null stays null so the lookups keep their "no pack" path
+    private static Map<ResourceLocation, Integer> byResourceLocation(Map<NamespacedId, Integer> table) {
+        if (table == null) {
+            return null;
+        }
+        Map<ResourceLocation, Integer> keyed = new HashMap<>(table.size() * 2);
+        table.forEach((id, packId) -> keyed.put(new ResourceLocation(id.getNamespace(), id.getName()), packId));
+        return keyed;
     }
 
     // dynamicHandLight: when false the pack doesn't want the held item to emit light, so heldBlockLightValue/Color report "nothing held".
@@ -75,16 +79,16 @@ public final class WorldRenderingSettings {
     }
 
     // layer.<rendertype> overrides from block.properties, block -> forced chunk render layer over canRenderInLayer; null when the pack declares none
-    private static Map<net.minecraft.block.Block, net.minecraft.util.BlockRenderLayer> blockRenderLayers;
+    private static Map<Block, BlockRenderLayer> blockRenderLayers;
 
     public static void setBlockRenderLayers(
-            Map<net.minecraft.block.Block, net.minecraft.util.BlockRenderLayer> table) {
+            Map<Block, BlockRenderLayer> table) {
         blockRenderLayers = table == null || table.isEmpty() ? null : table;
     }
 
     // The layer the pack forces for this block, or null to keep vanilla's; a fast null check since it runs for every block in every rebuild
-    public static net.minecraft.util.BlockRenderLayer getForcedRenderLayer(net.minecraft.block.Block block) {
-        Map<net.minecraft.block.Block, net.minecraft.util.BlockRenderLayer> table = blockRenderLayers;
+    public static BlockRenderLayer getForcedRenderLayer(Block block) {
+        Map<Block, BlockRenderLayer> table = blockRenderLayers;
         return table == null ? null : table.get(block);
     }
 
@@ -112,7 +116,7 @@ public final class WorldRenderingSettings {
     public static void setSeparateAo(boolean value) {
         separateAo = value;
         // The mesher bakes this into every chunk's vertex colour; selecting a pack already calls RenderGlobal.loadRenderers(), so the re-encoding rebuild is already scheduled
-        com.bdmajora.impetus.engine.impl.render.chunk.ChunkColorWriter.SeparateAoState.set(value);
+        ChunkColorWriter.SeparateAoState.set(value);
     }
 
     // Pack's oldLighting directive, which changes how the mesher writes light
@@ -211,14 +215,14 @@ public final class WorldRenderingSettings {
     }
 
     // Shared lookup: mapped id if present, else the raw one
-    private static int mappedOrRaw(Map<NamespacedId, Integer> map, ResourceLocation key, int rawId) {
+    private static int mappedOrRaw(Map<ResourceLocation, Integer> map, ResourceLocation key, int rawId) {
         if (map == null || map.isEmpty()) {
             return rawId;
         }
         if (key == null) {
             return -1;
         }
-        Integer mapped = map.get(new NamespacedId(key.getNamespace(), key.getPath()));
+        Integer mapped = map.get(key);
         return mapped != null ? mapped : -1;
     }
 }

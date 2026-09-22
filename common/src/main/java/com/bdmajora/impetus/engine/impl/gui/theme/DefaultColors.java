@@ -15,6 +15,8 @@ public class DefaultColors {
     private static final int FULGOR_ACCENT = 0xFFEBCB8B;
     private static final int EQUILIBRIUM_ACCENT = 0xFF88C0D0;
     private static final int UMBRA_ACCENT = 0xFFD86AFF;
+    // Extras is Impetus' own, one step off the core teal so the two groups still read as related
+    private static final int EXTRAS_ACCENT = 0xFF5FD0A8;
     private static final int[] MOD_ACCENT_PALETTE = {
             0xFF80CBC4,
             0xFFFFB86C,
@@ -40,16 +42,12 @@ public class DefaultColors {
 
         return switch (modId) {
             case "minecraft", "impetus", "sodium" -> ELEMENT_ACTIVATED;
+            case "extras" -> EXTRAS_ACCENT;
             case "coarctatio" -> COARCTATIO_ACCENT;
             case "fulgor" -> FULGOR_ACCENT;
             case "equilibrium" -> EQUILIBRIUM_ACCENT;
             case "umbra" -> UMBRA_ACCENT;
             default -> MOD_ACCENT_PALETTE[Math.floorMod(modId.hashCode(), MOD_ACCENT_PALETTE.length)];
         };
-    }
-
-    // Replaces the alpha byte
-    public static int withAlpha(int color, int alpha) {
-        return (color & 0x00FFFFFF) | ((alpha & 0xFF) << 24);
     }
 }

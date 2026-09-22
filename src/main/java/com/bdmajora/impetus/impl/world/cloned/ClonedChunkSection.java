@@ -24,7 +24,6 @@ public class ClonedChunkSection {
     private static final ExtendedBlockStorage EMPTY_SECTION = new ExtendedBlockStorage(0, false);
 
     private final Short2ObjectMap<TileEntity> blockEntities;
-    private final World world;
 
     private final ExtendedBlockStorage data;
     @Getter
@@ -32,22 +31,17 @@ public class ClonedChunkSection {
 
     private final Biome[] biomeData;
 
-    private byte[][] lightData;
-
     private long lastUsedTimestamp = Long.MAX_VALUE;
 
     private final SectionPos sectionPos;
 
-    ClonedChunkSection(World world, int x, int y, int z) {
-        this.world = world;
+    // The live chunk this copy came from, for callers that must reach it (Fluidlogged resolves tile entities through the chunk, not the block access)
+    private final Chunk chunk;
+
+    ClonedChunkSection(World world, Chunk chunk, int x, int y, int z) {
         this.blockEntities = new Short2ObjectOpenHashMap<>();
         this.sectionPos = new SectionPos(x, y, z);
-
-        Chunk chunk = world.getChunk(x, z);
-
-        if (chunk == null) {
-            throw new RuntimeException(String.format("Couldn't retrieve chunk at %d, %d", x, z));
-        }
+        this.chunk = chunk;
 
         ExtendedBlockStorage section = getChunkSection(chunk, y);
 
@@ -76,21 +70,20 @@ public class ClonedChunkSection {
             }
         }
 
-        populateBiomeData(x, z, world);
-
+        populateBiomeData(chunk, x, z, world);
     }
 
-    // Copies the chunk's biome array so biome colour never touches the live chunk
-    private void populateBiomeData(int chunkX, int chunkZ, World world) {
+    // Resolves the chunk's biome array so biome colour never touches the live chunk; through the chunk in hand rather than World#getBiome, which re-looks the chunk up per column
+    private void populateBiomeData(Chunk chunk, int chunkX, int chunkZ, World world) {
         BlockPos.MutableBlockPos biomePos = new BlockPos.MutableBlockPos();
+        var provider = world.getBiomeProvider();
 
-        chunkX *= 16;
-        chunkZ *= 16;
-        // Fill biome data
-        for(int z = 0; z < 16; z++) {
-            for(int x = 0; x < 16; x++) {
+        chunkX <<= 4;
+        chunkZ <<= 4;
+        for (int z = 0; z < 16; z++) {
+            for (int x = 0; x < 16; x++) {
                 biomePos.setPos(chunkX + x, 100, chunkZ + z);
-                this.biomeData[((z & 15) << 4) | (x & 15)] = world.getBiome(biomePos);
+                this.biomeData[z << 4 | x] = chunk.getBiome(biomePos, provider);
             }
         }
     }
@@ -118,6 +111,11 @@ public class ClonedChunkSection {
     // Which section this is a copy of
     public SectionPos getPosition() {
         return this.sectionPos;
+    }
+
+    // The live chunk behind the copy; only its identity is safe to rely on off the main thread
+    public Chunk getChunk() {
+        return this.chunk;
     }
 
     // From the copied light arrays

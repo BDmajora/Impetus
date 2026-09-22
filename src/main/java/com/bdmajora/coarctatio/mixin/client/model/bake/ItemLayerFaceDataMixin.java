@@ -34,18 +34,13 @@ public abstract class ItemLayerFaceDataMixin {
     }
 
     private static int coarctatio$faceIndex(EnumFacing facing) {
-        switch (facing) {
-            case WEST:
-                return 0;
-            case EAST:
-                return 1;
-            case UP:
-                return 2;
-            case DOWN:
-                return 3;
-            default:
-                throw new IllegalArgumentException("Unexpected facing " + facing);
-        }
+        return switch (facing) {
+            case WEST -> 0;
+            case EAST -> 1;
+            case UP -> 2;
+            case DOWN -> 3;
+            default -> throw new IllegalArgumentException("Unexpected facing " + facing);
+        };
     }
 
     /**

@@ -1,6 +1,7 @@
 package com.bdmajora.extras.mixin.booster;
 
 import com.bdmajora.extras.client.booster.FastMath;
+import com.bdmajora.impetus.engine.impl.common.util.MathUtil;
 import net.minecraft.util.math.MathHelper;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
@@ -49,7 +50,7 @@ public class MathHelperFastMixin {
             return FastMath.ceilLog2(value);
         }
 
-        value = isPowerOfTwo(value) ? value : MathHelper.smallestEncompassingPowerOfTwo(value);
+        value = MathUtil.isPowerOfTwo(value) ? value : MathHelper.smallestEncompassingPowerOfTwo(value);
         return DE_BRUIJN[(int) ((long) value * 125613361L >> 27) & 31];
     }
 
@@ -59,7 +60,7 @@ public class MathHelperFastMixin {
         if (FastMath.enabled) {
             return FastMath.floorLog2(value);
         }
-        return log2DeBruijn(value) - (isPowerOfTwo(value) ? 0 : 1);
+        return log2DeBruijn(value) - (MathUtil.isPowerOfTwo(value) ? 0 : 1);
     }
 
     // Vanilla's private table, duplicated here since the off branch must not depend on the shadowed original staying reachable
@@ -67,8 +68,4 @@ public class MathHelperFastMixin {
             0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8,
             31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9
     };
-
-    private static boolean isPowerOfTwo(int value) {
-        return value != 0 && (value & value - 1) == 0;
-    }
 }

@@ -1,6 +1,7 @@
 package com.bdmajora.fulgor.async.engine;
 
 import com.bdmajora.fulgor.Fulgor;
+import com.bdmajora.fulgor.async.AsyncLitChunk;
 import com.bdmajora.fulgor.FulgorRenderBridge;
 import com.bdmajora.fulgor.async.ChunkLightHelper;
 import com.bdmajora.fulgor.async.SWMRNibbleArray;
@@ -9,6 +10,7 @@ import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.world.World;
 import net.minecraft.world.chunk.Chunk;
+import net.minecraft.world.chunk.NibbleArray;
 import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 
 import java.util.ArrayList;
@@ -118,7 +120,9 @@ public abstract class BfsLightEngine extends LightEngineCache {
     protected abstract SWMRNibbleArray[] getNibblesOnChunk(Chunk chunk);
 
     @Override
-    protected abstract boolean canUseChunk(Chunk chunk);
+    protected final boolean canUseChunk(Chunk chunk) {
+        return ((AsyncLitChunk) chunk).fulgor$isLightUsable();
+    }
 
     protected abstract void setNibbles(Chunk chunk, SWMRNibbleArray[] to);
 
@@ -209,6 +213,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
         return effectiveChanges;
     }
 
+    // Every changed position is seeded before one drain, so a dense edit is not re-flooded once per block
     protected void processBlockPositionChanges(Chunk chunk, int chunkX, int chunkZ, IntOpenHashSet changedPositions) {
         IntIterator it = changedPositions.iterator();
         while (it.hasNext()) {
@@ -220,8 +225,9 @@ public abstract class BfsLightEngine extends LightEngineCache {
             int worldX = (chunkX << 4) | (packed & 15);
             int worldZ = (chunkZ << 4) | ((packed >> 4) & 15);
             this.lastPositionsProcessed++;
-            propagateBlockChanges(chunk, worldX, worldY, worldZ);
+            checkBlock(worldX, worldY, worldZ);
         }
+        performLightDecrease();
     }
 
     // A chunk's initial pass: fresh NULL nibbles are lit from scratch and handed to the chunk at the end
@@ -374,9 +380,278 @@ public abstract class BfsLightEngine extends LightEngineCache {
         return this.queueOverflowed;
     }
 
-    protected abstract void performLightIncrease();
+    // Which vanilla array a published section mirrors into
+    protected abstract NibbleArray vanillaLightArray(ExtendedBlockStorage section);
 
-    protected abstract void performLightDecrease();
+    // Highest level any of the six neighbours can deliver into this cell after per-face absorption, starting from level; returns early once expect is beaten
+    protected final int attenuateFromNeighbours(int worldX, int worldY, int worldZ, int expect, int info, int level) {
+        int rawOpacity = LightInfo.opacity(info);
+        boolean sidedTransparent = rawOpacity > 1 && (info & LightInfo.REGISTRY) != 0;
+        int faceBits = LightInfo.faceBits(info);
+        int uniformAbsorption = !sidedTransparent ? Math.max(1, rawOpacity) : 0;
+        int sectionOffset = this.chunkSectionIndexOffset;
+
+        for (AxisDirection direction : AXIS_DIRECTIONS) {
+            int offX = worldX + direction.x;
+            int offY = worldY + direction.y;
+            int offZ = worldZ + direction.z;
+
+            int sectionIndex = (offX >> 4) + 5 * (offZ >> 4) + (5 * 5) * (offY >> 4) + sectionOffset;
+            int localIndex = (offX & 15) | ((offZ & 15) << 4) | ((offY & 15) << 8);
+
+            int neighbourLevel = getLightLevel(sectionIndex, localIndex);
+
+            int absorption = sidedTransparent
+                    ? ((faceBits & (1 << direction.ordinal())) != 0 ? rawOpacity : 1)
+                    : uniformAbsorption;
+            int attenuated = neighbourLevel - absorption;
+            if (attenuated > level) {
+                level = attenuated;
+            }
+
+            if (level > expect) {
+                return level;
+            }
+        }
+
+        return level;
+    }
+
+    // Face bits of the entry's own block when it was flagged sided-transparent, so light does not leave through a face the block seals
+    private int sourceBlockedFaces(long queueValue, int posX, int posY, int posZ) {
+        if ((queueValue & FLAG_HAS_SIDED_TRANSPARENT_BLOCKS) == 0L) {
+            return 0;
+        }
+        int srcIdx = (posX >> 4) + 5 * (posZ >> 4) + (5 * 5) * (posY >> 4) + this.chunkSectionIndexOffset;
+        IBlockState srcState = getBlockStateFast(srcIdx, posX & 15, posY & 15, posZ & 15);
+        return LightInfo.faceBits(lightInfoAt(srcState, posX, posY, posZ));
+    }
+
+    protected final void performLightIncrease() {
+        long[] queue = this.increaseQueue;
+        int queueReadIndex = 0;
+        int queueLength = this.increaseQueueInitialLength;
+        this.increaseQueueInitialLength = 0;
+        int decodeOffsetX = -this.encodeOffsetX;
+        int decodeOffsetY = -this.encodeOffsetY;
+        int decodeOffsetZ = -this.encodeOffsetZ;
+        int encodeOffset = this.coordinateOffset;
+        int sectionOffset = this.chunkSectionIndexOffset;
+
+        while (queueReadIndex < queueLength) {
+            long queueValue = queue[queueReadIndex++];
+
+            int posX = ((int) queueValue & 63) + decodeOffsetX;
+            int posZ = (((int) queueValue >>> 6) & 63) + decodeOffsetZ;
+            int posY = (((int) queueValue >>> 12) & COORD_Y_MASK) + decodeOffsetY;
+            int propagatedLevel = (int) ((queueValue >>> LIGHT_LEVEL_SHIFT) & 0xF);
+            AxisDirection[] checkDirections = OLD_CHECK_DIRECTIONS[(int) ((queueValue >>> DIRECTION_SHIFT) & 63L)];
+            int srcBlockedFaces = sourceBlockedFaces(queueValue, posX, posY, posZ);
+
+            if ((queueValue & FLAG_RECHECK_LEVEL) != 0L) {
+                if (getLightLevel(posX, posY, posZ) != propagatedLevel) {
+                    continue;
+                }
+            } else if ((queueValue & FLAG_WRITE_LEVEL) != 0L) {
+                setLightLevel(posX, posY, posZ, propagatedLevel);
+            }
+
+            for (AxisDirection propagate : checkDirections) {
+                if ((srcBlockedFaces & (1 << propagate.ordinal())) != 0) {
+                    continue;
+                }
+
+                int offX = posX + propagate.x;
+                int offY = posY + propagate.y;
+                int offZ = posZ + propagate.z;
+
+                int sectionIndex = (offX >> 4) + 5 * (offZ >> 4) + (5 * 5) * (offY >> 4) + sectionOffset;
+                int localIndex = (offX & 15) | ((offZ & 15) << 4) | ((offY & 15) << 8);
+
+                if (this.nibbleCache[sectionIndex] == null) {
+                    continue;
+                }
+
+                int currentLevel = getLightLevel(sectionIndex, localIndex);
+                // Absorption is at least one, so a neighbour already at level - 1 cannot be brightened; skips the palette and info reads for about half the frontier
+                if (currentLevel >= propagatedLevel - 1) {
+                    continue;
+                }
+
+                IBlockState destState = getBlockStateFast(sectionIndex, offX & 15, offY & 15, offZ & 15);
+                int destInfo = lightInfoAt(destState, offX, offY, offZ);
+                int absorption = LightInfo.absorption(destInfo, destState, propagate.oppositeOrdinal);
+
+                int targetLevel = propagatedLevel - absorption;
+                if (targetLevel <= currentLevel) {
+                    continue;
+                }
+
+                // The guards above proved a real change, so the nibble is written directly rather than through setLightLevel's no-op check
+                this.nibbleCache[sectionIndex].set(localIndex, targetLevel);
+                postLightUpdate(sectionIndex, offX & 15, offY & 15, offZ & 15);
+
+                if (targetLevel > 1) {
+                    if (queueLength >= queue.length) {
+                        if (queue.length >= MAX_QUEUE_SIZE) {
+                            this.queueOverflowed = true;
+                            continue;
+                        }
+                        queue = resizeIncreaseQueue();
+                    }
+                    queue[queueLength++] = encodeCoords(offX, offZ, offY, encodeOffset)
+                            | encodeQueueLevel(targetLevel)
+                            | (propagate.everythingButTheOppositeDirection << DIRECTION_SHIFT)
+                            | sidedFlag(destInfo);
+                }
+            }
+        }
+        this.lastBfsIncreaseTotal += queueLength;
+    }
+
+    protected final void performLightDecrease() {
+        long[] queue = this.decreaseQueue;
+        long[] increaseQueue = this.increaseQueue;
+        int queueReadIndex = 0;
+        int queueLength = this.decreaseQueueInitialLength;
+        this.decreaseQueueInitialLength = 0;
+        int increaseQueueLength = this.increaseQueueInitialLength;
+        int decodeOffsetX = -this.encodeOffsetX;
+        int decodeOffsetY = -this.encodeOffsetY;
+        int decodeOffsetZ = -this.encodeOffsetZ;
+        int encodeOffset = this.coordinateOffset;
+        int sectionOffset = this.chunkSectionIndexOffset;
+        // Blocks emit block light only; the sky lane never re-seeds from an emitter
+        boolean reseedEmitters = !this.skylightPropagator;
+
+        while (queueReadIndex < queueLength) {
+            long queueValue = queue[queueReadIndex++];
+
+            int posX = ((int) queueValue & 63) + decodeOffsetX;
+            int posZ = (((int) queueValue >>> 6) & 63) + decodeOffsetZ;
+            int posY = (((int) queueValue >>> 12) & COORD_Y_MASK) + decodeOffsetY;
+            int propagatedLevel = (int) ((queueValue >>> LIGHT_LEVEL_SHIFT) & 0xF);
+            AxisDirection[] checkDirections = OLD_CHECK_DIRECTIONS[(int) ((queueValue >>> DIRECTION_SHIFT) & 63)];
+            int srcBlockedFaces = sourceBlockedFaces(queueValue, posX, posY, posZ);
+
+            for (AxisDirection propagate : checkDirections) {
+                if ((srcBlockedFaces & (1 << propagate.ordinal())) != 0) {
+                    continue;
+                }
+
+                int offX = posX + propagate.x;
+                int offY = posY + propagate.y;
+                int offZ = posZ + propagate.z;
+
+                int sectionIndex = (offX >> 4) + 5 * (offZ >> 4) + (5 * 5) * (offY >> 4) + sectionOffset;
+
+                if (this.nibbleCache[sectionIndex] == null) {
+                    continue;
+                }
+
+                int localIndex = (offX & 15) | ((offZ & 15) << 4) | ((offY & 15) << 8);
+                int currentLevel = getLightLevel(sectionIndex, localIndex);
+                if (currentLevel == 0) {
+                    continue;
+                }
+                // No skip for a level-15 neighbour: a sky source must reach the brighter-neighbour branch and be re-queued as a recheck increase, which is what re-floods the region being darkened
+
+                IBlockState state = getBlockStateFast(sectionIndex, offX & 15, offY & 15, offZ & 15);
+                int info = lightInfoAt(state, offX, offY, offZ);
+                int absorption = LightInfo.absorption(info, state, propagate.oppositeOrdinal);
+
+                int targetLevel = propagatedLevel - absorption;
+                long sFlag = sidedFlag(info);
+
+                // Brighter than this decrease can account for: it has its own source, so it is re-checked as an increase rather than cleared
+                if (currentLevel > targetLevel) {
+                    if (increaseQueueLength >= increaseQueue.length) {
+                        if (increaseQueue.length >= MAX_QUEUE_SIZE) {
+                            this.queueOverflowed = true;
+                            continue;
+                        }
+                        increaseQueue = resizeIncreaseQueue();
+                    }
+                    increaseQueue[increaseQueueLength++] = encodeCoords(offX, offZ, offY, encodeOffset)
+                            | encodeQueueLevel(currentLevel)
+                            | (((long) ALL_DIRECTIONS_BITSET) << DIRECTION_SHIFT)
+                            | FLAG_RECHECK_LEVEL
+                            | sFlag;
+                    continue;
+                }
+
+                this.nibbleCache[sectionIndex].set(localIndex, 0);
+                postLightUpdate(sectionIndex, offX & 15, offY & 15, offZ & 15);
+
+                if (reseedEmitters) {
+                    int emission = LightInfo.emission(info);
+                    if (emission > 0) {
+                        if (increaseQueueLength >= increaseQueue.length) {
+                            if (increaseQueue.length >= MAX_QUEUE_SIZE) {
+                                this.queueOverflowed = true;
+                                continue;
+                            }
+                            increaseQueue = resizeIncreaseQueue();
+                        }
+                        this.nibbleCache[sectionIndex].set(localIndex, emission);
+                        postLightUpdate(sectionIndex, offX & 15, offY & 15, offZ & 15);
+                        increaseQueue[increaseQueueLength++] = encodeCoords(offX, offZ, offY, encodeOffset)
+                                | encodeQueueLevel(emission)
+                                | (((long) ALL_DIRECTIONS_BITSET) << DIRECTION_SHIFT)
+                                | FLAG_WRITE_LEVEL
+                                | sFlag;
+                    }
+                }
+
+                // Independent of any re-seed: the decrease keeps walking past emitters, or removing a bright source leaves a ghost region behind any dimmer one; the level-1 boundary entries re-flood the cleared region's outer ring from the surrounding light
+                if (targetLevel > 0) {
+                    if (queueLength >= queue.length) {
+                        if (queue.length >= MAX_QUEUE_SIZE) {
+                            this.queueOverflowed = true;
+                            continue;
+                        }
+                        queue = resizeDecreaseQueue();
+                    }
+                    queue[queueLength++] = encodeCoords(offX, offZ, offY, encodeOffset)
+                            | encodeQueueLevel(targetLevel)
+                            | (propagate.everythingButTheOppositeDirection << DIRECTION_SHIFT)
+                            | sFlag;
+                }
+            }
+        }
+
+        this.lastBfsDecreaseTotal += queueLength;
+        this.increaseQueueInitialLength = increaseQueueLength;
+        performLightIncrease();
+    }
+
+    // Mirrors the published section into the lane's vanilla array; a no-op on the client where the SWMR array shares the vanilla storage
+    @Override
+    protected final void onNibbleVisible(int cacheIndex, SWMRNibbleArray nibble) {
+        if (nibble == null) {
+            return;
+        }
+        int sectionY = cacheIndex / 25 - this.chunkOffsetY;
+        if (sectionY < MIN_SECTION || sectionY > MAX_SECTION) {
+            return;
+        }
+        ExtendedBlockStorage section = this.sectionCache[cacheIndex];
+        if (section == null) {
+            return;
+        }
+        byte[] srcData = nibble.getVisibleData();
+        if (srcData == null) {
+            return;
+        }
+        NibbleArray vanilla = vanillaLightArray(section);
+        if (vanilla == null) {
+            return;
+        }
+        byte[] dst = vanilla.getData();
+        if (dst != srcData) {
+            System.arraycopy(srcData, 0, dst, 0, srcData.length);
+        }
+    }
 
     // The six neighbour offsets; ordinal ^ 1 is the opposite, and the bit masks feed the direction bitset of a queue entry
     protected enum AxisDirection {
@@ -393,6 +668,9 @@ public abstract class BfsLightEngine extends LightEngineCache {
         protected final int oppositeOrdinal;
         protected final long everythingButTheOppositeDirection;
         protected final long everythingButThisDirection;
+        // Step along a chunk's edge facing this (horizontal) direction: an X-facing edge runs along Z and vice versa
+        protected final int edgeStepX;
+        protected final int edgeStepZ;
 
         AxisDirection(int x, int y, int z) {
             this.x = x;
@@ -402,6 +680,25 @@ public abstract class BfsLightEngine extends LightEngineCache {
             int allBits = (1 << 6) - 1;
             this.everythingButTheOppositeDirection = allBits ^ (1L << (this.ordinal() ^ 1));
             this.everythingButThisDirection = allBits ^ (1L << this.ordinal());
+            this.edgeStepX = x != 0 ? 0 : 1;
+            this.edgeStepZ = x != 0 ? 1 : 0;
+        }
+
+        // First block X of the edge column: the chunk's own boundary layer, or (outside) the neighbour's layer just past it
+        protected int edgeStartX(int chunkX, boolean outside) {
+            int base = chunkX << 4;
+            if (this.x == 0) {
+                return base;
+            }
+            return this.x < 0 ? base - (outside ? 1 : 0) : base + (outside ? 16 : 15);
+        }
+
+        protected int edgeStartZ(int chunkZ, boolean outside) {
+            int base = chunkZ << 4;
+            if (this.z == 0) {
+                return base;
+            }
+            return this.z < 0 ? base - (outside ? 1 : 0) : base + (outside ? 16 : 15);
         }
     }
 }

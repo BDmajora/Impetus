@@ -1,7 +1,6 @@
 package com.bdmajora.impetus.engine.impl.render.chunk.compile.tasks;
 
 import it.unimi.dsi.fastutil.objects.Reference2ReferenceOpenHashMap;
-import com.bdmajora.impetus.engine.impl.render.chunk.RenderPassConfiguration;
 import com.bdmajora.impetus.engine.impl.render.chunk.RenderSection;
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.ChunkBuildContext;
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.ChunkSortOutput;
@@ -17,16 +16,14 @@ public class ChunkBuilderSortTask extends ChunkBuilderTask<ChunkSortOutput> {
     private final float cameraX, cameraY, cameraZ;
     private final int frame;
     private final Map<TerrainRenderPass, TranslucentQuadAnalyzer.SortState> translucentMeshes;
-    private final RenderPassConfiguration<?> renderPassConfiguration;
 
-    public ChunkBuilderSortTask(RenderSection render, float cameraX, float cameraY, float cameraZ, int frame, Map<TerrainRenderPass, TranslucentQuadAnalyzer.SortState> translucentMeshes, RenderPassConfiguration<?> renderPassConfiguration) {
+    public ChunkBuilderSortTask(RenderSection render, float cameraX, float cameraY, float cameraZ, int frame, Map<TerrainRenderPass, TranslucentQuadAnalyzer.SortState> translucentMeshes) {
         this.render = render;
         this.cameraX = cameraX;
         this.cameraY = cameraY;
         this.cameraZ = cameraZ;
         this.frame = frame;
         this.translucentMeshes = translucentMeshes;
-        this.renderPassConfiguration = renderPassConfiguration;
     }
 
     // Re-sorts a section's translucent quads for a new camera position without rebuilding
@@ -35,7 +32,7 @@ public class ChunkBuilderSortTask extends ChunkBuilderTask<ChunkSortOutput> {
         var meshes = new Reference2ReferenceOpenHashMap<TerrainRenderPass, ChunkSortOutput.SortedMesh>();
         for(Map.Entry<TerrainRenderPass, TranslucentQuadAnalyzer.SortState> entry : translucentMeshes.entrySet()) {
             var sortInfo = entry.getValue();
-            var primitiveType = this.renderPassConfiguration.getPrimitiveTypeForPass(entry.getKey());
+            var primitiveType = entry.getKey().primitiveType();
             var newIndexBuffer = new NativeBuffer(primitiveType.getIndexBufferSize(sortInfo.centersLength() / 3));
             primitiveType.generateSortedIndexBuffer(newIndexBuffer.getDirectBuffer(), sortInfo.centersLength() / 3, sortInfo, cameraX - this.render.getOriginX(), cameraY - this.render.getOriginY(), cameraZ - this.render.getOriginZ());
             meshes.put(entry.getKey(), new ChunkSortOutput.SortedMesh(

@@ -1,15 +1,19 @@
 package com.bdmajora.impetus.umbra.shaderpack;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import com.bdmajora.impetus.umbra.shaderpack.preprocessor.PropertiesPreprocessor;
 import com.bdmajora.impetus.umbra.shaderpack.texture.TextureStage;
+import com.bdmajora.impetus.umbra.targets.UmbraRenderTargets;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
+import com.bdmajora.impetus.umbra.shaderpack.texture.CustomImageDefinition;
+import com.bdmajora.impetus.umbra.shaderpack.texture.CustomTexturePatch;
+import com.bdmajora.impetus.umbra.uniforms.custom.CustomUniforms;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -21,8 +25,6 @@ import java.util.Set;
 // A parsed shaders.properties: the full map plus typed accessors; pipeline directives from the preprocessed contents so option gates resolve, menu layout from the original, split on first = rather than Properties since its escapes mangle GLSL
 public final class ShaderProperties {
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
-    private static final List<String> LEGACY_RENDER_TARGETS =
-            Arrays.asList("gcolor", "gdepth", "gnormal", "composite", "gaux1", "gaux2", "gaux3", "gaux4");
 
     private final Map<String, String> raw;
     private final Map<String, String> original;
@@ -44,7 +46,7 @@ public final class ShaderProperties {
     // customTexture.<name> — pack-defined named samplers, bound in every stage rather than scoped to one
     private final Map<String, String> irisCustomTextures = new LinkedHashMap<>();
     // Raw texture.<stage>.<sampler> directives resolved into a minted customtexN sampler plus the type-checked rename redirecting that stage's programs (Iris's customTexturePatching); the type check keeps a 3D texture from feeding a sampler2D of the same name
-    private final List<com.bdmajora.impetus.umbra.shaderpack.texture.CustomTexturePatch> customTexturePatches =
+    private final List<CustomTexturePatch> customTexturePatches =
             new ArrayList<>();
     // The counter behind the minted customtexN names, matching Iris's customTexAmount
     private int customTexAmount = 0;
@@ -53,7 +55,7 @@ public final class ShaderProperties {
     // Per AXIS, whether the matching bufferSizes entry is a fraction of the render size rather than texels, since `512 0.5` is a legal mix
     private final Map<Integer, boolean[]> bufferSizeRelative = new LinkedHashMap<>();
     // image.<name>, the writable custom images a pack reaches through imageStore, in DECLARATION ORDER since that is the order image units are assigned
-    private final List<com.bdmajora.impetus.umbra.shaderpack.texture.CustomImageDefinition> irisCustomImages =
+    private final List<CustomImageDefinition> irisCustomImages =
             new ArrayList<>();
     // flip.<program>.<target>, explicit ping-pong overrides including the deferred_pre and composite_pre pseudo-programs that run before their chains
     private final Map<String, Map<Integer, Boolean>> explicitFlips = new LinkedHashMap<>();
@@ -61,15 +63,15 @@ public final class ShaderProperties {
     private final Map<String, float[]> viewportScaleOverrides = new LinkedHashMap<>();
 
     // The uniform.<type>.<name> and variable.<type>.<name> custom expressions, accumulated into a builder because declaration order matters for evaluation
-    private final com.bdmajora.impetus.umbra.uniforms.custom.CustomUniforms.Builder customUniforms =
-            new com.bdmajora.impetus.umbra.uniforms.custom.CustomUniforms.Builder();
+    private final CustomUniforms.Builder customUniforms =
+            new CustomUniforms.Builder();
 
     private ShaderProperties(Map<String, String> preprocessed, Map<String, String> original,
                              Map<String, String> expressionDefines, Set<String> profileDisabledPrograms) {
         this.raw = Collections.unmodifiableMap(new LinkedHashMap<>(preprocessed));
         this.original = Collections.unmodifiableMap(new LinkedHashMap<>(original));
         this.expressionDefines = Collections.unmodifiableMap(new HashMap<>(expressionDefines));
-        this.profileDisabledPrograms = Collections.unmodifiableSet(new java.util.LinkedHashSet<>(profileDisabledPrograms));
+        this.profileDisabledPrograms = Collections.unmodifiableSet(new LinkedHashSet<>(profileDisabledPrograms));
         parseMenuDirectives(original);
         parseCustomTextureDirectives();
         parseCustomUniformDirectives();
@@ -147,13 +149,13 @@ public final class ShaderProperties {
     }
 
     // The collected custom uniform and variable declarations, still as a builder so the pipeline can finish them
-    public com.bdmajora.impetus.umbra.uniforms.custom.CustomUniforms.Builder getCustomUniforms() {
+    public CustomUniforms.Builder getCustomUniforms() {
         return this.customUniforms;
     }
 
     // The raw preprocessed key/value directives as a read-only view, what the accessors read from and what a consumer uses for an uncovered key
     public Map<String, String> getRaw() {
-        return Collections.unmodifiableMap(this.raw);
+        return this.raw;
     }
 
     // Parses the option-menu layout directives (sliders, profile.*, screen, screen.*, column counts) from the ORIGINAL contents, since the menu must present every option regardless of which values are active
@@ -216,7 +218,7 @@ public final class ShaderProperties {
                     String newSamplerName = "customtex" + this.customTexAmount++;
                     this.irisCustomTextures.put(newSamplerName, value.trim());
                     this.customTexturePatches.add(
-                            new com.bdmajora.impetus.umbra.shaderpack.texture.CustomTexturePatch(
+                            new CustomTexturePatch(
                                     samplerName, stage.get(), textureType, newSamplerName));
                     return;
                 }
@@ -227,8 +229,8 @@ public final class ShaderProperties {
                 parseBufferSize(key, value);
             } else if (key.startsWith("image.")) {
                 String name = key.substring("image.".length());
-                com.bdmajora.impetus.umbra.shaderpack.texture.CustomImageDefinition definition =
-                        com.bdmajora.impetus.umbra.shaderpack.texture.CustomImageDefinition.parse(name, value);
+                CustomImageDefinition definition =
+                        CustomImageDefinition.parse(name, value);
                 if (definition != null) {
                     this.irisCustomImages.add(definition);
                 }
@@ -245,22 +247,18 @@ public final class ShaderProperties {
 
     // The texture target of a raw texture.* definition inferred from TOKEN COUNT like Iris: 6 is 1D, 7 is whatever <type> says (2D or rectangle), 8 is 3D, anything else malformed
     private static String rawTextureType(String[] parts) {
-        switch (parts.length) {
-            case 6:
-                return "TEXTURE_1D";
-            case 7:
-                return parts[1].toUpperCase(Locale.ROOT);
-            case 8:
-                return "TEXTURE_3D";
-            default:
-                return null;
-        }
+        return switch (parts.length) {
+            case 6 -> "TEXTURE_1D";
+            case 7 -> parts[1].toUpperCase(Locale.ROOT);
+            case 8 -> "TEXTURE_3D";
+            default -> null;
+        };
     }
 
     // size.buffer.colortexN = <width> <height>; Iris decides absolute vs relative per axis by whether the token parses as an INTEGER, so `512 512` is fixed and `0.5 0.5` is half resolution
     private void parseBufferSize(String key, String value) {
         String targetName = key.substring("size.buffer.".length()).trim();
-        Integer index = colorTargetIndex(targetName);
+        Integer index = UmbraRenderTargets.colorTargetIndex(targetName);
         if (index == null) {
             LOGGER.warn("[Umbra] Unknown render target '{}' in {}, ignoring it", targetName, key);
             return;
@@ -324,7 +322,7 @@ public final class ShaderProperties {
             LOGGER.warn("[Umbra] Invalid explicit flip value, ignoring: {} = {}", key, value);
             return;
         }
-        Integer target = colorTargetIndex(rest.substring(dot + 1));
+        Integer target = UmbraRenderTargets.colorTargetIndex(rest.substring(dot + 1));
         if (target == null) {
             LOGGER.warn("[Umbra] Unknown explicit flip target, ignoring: {}", key);
             return;
@@ -361,19 +359,6 @@ public final class ShaderProperties {
         return this.viewportScaleOverrides.get(programName);
     }
 
-    // colortexN or gcolor-style name to an index; null for anything else
-    private static Integer colorTargetIndex(String name) {
-        if (name.startsWith("colortex")) {
-            try {
-                return Integer.parseInt(name.substring("colortex".length()));
-            } catch (NumberFormatException e) {
-                return null;
-            }
-        }
-        int legacyIndex = LEGACY_RENDER_TARGETS.indexOf(name);
-        return legacyIndex >= 0 ? legacyIndex : null;
-    }
-
     // Tokens of a space-separated value
     private static List<String> splitWhitespace(String value) {
         List<String> result = new ArrayList<>();
@@ -396,7 +381,7 @@ public final class ShaderProperties {
 
     // The raw directive map, unmodifiable and in declaration order
     public Map<String, String> asMap() {
-        return Collections.unmodifiableMap(this.raw);
+        return this.raw;
     }
 
     // The options the pack wants rendered as sliders rather than click-to-cycle buttons, a presentation choice only since both walk the same value list
@@ -659,12 +644,12 @@ public final class ShaderProperties {
     }
 
     // Raw texture.<stage>.<sampler> directives as type-checked sampler renames (see the patch's javadoc).
-    public List<com.bdmajora.impetus.umbra.shaderpack.texture.CustomTexturePatch> getCustomTexturePatches() {
+    public List<CustomTexturePatch> getCustomTexturePatches() {
         return Collections.unmodifiableList(this.customTexturePatches);
     }
 
     // image.<name> definitions in declaration order (Umbra custom writable images).
-    public List<com.bdmajora.impetus.umbra.shaderpack.texture.CustomImageDefinition> getUmbraCustomImages() {
+    public List<CustomImageDefinition> getUmbraCustomImages() {
         return Collections.unmodifiableList(this.irisCustomImages);
     }
 
@@ -737,13 +722,10 @@ public final class ShaderProperties {
 
     // true/false, on/off; empty for anything else
     private static Optional<Boolean> parseBooleanValue(String value) {
-        String v = value.trim().toLowerCase(Locale.ROOT);
-        if (v.equals("true")) {
-            return Optional.of(Boolean.TRUE);
-        }
-        if (v.equals("false")) {
-            return Optional.of(Boolean.FALSE);
-        }
-        return Optional.empty();
+        return switch (value.trim().toLowerCase(Locale.ROOT)) {
+            case "true" -> Optional.of(Boolean.TRUE);
+            case "false" -> Optional.of(Boolean.FALSE);
+            default -> Optional.empty();
+        };
     }
 }

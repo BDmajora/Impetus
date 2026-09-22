@@ -4,6 +4,9 @@ import com.bdmajora.impetus.umbra.targets.UmbraRenderTargets;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
+import com.github.bsideup.jabel.Desugar;
+import com.bdmajora.impetus.umbra.gl.shader.ShaderMacros;
+import com.bdmajora.impetus.umbra.shaderpack.preprocessor.PropertiesPreprocessor;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -45,11 +48,6 @@ public final class DrawBuffers {
         return fragmentOutputArraySize;
     }
 
-    // Parses the directive from source whose preprocessor conditionals were evaluated first, as Iris does; packs declare several variants behind option gates (Complementary's deferred1), and a first-textual-match parse desynchronises the flip accounting from what the GPU writes
-    public static int[] parseActive(String fragmentSource) {
-        return parseActive(fragmentSource, com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.standard());
-    }
-
     // Parses honouring #ifdef gates, so an option can change which targets a pass writes
     public static int[] parseActive(String fragmentSource, Map<String, String> defines) {
         if (fragmentSource == null) {
@@ -57,28 +55,15 @@ public final class DrawBuffers {
         }
         int[] raw = parseLastDirective(fragmentSource);
         try {
-            String evaluated = com.bdmajora.impetus.umbra.shaderpack.preprocessor.PropertiesPreprocessor.preprocess(
-                    fragmentSource, defines == null
-                            ? com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.standard()
-                            : defines);
+            String evaluated = PropertiesPreprocessor.preprocess(fragmentSource, defines == null ? ShaderMacros.standard() : defines);
             List<Directive> activeDirectives = directives(evaluated);
             // The conditional evaluator cannot expand every macro shape; if evaluation removes every target directive, keep the source-order fallback rather than invent a default mask
             return activeDirectives.isEmpty()
                     ? raw
-                    : activeDirectives.get(activeDirectives.size() - 1).buffers.clone();
+                    : activeDirectives.get(activeDirectives.size() - 1).buffers().clone();
         } catch (RuntimeException e) {
             return raw;
         }
-    }
-
-    // Parses the first directive found, ignoring gates
-    public static int[] parse(String fragmentSource) {
-        if (fragmentSource == null) {
-            return DEFAULT.clone();
-        }
-
-        List<Directive> directives = directives(fragmentSource);
-        return directives.isEmpty() ? DEFAULT.clone() : directives.get(0).buffers.clone();
     }
 
     // Drops out-of-range targets silently
@@ -86,29 +71,38 @@ public final class DrawBuffers {
         return sanitize(drawBuffers, maxExclusive, null);
     }
 
-    // Drops out-of-range targets, reporting each
+    // Drops out-of-range and repeated targets, reporting each invalid one; an already-clean array is returned as is, since this runs on every phase switch and the inputs are usually the sanitized arrays the programs were built with. Callers must treat the result as read-only
     public static int[] sanitize(int[] drawBuffers, int maxExclusive, IntConsumer invalidBufferConsumer) {
         if (drawBuffers == null || drawBuffers.length == 0) {
             return DEFAULT.clone();
         }
-        List<Integer> valid = new ArrayList<>();
-        boolean[] seen = new boolean[Math.max(0, maxExclusive)];
+        // Targets are bounded by MAX_COLOR_BUFFERS, so a bitmask stands in for the seen table
+        long seen = 0L;
+        int valid = 0;
         for (int buffer : drawBuffers) {
             if (buffer >= 0 && buffer < maxExclusive) {
-                if (!seen[buffer]) {
-                    valid.add(buffer);
-                    seen[buffer] = true;
+                if ((seen & (1L << buffer)) == 0) {
+                    seen |= 1L << buffer;
+                    valid++;
                 }
             } else if (invalidBufferConsumer != null) {
                 invalidBufferConsumer.accept(buffer);
             }
         }
-        if (valid.isEmpty()) {
+        if (valid == drawBuffers.length) {
+            return drawBuffers;
+        }
+        if (valid == 0) {
             return DEFAULT.clone();
         }
-        int[] result = new int[valid.size()];
-        for (int i = 0; i < result.length; i++) {
-            result[i] = valid.get(i);
+        int[] result = new int[valid];
+        seen = 0L;
+        int written = 0;
+        for (int buffer : drawBuffers) {
+            if (buffer >= 0 && buffer < maxExclusive && (seen & (1L << buffer)) == 0) {
+                seen |= 1L << buffer;
+                result[written++] = buffer;
+            }
         }
         return result;
     }
@@ -176,7 +170,7 @@ public final class DrawBuffers {
         if (directives.isEmpty()) {
             return DEFAULT.clone();
         }
-        return directives.get(directives.size() - 1).buffers.clone();
+        return directives.get(directives.size() - 1).buffers().clone();
     }
 
     // Every DRAWBUFFERS and RENDERTARGETS comment with its enclosing conditional
@@ -202,11 +196,11 @@ public final class DrawBuffers {
             directives.add(new Directive(db.start(), buffers));
         }
 
-        directives.sort(Comparator.comparingInt(directive -> directive.offset));
+        directives.sort(Comparator.comparingInt(Directive::offset));
         return directives;
     }
 
-    // Comma-separated form
+    // Comma-separated form; any unparsable entry voids the whole directive
     private static int[] parseRenderTargets(String value) {
         String trimmed = value.trim();
         if (trimmed.isEmpty()) {
@@ -214,29 +208,18 @@ public final class DrawBuffers {
         }
         String[] parts = trimmed.split("\\s*,\\s*");
         int[] buffers = new int[parts.length];
-        int count = 0;
-        for (String part : parts) {
+        for (int i = 0; i < parts.length; i++) {
             try {
-                buffers[count++] = Integer.parseInt(part.trim());
+                buffers[i] = Integer.parseInt(parts[i].trim());
             } catch (NumberFormatException ignored) {
                 return new int[0];
             }
         }
-        if (count == buffers.length) {
-            return buffers;
-        }
-        int[] compact = new int[count];
-        System.arraycopy(buffers, 0, compact, 0, count);
-        return compact;
+        return buffers;
     }
 
-    private static final class Directive {
-        private final int offset;
-        private final int[] buffers;
-
-        private Directive(int offset, int[] buffers) {
-            this.offset = offset;
-            this.buffers = buffers;
-        }
+    // A target directive and where it sits in the source, so the last one in file order wins
+    @Desugar
+    private record Directive(int offset, int[] buffers) {
     }
 }

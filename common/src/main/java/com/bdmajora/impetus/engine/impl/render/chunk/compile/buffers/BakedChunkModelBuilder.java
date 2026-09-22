@@ -19,14 +19,19 @@ public class BakedChunkModelBuilder implements ChunkModelBuilder {
 
     public BakedChunkModelBuilder(ChunkVertexEncoder encoder, int stride, TerrainRenderPass pass) {
         var vertexBuffers = new ChunkMeshBufferBuilder[ModelQuadFacing.COUNT];
+        boolean sorted = pass.isSorted();
 
+        // A sorted pass writes everything through the UNASSIGNED buffer, so the six per-facing buffers (64 KiB each, growing) are never allocated for it
         for (int facing = 0; facing < ModelQuadFacing.COUNT; facing++) {
-            vertexBuffers[facing] = new ChunkMeshBufferBuilder(encoder, stride, 64 * 1024, pass.isSorted() && facing == ModelQuadFacing.UNASSIGNED.ordinal());
+            boolean unassigned = facing == ModelQuadFacing.UNASSIGNED.ordinal();
+            if (!sorted || unassigned) {
+                vertexBuffers[facing] = new ChunkMeshBufferBuilder(encoder, stride, 64 * 1024, sorted && unassigned);
+            }
         }
 
         this.encoder = encoder;
         this.vertexBuffers = vertexBuffers;
-        this.splitBySide = !pass.isSorted();
+        this.splitBySide = !sorted;
     }
 
     // The buffer for one facing, so faces stay grouped for culling

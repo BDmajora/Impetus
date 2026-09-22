@@ -4,14 +4,17 @@ import com.bdmajora.fulgor.async.ChunkLightHelper;
 import com.bdmajora.fulgor.async.SWMRNibbleArray;
 import it.unimi.dsi.fastutil.ints.IntIterator;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
-import net.minecraft.init.Blocks;
 
 import java.util.Arrays;
 
 // The skylight-specific half of the sky engine: vertical extrusion of full light down open columns and the batched seeding of changed columns; the horizontal BFS stays in SkyLightEngine
 final class SkyLightColumnProcessor {
+    // A column walk spreads everywhere but back up
+    private static final long COLUMN_SPREAD = BfsLightEngine.AxisDirection.POSITIVE_Y.everythingButThisDirection;
     private final SkyLightEngine engine;
     private final boolean[] nullPropagationChecks = new boolean[ChunkLightHelper.LIGHT_SECTIONS];
+    // Highest changed Y per column of the chunk being processed, reused across tasks
+    private final int[] columnMaxY = new int[16 * 16];
 
     SkyLightColumnProcessor(SkyLightEngine engine) {
         this.engine = engine;
@@ -170,7 +173,6 @@ final class SkyLightColumnProcessor {
     int tryPropagateSkylight(int worldX, int startY, int worldZ, boolean extrudeInitialised, boolean delayLightSet) {
         SkyLightEngine engine = this.engine;
         int encodeOffset = engine.coordinateOffset;
-        long propagateDirection = BfsLightEngine.AxisDirection.POSITIVE_Y.everythingButThisDirection;
 
         int extrudedLevel = getLightLevelExtruded(worldX, startY + 1, worldZ);
         if (extrudedLevel == 0) {
@@ -206,7 +208,7 @@ final class SkyLightColumnProcessor {
 
             long speculativeValue = BfsLightEngine.encodeCoords(worldX, worldZ, startY, encodeOffset)
                     | engine.encodeQueueLevel(currentSky)
-                    | (propagateDirection << BfsLightEngine.DIRECTION_SHIFT)
+                    | (COLUMN_SPREAD << BfsLightEngine.DIRECTION_SHIFT)
                     | BfsLightEngine.sidedFlag(currentInfo);
             boolean appended = engine.appendToIncreaseQueue(speculativeValue);
 
@@ -216,7 +218,7 @@ final class SkyLightColumnProcessor {
                     --engine.increaseQueueInitialLength;
                 }
                 startY &= ~15;
-                aboveInfo = LightInfo.of(Blocks.AIR.getDefaultState());
+                aboveInfo = LightInfo.of(LightEngineCache.AIR);
             } else {
                 if (!delayLightSet) {
                     engine.setLightLevel(worldX, startY, worldZ, currentSky);
@@ -230,9 +232,9 @@ final class SkyLightColumnProcessor {
     void processBlockPositionChanges(int chunkX, int chunkZ, IntOpenHashSet changedPositions) {
         SkyLightEngine engine = this.engine;
         rewriteNibbleCache();
-        Arrays.fill(this.nullPropagationChecks, false);
+        resetNullPropagationChecks();
 
-        int[] columnMaxY = new int[256];
+        int[] columnMaxY = this.columnMaxY;
         Arrays.fill(columnMaxY, Integer.MIN_VALUE);
 
         IntIterator iterator = changedPositions.iterator();
@@ -248,8 +250,6 @@ final class SkyLightColumnProcessor {
             }
         }
 
-        long propagateDirection = BfsLightEngine.AxisDirection.POSITIVE_Y.everythingButThisDirection;
-        int encodeOffset = engine.coordinateOffset;
         for (int column = 0; column < 256; ++column) {
             int maximumY = columnMaxY[column];
             if (maximumY == Integer.MIN_VALUE) {
@@ -257,12 +257,10 @@ final class SkyLightColumnProcessor {
             }
             int worldX = (chunkX << 4) | (column & 15);
             int worldZ = (chunkZ << 4) | (column >> 4);
-            int maximumPropagationY = tryPropagateSkylight(worldX, maximumY, worldZ, true, true);
-            seedFullColumnDecrease(worldX, maximumPropagationY, worldZ, propagateDirection, encodeOffset);
+            seedColumn(worldX, maximumY, worldZ);
         }
 
-        applyDelayedQueue(engine.increaseQueue, engine.increaseQueueInitialLength, true);
-        applyDelayedQueue(engine.decreaseQueue, engine.decreaseQueueInitialLength, false);
+        applyDelayedQueues();
 
         iterator = changedPositions.iterator();
         while (iterator.hasNext()) {
@@ -280,24 +278,33 @@ final class SkyLightColumnProcessor {
     void propagateBlockChange(int blockX, int blockY, int blockZ) {
         SkyLightEngine engine = this.engine;
         rewriteNibbleCache();
-        Arrays.fill(this.nullPropagationChecks, false);
+        resetNullPropagationChecks();
 
-        int maximumPropagationY = tryPropagateSkylight(blockX, blockY, blockZ, true, true);
-        long propagateDirection = BfsLightEngine.AxisDirection.POSITIVE_Y.everythingButThisDirection;
-        seedFullColumnDecrease(blockX, maximumPropagationY, blockZ, propagateDirection, engine.coordinateOffset);
-
-        applyDelayedQueue(engine.increaseQueue, engine.increaseQueueInitialLength, true);
-        applyDelayedQueue(engine.decreaseQueue, engine.decreaseQueueInitialLength, false);
+        seedColumn(blockX, blockY, blockZ);
+        applyDelayedQueues();
         engine.checkBlock(blockX, blockY, blockZ);
         engine.performLightDecrease();
     }
 
+    // Walks the column down from its highest change with level writes deferred, then queues the darkening of whatever full-sky run lies below the stop point
+    private void seedColumn(int worldX, int fromY, int worldZ) {
+        int maximumPropagationY = tryPropagateSkylight(worldX, fromY, worldZ, true, true);
+        seedFullColumnDecrease(worldX, maximumPropagationY, worldZ);
+    }
+
+    private void applyDelayedQueues() {
+        SkyLightEngine engine = this.engine;
+        applyDelayedQueue(engine.increaseQueue, engine.increaseQueueInitialLength, true);
+        applyDelayedQueue(engine.decreaseQueue, engine.decreaseQueueInitialLength, false);
+    }
+
     // Queues a decrease for every full-sky position below the point the column walk stopped, since whatever stopped it now shadows them
-    private void seedFullColumnDecrease(int worldX, int maximumPropagationY, int worldZ, long propagateDirection, int encodeOffset) {
+    private void seedFullColumnDecrease(int worldX, int maximumPropagationY, int worldZ) {
         SkyLightEngine engine = this.engine;
         if (getLightLevelExtruded(worldX, maximumPropagationY, worldZ) != 15) {
             return;
         }
+        int encodeOffset = engine.coordinateOffset;
         checkNullSection(worldX >> 4, maximumPropagationY >> 4, worldZ >> 4, true);
         for (int currentY = maximumPropagationY; currentY >= (LightEngineCache.MIN_LIGHT_SECTION << 4); --currentY) {
             if ((currentY & 15) == 15) {
@@ -313,7 +320,7 @@ final class SkyLightColumnProcessor {
             }
             engine.appendToDecreaseQueue(BfsLightEngine.encodeCoords(worldX, worldZ, currentY, encodeOffset)
                     | engine.encodeQueueLevel(15)
-                    | (propagateDirection << BfsLightEngine.DIRECTION_SHIFT));
+                    | (COLUMN_SPREAD << BfsLightEngine.DIRECTION_SHIFT));
         }
     }
 

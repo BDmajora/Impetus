@@ -1,7 +1,6 @@
 package com.bdmajora.impetus.mixin.core.shader;
 
 import com.bdmajora.impetus.umbra.Umbra;
-import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;
 import net.minecraft.client.renderer.entity.layers.LayerEnderDragonEyes;
 import net.minecraft.entity.boss.EntityDragon;
 import org.spongepowered.asm.mixin.Mixin;
@@ -19,19 +18,13 @@ public class LayerEnderDragonEyesMixin {
             require = 0)
     private void impetus$beginEyes(EntityDragon entity, float limbSwing, float limbSwingAmount, float partialTicks,
                                    float ageInTicks, float netHeadYaw, float headPitch, float scale, CallbackInfo ci) {
-        UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
-        if (pipeline != null) {
-            pipeline.beginEyes();
-        }
+        Umbra.beginEyes();
     }
 
     @Inject(method = "doRenderLayer(Lnet/minecraft/entity/boss/EntityDragon;FFFFFFF)V",
             at = @At("RETURN"), require = 0)
     private void impetus$endEyes(EntityDragon entity, float limbSwing, float limbSwingAmount, float partialTicks,
                                  float ageInTicks, float netHeadYaw, float headPitch, float scale, CallbackInfo ci) {
-        UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
-        if (pipeline != null) {
-            pipeline.endEyes();
-        }
+        Umbra.endEyes();
     }
 }

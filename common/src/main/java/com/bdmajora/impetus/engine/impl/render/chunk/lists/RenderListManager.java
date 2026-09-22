@@ -278,7 +278,6 @@ public class RenderListManager {
         }
     }
 
-
     // Computed lazily per frame
     public RenderListDebugStatistics getDebugStatistics() {
         if (this.debugStatistics == null) {
@@ -303,7 +302,7 @@ public class RenderListManager {
 
         int[] sectionCounts = new int[TranslucentQuadAnalyzer.Level.VALUES.length];
 
-        boolean isSorting = renderLists.getPasses().stream().anyMatch(TerrainRenderPass::isSorted);
+        boolean isSorting = renderLists.hasSortedPass();
 
         while (iterator.hasNext()) {
             var renderList = iterator.next();

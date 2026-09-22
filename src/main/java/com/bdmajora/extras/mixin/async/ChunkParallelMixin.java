@@ -1,5 +1,6 @@
 package com.bdmajora.extras.mixin.async;
 
+import com.bdmajora.extras.async.ParallelBlockStateContainer;
 import com.bdmajora.extras.async.ParallelProcessor;
 import com.bdmajora.extras.async.ParallelWorld;
 import com.google.common.base.Predicate;
@@ -13,6 +14,8 @@ import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraft.world.chunk.Chunk;
+import net.minecraft.world.chunk.ChunkPrimer;
+import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Mutable;
@@ -45,6 +48,9 @@ public abstract class ChunkParallelMixin {
     @Unique
     private boolean impetus$parallel;
 
+    @Shadow
+    public abstract ExtendedBlockStorage[] getBlockStorageArray();
+
     @Inject(method = "<init>(Lnet/minecraft/world/World;II)V", at = @At("RETURN"))
     private void impetus$installConcurrentMap(World world, int x, int z, CallbackInfo ci) {
         if (!ParallelProcessor.INSTALLED || world == null || world.isRemote || !((ParallelWorld) world).impetus$isParallel()) {
@@ -52,6 +58,38 @@ public abstract class ChunkParallelMixin {
         }
         this.impetus$parallel = true;
         this.tileEntities = new ConcurrentHashMap<>(this.tileEntities);
+    }
+
+    // The sections a parallel world's chunks carry get their palette lock here, the places a section comes into being: the generator's primer copy, the loader's setStorageArrays, and setBlockState or setLightFor filling an empty one. The section has no world of its own to ask (see ParallelBlockStateContainer)
+    @Inject(method = "<init>(Lnet/minecraft/world/World;Lnet/minecraft/world/chunk/ChunkPrimer;II)V", at = @At("RETURN"))
+    private void impetus$lockGeneratedSections(World world, ChunkPrimer primer, int x, int z, CallbackInfo ci) {
+        this.impetus$lockSections();
+    }
+
+    @Inject(method = "setStorageArrays", at = @At("RETURN"))
+    private void impetus$lockLoadedSections(ExtendedBlockStorage[] sections, CallbackInfo ci) {
+        this.impetus$lockSections();
+    }
+
+    @WrapOperation(method = {"setBlockState", "setLightFor"}, at = @At(value = "NEW", target = "(IZ)Lnet/minecraft/world/chunk/storage/ExtendedBlockStorage;"))
+    private ExtendedBlockStorage impetus$lockNewSection(int y, boolean storeSkylight, Operation<ExtendedBlockStorage> original) {
+        ExtendedBlockStorage section = original.call(y, storeSkylight);
+        if (this.impetus$parallel) {
+            ((ParallelBlockStateContainer) section.getData()).impetus$enableParallelLock();
+        }
+        return section;
+    }
+
+    @Unique
+    private void impetus$lockSections() {
+        if (!this.impetus$parallel) {
+            return;
+        }
+        for (ExtendedBlockStorage section : this.getBlockStorageArray()) {
+            if (section != null) {
+                ((ParallelBlockStateContainer) section.getData()).impetus$enableParallelLock();
+            }
+        }
     }
 
     @WrapOperation(method = "addEntity", at = @At(value = "INVOKE",

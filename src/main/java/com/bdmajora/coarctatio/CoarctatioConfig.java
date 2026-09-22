@@ -1,21 +1,10 @@
 package com.bdmajora.coarctatio;
 
-import net.minecraft.launchwrapper.Launch;
+import com.bdmajora.impetus.booter.util.PropertiesConfig;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 
-// Plain Properties file because CoarctatioMixinPlugin reads it during coremod setup before Forge/MC classes are safe; Launch is the only outside class referenced
+// Plain Properties file (see PropertiesConfig) because CoarctatioMixinPlugin reads it during coremod setup before Forge/MC classes are safe
 public final class CoarctatioConfig {
     private static final String FILE_NAME = "impetus-coarctatio.cfg";
 
@@ -26,8 +15,8 @@ public final class CoarctatioConfig {
 
     private static CoarctatioConfig instance;
 
-    // Where save writes. Null only if the config directory could not be resolved.
-    private Path file;
+    // The backing file; set by load before the instance is published
+    private PropertiesConfig file;
 
     // Interns the domain and path strings of every ResourceLocation.
     public boolean deduplicateResourceLocations;
@@ -95,7 +84,7 @@ public final class CoarctatioConfig {
     public boolean internLoaderStrings;
     // Keeps each mod jar's annotation scan between launches, keyed by the jar's size and modification time.
     public boolean modScanCache;
-    // Loads and bakes models on first use instead of all of them at startup, with the atlas built from a scan of the packs; the switch to flip first if models misbehave, since it changes what mods see at ModelBakeEvent
+    // Loads and bakes models on first use instead of all of them at startup, with the atlas built from a scan of the packs; opt-in as the README states, since it changes what mods see at ModelBakeEvent, moves every first bake onto whichever thread asks (the mesher, the item renderer), and holds the baked models softly so a tight heap re-bakes them
     public boolean dynamicModels;
     // With dynamic models, bakes every item model on a background thread after a reload so the inventory never bakes on the render thread.
     public boolean dynamicModelsPrebakeItems;
@@ -120,52 +109,52 @@ public final class CoarctatioConfig {
     // Returns a registry name that already carries a namespace as given, without the per-name "alternative prefix" warning (UniversalTweaks).
     public boolean quietPrefixWarnings;
 
-    private CoarctatioConfig(Properties props) {
-        this.deduplicateResourceLocations = bool(props, "deduplicateResourceLocations", true);
-        this.deduplicateModelVariants = bool(props, "deduplicateModelVariants", true);
-        this.compactNbtBackingMap = bool(props, "compactNbtBackingMap", true);
-        this.internNbtKeys = bool(props, "internNbtKeys", true);
-        this.nbtArrayMapThreshold = integer(props, "nbtArrayMapThreshold", 12, 0, 1024);
-        this.poolQuadVertexData = bool(props, "poolQuadVertexData", true);
-        this.compactBakedModels = bool(props, "compactBakedModels", true);
-        this.canonicalizeMultipartConditions = bool(props, "canonicalizeMultipartConditions", true);
-        this.optimizeBlockStates = bool(props, "optimizeBlockStates", true);
-        this.blockStateBlacklist = list(props, "blockStateBlacklist", DEFAULT_BLOCK_STATE_BLACKLIST);
-        this.compactStateProperties = bool(props, "compactStateProperties", true);
-        this.compactModelGraph = bool(props, "compactModelGraph", true);
-        this.stripChunkNbt = bool(props, "stripChunkNbt", true);
-        this.dropEmptyChunkSections = bool(props, "dropEmptyChunkSections", true);
-        this.weakenClassLoaderCache = bool(props, "weakenClassLoaderCache", true);
-        this.releaseSpriteData = bool(props, "releaseSpriteData", true);
-        this.deduplicateModelTransforms = bool(props, "deduplicateModelTransforms", true);
-        this.releaseBakeState = bool(props, "releaseBakeState", true);
-        this.compactRuntimeCollections = bool(props, "compactRuntimeCollections", true);
-        this.clearPoolsOnWorldLeave = bool(props, "clearPoolsOnWorldLeave", true);
-        this.lazySearchTrees = bool(props, "lazySearchTrees", true);
-        this.poolSizeLimit = integer(props, "poolSizeLimit", 262144, 1024, Integer.MAX_VALUE);
-        this.showDebugOverlay = bool(props, "showDebugOverlay", true);
-        this.lazyItemStackCapabilities = bool(props, "lazyItemStackCapabilities", true);
-        this.poolNbtPrimitives = bool(props, "poolNbtPrimitives", true);
-        this.cachePropertyHashes = bool(props, "cachePropertyHashes", true);
-        this.cacheStateHashes = bool(props, "cacheStateHashes", true);
-        this.resourceExistenceCache = bool(props, "resourceExistenceCache", true);
-        this.stacklessResourceExceptions = bool(props, "stacklessResourceExceptions", true);
-        this.fastAtlasStitching = bool(props, "fastAtlasStitching", true);
-        this.softStructureTemplates = bool(props, "softStructureTemplates", true);
-        this.internLoaderStrings = bool(props, "internLoaderStrings", true);
-        this.modScanCache = bool(props, "modScanCache", true);
-        this.dynamicModels = bool(props, "dynamicModels", true);
-        this.dynamicModelsPrebakeItems = bool(props, "dynamicModelsPrebakeItems", true);
-        this.dynamicModelsEagerNamespaces = list(props, "dynamicModelsEagerNamespaces", DEFAULT_EAGER_NAMESPACES);
-        this.fastItemLayerBaking = bool(props, "fastItemLayerBaking", true);
-        this.parallelTextureLoad = bool(props, "parallelTextureLoad", true);
-        this.primitiveOreDictionary = bool(props, "primitiveOreDictionary", true);
-        this.canonicalizeModelParts = bool(props, "canonicalizeModelParts", true);
-        this.compactRemapperCaches = bool(props, "compactRemapperCaches", true);
-        this.recycleEvents = bool(props, "recycleEvents", false);
-        this.skipSoundDebugChecks = bool(props, "skipSoundDebugChecks", true);
-        this.plainMissingModels = bool(props, "plainMissingModels", false);
-        this.quietPrefixWarnings = bool(props, "quietPrefixWarnings", true);
+    private CoarctatioConfig(PropertiesConfig props) {
+        this.deduplicateResourceLocations = props.bool("deduplicateResourceLocations", true);
+        this.deduplicateModelVariants = props.bool("deduplicateModelVariants", true);
+        this.compactNbtBackingMap = props.bool("compactNbtBackingMap", true);
+        this.internNbtKeys = props.bool("internNbtKeys", true);
+        this.nbtArrayMapThreshold = props.integer("nbtArrayMapThreshold", 12, 0, 1024);
+        this.poolQuadVertexData = props.bool("poolQuadVertexData", true);
+        this.compactBakedModels = props.bool("compactBakedModels", true);
+        this.canonicalizeMultipartConditions = props.bool("canonicalizeMultipartConditions", true);
+        this.optimizeBlockStates = props.bool("optimizeBlockStates", true);
+        this.blockStateBlacklist = props.list("blockStateBlacklist", DEFAULT_BLOCK_STATE_BLACKLIST);
+        this.compactStateProperties = props.bool("compactStateProperties", true);
+        this.compactModelGraph = props.bool("compactModelGraph", true);
+        this.stripChunkNbt = props.bool("stripChunkNbt", true);
+        this.dropEmptyChunkSections = props.bool("dropEmptyChunkSections", true);
+        this.weakenClassLoaderCache = props.bool("weakenClassLoaderCache", true);
+        this.releaseSpriteData = props.bool("releaseSpriteData", true);
+        this.deduplicateModelTransforms = props.bool("deduplicateModelTransforms", true);
+        this.releaseBakeState = props.bool("releaseBakeState", true);
+        this.compactRuntimeCollections = props.bool("compactRuntimeCollections", true);
+        this.clearPoolsOnWorldLeave = props.bool("clearPoolsOnWorldLeave", true);
+        this.lazySearchTrees = props.bool("lazySearchTrees", true);
+        this.poolSizeLimit = props.integer("poolSizeLimit", 262144, 1024, Integer.MAX_VALUE);
+        this.showDebugOverlay = props.bool("showDebugOverlay", true);
+        this.lazyItemStackCapabilities = props.bool("lazyItemStackCapabilities", true);
+        this.poolNbtPrimitives = props.bool("poolNbtPrimitives", true);
+        this.cachePropertyHashes = props.bool("cachePropertyHashes", true);
+        this.cacheStateHashes = props.bool("cacheStateHashes", true);
+        this.resourceExistenceCache = props.bool("resourceExistenceCache", true);
+        this.stacklessResourceExceptions = props.bool("stacklessResourceExceptions", true);
+        this.fastAtlasStitching = props.bool("fastAtlasStitching", true);
+        this.softStructureTemplates = props.bool("softStructureTemplates", true);
+        this.internLoaderStrings = props.bool("internLoaderStrings", true);
+        this.modScanCache = props.bool("modScanCache", true);
+        this.dynamicModels = props.bool("dynamicModels", false);
+        this.dynamicModelsPrebakeItems = props.bool("dynamicModelsPrebakeItems", true);
+        this.dynamicModelsEagerNamespaces = props.list("dynamicModelsEagerNamespaces", DEFAULT_EAGER_NAMESPACES);
+        this.fastItemLayerBaking = props.bool("fastItemLayerBaking", true);
+        this.parallelTextureLoad = props.bool("parallelTextureLoad", true);
+        this.primitiveOreDictionary = props.bool("primitiveOreDictionary", true);
+        this.canonicalizeModelParts = props.bool("canonicalizeModelParts", true);
+        this.compactRemapperCaches = props.bool("compactRemapperCaches", true);
+        this.recycleEvents = props.bool("recycleEvents", false);
+        this.skipSoundDebugChecks = props.bool("skipSoundDebugChecks", true);
+        this.plainMissingModels = props.bool("plainMissingModels", false);
+        this.quietPrefixWarnings = props.bool("quietPrefixWarnings", true);
     }
 
     // Loads on first use and caches; every reader shares the one instance
@@ -178,47 +167,22 @@ public final class CoarctatioConfig {
 
     // Reads the file if present, otherwise starts from defaults and writes them out
     private static CoarctatioConfig load() {
-        Path file = configDirectory().resolve(FILE_NAME);
-
-        Properties props = new Properties();
-        if (Files.isRegularFile(file)) {
-            try (InputStream in = Files.newInputStream(file)) {
-                props.load(in);
-            } catch (IOException e) {
-                Coarctatio.LOGGER.error("Could not read {}, falling back to defaults", file, e);
-            }
-        }
-
+        PropertiesConfig props = new PropertiesConfig(Coarctatio.LOGGER, FILE_NAME, "Impetus / Coarctatio memory subsystem. Delete a line to restore its default.");
+        props.load();
         CoarctatioConfig config = new CoarctatioConfig(props);
-        config.file = file;
+        config.file = props;
         config.save();
         return config;
     }
 
     // Most switches take effect on next launch (read once by CoarctatioMixinPlugin); showDebugOverlay and the NBT map settings are read live
     public void save() {
-        if (this.file != null) {
-            writeBack(this.file);
-        }
+        this.file.save(values());
     }
 
-    // The config directory, created eagerly; falls back to the working directory when minecraftHome is unset
-    private static Path configDirectory() {
-        File home = Launch.minecraftHome;
-        Path dir = (home == null ? Paths.get(".") : home.toPath()).resolve("config");
-
-        try {
-            Files.createDirectories(dir);
-        } catch (IOException e) {
-            Coarctatio.LOGGER.warn("Could not create {}, configuration will not persist", dir, e);
-        }
-
-        return dir;
-    }
-
-    // Rewrites every key so a user who never opens the file still discovers the switches; user-set values are preserved verbatim
-    private void writeBack(Path file) {
-        Map<String, String> values = new LinkedHashMap<>();
+    // Every key in declaration order, so a rewritten file lists every switch; user-set values are preserved verbatim
+    private Map<String, String> values() {
+        Map<String, String> values = PropertiesConfig.values();
         values.put("deduplicateResourceLocations", Boolean.toString(this.deduplicateResourceLocations));
         values.put("deduplicateModelVariants", Boolean.toString(this.deduplicateModelVariants));
         values.put("compactNbtBackingMap", Boolean.toString(this.compactNbtBackingMap));
@@ -265,59 +229,6 @@ public final class CoarctatioConfig {
         values.put("plainMissingModels", Boolean.toString(this.plainMissingModels));
         values.put("quietPrefixWarnings", Boolean.toString(this.quietPrefixWarnings));
 
-        Properties out = new Properties();
-        out.putAll(values);
-
-        try (OutputStream stream = Files.newOutputStream(file)) {
-            out.store(stream, "Impetus / Coarctatio memory subsystem. Delete a line to restore its default.");
-        } catch (IOException e) {
-            Coarctatio.LOGGER.warn("Could not write {}", file, e);
-        }
-    }
-
-    // Lenient boolean parse; anything unrecognised keeps the default
-    private static boolean bool(Properties props, String key, boolean fallback) {
-        String value = props.getProperty(key);
-        if (value == null) {
-            return fallback;
-        }
-        value = value.trim();
-        return "true".equalsIgnoreCase(value) || "false".equalsIgnoreCase(value)
-                ? Boolean.parseBoolean(value)
-                : fallback;
-    }
-
-    // Comma-separated list; blank entries are dropped so a trailing comma is harmless.
-    private static String[] list(Properties props, String key, String fallback) {
-        String value = props.getProperty(key);
-
-        if (value == null) {
-            value = fallback;
-        }
-
-        List<String> entries = new ArrayList<>();
-        for (String entry : value.split(",")) {
-            entry = entry.trim();
-
-            if (!entry.isEmpty()) {
-                entries.add(entry);
-            }
-        }
-
-        return entries.toArray(new String[0]);
-    }
-
-    // Clamped integer parse; out-of-range and unparseable values keep the default
-    private static int integer(Properties props, String key, int fallback, int min, int max) {
-        String value = props.getProperty(key);
-        if (value == null) {
-            return fallback;
-        }
-        try {
-            int parsed = Integer.parseInt(value.trim());
-            return parsed < min || parsed > max ? fallback : parsed;
-        } catch (NumberFormatException e) {
-            return fallback;
-        }
+        return values;
     }
 }

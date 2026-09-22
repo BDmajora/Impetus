@@ -40,11 +40,7 @@ class ChunkJobQueue {
     // Next job or null, without blocking
     @Nullable
     public ChunkJob pollJob() {
-        if (this.isRunning() && this.semaphore.tryAcquire()) {
-            return this.getNextTask();
-        } else {
-            return null;
-        }
+        return this.isRunning() && this.semaphore.tryAcquire() ? this.jobs.poll() : null;
     }
 
     // Blocks until a job arrives or shutdown
@@ -60,7 +56,8 @@ class ChunkJobQueue {
             this.semaphore.acquire();
         }
 
-        return this.getNextTask();
+        // Important jobs sit at the front
+        return this.jobs.poll();
     }
 
     // Whether any worker blocked on an empty queue since the last call, read-and-cleared atomically so two windows never count the same block; the scheduler's starvation signal
@@ -83,13 +80,6 @@ class ChunkJobQueue {
 
         return success;
     }
-
-    // Important queue first
-    @Nullable
-    private ChunkJob getNextTask() {
-        return this.jobs.poll();
-    }
-
 
     // Stops accepting and returns whatever was still queued
     public Collection<ChunkJob> shutdown() {

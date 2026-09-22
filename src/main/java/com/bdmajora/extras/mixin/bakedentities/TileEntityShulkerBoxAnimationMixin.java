@@ -1,6 +1,7 @@
 package com.bdmajora.extras.mixin.bakedentities;
 
 import com.bdmajora.extras.client.bakedentities.AnimatedBlockEntity;
+import com.bdmajora.extras.client.bakedentities.LidTracking;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.tileentity.TileEntityShulkerBox;
 import org.spongepowered.asm.mixin.Mixin;
@@ -12,13 +13,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 // The shulker lid, at rest only when the status machine says closed and both progress samples are zero
 @Mixin(TileEntityShulkerBox.class)
 public abstract class TileEntityShulkerBoxAnimationMixin extends TileEntity implements AnimatedBlockEntity {
-    private static final int RENDERER_GRACE_TICKS = 4;
-
     @Unique
-    private boolean impetus$wasSettled = true;
-
-    @Unique
-    private int impetus$rendererGrace;
+    private int impetus$lid = LidTracking.INITIAL;
 
     @Override
     public boolean impetus$isSettled() {
@@ -29,7 +25,7 @@ public abstract class TileEntityShulkerBoxAnimationMixin extends TileEntity impl
 
     @Override
     public boolean impetus$needsRenderer() {
-        return !impetus$isSettled() || this.impetus$rendererGrace > 0;
+        return LidTracking.needsRenderer(this.impetus$lid, impetus$isSettled());
     }
 
     @Inject(method = "update", at = @At("TAIL"))
@@ -37,15 +33,10 @@ public abstract class TileEntityShulkerBoxAnimationMixin extends TileEntity impl
         if (this.world == null || !this.world.isRemote) {
             return;
         }
-        boolean settled = impetus$isSettled();
-        if (settled != this.impetus$wasSettled) {
-            this.impetus$wasSettled = settled;
+        int next = LidTracking.tick(this.impetus$lid, impetus$isSettled());
+        if (LidTracking.restChanged(this.impetus$lid, next)) {
             this.world.markBlockRangeForRenderUpdate(this.pos, this.pos);
         }
-        if (!settled) {
-            this.impetus$rendererGrace = RENDERER_GRACE_TICKS;
-        } else if (this.impetus$rendererGrace > 0) {
-            this.impetus$rendererGrace--;
-        }
+        this.impetus$lid = next;
     }
 }

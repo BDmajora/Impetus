@@ -1,11 +1,9 @@
 package com.bdmajora.impetus.engine.impl.gui.frame.tab;
 
-import com.bdmajora.impetus.api.options.structure.Option;
-import com.bdmajora.impetus.api.options.structure.OptionPage;
+import com.bdmajora.impetus.engine.api.util.ColorARGB;
 import com.bdmajora.impetus.engine.impl.gui.framework.DrawContext;
 import com.bdmajora.impetus.engine.impl.gui.framework.InteractionContext;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
-import com.bdmajora.impetus.engine.impl.gui.frame.MultiOptionPageFrame;
 import com.bdmajora.impetus.engine.impl.gui.widgets.AbstractWidget;
 import com.bdmajora.impetus.engine.impl.gui.widgets.FlatButtonWidget;
 import com.bdmajora.impetus.engine.impl.gui.theme.DefaultColors;
@@ -16,12 +14,16 @@ import com.bdmajora.impetus.engine.impl.gui.frame.ScrollableFrame;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+// Sidebar of mod groups, each a header over its pages, beside the selected page's frame; a header click folds its group so a sidebar of twenty pages stays short, and the fold state lives for the session like the selected tab does
 public class TabFrame extends AbstractFrame {
     private static final int TAB_OPTION_INDENT = 5;
+    private static final int TAB_HEIGHT = 18;
+
+    // Group ids folded shut; static so a rebuild (resize, search, apply) keeps them, matching the controller's selected-tab reference
+    private static final Set<String> COLLAPSED_GROUPS = new HashSet<>();
 
     private Dim2i tabSection;
     private final Dim2i frameSection;
@@ -32,25 +34,22 @@ public class TabFrame extends AbstractFrame {
     private final AtomicReference<Integer> tabSectionScrollBarOffset;
     private Tab<?> selectedTab;
     private AbstractFrame selectedFrame;
-    private Dim2i tabSectionInner;
     private ScrollableFrame sidebarFrame;
 
     public TabFrame(DrawContext drawContext, Dim2i dim, boolean renderOutline, Map<String, List<Tab<?>>> tabs, Runnable onSetTab, AtomicReference<TextComponent> tabSectionSelectedTab, AtomicReference<Integer> tabSectionScrollBarOffset) {
         super(dim, renderOutline);
         this.tabs = Collections.unmodifiableMap(tabs.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, e -> List.copyOf(e.getValue()), (a, b) -> a, LinkedHashMap::new)));
         this.modAccentColors = this.tabs.keySet().stream().collect(Collectors.toMap(id -> id, drawContext::getModAccentColor, (a, b) -> a, LinkedHashMap::new));
-        int tabSectionY = (int)tabStream().count() * 18 + this.tabs.size() * TabHeaderWidget.HEIGHT;
         Optional<Integer> result = Stream.concat(
-                // Icon padding + icon + icon padding, matching where TabHeaderWidget starts drawing its name
+                // Icon padding + icon + icon padding, matching where TabHeaderWidget starts drawing its name, plus the fold marker on the right
                 tabs.keySet().stream().map(id -> {
                     int headerTextOffset = 5 + 20 + 5;
-                    return drawContext.getStringWidth(drawContext.getFriendlyModName(id)) + headerTextOffset;
+                    return drawContext.getStringWidth(drawContext.getFriendlyModName(id)) + headerTextOffset + TabHeaderWidget.MARKER_WIDTH;
                 }),
                 tabStream().map(tab -> drawContext.getStringWidth(tab.title()) + TAB_OPTION_INDENT)
         ).max(Integer::compareTo);
 
         this.tabSection = new Dim2i(this.dim.x(), this.dim.y(), result.map(integer -> integer + (24)).orElseGet(() -> (int) (this.dim.width() * 0.35D)), this.dim.height());
-        this.tabSectionInner = tabSectionY > this.dim.height() ? this.tabSection.withHeight(tabSectionY) : this.tabSection;
         this.frameSection = new Dim2i(this.tabSection.getLimitX(), this.dim.y(), this.dim.width() - this.tabSection.width(), this.dim.height());
 
         this.onSetTab = onSetTab;
@@ -62,11 +61,6 @@ public class TabFrame extends AbstractFrame {
         }
 
         this.buildFrame();
-
-        // Let's build each frame, future note for anyone: do not move this line.
-        tabStream().filter(tab -> this.selectedTab != tab).forEach(tab -> {
-            tab.createFrame(this.frameSection);
-        });
     }
 
     // Every tab across every group
@@ -79,14 +73,45 @@ public class TabFrame extends AbstractFrame {
         return new Builder();
     }
 
-    // Switches the selected tab and rebuilds the content frame
+    // Switches the selected tab and rebuilds the content frame; the tab's group unfolds so the selection is never hidden
     public void setTab(Tab<?> tab) {
         this.selectedTab = tab;
         this.tabSectionSelectedTab.set(this.selectedTab.title());
+        COLLAPSED_GROUPS.remove(this.groupOf(tab));
         if (this.onSetTab != null) {
             this.onSetTab.run();
         }
         this.buildFrame();
+    }
+
+    // The group id a tab belongs to, or null for one not in the sidebar
+    private String groupOf(Tab<?> tab) {
+        for (Map.Entry<String, List<Tab<?>>> entry : this.tabs.entrySet()) {
+            if (entry.getValue().contains(tab)) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    // Folds or unfolds a group and relays the sidebar; the content frame is untouched
+    private void toggleGroup(String groupId) {
+        if (!COLLAPSED_GROUPS.remove(groupId)) {
+            COLLAPSED_GROUPS.add(groupId);
+        }
+        this.buildFrame();
+    }
+
+    // Sidebar height for the current fold state: every header plus the rows of unfolded groups
+    private int sidebarContentHeight() {
+        int height = 0;
+        for (Map.Entry<String, List<Tab<?>>> entry : this.tabs.entrySet()) {
+            height += TabHeaderWidget.HEIGHT;
+            if (!COLLAPSED_GROUPS.contains(entry.getKey())) {
+                height += entry.getValue().size() * TAB_HEIGHT;
+            }
+        }
+        return height;
     }
 
     class TabSidebarFrame extends AbstractFrame {
@@ -106,24 +131,28 @@ public class TabFrame extends AbstractFrame {
             super.buildFrame();
         }
 
-        // Recreates the tab header buttons
+        // Recreates the group headers and, under each unfolded one, its tab buttons
         private void rebuildTabs() {
             int offsetY = 0;
             int width = tabSection.width() - 4;
-            int height = 18;
 
             for (var modEntry : tabs.entrySet()) {
-                int accentColor = modAccentColors.getOrDefault(modEntry.getKey(), DefaultColors.ELEMENT_ACTIVATED);
-                // Add a "button" as the header
+                String groupId = modEntry.getKey();
+                int accentColor = modAccentColors.getOrDefault(groupId, DefaultColors.ELEMENT_ACTIVATED);
+                boolean collapsed = COLLAPSED_GROUPS.contains(groupId);
+
                 Dim2i modHeaderDim = new Dim2i(0, offsetY, width, TabHeaderWidget.HEIGHT).withParentOffset(tabSection);
                 offsetY += TabHeaderWidget.HEIGHT;
-                TabHeaderWidget headerButton = new TabHeaderWidget(modHeaderDim, modEntry.getKey());
+                TabHeaderWidget headerButton = new TabHeaderWidget(modHeaderDim, groupId, collapsed, () -> TabFrame.this.toggleGroup(groupId));
                 headerButton.setLeftAligned(true);
                 this.children.add(headerButton);
 
+                if (collapsed) {
+                    continue;
+                }
+
                 for (Tab<?> tab : modEntry.getValue()) {
-                    // Add the button for the mod itself
-                    Dim2i tabDim = new Dim2i(0, offsetY, width, height).withParentOffset(tabSection);
+                    Dim2i tabDim = new Dim2i(0, offsetY, width, TAB_HEIGHT).withParentOffset(tabSection);
 
                     FlatButtonWidget button = new FlatButtonWidget(tabDim, tab.title(), () -> {
                         if(tab.onSelectFunction() == null || tab.onSelectFunction().get()) {
@@ -140,13 +169,13 @@ public class TabFrame extends AbstractFrame {
                     button.setSelected(TabFrame.this.selectedTab == tab);
                     button.setLeftAligned(true);
                     FlatButtonWidget.Style style = FlatButtonWidget.Style.defaults();
-                    style.textDefault = DefaultColors.withAlpha(accentColor, 0xB8);
+                    style.textDefault = ColorARGB.withAlpha(accentColor, 0xB8);
                     style.textSelected = 0xFFFFFFFF;
                     style.accentColor = accentColor;
                     button.setStyle(style);
                     this.children.add(button);
 
-                    offsetY += height;
+                    offsetY += TAB_HEIGHT;
                 }
             }
         }
@@ -166,9 +195,13 @@ public class TabFrame extends AbstractFrame {
             }
         }
 
+        // The sidebar scrolls only when the folded layout is taller than the frame
+        int contentHeight = this.sidebarContentHeight();
+        Dim2i sidebarInner = contentHeight > this.tabSection.height() ? this.tabSection.withHeight(contentHeight) : this.tabSection;
+
         this.sidebarFrame = ScrollableFrame.createBuilder()
                 .setDimension(this.tabSection)
-                .setFrame(new TabSidebarFrame(this.tabSectionInner))
+                .setFrame(new TabSidebarFrame(sidebarInner))
                 .setVerticalScrollBarOffset(this.tabSectionScrollBarOffset)
                 .build();
 
@@ -182,58 +215,12 @@ public class TabFrame extends AbstractFrame {
     // Recreates the content area for the selected tab
     private void rebuildTabFrame() {
         if (this.selectedTab == null) return;
-        AbstractFrame frame = this.createSelectedContentFrame();
+        AbstractFrame frame = this.selectedTab.createFrame(this.frameSection);
         if (frame != null) {
             this.selectedFrame = frame;
             frame.buildFrame();
             this.children.add(frame);
         }
-    }
-
-    // The selected tab's frame at the content dimensions
-    private AbstractFrame createSelectedContentFrame() {
-        if (!this.selectedTab.stackable() || this.selectedTab.page() == null || this.selectedTab.verticalScrollBarOffset() == null) {
-            return this.selectedTab.createFrame(this.frameSection);
-        }
-
-        List<Tab<?>> stackableTabs = this.getSelectedTabGroup().stream()
-                .filter(tab -> tab.stackable() && tab.page() != null)
-                .collect(Collectors.toList());
-
-        if (stackableTabs.size() <= 1) {
-            return this.selectedTab.createFrame(this.frameSection);
-        }
-
-        List<OptionPage> pages = stackableTabs.stream()
-                .map(Tab::page)
-                .collect(Collectors.toList());
-        Predicate<Option<?>> optionFilter = this.selectedTab.optionFilter() != null ? this.selectedTab.optionFilter() : option -> true;
-
-        MultiOptionPageFrame frame = MultiOptionPageFrame.createBuilder()
-                .setDimension(new Dim2i(this.frameSection.x(), this.frameSection.y(), this.frameSection.width(), this.frameSection.height()))
-                .setPages(pages)
-                .setOptionFilter(optionFilter)
-                .build();
-
-        this.selectedTab.verticalScrollBarOffset().set(frame.getSectionOffset(this.selectedTab.page()));
-
-        return ScrollableFrame.createBuilder()
-                .setDimension(this.frameSection)
-                .setFrame(frame)
-                .setVerticalScrollBarOffset(this.selectedTab.verticalScrollBarOffset())
-                .setScrollBarAccentColor(this.modAccentColors.getOrDefault(this.selectedTab.page().getId().getModId(), DefaultColors.ELEMENT_ACTIVATED))
-                .build();
-    }
-
-    // The group the selected tab belongs to
-    private List<Tab<?>> getSelectedTabGroup() {
-        for (List<Tab<?>> group : this.tabs.values()) {
-            if (group.contains(this.selectedTab)) {
-                return group;
-            }
-        }
-
-        return Collections.singletonList(this.selectedTab);
     }
 
     // Draws header, separator and content

@@ -5,7 +5,6 @@ import lombok.Getter;
 import com.bdmajora.impetus.engine.impl.gl.util.VertexRange;
 import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFacing;
 import com.bdmajora.impetus.engine.impl.render.chunk.RenderPassConfiguration;
-import com.bdmajora.impetus.engine.impl.render.chunk.RenderSection;
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.buffers.BakedChunkModelBuilder;
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.buffers.ChunkModelBuilder;
 import com.bdmajora.impetus.engine.impl.render.chunk.data.BuiltRenderSectionData;
@@ -14,9 +13,7 @@ import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.material.Material;
 import com.bdmajora.impetus.engine.impl.common.util.NativeBuffer;
 import com.bdmajora.impetus.engine.impl.render.chunk.sorting.TranslucentQuadAnalyzer;
-import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexEncoder;
 
-import java.nio.ByteBuffer;
 import java.util.*;
 
 // Per-worker scratch buffers for building chunk meshes per render pass; sizes are picked best-effort and never shrunk
@@ -55,7 +52,7 @@ public final class ChunkBuildBuffers {
 
     // One builder per pass, with the pass's vertex type
     private ChunkModelBuilder createBuilder(TerrainRenderPass pass) {
-        var vertexType = this.renderPassConfiguration.getVertexTypeForPass(pass);
+        var vertexType = pass.vertexType();
         var builder = new BakedChunkModelBuilder(vertexType.createEncoder(), vertexType.getVertexFormat().getStride(), pass);
         Objects.requireNonNull(renderData, "Buffers have not been started");
         builder.begin(renderData, sectionIndex);
@@ -82,14 +79,13 @@ public final class ChunkBuildBuffers {
             return null;
         }
 
-        List<ByteBuffer> vertexBuffers = new ArrayList<>();
         var vertexRanges = new EnumMap<ModelQuadFacing, VertexRange>(ModelQuadFacing.class);
-
         int vertexCount = 0;
 
         ModelQuadFacing[] facingsToUpload = pass.isSorted() ? ONLY_UNASSIGNED : ModelQuadFacing.VALUES;
         TranslucentQuadAnalyzer.SortState sortState = pass.isSorted() ? builder.getVertexBuffer(ModelQuadFacing.UNASSIGNED).getSortState() : null;
 
+        // First pass sizes the merged buffer and lays out the ranges
         for (ModelQuadFacing facing : facingsToUpload) {
             var buffer = builder.getVertexBuffer(facing);
 
@@ -97,9 +93,7 @@ public final class ChunkBuildBuffers {
                 continue;
             }
 
-            vertexBuffers.add(buffer.slice());
             vertexRanges.put(facing, new VertexRange(vertexCount, buffer.count()));
-
             vertexCount += buffer.count();
         }
 
@@ -107,14 +101,19 @@ public final class ChunkBuildBuffers {
             return null;
         }
 
-        var vertexType = renderPassConfiguration.getVertexTypeForPass(pass);
-        var primitiveType = renderPassConfiguration.getPrimitiveTypeForPass(pass);
+        var vertexType = pass.vertexType();
+        var primitiveType = pass.primitiveType();
 
         var mergedBuffer = new NativeBuffer(vertexCount * vertexType.getVertexFormat().getStride());
         var mergedBufferBuilder = mergedBuffer.getDirectBuffer();
 
-        for (var buffer : vertexBuffers) {
-            mergedBufferBuilder.put(buffer);
+        // Second pass copies in the same facing order, so no intermediate list of slices is needed
+        for (ModelQuadFacing facing : facingsToUpload) {
+            var buffer = builder.getVertexBuffer(facing);
+
+            if (!buffer.isEmpty()) {
+                mergedBufferBuilder.put(buffer.slice());
+            }
         }
 
         mergedBufferBuilder.flip();

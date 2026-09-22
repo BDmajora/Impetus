@@ -7,6 +7,7 @@ import com.bdmajora.impetus.lwjgl.GL20;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
@@ -66,7 +67,7 @@ public class ProgramBuilder {
         }
 
         // NVIDIA returns a wall of deprecation warnings for legacy #version 120 packs; only surface the log when it actually reports an error
-        if (!log.isEmpty() && log.toLowerCase(java.util.Locale.ROOT).contains("error")) {
+        if (!log.isEmpty() && log.toLowerCase(Locale.ROOT).contains("error")) {
             LOGGER.warn("Program link log for '{}': {}", this.name, log.trim());
         }
 

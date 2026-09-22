@@ -3,7 +3,6 @@ package com.bdmajora.impetus.engine.impl.model.light.smooth;
 import com.bdmajora.impetus.engine.impl.model.light.data.LightDataAccess;
 import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFacing;
 
-
 import static com.bdmajora.impetus.engine.impl.model.light.data.LightDataAccess.*;
 
 class AoFaceData {
@@ -149,23 +148,6 @@ class AoFaceData {
         cb[3] = calculateCornerBrightness(e3lm, e1lm, c3lm, calm, e3em, e1em, c3em, caem);
 
         this.flags |= AoCompletionFlags.HAS_LIGHT_DATA;
-    }
-
-    // Vanilla's AmbientOcclusionFace.getAoBrightness copied VERBATIM so comparisons are against the real rounding; br4 is the centre sample
-    private static int vanillaAoBrightness(int br1, int br2, int br3, int br4) {
-        if (br1 == 0) {
-            br1 = br4;
-        }
-
-        if (br2 == 0) {
-            br2 = br4;
-        }
-
-        if (br3 == 0) {
-            br3 = br4;
-        }
-
-        return br1 + br2 + br3 + br4 >> 2 & 16711935;
     }
 
     // Splits packed corner light into separate sky and block arrays, once

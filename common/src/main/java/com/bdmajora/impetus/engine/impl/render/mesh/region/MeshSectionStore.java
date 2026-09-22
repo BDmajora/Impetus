@@ -1,7 +1,6 @@
 package com.bdmajora.impetus.engine.impl.render.mesh.region;
 
 import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFacing;
-import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.impl.MeshChunkVertex;
 import com.bdmajora.impetus.engine.impl.render.mesh.util.QuadArena;
 import com.bdmajora.impetus.engine.impl.render.mesh.util.SegmentedAllocator;
 import com.bdmajora.impetus.engine.impl.render.mesh.util.UploadStream;
@@ -109,9 +108,9 @@ public class MeshSectionStore {
         }
 
         long key = this.regions.getRegionKey(regionId);
-        int baseX = unpackSectionX(key) << 3;
-        int baseY = unpackSectionY(key) << 2;
-        int baseZ = unpackSectionZ(key) << 3;
+        int baseX = PositionUtil.unpackSectionX(key) << 3;
+        int baseY = PositionUtil.unpackSectionY(key) << 2;
+        int baseZ = PositionUtil.unpackSectionZ(key) << 3;
 
         for (int x = 0; x < 8; x++) {
             for (int y = 0; y < 4; y++) {
@@ -151,20 +150,5 @@ public class MeshSectionStore {
 
         int unassigned = Short.toUnsignedInt(counts[ModelQuadFacing.UNASSIGNED.ordinal()]);
         LWJGL.memPutInt(ranges + 12L, unassigned | (Short.toUnsignedInt(geometry.baseQuad()) << 16));
-    }
-
-    // PositionUtil.packSection has no unpackers and only region eviction needs them; x in bits 42..63, z in 20..41, y in 0..19, shifts sign-extend each field
-    private static int unpackSectionX(long key) {
-        return (int) (key >> 42);
-    }
-
-    // Middle field
-    private static int unpackSectionY(long key) {
-        return (int) (key << 44 >> 44);
-    }
-
-    // Low field
-    private static int unpackSectionZ(long key) {
-        return (int) (key << 22 >> 42);
     }
 }

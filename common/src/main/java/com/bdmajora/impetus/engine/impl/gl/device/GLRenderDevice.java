@@ -178,10 +178,9 @@ public class GLRenderDevice implements RenderDevice {
             vertexArray.delete();
         }
 
-        // glFlush
+        // Nothing is batched, so there is nothing to flush
         @Override
         public void flush() {
-            // NO-OP
         }
 
         // Binds the tessellation and returns the draw list for it
@@ -329,7 +328,7 @@ public class GLRenderDevice implements RenderDevice {
             GLRenderDevice.this.activeTessellation = null;
         }
 
-        // glFlush
+        // Ends the tessellation still bound, if any
         @Override
         public void flush() {
             if (GLRenderDevice.this.activeTessellation != null) {

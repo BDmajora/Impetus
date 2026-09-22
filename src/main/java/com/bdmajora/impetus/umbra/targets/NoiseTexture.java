@@ -7,6 +7,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Random;
 
+import com.bdmajora.impetus.umbra.gl.texture.TextureParameters;
+
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 // The `noisetex` sampler, OptiFine's generated tiling RGBA noise; packs lean on it for dithering, cloud shapes and wave offsets
@@ -18,10 +20,7 @@ public class NoiseTexture extends GlResource {
     public NoiseTexture(int resolution) {
         setHandle(LWJGL.glGenTextures());
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, getGlId());
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL11.GL_REPEAT);
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL11.GL_REPEAT);
+        TextureParameters.set2D(GL11.GL_LINEAR, GL11.GL_REPEAT);
 
         // Direct and native-ordered because it goes straight to glTexImage2D; a heap buffer would be copied
         ByteBuffer data = ByteBuffer.allocateDirect(resolution * resolution * 4).order(ByteOrder.nativeOrder());

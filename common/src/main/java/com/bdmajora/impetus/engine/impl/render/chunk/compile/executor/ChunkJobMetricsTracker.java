@@ -61,12 +61,12 @@ public class ChunkJobMetricsTracker {
             if (count == 0) {
                 return new MetricStats(0, 0, 0);
             }
-            var iter = observations.iterator();
             long sum = 0;
             long min = Long.MAX_VALUE;
             long max = Long.MIN_VALUE;
-            while (iter.hasNext()) {
-                long observation = iter.next();
+            // Indexed rather than iterated: LongArrayList's iterator boxes each value through next()
+            for (int i = 0; i < count; i++) {
+                long observation = observations.getLong(i);
                 sum += observation;
                 min = Math.min(min, observation);
                 max = Math.max(max, observation);

@@ -15,9 +15,8 @@ import com.bdmajora.impetus.lwjgl.GL11;
 import com.bdmajora.impetus.lwjgl.GL42;
 import com.bdmajora.impetus.lwjgl.GL43;
 import com.bdmajora.impetus.lwjgl.GLNv;
-import it.unimi.dsi.fastutil.ints.IntAVLTreeSet;
-import it.unimi.dsi.fastutil.ints.IntIterator;
-import it.unimi.dsi.fastutil.ints.IntSortedSet;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntArrays;
 import org.joml.Matrix4f;
 
 import java.util.BitSet;
@@ -58,8 +57,8 @@ public class MeshRenderPipeline {
     // Regions inside the frustum last frame, so one leaving it has its stale section visibility bytes cleared instead of staying "visible" forever
     private final BitSet regionsInFrustum = new BitSet(MAX_REGIONS);
 
-    // Reused across frames; the sort key is (distance << 16) | regionId, so iteration order is front-to-back
-    private final IntSortedSet visibleRegions = new IntAVLTreeSet();
+    // Reused across frames; the sort key is (distance << 16) | regionId, sorted once per frame so iteration order is front-to-back without a tree node per region
+    private final IntArrayList visibleRegions = new IntArrayList();
 
     private final Matrix4f mvp = new Matrix4f();
 
@@ -213,12 +212,13 @@ public class MeshRenderPipeline {
             return 0;
         }
 
-        long ptr = this.uploadStream.upload(this.sceneUniform, SCENE_BYTES, count * 2L);
-        int index = 0;
+        int[] keys = this.visibleRegions.elements();
+        IntArrays.quickSort(keys, 0, count);
 
-        // Explicit primitive iterator; this runs over every visible region every frame and the boxed for-each allocates an Integer per region
-        for (IntIterator iterator = this.visibleRegions.iterator(); iterator.hasNext(); ) {
-            LWJGL.memPutShort(ptr + ((long) (index++) << 1), (short) (iterator.nextInt() & 0xFFFF));
+        long ptr = this.uploadStream.upload(this.sceneUniform, SCENE_BYTES, count * 2L);
+
+        for (int index = 0; index < count; index++) {
+            LWJGL.memPutShort(ptr + ((long) index << 1), (short) (keys[index] & 0xFFFF));
         }
 
         return count;

@@ -32,18 +32,10 @@ public class SectionRenderDataStorage {
         return this.numAllocations == 0;
     }
 
+    // Records a section's fresh allocations and per-facing element counts, then lays the offsets out from them
     public void setMeshes(int localSectionIndex,
                           GlBufferSegment allocation, @Nullable GlBufferSegment indexAllocation, Map<ModelQuadFacing, VertexRange> ranges) {
-        if (this.allocations[localSectionIndex] != null) {
-            this.allocations[localSectionIndex].delete();
-            this.allocations[localSectionIndex] = null;
-            this.numAllocations--;
-        }
-
-        if (this.indexAllocations[localSectionIndex] != null) {
-            this.indexAllocations[localSectionIndex].delete();
-            this.indexAllocations[localSectionIndex] = null;
-        }
+        this.removeMeshes(localSectionIndex);
 
         this.allocations[localSectionIndex] = allocation;
         this.indexAllocations[localSectionIndex] = indexAllocation;
@@ -52,37 +44,24 @@ public class SectionRenderDataStorage {
         var pMeshData = this.getDataPointer(localSectionIndex);
 
         int sliceMask = 0;
-        int vertexOffset = allocation.getOffset();
-        int indexOffset = indexAllocation != null ? indexAllocation.getOffset() * 4 : 0;
-
         int elementsPerPrimitive = primitiveType.getIndexBufferElementsPerPrimitive();
         int verticesPerPrimitive = primitiveType.getVerticesPerPrimitive();
 
         for (int facingIndex = 0; facingIndex < ModelQuadFacing.COUNT; facingIndex++) {
             VertexRange vertexRange = ranges.get(ModelQuadFacing.VALUES[facingIndex]);
-            int vertexCount;
+            int vertexCount = vertexRange != null ? vertexRange.vertexCount() : 0;
 
-            if (vertexRange != null) {
-                vertexCount = vertexRange.vertexCount();
-            } else {
-                vertexCount = 0;
-            }
-
-            int indexCount = (vertexCount / verticesPerPrimitive) * elementsPerPrimitive;
-
-            SectionRenderDataUnsafe.setVertexOffset(pMeshData, facingIndex, vertexOffset);
-            SectionRenderDataUnsafe.setElementCount(pMeshData, facingIndex, indexCount);
-            SectionRenderDataUnsafe.setIndexOffset(pMeshData, facingIndex, indexOffset);
+            SectionRenderDataUnsafe.setElementCount(pMeshData, facingIndex, (vertexCount / verticesPerPrimitive) * elementsPerPrimitive);
 
             if (vertexCount > 0) {
                 sliceMask |= 1 << facingIndex;
             }
-
-            vertexOffset += vertexCount;
-            indexOffset += indexCount * 4;
         }
 
         SectionRenderDataUnsafe.setSliceMask(pMeshData, sliceMask);
+
+        // Vertex counts are whole primitives, so the offsets fall out of the element counts exactly as after a resize
+        this.updateMeshes(localSectionIndex);
     }
 
     // Frees a section's vertex allocation and clears its data
@@ -107,21 +86,12 @@ public class SectionRenderDataStorage {
         }
     }
 
-    // Swaps in a re-sorted index buffer
+    // Swaps in a re-sorted index buffer and re-lays the offsets
     public void replaceIndexBuffer(int localSectionIndex, GlBufferSegment indexAllocation) {
         removeIndexBuffer(localSectionIndex);
 
         this.indexAllocations[localSectionIndex] = indexAllocation;
-
-        var pMeshData = this.getDataPointer(localSectionIndex);
-
-        int indexOffset = indexAllocation != null ? indexAllocation.getOffset() * 4 : 0;
-
-        for (int facingIndex = 0; facingIndex < ModelQuadFacing.COUNT; facingIndex++) {
-            SectionRenderDataUnsafe.setIndexOffset(pMeshData, facingIndex, indexOffset);
-            int indexCount = SectionRenderDataUnsafe.getElementCount(pMeshData, facingIndex);
-            indexOffset += indexCount * 4;
-        }
+        this.updateMeshes(localSectionIndex);
     }
 
     // Rewrites every offset after the arena compacted

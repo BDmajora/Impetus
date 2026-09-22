@@ -58,7 +58,7 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
     @Override
     public void save() {
         try {
-            this.writeChanges();
+            writeToDisk(this);
         } catch (IOException e) {
             throw new RuntimeException("Couldn't save configuration changes", e);
         }
@@ -122,6 +122,9 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
         public boolean hiddenFluidCulling = true;
         public boolean improvedFluidShaping = false;
         public boolean closestPointEntitySort = false;
+
+        // Visual-only guess at fluidlogging on servers that cannot report it; see FluidloggingInference. Touching by default since pool and fountain rims, the common case, only touch water on one side
+        public FluidloggingGuess inferredFluidlogging = FluidloggingGuess.TOUCHING;
     }
 
     public static class NotificationSettings {
@@ -249,6 +252,27 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
         }
     }
 
+    // Which neighbourhood makes a fluidloggable block render as holding the fluid next to it: a fluid directly above always counts once enabled, the side count is the number of horizontal fluid sources needed
+    public enum FluidloggingGuess implements TextProvider {
+        OFF("impetus.options.inferred_fluidlogging.off", Integer.MAX_VALUE),
+        SUBMERGED("impetus.options.inferred_fluidlogging.submerged", Integer.MAX_VALUE),
+        SURROUNDED("impetus.options.inferred_fluidlogging.surrounded", 2),
+        TOUCHING("impetus.options.inferred_fluidlogging.touching", 1);
+
+        private final TextComponent name;
+        public final int minSides;
+
+        FluidloggingGuess(String key, int minSides) {
+            this.name = TextComponent.translatable(key);
+            this.minSides = minSides;
+        }
+
+        @Override
+        public TextComponent getLocalizedName() {
+            return this.name;
+        }
+    }
+
     // On LWJGL2/1.12.2, EXCLUSIVE and BORDERLESS both map to the display's fullscreen mode; distinction kept for config parity and future backends
     public enum FullscreenMode implements TextProvider {
         OFF("impetus.options.fullscreen_mode.off"),
@@ -309,11 +333,12 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
         // TODO Impetus: Remove the field completely in 0.4
         config.notifications.forceDisableDonationPrompts = false;
 
-        try {
-            if(resaveConfig)
-                config.writeChanges();
-        } catch (IOException e) {
-            throw new RuntimeException("Couldn't update config file", e);
+        if (resaveConfig) {
+            try {
+                writeToDisk(config);
+            } catch (IOException e) {
+                throw new RuntimeException("Couldn't update config file", e);
+            }
         }
 
         return config;
@@ -322,12 +347,6 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
     // Under the config directory
     private static Path getConfigPath(String name) {
         return Paths.get("config", name);
-    }
-
-    // Writes unless read-only
-    @Deprecated
-    public void writeChanges() throws IOException {
-        writeToDisk(this);
     }
 
     // Serialises to json, via a temp file so a crash mid-write cannot truncate the config
@@ -354,7 +373,7 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
         Files.move(tempPath, config.configPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
     }
 
-    // Set when the file failed to parse, so a broken config is not silently overwritten
+    // Set by the host when the config must not be written (a failed early startup); a file that merely failed to parse is rewritten with defaults on the next save
     public boolean isReadOnly() {
         return this.readOnly;
     }

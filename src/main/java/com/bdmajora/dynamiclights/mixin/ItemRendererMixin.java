@@ -7,6 +7,7 @@ import net.minecraft.client.entity.AbstractClientPlayer;
 import net.minecraft.client.renderer.ItemRenderer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.MathHelper;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -45,8 +46,8 @@ public abstract class ItemRendererMixin {
                 DynamicLightsEngine.getLuminanceFromItemStack(this.itemStackOffHand, submerged));
 
         // Also take the light of anything else nearby, so standing next to a lit creeper lights the hand.
-        BlockPos eyes = new BlockPos(player.posX, player.posY + player.getEyeHeight(), player.posZ);
-        int surrounding = (int) DynamicLights.engine().getDynamicLightLevel(eyes);
+        int surrounding = (int) DynamicLights.engine().getDynamicLightLevel(
+                MathHelper.floor(player.posX), MathHelper.floor(player.posY + player.getEyeHeight()), MathHelper.floor(player.posZ));
 
         return Math.max(minimumBlockLight, Math.max(held, surrounding));
     }

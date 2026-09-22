@@ -13,16 +13,15 @@ public enum ChunkUpdateType {
     // Like REBUILD, but blocks the main thread if the camera is near enough that the rebuild must be seen quickly
     IMPORTANT_REBUILD;
 
-    // Whether a new request outranks the one already queued
-    @Deprecated
-    public static boolean canPromote(ChunkUpdateType prev, ChunkUpdateType next) {
-        return prev == null || (prev == REBUILD && next == IMPORTANT_REBUILD);
-    }
+    // values() clones per call, and the collector asks every frame
+    public static final ChunkUpdateType[] VALUES = values();
 
     // borrowed from PR #2016
     public static ChunkUpdateType getPromotionUpdateType(ChunkUpdateType prev, ChunkUpdateType next) {
-        if (prev == next)
-            return null; // No point submitting the same update twice
+        // No point submitting the same update twice
+        if (prev == next) {
+            return null;
+        }
 
         if (prev == null || prev == SORT) {
             return next;

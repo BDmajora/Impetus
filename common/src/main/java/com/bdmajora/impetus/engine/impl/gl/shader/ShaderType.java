@@ -22,13 +22,6 @@ public enum ShaderType {
     TASK(GLNv.GL_TASK_SHADER_NV, "task"),
     MESH(GLNv.GL_MESH_SHADER_NV, "mesh");
 
-    @Deprecated
-    public static final ShaderType TESSELATION_CONTROL = ShaderType.TESS_CTRL;
-    @Deprecated
-    public static final ShaderType TESSELATION_EVAL = ShaderType.TESS_EVALUATE;
-    @Deprecated
-    public static final ShaderType GEOMETRY = ShaderType.GEOM;
-
     public final int id;
     public final String fileExtension;
 }

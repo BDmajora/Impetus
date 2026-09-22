@@ -5,6 +5,7 @@ import com.google.common.collect.LinkedHashMultimap;
 import com.google.common.collect.SetMultimap;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import net.minecraft.launchwrapper.Launch;
 import net.minecraft.launchwrapper.LaunchClassLoader;
@@ -256,20 +257,17 @@ public final class ModDiscoverer {
         }
         List<File> candidates = new ArrayList<>();
         File modsDir = new File(mcDir, "mods");
-        if (modsDir.exists() && modsDir.isDirectory()) {
-            File[] mods = modsDir.listFiles();
-            if (mods != null) {
-                candidates.addAll(Arrays.asList(mods));
-            }
-        }
-        File versionDir = new File(modsDir, Environment.minecraftVersion());
-        if (versionDir.exists() && versionDir.isDirectory()) {
-            File[] mods = versionDir.listFiles();
-            if (mods != null) {
-                candidates.addAll(Arrays.asList(mods));
-            }
-        }
+        addDirectoryContents(modsDir, candidates);
+        addDirectoryContents(new File(modsDir, Environment.minecraftVersion()), candidates);
         return candidates;
+    }
+
+    // Every file directly inside the directory, if it exists
+    private static void addDirectoryContents(File dir, List<File> into) {
+        File[] files = dir.isDirectory() ? dir.listFiles() : null;
+        if (files != null) {
+            into.addAll(Arrays.asList(files));
+        }
     }
 
     // Reads a jar's manifest and mcmod.info, recording mod ids and mixin manifest entries
@@ -309,9 +307,12 @@ public final class ModDiscoverer {
             if (entry != null) {
                 parseMcmodInfo(gson, jarFile.getInputStream(entry), modIds);
             }
-            String modAnnotationId = scanModAnnotation(jarFile);
-            if (modAnnotationId != null) {
-                modIds.add(modAnnotationId);
+            // The bytecode scan reads every class in the jar, so it is the fallback for jars without an mcmod.info rather than a second pass over all of them
+            if (modIds.isEmpty()) {
+                String modAnnotationId = scanModAnnotation(jarFile);
+                if (modAnnotationId != null) {
+                    modIds.add(modAnnotationId);
+                }
             }
             for (String modId : modIds) {
                 recordMod(modId, jar);
@@ -343,17 +344,10 @@ public final class ModDiscoverer {
     private static void parseMcmodInfo(Gson gson, InputStream stream, Set<String> ids) {
         try {
             JsonElement root = gson.fromJson(new InputStreamReader(stream, StandardCharsets.UTF_8), JsonElement.class);
-            if (root.isJsonArray()) {
-                for (JsonElement element : root.getAsJsonArray()) {
-                    if (element.isJsonObject()) {
-                        ids.add(element.getAsJsonObject().get("modid").getAsString());
-                    }
-                }
-            } else {
-                for (JsonElement element : root.getAsJsonObject().get("modList").getAsJsonArray()) {
-                    if (element.isJsonObject()) {
-                        ids.add(element.getAsJsonObject().get("modid").getAsString());
-                    }
+            JsonArray mods = root.isJsonArray() ? root.getAsJsonArray() : root.getAsJsonObject().getAsJsonArray("modList");
+            for (JsonElement element : mods) {
+                if (element.isJsonObject()) {
+                    ids.add(element.getAsJsonObject().get("modid").getAsString());
                 }
             }
         } catch (Throwable t) {

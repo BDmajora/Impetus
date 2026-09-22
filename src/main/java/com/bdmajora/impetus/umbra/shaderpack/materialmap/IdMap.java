@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.umbra.shaderpack.materialmap;
 
+import net.minecraft.util.BlockRenderLayer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import com.bdmajora.impetus.umbra.shaderpack.include.AbsolutePackPath;
@@ -28,7 +29,7 @@ public final class IdMap {
     private final Map<NamespacedId, Integer> entityIdMap;
     private final boolean hasBlockProperties;
     // layer.<rendertype> = <block> ... from block.properties, the pack reassigning a block's chunk render layer (OptiFine's "Block render layers"); block id -> target BlockRenderLayer
-    private final Map<NamespacedId, net.minecraft.util.BlockRenderLayer> blockRenderLayerMap;
+    private final Map<NamespacedId, BlockRenderLayer> blockRenderLayerMap;
 
     public IdMap(Map<AbsolutePackPath, String> sources, Map<String, String> preprocessorDefines) {
         String blockProperties = sources.get(BLOCK_PROPERTIES);
@@ -53,13 +54,13 @@ public final class IdMap {
     }
 
     // The layer overrides, consumed by the mesher when it decides which layer each block belongs to
-    public Map<NamespacedId, net.minecraft.util.BlockRenderLayer> getBlockRenderLayerMap() {
+    public Map<NamespacedId, BlockRenderLayer> getBlockRenderLayerMap() {
         return this.blockRenderLayerMap;
     }
 
     // Parses layer.solid, layer.cutout, layer.cutout_mipped and layer.translucent (OptiFine's exact four, anything else is a pack error); tag entries are rejected like Iris since 1.12.2 cannot enumerate a tag
-    private static Map<NamespacedId, net.minecraft.util.BlockRenderLayer> parseRenderLayerMap(String preprocessed) {
-        Map<NamespacedId, net.minecraft.util.BlockRenderLayer> overrides = new LinkedHashMap<>();
+    private static Map<NamespacedId, BlockRenderLayer> parseRenderLayerMap(String preprocessed) {
+        Map<NamespacedId, BlockRenderLayer> overrides = new LinkedHashMap<>();
         for (String rawLine : preprocessed.split("\r\n|\r|\n")) {
             String line = rawLine.trim();
             if (line.isEmpty() || line.charAt(0) == '#' || !line.startsWith("layer.")) {
@@ -70,7 +71,7 @@ public final class IdMap {
                 continue;
             }
             String type = line.substring("layer.".length(), eq).trim();
-            net.minecraft.util.BlockRenderLayer layer = parseRenderLayer(type);
+            BlockRenderLayer layer = parseRenderLayer(type);
             if (layer == null) {
                 LOGGER.warn("[Umbra] block.properties: invalid block render type \"{}\", ignoring it", type);
                 continue;
@@ -92,19 +93,14 @@ public final class IdMap {
     }
 
     // layer.<name> value to a render layer; null when unknown
-    private static net.minecraft.util.BlockRenderLayer parseRenderLayer(String name) {
-        switch (name) {
-            case "solid":
-                return net.minecraft.util.BlockRenderLayer.SOLID;
-            case "cutout":
-                return net.minecraft.util.BlockRenderLayer.CUTOUT;
-            case "cutout_mipped":
-                return net.minecraft.util.BlockRenderLayer.CUTOUT_MIPPED;
-            case "translucent":
-                return net.minecraft.util.BlockRenderLayer.TRANSLUCENT;
-            default:
-                return null;
-        }
+    private static BlockRenderLayer parseRenderLayer(String name) {
+        return switch (name) {
+            case "solid" -> BlockRenderLayer.SOLID;
+            case "cutout" -> BlockRenderLayer.CUTOUT;
+            case "cutout_mipped" -> BlockRenderLayer.CUTOUT_MIPPED;
+            case "translucent" -> BlockRenderLayer.TRANSLUCENT;
+            default -> null;
+        };
     }
 
     // The MC_VERSION to claim when a pack has no 1.12.2 mapping; 11300 is the FIRST flattened version and selects the oldest, closest set of modern names
@@ -149,17 +145,15 @@ public final class IdMap {
                     continue;
                 }
                 for (String part : separateRunTogetherIds(rawPart, intId)) {
-                try {
-                    Entry entry = BlockEntry.parse(part);
-                    if (entry instanceof BlockEntry) {
-                        entries.add((BlockEntry) entry);
-                    } else {
-                        // 1.12.2 has no block tags; packs only reference them behind MC_VERSION gates anyway.
+                    try {
+                        // A tag entry is dropped: 1.12.2 has no block tags, and packs only reference them behind MC_VERSION gates anyway
+                        if (BlockEntry.parse(part) instanceof BlockEntry entry) {
+                            entries.add(entry);
+                        }
+                    } catch (Exception e) {
+                        LOGGER.warn("[Umbra] Unexpected error while parsing a block.properties entry for block.{}: {}",
+                                intId, e.getMessage());
                     }
-                } catch (Exception e) {
-                    LOGGER.warn("[Umbra] Unexpected error while parsing a block.properties entry for block.{}: {}",
-                            intId, e.getMessage());
-                }
                 }
             }
             entriesById.put(intId, Collections.unmodifiableList(entries));

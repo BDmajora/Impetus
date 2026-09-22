@@ -1,5 +1,8 @@
 package com.bdmajora.equilibrium.mixin.chunk.no_validation;
 
+import net.minecraft.util.ReportedException;
+import net.minecraft.crash.CrashReportCategory;
+import net.minecraft.crash.CrashReport;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.init.Blocks;
 import net.minecraft.util.math.BlockPos;
@@ -65,12 +68,11 @@ public abstract class ChunkMixin {
 
             return Blocks.AIR.getDefaultState();
         } catch (Throwable throwable) {
-            net.minecraft.crash.CrashReport report =
-                    net.minecraft.crash.CrashReport.makeCrashReport(throwable, "Getting block state");
-            net.minecraft.crash.CrashReportCategory category = report.makeCategory("Block being got");
+            CrashReport report = CrashReport.makeCrashReport(throwable, "Getting block state");
+            CrashReportCategory category = report.makeCategory("Block being got");
             category.addDetail("Location", () -> net.minecraft.crash.CrashReportCategory.getCoordinateInfo(
                     new BlockPos(x, y, z)));
-            throw new net.minecraft.util.ReportedException(report);
+            throw new ReportedException(report);
         }
     }
 }

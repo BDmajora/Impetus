@@ -16,15 +16,18 @@ import com.bdmajora.impetus.impl.render.frustum.IClippingHelper;
 public abstract class ClippingHelperImplMixin extends ClippingHelper implements IClippingHelper {
     @Unique
     private final FrustumIntersection impetus$frustum = new FrustumIntersection();
+    // Scratch matrices for the per-frame sync, so it allocates nothing
+    @Unique
+    private final Matrix4f impetus$jomlProjection = new Matrix4f();
+    @Unique
+    private final Matrix4f impetus$jomlModelview = new Matrix4f();
 
     // Mirrors vanilla's matrices into the JOML frustum every time vanilla recomputes its planes
     @Inject(method = "init", at = @At("RETURN"))
     private void updateJoml(CallbackInfo ci) {
-        Matrix4f jomlProjection = new Matrix4f();
-        jomlProjection.set(projectionMatrix);
-        Matrix4f jomlModelview = new Matrix4f();
-        jomlModelview.set(modelviewMatrix);
-        this.impetus$frustum.set(jomlProjection.mul(jomlModelview), true);
+        this.impetus$jomlProjection.set(projectionMatrix);
+        this.impetus$jomlModelview.set(modelviewMatrix);
+        this.impetus$frustum.set(this.impetus$jomlProjection.mul(this.impetus$jomlModelview), true);
     }
 
     @Override

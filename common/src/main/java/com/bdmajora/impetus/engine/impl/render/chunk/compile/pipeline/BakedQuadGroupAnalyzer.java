@@ -34,12 +34,14 @@ public class BakedQuadGroupAnalyzer {
     }
 
     // From the sprite, cached per sprite
-    private SpriteTransparencyLevel getQuadTransparencyLevel(BakedQuadView quad) {
-        if ((quad.getFlags() & ModelQuadFlags.IS_PASS_OPTIMIZABLE) == 0 || quad.impetus$getSprite() == null) {
+    private static SpriteTransparencyLevel getQuadTransparencyLevel(BakedQuadView quad) {
+        Object sprite = quad.impetus$getSprite();
+
+        if ((quad.getFlags() & ModelQuadFlags.IS_PASS_OPTIMIZABLE) == 0 || sprite == null) {
             return SpriteTransparencyLevel.TRANSLUCENT;
         }
 
-        return SpriteTransparencyLevel.Holder.getTransparencyLevel(quad.impetus$getSprite());
+        return SpriteTransparencyLevel.Holder.getTransparencyLevel(sprite);
     }
 
     // Baseline for a block before per-quad analysis
@@ -92,22 +94,19 @@ public class BakedQuadGroupAnalyzer {
 
     // Downgrades to a cheaper pass when the quad's sprite is opaque
     public static Material chooseOptimalMaterial(int analyzerFlags, Material defaultMaterial, RenderPassConfiguration<?> renderPassConfiguration, BakedQuadView quad) {
-        if (defaultMaterial == renderPassConfiguration.defaultSolidMaterial() || (analyzerFlags & USE_RENDER_PASS_OPTIMIZATION) == 0 || (quad.getFlags() & ModelQuadFlags.IS_PASS_OPTIMIZABLE) == 0 || quad.impetus$getSprite() == null) {
+        Object sprite = quad.impetus$getSprite();
+
+        if (defaultMaterial == renderPassConfiguration.defaultSolidMaterial() || (analyzerFlags & USE_RENDER_PASS_OPTIMIZATION) == 0 || (quad.getFlags() & ModelQuadFlags.IS_PASS_OPTIMIZABLE) == 0 || sprite == null) {
             // No improvement possible
             return defaultMaterial;
         }
 
-        SpriteTransparencyLevel level = SpriteTransparencyLevel.Holder.getTransparencyLevel(quad.impetus$getSprite());
-
-        if (level == SpriteTransparencyLevel.OPAQUE) {
-            // Can use solid with no visual difference
-            return renderPassConfiguration.defaultSolidMaterial();
-        } else if (level == SpriteTransparencyLevel.TRANSPARENT && defaultMaterial == renderPassConfiguration.defaultTranslucentMaterial()) {
-            // Can use cutout_mipped with no visual difference
-            return renderPassConfiguration.defaultCutoutMippedMaterial();
-        } else {
-            // Have to use default
-            return defaultMaterial;
-        }
+        return switch (SpriteTransparencyLevel.Holder.getTransparencyLevel(sprite)) {
+            // Solid with no visual difference
+            case OPAQUE -> renderPassConfiguration.defaultSolidMaterial();
+            // Cutout_mipped with no visual difference, only when coming down from translucent
+            case TRANSPARENT -> defaultMaterial == renderPassConfiguration.defaultTranslucentMaterial() ? renderPassConfiguration.defaultCutoutMippedMaterial() : defaultMaterial;
+            default -> defaultMaterial;
+        };
     }
 }

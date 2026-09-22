@@ -19,6 +19,7 @@ import com.bdmajora.impetus.api.options.structure.OptionImpl;
 import com.bdmajora.impetus.api.options.structure.OptionPage;
 import com.bdmajora.impetus.api.options.structure.OptionStorage;
 import com.bdmajora.impetus.api.options.structure.StandardOptions;
+import com.bdmajora.impetus.impl.compat.fluidlogged.FluidloggedCompat;
 import com.bdmajora.impetus.impl.compat.modernui.MuiGuiScaleHook;
 
 import java.util.ArrayList;
@@ -350,6 +351,16 @@ public class ImpetusGameOptionPages {
                         .setTooltip(TextComponent.translatable("impetus.options.improved_fluid_shaping.tooltip"))
                         .setControl(TickBoxControl::new)
                         .setBinding((opts, value) -> opts.quality.improvedFluidShaping = value, opts -> opts.quality.improvedFluidShaping)
+                        .setImpact(OptionImpact.LOW)
+                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .build())
+                // Needs Fluidlogged API on the client to render the guessed fluid at all
+                .addConditionally(FluidloggedCompat.IS_LOADED, () -> OptionImpl.createBuilder(ImpetusGameOptions.FluidloggingGuess.class, sodiumOpts)
+                        .setId(StandardOptions.Option.INFERRED_FLUIDLOGGING.cast())
+                        .setName(TextComponent.translatable("impetus.options.inferred_fluidlogging.name"))
+                        .setTooltip(TextComponent.translatable("impetus.options.inferred_fluidlogging.tooltip"))
+                        .setControl(option -> new CyclingControl<>(option, ImpetusGameOptions.FluidloggingGuess.class))
+                        .setBinding((opts, value) -> opts.quality.inferredFluidlogging = value, opts -> opts.quality.inferredFluidlogging)
                         .setImpact(OptionImpact.LOW)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .build())

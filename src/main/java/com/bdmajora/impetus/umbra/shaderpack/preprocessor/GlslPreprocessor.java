@@ -1,6 +1,7 @@
 package com.bdmajora.impetus.umbra.shaderpack.preprocessor;
 
-
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -22,23 +23,6 @@ public final class GlslPreprocessor {
     public static final int DEFAULT_VERSION = 120;
 
     private GlslPreprocessor() {
-    }
-
-    // Returns the version declared by the first #version directive, or -1 if none
-    public static int detectVersion(List<String> lines) {
-        for (String line : lines) {
-            Matcher m = VERSION_PATTERN.matcher(line);
-            if (m.matches()) {
-                return Integer.parseInt(m.group(1));
-            }
-            String trimmed = line.trim();
-            if (trimmed.isEmpty() || trimmed.startsWith("//")) {
-                continue;
-            }
-            // First meaningful line wasn't #version; GLSL will assume 110 but packs rely on 120 built-ins.
-            return -1;
-        }
-        return -1;
     }
 
     // Inserts defines right after #version (prepending a default if none); defines is ordered name -> value, an empty value yielding a bare #define NAME
@@ -117,7 +101,7 @@ public final class GlslPreprocessor {
         Map<String, String> active = new LinkedHashMap<>(defines);
         StringBuilder out = new StringBuilder(source.length());
         // Nesting levels, each [0] = this branch active, [1] = some branch already taken.
-        java.util.Deque<boolean[]> stack = new java.util.ArrayDeque<>();
+        Deque<boolean[]> stack = new ArrayDeque<>();
         String[] lines = source.split("\n", -1);
         boolean inBlockComment = false;
         for (int i = 0; i < lines.length; i++) {
@@ -152,7 +136,7 @@ public final class GlslPreprocessor {
     }
 
     // Evaluates one #if-family line and updates the active stack
-    private static String foldDirective(String line, Map<String, String> defines, java.util.Deque<boolean[]> stack) {
+    private static String foldDirective(String line, Map<String, String> defines, Deque<boolean[]> stack) {
         Matcher conditional = CONDITIONAL_DIRECTIVE.matcher(line);
         if (conditional.matches()) {
             String expression = stripComment(conditional.group(3));
@@ -185,16 +169,7 @@ public final class GlslPreprocessor {
         } else if (directive.equals("endif")) {
             stack.poll();
         } else if (directive.startsWith("define ") && allActive(stack)) {
-            String body = directive.substring("define ".length()).trim();
-            int space = body.indexOf(' ');
-            int paren = body.indexOf('(');
-            if (paren >= 0 && (space < 0 || paren < space)) {
-                defines.put(body.substring(0, paren), "");
-            } else if (space < 0) {
-                defines.put(body, "");
-            } else {
-                defines.put(body.substring(0, space), body.substring(space + 1).trim());
-            }
+            PropertiesPreprocessor.recordDefine(directive, defines);
         } else if (directive.startsWith("undef ") && allActive(stack)) {
             defines.remove(directive.substring("undef ".length()).trim());
         }
@@ -222,7 +197,7 @@ public final class GlslPreprocessor {
     }
 
     // Whether every enclosing conditional is currently true
-    private static boolean allActive(java.util.Deque<boolean[]> stack) {
+    private static boolean allActive(Deque<boolean[]> stack) {
         for (boolean[] frame : stack) {
             if (!frame[0]) {
                 return false;
@@ -255,12 +230,6 @@ public final class GlslPreprocessor {
             }
         }
         return false;
-    }
-
-    // Unimplemented seam for rewriting fixed-function built-ins to explicit attributes (chunks render through VAOs, so gl_MultiTexCoord0 would map onto mc_midTexCoord); the terrain and fullscreen transformers each do their own, so nothing calls it and it returns the input unchanged
-    public static List<String> replaceLegacyBuiltins(List<String> lines, Map<String, String> attributeBindings) {
-        // Intentionally a no-op for Phase 1. Kept as an explicit extension point.
-        return lines;
     }
 
     // #extension GL_FOO : enable in any legal spacing; the trailing \r? is for CRLF pack files, as with VERSION_PATTERN
@@ -448,10 +417,5 @@ public final class GlslPreprocessor {
             return i;
         }
         return -1;
-    }
-
-    // A stable INSERTION-ORDERED map for the define set, since defines are emitted in map order and one referencing an earlier one must come after it
-    public static Map<String, String> newDefineMap() {
-        return new LinkedHashMap<>();
     }
 }

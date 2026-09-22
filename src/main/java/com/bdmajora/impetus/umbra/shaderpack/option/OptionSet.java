@@ -67,23 +67,7 @@ public class OptionSet {
 
         // Merges an already-merged option; conflicting definitions are logged
         public void addBooleanOption(MergedBooleanOption proposed) {
-            BooleanOption option = proposed.getOption();
-            MergedBooleanOption existing = booleanOptions.get(option.getName());
-
-            MergedBooleanOption merged;
-
-            if (existing != null) {
-                merged = existing.merge(proposed);
-
-                if (merged == null) {
-                    Umbra.logger().warn("Keeping first definition of ambiguous boolean option " + option.getName());
-                    return;
-                }
-            } else {
-                merged = proposed;
-            }
-
-            booleanOptions.put(option.getName(), merged);
+            addMerged(this.booleanOptions, proposed, "boolean");
         }
 
         // Records a valued option found at a location
@@ -93,23 +77,19 @@ public class OptionSet {
 
         // Merges an already-merged option; conflicting definitions are logged
         public void addStringOption(MergedStringOption proposed) {
-            StringOption option = proposed.getOption();
-            MergedStringOption existing = stringOptions.get(option.getName());
+            addMerged(this.stringOptions, proposed, "string");
+        }
 
-            MergedStringOption merged;
-
-            if (existing != null) {
-                merged = existing.merge(proposed);
-
-                if (merged == null) {
-                    Umbra.logger().warn("Keeping first definition of ambiguous string option " + option.getName());
-                    return;
-                }
-            } else {
-                merged = proposed;
+        // The shared merge: a first declaration goes in as is, a repeat merges with what is there, and an irreconcilable one leaves the first definition standing
+        private static <O extends BaseOption, M extends MergedOption<O, M>> void addMerged(Map<String, M> into, M proposed, String kind) {
+            String name = proposed.getOption().getName();
+            M existing = into.get(name);
+            M merged = existing == null ? proposed : existing.merge(proposed);
+            if (merged == null) {
+                Umbra.logger().warn("Keeping first definition of ambiguous " + kind + " option " + name);
+                return;
             }
-
-            stringOptions.put(option.getName(), merged);
+            into.put(name, merged);
         }
 
         // Finalises

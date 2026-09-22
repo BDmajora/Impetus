@@ -3,20 +3,17 @@ package com.bdmajora.impetus.engine.impl.render.chunk;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import com.bdmajora.impetus.engine.impl.gl.attribute.GlVertexFormat;
 import com.bdmajora.impetus.engine.impl.gl.device.CommandList;
 import com.bdmajora.impetus.engine.impl.gl.device.RenderDevice;
 import com.bdmajora.impetus.engine.impl.gl.shader.*;
 import com.bdmajora.impetus.engine.impl.render.chunk.shader.*;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
-import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexType;
 import com.bdmajora.impetus.engine.impl.render.shader.ShaderLoader;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.regex.Pattern;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
@@ -146,15 +143,17 @@ public abstract class ShaderChunkRenderer implements ChunkRenderer {
             this.activeProgram = null;
         }
 
-
         pass.endDrawing();
     }
 
     // Frees every cached program
     @Override
     public void delete(CommandList commandList) {
-        this.programs.values().stream().filter(Objects::nonNull)
-                .forEach(GlProgram::delete);
+        for (GlProgram<ChunkShaderInterface> program : this.programs.values()) {
+            if (program != null) {
+                program.delete();
+            }
+        }
     }
 
     // The pass set in use

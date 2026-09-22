@@ -8,8 +8,6 @@ import com.bdmajora.impetus.engine.impl.render.chunk.ChunkRenderMatrices;
 import com.bdmajora.impetus.engine.impl.render.chunk.RenderPassConfiguration;
 import com.bdmajora.impetus.engine.impl.render.chunk.RenderSectionManager;
 import com.bdmajora.impetus.engine.impl.render.chunk.data.MinecraftBuiltRenderSectionData;
-import com.bdmajora.impetus.engine.impl.render.chunk.lists.ChunkRenderList;
-import com.bdmajora.impetus.engine.impl.render.chunk.lists.SortedRenderLists;
 import com.bdmajora.impetus.engine.impl.render.chunk.map.ChunkTracker;
 import com.bdmajora.impetus.engine.impl.render.chunk.map.ChunkTrackerHolder;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
@@ -20,7 +18,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
-import java.util.function.Consumer;
 
 // Version-independent half of the world renderer; each game version subclasses it with its own world, layer and block-entity types so the per-frame ordering is written once
 public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSectionManager, LAYER, BLOCKENTITY, BLOCKENTITY_RENDER_CONTEXT> {
@@ -37,6 +34,9 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
 
     // The viewport of the pass currently being set up, read back by drawChunkLayer for its occlusion camera
     protected Viewport currentViewport;
+
+    // The real camera the last layer drew with, reused while the position holds
+    private CameraTransform realCamera;
 
     @Getter
     protected SECTIONMANAGER renderSectionManager;
@@ -172,7 +172,12 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
 
         if (passes != null && !passes.isEmpty()) {
             var occlusionCamera = this.getLastViewport().getTransform();
-            var realCamera = new CameraTransform(x, y, z);
+            var realCamera = this.realCamera;
+
+            // Every layer of a frame draws from the same position, so the split transform is built once per move
+            if (realCamera == null || realCamera.x != x || realCamera.y != y || realCamera.z != z) {
+                this.realCamera = realCamera = new CameraTransform(x, y, z);
+            }
             for (var pass : passes) {
                 this.renderSectionManager.renderLayer(matrices, pass, occlusionCamera, realCamera);
             }
@@ -207,93 +212,28 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
         ChunkTracker.forEachChunk(tracker.getReadyChunks(), this.renderSectionManager::onChunkAdded);
     }
 
-    // Lazily iterates block entities in visible sections plus those flagged global (rendered regardless of section visibility, like beacons)
-    public Iterator<BLOCKENTITY> blockEntityIterator() {
-        return MinecraftBuiltRenderSectionData.generateBlockEntityIterator(this.renderSectionManager.getRenderLists(), this.renderSectionManager.getSectionsWithGlobalEntities());
-    }
-
-    // Same traversal as blockEntityIterator but push-based, avoiding the iterator allocation on the path that always visits everything
-    public void forEachVisibleBlockEntity(Consumer<BLOCKENTITY> consumer) {
-        MinecraftBuiltRenderSectionData.forEachBlockEntity(consumer, this.renderSectionManager.getRenderLists(), this.renderSectionManager.getSectionsWithGlobalEntities());
-    }
-
     protected abstract void renderBlockEntityList(List<BLOCKENTITY> list, BLOCKENTITY_RENDER_CONTEXT context);
 
-    // Block entities in visible sections only
-    private int renderCulledBlockEntities(BLOCKENTITY_RENDER_CONTEXT renderContext) {
-        int count = 0;
-        SortedRenderLists renderLists = this.renderSectionManager.getRenderLists();
-        Iterator<ChunkRenderList> renderListIterator = renderLists.iterator();
-
-        while (renderListIterator.hasNext()) {
-            var renderList = renderListIterator.next();
-
-            var renderRegion = renderList.getRegion();
-            var renderSectionIterator = renderList.sectionsWithEntitiesIterator();
-
-            if (renderSectionIterator == null) {
-                continue;
-            }
-
-            while (renderSectionIterator.hasNext()) {
-                var renderSectionId = renderSectionIterator.nextByteAsInt();
-                var renderSection = renderRegion.getSection(renderSectionId);
-
-                if (renderSection == null) {
-                    continue;
-                }
-
-                var context = renderSection.getBuiltContext();
-
-                if (!(context instanceof MinecraftBuiltRenderSectionData mcData)) {
-                    continue;
-                }
-
-                List<BLOCKENTITY> blockEntities = mcData.culledBlockEntities;
-
-                if (blockEntities.isEmpty()) {
-                    continue;
-                }
-
-                count += blockEntities.size();
-
-                this.renderBlockEntityList(blockEntities, renderContext);
-            }
-        }
-
-        return count;
-    }
-
-    // Block entities that render regardless of distance, e.g. beacons
-    private int renderGlobalBlockEntities(BLOCKENTITY_RENDER_CONTEXT renderContext) {
-        int count = 0;
-        for (var renderSection : this.renderSectionManager.getSectionsWithGlobalEntities()) {
-            var context = renderSection.getBuiltContext();
-
-            if (!(context instanceof MinecraftBuiltRenderSectionData mcData)) {
-                continue;
-            }
-
-            List<BLOCKENTITY> blockEntities = mcData.globalBlockEntities;
-
-            if (blockEntities.isEmpty()) {
-                continue;
-            }
-
-            count += blockEntities.size();
-
-            this.renderBlockEntityList(blockEntities, renderContext);
-        }
-
-        return count;
-    }
+    // Block entities drawn by the current renderBlockEntities call
+    private int renderedBlockEntities;
 
     // Both passes; returns the count for the debug screen
     public int renderBlockEntities(BLOCKENTITY_RENDER_CONTEXT renderContext) {
-        int count = 0;
-        count += this.renderCulledBlockEntities(renderContext);
-        count += this.renderGlobalBlockEntities(renderContext);
-        return count;
+        this.renderedBlockEntities = 0;
+        MinecraftBuiltRenderSectionData.forEachVisibleSectionData(this.renderSectionManager.getRenderLists(),
+                data -> this.drawBlockEntityList(data.culledBlockEntities, renderContext));
+        MinecraftBuiltRenderSectionData.forEachGlobalSectionData(this.renderSectionManager.getSectionsWithGlobalEntities(),
+                data -> this.drawBlockEntityList(data.globalBlockEntities, renderContext));
+        return this.renderedBlockEntities;
+    }
+
+    // Skips empty lists and keeps the per-frame tally the caller reports
+    @SuppressWarnings("unchecked")
+    private void drawBlockEntityList(List<?> list, BLOCKENTITY_RENDER_CONTEXT renderContext) {
+        if (!list.isEmpty()) {
+            this.renderedBlockEntities += list.size();
+            this.renderBlockEntityList((List<BLOCKENTITY>) list, renderContext);
+        }
     }
 
     // the volume of a section multiplied by the number of sections to be checked at most

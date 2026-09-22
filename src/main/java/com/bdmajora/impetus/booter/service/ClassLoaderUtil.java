@@ -58,17 +58,17 @@ final class ClassLoaderUtil implements IClassTracker {
 
     // Prefix match against the class loader exclusions
     private boolean isClassClassLoaderExcluded(String name, String transformedName) {
-        for (final String exception : this.getClassLoaderExceptions()) {
-            if ((transformedName != null && transformedName.startsWith(exception)) || name.startsWith(exception)) {
-                return true;
-            }
-        }
-        return false;
+        return isPrefixExcluded(this.getClassLoaderExceptions(), name, transformedName);
     }
 
     // Prefix match against the transformer exclusions
     private boolean isClassTransformerExcluded(String name, String transformedName) {
-        for (final String exception : this.getTransformerExceptions()) {
+        return isPrefixExcluded(this.getTransformerExceptions(), name, transformedName);
+    }
+
+    // Whether either name starts with any listed package prefix
+    private static boolean isPrefixExcluded(Set<String> exceptions, String name, String transformedName) {
+        for (final String exception : exceptions) {
             if ((transformedName != null && transformedName.startsWith(exception)) || name.startsWith(exception)) {
                 return true;
             }

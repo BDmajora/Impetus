@@ -24,10 +24,9 @@ public class Rect2i {
         return x >= this.x && y >= this.y && x < this.x + this.width && y < this.y + this.height;
     }
 
-    public boolean contains(Rect2i r2)
-    {
-        Rect2i r1 = this;
-        return r1.contains(r2.x(), r2.y()) && r1.contains(r2.x() + r2.width() - 1, r2.y() + r2.height() - 1);
+    // Both corners inside, so the whole rect is
+    public boolean contains(Rect2i other) {
+        return this.contains(other.x, other.y) && this.contains(other.x + other.width - 1, other.y + other.height - 1);
     }
 
     // Left

@@ -12,6 +12,7 @@ import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
@@ -23,7 +24,8 @@ public class NativeBuffer {
     private static final Reference2ReferenceMap<Reference<NativeBuffer>, BufferReference> ACTIVE_BUFFERS =
             Reference2ReferenceMaps.synchronize(new Reference2ReferenceOpenHashMap<>());
 
-    private static long ALLOCATED = 0L;
+    // Touched from every chunk worker as well as the render thread, so the counter is atomic
+    private static final AtomicLong ALLOCATED = new AtomicLong();
 
     private final BufferReference ref;
 
@@ -91,7 +93,7 @@ public class NativeBuffer {
 
     // Live native bytes, for the debug screen
     public static long getTotalAllocated() {
-        return ALLOCATED;
+        return ALLOCATED.get();
     }
 
     // Allocation site, kept only when leak tracking is on
@@ -127,7 +129,7 @@ public class NativeBuffer {
         StackTraceElement[] stackTrace = getStackTrace();
 
         BufferReference ref = new BufferReference(address, bytes, stackTrace);
-        ALLOCATED += ref.length;
+        ALLOCATED.addAndGet(ref.length);
 
         return ref;
     }
@@ -139,7 +141,7 @@ public class NativeBuffer {
 
         LWJGL.nmemFree(ref.address);
 
-        ALLOCATED -= ref.length;
+        ALLOCATED.addAndGet(-ref.length);
     }
 
     private static class BufferReference {

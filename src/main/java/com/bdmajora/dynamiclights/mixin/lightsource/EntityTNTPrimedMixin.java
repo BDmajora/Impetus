@@ -4,7 +4,6 @@ import com.bdmajora.dynamiclights.DynamicLights;
 import com.bdmajora.dynamiclights.ExplosiveLightingMode;
 import com.bdmajora.dynamiclights.client.DynamicLightHandlers;
 import com.bdmajora.dynamiclights.client.DynamicLightSource;
-import com.bdmajora.dynamiclights.client.DynamicLightsEngine;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.item.EntityTNTPrimed;
@@ -46,13 +45,7 @@ public abstract class EntityTNTPrimedMixin extends Entity implements DynamicLigh
             return;
         }
 
-        if (this.isDead) {
-            this.impetus$setDynamicLightEnabled(false);
-            return;
-        }
-
-        this.impetus$dynamicLightTick();
-        DynamicLightsEngine.updateTracking(this);
+        this.impetus$tickDynamicLight(this.isDead);
     }
 
     @Override

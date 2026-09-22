@@ -6,7 +6,6 @@ import com.bdmajora.impetus.engine.impl.gl.shader.uniform.GlUniformFloatArray;
 import com.bdmajora.impetus.engine.impl.gl.shader.uniform.GlUniformInt;
 import com.bdmajora.impetus.engine.impl.gl.shader.uniform.GlUniformMatrix4f;
 import com.bdmajora.impetus.engine.impl.gl.tessellation.GlPrimitiveType;
-import com.bdmajora.impetus.engine.impl.render.chunk.compile.sorting.QuadPrimitiveType;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 import org.joml.Matrix4fc;
 import com.bdmajora.impetus.lwjgl.MemoryStack;
@@ -52,13 +51,7 @@ public class DefaultChunkShaderInterface implements ChunkShaderInterface {
     // Binds textures and applies the pass's blend and cull state
     @Deprecated // the shader interface should not modify pipeline state
     public void setupState(TerrainRenderPass pass) {
-        if (pass.primitiveType() == QuadPrimitiveType.DIRECT) {
-            primitiveType = GlPrimitiveType.QUADS;
-        } else if (pass.primitiveType() == QuadPrimitiveType.TRIANGULATED) {
-            primitiveType = GlPrimitiveType.TRIANGLES;
-        } else {
-            throw new IllegalArgumentException("Unknown primitive type");
-        }
+        this.primitiveType = pass.primitiveType().getGlPrimitiveType();
 
         for (var c : this.components) {
             c.setup();

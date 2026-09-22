@@ -91,39 +91,39 @@ public class SmoothLightPipeline implements LightPipeline {
 
     // Light data for a grid-aligned quad that does not cover the whole face (IS_ALIGNED, IS_PARTIAL)
     private void applyAlignedPartialFace(AoNeighborInfo neighborInfo, ModelQuadView quad, int x, int y, int z, ModelQuadFacing dir, QuadLightData out) {
-        for (int i = 0; i < 4; i++) {
-            // Clamp the vertex positions to the block's boundaries to prevent weird errors in lighting
-            float cx = clamp(quad.getX(i));
-            float cy = clamp(quad.getY(i));
-            float cz = clamp(quad.getZ(i));
-
-            float[] weights = this.weights;
-            neighborInfo.calculateCornerWeights(cx, cy, cz, weights);
-            this.applyAlignedPartialFaceVertex(x, y, z, dir, weights, true);
-            out.br[i] = lastAo;
-            out.lm[i] = getLightMapCoord(lastSl, lastBl);
-        }
+        this.applyPerVertex(neighborInfo, quad, x, y, z, dir, out, false, true);
     }
 
     // flags: !IS_ALIGNED, !IS_PARALLEL
     private void applyNonParallelFace(AoNeighborInfo neighborInfo, ModelQuadView quad, int x, int y, int z, ModelQuadFacing dir,
                                       QuadLightData out, boolean applyAoDepthBlending) {
+        this.applyPerVertex(neighborInfo, quad, x, y, z, dir, out, true, applyAoDepthBlending);
+    }
+
+    // Shared per-vertex loop: bilinear corner weights per vertex, then either the face data straight (aligned) or depth-picked/blended (non-parallel)
+    private void applyPerVertex(AoNeighborInfo neighborInfo, ModelQuadView quad, int x, int y, int z, ModelQuadFacing dir,
+                                QuadLightData out, boolean useDepth, boolean applyAoDepthBlending) {
+        float[] weights = this.weights;
+
         for (int i = 0; i < 4; i++) {
             // Clamp the vertex positions to the block's boundaries to prevent weird errors in lighting
-            float cx = clamp(quad.getX(i));
-            float cy = clamp(quad.getY(i));
-            float cz = clamp(quad.getZ(i));
+            float cx = MathUtil.saturate(quad.getX(i));
+            float cy = MathUtil.saturate(quad.getY(i));
+            float cz = MathUtil.saturate(quad.getZ(i));
 
-            float[] weights = this.weights;
             neighborInfo.calculateCornerWeights(cx, cy, cz, weights);
 
-            float depth = neighborInfo.getDepth(cx, cy, cz);
-
-            if (applyAoDepthBlending) {
-                // Blend occlusion between the blocks beside this face and those above it based on how inset it is; fixes farmland and paths
-                this.applyInsetPartialFaceVertex(x, y, z, dir, depth, 1.0f - depth, weights);
+            if (!useDepth) {
+                this.applyAlignedPartialFaceVertex(x, y, z, dir, weights, true);
             } else {
-                this.applyAlignedPartialFaceVertex(x, y, z, dir, weights, MathUtil.roughlyEqual(depth, 0.0F));
+                float depth = neighborInfo.getDepth(cx, cy, cz);
+
+                if (applyAoDepthBlending) {
+                    // Blend occlusion between the blocks beside this face and those above it based on how inset it is; fixes farmland and paths
+                    this.applyInsetPartialFaceVertex(x, y, z, dir, depth, 1.0f - depth, weights);
+                } else {
+                    this.applyAlignedPartialFaceVertex(x, y, z, dir, weights, MathUtil.roughlyEqual(depth, 0.0F));
+                }
             }
 
             out.br[i] = lastAo;
@@ -137,20 +137,15 @@ public class SmoothLightPipeline implements LightPipeline {
         if (MathUtil.roughlyEqual(n1d, 0.0f)) {
             this.applyAlignedPartialFaceVertex(x, y, z, dir, w, true);
             return;
-        } else if (MathUtil.roughlyEqual(n1d, 1.0f)) {
+        }
+
+        if (MathUtil.roughlyEqual(n1d, 1.0f)) {
             this.applyAlignedPartialFaceVertex(x, y, z, dir, w, false);
             return;
         }
 
-        AoFaceData n1 = this.getCachedFaceData(x, y, z, dir, false);
-        if (!n1.hasUnpackedLightData()) {
-            n1.unpackLightData();
-        }
-
-        AoFaceData n2 = this.getCachedFaceData(x, y, z, dir, true);
-        if (!n2.hasUnpackedLightData()) {
-            n2.unpackLightData();
-        }
+        AoFaceData n1 = this.getUnpackedFaceData(x, y, z, dir, false);
+        AoFaceData n2 = this.getUnpackedFaceData(x, y, z, dir, true);
 
         // Blend between the direct neighbors and above based on the passed weights
         this.lastAo = (n1.getBlendedShade(w) * n1d) + (n2.getBlendedShade(w) * n2d);
@@ -165,9 +160,9 @@ public class SmoothLightPipeline implements LightPipeline {
     private void applyIrregularFace(ModelQuadView quad, int x, int y, int z, QuadLightData out, boolean applyAoDepthBlending) {
         for (int i = 0; i < 4; i++) {
             // Clamp the vertex positions to the block's boundaries to prevent weird errors in lighting
-            float cx = clamp(quad.getX(i));
-            float cy = clamp(quad.getY(i));
-            float cz = clamp(quad.getZ(i));
+            float cx = MathUtil.saturate(quad.getX(i));
+            float cy = MathUtil.saturate(quad.getY(i));
+            float cz = MathUtil.saturate(quad.getZ(i));
 
             int normal = quad.getForgeNormal(i);
             if (normal == 0) {
@@ -217,18 +212,14 @@ public class SmoothLightPipeline implements LightPipeline {
                 maxBl = Math.max(bl, maxBl);
             }
 
-            out.br[i] = clamp(weightedAo * BLENDED_WEIGHT + maxAo * MAX_WEIGHT);
+            out.br[i] = MathUtil.saturate(weightedAo * BLENDED_WEIGHT + maxAo * MAX_WEIGHT);
             out.lm[i] = getLightMapCoord(weightedSl * BLENDED_WEIGHT + maxSl * MAX_WEIGHT, weightedBl * BLENDED_WEIGHT + maxBl * MAX_WEIGHT);
         }
     }
 
     // A vertex on an axis-aligned face, optionally offset one block
     private void applyAlignedPartialFaceVertex(int x, int y, int z, ModelQuadFacing dir, float[] w, boolean offset) {
-        AoFaceData faceData = this.getCachedFaceData(x, y, z, dir, offset);
-
-        if (!faceData.hasUnpackedLightData()) {
-            faceData.unpackLightData();
-        }
+        AoFaceData faceData = this.getUnpackedFaceData(x, y, z, dir, offset);
 
         this.lastSl = faceData.getBlendedSkyLight(w);
         this.lastBl = faceData.getBlendedBlockLight(w);
@@ -237,21 +228,17 @@ public class SmoothLightPipeline implements LightPipeline {
 
     // Multiplies in vanilla's per-face diffuse
     private void applySidedBrightness(QuadLightData out, ModelQuadFacing face, boolean shade) {
-        float brightness = this.diffuseProvider.getDiffuse(face, shade);
-        float[] br = out.br;
-
-        for (int i = 0; i < br.length; i++) {
-            br[i] *= brightness;
-        }
+        scaleBrightness(out.br, this.diffuseProvider.getDiffuse(face, shade));
     }
 
     // Per-vertex diffuse from the vertex normals, for irregular quads
     private void applySidedBrightnessFromNormals(QuadLightData out, ModelQuadView quad, boolean shade) {
         // TODO: consider calculating for vertex if mods actually change normals per-vertex
         int normal = quad.getModFaceNormal();
-        float brightness = this.diffuseProvider.getDiffuse(NormI8.unpackX(normal), NormI8.unpackY(normal), NormI8.unpackZ(normal), shade);
-        float[] br = out.br;
+        scaleBrightness(out.br, this.diffuseProvider.getDiffuse(NormI8.unpackX(normal), NormI8.unpackY(normal), NormI8.unpackZ(normal), shade));
+    }
 
+    private static void scaleBrightness(float[] br, float brightness) {
         for (int i = 0; i < br.length; i++) {
             br[i] *= brightness;
         }
@@ -268,6 +255,17 @@ public class SmoothLightPipeline implements LightPipeline {
         return data;
     }
 
+    // Cached face data with the sky/block split done, for the blended reads
+    private AoFaceData getUnpackedFaceData(int x, int y, int z, ModelQuadFacing face, boolean offset) {
+        AoFaceData data = this.getCachedFaceData(x, y, z, face, offset);
+
+        if (!data.hasUnpackedLightData()) {
+            data.unpackLightData();
+        }
+
+        return data;
+    }
+
     // Loads face data for a new block position, reusing the cache across a block's faces
     private void updateCachedData(long key) {
         if (this.cachedPos != key) {
@@ -277,17 +275,6 @@ public class SmoothLightPipeline implements LightPipeline {
 
             this.cachedPos = key;
         }
-    }
-
-    // clamps the given float to the range [0.0, 1.0]
-    private static float clamp(float v) {
-        if (v < 0.0f) {
-            return 0.0f;
-        } else if (v > 1.0f) {
-            return 1.0f;
-        }
-
-        return v;
     }
 
     // the light map texture coordinate for the given block and sky light values

@@ -1,7 +1,6 @@
 package com.bdmajora.dynamiclights.mixin.lightsource;
 
 import com.bdmajora.dynamiclights.client.DynamicLightSource;
-import com.bdmajora.dynamiclights.client.DynamicLightsEngine;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityHanging;
 import net.minecraft.world.World;
@@ -23,12 +22,6 @@ public abstract class EntityHangingMixin extends Entity implements DynamicLightS
             return;
         }
 
-        if (this.isDead) {
-            this.impetus$setDynamicLightEnabled(false);
-            return;
-        }
-
-        this.impetus$dynamicLightTick();
-        DynamicLightsEngine.updateTracking(this);
+        this.impetus$tickDynamicLight(this.isDead);
     }
 }

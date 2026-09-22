@@ -42,13 +42,14 @@ public class ChunkMeshBufferBuilder {
 
         long ptr = LWJGL.memAddress(this.buffer, vertexStart);
 
-        if (this.analyzer != null) {
-            for (ChunkVertexEncoder.Vertex vertex : vertices) {
-                this.analyzer.capture(vertex);
-            }
-        }
+        // One walk for both; the encoder never mutates the vertex, so the analyzer can read it first
+        var analyzer = this.analyzer;
 
         for (ChunkVertexEncoder.Vertex vertex : vertices) {
+            if (analyzer != null) {
+                analyzer.capture(vertex);
+            }
+
             ptr = this.encoder.write(ptr, material, vertex, this.sectionIndex);
         }
 

@@ -5,7 +5,6 @@ import com.bdmajora.impetus.engine.impl.render.chunk.RenderSection;
 import com.bdmajora.impetus.engine.impl.render.chunk.lists.ChunkRenderList;
 import com.bdmajora.impetus.engine.impl.render.chunk.lists.RenderVisualsService;
 import com.bdmajora.impetus.engine.impl.render.chunk.lists.SortedRenderLists;
-import com.bdmajora.impetus.engine.impl.util.iterator.ConcatenatedIterator;
 
 import java.util.*;
 import java.util.function.Consumer;
@@ -52,11 +51,8 @@ public class MinecraftBuiltRenderSectionData<SPRITE, BLOCKENTITY> extends BuiltR
         return Objects.hash(super.hashCode(), animatedSprites, culledBlockEntities, globalBlockEntities);
     }
 
-    // Block entities of visible sections followed by the global ones
-    @SuppressWarnings("unchecked")
-    public static <BLOCKENTITY> Iterator<BLOCKENTITY> generateBlockEntityIterator(SortedRenderLists renderLists, Collection<RenderSection> globalSections) {
-        List<Iterator<BLOCKENTITY>> iterators = new ArrayList<>();
-
+    // Visits the built data of every visible section flagged as holding block entities, in render-list order; sections whose data is not ours (or that are gone) are skipped
+    public static void forEachVisibleSectionData(SortedRenderLists renderLists, Consumer<MinecraftBuiltRenderSectionData<?, ?>> visitor) {
         Iterator<ChunkRenderList> renderListIterator = renderLists.iterator();
 
         while (renderListIterator.hasNext()) {
@@ -70,72 +66,20 @@ public class MinecraftBuiltRenderSectionData<SPRITE, BLOCKENTITY> extends BuiltR
             }
 
             while (renderSectionIterator.hasNext()) {
-                var renderSectionId = renderSectionIterator.nextByteAsInt();
-                var renderSection = renderRegion.getSection(renderSectionId);
+                var renderSection = renderRegion.getSection(renderSectionIterator.nextByteAsInt());
 
-                if (renderSection == null) {
-                    continue;
-                }
-
-                var context = renderSection.getBuiltContext();
-
-                if (context instanceof MinecraftBuiltRenderSectionData<?,?> mcData) {
-                    iterators.add((Iterator<BLOCKENTITY>)mcData.culledBlockEntities.iterator());
+                if (renderSection != null && renderSection.getBuiltContext() instanceof MinecraftBuiltRenderSectionData<?, ?> mcData) {
+                    visitor.accept(mcData);
                 }
             }
-        }
-
-        for (var renderSection : globalSections) {
-            var context = renderSection.getBuiltContext();
-
-            if (context instanceof MinecraftBuiltRenderSectionData<?,?> mcData) {
-                iterators.add((Iterator<BLOCKENTITY>)mcData.globalBlockEntities.iterator());
-            }
-        }
-
-        if(iterators.isEmpty()) {
-            return Collections.emptyIterator();
-        } else {
-            return new ConcatenatedIterator<>(iterators.iterator());
         }
     }
 
-    // Visits the same set without allocating an iterator
-    @SuppressWarnings("unchecked")
-    public static <BLOCKENTITY> void forEachBlockEntity(Consumer<BLOCKENTITY> consumer, SortedRenderLists renderLists, Collection<RenderSection> globalSections) {
-        Iterator<ChunkRenderList> renderListIterator = renderLists.iterator();
-
-        while (renderListIterator.hasNext()) {
-            var renderList = renderListIterator.next();
-
-            var renderRegion = renderList.getRegion();
-            var renderSectionIterator = renderList.sectionsWithEntitiesIterator();
-
-            if (renderSectionIterator == null) {
-                continue;
-            }
-
-            while (renderSectionIterator.hasNext()) {
-                var renderSectionId = renderSectionIterator.nextByteAsInt();
-                var renderSection = renderRegion.getSection(renderSectionId);
-
-                if (renderSection == null) {
-                    continue;
-                }
-
-                var context = renderSection.getBuiltContext();
-
-                if (context instanceof MinecraftBuiltRenderSectionData<?,?> mcData) {
-                    ((List<BLOCKENTITY>)mcData.culledBlockEntities).forEach(consumer);
-                }
-            }
-        }
-
+    // Same for the sections flagged as holding global block entities (rendered regardless of visibility, like beacons)
+    public static void forEachGlobalSectionData(Collection<RenderSection> globalSections, Consumer<MinecraftBuiltRenderSectionData<?, ?>> visitor) {
         for (var renderSection : globalSections) {
-            var context = renderSection.getBuiltContext();
-
-            if (context instanceof MinecraftBuiltRenderSectionData<?,?> mcData) {
-                ((List<BLOCKENTITY>)mcData.globalBlockEntities).forEach(consumer);
+            if (renderSection.getBuiltContext() instanceof MinecraftBuiltRenderSectionData<?, ?> mcData) {
+                visitor.accept(mcData);
             }
         }
     }

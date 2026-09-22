@@ -3,6 +3,7 @@ package com.bdmajora.extras.client;
 import com.bdmajora.extras.ExtrasConfig;
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.executor.ChunkBuilder;
 import net.minecraft.client.Minecraft;
+import com.bdmajora.impetus.engine.impl.common.util.MathUtil;
 
 // Thread priorities and the render loop's yield, after wisecase2's StutterFix: every value defaults to what the game does on its own, so nothing here moves until the user asks
 public final class ThreadTuning {
@@ -20,9 +21,9 @@ public final class ThreadTuning {
     // Applied whenever the Extras config loads or saves; the config loads on the client thread, which is how that thread is found
     public static void apply(ExtrasConfig.ThreadSettings settings) {
         removeRenderYield = settings.removeRenderYield;
-        renderPriority = clamp(settings.renderThreadPriority);
-        serverPriority = clamp(settings.serverThreadPriority);
-        ChunkBuilder.WORKER_PRIORITY = clamp(settings.chunkBuilderPriority);
+        renderPriority = clampPriority(settings.renderThreadPriority);
+        serverPriority = clampPriority(settings.serverThreadPriority);
+        ChunkBuilder.WORKER_PRIORITY = clampPriority(settings.chunkBuilderPriority);
 
         if (clientThread == null && Minecraft.getMinecraft() != null && Minecraft.getMinecraft().isCallingFromMinecraftThread()) {
             clientThread = Thread.currentThread();
@@ -52,7 +53,7 @@ public final class ThreadTuning {
         }
     }
 
-    private static int clamp(int priority) {
-        return Math.max(Thread.MIN_PRIORITY, Math.min(Thread.MAX_PRIORITY, priority));
+    private static int clampPriority(int priority) {
+        return MathUtil.clamp(priority, Thread.MIN_PRIORITY, Thread.MAX_PRIORITY);
     }
 }

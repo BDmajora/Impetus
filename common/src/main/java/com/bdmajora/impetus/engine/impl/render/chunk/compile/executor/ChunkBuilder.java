@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.engine.impl.render.chunk.compile.executor;
 
+import com.bdmajora.impetus.engine.impl.common.util.MathUtil;
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.ChunkBuildContext;
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.tasks.ChunkBuilderTask;
 import org.apache.logging.log4j.LogManager;
@@ -34,9 +35,6 @@ public class ChunkBuilder {
     // Enables the adaptive scheduling controller; when off the in-flight target stays pinned at the floor (legacy fixed TASK_QUEUE_LIMIT_PER_WORKER budget)
     private static final boolean ENABLE_ADAPTIVE_SCHEDULING = true;
 
-    // whether changes to the adaptive in-flight target are logged; intended for tuning only
-    private static final boolean DEBUG_ADAPTIVE_SCHEDULING = false;
-
     private final ChunkJobQueue queue = new ChunkJobQueue();
 
     private final List<WorkerThread> threads = new ArrayList<>();
@@ -64,13 +62,12 @@ public class ChunkBuilder {
                 WorkerRunnable worker = new WorkerRunnable(context);
 
                 WorkerThread thread = new WorkerThread(worker, "Chunk Render Task Executor #" + i, context);
-                thread.setPriority(Math.max(Thread.MIN_PRIORITY, Math.min(Thread.MAX_PRIORITY, WORKER_PRIORITY)));
+                thread.setPriority(MathUtil.clamp(WORKER_PRIORITY, Thread.MIN_PRIORITY, Thread.MAX_PRIORITY));
                 thread.start();
 
                 this.threads.add(thread);
             }
         }
-
 
         this.localContext = contextSupplier.get();
 
@@ -100,7 +97,6 @@ public class ChunkBuilder {
         int floor = this.getSchedulingFloor();
         int queued = this.queue.size();
         boolean starved = this.queue.checkAndClearWorkerBlocked();
-        int previousTarget = this.targetInFlight;
 
         if (starved && this.lastDispatchBudgetLimited) {
             // Workers ran dry while we were sitting on dispatchable work: grow aggressively to escape starvation.
@@ -149,7 +145,6 @@ public class ChunkBuilder {
 
     // Interrupts and joins every worker
     private void shutdownThreads() {
-
         // Wait for every remaining thread to terminate
         for (WorkerThread thread : this.threads) {
             this.managedBlocker.managedBlock(() -> !thread.isAlive());
@@ -176,14 +171,8 @@ public class ChunkBuilder {
 
     // the "optimal" number of threads to use for chunk build tasks; always at least one
     private static int getOptimalThreadCount() {
-        int desiredThreads = Math.max(getMaxThreadCount() / 3, getMaxThreadCount() - 6);
-        if (desiredThreads < 1) {
-            return 1;
-        } else if (desiredThreads > 10) {
-            return 10;
-        } else {
-            return desiredThreads;
-        }
+        int maxThreads = getMaxThreadCount();
+        return MathUtil.clamp(Math.max(maxThreads / 3, maxThreads - 6), 1, 10);
     }
 
     // Requested count, or a heuristic from the core count when zero

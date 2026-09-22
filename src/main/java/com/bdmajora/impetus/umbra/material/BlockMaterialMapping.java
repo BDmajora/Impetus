@@ -10,7 +10,11 @@ import com.bdmajora.impetus.umbra.shaderpack.materialmap.BlockEntry;
 import com.bdmajora.impetus.umbra.shaderpack.materialmap.IdMap;
 
 import java.util.Arrays;
-import java.util.List;
+import com.bdmajora.impetus.umbra.shaderpack.materialmap.NamespacedId;
+import net.minecraft.init.Blocks;
+import net.minecraft.util.BlockRenderLayer;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 
 // Resolves a pack's block.properties against the 1.12.2 block registry (port of Umbra's BlockMaterialMapping) into a flat array so the mesher does one read; first mapping wins (OptiFine behaviour, Umbra #1327), predicates naming a missing property are ignored, unresolved ids skipped
@@ -24,19 +28,15 @@ public final class BlockMaterialMapping {
     }
 
     // Resolves the pack's layer.<rendertype> overrides to concrete blocks; unknown ids are skipped with a warning since packs commonly list blocks from mods the user lacks
-    public static java.util.Map<net.minecraft.block.Block, net.minecraft.util.BlockRenderLayer> createBlockRenderLayerTable(
-            IdMap idMap) {
-        java.util.Map<com.bdmajora.impetus.umbra.shaderpack.materialmap.NamespacedId,
-                net.minecraft.util.BlockRenderLayer> declared = idMap.getBlockRenderLayerMap();
+    public static Map<Block, BlockRenderLayer> createBlockRenderLayerTable(IdMap idMap) {
+        Map<NamespacedId, BlockRenderLayer> declared = idMap.getBlockRenderLayerMap();
         if (declared.isEmpty()) {
-            return java.util.Collections.emptyMap();
+            return Collections.emptyMap();
         }
-        java.util.Map<net.minecraft.block.Block, net.minecraft.util.BlockRenderLayer> resolved =
-                new java.util.HashMap<>();
+        Map<Block, BlockRenderLayer> resolved = new HashMap<>();
         declared.forEach((id, layer) -> {
-            net.minecraft.block.Block block = net.minecraft.block.Block.REGISTRY.getObject(
-                    new net.minecraft.util.ResourceLocation(id.getNamespace(), id.getName()));
-            if (block == null || block == net.minecraft.init.Blocks.AIR) {
+            Block block = Block.REGISTRY.getObject(new ResourceLocation(id.getNamespace(), id.getName()));
+            if (block == null || block == Blocks.AIR) {
                 LOGGER.warn("[Umbra] block.properties: unknown block \"{}\" in a render-layer override", id);
                 return;
             }
@@ -54,10 +54,9 @@ public final class BlockMaterialMapping {
         int[] table = new int[STATE_ID_SPACE];
         Arrays.fill(table, -1);
 
-        int[] statesMapped = {0};
         idMap.getBlockProperties().forEach((intId, entries) -> {
             for (BlockEntry entry : entries) {
-                statesMapped[0] += addBlockStates(entry, table, intId);
+                addBlockStates(entry, table, intId);
             }
         });
 
@@ -65,16 +64,15 @@ public final class BlockMaterialMapping {
     }
 
     // Assigns the pack id to every state matching the entry's predicates; first mapping wins
-    private static int addBlockStates(BlockEntry entry, int[] table, int intId) {
+    private static void addBlockStates(BlockEntry entry, int[] table, int intId) {
         ResourceLocation location = new ResourceLocation(entry.getId().getNamespace(), entry.getId().getName());
         if (!Block.REGISTRY.containsKey(location)) {
             // Normal and expected: modern-only names behind the pack's own MC_VERSION guards, or absent mods.
-            return 0;
+            return;
         }
 
         Block block = Block.REGISTRY.getObject(location);
         Map<String, String> predicates = entry.getPropertyPredicates();
-        int mapped = 0;
 
         for (IBlockState state : block.getBlockState().getValidStates()) {
             if (!matches(state, predicates, intId)) {
@@ -84,10 +82,8 @@ public final class BlockMaterialMapping {
             // First mapping wins (Umbra putIfAbsent / OptiFine parity).
             if (table[stateId] == -1) {
                 table[stateId] = intId;
-                mapped++;
             }
         }
-        return mapped;
     }
 
     // All named properties must match; properties the block lacks are ignored

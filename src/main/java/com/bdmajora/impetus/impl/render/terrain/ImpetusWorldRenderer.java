@@ -76,14 +76,12 @@ public class ImpetusWorldRenderer extends SimpleWorldRenderer<WorldClient, Vinta
     // performs a render pass for the given BlockRenderLayer, drawing every visible chunk for it
     public void drawChunkLayer(BlockRenderLayer renderLayer, double x, double y, double z) {
         // Umbra renderStage uniform: packs gate voxelization on MC_RENDER_STAGE_TERRAIN_* (ordinals 8/9/10/17).
-        int stage;
-        switch (renderLayer) {
-            case SOLID: stage = 8; break;
-            case CUTOUT_MIPPED: stage = 9; break;
-            case CUTOUT: stage = 10; break;
-            case TRANSLUCENT: stage = 17; break;
-            default: stage = 0; break;
-        }
+        int stage = switch (renderLayer) {
+            case SOLID -> 8;
+            case CUTOUT_MIPPED -> 9;
+            case CUTOUT -> 10;
+            case TRANSLUCENT -> 17;
+        };
         com.bdmajora.impetus.umbra.uniforms.CapturedRenderingState.INSTANCE.setRenderStage(stage);
         try {
             super.drawChunkLayer(renderLayer, x, y, z);

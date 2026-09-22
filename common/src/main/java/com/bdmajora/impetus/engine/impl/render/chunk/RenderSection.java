@@ -141,12 +141,12 @@ public class RenderSection extends AbstractSection {
         TranslucentQuadAnalyzer.Level level = TranslucentQuadAnalyzer.Level.NONE;
         boolean needsDynamicSorting = false;
 
-        if (!sortStates.isEmpty()) {
-            // Find highest level among all sort states
-            for (TranslucentQuadAnalyzer.SortState state : sortStates.values()) {
-                level = state.level().ordinal() > level.ordinal() ? state.level() : level;
-                needsDynamicSorting |= state.requiresDynamicSorting();
+        // The highest level among all sort states
+        for (TranslucentQuadAnalyzer.SortState state : sortStates.values()) {
+            if (state.level().ordinal() > level.ordinal()) {
+                level = state.level();
             }
+            needsDynamicSorting |= state.requiresDynamicSorting();
         }
 
         this.highestSortingLevel = level;

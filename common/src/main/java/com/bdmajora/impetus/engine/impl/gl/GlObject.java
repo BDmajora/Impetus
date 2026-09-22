@@ -34,8 +34,11 @@ public abstract class GlObject {
         return this.handle != INVALID_HANDLE;
     }
 
-    // Frees once; safe to call twice
+    // Frees once; a second call is a no-op rather than a use-after-delete throw from the handle check
     public final void delete() {
+        if (!this.isHandleValid()) {
+            return;
+        }
         this.destroyInternal();
         this.handle = INVALID_HANDLE;
     }

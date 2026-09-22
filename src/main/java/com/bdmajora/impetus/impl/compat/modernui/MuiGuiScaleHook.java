@@ -1,7 +1,6 @@
 package com.bdmajora.impetus.impl.compat.modernui;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.ScaledResolution;
 
 import java.lang.reflect.Method;
 import java.util.stream.Stream;
@@ -50,10 +49,16 @@ public class MuiGuiScaleHook {
 
     // Modern UI's scale formula when present, else vanilla's
     public static int calculateScale(int guiScale, boolean forceUnicode) {
-        int i;
+        var framebuffer = Minecraft.getMinecraft().getFramebuffer();
+        int width = framebuffer.framebufferWidth;
+        int height = framebuffer.framebufferHeight;
+        int i = 1;
+
         // vanilla's algorithm: grow the scale until the next step would shrink the scaled resolution below 320x240
-        for (i = 1; i != guiScale && i < Minecraft.getMinecraft().getFramebuffer().framebufferWidth && i < Minecraft.getMinecraft().getFramebuffer().framebufferHeight && Minecraft.getMinecraft().getFramebuffer().framebufferWidth / (i + 1) >= 320 && Minecraft.getMinecraft().getFramebuffer().framebufferHeight / (i + 1) >= 240; ++i) {
+        while (i != guiScale && i < width && i < height && width / (i + 1) >= 320 && height / (i + 1) >= 240) {
+            i++;
         }
+
 
         if (forceUnicode && i % 2 != 0) {
             ++i;

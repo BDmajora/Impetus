@@ -1,5 +1,6 @@
 package com.bdmajora.equilibrium.common.hopper;
 
+import net.minecraft.util.math.MathHelper;
 import com.bdmajora.equilibrium.common.world.TileEntityAccess;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockChest;
@@ -26,9 +27,9 @@ public final class HopperInventoryCache {
     // Resolves the inventory at a position, mirroring TileEntityHopper.getInventoryAtPosition exactly (order, random pick, flooring) except the tile entity may come from cache and the entity query is skipped when provably empty
     @Nullable
     public IInventory get(World world, double x, double y, double z) {
-        int blockX = net.minecraft.util.math.MathHelper.floor(x);
-        int blockY = net.minecraft.util.math.MathHelper.floor(y);
-        int blockZ = net.minecraft.util.math.MathHelper.floor(z);
+        int blockX = MathHelper.floor(x);
+        int blockY = MathHelper.floor(y);
+        int blockZ = MathHelper.floor(z);
 
         BlockPos pos = new BlockPos(blockX, blockY, blockZ);
 

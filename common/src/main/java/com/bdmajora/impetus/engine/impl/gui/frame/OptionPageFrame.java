@@ -14,17 +14,28 @@ import com.bdmajora.impetus.api.options.OptionIdentifier;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.function.Predicate;
 
 public class OptionPageFrame extends AbstractFrame {
     // Height of the page-title header band rendered above the option rows
     private static final int SECTION_HEADER_HEIGHT = 18;
+    // Height of a group heading row, drawn above a named group's rows; unnamed groups keep only the padding
+    private static final int GROUP_HEADER_HEIGHT = 14;
+    private static final int OPTION_ROW_HEIGHT = 18;
+    private static final int GROUP_PADDING = 4;
+    private static final int GROUP_HEADER_COLOR = 0xFFA8A8A8;
 
     protected final OptionPage page;
     private long lastTime = 0;
     private ControlElement<?> lastHoveredElement = null;
     protected final Predicate<Option<?>> optionFilter;
+    // Named-group headings at their frame-relative y, rebuilt with the frame
+    private final List<GroupHeading> groupHeadings = new ArrayList<>();
+
+    private record GroupHeading(TextComponent name, int y) {
+    }
 
     public OptionPageFrame(Dim2i dim, boolean renderOutline, OptionPage page, Predicate<Option<?>> optionFilter) {
         super(dim, renderOutline);
@@ -39,29 +50,17 @@ public class OptionPageFrame extends AbstractFrame {
         return new Builder();
     }
 
-    // Creates a control element per visible option, grouped
+    // Sizes the frame to its content: one layout pass with no elements created, so the scroll container knows the height before the rows exist
     public void setupFrame() {
         this.children.clear();
         this.drawable.clear();
         this.controlElements.clear();
+        this.groupHeadings.clear();
 
-        int y = SECTION_HEADER_HEIGHT;
-        if (!this.page.getGroups().isEmpty()) {
-            OptionGroup lastGroup = this.page.getGroups().get(this.page.getGroups().size() - 1);
-
-            for (OptionGroup group : this.page.getGroups()) {
-                int visibleOptionCount = (int)group.getOptions().stream().filter(optionFilter::test).count();
-                y += visibleOptionCount * 18;
-                if (visibleOptionCount > 0 && group != lastGroup) {
-                    y += 4;
-                }
-            }
-        }
-
-        this.dim = this.dim.withHeight(y);
+        this.dim = this.dim.withHeight(this.layout(false));
     }
 
-    // Stacks the groups vertically with separators
+    // Stacks the groups vertically, a heading over each named one and padding between them
     @Override
     public void buildFrame() {
         if (this.page == null) return;
@@ -69,42 +68,60 @@ public class OptionPageFrame extends AbstractFrame {
         this.children.clear();
         this.drawable.clear();
         this.controlElements.clear();
+        this.groupHeadings.clear();
 
+        this.layout(true);
+
+        super.buildFrame();
+    }
+
+    // Walks the groups once; with create, control elements and headings are added, without it only the height is measured. Returns the content height including the page header; groups with nothing visible take no space at all
+    private int layout(boolean create) {
         int y = SECTION_HEADER_HEIGHT;
-        for (OptionGroup group : this.page.getGroups()) {
-            boolean needPadding = false;
-            // Add each option's control element
-            for (Option<?> option : group.getOptions()) {
-                if(!optionFilter.test(option)) {
-                    continue;
-                }
-                Control<?> control = option.getControl();
-                Dim2i dim = new Dim2i(0, y, this.dim.width(), 18).withParentOffset(this.dim);
-                ControlElement<?> element = control.createElement(dim);
-                this.children.add(element);
+        boolean first = true;
 
-                // Move down to the next option
-                y += 18;
-                needPadding = true;
+        for (OptionGroup group : this.page.getGroups()) {
+            List<Option<?>> visible = new ArrayList<>();
+            for (Option<?> option : group.getOptions()) {
+                if (this.optionFilter.test(option)) {
+                    visible.add(option);
+                }
+            }
+            if (visible.isEmpty()) {
+                continue;
+            }
+            if (!first) {
+                y += GROUP_PADDING;
+            }
+            first = false;
+
+            if (group.getName() != null) {
+                if (create) {
+                    this.groupHeadings.add(new GroupHeading(group.getName(), y));
+                }
+                y += GROUP_HEADER_HEIGHT;
             }
 
-            if(needPadding) {
-                // Add padding beneath each option group
-                y += 4;
+            for (Option<?> option : visible) {
+                if (create) {
+                    Control<?> control = option.getControl();
+                    Dim2i dim = new Dim2i(0, y, this.dim.width(), OPTION_ROW_HEIGHT).withParentOffset(this.dim);
+                    this.children.add(control.createElement(dim));
+                }
+                y += OPTION_ROW_HEIGHT;
             }
         }
 
-        super.buildFrame();
+        return y;
     }
 
     // Draws controls, then the tooltip for whichever is hovered
     @Override
     public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
         this.renderSectionHeader(drawContext);
+        this.renderGroupHeadings(drawContext);
 
-        ControlElement<?> hoveredElement = this.isMouseOver(mouseX, mouseY) ? this.controlElements.stream()
-                .filter(c -> c.isMouseOver(mouseX, mouseY))
-                .findFirst().orElse(null) : null;
+        ControlElement<?> hoveredElement = this.isMouseOver(mouseX, mouseY) ? this.findHoveredControl(mouseX, mouseY) : null;
         super.render(drawContext, mouseX, mouseY, delta);
         if (hoveredElement != null && this.lastHoveredElement == hoveredElement) {
             if (this.lastTime == 0) {
@@ -114,6 +131,24 @@ public class OptionPageFrame extends AbstractFrame {
         } else {
             this.lastTime = 0;
             this.lastHoveredElement = hoveredElement;
+        }
+    }
+
+    // The first control under the cursor, a plain loop since this runs every frame
+    private ControlElement<?> findHoveredControl(int mouseX, int mouseY) {
+        for (ControlElement<?> control : this.controlElements) {
+            if (control.isMouseOver(mouseX, mouseY)) {
+                return control;
+            }
+        }
+        return null;
+    }
+
+    // Muted group names, indented like the page title so the columns line up
+    private void renderGroupHeadings(DrawContext drawContext) {
+        for (GroupHeading heading : this.groupHeadings) {
+            int textY = this.dim.y() + heading.y() + (GROUP_HEADER_HEIGHT - drawContext.lineHeight()) / 2 + 1;
+            drawContext.drawString(heading.name(), this.dim.x() + 7, textY, GROUP_HEADER_COLOR);
         }
     }
 
@@ -128,16 +163,9 @@ public class OptionPageFrame extends AbstractFrame {
         drawContext.drawString(this.page.getName(), x + 7, textY, accentColor);
     }
 
-    // Owning mod name for the tooltip footer, or empty
+    // Owning mod for the tooltip footer; vanilla options are Impetus' own pages, so they never get an "added by" line
     private static String normalizeModForTooltip(@Nullable String mod) {
-        if(mod == null) {
-            return null;
-        } else {
-            return switch(mod) {
-                case "minecraft" -> "impetus";
-                default -> mod;
-            };
-        }
+        return "minecraft".equals(mod) ? "impetus" : mod;
     }
 
     // Wrapped tooltip beside the control, flipped left when it would overflow

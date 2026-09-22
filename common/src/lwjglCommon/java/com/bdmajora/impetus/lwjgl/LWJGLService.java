@@ -111,6 +111,8 @@ public interface LWJGLService {
     void glDeleteQueries(int query);
     void glQueryCounter(int id, int target);
     long glGetQueryObjectui64(int id, int pname);
+    // GL15 form, for GL_QUERY_RESULT_AVAILABLE polls; plain GL15 since availability is not a timer-extension entry point
+    int glGetQueryObjecti(int id, int pname);
 
     // ===================== TEXTURE OPERATIONS =====================
 
@@ -124,6 +126,8 @@ public interface LWJGLService {
     int glGetTexLevelParameteri(int target, int level, int pname);
     void glCopyTexSubImage2D(int target, int level, int xoffset, int yoffset, int x, int y, int width, int height);
     void glReadPixels(int x, int y, int width, int height, int format, int type, ByteBuffer pixels);
+    // Into the bound GL_PIXEL_PACK_BUFFER at a byte offset, the asynchronous form
+    void glReadPixels(int x, int y, int width, int height, int format, int type, long pixelsOffset);
     void glGenerateMipmap(int target);
     int glGenSamplers();
     void glDeleteSamplers(int sampler);

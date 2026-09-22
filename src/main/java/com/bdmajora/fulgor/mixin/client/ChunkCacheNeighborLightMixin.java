@@ -2,7 +2,6 @@ package com.bdmajora.fulgor.mixin.client;
 
 import com.bdmajora.fulgor.lighting.FaceLightRules;
 import net.minecraft.block.state.IBlockState;
-import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.ChunkCache;
 import net.minecraft.world.EnumSkyBlock;
@@ -44,15 +43,6 @@ public abstract class ChunkCacheNeighborLightMixin {
         if (faces == 0) {
             return;
         }
-        int level = getLightFor(type, pos);
-        for (EnumFacing facing : EnumFacing.VALUES) {
-            if (level >= 15) {
-                break;
-            }
-            if ((faces & (1 << facing.ordinal())) != 0) {
-                level = FaceLightRules.fold(level, getLightFor(type, pos.offset(facing)), type);
-            }
-        }
-        cir.setReturnValue(level);
+        cir.setReturnValue(FaceLightRules.foldOpenFaces(faces, getLightFor(type, pos), type, pos, this::getLightFor));
     }
 }

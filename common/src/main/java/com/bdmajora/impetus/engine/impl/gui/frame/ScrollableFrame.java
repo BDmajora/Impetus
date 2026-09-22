@@ -1,14 +1,12 @@
 package com.bdmajora.impetus.engine.impl.gui.frame;
 
 import com.bdmajora.impetus.engine.impl.gui.framework.DrawContext;
-import com.bdmajora.impetus.engine.impl.gui.framework.Interactable;
 import com.bdmajora.impetus.engine.impl.gui.framework.InteractionContext;
 import com.bdmajora.impetus.engine.impl.gui.theme.DefaultColors;
 import com.bdmajora.impetus.engine.impl.util.Dim2i;
 import com.bdmajora.impetus.engine.impl.gui.frame.components.ScrollBarComponent;
 
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Stream;
 
 public class ScrollableFrame extends AbstractFrame {
 
@@ -42,28 +40,12 @@ public class ScrollableFrame extends AbstractFrame {
 
     // Creates scroll bars only on the axes where the content overflows
     public void setupFrame(AtomicReference<Integer> verticalScrollBarOffset, AtomicReference<Integer> horizontalScrollBarOffset) {
-        int maxWidth = 0;
-        int maxHeight = 0;
+        // An axis scrolls when the content runs past the viewport on it
         if (!this.dim.canFitDimension(this.frame.dim)) {
-            if (this.dim.getLimitX() < this.frame.dim.getLimitX()) {
-                int value = this.frame.dim.x() - this.dim.x() + this.frame.dim.width();
-                if (maxWidth < value) {
-                    maxWidth = value;
-                }
-            }
-            if (this.dim.getLimitY() < this.frame.dim.getLimitY()) {
-                int value = this.frame.dim.y() - this.dim.y() + this.frame.dim.height();
-                if (maxHeight < value) {
-                    maxHeight = value;
-                }
-            }
-        }
-
-        if (maxWidth > 0) {
-            this.canScrollHorizontal = true;
-        }
-        if (maxHeight > 0) {
-            this.canScrollVertical = true;
+            this.canScrollHorizontal = this.dim.getLimitX() < this.frame.dim.getLimitX()
+                    && this.frame.dim.x() - this.dim.x() + this.frame.dim.width() > 0;
+            this.canScrollVertical = this.dim.getLimitY() < this.frame.dim.getLimitY()
+                    && this.frame.dim.y() - this.dim.y() + this.frame.dim.height() > 0;
         }
 
         if (this.canScrollHorizontal && this.canScrollVertical) {

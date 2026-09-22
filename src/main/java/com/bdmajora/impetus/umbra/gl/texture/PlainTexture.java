@@ -14,10 +14,7 @@ public class PlainTexture extends GlResource {
     public PlainTexture(int red, int green, int blue, int alpha) {
         setHandle(LWJGL.glGenTextures());
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, getGlId());
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL11.GL_REPEAT);
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL11.GL_REPEAT);
+        TextureParameters.set2D(GL11.GL_NEAREST, GL11.GL_REPEAT);
         // One RGBA pixel on the thread-local stack; nothing here outlives the constructor
         try (MemoryStack stack = LWJGL.stackPush()) {
             ByteBuffer pixel = stack.malloc(4);

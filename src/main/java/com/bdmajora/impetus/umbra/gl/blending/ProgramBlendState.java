@@ -4,36 +4,37 @@ import net.minecraft.client.renderer.GlStateManager;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import com.bdmajora.impetus.umbra.shaderpack.ShaderProperties;
+import com.bdmajora.impetus.umbra.targets.UmbraRenderTargets;
 import com.bdmajora.impetus.lwjgl.GL11;
 
-import java.util.LinkedHashMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectLinkedOpenHashMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import java.util.Locale;
-import java.util.Map;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 // A program's blend directives: program-level `blend.<program>` plus per-target `blend.<program>.<buffer>` overrides, needed because the albedo target wants normal blending while normal/material targets must be written unblended
 public final class ProgramBlendState {
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
-    private static final String[] LEGACY_TARGETS = {
-            "gcolor", "gdepth", "gnormal", "composite", "gaux1", "gaux2", "gaux3", "gaux4"
-    };
-
     private static boolean warnedNoBufferBlend;
 
     private final boolean baseSpecified;
     private final BlendMode baseMode;
-    private final Map<Integer, BlendMode> perTargetModes;
+    // Keyed by colortex index; primitive so the per-object apply() never boxes
+    private final Int2ObjectMap<BlendMode> perTargetModes;
 
-    private ProgramBlendState(boolean baseSpecified, BlendMode baseMode, Map<Integer, BlendMode> perTargetModes) {
+    private ProgramBlendState(boolean baseSpecified, BlendMode baseMode, Int2ObjectMap<BlendMode> perTargetModes) {
         this.baseSpecified = baseSpecified;
         this.baseMode = baseMode;
         this.perTargetModes = perTargetModes;
     }
 
+    private static final ProgramBlendState EMPTY = new ProgramBlendState(false, null, Int2ObjectMaps.emptyMap());
+
     // No directives; leaves vanilla's blend state alone
     public static ProgramBlendState empty() {
-        return new ProgramBlendState(false, null, new LinkedHashMap<>());
+        return EMPTY;
     }
 
     // Reads blend.<program> and every blend.<program>.<buffer> override
@@ -54,7 +55,7 @@ public final class ProgramBlendState {
             baseMode = defaultBase;
         }
 
-        Map<Integer, BlendMode> perTargetModes = new LinkedHashMap<>();
+        Int2ObjectMap<BlendMode> perTargetModes = new Int2ObjectLinkedOpenHashMap<>();
         String prefix = "blend." + programName + ".";
         properties.asMap().forEach((key, value) -> {
             if (!key.startsWith(prefix)) {
@@ -111,11 +112,13 @@ public final class ProgramBlendState {
         }
 
         for (int slot = 0; slot < drawBuffers.length; slot++) {
-            if (this.baseSpecified) {
+            int target = drawBuffers[slot];
+
+            // A per-target directive replaces the base for that slot; "off" is stored as null, so presence is what matters
+            if (this.perTargetModes.containsKey(target)) {
+                applySlotMode(slot, this.perTargetModes.get(target));
+            } else if (this.baseSpecified) {
                 applySlotMode(slot, this.baseMode);
-            }
-            if (this.perTargetModes.containsKey(drawBuffers[slot])) {
-                applySlotMode(slot, this.perTargetModes.get(drawBuffers[slot]));
             }
         }
     }
@@ -144,21 +147,9 @@ public final class ProgramBlendState {
         }
     }
 
-    // colortexN or gcolor-style names to an index
+    // colortexN or gcolor-style names to an index, -1 for anything else
     private static int parseTarget(String name) {
-        String lower = name.toLowerCase(Locale.ROOT);
-        if (lower.startsWith("colortex")) {
-            try {
-                return Integer.parseInt(lower.substring("colortex".length()));
-            } catch (NumberFormatException e) {
-                return -1;
-            }
-        }
-        for (int i = 0; i < LEGACY_TARGETS.length; i++) {
-            if (LEGACY_TARGETS[i].equals(lower)) {
-                return i;
-            }
-        }
-        return -1;
+        Integer index = UmbraRenderTargets.colorTargetIndex(name.toLowerCase(Locale.ROOT));
+        return index != null ? index : -1;
     }
 }

@@ -2,58 +2,51 @@ package com.bdmajora.impetus.impl.util;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 
 public class StringUtils {
-    // Levenshtein distance: Calculates the number of edits (insertion, deletion, substitution) needed to transform one string into another.
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+
+    // Levenshtein distance: the number of edits (insertion, deletion, substitution) needed to transform one string into another; two rolling rows rather than the full m x n table
     public static int levenshteinDistance(String s1, String s2) {
         int m = s1.length();
         int n = s2.length();
 
-        int[][] dp = new int[m + 1][n + 1];
-
-        for (int i = 0; i <= m; i++) {
-            dp[i][0] = i;
-        }
+        int[] previous = new int[n + 1];
+        int[] current = new int[n + 1];
 
         for (int j = 0; j <= n; j++) {
-            dp[0][j] = j;
+            previous[j] = j;
         }
 
         for (int i = 1; i <= m; i++) {
+            current[0] = i;
+            char c = s1.charAt(i - 1);
             for (int j = 1; j <= n; j++) {
-                int cost = s1.charAt(i - 1) == s2.charAt(j - 1) ? 0 : 1;
-                dp[i][j] = Math.min(dp[i - 1][j] + 1, Math.min(dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost));
+                int cost = c == s2.charAt(j - 1) ? 0 : 1;
+                current[j] = Math.min(previous[j] + 1, Math.min(current[j - 1] + 1, previous[j - 1] + cost));
             }
+            int[] swap = previous;
+            previous = current;
+            current = swap;
         }
 
-        return dp[m][n];
+        return previous[n];
     }
 
-    // Ranks options by edit distance to the input, for the options screen search
+    // Options whose name carries every word of the input (by prefix or within maxDistance edits), for the options screen search
     public static <T> List<T> fuzzySearch(Iterable<T> options, String userInput, int maxDistance, Function<T, String> toStringFn) {
         List<T> result = new ArrayList<>();
-        String[] targetWords = userInput.toLowerCase().split("\\s+");
+        String[] targetWords = WHITESPACE.split(userInput.toLowerCase(Locale.ROOT));
 
         for (T option : options) {
-            String sentence = toStringFn.apply(option).toLowerCase();
+            String[] sentenceWords = WHITESPACE.split(toStringFn.apply(option).toLowerCase(Locale.ROOT));
 
             boolean containsAllWords = true;
             for (String word : targetWords) {
-                boolean containsWord = false;
-                for (String sentenceWord : sentence.toLowerCase().split("\\s+")) {
-                    int distance = levenshteinDistance(word, sentenceWord);
-                    if (distance <= maxDistance) {
-                        containsWord = true;
-                        break;
-                    }
-                    // Starts with match
-                    if (sentenceWord.startsWith(word)) {
-                        containsWord = true;
-                        break;
-                    }
-                }
-                if (!containsWord) {
+                if (!containsWord(sentenceWords, word, maxDistance)) {
                     containsAllWords = false;
                     break;
                 }
@@ -64,5 +57,15 @@ public class StringUtils {
         }
 
         return result;
+    }
+
+    // A prefix match is the cheap test, so it runs before the edit distance
+    private static boolean containsWord(String[] sentenceWords, String word, int maxDistance) {
+        for (String sentenceWord : sentenceWords) {
+            if (sentenceWord.startsWith(word) || levenshteinDistance(word, sentenceWord) <= maxDistance) {
+                return true;
+            }
+        }
+        return false;
     }
 }

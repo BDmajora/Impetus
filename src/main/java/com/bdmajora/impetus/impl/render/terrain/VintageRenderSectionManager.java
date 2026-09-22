@@ -86,18 +86,16 @@ public class VintageRenderSectionManager extends RenderSectionManager {
         if (pipeline != null && pipeline.shouldDisableOcclusionCulling()) {
             return false;
         }
-        final boolean useOcclusionCulling;
-        var camBlockPos = positionedViewport.getBlockCoord();
-        BlockPos origin = new BlockPos(camBlockPos.x(), camBlockPos.y(), camBlockPos.z());
+        // A spectator inside an opaque block sees nothing with culling on, so it is switched off there like vanilla does
+        if (spectator) {
+            var camBlockPos = positionedViewport.getBlockCoord();
 
-        if (spectator && this.world.getBlockState(origin).isOpaqueCube())
-        {
-            useOcclusionCulling = false;
-        } else {
-            useOcclusionCulling = Minecraft.getMinecraft().renderChunksMany;
+            if (this.world.getBlockState(new BlockPos(camBlockPos.x(), camBlockPos.y(), camBlockPos.z())).isOpaqueCube()) {
+                return false;
+            }
         }
 
-        return useOcclusionCulling;
+        return Minecraft.getMinecraft().renderChunksMany;
     }
 
     // Empty sections skip building entirely

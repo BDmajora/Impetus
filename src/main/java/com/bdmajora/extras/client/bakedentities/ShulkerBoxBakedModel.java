@@ -54,31 +54,30 @@ public final class ShulkerBoxBakedModel extends BakedEntityModel {
         matrix.scale(0.9995F, 0.9995F, 0.9995F);
         matrix.translate(0.0F, -1.0F, 0.0F);
         switch (facing) {
-            case DOWN:
+            case DOWN -> {
                 matrix.translate(0.0F, 2.0F, 0.0F);
                 matrix.rotateX((float) Math.toRadians(180.0F));
-                break;
-            case NORTH:
+            }
+            case NORTH -> {
                 matrix.translate(0.0F, 1.0F, 1.0F);
                 matrix.rotateX((float) Math.toRadians(90.0F));
                 matrix.rotateZ((float) Math.toRadians(180.0F));
-                break;
-            case SOUTH:
+            }
+            case SOUTH -> {
                 matrix.translate(0.0F, 1.0F, -1.0F);
                 matrix.rotateX((float) Math.toRadians(90.0F));
-                break;
-            case WEST:
+            }
+            case WEST -> {
                 matrix.translate(-1.0F, 1.0F, 0.0F);
                 matrix.rotateX((float) Math.toRadians(90.0F));
                 matrix.rotateZ((float) Math.toRadians(-90.0F));
-                break;
-            case EAST:
+            }
+            case EAST -> {
                 matrix.translate(1.0F, 1.0F, 0.0F);
                 matrix.rotateX((float) Math.toRadians(90.0F));
                 matrix.rotateZ((float) Math.toRadians(90.0F));
-                break;
-            default:
-                break;
+            }
+            default -> { }
         }
         synchronized (this.model) {
             EntityModelBaker baker = new EntityModelBaker(BakedEntities.sprite(texture(color)));

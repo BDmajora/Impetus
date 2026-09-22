@@ -15,7 +15,7 @@ public final class DoubleBufferedQueue<E> {
 
     // Swaps read and write; returns whether there is anything to read
     public boolean flip() {
-        if (this.write.size() == 0) {
+        if (this.write.isEmpty()) {
             return false;
         }
 
@@ -80,12 +80,11 @@ public final class DoubleBufferedQueue<E> {
         @Override
         public void enqueue(@NotNull E e) {
             if (this.writeIndex >= this.elements.length) {
-                this.resize(this.writeIndex + 1);
+                this.grow(this.writeIndex + 1);
             }
 
             this.elements[this.writeIndex++] = e;
         }
-
 
         // Nulls out references so they can be collected
         public void clear() {
@@ -100,6 +99,10 @@ public final class DoubleBufferedQueue<E> {
         // Element count
         public int size() {
             return this.writeIndex - this.readIndex;
+        }
+
+        public boolean isEmpty() {
+            return this.readIndex == this.writeIndex;
         }
 
         // Resizes to the next size at least this large

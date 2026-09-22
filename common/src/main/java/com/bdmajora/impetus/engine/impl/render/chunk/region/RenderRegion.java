@@ -8,7 +8,6 @@ import com.bdmajora.impetus.engine.impl.gl.attribute.GlVertexFormat;
 import com.bdmajora.impetus.engine.impl.gl.buffer.GlBuffer;
 import com.bdmajora.impetus.engine.impl.gl.device.CommandList;
 import com.bdmajora.impetus.engine.impl.gl.tessellation.GlTessellation;
-import com.bdmajora.impetus.engine.impl.render.chunk.RenderPassConfiguration;
 import com.bdmajora.impetus.engine.impl.render.chunk.RenderSection;
 import com.bdmajora.impetus.engine.impl.render.chunk.data.SectionRenderDataStorage;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
@@ -148,11 +147,11 @@ public class RenderRegion {
     }
 
     // Storage for a pass, created on first use
-    public SectionRenderDataStorage createStorage(TerrainRenderPass pass, RenderPassConfiguration<?> renderPassConfiguration) {
+    public SectionRenderDataStorage createStorage(TerrainRenderPass pass) {
         var storage = this.sectionRenderData.get(pass);
 
         if (storage == null) {
-            this.sectionRenderData.put(pass, storage = new SectionRenderDataStorage(renderPassConfiguration.getPrimitiveTypeForPass(pass)));
+            this.sectionRenderData.put(pass, storage = new SectionRenderDataStorage(pass.primitiveType()));
             this.passSetUpdateCount++;
         }
 
@@ -233,9 +232,7 @@ public class RenderRegion {
             throw new IllegalStateException("Tried to remove the wrong section");
         }
 
-        for (var storage : this.sectionRenderData.values()) {
-            storage.removeMeshes(sectionIndex);
-        }
+        this.removeMeshes(sectionIndex);
 
         this.sections[sectionIndex] = null;
         this.sectionLoadTimes[sectionIndex] = 0;
@@ -396,7 +393,6 @@ public class RenderRegion {
         public GlBufferArena getGeometryArena() {
             return this.geometryArena;
         }
-
 
         // Sorted index storage, or null
         public GlBufferArena getIndexArena() {

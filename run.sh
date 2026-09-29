@@ -4,12 +4,20 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-# Gradle 9+ needs a JDK 17/21 to *run*; the mod itself still targets Java 8 via jabel + jvmdowngrader.
-check_java() {
-    if ! java -version 2>&1 | grep -E -q 'version "(17|21)'; then
-        echo "Warning: Gradle requires Java 17 or 21 to run the build environment."
-        echo "         Ensure JDK 21 is your default before continuing."
-        echo
+# Force Java 21 environment for this script execution
+force_java21() {
+    if [ -n "${JAVA21_HOME:-}" ]; then
+        export JAVA_HOME="$JAVA21_HOME"
+    elif command -v /usr/libexec/java_home &>/dev/null; then
+        export JAVA_HOME="$(/usr/libexec/java_home -v 21 2>/dev/null || true)"
+    elif [ -d "/usr/lib/jvm/java-21-openjdk" ]; then
+        export JAVA_HOME="/usr/lib/jvm/java-21-openjdk"
+    elif [ -d "/usr/lib/jvm/java-21-openjdk-amd64" ]; then
+        export JAVA_HOME="/usr/lib/jvm/java-21-openjdk-amd64"
+    fi
+
+    if [ -n "${JAVA_HOME:-}" ]; then
+        export PATH="$JAVA_HOME/bin:$PATH"
     fi
 }
 
@@ -22,6 +30,14 @@ task_build() {
     ./gradlew packageJar
     echo
     echo "Jar written to build/libs/$(version)/"
+}
+
+# JUnit + JaCoCo over both modules; no packageJar, no reobf, and compileJava is up to date on a warm tree.
+# --continue keeps the second module running when the first has failures, so the summary is complete.
+task_test() {
+    ./gradlew --continue test jacocoTestReport || true
+    echo
+    python3 tools/test-summary.py "$@"
 }
 
 # Removes every build output, not just the root build/ directory. `gradlew clean` only owns the root
@@ -52,8 +68,9 @@ menu() {
   Impetus - Minecraft 1.12.2 (Forge)
 
     1) Build
-    2) Clean
-    3) Quit
+    2) Test
+    3) Clean
+    4) Quit
 
 MENU
 }
@@ -61,18 +78,22 @@ MENU
 dispatch() {
     case "$1" in
         1|build) task_build ;;
-        2|clean) task_clean "${2-}" ;;
-        3|q|quit|exit) return 1 ;;
+        2|test) task_test ;;
+        3|clean) task_clean "${2-}" ;;
+        4|q|quit|exit) return 1 ;;
         *) echo "Unknown option: $1" ;;
     esac
     return 0
 }
 
-check_java
+force_java21
 
-# Non-interactive form, e.g. ./run.sh build - keeps the script usable from CI and aliases.
+# Non-interactive form, e.g. ./run.sh build or ./run.sh test --all - keeps the script usable from CI and aliases.
 # Such callers have already stated their intent, so clean skips the confirmation there.
 if [ $# -gt 0 ]; then
+    case "$1" in
+        2|test) shift; task_test "$@"; exit $? ;;
+    esac
     dispatch "$1" --force
     exit $?
 fi

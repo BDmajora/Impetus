@@ -7,9 +7,9 @@ public class ColorABGR implements ColorU8 {
     private static final int BLUE_COMPONENT_OFFSET = 16;
     private static final int ALPHA_COMPONENT_OFFSET = 24;
 
-    // packs the colour components into ABGR format, with the alpha component fully opaque
+    // packs the colour components into ABGR format, with the alpha component fully opaque; 1.0f, not COMPONENT_MASK, since the float overload normalises its alpha too
     public static int pack(float r, float g, float b) {
-        return pack(r, g, b, COMPONENT_MASK);
+        return pack(r, g, b, 1.0f);
     }
 
     // packs the colour components into ABGR format

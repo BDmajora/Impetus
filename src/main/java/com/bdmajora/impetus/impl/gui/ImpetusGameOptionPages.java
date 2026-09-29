@@ -111,7 +111,8 @@ public class ImpetusGameOptionPages {
                         .setId(StandardOptions.Option.FULLSCREEN_RESOLUTION.cast())
                         .setName(TextComponent.translatable("options.fullscreen.resolution"))
                         .setTooltip(TextComponent.translatable("impetus.options.fullscreen.resolution.tooltip"))
-                        .setControl(option -> new SliderControl(option, 0, Math.max(0, FullscreenResolutions.count() - 1), 1,
+                        // A slider needs two stops, so with no fullscreen modes both read "Current" rather than the screen failing to open
+                        .setControl(option -> new SliderControl(option, 0, Math.max(1, FullscreenResolutions.count() - 1), 1,
                                 value -> TextComponent.literal(FullscreenResolutions.label(value))))
                         .setBinding((opts, value) -> {
                             opts.fullscreenResolution = value;

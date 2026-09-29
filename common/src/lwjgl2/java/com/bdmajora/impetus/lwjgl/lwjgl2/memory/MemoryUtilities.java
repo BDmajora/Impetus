@@ -720,10 +720,9 @@ public final class MemoryUtilities {
      * @param size the number of pointer values to allocate.
      */
     public static PointerBuffer memRealloc(@Nullable PointerBuffer ptr, int size) {
-        // return new PointerBuffer(memCalloc(Math.toIntExact(getAllocationSize(num, POINTER_SHIFT))));
-
+        // The base address must be reallocated, not the address at the current position
         PointerBuffer buffer = memPointerBuffer(
-                nmemReallocChecked(ptr == null ? NULL : memAddress(ptr), getAllocationSize(size, POINTER_SHIFT)),
+                nmemReallocChecked(ptr == null ? NULL : memAddress(ptr, 0), getAllocationSize(size, POINTER_SHIFT)),
                 size);
         if (ptr != null) {
             buffer.position(min(ptr.position(), size));
@@ -1247,12 +1246,13 @@ public final class MemoryUtilities {
         if (address == 0L) {
             throw new IllegalArgumentException("Null pointer");
         }
-        return new PointerBuffer(memByteBuffer(address, capacity));
+        // Capacity counts pointers, so the byte view underneath is POINTER_SIZE times larger
+        return new PointerBuffer(memByteBuffer(address, capacity << POINTER_SHIFT));
     }
 
     /** Like {@link #memPointerBuffer}, but returns {@code null} if {@code address} is {@link #NULL}. */
     public static @Nullable PointerBuffer memPointerBufferSafe(long address, int capacity) {
-        return address == NULL ? null : new PointerBuffer(memByteBuffer(address, capacity));
+        return address == NULL ? null : new PointerBuffer(memByteBuffer(address, capacity << POINTER_SHIFT));
     }
 
     // --- [ Buffer duplication ] ---
@@ -3370,10 +3370,17 @@ public final class MemoryUtilities {
             @SuppressWarnings("unchecked")
             final Class<? extends ByteBuffer> dbb = (Class<? extends ByteBuffer>) Class
                     .forName("java.nio.DirectByteBuffer");
-            final java.lang.reflect.Constructor<? extends ByteBuffer> newDbb =
-                    dbb.getDeclaredConstructor(long.class, int.class);
-            newDbb.setAccessible(true);
-            return newDbb.newInstance(address, capacity);
+            // JDK 19+ widened the capacity parameter to long
+            java.lang.reflect.Constructor<? extends ByteBuffer> newDbb;
+            try {
+                newDbb = dbb.getDeclaredConstructor(long.class, int.class);
+                newDbb.setAccessible(true);
+                return newDbb.newInstance(address, capacity);
+            } catch (NoSuchMethodException e) {
+                newDbb = dbb.getDeclaredConstructor(long.class, long.class);
+                newDbb.setAccessible(true);
+                return newDbb.newInstance(address, (long) capacity);
+            }
         } catch (Throwable t) {
             throw new RuntimeException(t);
         }

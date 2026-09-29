@@ -1,6 +1,7 @@
 package com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.impl;
 
 import com.bdmajora.impetus.engine.api.util.ColorABGR;
+import com.bdmajora.impetus.engine.impl.gl.attribute.GlVertexAttributeFormat;
 import com.bdmajora.impetus.engine.impl.gl.attribute.GlVertexFormat;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexEncoder;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexType;
@@ -14,7 +15,10 @@ import com.bdmajora.impetus.engine.impl.common.util.MathUtil;
 public class MeshChunkVertex implements ChunkVertexType {
     public static final int STRIDE = 16;
 
-    public static final GlVertexFormat VERTEX_FORMAT = GlVertexFormat.builder(STRIDE).build();
+    // One uvec4 attribute; an attribute-less format is rejected by the builder, which used to make this class unloadable
+    public static final GlVertexFormat VERTEX_FORMAT = GlVertexFormat.builder(STRIDE)
+            .addElement("a_Packed", 0, GlVertexAttributeFormat.UNSIGNED_INT, 4, false, true)
+            .build();
 
     private static final int POSITION_MAX_VALUE = 65536;
     private static final int TEXTURE_MAX_VALUE = 32768;

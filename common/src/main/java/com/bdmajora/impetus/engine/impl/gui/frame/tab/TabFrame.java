@@ -14,7 +14,6 @@ import com.bdmajora.impetus.engine.impl.gui.frame.ScrollableFrame;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 // Sidebar of mod groups, each a header over its pages, beside the selected page's frame; a header click folds its group so a sidebar of twenty pages stays short, and the fold state lives for the session like the selected tab does
@@ -38,8 +37,12 @@ public class TabFrame extends AbstractFrame {
 
     public TabFrame(DrawContext drawContext, Dim2i dim, boolean renderOutline, Map<String, List<Tab<?>>> tabs, Runnable onSetTab, AtomicReference<TextComponent> tabSectionSelectedTab, AtomicReference<Integer> tabSectionScrollBarOffset) {
         super(dim, renderOutline);
-        this.tabs = Collections.unmodifiableMap(tabs.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, e -> List.copyOf(e.getValue()), (a, b) -> a, LinkedHashMap::new)));
-        this.modAccentColors = this.tabs.keySet().stream().collect(Collectors.toMap(id -> id, drawContext::getModAccentColor, (a, b) -> a, LinkedHashMap::new));
+        Map<String, List<Tab<?>>> groups = new LinkedHashMap<>();
+        tabs.forEach((id, list) -> groups.put(id, List.copyOf(list)));
+        this.tabs = Collections.unmodifiableMap(groups);
+        Map<String, Integer> accents = new LinkedHashMap<>();
+        this.tabs.keySet().forEach(id -> accents.put(id, drawContext.getModAccentColor(id)));
+        this.modAccentColors = accents;
         Optional<Integer> result = Stream.concat(
                 // Icon padding + icon + icon padding, matching where TabHeaderWidget starts drawing its name, plus the fold marker on the right
                 tabs.keySet().stream().map(id -> {

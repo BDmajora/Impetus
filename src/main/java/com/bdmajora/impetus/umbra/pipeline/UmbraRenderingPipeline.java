@@ -1153,9 +1153,9 @@ public class UmbraRenderingPipeline {
             int logical = logicalDrawBuffers[i];
             int attachmentPoint = logical >= 0 && logical < this.gbufferAttachmentPointByIndex.length ? this.gbufferAttachmentPointByIndex[logical] : -1;
             if (attachmentPoint < 0) {
-                LOGGER.warn("[Umbra] Gbuffer draw buffer colortex{} is not attached; routing output slot {} to colortex0",
+                // GL_NONE, not colortex0: colortex0 is detached below unless written, and naming it twice is a GL error
+                LOGGER.warn("[Umbra] Gbuffer draw buffer colortex{} is not attached; discarding output slot {}",
                         logical, i);
-                attachmentPoint = Math.max(0, this.gbufferAttachmentPointByIndex[0]);
             } else {
                 written |= 1 << logical;
             }

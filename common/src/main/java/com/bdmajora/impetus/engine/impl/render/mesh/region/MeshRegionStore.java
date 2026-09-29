@@ -92,11 +92,14 @@ public class MeshRegionStore {
         }
 
         int slot = slotWithinRegion(sectionX, sectionY, sectionZ);
-        int index = region.count++;
+        int index = region.count;
 
+        // Validate before claiming the index, or a rejected duplicate leaves a phantom entry the next removal trips over
         if (region.slotToIndex[slot] != -1 || region.indexToSlot[index] != -1) {
             throw new IllegalStateException("Section slot " + slot + " in region " + regionId + " is already taken");
         }
+
+        region.count++;
 
         region.slotToIndex[slot] = index;
         region.indexToSlot[index] = slot;

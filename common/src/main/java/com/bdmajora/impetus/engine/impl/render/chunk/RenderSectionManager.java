@@ -920,7 +920,7 @@ public abstract class RenderSectionManager {
     }
 
     // Section by coordinates, or null
-    private RenderSection getRenderSection(int x, int y, int z) {
+    public RenderSection getRenderSectionOrNull(int x, int y, int z) {
         return this.sectionByPosition.get(PositionUtil.packSection(x, y, z));
     }
 
@@ -1030,7 +1030,7 @@ public abstract class RenderSectionManager {
 
     // Whether the section has data
     public boolean isSectionBuilt(int x, int y, int z) {
-        var section = this.getRenderSection(x, y, z);
+        var section = this.getRenderSectionOrNull(x, y, z);
         return section != null && section.isBuilt();
     }
 

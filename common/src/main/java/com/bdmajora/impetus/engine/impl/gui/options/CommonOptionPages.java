@@ -1,9 +1,7 @@
 package com.bdmajora.impetus.engine.impl.gui.options;
 
-import com.bdmajora.impetus.api.options.OptionIdentifier;
 import com.bdmajora.impetus.api.options.control.ControlValueFormatter;
 import com.bdmajora.impetus.api.options.control.CyclingControl;
-import com.bdmajora.impetus.api.options.control.ReadOnlyStringControl;
 import com.bdmajora.impetus.api.options.control.SliderControl;
 import com.bdmajora.impetus.api.options.control.TickBoxControl;
 import com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions;
@@ -20,26 +18,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class CommonOptionPages {
-    private static final ReadOnlyState readOnlyState = new ReadOnlyState();
-    private static final OptionStorage<ReadOnlyState> readOnlyOpts = () -> readOnlyState;
-
-    private static OptionImpl<ReadOnlyState, String> readOnlyOption(OptionIdentifier<Void> id, TextComponent name,
-                                                                    TextComponent tooltip, String value) {
-        return readOnlyOption(id, name, tooltip, value, false);
-    }
-
-    private static OptionImpl<ReadOnlyState, String> readOnlyOption(OptionIdentifier<Void> id, TextComponent name,
-                                                                    TextComponent tooltip, String value, boolean enabled) {
-        return OptionImpl.createBuilder(String.class, readOnlyOpts)
-                .setId(id.cast())
-                .setName(name)
-                .setTooltip(tooltip)
-                .setControl(ReadOnlyStringControl::new)
-                .setBinding((state, nextValue) -> { }, state -> value)
-                .setEnabled(enabled)
-                .build();
-    }
-
     // Translucency sorting options
     public static OptionGroup sortingGroup(ImpetusGameOptions gameOpts) {
         return OptionGroup.createBuilder()
@@ -276,8 +254,5 @@ public class CommonOptionPages {
                 .build());
 
         return new OptionPage(StandardOptions.Pages.PERFORMANCE, TextComponent.translatable("impetus.options.pages.performance"), List.copyOf(groups));
-    }
-
-    private static class ReadOnlyState {
     }
 }

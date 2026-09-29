@@ -21,6 +21,11 @@ public final class LWJGLServiceProvider {
 
     // Picks LWJGL2 or LWJGL3 by probing which org.lwjgl classes are present
     static LWJGLService createInstance() {
+        // Unit tests name a fake backend here, since neither real one can be built without a GL context
+        String override = System.getProperty("impetus.lwjgl.service");
+        if (override != null) {
+            return constructInstance(override);
+        }
         try {
             Class.forName("org.lwjgl.opengl.GL11C");
             return constructInstance("com.bdmajora.impetus.lwjgl.lwjgl3.LWJGL3Service");

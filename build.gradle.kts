@@ -9,6 +9,7 @@ plugins {
     id("com.gradleup.shadow") version "9.3.0"
     id("impetus-mdg-remapper")
     id("maven-publish")
+    id("jacoco")
 }
 
 group = "com.bdmajora"
@@ -27,6 +28,8 @@ val modCompileOnly by configurations.creating
 configurations.compileOnly.get().extendsFrom(modCompileOnly)
 val modRuntimeOnly by configurations.creating
 configurations.runtimeOnly.get().extendsFrom(modRuntimeOnly)
+// Unit tests exercise the compat code directly, so the compileOnly mod APIs must be loadable there
+configurations.testImplementation.get().extendsFrom(modCompileOnly)
 
 // CleanMix + MixinExtras, shaded into a jar that is nested inside the mod jar rather than unpacked
 // into it. BooterBootstrap extracts it at runtime only when the install has no MixinBooter, so on
@@ -122,6 +125,19 @@ dependencies {
     modCompileOnly("maven.modrinth:fluidlogged-api:3.0.6")
     // Distant Horizons API, for the umbra DH compat (compat.dh); only loaded when DH is present
     modCompileOnly("maven.modrinth:distanthorizonsapi:7.0.0")
+
+    testImplementation("org.junit.jupiter:junit-jupiter:5.13.0")
+    testImplementation("org.mockito:mockito-core:5.17.0")
+    // The launcher and ByteBuddy are compiled against: Splice installs its agent from a launcher session listener
+    testImplementation("org.junit.platform:junit-platform-launcher")
+    testImplementation("net.bytebuddy:byte-buddy:1.15.11")
+    testImplementation("net.bytebuddy:byte-buddy-agent:1.15.11")
+    // Mixin handlers take CallbackInfo parameters and the booter touches RFB, so both must resolve at test runtime
+    testImplementation("com.cleanroommc:cleanmix:${cleanmixVersion}")
+    testImplementation("com.cleanroommc:mixinextras-common:${mixinExtrasVersion}")
+    testImplementation("com.gtnewhorizons.retrofuturabootstrap:RetroFuturaBootstrap:1.0.11") {
+        exclude(group = "org.apache.logging.log4j")
+    }
 }
 
 tasks.named<JavaCompile>("compileJava") {
@@ -132,6 +148,81 @@ tasks.named<JavaCompile>("compileJava") {
     options.compilerArgs.add("-Xlint:-options")
     javaCompiler = javaToolchains.compilerFor {
         languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// RFG keeps LWJGL2 compile-only, and its manifest seals org.lwjgl.opengl, which would reject the Display and GLContext stand-ins; tests load an unsealed copy instead
+val lwjgl2Classpath = configurations.named("lwjgl2Classpath")
+val unsealLwjgl by tasks.registering(Jar::class) {
+    archiveFileName = "lwjgl2-unsealed.jar"
+    destinationDirectory = layout.buildDirectory.dir("unsealed")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from({ lwjgl2Classpath.get().filter { it.name.startsWith("lwjgl-2") }.map { zipTree(it) } }) {
+        exclude("META-INF/MANIFEST.MF")
+    }
+}
+
+// The GL test backend and LWJGL2 stand-ins live in common so both modules' tests share one copy
+sourceSets.test {
+    java.srcDir("common/src/testShared/java")
+    resources.srcDir("common/src/testShared/resources")
+    runtimeClasspath = runtimeClasspath + files(unsealLwjgl) + lwjgl2Classpath.get().filter { !it.name.startsWith("lwjgl-2") }
+}
+
+// Tests never ship, so they skip jabel and compile as plain Java 21 against the Java 8 main classes
+tasks.named<JavaCompile>("compileTestJava") {
+    sourceCompatibility = "21"
+    targetCompatibility = "21"
+    options.release = 21
+    javaCompiler = javaToolchains.compilerFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+tasks.named<Test>("test") {
+    useJUnitPlatform()
+    // run.sh test reports failures itself, and the coverage report must still be produced when tests fail
+    ignoreFailures = true
+    maxHeapSize = "2G"
+    // Config code writes relative "config/" paths, so tests run from a scratch directory under build
+    workingDir = layout.buildDirectory.dir("test-work").get().asFile
+    doFirst { workingDir.mkdirs() }
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+    // Mockito's inline mock maker self-attaches a ByteBuddy agent, which JDK 21 warns about unless allowed up front
+    jvmArgs("-XX:+EnableDynamicAgentLoading", "--add-opens", "java.base/java.nio=ALL-UNNAMED", "--add-opens", "java.base/java.lang=ALL-UNNAMED")
+    systemProperty("impetus.lwjgl.service", "com.bdmajora.testing.TestGl")
+    // Compatibility warnings pop Swing dialogs; keep the run headless and silent
+    systemProperty("java.awt.headless", "true")
+    systemProperty("impetus.hideMessageBoxes", "true")
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
+    finalizedBy(tasks.named("jacocoTestReport"))
+}
+
+jacoco {
+    toolVersion = "0.8.13"
+}
+
+tasks.named<JacocoReport>("jacocoTestReport") {
+    dependsOn(tasks.named("test"))
+    reports {
+        xml.required = true
+        html.required = true
+    }
+}
+
+// run.sh test reads the XML; this task is the gate for CI-style runs
+tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
+    dependsOn(tasks.named("test"))
+    violationRules {
+        rule {
+            limit { counter = "METHOD"; value = "COVEREDRATIO"; minimum = "1.0".toBigDecimal() }
+            limit { counter = "CLASS"; value = "COVEREDRATIO"; minimum = "1.0".toBigDecimal() }
+        }
     }
 }
 

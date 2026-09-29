@@ -176,10 +176,11 @@ public final class ShaderMacros {
     // MC_OS_WINDOWS, MC_OS_LINUX or MC_OS_MAC from the JVM's os.name
     private static String osMacro() {
         String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        if (os.contains("win")) {
-            return "MC_OS_WINDOWS";
-        } else if (os.contains("mac") || os.contains("darwin")) {
+        // Mac first: "darwin" contains "win"
+        if (os.contains("mac") || os.contains("darwin")) {
             return "MC_OS_MAC";
+        } else if (os.contains("win")) {
+            return "MC_OS_WINDOWS";
         } else if (os.contains("nux") || os.contains("nix")) {
             return "MC_OS_LINUX";
         }

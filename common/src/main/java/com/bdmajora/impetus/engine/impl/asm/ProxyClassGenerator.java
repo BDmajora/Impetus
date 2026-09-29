@@ -19,28 +19,35 @@ public class ProxyClassGenerator<DELEGATE, INTERFACE> {
             return DEFINER;
         }
         try {
-            // Try to build a Java 9+ style class definer; these public methods just don't exist on Java 8
-            Method makePrivateLookup = MethodHandles.class.getMethod(
-                    "privateLookupIn", Class.class, MethodHandles.Lookup.class
-            );
-            Object privateLookup = makePrivateLookup.invoke(null, ProxyClassGenerator.class, MethodHandles.lookup());
-            Method defineClass = MethodHandles.Lookup.class.getMethod("defineClass", byte[].class);
-            DEFINER = (bytes, name) -> (Class<?>) defineClass.invoke(privateLookup, (Object) bytes);
+            DEFINER = modernDefiner();
         } catch (Exception x) {
-            try {
-                // If that fails, try a Java 8 style definer
-                Method defineClass = ClassLoader.class.getDeclaredMethod(
-                        "defineClass", String.class, byte[].class, int.class, int.class
-                );
-                defineClass.setAccessible(true);
-                ClassLoader loader = ProxyClassGenerator.class.getClassLoader();
-                DEFINER = (bytes, name) -> (Class<?>) defineClass.invoke(loader, name, bytes, 0, bytes.length);
-            } catch (NoSuchMethodException e) {
-                // Fail if neither works
-                throw new RuntimeException(e);
-            }
+            DEFINER = legacyDefiner();
         }
         return DEFINER;
+    }
+
+    // Java 9+ style: these public methods just don't exist on Java 8
+    private static Definer modernDefiner() throws Exception {
+        Method makePrivateLookup = MethodHandles.class.getMethod(
+                "privateLookupIn", Class.class, MethodHandles.Lookup.class
+        );
+        Object privateLookup = makePrivateLookup.invoke(null, ProxyClassGenerator.class, MethodHandles.lookup());
+        Method defineClass = MethodHandles.Lookup.class.getMethod("defineClass", byte[].class);
+        return (bytes, name) -> (Class<?>) defineClass.invoke(privateLookup, (Object) bytes);
+    }
+
+    // Java 8 style; fails outright if the protected defineClass is missing too
+    private static Definer legacyDefiner() {
+        try {
+            Method defineClass = ClassLoader.class.getDeclaredMethod(
+                    "defineClass", String.class, byte[].class, int.class, int.class
+            );
+            defineClass.setAccessible(true);
+            ClassLoader loader = ProxyClassGenerator.class.getClassLoader();
+            return (bytes, name) -> (Class<?>) defineClass.invoke(loader, name, bytes, 0, bytes.length);
+        } catch (NoSuchMethodException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private final Class<?> delegateClass;

@@ -1,7 +1,6 @@
 package com.bdmajora.impetus.engine.impl.render.chunk.occlusion;
 
 import it.unimi.dsi.fastutil.longs.Long2ReferenceMap;
-import com.bdmajora.impetus.engine.impl.common.util.MathUtil;
 import com.bdmajora.impetus.engine.impl.render.viewport.CameraTransform;
 import com.bdmajora.impetus.engine.impl.render.viewport.Viewport;
 import com.bdmajora.impetus.engine.impl.util.PositionUtil;
@@ -19,8 +18,6 @@ public class OcclusionCuller {
     private final int minSectionY, maxSectionY;
 
     private final DoubleBufferedQueue<OcclusionNode> queue = new DoubleBufferedQueue<>();
-
-    private boolean isCameraInUnloadedSection;
 
     public OcclusionCuller(Long2ReferenceMap<OcclusionNode> sections, SectionTree sectionTree, int minSectionY, int maxSectionY) {
         this.sections = sections;
@@ -43,11 +40,8 @@ public class OcclusionCuller {
         final var queues = this.queue;
         queues.reset();
 
-        this.isCameraInUnloadedSection = false;
-        this.init(visitor, queues.write(), viewport, searchDistance, useOcclusionCulling, frame);
-        if(this.isCameraInUnloadedSection) {
-            useOcclusionCulling = false;
-        }
+        // The tree handled every case where the camera is not inside a loaded section, so the walk always seeds from its own section
+        this.initWithinWorld(visitor, queues.write(), viewport, useOcclusionCulling, frame);
 
         while (queues.flip()) {
             processQueue(visitor, viewport, searchDistance, useOcclusionCulling, frame, queues.read(), queues.write());
@@ -235,34 +229,7 @@ public class OcclusionCuller {
         return viewport.isBoxVisible(section.getCenterX(), section.getCenterY(), section.getCenterZ(), CHUNK_SECTION_SIZE);
     }
 
-    private void init(Visitor visitor,
-                      WriteQueue<OcclusionNode> queue,
-                      Viewport viewport,
-                      float searchDistance,
-                      boolean useOcclusionCulling,
-                      int frame)
-    {
-        var origin = viewport.getChunkCoord();
-
-        if (origin.y() < this.minSectionY) {
-            // below the world
-            this.initOutsideWorldHeight(queue, viewport, searchDistance, frame,
-                    this.minSectionY, GraphDirectionSet.of(GraphDirection.DOWN));
-        } else if (origin.y() >= this.maxSectionY) {
-            // above the world
-            this.initOutsideWorldHeight(queue, viewport, searchDistance, frame,
-                    this.maxSectionY - 1, GraphDirectionSet.of(GraphDirection.UP));
-        } else if(this.getRenderSection(origin.x(), origin.y(), origin.z()) == null) {
-            // inside the world height-wise, but in an unloaded section
-            this.initOutsideWorldHeight(queue, viewport, searchDistance, frame,
-                    origin.y(), GraphDirectionSet.of(GraphDirection.UP) | GraphDirectionSet.of(GraphDirection.DOWN));
-            this.isCameraInUnloadedSection = true;
-        } else {
-            this.initWithinWorld(visitor, queue, viewport, useOcclusionCulling, frame);
-        }
-    }
-
-    // Seeds the walk from the camera's section, or the nearest column when it is outside the world
+    // Seeds the walk from the camera's section
     private void initWithinWorld(Visitor visitor, WriteQueue<OcclusionNode> queue, Viewport viewport, boolean useOcclusionCulling, int frame) {
         var origin = viewport.getChunkCoord();
         var section = this.getRenderSection(origin.x(), origin.y(), origin.z());
@@ -285,70 +252,6 @@ public class OcclusionCuller {
         }
 
         visitNeighbors(queue, section, outgoing, frame);
-    }
-
-    // Enqueues in-viewport sections in a diamond spiral (innermost layer first, each layer N->W->S->E) for a consistent order without sorting
-    private void initOutsideWorldHeight(WriteQueue<OcclusionNode> queue,
-                                        Viewport viewport,
-                                        float searchDistance,
-                                        int frame,
-                                        int height,
-                                        int direction)
-    {
-        var origin = viewport.getChunkCoord();
-        var radius = MathUtil.mojfloor(searchDistance / 16.0f);
-
-        // Layer 0
-        this.tryVisitNode(queue, origin.x(), height, origin.z(), direction, frame, viewport);
-
-        // Complete layers, excluding layer 0
-        for (int layer = 1; layer <= radius; layer++) {
-            for (int z = -layer; z < layer; z++) {
-                int x = Math.abs(z) - layer;
-                this.tryVisitNode(queue, origin.x() + x, height, origin.z() + z, direction, frame, viewport);
-            }
-
-            for (int z = layer; z > -layer; z--) {
-                int x = layer - Math.abs(z);
-                this.tryVisitNode(queue, origin.x() + x, height, origin.z() + z, direction, frame, viewport);
-            }
-        }
-
-        // Incomplete layers
-        for (int layer = radius + 1; layer <= 2 * radius; layer++) {
-            int l = layer - radius;
-
-            for (int z = -radius; z <= -l; z++) {
-                int x = -z - layer;
-                this.tryVisitNode(queue, origin.x() + x, height, origin.z() + z, direction, frame, viewport);
-            }
-
-            for (int z = l; z <= radius; z++) {
-                int x = z - layer;
-                this.tryVisitNode(queue, origin.x() + x, height, origin.z() + z, direction, frame, viewport);
-            }
-
-            for (int z = radius; z >= l; z--) {
-                int x = layer - z;
-                this.tryVisitNode(queue, origin.x() + x, height, origin.z() + z, direction, frame, viewport);
-            }
-
-            for (int z = -l; z >= -radius; z--) {
-                int x = layer + z;
-                this.tryVisitNode(queue, origin.x() + x, height, origin.z() + z, direction, frame, viewport);
-            }
-        }
-    }
-
-    // Seeds one section if it exists and is in the frustum
-    private void tryVisitNode(WriteQueue<OcclusionNode> queue, int x, int y, int z, int direction, int frame, Viewport viewport) {
-        OcclusionNode section = this.getRenderSection(x, y, z);
-
-        if (section == null || !isWithinFrustum(viewport, section)) {
-            return;
-        }
-
-        visitNode(queue, section, direction, frame);
     }
 
     // Node lookup by section coordinates

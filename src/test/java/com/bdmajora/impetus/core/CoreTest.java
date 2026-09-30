@@ -75,6 +75,23 @@ class CoreTest {
             }
             configs.verify(() -> Config.blacklist("mixins.phosphor.json"));
             configs.verify(() -> Config.blacklist("mixins.alfheim.json"), never());
+            // Without Distant Horizons on the classpath its depth-texture config is left alone
+            mixins.verify(() -> Mixins.addConfiguration("DistantHorizons.iris.mixins.json"), never());
+        } finally {
+            LaunchEnvironment.restore();
+        }
+    }
+
+    @Test
+    void theRegistrarRestoresDistantHorizonsDepthTextureMixin(@TempDir Path home, @TempDir Path classpath) throws IOException {
+        Files.writeString(classpath.resolve("DistantHorizons.iris.mixins.json"), "{}");
+        LaunchEnvironment.install(home, classpath.toUri().toURL());
+        try (MockedStatic<Mixins> mixins = Mockito.mockStatic(Mixins.class);
+             MockedStatic<Config> configs = Mockito.mockStatic(Config.class)) {
+            ImpetusMixinRegistrar.apply();
+            // DH skipped it on seeing Impetus's IrisApi, so Impetus queues it after its own
+            mixins.verify(() -> Mixins.addConfiguration("DistantHorizons.iris.mixins.json"));
+            mixins.verify(() -> Mixins.addConfiguration("mixins.impetus.json"));
         } finally {
             LaunchEnvironment.restore();
         }

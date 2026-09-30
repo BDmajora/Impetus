@@ -5,6 +5,7 @@ import com.bdmajora.coarctatio.MemoryReport;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.client.resources.IResourceManager;
+import net.minecraftforge.fml.common.Loader;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -23,6 +24,11 @@ public abstract class TextureMapMixin {
 
     @Inject(method = "loadTextureAtlas", at = @At("RETURN"))
     private void coarctatio$releaseStaticSpriteData(IResourceManager resourceManager, CallbackInfo ci) {
+        // Distant Horizons colours and textures its LODs from these pixels, reading them on its own threads whenever a block first appears in a LOD
+        if (Loader.isModLoaded("distanthorizons")) {
+            return;
+        }
+
         int released = 0;
         long bytes = 0;
 

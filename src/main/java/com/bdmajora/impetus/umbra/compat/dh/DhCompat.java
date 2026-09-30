@@ -20,6 +20,7 @@ public final class DhCompat {
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
     private static final String INTERNAL = "com.bdmajora.impetus.umbra.compat.dh.DhCompatInternal";
     private static final String EVENTS = "com.bdmajora.impetus.umbra.compat.dh.LodRendererEvents";
+    private static final String ACCESSOR = "com.bdmajora.impetus.umbra.compat.dh.DhIrisAccessor";
 
     // False until run() finds DH's API and mod id, and again after any failure binding to it
     private static boolean dhPresent;
@@ -35,7 +36,7 @@ public final class DhCompat {
     private static MethodHandle checkFrame;
     private static MethodHandle isRenderingEnabled;
     private static MethodHandle renderShadowSolid;
-    private static MethodHandle renderShadowTranslucent;
+    private static MethodHandle renderDeferredLods;
     private static MethodHandle shadowsOverridden;
 
     // The DhCompatInternal for one pipeline, or null without DH or when the pack has no dh_* programs
@@ -85,7 +86,7 @@ public final class DhCompat {
             checkFrame = lookup.findStatic(internalClass, "checkFrame", MethodType.methodType(boolean.class));
             isRenderingEnabled = lookup.findStatic(internalClass, "isRenderingEnabled", MethodType.methodType(boolean.class));
             renderShadowSolid = lookup.findStatic(internalClass, "renderShadowSolid", MethodType.methodType(void.class));
-            renderShadowTranslucent = lookup.findStatic(internalClass, "renderShadowTranslucent", MethodType.methodType(void.class));
+            renderDeferredLods = lookup.findStatic(internalClass, "renderDeferredLods", MethodType.methodType(void.class));
             MethodHandle setupEventHandlers = lookup.findStatic(eventsClass, "setupEventHandlers", MethodType.methodType(void.class));
             // Set before the handlers bind, since their DhApiAfterDhInitEvent reads it
             dhPresent = true;
@@ -99,6 +100,18 @@ public final class DhCompat {
                 // A missing API member means an older DH than the API this was built against (7.0.0)
                 LOGGER.error("[Umbra] Distant Horizons found, but one or more API methods are missing; Impetus needs DH API 7.0.0 or newer. LOD shader support disabled", e);
             }
+        }
+    }
+
+    // Construction hook: DH reads its shader mod accessor during its own init, which runs before Impetus's, so Impetus's is queued from here; a failure logs and leaves DH treating every frame as unshaded
+    public static void registerIrisAccessor() {
+        if (!Loader.isModLoaded("distanthorizons")) {
+            return;
+        }
+        try {
+            MethodHandles.lookup().findStatic(Class.forName(ACCESSOR), "register", MethodType.methodType(void.class)).invoke();
+        } catch (Throwable e) {
+            LOGGER.error("[Umbra] Could not queue Impetus's Distant Horizons shader accessor; LODs will draw as though no pack were active", e);
         }
     }
 
@@ -194,13 +207,13 @@ public final class DhCompat {
         }
     }
 
-    // Same for the deferred translucent LODs (water), after the shadow pass's translucent terrain
-    public static void renderShadowTranslucent() {
+    // DH's deferred translucent LODs (water): after the shadow pass's translucent terrain, and at the start of the main translucent layer, where DH's own call never runs because Impetus's renderBlockLayer overwrite skips the method DH hooks
+    public static void renderDeferredLods() {
         if (!dhPresent) {
             return;
         }
         try {
-            renderShadowTranslucent.invoke();
+            renderDeferredLods.invoke();
         } catch (Throwable e) {
             throw new RuntimeException(e);
         }

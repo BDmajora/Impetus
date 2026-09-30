@@ -20,12 +20,16 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.Slice;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import com.bdmajora.impetus.lwjgl.GL15;
 import com.bdmajora.impetus.umbra.Umbra;
+import com.bdmajora.impetus.umbra.compat.dh.DhCompat;
 import com.bdmajora.impetus.umbra.pipeline.DeferredBlockOutline;
 import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;
 import com.bdmajora.impetus.umbra.pipeline.VanillaFeatureToggles;
 import com.bdmajora.impetus.umbra.shaderpack.loading.ProgramId;
 import com.bdmajora.impetus.umbra.uniforms.CelestialUniforms;
+
+import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 // Switches the sky phase to gbuffers_skytextured for the sun and moon inside renderSky and back to gbuffers_skybasic afterwards (OptiFine's preCelestialRotate split); the outer "sky" anchor already selected skybasic
 @Mixin(RenderGlobal.class)
@@ -149,6 +153,24 @@ public class RenderGlobalMixin {
     private void impetus$suppressSky(float partialTicks, int pass, CallbackInfo ci) {
         if (!VanillaFeatureToggles.shouldRenderSky()) {
             ci.cancel();
+        }
+    }
+
+    // Distant Horizons draws its deferred LOD water from the one-argument renderBlockLayer, which the Impetus terrain overwrite never calls, so DH's call runs here at the start of the translucent layer; declared ahead of the culling and skip hooks so DH's GL state is spent before they set theirs, and its program, VAO and buffers are unbound after as its own opaque hook does
+    @Inject(method = "renderBlockLayer(Lnet/minecraft/util/BlockRenderLayer;DILnet/minecraft/entity/Entity;)I",
+            at = @At("HEAD"), require = 0)
+    private void impetus$renderDeferredLods(BlockRenderLayer layer, double partialTicks, int pass, Entity entity,
+                                            CallbackInfoReturnable<Integer> cir) {
+        if (layer != BlockRenderLayer.TRANSLUCENT || !DhCompat.hasRenderingEnabled()) {
+            return;
+        }
+        try {
+            DhCompat.renderDeferredLods();
+        } finally {
+            LWJGL.glUseProgram(0);
+            LWJGL.glBindVertexArray(0);
+            LWJGL.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+            LWJGL.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
         }
     }
 

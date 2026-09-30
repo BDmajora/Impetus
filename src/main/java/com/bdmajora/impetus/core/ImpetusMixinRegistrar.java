@@ -17,6 +17,9 @@ final class ImpetusMixinRegistrar {
     // Legacy Phosphor-lineage mods mapped to their configs; Fulgor replaces them and running both would corrupt the lighting
     private static final Map<String, String> SUPERSEDED_LIGHTING_MODS = supersededLightingMods();
 
+    // Distant Horizons' mixin giving MC's framebuffer a depth texture; DH's connector skips it whenever the Iris API class exists, assuming Actinium supplies that texture, but Impetus ships the class and leaves the framebuffer alone
+    private static final String DH_DEPTH_TEXTURE_CONFIG = "DistantHorizons.iris.mixins.json";
+
     private ImpetusMixinRegistrar() { }
 
     // Builds the immutable map of conflicting lighting mods to suppress
@@ -38,6 +41,7 @@ final class ImpetusMixinRegistrar {
         for (String config : mixinConfigs()) {
             Mixins.addConfiguration(config);
         }
+        restoreDistantHorizonsDepthTexture();
     }
 
     // Order: Impetus/Umbra reserve early-load slots, Coarctatio must apply before vanilla NBT/ResourceLocation instantiation, Fulgor injects lighting fields into World/Chunk, Equilibrium loads last so Fulgor reads its chunk cache, Extras and Dynamic Lights are order-independent after those
@@ -45,6 +49,13 @@ final class ImpetusMixinRegistrar {
         return Arrays.asList("mixins.impetus.json", "mixins.umbra.json", "mixins.coarctatio.json",
                 "mixins.fulgor.json", "mixins.equilibrium.json", "mixins.extras.json",
                 "mixins.dynamiclights.json");
+    }
+
+    // DH's fade pass samples that depth texture through the accessor Impetus registers with DH; injectData runs after every coremod jar joined the classpath, so the resource lookup sees DH's
+    private static void restoreDistantHorizonsDepthTexture() {
+        if (Launch.classLoader.getResource(DH_DEPTH_TEXTURE_CONFIG) != null) {
+            Mixins.addConfiguration(DH_DEPTH_TEXTURE_CONFIG);
+        }
     }
 
     // Blacklists Phosphor and Alfheim configs when their json is on the classpath, since two lighting engines corrupt light

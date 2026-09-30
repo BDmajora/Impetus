@@ -281,7 +281,7 @@ public class UmbraShadowRenderer {
         }
         try {
             if (translucent) {
-                DhCompat.renderShadowTranslucent();
+                DhCompat.renderDeferredLods();
             } else {
                 DhCompat.renderShadowSolid();
             }

@@ -66,6 +66,9 @@ public class ImpetusVintage {
         // The lighting engine branches on these on its hot path and every world is constructed after this point; earlier, the mod list is not yet answerable
         Fulgor.detectCompatibility();
 
+        // Distant Horizons reads which shader mod owns the frame during its own init, which runs before Impetus's
+        com.bdmajora.impetus.umbra.compat.dh.DhCompat.registerIrisAccessor();
+
         // As early as a mod can run: the remapper has its mappings by now and most mod classes are still to be loaded through it
         com.bdmajora.coarctatio.launch.RemapperCompactor.run();
 

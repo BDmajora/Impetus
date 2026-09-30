@@ -38,7 +38,7 @@ public final class DhCompatInternal {
     // DH's rendering toggle as of the last checkFrame; read by the macro environment, so it is also set from DH's init event before the first pack load
     static boolean dhEnabled;
 
-    // DH's internal ClientApi render entry points, the same calls DH's own RenderGlobal mixin makes; needed because Impetus's shadow pass draws terrain straight from its world renderer, never through RenderGlobal, so DH's hook never sees the shadow pass. Resolved on first use, null (with one log line) when the internals moved
+    // DH's internal ClientApi render entry points, the same calls DH's own RenderGlobal mixin makes; needed because Impetus's shadow pass draws terrain straight from its world renderer, never through RenderGlobal, and its renderBlockLayer overwrite never reaches the method DH hooks for the deferred pass. Resolved on first use, null (with one log line) when the internals moved
     private static MethodHandle clientApiRenderLods;
     private static MethodHandle clientApiRenderDeferredLods;
     private static boolean clientApiResolved;
@@ -204,19 +204,19 @@ public final class DhCompatInternal {
         }
     }
 
-    // Same for the deferred translucent LODs
-    public static void renderShadowTranslucent() {
+    // Same for the deferred translucent LODs, in the shadow pass or the main translucent layer
+    public static void renderDeferredLods() {
         if (!dhEnabled || !resolveClientApi()) {
             return;
         }
         try {
             clientApiRenderDeferredLods.invoke();
         } catch (Throwable e) {
-            throw new RuntimeException("Distant Horizons shadow pass failed", e);
+            throw new RuntimeException("Distant Horizons deferred LOD pass failed", e);
         }
     }
 
-    // Binds ClientApi.INSTANCE.renderLods()/renderDeferredLodsForShaders() once; false (after one log line) when DH's internals no longer match, in which case LODs simply cast no shadows
+    // Binds ClientApi.INSTANCE.renderLods()/renderDeferredLodsForShaders() once; false (after one log line) when DH's internals no longer match, in which case LODs cast no shadows and LOD water never draws under a pack
     private static boolean resolveClientApi() {
         if (clientApiResolved) {
             return clientApiRenderLods != null;
@@ -232,7 +232,7 @@ public final class DhCompatInternal {
         } catch (Throwable e) {
             clientApiRenderLods = null;
             clientApiRenderDeferredLods = null;
-            LOGGER.error("[Umbra] Could not bind Distant Horizons' render entry points; LODs will not cast shadows", e);
+            LOGGER.error("[Umbra] Could not bind Distant Horizons' render entry points; LODs will cast no shadows and LOD water will not draw", e);
             return false;
         }
     }

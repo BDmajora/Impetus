@@ -113,7 +113,14 @@ class TextureMixinsTest {
         uploaded.put("missing", null);
         Mixins.set(map, "mapUploadedSprites", uploaded);
 
+        // Distant Horizons reads block pixels for its LOD colours whenever it likes, so with it installed nothing is freed
         long before = MemoryReport.totalBytes();
+        Mc.forge("distanthorizons");
+        Mixins.call(map, "coarctatio$releaseStaticSpriteData", mock(IResourceManager.class), Mixins.ci());
+        assertEquals(1, stone.getFrameCount());
+        assertEquals(before, MemoryReport.totalBytes());
+
+        Mc.forge();
         Mixins.call(map, "coarctatio$releaseStaticSpriteData", mock(IResourceManager.class), Mixins.ci());
         // The static sprite's pixels are gone and counted; the animated one still needs its frames
         assertEquals(0, stone.getFrameCount());

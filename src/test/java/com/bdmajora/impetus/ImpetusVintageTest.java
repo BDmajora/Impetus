@@ -156,6 +156,7 @@ class ImpetusVintageTest {
             verify(bus).register(mod);
             ctm.verify(CtmModelWrapping::register);
             fulgorHooks.verify(Fulgor::detectCompatibility);
+            dh.verify(DhCompat::registerIrisAccessor);
             remapper.verify(RemapperCompactor::run);
             extras.verify(Extras::initialize);
             lights.verify(DynamicLights::initialize);

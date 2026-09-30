@@ -28,6 +28,7 @@ import com.seibel.distanthorizons.api.interfaces.render.IDhApiRenderableBoxGroup
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiAfterDhInitEvent;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBeforeApplyShaderRenderEvent;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBeforeBufferRenderEvent;
+import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBeforeDhInitEvent;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBeforeDeferredRenderEvent;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBeforeGenericObjectRenderEvent;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBeforeGenericRenderSetupEvent;
@@ -44,7 +45,10 @@ import com.seibel.distanthorizons.api.objects.DhApiResult;
 import com.seibel.distanthorizons.api.objects.math.DhApiMat4f;
 import com.seibel.distanthorizons.api.objects.math.DhApiVec3d;
 import com.seibel.distanthorizons.api.objects.math.DhApiVec3f;
+import com.seibel.distanthorizons.common.commonMixins.IFramebufferDepthTexture;
 import com.seibel.distanthorizons.core.api.internal.ClientApi;
+import com.seibel.distanthorizons.core.dependencyInjection.ModAccessorInjector;
+import com.seibel.distanthorizons.core.wrapperInterfaces.modAccessor.IIrisAccessor;
 import com.seibel.distanthorizons.coreapi.DependencyInjection.ApiEventInjector;
 import com.seibel.distanthorizons.coreapi.DependencyInjection.OverrideInjector;
 import net.minecraft.client.Minecraft;
@@ -164,6 +168,7 @@ class DhCompatTest {
         DhApi.Delayed.renderProxy = null;
         ApiEventInjector.INSTANCE.clear();
         OverrideInjector.INSTANCE.clear();
+        ModAccessorInjector.INSTANCE.clear();
         Statics.set(DhCompat.class, "dhPresent", false);
         Statics.set(DhCompat.class, "lastIncompatible", false);
         Statics.set(LodRendererEvents.class, "eventHandlersBound", false);
@@ -243,7 +248,7 @@ class DhCompatTest {
         CapturedRenderingState.INSTANCE.setGbufferProjection(projection);
         assertEquals(projection, DhCompat.getProjection());
         DhCompat.renderShadowSolid();
-        DhCompat.renderShadowTranslucent();
+        DhCompat.renderDeferredLods();
         assertEquals(0, ClientApi.lods);
 
         DhCompat compat = new DhCompat(pipeline, pack(""), true);
@@ -304,18 +309,61 @@ class DhCompatTest {
         DhCompat.run();
         // While DH is not rendering the shadow pass leaves it alone
         DhCompat.renderShadowSolid();
-        DhCompat.renderShadowTranslucent();
+        DhCompat.renderDeferredLods();
         assertEquals(0, ClientApi.lods);
         DhCompatInternal.dhEnabled = true;
         DhCompat.renderShadowSolid();
-        DhCompat.renderShadowTranslucent();
-        DhCompat.renderShadowTranslucent();
+        DhCompat.renderDeferredLods();
+        DhCompat.renderDeferredLods();
         assertEquals(1, ClientApi.lods);
         assertEquals(2, ClientApi.deferredLods);
         // A failure inside DH surfaces rather than silently dropping the LOD shadows
         ClientApi.fail = true;
         assertThrows(RuntimeException.class, DhCompat::renderShadowSolid);
-        assertThrows(RuntimeException.class, DhCompat::renderShadowTranslucent);
+        assertThrows(RuntimeException.class, DhCompat::renderDeferredLods);
+    }
+
+    @Test
+    void impetusRegistersAsDhsShaderModWhenDhInitialises() {
+        // Without DH nothing is queued
+        Mc.forge();
+        DhCompat.registerIrisAccessor();
+        assertNull(ApiEventInjector.INSTANCE.get(DhApiBeforeDhInitEvent.class));
+
+        // With it the accessor is bound as DH starts its init, ahead of the point DH reads it
+        Mc.forge("distanthorizons");
+        DhCompat.registerIrisAccessor();
+        assertNull(ModAccessorInjector.INSTANCE.get(IIrisAccessor.class));
+        ApiEventInjector.INSTANCE.fireAllEvents(DhApiBeforeDhInitEvent.class, null);
+        IIrisAccessor accessor = ModAccessorInjector.INSTANCE.get(IIrisAccessor.class);
+        assertNotNull(accessor);
+        assertEquals("Impetus", accessor.getModName());
+        assertTrue(accessor.getDelayedSetupComplete());
+        accessor.finishDelayedSetup();
+        assertFalse(accessor.isReverseZDuringShaders());
+        // An accessor already in place (Actinium's, or this one) is left alone rather than bound twice
+        ApiEventInjector.INSTANCE.fireAllEvents(DhApiBeforeDhInitEvent.class, null);
+        assertEquals(1, ModAccessorInjector.INSTANCE.getAll(IIrisAccessor.class).size());
+
+        // It answers from Umbra's live state
+        assertFalse(accessor.isShaderPackInUse());
+        Mixins.set(Umbra.class, "currentPack", pack(""));
+        assertTrue(accessor.isShaderPackInUse());
+        assertFalse(accessor.isRenderingShadowPass());
+        Statics.set(UmbraShadowRenderer.class, "shadowPassActive", true);
+        assertTrue(accessor.isRenderingShadowPass());
+
+        // The depth texture DH's framebuffer mixin made, and -1 for a framebuffer it never patched
+        IFramebufferDepthTexture patched = mock(IFramebufferDepthTexture.class);
+        when(patched.distantHorizons$getDistantHorizonsDepthTexture()).thenReturn(42);
+        assertEquals(42, accessor.getFramebufferDepthTextureId(patched));
+        assertEquals(-1, accessor.getFramebufferDepthTextureId(new Object()));
+
+        // It is its own identity
+        assertEquals(accessor, accessor);
+        assertNotEquals(accessor, new Object());
+        assertEquals(System.identityHashCode(accessor), accessor.hashCode());
+        assertEquals("Impetus IIrisAccessor", accessor.toString());
     }
 
     @Test

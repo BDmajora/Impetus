@@ -4,6 +4,7 @@ import com.bdmajora.extras.Extras;
 import com.bdmajora.extras.ExtrasConfig;
 import com.bdmajora.extras.client.CloudPassState;
 import com.bdmajora.impetus.umbra.Umbra;
+import com.bdmajora.impetus.umbra.compat.dh.DhCompat;
 import com.bdmajora.impetus.umbra.material.WorldRenderingSettings;
 import com.bdmajora.impetus.umbra.pipeline.DeferredBlockOutline;
 import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;
@@ -449,6 +450,31 @@ class ShaderMixinsTest {
         assertFalse(returned(terrain, "impetus$skipTerrain", layer).isCancelled());
         when(pipeline.skipAllRendering()).thenReturn(true);
         assertEquals(0, returned(terrain, "impetus$skipTerrain", layer).getReturnValue());
+    }
+
+    @Test
+    void theTranslucentLayerDrawsDistantHorizonsDeferredLods() {
+        RenderGlobalMixin terrain = Mixins.instance(RenderGlobalMixin.class);
+        try (MockedStatic<DhCompat> dh = Mockito.mockStatic(DhCompat.class)) {
+            // Nothing while DH is not rendering, and never for another layer
+            returned(terrain, "impetus$renderDeferredLods", BlockRenderLayer.TRANSLUCENT, 0.5, 0, null);
+            dh.when(DhCompat::hasRenderingEnabled).thenReturn(true);
+            returned(terrain, "impetus$renderDeferredLods", BlockRenderLayer.SOLID, 0.5, 0, null);
+            dh.verify(DhCompat::renderDeferredLods, never());
+            verify(TestGl.gl(), never()).glUseProgram(0);
+            // The translucent layer draws DH's deferred LODs, then releases what DH left bound
+            returned(terrain, "impetus$renderDeferredLods", BlockRenderLayer.TRANSLUCENT, 0.5, 0, null);
+            dh.verify(DhCompat::renderDeferredLods);
+            verify(TestGl.gl()).glUseProgram(0);
+            verify(TestGl.gl()).glBindVertexArray(0);
+            verify(TestGl.gl()).glBindBuffer(com.bdmajora.impetus.lwjgl.GL15.GL_ARRAY_BUFFER, 0);
+            verify(TestGl.gl()).glBindBuffer(com.bdmajora.impetus.lwjgl.GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
+            // Even when DH's pass fails
+            dh.when(DhCompat::renderDeferredLods).thenThrow(new RuntimeException("DH"));
+            assertThrows(RuntimeException.class,
+                    () -> returned(terrain, "impetus$renderDeferredLods", BlockRenderLayer.TRANSLUCENT, 0.5, 0, null));
+            verify(TestGl.gl(), times(2)).glUseProgram(0);
+        }
     }
 
     @Test

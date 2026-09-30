@@ -26,6 +26,7 @@ import com.bdmajora.impetus.engine.impl.render.viewport.Viewport;
 import com.bdmajora.impetus.engine.impl.util.position.SectionPos;
 import com.bdmajora.impetus.engine.impl.util.task.CancellationToken;
 import com.bdmajora.impetus.impl.compat.fluidlogged.FluidloggedCompat;
+import com.bdmajora.impetus.impl.compat.fluidlogged.FluidloggedProbeCommand;
 import com.bdmajora.impetus.impl.compat.fluidlogged.FluidloggingInference;
 import com.bdmajora.impetus.impl.compat.littletiles.LittleTilesCompat;
 import com.bdmajora.impetus.impl.extensions.SpriteExtension;
@@ -62,9 +63,8 @@ import git.jbredwards.fluidlogged_api.api.block.IFluidloggable;
 import git.jbredwards.fluidlogged_api.api.capability.IFluidStateCapability;
 import git.jbredwards.fluidlogged_api.api.capability.IFluidStateContainer;
 import git.jbredwards.fluidlogged_api.api.util.FluidState;
-import io.netty.channel.Channel;
-import io.netty.util.Attribute;
 import net.minecraft.block.Block;
+import net.minecraft.block.BlockLiquid;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
@@ -88,8 +88,7 @@ import net.minecraft.client.renderer.vertex.VertexFormat;
 import net.minecraft.client.renderer.vertex.VertexFormatElement;
 import net.minecraft.client.settings.GameSettings;
 import net.minecraft.client.multiplayer.WorldClient;
-import net.minecraft.client.network.NetHandlerPlayClient;
-import net.minecraft.network.NetworkManager;
+import net.minecraft.command.ICommandSender;
 import net.minecraft.crash.CrashReport;
 import net.minecraft.entity.Entity;
 import net.minecraft.init.Biomes;
@@ -104,6 +103,9 @@ import net.minecraft.util.ReportedException;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
+import net.minecraft.util.math.RayTraceResult;
+import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.text.ITextComponent;
 import net.minecraft.world.EnumSkyBlock;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
@@ -114,7 +116,6 @@ import net.minecraft.world.biome.BiomeColorHelper;
 import net.minecraft.world.biome.BiomeProvider;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
-import net.minecraftforge.fml.common.network.handshake.NetworkDispatcher;
 import net.minecraftforge.registries.IRegistryDelegate;
 import org.joml.Vector3d;
 import org.joml.Vector3f;
@@ -147,6 +148,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -544,7 +546,7 @@ class TerrainMeshingTest {
 
     @Test
     @Order(1)
-    void fluidloggedWaterIsCopiedGuessedAndMeshed() {
+    void fluidloggedWaterIsCopiedGuessedAndMeshed() throws Exception {
         // First in the class: IS_LOADED is a static final, and code compiled while it read false would keep reading false
         Terrain terrain = new Terrain().build();
         IBlockState water = Blocks.WATER.getDefaultState();
@@ -555,6 +557,22 @@ class TerrainMeshingTest {
         BlockPos scorched = new BlockPos(12, 1, 9);
         BlockPos served = new BlockPos(12, 1, 11);
         BlockPos hidden = new BlockPos(12, 1, 13);
+        BlockPos rim = new BlockPos(8, 1, 3);
+        terrain.set(rim, fence);
+        terrain.set(rim.north(), water);
+        // A still pool sent as flowing levels, as MCParks does, and a stream pouring past
+        BlockPos pooled = new BlockPos(4, 1, 9);
+        IBlockState levelThree = water.withProperty(BlockLiquid.LEVEL, 3);
+        terrain.set(pooled, fence);
+        terrain.set(pooled.west(), water.withProperty(BlockLiquid.LEVEL, 4));
+        terrain.set(pooled.east(), levelThree);
+        BlockPos poured = new BlockPos(4, 1, 12);
+        terrain.set(poured, fence);
+        terrain.set(poured.west(), water.withProperty(BlockLiquid.LEVEL, 8));
+        // Farmland covers its footprint up to the water line, so water there could only flicker against its faces
+        BlockPos plot = new BlockPos(7, 1, 14);
+        terrain.set(plot, Blocks.FARMLAND.getDefaultState());
+        terrain.set(plot.west(), water);
         terrain.set(submerged, fence);
         terrain.set(submerged.up(), water);
         terrain.set(buried, Blocks.STONE.getDefaultState());
@@ -582,8 +600,6 @@ class TerrainMeshingTest {
         };
         IFluidStateCapability.next[0] = y -> container;
         options.quality.inferredFluidlogging = ImpetusGameOptions.FluidloggingGuess.TOUCHING;
-        Mixins.set(FluidloggingInference.class, "checkedManager", null);
-        Mixins.set(FluidloggingInference.class, "remoteHasMod", false);
         // Initialised before the flag is swapped, or its own initialiser would put it back
         new FluidloggedCompat();
         assertSame(FluidState.EMPTY, FluidloggedCompat.getEmptyFluidState());
@@ -599,6 +615,14 @@ class TerrainMeshingTest {
             assertSame(water, slice.getFluidState(served.getX(), served.getY(), served.getZ()).getState());
             assertSame(water, slice.getFluidState(submerged.getX(), submerged.getY(), submerged.getZ()).getState());
             assertSame(water, slice.getFluidState(banked.getX(), banked.getY(), banked.getZ()).getState());
+            // Touching needs one source beside it and nothing above, a pool rim at the surface
+            assertSame(water, slice.getFluidState(rim.getX(), rim.getY(), rim.getZ()).getState());
+            // Flowing water beside counts and the fullest sets the level; falling water beside does not
+            assertSame(levelThree, slice.getFluidState(pooled.getX(), pooled.getY(), pooled.getZ()).getState());
+            assertTrue(slice.getFluidState(poured.getX(), poured.getY(), poured.getZ()).isEmpty());
+            // Shape alone decides: a torch has nothing in the way, farmland leaves no room
+            assertSame(water, slice.getFluidState(TORCH.getX(), TORCH.getY(), TORCH.getZ()).getState());
+            assertTrue(slice.getFluidState(plot.getX(), plot.getY(), plot.getZ()).isEmpty());
             assertTrue(slice.getFluidState(buried.getX(), buried.getY(), buried.getZ()).isEmpty());
             assertTrue(slice.getFluidState(scorched.getX(), scorched.getY(), scorched.getZ()).isEmpty());
             assertTrue(slice.getFluidState(submerged.getX(), 40, submerged.getZ()).isEmpty());
@@ -615,22 +639,49 @@ class TerrainMeshingTest {
             context.cleanup();
             output.delete();
 
-            // A server running the mod owns the data, so the guess turns off; so does the option
-            NetHandlerPlayClient connection = mock(NetHandlerPlayClient.class);
-            NetworkManager manager = mock(NetworkManager.class);
-            Channel channel = mock(Channel.class);
-            Attribute<NetworkDispatcher> attribute = mock(Attribute.class);
-            NetworkDispatcher dispatcher = mock(NetworkDispatcher.class);
-            when(terrain.client.getConnection()).thenReturn(connection);
-            when(connection.getNetworkManager()).thenReturn(manager);
-            when(manager.channel()).thenReturn(channel);
-            doReturn(attribute).when(channel).attr(any());
-            when(attribute.get()).thenReturn(dispatcher);
-            when(dispatcher.getModList()).thenReturn(Map.of(FluidloggedCompat.MODID, "3.0.6"));
+            // The probe reruns the copy and the guess for one block and says what each check and the fluid renderer saw
+            ICommandSender sender = mock(ICommandSender.class);
+            when(sender.getPosition()).thenReturn(BlockPos.ORIGIN);
+            List<String> said = new ArrayList<>();
+            doAnswer(invocation -> said.add(invocation.<ITextComponent>getArgument(0).getUnformattedText())).when(sender).sendMessage(any());
+            FluidloggedProbeCommand probe = new FluidloggedProbeCommand();
+            assertEquals("impetus_fluidlog", probe.getName());
+            assertEquals(0, probe.getRequiredPermissionLevel());
+            probe.execute(null, sender, new String[] {"8", "1", "3"});
+            assertEquals("Fluidlogged probe at 8 1 3: " + fence, said.get(0));
+            assertTrue(said.contains(" option TOUCHING, guess active, water renders as LIQUID"));
+            assertTrue(said.contains(" server data here: none"));
+            assertTrue(said.contains(" north " + water + ": " + water));
+            assertTrue(said.contains(" fluids beside 1, option needs 1 or fluid above"));
+            assertTrue(said.contains(" " + water + ", is water true, room for it to show true"));
+            assertTrue(said.contains(" guessed into the slice: " + water));
+            assertTrue(said.stream().anyMatch(line -> line.startsWith(" north fluid draws a face into it: ")));
+            // A stream pouring past is named and left out of the count
+            said.clear();
+            probe.execute(null, sender, new String[] {"4", "1", "12"});
+            assertTrue(said.contains(" west " + water.withProperty(BlockLiquid.LEVEL, 8) + ": " + water.withProperty(BlockLiquid.LEVEL, 8) + " (falling, ignored)"));
+            assertTrue(said.contains(" fluids beside 0, option needs 1 or fluid above"));
+            assertTrue(said.contains(" guessed into the slice: none"));
+            // The block under the crosshair when no coordinates are given, and the usage when there is none
+            said.clear();
+            // Aimed at the floor under the rim fence, the probe steps out of the hit face onto the fence
+            terrain.client.objectMouseOver = new RayTraceResult(new Vec3d(8.5, 1.0, 3.5), EnumFacing.UP, rim.down());
+            probe.execute(null, sender, new String[0]);
+            assertEquals("Fluidlogged probe at 8 1 3: " + fence, said.get(0));
+            said.clear();
+            terrain.client.objectMouseOver = new RayTraceResult(new Vec3d(8.5, 1.5, 3.5), EnumFacing.UP, new BlockPos(12, 40, 5));
+            probe.execute(null, sender, new String[0]);
+            assertEquals(" the section is empty, so nothing is meshed here", said.get(said.size() - 1));
+            said.clear();
+            terrain.client.objectMouseOver = null;
+            probe.execute(null, sender, new String[0]);
+            assertEquals(List.of(probe.getUsage(sender)), said);
+
+            // Singleplayer's own server sends real data, so the guess turns off there; so does the option
+            when(terrain.client.isIntegratedServerRunning()).thenReturn(true);
             FluidloggingInference.refresh();
             assertFalse(FluidloggingInference.isActive());
-            FluidloggingInference.refresh();
-            assertFalse(FluidloggingInference.isActive());
+            when(terrain.client.isIntegratedServerRunning()).thenReturn(false);
             options.quality.inferredFluidlogging = ImpetusGameOptions.FluidloggingGuess.OFF;
             FluidloggingInference.refresh();
             assertFalse(FluidloggingInference.isActive());
@@ -638,8 +689,6 @@ class TerrainMeshingTest {
         } finally {
             Statics.set(FluidloggedCompat.class, "IS_LOADED", false);
             IFluidStateCapability.next[0] = null;
-            Mixins.set(FluidloggingInference.class, "checkedManager", null);
-            Mixins.set(FluidloggingInference.class, "remoteHasMod", false);
             Mixins.set(FluidloggingInference.class, "mode", ImpetusGameOptions.FluidloggingGuess.OFF);
         }
     }

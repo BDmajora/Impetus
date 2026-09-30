@@ -102,6 +102,9 @@ public class ImpetusVintage {
         ClientCommandHandler.instance.registerCommand(new CoarctatioStatsCommand());
         ClientCommandHandler.instance.registerCommand(new FulgorStatsCommand());
         ClientCommandHandler.instance.registerCommand(new EquilibriumStatsCommand());
+        if (com.bdmajora.impetus.impl.compat.fluidlogged.FluidloggedCompat.IS_LOADED) {
+            ClientCommandHandler.instance.registerCommand(new com.bdmajora.impetus.impl.compat.fluidlogged.FluidloggedProbeCommand());
+        }
 
         // Distant Horizons: bind to its API when present so the pack's dh_* programs shade LODs; before the pack parses, since DISTANT_HORIZONS is part of its define environment
         com.bdmajora.impetus.umbra.compat.dh.DhCompat.run();

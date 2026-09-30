@@ -603,7 +603,7 @@ public class WorldSlice implements ImpetusBlockAccess {
         return world;
     }
 
-    // The live chunk behind one of the copied columns, captured on the main thread when the section was cloned. Fluidlogged's FluidCache resolves tile entities only through this (see FluidloggedBlockAccess), so without it every one it looks up is null; its block and fluid state reads are sent back to the slice by FluidCacheMixin so the mesh and the fluid renderer see one snapshot. Columns outside the 3x3 are null and FluidCache falls back to the slice for them
+    // The live chunk behind one of the copied columns, captured on the main thread when the section was cloned. Fluidlogged's FluidCache resolves tile entities only through this (see FluidloggedBlockAccess), so without it every one it looks up is null; its block and fluid state reads, and Fluidlogged's static fluid lookups, are sent back to the slice by FluidCacheMixin and FluidloggedUtilsMixin so the mesh and the fluid renderer see one snapshot, guesses included. Columns outside the 3x3 are null and FluidCache falls back to the slice for them
     @Override
     @Optional.Method(modid = FluidloggedCompat.MODID)
     public Chunk getChunk(int chunkX, int chunkZ) {

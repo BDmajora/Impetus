@@ -15,12 +15,25 @@ public final class FluidloggedUtils {
         return access.getBlockState(pos);
     }
 
-    public static boolean isFluid(IBlockState state) {
-        return state.getBlock() instanceof BlockLiquid || state.getBlock() instanceof IFluidBlock;
+    // Always the chunkless path here, since the stand-in world holds no chunks of fluid data
+    public static FluidState getFluidState(IBlockAccess world, BlockPos pos) {
+        return getFluidState(world, pos, world.getBlockState(pos));
     }
 
-    // Anything short of a full cube has room for a fluid
-    public static boolean isStateFluidloggable(IBlockState state, IBlockAccess world, BlockPos pos, FluidState fluid) {
-        return !state.isFullCube();
+    // The chunkless fallbacks, as the real ones: a fluid block is its own fluid, anything else asks the access
+    public static FluidState getFluidState(IBlockAccess world, BlockPos pos, IBlockState state) {
+        return isFluid(state) ? FluidState.of(state) : FluidState.get(world, pos);
+    }
+
+    public static IBlockState getFluidOrReal(IBlockAccess world, BlockPos pos, IBlockState state) {
+        if (isFluid(state)) {
+            return state;
+        }
+        FluidState fluid = FluidState.get(world, pos);
+        return fluid.isEmpty() ? state : fluid.getState();
+    }
+
+    public static boolean isFluid(IBlockState state) {
+        return state.getBlock() instanceof BlockLiquid || state.getBlock() instanceof IFluidBlock;
     }
 }

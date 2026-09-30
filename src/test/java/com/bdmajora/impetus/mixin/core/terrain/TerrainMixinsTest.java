@@ -18,6 +18,7 @@ import com.bdmajora.impetus.impl.render.clouds.SodiumCloudRenderer;
 import com.bdmajora.impetus.impl.render.terrain.ImpetusWorldRenderer;
 import com.bdmajora.impetus.impl.world.cloned.ImpetusBlockAccess;
 import com.bdmajora.impetus.mixin.core.terrain.compat.FluidCacheMixin;
+import com.bdmajora.impetus.mixin.core.terrain.compat.FluidloggedUtilsMixin;
 import com.bdmajora.impetus.umbra.Umbra;
 import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;
 import com.bdmajora.impetus.umbra.pipeline.UmbraShadowRenderer;
@@ -299,6 +300,48 @@ class TerrainMixinsTest {
         when(wrapper.getWrapped()).thenReturn(slice);
         assertSame(stone, returned(cache, "impetus$sliceBlockState", 1, 2, 3).getReturnValue());
         assertSame(FluidState.EMPTY, returned(cache, "impetus$sliceFluidState", 1, 2, 3).getReturnValue());
+    }
+
+    @Test
+    void fluidloggedStaticLookupsSeeTheSlicesGuessedFluid() {
+        BlockPos pos = new BlockPos(1, 2, 3);
+        IBlockState fence = Blocks.OAK_FENCE.getDefaultState();
+        IBlockState water = Blocks.WATER.getDefaultState();
+        // The live world, bare or wrapped, keeps Fluidlogged's own chunk reads
+        IBlockAccess live = mock(IBlockAccess.class);
+        IBlockAccessWrapper liveWrapper = mock(IBlockAccessWrapper.class);
+        when(liveWrapper.getWrapped()).thenReturn(live);
+        for (IBlockAccess world : new IBlockAccess[] {live, liveWrapper}) {
+            assertFalse(returned(FluidloggedUtilsMixin.class, "impetus$sliceFluidState", world, pos).isCancelled());
+            assertFalse(returned(FluidloggedUtilsMixin.class, "impetus$sliceFluidOrReal", world, pos).isCancelled());
+        }
+        // A fence the server never fluidlogged, holding the guess the slice made for it
+        ImpetusBlockAccess slice = mock(ImpetusBlockAccess.class);
+        when(slice.getBlockState(pos)).thenReturn(fence);
+        when(slice.getFluidState(1, 2, 3)).thenReturn(FluidState.of(water));
+        assertSame(water, sliceFluid(slice, pos).getState());
+        assertSame(water, returned(FluidloggedUtilsMixin.class, "impetus$sliceFluidOrReal", slice, pos).getReturnValue());
+        // Through FluidCache's wrapper too, which is how the fluid renderer asks
+        IBlockAccessWrapper cache = mock(IBlockAccessWrapper.class);
+        when(cache.getWrapped()).thenReturn(slice);
+        when(cache.getBlockState(pos)).thenReturn(fence);
+        assertSame(water, sliceFluid(cache, pos).getState());
+        assertSame(water, returned(FluidloggedUtilsMixin.class, "impetus$sliceFluidOrReal", cache, pos).getReturnValue());
+        // A block with nothing in it stays itself, and a fluid block is its own fluid whatever the slice holds
+        when(slice.getFluidState(1, 2, 3)).thenReturn(FluidState.EMPTY);
+        assertTrue(sliceFluid(slice, pos).isEmpty());
+        assertSame(fence, returned(FluidloggedUtilsMixin.class, "impetus$sliceFluidOrReal", slice, pos).getReturnValue());
+        when(slice.getBlockState(pos)).thenReturn(water);
+        assertSame(water, sliceFluid(slice, pos).getState());
+        assertSame(water, returned(FluidloggedUtilsMixin.class, "impetus$sliceFluidOrReal", slice, pos).getReturnValue());
+        assertNotNull(Mixins.construct(FluidloggedUtilsMixin.class));
+    }
+
+    // What the static getFluidState answers for an access the mixin must take over
+    private static FluidState sliceFluid(IBlockAccess world, BlockPos pos) {
+        CallbackInfoReturnable<FluidState> cir = returned(FluidloggedUtilsMixin.class, "impetus$sliceFluidState", world, pos);
+        assertTrue(cir.isCancelled());
+        return cir.getReturnValue();
     }
 
     @Test

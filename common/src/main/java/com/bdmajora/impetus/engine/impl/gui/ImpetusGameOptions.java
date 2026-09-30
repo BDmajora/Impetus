@@ -252,7 +252,7 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
         }
     }
 
-    // Which neighbourhood makes a fluidloggable block render as holding the fluid next to it: a fluid directly above always counts once enabled, the side count is the number of horizontal fluid sources needed
+    // Which neighbourhood makes a fluidloggable block render as holding the fluid next to it: a fluid directly above always counts once enabled, the side count is the number of horizontal neighbours holding fluid that is not falling
     public enum FluidloggingGuess implements TextProvider {
         OFF("impetus.options.inferred_fluidlogging.off", Integer.MAX_VALUE),
         SUBMERGED("impetus.options.inferred_fluidlogging.submerged", Integer.MAX_VALUE),

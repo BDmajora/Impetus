@@ -65,12 +65,15 @@ class NetworkMixinsTest {
     void installConfig() {
         config = new ExtrasConfig();
         Mixins.set(Extras.class, "config", config);
+        // Without LittleTiles, whose absence is otherwise looked up in a mod table these tests never install
+        Mixins.set(NetworkLimits.class, "littleTiles", false);
     }
 
     @AfterEach
     void removeConfig() {
         FlushBatch.endTick();
         Mixins.set(Extras.class, "config", null);
+        Mixins.set(NetworkLimits.class, "littleTiles", null);
     }
 
     @Test

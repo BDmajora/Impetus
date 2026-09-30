@@ -33,6 +33,7 @@ import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 import com.bdmajora.impetus.engine.impl.util.task.CancellationToken;
 import org.joml.Vector3d;
 import com.bdmajora.impetus.impl.compat.fluidlogged.FluidloggedCompat;
+import com.bdmajora.impetus.impl.compat.littletiles.LittleTilesCompat;
 import com.bdmajora.impetus.impl.render.terrain.compile.VintageChunkBuildContext;
 import com.bdmajora.impetus.impl.world.WorldSlice;
 import com.bdmajora.impetus.impl.world.cloned.ImpetusBlockAccess;
@@ -106,8 +107,9 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                             continue;
                         }
 
+                        TileEntity tileEntity = null;
                         if (block.hasTileEntity(blockState)) {
-                            TileEntity tileEntity = slice.getTileEntity(blockPos);
+                            tileEntity = slice.getTileEntity(blockPos);
                             if (tileEntity != null) {
                                 TileEntitySpecialRenderer<TileEntity> tesr = TileEntityRendererDispatcher.instance.getRenderer(tileEntity);
 
@@ -156,6 +158,11 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
 
                         if (bakedEntity) {
                             com.bdmajora.extras.client.bakedentities.BakedEntityContext.clear();
+                        }
+
+                        // LittleTiles meshes its tiles on its own threads, and their buffers follow the block's empty model
+                        if (tileEntity != null && LittleTilesCompat.IS_LOADED) {
+                            LittleTilesCompat.renderTiles(tileEntity, slice, blockPos, blockState, buildContext, this.render);
                         }
 
                         // The compat hook renders the contained fluid and attributes its quads to the fluid's own state

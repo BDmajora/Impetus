@@ -27,6 +27,7 @@ import com.bdmajora.impetus.engine.impl.util.position.SectionPos;
 import com.bdmajora.impetus.engine.impl.util.task.CancellationToken;
 import com.bdmajora.impetus.impl.compat.fluidlogged.FluidloggedCompat;
 import com.bdmajora.impetus.impl.compat.fluidlogged.FluidloggingInference;
+import com.bdmajora.impetus.impl.compat.littletiles.LittleTilesCompat;
 import com.bdmajora.impetus.impl.extensions.SpriteExtension;
 import com.bdmajora.impetus.impl.extensions.TextureMapExtension;
 import com.bdmajora.impetus.impl.render.terrain.compile.VintageChunkBuildContext;
@@ -43,6 +44,7 @@ import com.bdmajora.impetus.mixin.core.terrain.BakedQuadMixin;
 import com.bdmajora.impetus.mixin.core.terrain.BlockColorsAccessor;
 import com.bdmajora.impetus.mixin.core.terrain.RenderGlobalMixin;
 import com.bdmajora.impetus.mixin.core.terrain.VertexFormatMixin;
+import com.bdmajora.impetus.mixin.core.terrain.compat.LittleTilesRenderManagerMixin;
 import com.bdmajora.impetus.umbra.material.WorldRenderingSettings;
 import com.bdmajora.impetus.umbra.pipeline.UmbraShadowRenderer;
 import com.bdmajora.impetus.umbra.terrain.UmbraTerrainProgramOverride;
@@ -53,6 +55,9 @@ import com.bdmajora.testing.Sections;
 import com.bdmajora.testing.Statics;
 import com.bdmajora.testing.TestFogService;
 import com.bdmajora.testing.TestGl;
+import com.creativemd.littletiles.client.render.cache.IRenderDataCache;
+import com.creativemd.littletiles.client.render.world.TileEntityRenderManager;
+import com.creativemd.littletiles.common.tileentity.TileEntityLittleTiles;
 import git.jbredwards.fluidlogged_api.api.block.IFluidloggable;
 import git.jbredwards.fluidlogged_api.api.capability.IFluidStateCapability;
 import git.jbredwards.fluidlogged_api.api.capability.IFluidStateContainer;
@@ -124,6 +129,8 @@ import org.junit.jupiter.api.Timeout;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -634,6 +641,58 @@ class TerrainMeshingTest {
             Mixins.set(FluidloggingInference.class, "checkedManager", null);
             Mixins.set(FluidloggingInference.class, "remoteHasMod", false);
             Mixins.set(FluidloggingInference.class, "mode", ImpetusGameOptions.FluidloggingGuess.OFF);
+        }
+    }
+
+    @Test
+    @Order(2)
+    void littleTilesBakedQuadsJoinTheSectionMesh() {
+        // Early for the same reason as the Fluidlogged test: IS_LOADED is a static final the mesher reads
+        Terrain terrain = new Terrain();
+        BlockPos pos = new BlockPos(5, 1, 5);
+        terrain.set(pos, Blocks.CHEST.getDefaultState());
+        TileEntityLittleTiles tiles = new TileEntityLittleTiles();
+        tiles.setPos(pos);
+        LittleTilesRenderManagerMixin manager = Mixins.instance(LittleTilesRenderManagerMixin.class);
+        tiles.render = (TileEntityRenderManager) (Object) manager;
+        terrain.tile(pos, tiles);
+        // One quad across the top of the block, section-relative as LittleTiles bakes it, on the animated half of the atlas
+        float[][] corners = corners(EnumFacing.UP);
+        ByteBuffer baked = ByteBuffer.allocateDirect(112).order(ByteOrder.nativeOrder());
+        for (float[] corner : corners) {
+            baked.putFloat(pos.getX() + corner[0]).putFloat(pos.getY() + corner[1]).putFloat(pos.getZ() + corner[2]);
+            baked.putInt(0xFFFFFFFF).putFloat(0.25F).putFloat(0.5F).putInt(0x00F000F0);
+        }
+        tiles.render.getBufferCache().put(BlockRenderLayer.SOLID.ordinal(), new IRenderDataCache() {
+            @Override
+            public ByteBuffer byteBuffer() {
+                return baked;
+            }
+
+            @Override
+            public int length() {
+                return 112;
+            }
+
+            @Override
+            public int vertexCount() {
+                return 4;
+            }
+        });
+        Mixins.construct(LittleTilesCompat.class);
+        Statics.set(LittleTilesCompat.class, "IS_LOADED", true);
+        try {
+            VintageChunkBuildContext context = new VintageChunkBuildContext(terrain.world, passes());
+            ChunkBuildOutput output = mesh(terrain, context);
+            // The chest draws nothing of its own, so all the geometry is the baked quad
+            assertTrue(data(output).hasBlockGeometry);
+            assertTrue(data(output).animatedSprites.contains(terrain.animated));
+            assertEquals(1, tiles.quadCacheUpdates.size());
+            assertInstanceOf(RenderSection.class, tiles.quadCacheUpdates.get(0));
+            context.cleanup();
+            output.delete();
+        } finally {
+            Statics.set(LittleTilesCompat.class, "IS_LOADED", false);
         }
     }
 

@@ -2,6 +2,7 @@ package com.bdmajora.extras.network;
 
 import com.bdmajora.extras.Extras;
 import com.bdmajora.extras.ExtrasConfig;
+import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +24,7 @@ class NetworkLimitsTest {
     @AfterEach
     void removeConfig() {
         Mixins.set(Extras.class, "config", null);
+        Mixins.set(NetworkLimits.class, "littleTiles", null);
     }
 
     @Test
@@ -40,6 +42,7 @@ class NetworkLimitsTest {
     @Test
     void switchOffReturnsVanillaConstants() {
         config.network.largePackets = false;
+        Mixins.set(NetworkLimits.class, "littleTiles", false);
         assertEquals(NetworkLimits.VANILLA_FRAME_LENGTH_BYTES, NetworkLimits.frameLengthBytes());
         assertEquals(NetworkLimits.VANILLA_COMPRESSED_PACKET, NetworkLimits.compressedPacketLimit());
         assertEquals(NetworkLimits.VANILLA_NBT, NetworkLimits.nbtLimit());
@@ -47,6 +50,20 @@ class NetworkLimitsTest {
         assertEquals(NetworkLimits.VANILLA_CHUNK_DATA, NetworkLimits.chunkDataLimit());
         assertEquals(NetworkLimits.VANILLA_CLIENTBOUND_PAYLOAD, NetworkLimits.clientboundPayloadLimit());
         assertEquals(NetworkLimits.VANILLA_SERVERBOUND_PAYLOAD, NetworkLimits.serverboundPayloadLimit());
+    }
+
+    @Test
+    void littleTilesKeepsTheCompressedPacketCapLifted() {
+        config.network.largePackets = false;
+        // LittleTiles already took the cap out of vanilla's decode, so the switch cannot bring it back
+        Mc.forge("littletiles");
+        assertEquals(Integer.MAX_VALUE, NetworkLimits.compressedPacketLimit());
+        assertEquals(NetworkLimits.VANILLA_NBT, NetworkLimits.nbtLimit());
+        // Looked up once and remembered
+        Mc.forge();
+        assertEquals(Integer.MAX_VALUE, NetworkLimits.compressedPacketLimit());
+        Mixins.set(NetworkLimits.class, "littleTiles", null);
+        assertEquals(NetworkLimits.VANILLA_COMPRESSED_PACKET, NetworkLimits.compressedPacketLimit());
     }
 
     @Test

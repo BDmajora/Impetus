@@ -11,7 +11,8 @@ import org.spongepowered.asm.mixin.injection.ModifyVariable;
 // NBT and string caps on the buffer itself: the 2 MB NBT tracker behind "Tried to read NBT tag that was too big", the 32767-byte string encoder, and the generic 32767 that nearly every reader passes to readString
 @Mixin(PacketBuffer.class)
 public abstract class PacketBufferMixin {
-    @ModifyConstant(method = "readCompoundTag", constant = @Constant(longValue = 2097152L))
+    // LittleTiles' coremod has already swapped this tracker for NBTSizeTracker.INFINITE by the time Mixin runs, taking the constant with it
+    @ModifyConstant(method = "readCompoundTag", constant = @Constant(longValue = 2097152L), require = 0)
     private long impetus$nbtLimit(long vanilla) {
         return NetworkLimits.nbtLimit();
     }

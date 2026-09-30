@@ -125,6 +125,9 @@ dependencies {
     modCompileOnly("maven.modrinth:fluidlogged-api:3.0.6")
     // Distant Horizons API, for the umbra DH compat (compat.dh); only loaded when DH is present
     modCompileOnly("maven.modrinth:distanthorizonsapi:7.0.0")
+    // LittleTiles 1.5.87 and the CreativeCore 1.10.71 it extends, for the terrain compat (compat.littletiles); only loaded when LittleTiles is present
+    modCompileOnly("curse.maven:littletiles-257818:5180387")
+    modCompileOnly("curse.maven:creativecore-257814:4722163")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.13.0")
     testImplementation("org.mockito:mockito-core:5.17.0")

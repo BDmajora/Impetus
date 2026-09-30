@@ -22,6 +22,7 @@ import com.bdmajora.impetus.ImpetusVintage;
 import com.bdmajora.impetus.engine.impl.gl.device.RenderDevice;
 import com.bdmajora.impetus.engine.impl.render.terrain.SimpleWorldRenderer;
 import com.bdmajora.impetus.engine.impl.render.viewport.ViewportProvider;
+import com.bdmajora.impetus.impl.compat.littletiles.LittleTilesCompat;
 import com.bdmajora.impetus.impl.render.clouds.SodiumCloudRenderer;
 import com.bdmajora.impetus.umbra.Umbra;
 import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;
@@ -172,6 +173,10 @@ public abstract class RenderGlobalMixin implements SimpleWorldRenderer.Provider<
         RenderDevice.enterManagedCode();
 
         try {
+            // LittleTiles bakes finished since the last frame queue their sections from here, the render thread
+            if (LittleTilesCompat.IS_LOADED) {
+                LittleTilesCompat.flushRemeshes(this.renderer);
+            }
             // `frustum.culling = false`: the pack wants off-screen geometry drawn too, so the frustum test is replaced with one that accepts everything (the shadow pass's trick)
             UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
             Viewport viewport =

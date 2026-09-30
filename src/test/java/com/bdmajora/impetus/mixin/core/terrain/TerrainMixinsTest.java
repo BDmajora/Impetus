@@ -101,6 +101,8 @@ class TerrainMixinsTest {
     static void bootstrap() {
         Mc.bootstrap();
         Mc.textures();
+        // setupTerrain asks whether LittleTiles is loaded
+        Mc.forge();
     }
 
     @BeforeEach

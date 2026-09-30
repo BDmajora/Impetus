@@ -2,6 +2,7 @@ package com.bdmajora.extras.network;
 
 import com.bdmajora.extras.Extras;
 import com.bdmajora.extras.ExtrasConfig;
+import net.minecraftforge.fml.common.Loader;
 
 // The wire limits a large modpack outgrows, after TonimatasDEV's Packet Fixer: every value is read at the point vanilla would have used its constant, so the switch takes effect on the next packet
 public final class NetworkLimits {
@@ -19,6 +20,9 @@ public final class NetworkLimits {
     // Strings are checked as UTF-8 byte length times four, so the cap stays clear of int overflow
     private static final int WIDE_STRING = Integer.MAX_VALUE / 8;
 
+    // Looked up on the first decode, long after Forge has its mod list
+    private static Boolean littleTiles;
+
     private NetworkLimits() {
     }
 
@@ -31,7 +35,17 @@ public final class NetworkLimits {
     }
 
     public static int compressedPacketLimit() {
-        return settings().largePackets ? Integer.MAX_VALUE : VANILLA_COMPRESSED_PACKET;
+        return settings().largePackets || littleTilesLoaded() ? Integer.MAX_VALUE : VANILLA_COMPRESSED_PACKET;
+    }
+
+    // LittleTiles' coremod strips this cap out of vanilla's decode so its structure packets get through, and the decode overwrite must not put it back
+    private static boolean littleTilesLoaded() {
+        Boolean loaded = littleTiles;
+        if (loaded == null) {
+            loaded = Loader.isModLoaded("littletiles");
+            littleTiles = loaded;
+        }
+        return loaded;
     }
 
     public static long nbtLimit() {

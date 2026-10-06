@@ -23,13 +23,14 @@ To use Impetus today, build it from source using the instructions below.
 
 ### Installation
 
-Impetus targets **Minecraft 1.12.2** on **Minecraft Forge** (developed against 14.23.5.2864) running on
-**Java 8** with LWJGL 2. Drop the jar into your `mods` folder.
+Impetus targets **Minecraft 1.12.2** on **[Cleanroom](https://github.com/CleanroomMC/Cleanroom)** (developed
+against 0.6.13-alpha) running on **Java 25** with LWJGL 3. Drop the jar into your `mods` folder.
 
-Impetus **does not require MixinBooter**. It bundles its own Mixin implementation and brings it up only when
-no other Mixin provider is present. If MixinBooter (or any other Mixin service) is already installed, Impetus
-detects it during coremod construction and defers to it entirely, contributing no `org.spongepowered.asm`
-classes of its own. Either arrangement works with no configuration.
+Cleanroom ships Mixin (CleanMix) and MixinExtras itself, so Impetus bundles neither. It also ships its Kirino
+render engine switched on; Impetus turns Kirino off at startup, since both would otherwise do terrain work
+every frame.
+
+The last Forge / Java 8 / LWJGL 2 version of Impetus lives on the `legacy` branch.
 
 ### Reporting Issues
 
@@ -56,39 +57,51 @@ relying on the suppression.
 
 ## Building from sources
 
-Impetus uses the [Gradle build tool](https://gradle.org/). The
-[Gradle wrapper](https://docs.gradle.org/current/userguide/gradle_wrapper.html#sec:using_wrapper) is
+Impetus uses the [Gradle build tool](https://gradle.org/) with
+[Unimined](https://github.com/unimined/unimined) (Cleanroom's fork) to set up Cleanroom's patched Minecraft.
+The [Gradle wrapper](https://docs.gradle.org/current/userguide/gradle_wrapper.html#sec:using_wrapper) is
 provided and will download the correct Gradle version automatically.
 
 ```
 ./gradlew packageJar
 ```
 
-The finished jar is written to `build/libs/`. A helper script is also provided:
+The finished jar is written to `build/libs/<version>/`. A helper script is also provided:
 
 ```
 ./run.sh
 ```
 
-which offers **Build**, **Clean**, and **Quit**. It also works non-interactively as `./run.sh build` and
-`./run.sh clean`. Note that *Clean* removes every build output directory, not just `build/`, so the next
-build re-decompiles Minecraft and takes several minutes.
+which offers **Build**, **Test**, **Clean**, and **Quit**. It also works non-interactively, e.g. `./run.sh build`,
+`./run.sh test` or `./run.sh clean`. Note that *Clean* removes every build output directory, not just `build/`,
+so the next build re-runs the Cleanroom setup and takes several minutes.
 
 ### Build Requirements
 
-- **OpenJDK 21** to run the build. The mod itself is compiled to a Java 8 target via
-  [Jabel](https://github.com/bsideup/jabel) and [JvmDowngrader](https://github.com/unimined/JvmDowngrader),
-  so modern syntax is used in the sources while the output still runs on Java 8.
+- **JDK 17 or newer** to run Gradle; the JDK 25 compile toolchain is provisioned automatically when none is
+  installed.
 - No separate Gradle installation is needed; use the wrapper.
+
+### LWJGL
+
+Impetus is written against LWJGL 3. The engine (`common/`) reaches OpenGL only through its `LWJGLService`
+abstraction, which has an LWJGL 3 backend (used on Cleanroom) and an LWJGL 2 backend kept as a translation
+layer; `:common:verifyLwjglNeutral` fails the build if engine code calls LWJGL directly. `./gradlew
+:common:legacyJar` builds the engine alone as a Java 8 jar (via
+[JvmDowngrader](https://github.com/unimined/JvmDowngrader)) for the legacy Forge line.
+
+Vanilla code on Cleanroom still links against LWJGL 2 names, which Cleanroom provides by merging its lwjglx
+bridge into LWJGL 3 at class load. Impetus only touches that bridge where vanilla's own signatures demand it
+(input events, key codes, `util.vector`) and for `Display`, which owns the GLFW window; everything else is
+plain LWJGL 3 and GLFW.
 
 ### Project layout
 
 | Path | Contents |
 | :--- | :------- |
-| `src/` | The Forge 1.12.2 mod: engine glue, mixins, and the bundled Mixin bootstrap |
-| `common/` | Platform-agnostic renderer code, compiled at Java 17 and downgraded to 8 |
-| `common/build-logic/` | Gradle build logic: the mixin-aware reobfuscator and the LWJGL abstraction generator |
-| `common/src/booterLibs/` | Service declarations for the bundled Mixin implementation |
+| `src/` | The Cleanroom 1.12.2 mod: engine glue, mixins and the coremod that registers them |
+| `common/` | Platform-agnostic renderer code (Java 25) with the `lwjglCommon`, `lwjgl3` and `lwjgl2` source sets |
+| `gradle/libs.versions.toml` | Every dependency version; the libraries Cleanroom ships are pinned to its versions |
 | `gradle/wrapper/` | The Gradle wrapper; required by `gradlew` and intentionally committed |
 
 ## Shader pack compatibility
@@ -121,8 +134,8 @@ independent, original implementations.
 * **embeddedt**, for developing Celeritas and Embeddium, from which Impetus is forked
 * **The CaffeineMC team**, for developing Sodium 0.5.11 and older, and making it open source
 * **The Iris project and the Oculus port**, the origin of the bundled shader pipeline
-* **Rongmario**, for MixinBooter, the basis of the bundled Mixin bootstrap
-* **Mumfrey**, for creating the Mixin bytecode patching system, and **CleanroomMC** for CleanMix
+* **Rongmario**, for MixinBooter
+* **Mumfrey**, for creating the Mixin bytecode patching system, and **CleanroomMC** for Cleanroom and CleanMix
 * **LlamaLad7**, for MixinExtras
 * **orf**, for GpuShift (MIT), whose adaptive render-budget design the Extras page's Render Budget group reimplements for 1.12.2
 * **Mr.Toad**, for GPUBooster, ported to 1.12.2 with permission as the Extras page's GPU Booster group

@@ -1,7 +1,6 @@
 package com.bdmajora.impetus.mixin.core;
 
 import com.bdmajora.impetus.ImpetusVintage;
-import com.bdmajora.impetus.core.ImpetusLwjgl3ifyCompat;
 import com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions;
 import com.bdmajora.impetus.engine.impl.render.viewport.Viewport;
@@ -15,15 +14,13 @@ import com.bdmajora.testing.Mixins;
 import com.bdmajora.testing.Statics;
 import com.bdmajora.testing.TestGl;
 import net.minecraft.client.renderer.ActiveRenderInfo;
-import net.minecraft.client.settings.GameSettings;
 import net.minecraft.util.EnumFacing;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.lwjgl.LWJGLException;
+import com.bdmajora.impetus.impl.platform.GameWindow;
 import org.lwjgl.opengl.Display;
-import org.lwjgl.opengl.Drawable;
 import org.lwjgl.opengl.GL11;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
@@ -117,30 +114,22 @@ class CoreMixinsTest {
     }
 
     @Test
-    void theGlInfoCrashSectionNeedsACurrentContext() throws LWJGLException {
+    void theGlInfoCrashSectionNeedsACurrentContext() {
         SplashProgressCallableMixin callable = Mixins.instance(SplashProgressCallableMixin.class);
-        Display.created = false;
-        CallbackInfoReturnable<String> noDisplay = Mixins.cir();
-        Mixins.call(callable, "checkContext", noDisplay);
-        assertEquals("No context available", noDisplay.getReturnValue());
-        // A display without a drawable, or whose context is not current, has nothing to report either
-        Display.created = true;
-        CallbackInfoReturnable<String> noDrawable = Mixins.cir();
-        Mixins.call(callable, "checkContext", noDrawable);
-        assertEquals("No context available", noDrawable.getReturnValue());
-        Drawable drawable = mock(Drawable.class);
-        Display.drawable = drawable;
-        CallbackInfoReturnable<String> notCurrent = Mixins.cir();
-        Mixins.call(callable, "checkContext", notCurrent);
-        assertEquals("No context available", notCurrent.getReturnValue());
-        when(drawable.isCurrent()).thenReturn(true);
-        CallbackInfoReturnable<String> current = Mixins.cir();
-        Mixins.call(callable, "checkContext", current);
-        assertFalse(current.isCancelled());
-        when(drawable.isCurrent()).thenThrow(new LWJGLException("lost"));
-        CallbackInfoReturnable<String> lost = Mixins.cir();
-        Mixins.call(callable, "checkContext", lost);
-        assertEquals("No context available", lost.getReturnValue());
+        try (MockedStatic<GameWindow> window = Mockito.mockStatic(GameWindow.class)) {
+            CallbackInfoReturnable<String> notCurrent = Mixins.cir();
+            Mixins.call(callable, "checkContext", notCurrent);
+            assertEquals("No context available", notCurrent.getReturnValue());
+            window.when(GameWindow::isContextCurrent).thenReturn(true);
+            CallbackInfoReturnable<String> current = Mixins.cir();
+            Mixins.call(callable, "checkContext", current);
+            assertFalse(current.isCancelled());
+            // A window that is torn down mid-report is treated as no context
+            window.when(GameWindow::isContextCurrent).thenThrow(new IllegalStateException("gone"));
+            CallbackInfoReturnable<String> lost = Mixins.cir();
+            Mixins.call(callable, "checkContext", lost);
+            assertEquals("No context available", lost.getReturnValue());
+        }
     }
 
     @Test
@@ -186,61 +175,21 @@ class CoreMixinsTest {
         assertThrows(RuntimeException.class, () -> Mixins.call(minecraft, "postRender", Mixins.ci()));
 
         // Inactivity caps the frame rate: hard when minimised, softer when merely unfocused in AFK mode
-        ImpetusRuntimeOptions.inactivityFpsLimit = ImpetusGameOptions.InactivityFpsLimit.NO_LIMIT;
-        Display.visible = false;
-        assertEquals(144, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 144));
-        ImpetusRuntimeOptions.inactivityFpsLimit = ImpetusGameOptions.InactivityFpsLimit.AFK;
-        assertEquals(10, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 144));
-        assertEquals(5, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 5));
-        Display.visible = true;
-        Display.active = false;
-        assertEquals(30, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 144));
-        Display.active = true;
-        assertEquals(144, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 144));
-        ImpetusRuntimeOptions.inactivityFpsLimit = ImpetusGameOptions.InactivityFpsLimit.MINIMIZED;
-        Display.active = false;
-        assertEquals(144, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 144));
-    }
-
-    @Test
-    void aFailedFullscreenDisplayRetriesWindowed() {
-        MinecraftMixin minecraft = Mixins.instance(MinecraftMixin.class);
-        Mixins.call(minecraft, "impetus$retryWindowedWhenFullscreenDisplayCreateFails");
-        assertEquals(1, Display.createCalls);
-        // A windowed failure is real and is passed on
-        Display.createFailures = 1;
-        RuntimeException windowed = assertThrows(RuntimeException.class, () -> Mixins.call(minecraft, "impetus$retryWindowedWhenFullscreenDisplayCreateFails"));
-        assertInstanceOf(LWJGLException.class, windowed.getCause());
-        GameSettings settings = mock(GameSettings.class);
-        settings.fullScreen = false;
-        minecraft.gameSettings = settings;
-        Display.createFailures = 1;
-        RuntimeException stillWindowed = assertThrows(RuntimeException.class, () -> Mixins.call(minecraft, "impetus$retryWindowedWhenFullscreenDisplayCreateFails"));
-        assertInstanceOf(LWJGLException.class, stillWindowed.getCause());
-        // A fullscreen failure drops to a window the size of the game's, and remembers that in the options
-        Mixins.set(minecraft, "fullscreen", true);
-        minecraft.displayWidth = 0;
-        minecraft.displayHeight = 600;
-        Display.fullscreen = true;
-        Display.createFailures = 1;
-        Mixins.call(minecraft, "impetus$retryWindowedWhenFullscreenDisplayCreateFails");
-        assertFalse((boolean) Mixins.get(minecraft, "fullscreen"));
-        assertFalse(settings.fullScreen);
-        verify(settings).saveOptions();
-        assertFalse(Display.fullscreen);
-        assertEquals(1, Display.displayMode.getWidth());
-        assertEquals(600, Display.displayMode.getHeight());
-        assertTrue(Display.created);
-        // The options only ask for fullscreen here, with no options object to update
-        minecraft.gameSettings = null;
-        Mixins.set(minecraft, "fullscreen", true);
-        Display.createFailures = 1;
-        Mixins.call(minecraft, "impetus$retryWindowedWhenFullscreenDisplayCreateFails");
-        settings.fullScreen = true;
-        minecraft.gameSettings = settings;
-        Display.createFailures = 1;
-        Mixins.call(minecraft, "impetus$retryWindowedWhenFullscreenDisplayCreateFails");
-        assertFalse(settings.fullScreen);
+        try (MockedStatic<GameWindow> window = Mockito.mockStatic(GameWindow.class)) {
+            ImpetusRuntimeOptions.inactivityFpsLimit = ImpetusGameOptions.InactivityFpsLimit.NO_LIMIT;
+            window.when(GameWindow::isMinimized).thenReturn(true);
+            assertEquals(144, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 144));
+            ImpetusRuntimeOptions.inactivityFpsLimit = ImpetusGameOptions.InactivityFpsLimit.AFK;
+            assertEquals(10, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 144));
+            assertEquals(5, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 5));
+            window.when(GameWindow::isMinimized).thenReturn(false);
+            assertEquals(30, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 144));
+            window.when(GameWindow::isFocused).thenReturn(true);
+            assertEquals(144, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 144));
+            ImpetusRuntimeOptions.inactivityFpsLimit = ImpetusGameOptions.InactivityFpsLimit.MINIMIZED;
+            window.when(GameWindow::isFocused).thenReturn(false);
+            assertEquals(144, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 144));
+        }
     }
 
     // The plugin defined from the main classes alone, as it is inside the mod jar; on the test classpath its package scan would otherwise find the test classes of the same package first
@@ -284,14 +233,8 @@ class CoreMixinsTest {
     @Test
     void thePluginFindsEveryMixinOnItsOwn() throws ReflectiveOperationException {
         ImpetusVintageMixinPlugin plugin = new ImpetusVintageMixinPlugin();
-        try (MockedStatic<ImpetusLwjgl3ifyCompat> compat = Mockito.mockStatic(ImpetusLwjgl3ifyCompat.class)) {
-            plugin.onLoad("com.bdmajora.impetus.mixin");
-            compat.verify(ImpetusLwjgl3ifyCompat::apply);
-            // A broken lwjgl3ify install is logged rather than fatal
-            compat.when(ImpetusLwjgl3ifyCompat::apply).thenThrow(new NoClassDefFoundError("SharedConfig"));
-            plugin.onLoad("com.bdmajora.impetus.mixin");
-        }
-        assertEquals("", plugin.getRefMapperConfig());
+        plugin.onLoad("com.bdmajora.impetus.mixin");
+        assertNull(plugin.getRefMapperConfig());
         assertFalse(plugin.shouldApplyMixin("a", "b"));
         plugin.acceptTargets(java.util.Set.of(), java.util.Set.of());
         plugin.preApply("a", null, "b", null);

@@ -2,7 +2,7 @@ package com.bdmajora.fulgor.mixin;
 
 import com.bdmajora.fulgor.Fulgor;
 import com.bdmajora.fulgor.FulgorConfig;
-import com.bdmajora.impetus.booter.mixin.SimpleMixinPlugin;
+import com.bdmajora.impetus.core.SimpleMixinPlugin;
 
 // Gates each Fulgor mixin on its config switch and refuses to load beside world implementations it cannot reason about (Cubic Chunks); off means never loaded
 public class FulgorMixinPlugin extends SimpleMixinPlugin {

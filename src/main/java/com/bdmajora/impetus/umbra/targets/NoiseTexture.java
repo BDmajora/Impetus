@@ -1,7 +1,7 @@
 package com.bdmajora.impetus.umbra.targets;
 
 import com.bdmajora.impetus.umbra.gl.GlResource;
-import com.bdmajora.impetus.lwjgl.GL11;
+import org.lwjgl.opengl.GL11;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;

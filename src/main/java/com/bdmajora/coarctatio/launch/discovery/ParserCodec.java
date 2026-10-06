@@ -1,7 +1,5 @@
 package com.bdmajora.coarctatio.launch.discovery;
 
-import com.bdmajora.coarctatio.mixin.forge.ASMModParserAccessor;
-import com.bdmajora.coarctatio.mixin.forge.ModAnnotationAccessor;
 import net.minecraftforge.fml.common.discovery.asm.ASMModParser;
 import net.minecraftforge.fml.common.discovery.asm.ModAnnotation;
 import org.objectweb.asm.Type;
@@ -9,6 +7,8 @@ import org.objectweb.asm.Type;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -53,7 +53,36 @@ public final class ParserCodec {
         ANNOTATION_CTOR = ctor;
     }
 
-    // sun.misc.Unsafe resolved reflectively since the Java 8 API surface the build targets hides it; allocateInstance skips the constructor, which would want a class stream to parse
+    // The parser's five result fields and the annotation's value map, reached through VarHandles rather than accessor mixins: Cleanroom's discoverer loads both classes before any coremod can register a mixin, and a required config refuses an already-loaded target
+    private static final VarHandle ASM_TYPE;
+    private static final VarHandle CLASS_VERSION;
+    private static final VarHandle ASM_SUPER_TYPE;
+    private static final VarHandle ANNOTATIONS;
+    private static final VarHandle INTERFACES;
+    private static final VarHandle VALUES;
+
+    static {
+        VarHandle asmType = null, classVersion = null, asmSuperType = null, annotations = null, interfaces = null, values = null;
+        try {
+            MethodHandles.Lookup parser = MethodHandles.privateLookupIn(ASMModParser.class, MethodHandles.lookup());
+            asmType = parser.findVarHandle(ASMModParser.class, "asmType", Type.class);
+            classVersion = parser.findVarHandle(ASMModParser.class, "classVersion", int.class);
+            asmSuperType = parser.findVarHandle(ASMModParser.class, "asmSuperType", Type.class);
+            annotations = parser.findVarHandle(ASMModParser.class, "annotations", LinkedList.class);
+            interfaces = parser.findVarHandle(ASMModParser.class, "interfaces", Set.class);
+            values = MethodHandles.privateLookupIn(ModAnnotation.class, MethodHandles.lookup()).findVarHandle(ModAnnotation.class, "values", Map.class);
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            // A loader whose parser has other fields simply gets no cache: encode and decode both refuse
+        }
+        ASM_TYPE = asmType;
+        CLASS_VERSION = classVersion;
+        ASM_SUPER_TYPE = asmSuperType;
+        ANNOTATIONS = annotations;
+        INTERFACES = interfaces;
+        VALUES = values;
+    }
+
+    // sun.misc.Unsafe looked up reflectively so javac's internal-API warning stays out of the build; allocateInstance (not one of the memory accessors Java 25 deprecates) skips the constructor, which would want a class stream to parse
     private static final Object UNSAFE;
     private static final java.lang.reflect.Method ALLOCATE_INSTANCE;
 
@@ -76,23 +105,30 @@ public final class ParserCodec {
     private ParserCodec() {
     }
 
-    public static boolean canDecode() {
-        return UNSAFE != null && ALLOCATE_INSTANCE != null && ANNOTATION_TYPES != null && ANNOTATION_CTOR != null;
+    public static boolean canEncode() {
+        return VALUES != null;
     }
 
+    public static boolean canDecode() {
+        return canEncode() && UNSAFE != null && ALLOCATE_INSTANCE != null && ANNOTATION_TYPES != null && ANNOTATION_CTOR != null;
+    }
+
+    @SuppressWarnings("unchecked")
     public static void encode(ASMModParser parser, DataOutputStream out) throws IOException {
-        ASMModParserAccessor fields = (ASMModParserAccessor) parser;
-        writeType(out, fields.coarctatio$asmType());
-        out.writeInt(fields.coarctatio$classVersion());
-        writeType(out, fields.coarctatio$asmSuperType());
-        Set<String> interfaces = fields.coarctatio$interfaces();
+        if (!canEncode()) {
+            throw new IOException("ASMModParser fields are not reachable");
+        }
+        writeType(out, (Type) ASM_TYPE.get(parser));
+        out.writeInt((int) CLASS_VERSION.get(parser));
+        writeType(out, (Type) ASM_SUPER_TYPE.get(parser));
+        Set<String> interfaces = (Set<String>) INTERFACES.get(parser);
         out.writeInt(interfaces == null ? 0 : interfaces.size());
         if (interfaces != null) {
             for (String name : interfaces) {
                 out.writeUTF(name);
             }
         }
-        LinkedList<ModAnnotation> annotations = fields.coarctatio$annotations();
+        LinkedList<ModAnnotation> annotations = (LinkedList<ModAnnotation>) ANNOTATIONS.get(parser);
         out.writeInt(annotations == null ? 0 : annotations.size());
         if (annotations != null) {
             for (ModAnnotation annotation : annotations) {
@@ -111,16 +147,15 @@ public final class ParserCodec {
         } catch (ReflectiveOperationException | RuntimeException e) {
             throw new IOException(e);
         }
-        ASMModParserAccessor fields = (ASMModParserAccessor) parser;
-        fields.coarctatio$setAsmType(readType(in));
-        fields.coarctatio$setClassVersion(in.readInt());
-        fields.coarctatio$setAsmSuperType(readType(in));
+        ASM_TYPE.set(parser, readType(in));
+        CLASS_VERSION.set(parser, in.readInt());
+        ASM_SUPER_TYPE.set(parser, readType(in));
         int interfaceCount = in.readInt();
         Set<String> interfaces = new HashSet<>(Math.max(4, interfaceCount * 2));
         for (int i = 0; i < interfaceCount; i++) {
             interfaces.add(in.readUTF());
         }
-        fields.coarctatio$setInterfaces(interfaces);
+        INTERFACES.set(parser, interfaces);
         int annotationCount = in.readInt();
         LinkedList<ModAnnotation> annotations = new LinkedList<>();
         for (int i = 0; i < annotationCount; i++) {
@@ -133,10 +168,10 @@ public final class ParserCodec {
             } catch (ReflectiveOperationException | RuntimeException e) {
                 throw new IOException(e);
             }
-            ((ModAnnotationAccessor) annotation).coarctatio$setValues(readMap(in));
+            VALUES.set(annotation, readMap(in));
             annotations.add(annotation);
         }
-        fields.coarctatio$setAnnotations(annotations);
+        ANNOTATIONS.set(parser, annotations);
         return parser;
     }
 

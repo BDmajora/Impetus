@@ -1,6 +1,6 @@
 package com.bdmajora.impetus.engine.impl.render.chunk.shader;
 
-import com.bdmajora.impetus.lwjgl.GL20;
+import org.lwjgl.opengl.GL20;
 
 import com.bdmajora.impetus.engine.impl.gl.shader.ShaderBindingContext;
 

@@ -1,6 +1,6 @@
 package com.bdmajora.impetus.umbra.gl.texture;
 
-import com.bdmajora.impetus.lwjgl.GL11;
+import org.lwjgl.opengl.GL11;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 

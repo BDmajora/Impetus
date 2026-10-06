@@ -139,7 +139,7 @@ public final class LightingEngine {
             if (current != this.ownerThread && !ParallelWorkerThread.isCurrent()) {
                 IllegalAccessException trace = new IllegalAccessException(String.format(
                         "World is owned by '%s' (ID: %s), but was accessed from thread '%s' (ID: %s)",
-                        this.ownerThread.getName(), this.ownerThread.getId(), current.getName(), current.getId()));
+                        this.ownerThread.getName(), this.ownerThread.threadId(), current.getName(), current.threadId()));
 
                 Fulgor.LOGGER.warn("Something (likely another mod) has attempted to modify the world's state from the "
                         + "wrong thread!\nThis is *bad practice* and can cause severe issues in your game. Fulgor has "

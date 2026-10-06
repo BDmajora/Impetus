@@ -3,7 +3,7 @@
   "minVersion": "0.8",
   "plugin": "com.bdmajora.equilibrium.mixin.EquilibriumMixinPlugin",
   "package": "com.bdmajora.equilibrium.mixin",
-  "compatibilityLevel": "JAVA_8",
+  "compatibilityLevel": "JAVA_25",
   "mixins": [
     "advancements.inventory_trigger.AdvancementManagerMixin",
     "advancements.inventory_trigger.ContainerMixin",

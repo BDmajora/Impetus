@@ -24,6 +24,8 @@ public enum GLExtension {
     ARB_vertex_array_object,
     // Mapping a sub-range of a buffer, with explicit flush, for streaming uploads
     ARB_map_buffer_range,
+    // Pixel-pack buffers, so a readback lands in a buffer the CPU maps a frame later instead of stalling on glReadPixels
+    ARB_pixel_buffer_object,
     // GPU-to-GPU buffer copies, no CPU round trip
     ARB_copy_buffer,
     // Immutable texture storage for render targets

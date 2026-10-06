@@ -1,6 +1,6 @@
 package com.bdmajora.impetus.umbra.gl.image;
 
-import com.bdmajora.impetus.lwjgl.GL15;
+import org.lwjgl.opengl.GL15;
 
 import java.util.function.IntSupplier;
 

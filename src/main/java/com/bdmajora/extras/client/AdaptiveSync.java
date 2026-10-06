@@ -2,17 +2,12 @@ package com.bdmajora.extras.client;
 
 import com.bdmajora.extras.Extras;
 import com.bdmajora.extras.ExtrasConfig;
+import com.bdmajora.impetus.impl.platform.GameWindow;
 import net.minecraft.client.Minecraft;
-import org.lwjgl.opengl.Display;
 
-import java.lang.reflect.Method;
-
-// Adaptive VSync (swap interval -1 honours VSync above the refresh rate, disengages below); applied from outside via reflective GLFW since org.lwjgl. is class-loader excluded on Forge, and not offered on LWJGL2
+// Adaptive VSync (swap interval -1 honours VSync above the refresh rate, disengages below), set straight through GLFW on Cleanroom's window
 public final class AdaptiveSync {
-    private static final String GLFW_CLASS = "org.lwjgl.glfw.GLFW";
-
     private static Boolean supported;
-    private static Method swapInterval;
 
     private AdaptiveSync() {
     }
@@ -26,17 +21,8 @@ public final class AdaptiveSync {
 
         boolean result = false;
         try {
-            Class<?> glfw = Class.forName(GLFW_CLASS);
-            Method extensionSupported = glfw.getMethod("glfwExtensionSupported", CharSequence.class);
-
-            result = (Boolean) extensionSupported.invoke(null, "GLX_EXT_swap_control_tear")
-                    || (Boolean) extensionSupported.invoke(null, "WGL_EXT_swap_control_tear");
-
-            if (result) {
-                swapInterval = glfw.getMethod("glfwSwapInterval", int.class);
-            }
-        } catch (ClassNotFoundException e) {
-            // LWJGL2: no swap-interval control exists, so adaptive sync is simply not a mode here.
+            result = GameWindow.platformExtensionSupported("GLX_EXT_swap_control_tear")
+                    || GameWindow.platformExtensionSupported("WGL_EXT_swap_control_tear");
         } catch (Throwable t) {
             Extras.LOGGER.warn("Could not determine adaptive VSync support; assuming unsupported", t);
         }
@@ -68,7 +54,7 @@ public final class AdaptiveSync {
 
         options.extra.useAdaptiveSync = adaptive;
         minecraft.gameSettings.enableVsync = vsync;
-        Display.setVSyncEnabled(vsync);
+        GameWindow.setVsync(vsync);
 
         if (adaptive) {
             setSwapInterval(-1);
@@ -77,26 +63,20 @@ public final class AdaptiveSync {
         minecraft.gameSettings.saveOptions();
     }
 
-    // Re-asserts the adaptive interval, since anything calling Display.setVSyncEnabled (vanilla video settings, Impetus' VSync tickbox) resets it behind our back
+    // Re-asserts the adaptive interval, since anything toggling vanilla vsync (vanilla video settings, Impetus' VSync tickbox) resets it behind our back
     public static void reapply() {
         if (Extras.options().extra.useAdaptiveSync && isSupported()) {
             setSwapInterval(-1);
         }
     }
 
-    // Calls glfwSwapInterval through the resolved handle; a failure is logged and the option left as it was
+    // Sets the interval on the current context; a failure is logged and adaptive sync switched off
     private static void setSwapInterval(int interval) {
-        Method method = swapInterval;
-        if (method == null) {
-            return;
-        }
-
         try {
-            method.invoke(null, interval);
+            GameWindow.setSwapInterval(interval);
         } catch (Throwable t) {
             Extras.LOGGER.warn("Could not set the swap interval; disabling adaptive VSync", t);
             supported = false;
-            swapInterval = null;
             Extras.options().extra.useAdaptiveSync = false;
         }
     }

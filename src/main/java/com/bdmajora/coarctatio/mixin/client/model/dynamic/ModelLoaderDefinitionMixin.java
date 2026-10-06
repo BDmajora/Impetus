@@ -13,15 +13,15 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 
 // Blockstate definitions come from an expiring soft cache instead of the bakery's keep-everything map, and a multipart definition carries its block's state container the way loadBlock set it
 @Mixin(ModelLoader.class)
 public abstract class ModelLoaderDefinitionMixin implements DefinitionLoader {
     private final Cache<ResourceLocation, ModelBlockDefinition> coarctatio$definitions = CacheBuilder.newBuilder()
-            .expireAfterAccess(2, TimeUnit.MINUTES)
+            .expireAfterAccess(Duration.ofMinutes(2))
             .maximumSize(100)
             .concurrencyLevel(8)
             .softValues()

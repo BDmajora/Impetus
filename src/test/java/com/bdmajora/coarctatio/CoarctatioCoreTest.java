@@ -129,9 +129,9 @@ class CoarctatioCoreTest {
         // A class we do not ship has no bytecode to read, which is a refusal rather than a crash
         assertNull(ClassDefineTool.defineClass(ImmutableMap.class, "com.google.common.collect.NotOurs"));
         assertNotNull(Mixins.construct(ClassDefineTool.class));
-        // Bytes that are not a class are refused by both tiers, and the bootstrap loader is never touched
+        // Bytes that are not a class are refused
         assertNull(Mixins.call(ClassDefineTool.class, "defineWithLookup", ImmutableMap.class, new byte[] {1, 2, 3}));
-        assertNull(Mixins.call(ClassDefineTool.class, "defineWithClassLoader", ImmutableMap.class, "com.google.common.collect.Junk", new byte[] {1, 2, 3}));
-        assertNull(Mixins.call(ClassDefineTool.class, "defineWithClassLoader", String.class, "java.lang.Junk", new byte[] {1, 2, 3}));
+        // A host in a named module that does not open its package (java.base) refuses the private lookup, which is logged once and not fatal
+        assertNull(ClassDefineTool.defineClass(String.class, "com.google.common.collect.CoarctatioPropertyMap"));
     }
 }

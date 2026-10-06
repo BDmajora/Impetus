@@ -25,9 +25,8 @@ import java.util.zip.ZipInputStream;
 
 // Reads a pack folder or zip into the map ShaderPack consumes with java.nio and java.util.zip only; text to one map, binary assets to another, keys relative to shaders/
 public final class ShaderPackLoader {
-    // Extensions read as raw bytes for the custom-texture directives and their .mcmeta sidecars; .dat is included since Photon ships 3D lookup textures that way, and Arrays.asList rather than Set.of because of --release 8
-    private static final Set<String> BINARY_EXTENSIONS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-            "png", "mcmeta", "dat", "bin", "raw")));
+    // Extensions read as raw bytes for the custom-texture directives and their .mcmeta sidecars; .dat is included since Photon ships 3D lookup textures that way
+    private static final Set<String> BINARY_EXTENSIONS = Set.of("png", "mcmeta", "dat", "bin", "raw");
 
     // Text files that are metadata for OTHER mods, kept out of the source map since ShaderPackOptions scans EVERY entry for options (Iris only walks its IncludeGraph); Voxy's voxy.json opens with `#define OVERWORLD` and would register dimension macros as user toggles
     private static final Set<String> NON_GLSL_TEXT_EXTENSIONS =

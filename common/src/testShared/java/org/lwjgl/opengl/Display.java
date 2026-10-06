@@ -1,15 +1,11 @@
 package org.lwjgl.opengl;
 
-import org.lwjgl.LWJGLException;
-
-// Test stand-in for LWJGL2's Display, whose real static initialiser opens the X display; every query is a settable field
+// Test stand-in for Display, both LWJGL2's and Cleanroom's lwjglx bridge (whose real static initialisers open the X display or GLFW); every query is a settable field
 public final class Display {
     public static boolean visible, active, created, fullscreen, vsync;
     public static DisplayMode displayMode;
     public static DisplayMode[] availableDisplayModes;
-    public static Drawable drawable;
-    public static int createFailures;
-    public static int createCalls;
+    public static long window;
 
     private Display() {}
 
@@ -21,9 +17,7 @@ public final class Display {
         vsync = false;
         displayMode = new DisplayMode(854, 480);
         availableDisplayModes = new DisplayMode[]{displayMode};
-        drawable = null;
-        createFailures = 0;
-        createCalls = 0;
+        window = 1L;
     }
 
     public static boolean isVisible() {
@@ -67,17 +61,8 @@ public final class Display {
         return availableDisplayModes;
     }
 
-    public static Drawable getDrawable() {
-        return drawable;
-    }
-
-    // Fails the first createFailures calls, for the windowed-retry paths
-    public static void create() throws LWJGLException {
-        createCalls++;
-        if (createFailures > 0) {
-            createFailures--;
-            throw new LWJGLException("test display refused to create");
-        }
-        created = true;
+    // Cleanroom's GLFW window handle
+    public static long getWindow() {
+        return window;
     }
 }

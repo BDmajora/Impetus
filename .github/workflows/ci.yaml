@@ -1,12 +1,7 @@
 # Used when a commit is pushed to the repository
-# This makes use of caching for faster builds and uploads the resulting artifacts
+# Runs the test suite (with the coverage gate) and builds the release jar
 name: ci
 on: push
-
-env:
-  IMPETUS_DISABLE_DECOMP: true
-  ORG_GRADLE_PROJECT_impetus_target_versions_pattern: ".*"
-  ORG_GRADLE_PROJECT_impetus_target_subprojects_pattern: ".*"
 
 jobs:
   build:
@@ -22,10 +17,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: |
-            8
-            17
-            21
+          java-version: '25'
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4.4.4
       - name: Initialize Unimined caches
@@ -33,10 +25,12 @@ jobs:
         with:
           path: |
             **/.gradle/unimined
-          key: unimined-v4-${{ runner.os }}-build-snapshot-${{ hashFiles('settings.gradle.kts') }}
+          key: unimined-v5-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
           restore-keys: |
-            unimined-v4-${{ runner.os }}-build-snapshot-
-      - name: Build all packaged jars
-        run: ./gradlew packageJar --info --stacktrace
+            unimined-v5-${{ runner.os }}-
+      - name: Test
+        run: ./gradlew test jacocoTestCoverageVerification :common:check --continue --stacktrace
+      - name: Build the release jar
+        run: ./gradlew packageJar --stacktrace
       - name: Show checksums
         run: find build/libs -name \*.jar | sort | xargs sha256sum

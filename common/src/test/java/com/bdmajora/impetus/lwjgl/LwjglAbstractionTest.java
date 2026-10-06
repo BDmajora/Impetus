@@ -12,11 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class LwjglAbstractionTest {
     @Test
-    void generatedConstantClassesAreInstantiable() {
-        new GL11(); new GL12(); new GL13(); new GL14(); new GL15(); new GL20(); new GL21();
-        new GL30(); new GL31(); new GL32(); new GL33(); new GL40(); new GL41(); new GL42();
-        new GL43(); new GL44(); new GL45(); new GL46();
-        assertEquals(0x8B31, GL20.GL_VERTEX_SHADER);
+    void providerExposesTheSelectedBackend() {
         assertEquals(8, LWJGLServiceProvider.POINTER_SIZE);
         assertEquals(0L, LWJGLServiceProvider.NULL);
         assertSame(TestGl.gl(), LWJGLServiceProvider.LWJGL);

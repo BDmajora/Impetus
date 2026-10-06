@@ -1,8 +1,8 @@
 package com.bdmajora.impetus.engine.impl.render.mesh.gl;
 
-import com.bdmajora.impetus.lwjgl.GL11;
-import com.bdmajora.impetus.lwjgl.GL15;
-import com.bdmajora.impetus.lwjgl.GL30;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL15;
+import org.lwjgl.opengl.GL30;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 

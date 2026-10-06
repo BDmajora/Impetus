@@ -1,8 +1,7 @@
 package com.bdmajora.impetus.impl.gui;
 
 import net.minecraft.client.resources.I18n;
-import org.lwjgl.LWJGLException;
-import org.lwjgl.opengl.Display;
+import com.bdmajora.impetus.impl.platform.GameWindow;
 import org.lwjgl.opengl.DisplayMode;
 
 import java.util.ArrayList;
@@ -10,7 +9,7 @@ import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 
-// Enumerates real fullscreen video modes from LWJGL; index 0 is always "Current" (desktop resolution), 1..N are distinct modes sorted by resolution
+// Enumerates the fullscreen monitor's video modes through Cleanroom's window; index 0 is always "Current" (desktop resolution), 1..N are distinct modes sorted by resolution
 public final class FullscreenResolutions {
     private static List<DisplayMode> modes;
 
@@ -24,7 +23,7 @@ public final class FullscreenResolutions {
             var list = new ArrayList<DisplayMode>();
 
             try {
-                DisplayMode[] available = Display.getAvailableDisplayModes();
+                DisplayMode[] available = GameWindow.fullscreenModes();
                 // Highest resolution / refresh first.
                 Arrays.sort(available, (a, b) -> {
                     int byArea = Integer.compare(b.getWidth() * b.getHeight(), a.getWidth() * a.getHeight());
@@ -40,8 +39,8 @@ public final class FullscreenResolutions {
                         list.add(mode);
                     }
                 }
-            } catch (LWJGLException e) {
-                // Leave the list empty; only "Current" will be offered.
+            } catch (RuntimeException e) {
+                // No monitor answered (headless, or the window is not up yet); only "Current" will be offered.
             }
 
             modes = list;
@@ -72,8 +71,8 @@ public final class FullscreenResolutions {
         }
 
         try {
-            if (Display.isFullscreen()) {
-                Display.setDisplayModeAndFullscreen(modes().get(index - 1));
+            if (GameWindow.isFullscreen()) {
+                GameWindow.setFullscreenMode(modes().get(index - 1));
             }
         } catch (Throwable t) {
             // Never let a resolution change take the game down.

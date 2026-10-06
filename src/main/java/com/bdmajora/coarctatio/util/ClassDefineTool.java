@@ -4,10 +4,10 @@ import com.bdmajora.coarctatio.Coarctatio;
 import org.apache.commons.io.IOUtils;
 
 import java.io.IOException;
-import java.lang.reflect.Method;
+import java.lang.invoke.MethodHandles;
 import java.net.URL;
 
-// Defines a class into another class's runtime package for package-private access: privateLookupIn on Java 9+, unlocked defineClass on Java 8, else null; injected classes may reference only their host package and java.*
+// Defines a class into another class's runtime package for package-private access, through a private lookup on the host; injected classes may reference only their host package and java.*
 public final class ClassDefineTool {
     private static boolean warned;
 
@@ -31,10 +31,6 @@ public final class ClassDefineTool {
 
         Class<?> defined = defineWithLookup(host, bytecode);
 
-        if (defined == null) {
-            defined = defineWithClassLoader(host, name, bytecode);
-        }
-
         if (defined == null && !warned) {
             warned = true;
             Coarctatio.LOGGER.warn("Could not define classes into {}'s package; features that need it stay off",
@@ -44,41 +40,12 @@ public final class ClassDefineTool {
         return defined;
     }
 
-    // Tier one, Java 9+: MethodHandles.privateLookupIn(host, lookup).defineClass(bytecode), reached via reflection so this compiles at source level 8
+    // privateLookupIn works across loaders here because both sides are unnamed modules, which read and open everything; the resulting lookup keeps package access, which is all defineClass needs
     private static Class<?> defineWithLookup(Class<?> host, byte[] bytecode) {
         try {
-            Class<?> lookupClass = Class.forName("java.lang.invoke.MethodHandles$Lookup");
-            Class<?> handles = Class.forName("java.lang.invoke.MethodHandles");
-
-            Method lookup = handles.getMethod("lookup");
-            Method privateLookupIn = handles.getMethod("privateLookupIn", Class.class, lookupClass);
-            Method defineClass = lookupClass.getMethod("defineClass", byte[].class);
-
-            Object privateLookup = privateLookupIn.invoke(null, host, lookup.invoke(null));
-
-            return (Class<?>) defineClass.invoke(privateLookup, (Object) bytecode);
-        } catch (ReflectiveOperationException | RuntimeException e) {
-            // NoSuchMethodException on Java 8, IllegalAccessException if the module is not open.
-            return null;
-        }
-    }
-
-    // Tier two, Java 8: unlock ClassLoader.defineClass on the host's own loader, which is what puts the class in the same runtime package
-    private static Class<?> defineWithClassLoader(Class<?> host, String name, byte[] bytecode) {
-        ClassLoader loader = host.getClassLoader();
-
-        if (loader == null) {
-            // Guava on the bootstrap loader; nothing we can do, and nothing we should try.
-            return null;
-        }
-
-        try {
-            Method defineClass = ClassLoader.class.getDeclaredMethod(
-                    "defineClass", String.class, byte[].class, int.class, int.class);
-            defineClass.setAccessible(true);
-
-            return (Class<?>) defineClass.invoke(loader, name, bytecode, 0, bytecode.length);
-        } catch (ReflectiveOperationException | RuntimeException e) {
+            return MethodHandles.privateLookupIn(host, MethodHandles.lookup()).defineClass(bytecode);
+        } catch (IllegalAccessException | RuntimeException | LinkageError e) {
+            // A named, closed host module, or a class already defined under that name by another path
             return null;
         }
     }

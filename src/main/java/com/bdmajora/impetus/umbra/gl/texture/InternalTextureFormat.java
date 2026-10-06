@@ -1,11 +1,11 @@
 package com.bdmajora.impetus.umbra.gl.texture;
 
-import com.bdmajora.impetus.lwjgl.GL11;
-import com.bdmajora.impetus.lwjgl.GL12;
-import com.bdmajora.impetus.lwjgl.GL30;
-import com.bdmajora.impetus.lwjgl.GL31;
-import com.bdmajora.impetus.lwjgl.GL33;
-import com.bdmajora.impetus.lwjgl.GL41;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL12;
+import org.lwjgl.opengl.GL30;
+import org.lwjgl.opengl.GL31;
+import org.lwjgl.opengl.GL33;
+import org.lwjgl.opengl.GL41;
 
 import java.util.Locale;
 import java.util.Optional;

@@ -70,7 +70,7 @@ public final class ItemLightSources {
         try {
             for (IResource resource : resourceManager.getAllResources(INDEX)) {
                 try (InputStreamReader reader = new InputStreamReader(resource.getInputStream())) {
-                    JsonObject json = new JsonParser().parse(reader).getAsJsonObject();
+                    JsonObject json = JsonParser.parseReader(reader).getAsJsonObject();
                     JsonArray entries = json.getAsJsonArray("files");
 
                     if (entries == null) {
@@ -97,7 +97,7 @@ public final class ItemLightSources {
                 location.getPath().replace(".json", ""));
 
         try (InputStreamReader reader = new InputStreamReader(resource.getInputStream())) {
-            JsonObject json = new JsonParser().parse(reader).getAsJsonObject();
+            JsonObject json = JsonParser.parseReader(reader).getAsJsonObject();
 
             ItemLightSource.fromJson(id, json).ifPresent(data -> {
                 if (!REGISTERED.containsKey(data.item())) {

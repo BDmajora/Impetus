@@ -1,6 +1,6 @@
 package com.bdmajora.fulgor;
 
-import com.bdmajora.impetus.booter.util.PropertiesConfig;
+import com.bdmajora.impetus.core.PropertiesConfig;
 
 import java.util.Map;
 

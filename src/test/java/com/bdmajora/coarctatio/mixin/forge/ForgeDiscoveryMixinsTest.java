@@ -7,7 +7,6 @@ import com.bdmajora.testing.Mixins;
 import com.bdmajora.testing.Statics;
 import net.minecraft.launchwrapper.Launch;
 import net.minecraft.util.ResourceLocation;
-import net.minecraftforge.fml.common.ModContainer;
 import net.minecraftforge.fml.common.discovery.ASMDataTable;
 import net.minecraftforge.fml.common.discovery.ModCandidate;
 import net.minecraftforge.fml.common.discovery.asm.ASMModParser;
@@ -145,13 +144,6 @@ class ForgeDiscoveryMixinsTest {
         Mixins.set(discoverer, "coarctatio$record", new HashMap<String, byte[]>());
         Mixins.set(discoverer, "coarctatio$entryName", null);
         assertNotNull(Mixins.call(discoverer, "coarctatio$parserFromCache", new ByteArrayInputStream(classFile())));
-    }
-
-    @Test
-    void theCacheIsWrittenOnceDiscoveryIsOver() {
-        ModDiscovererMixin discoverer = Mixins.instance(ModDiscovererMixin.class);
-        ModScanCache.recordFor("jar|1|2").put("com/example/A.class", new byte[] {1});
-        Mixins.call(discoverer, "coarctatio$saveScanCache", Mixins.cir(new ArrayList<ModContainer>()));
     }
 
     // A minimal class file the ASM the discoverer bundles can read, which this suite's own classes are too new for

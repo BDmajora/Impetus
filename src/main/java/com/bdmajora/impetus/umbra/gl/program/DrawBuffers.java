@@ -4,7 +4,6 @@ import com.bdmajora.impetus.umbra.targets.UmbraRenderTargets;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-import com.github.bsideup.jabel.Desugar;
 import com.bdmajora.impetus.umbra.gl.shader.ShaderMacros;
 import com.bdmajora.impetus.umbra.shaderpack.preprocessor.PropertiesPreprocessor;
 import java.util.ArrayList;
@@ -219,7 +218,6 @@ public final class DrawBuffers {
     }
 
     // A target directive and where it sits in the source, so the last one in file order wins
-    @Desugar
     private record Directive(int offset, int[] buffers) {
     }
 }

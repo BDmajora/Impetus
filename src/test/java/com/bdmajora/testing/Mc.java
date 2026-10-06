@@ -61,19 +61,6 @@ public final class Mc {
 
     private static boolean texturesReady;
 
-    // DimensionType's static init has Forge's EnumHelper prove it can extend the enum through sun.reflect internals this JDK lacks; the check only wants a non-null accessor, and nothing here adds dimensions
-    public static void dimensions() {
-        try {
-            // Initialised first, or its own static initialisers would overwrite these later
-            Class.forName(net.minecraftforge.common.util.EnumHelper.class.getName());
-            Statics.set(net.minecraftforge.common.util.EnumHelper.class, "isSetup", true);
-            Statics.set(net.minecraftforge.common.util.EnumHelper.class, "newConstructorAccessor",
-                    java.util.Objects.class.getMethod("requireNonNull", Object.class));
-        } catch (ReflectiveOperationException e) {
-            throw new AssertionError(e);
-        }
-    }
-
     // Makes Loader.isModLoaded answerable: without a running game the mod table is null and any call throws
     public static void forge(String... loaded) {
         Map<String, net.minecraftforge.fml.common.ModContainer> mods = new HashMap<>();

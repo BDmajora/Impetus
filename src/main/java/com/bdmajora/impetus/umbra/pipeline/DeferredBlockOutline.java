@@ -36,8 +36,8 @@ public final class DeferredBlockOutline {
     public static void capture(EntityPlayer capturedPlayer, RayTraceResult capturedTarget, float capturedPartialTicks) {
         PROJECTION.clear();
         MODELVIEW.clear();
-        GL11.glGetFloat(GL11.GL_PROJECTION_MATRIX, PROJECTION);
-        GL11.glGetFloat(GL11.GL_MODELVIEW_MATRIX, MODELVIEW);
+        GL11.glGetFloatv(GL11.GL_PROJECTION_MATRIX, PROJECTION);
+        GL11.glGetFloatv(GL11.GL_MODELVIEW_MATRIX, MODELVIEW);
         PROJECTION.rewind();
         MODELVIEW.rewind();
 

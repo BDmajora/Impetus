@@ -1,6 +1,6 @@
 package com.bdmajora.impetus.umbra.compat.dh;
 
-import com.bdmajora.impetus.lwjgl.GL30;
+import org.lwjgl.opengl.GL30;
 import com.bdmajora.impetus.umbra.gl.framebuffer.UmbraFramebuffer;
 import com.seibel.distanthorizons.api.interfaces.override.rendering.IDhApiFramebuffer;
 

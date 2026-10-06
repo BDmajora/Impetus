@@ -250,7 +250,6 @@ public final class CustomUniforms {
         }
 
         // A declaration awaiting compilation
-        @com.github.bsideup.jabel.Desugar
         private record PendingVariable(String name, Type type, String expression, boolean isUniform) {
         }
     }

@@ -3,7 +3,7 @@ package com.bdmajora.impetus.umbra.gl.program;
 import com.bdmajora.impetus.umbra.gl.GlTextureUnits;
 import com.bdmajora.impetus.umbra.gl.sampler.SamplerBinding;
 import com.bdmajora.impetus.umbra.gl.sampler.SamplerLimits;
-import com.bdmajora.impetus.lwjgl.GL11;
+import org.lwjgl.opengl.GL11;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 

@@ -1,6 +1,5 @@
 package com.bdmajora.coarctatio.launch.discovery;
 
-import com.bdmajora.coarctatio.mixin.forge.ASMModParserAccessor;
 import com.bdmajora.testing.Mixins;
 import com.bdmajora.testing.Statics;
 import net.minecraft.launchwrapper.Launch;
@@ -91,7 +90,7 @@ class ModScanCacheTest {
         assertArrayEquals(blob, restored.get("com/example/ExampleMod.class"));
         ASMModParser served = ModScanCache.decode(restored.get("com/example/ExampleMod.class"));
         assertNotNull(served);
-        assertEquals(Type.getType("Lcom/example/ExampleMod;"), ((ASMModParserAccessor) served).coarctatio$asmType());
+        assertEquals(Type.getType("Lcom/example/ExampleMod;"), com.bdmajora.testing.Mixins.get(served, "asmType"));
 
         // A jar that was not in the file gets an empty record to fill
         assertTrue(ModScanCache.recordFor("other|1|2").isEmpty());

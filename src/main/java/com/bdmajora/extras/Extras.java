@@ -1,6 +1,6 @@
 package com.bdmajora.extras;
 
-import com.bdmajora.impetus.booter.util.PropertiesConfig;
+import com.bdmajora.impetus.core.PropertiesConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 

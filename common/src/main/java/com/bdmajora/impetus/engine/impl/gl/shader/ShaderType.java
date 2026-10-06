@@ -1,9 +1,9 @@
 package com.bdmajora.impetus.engine.impl.gl.shader;
 
-import com.bdmajora.impetus.lwjgl.GL20;
-import com.bdmajora.impetus.lwjgl.GL32;
-import com.bdmajora.impetus.lwjgl.GL42;
-import com.bdmajora.impetus.lwjgl.GL43;
+import org.lwjgl.opengl.GL20;
+import org.lwjgl.opengl.GL32;
+import org.lwjgl.opengl.GL42;
+import org.lwjgl.opengl.GL43;
 import com.bdmajora.impetus.lwjgl.GLNv;
 
 import lombok.AccessLevel;

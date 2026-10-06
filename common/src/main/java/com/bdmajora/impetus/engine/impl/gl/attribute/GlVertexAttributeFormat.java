@@ -1,6 +1,6 @@
 package com.bdmajora.impetus.engine.impl.gl.attribute;
 
-import com.bdmajora.impetus.lwjgl.GL20;
+import org.lwjgl.opengl.GL20;
 
 
 // A vertex attribute's GL type enum plus its component size in bytes; a record so the size travels with the type and strides cannot drift

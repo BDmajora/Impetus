@@ -68,12 +68,6 @@ public final class Splice implements LauncherSessionListener {
         TARGETS.put("net.minecraft.client.renderer.block.model.ModelBakery",
                 com.bdmajora.coarctatio.mixin.client.model.dynamic.ModelBakeryAccessor.class);
 
-        // Forge's mod scan result, which the cache codec fills straight into
-        TARGETS.put("net.minecraftforge.fml.common.discovery.asm.ASMModParser",
-                com.bdmajora.coarctatio.mixin.forge.ASMModParserAccessor.class);
-        TARGETS.put("net.minecraftforge.fml.common.discovery.asm.ModAnnotation",
-                com.bdmajora.coarctatio.mixin.forge.ModAnnotationAccessor.class);
-
         // The bus id the bake dispatcher selects listeners by, and the owning mod the bus names on each bake event
         TARGETS.put("net.minecraftforge.fml.common.eventhandler.EventBus",
                 com.bdmajora.coarctatio.mixin.client.model.dynamic.EventBusAccessor.class);
@@ -101,6 +95,8 @@ public final class Splice implements LauncherSessionListener {
             return;
         }
         installed = true;
+        // Cleanroom's launcher records the side before anything asks; FMLLaunchHandler's initialiser reads it, and the client is the side every suite runs as
+        com.cleanroommc.common.CleanroomEnvironment.setSide(net.minecraftforge.fml.relauncher.Side.CLIENT);
         ByteBuddyAgent.install();
         // The interfaces are spliced first, since preparing the constructors below loads some of the same classes
         AgentBuilder agent = new AgentBuilder.Default();

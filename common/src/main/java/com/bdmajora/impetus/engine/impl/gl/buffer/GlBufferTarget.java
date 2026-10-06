@@ -1,9 +1,9 @@
 package com.bdmajora.impetus.engine.impl.gl.buffer;
 
-import com.bdmajora.impetus.lwjgl.GL20;
-import com.bdmajora.impetus.lwjgl.GL21;
-import com.bdmajora.impetus.lwjgl.GL31;
-import com.bdmajora.impetus.lwjgl.GL43;
+import org.lwjgl.opengl.GL20;
+import org.lwjgl.opengl.GL21;
+import org.lwjgl.opengl.GL31;
+import org.lwjgl.opengl.GL43;
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 

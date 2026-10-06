@@ -1,6 +1,5 @@
 package com.bdmajora.impetus.impl.config;
 
-import com.github.bsideup.jabel.Desugar;
 import net.minecraftforge.common.config.Configuration;
 
 import java.util.function.Consumer;
@@ -29,7 +28,6 @@ public interface ConfigProperty {
         return new EnumProperty<>(category, key, values, defaultValue, comment, setter, getter);
     }
 
-    @Desugar
     record BooleanProperty(String category, String key, boolean defaultValue, String comment,
                            Consumer<Boolean> setter, Supplier<Boolean> getter) implements ConfigProperty {
         @Override
@@ -43,7 +41,6 @@ public interface ConfigProperty {
         }
     }
 
-    @Desugar
     record IntProperty(String category, String key, int defaultValue, int min, int max, String comment,
                        Consumer<Integer> setter, Supplier<Integer> getter) implements ConfigProperty {
         @Override
@@ -57,7 +54,6 @@ public interface ConfigProperty {
         }
     }
 
-    @Desugar
     record EnumProperty<T extends Enum<T>>(String category, String key, T[] values, T defaultValue, String comment,
                                            Consumer<T> setter, Supplier<T> getter) implements ConfigProperty {
         @Override

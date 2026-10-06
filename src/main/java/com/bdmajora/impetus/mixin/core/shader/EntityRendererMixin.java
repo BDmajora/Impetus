@@ -6,10 +6,12 @@ import net.minecraft.client.renderer.EntityRenderer;
 import net.minecraft.client.renderer.ItemRenderer;
 import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.entity.EntityLivingBase;
-import org.lwjgl.util.glu.Project;
+import org.joml.Matrix4f;
+import org.lwjgl.BufferUtils;
 import org.spongepowered.asm.mixin.Final;
 import net.minecraft.client.particle.ParticleManager;
 import net.minecraft.entity.Entity;
+import java.nio.FloatBuffer;
 import com.bdmajora.impetus.umbra.pipeline.DeferredBlockOutline;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -33,6 +35,12 @@ import com.bdmajora.impetus.umbra.uniforms.CapturedRenderingState;
 public class EntityRendererMixin {
     private static final String PROFILER_END_START =
             "Lnet/minecraft/profiler/Profiler;endStartSection(Ljava/lang/String;)V";
+
+    // Scratch for the hand projection; the render thread is the only caller
+    @Unique
+    private static final Matrix4f impetus$handProjection = new Matrix4f();
+    @Unique
+    private static final FloatBuffer impetus$handProjectionBuffer = BufferUtils.createFloatBuffer(16);
 
     // OptiFine's configHandDepthMul, applied as glScale(1, 1, x) before gluPerspective (Shaders.applyHandDepth); the shader path draws the hand into the gbuffer with world depth present, so its depth must be compressed to the near plane or it clips and gets composite-shaded as a dark blob
     private static final float HAND_DEPTH_MUL = 0.125f;
@@ -352,9 +360,11 @@ public class EntityRendererMixin {
         }
         // OptiFine's applyHandDepth: squeeze the hand's clip-space Z so it wins the depth test against gbuffer geometry and lands at the near plane for composite lighting
         GlStateManager.scale(1.0f, 1.0f, HAND_DEPTH_MUL);
-        Project.gluPerspective(this.getFOVModifier(partialTicks, false),
+        // gluPerspective without LWJGL2's util library: JOML builds the same GL-convention matrix and it is multiplied onto the stack
+        impetus$handProjection.setPerspective((float) Math.toRadians(this.getFOVModifier(partialTicks, false)),
                 (float) this.mc.displayWidth / (float) this.mc.displayHeight,
-                0.05f, this.farPlaneDistance * 2.0f);
+                0.05f, this.farPlaneDistance * 2.0f).get(impetus$handProjectionBuffer);
+        GlStateManager.multMatrix(impetus$handProjectionBuffer);
         GlStateManager.matrixMode(5888);
         GlStateManager.loadIdentity();
         if (this.mc.gameSettings.anaglyph) {

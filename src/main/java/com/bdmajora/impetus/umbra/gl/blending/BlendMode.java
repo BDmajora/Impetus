@@ -1,14 +1,12 @@
 package com.bdmajora.impetus.umbra.gl.blending;
 
-import com.bdmajora.impetus.lwjgl.GL11;
-import com.bdmajora.impetus.lwjgl.GL14;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL14;
 
-import com.github.bsideup.jabel.Desugar;
 
 import java.util.Locale;
 
 // The blend factors a pack declares for one program via `blend.<program> = SRC DST` or the four-factor form; four because packs blend RGB normally while writing alpha ONE/ZERO so it carries data
-@Desugar
 public record BlendMode(int srcRgb, int dstRgb, int srcAlpha, int dstAlpha) {
     // Accepts OptiFine's two- and four-factor forms; throws on anything else so the caller logs and drops just this directive
     public static BlendMode parse(String value) {

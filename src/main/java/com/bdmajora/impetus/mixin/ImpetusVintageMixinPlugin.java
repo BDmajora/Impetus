@@ -1,13 +1,11 @@
 package com.bdmajora.impetus.mixin;
 
-import com.gtnewhorizons.retrofuturabootstrap.SharedConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import com.bdmajora.impetus.engine.impl.util.MixinClassValidator;
 import org.objectweb.asm.tree.ClassNode;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
-import com.bdmajora.impetus.core.ImpetusLwjgl3ifyCompat;
 
 import java.net.URI;
 import java.net.URL;
@@ -19,22 +17,15 @@ import java.util.stream.Stream;
 public class ImpetusVintageMixinPlugin implements IMixinConfigPlugin {
     public static final Logger LOGGER = LogManager.getLogger("ImpetusMixins");
 
-    // Applies lwjgl3ify compat if RetroFuturaBootstrap is present; absence is the normal stock-Forge case
+    // Nothing to prepare: Cleanroom runs LWJGL3 natively, so there is no lwjgl3ify redirect to opt out of
     @Override
     public void onLoad(String mixinPackage) {
-        try {
-            Class.forName("com.gtnewhorizons.retrofuturabootstrap.SharedConfig");
-            // class exists, apply compat
-            ImpetusLwjgl3ifyCompat.apply();
-        } catch (Throwable e) {
-            LOGGER.warn("RFB class not found, hopefully we're not running with lwjgl3ify, otherwise bad things are about to happen");
-        }
     }
 
-    // Empty: Impetus reobfuscates mixins directly rather than via a refmap
+    // Null: the remapped jar carries SRG selectors in the annotations themselves, so there is no refmap ("" makes Mixin look for a file by that name)
     @Override
     public String getRefMapperConfig() {
-        return "";
+        return null;
     }
 
     // Unused; getMixins supplies the list directly and Mixin does not consult this for those

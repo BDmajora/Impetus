@@ -20,7 +20,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.Slice;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import com.bdmajora.impetus.lwjgl.GL15;
+import org.lwjgl.opengl.GL15;
 import com.bdmajora.impetus.umbra.Umbra;
 import com.bdmajora.impetus.umbra.compat.dh.DhCompat;
 import com.bdmajora.impetus.umbra.pipeline.DeferredBlockOutline;

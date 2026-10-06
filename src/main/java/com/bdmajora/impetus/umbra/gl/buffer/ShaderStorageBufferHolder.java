@@ -1,6 +1,6 @@
 package com.bdmajora.impetus.umbra.gl.buffer;
 
-import com.bdmajora.impetus.lwjgl.GL15;
+import org.lwjgl.opengl.GL15;
 import com.bdmajora.impetus.lwjgl.GLExtension;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;

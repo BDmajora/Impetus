@@ -1,9 +1,9 @@
 package com.bdmajora.impetus.engine.impl.gl.tessellation;
 
-import com.bdmajora.impetus.lwjgl.GL11;
-import com.bdmajora.impetus.lwjgl.GL30;
-import com.bdmajora.impetus.lwjgl.GL32;
-import com.bdmajora.impetus.lwjgl.GL40;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL30;
+import org.lwjgl.opengl.GL32;
+import org.lwjgl.opengl.GL40;
 
 
 // The primitive topologies the terrain renderer draws with, each carrying its GL enum

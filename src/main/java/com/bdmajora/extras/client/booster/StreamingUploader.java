@@ -7,15 +7,14 @@ import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.renderer.vertex.VertexFormat;
 import net.minecraft.client.renderer.vertex.VertexFormatElement;
 import org.lwjgl.opengl.ARBBufferStorage;
-import org.lwjgl.opengl.ContextCapabilities;
+import org.lwjgl.opengl.GL;
+import org.lwjgl.opengl.GLCapabilities;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL32;
 import org.lwjgl.opengl.GL44;
-import org.lwjgl.opengl.GLContext;
-import org.lwjgl.opengl.GLSync;
 
 import java.nio.ByteBuffer;
 import java.util.List;
@@ -33,7 +32,8 @@ public final class StreamingUploader {
     private static boolean unavailable;
     private static boolean persistent;
     private static ByteBuffer mapped;
-    private static final GLSync[] fences = new GLSync[REGIONS];
+    // LWJGL3 fence handles; 0 is "no fence" (glFenceSync never returns it for a live sync)
+    private static final long[] fences = new long[REGIONS];
     private static int region;
     private static int cursor;
 
@@ -101,7 +101,7 @@ public final class StreamingUploader {
         if (!regionFree(next)) {
             return false;
         }
-        if (fences[region] == null) {
+        if (fences[region] == 0L) {
             fences[region] = GL32.glFenceSync(GL32.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
         }
         region = next;
@@ -121,8 +121,8 @@ public final class StreamingUploader {
 
     // Whether the GPU has finished every draw that read this region: a zero-timeout poll of its fence, with the flush bit so the fence itself is submitted and can signal. A failed wait retires the ring for the session
     private static boolean regionFree(int index) {
-        GLSync fence = fences[index];
-        if (fence == null) {
+        long fence = fences[index];
+        if (fence == 0L) {
             return true;
         }
 
@@ -131,7 +131,7 @@ public final class StreamingUploader {
             return false;
         }
         GL32.glDeleteSync(fence);
-        fences[index] = null;
+        fences[index] = 0L;
         if (result == GL32.GL_WAIT_FAILED) {
             Extras.LOGGER.warn("Fence wait failed on the streamed vertex buffer; falling back to vanilla uploads");
             unavailable = true;
@@ -155,7 +155,7 @@ public final class StreamingUploader {
 
     // Persistent mapping needs buffer storage (4.4 or its ARB form), map-range (3.0) and fences (3.2); anything with core 1.5 buffers gets the orphaning ring. The ARB-suffixed VBO path vanilla keeps for pre-2003 hardware is not worth a second code path
     private static boolean initialize() {
-        ContextCapabilities caps = GLContext.getCapabilities();
+        GLCapabilities caps = GL.getCapabilities();
         if (!caps.OpenGL15) {
             unavailable = true;
             return false;

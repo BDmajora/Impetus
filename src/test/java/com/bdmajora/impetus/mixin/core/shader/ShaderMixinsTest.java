@@ -467,8 +467,8 @@ class ShaderMixinsTest {
             dh.verify(DhCompat::renderDeferredLods);
             verify(TestGl.gl()).glUseProgram(0);
             verify(TestGl.gl()).glBindVertexArray(0);
-            verify(TestGl.gl()).glBindBuffer(com.bdmajora.impetus.lwjgl.GL15.GL_ARRAY_BUFFER, 0);
-            verify(TestGl.gl()).glBindBuffer(com.bdmajora.impetus.lwjgl.GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
+            verify(TestGl.gl()).glBindBuffer(org.lwjgl.opengl.GL15.GL_ARRAY_BUFFER, 0);
+            verify(TestGl.gl()).glBindBuffer(org.lwjgl.opengl.GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
             // Even when DH's pass fails
             dh.when(DhCompat::renderDeferredLods).thenThrow(new RuntimeException("DH"));
             assertThrows(RuntimeException.class,

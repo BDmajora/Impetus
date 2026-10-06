@@ -61,10 +61,14 @@ public final class TextureDiscovery {
 
     // The scan in flight for the reload under way, joined when the atlas registers its sprites
     private static volatile ForkJoinTask<Set<ResourceLocation>> pending;
+    // Its discovery, so the reload can say when the location tables are filled, or that they never will be this time
+    private static volatile TextureDiscovery current;
     private final List<IResourcePack> packs;
     private final IResourceManager manager;
     private final Set<ResourceLocation> visitedJson = Collections.synchronizedSet(new ObjectOpenHashSet<>());
     private final Map<ResourceLocation, Boolean> exists = new ConcurrentHashMap<>();
+    // Completed by the reload once ModelLocations is filled; the json crawl waits for it on the pool. Per scan, so a reload that dies early cannot leave a later scan waiting on it
+    private final CompletableFuture<Void> tablesReady = new CompletableFuture<>();
 
     private TextureDiscovery(IResourceManager manager, List<IResourcePack> packs) {
         this.manager = manager;
@@ -74,7 +78,26 @@ public final class TextureDiscovery {
     // Started at the top of the model reload, before the location tables exist; the json crawl waits for them
     public static void start(IResourceManager manager, List<IResourcePack> packs) {
         TextureDiscovery discovery = new TextureDiscovery(manager, packs);
+        current = discovery;
         pending = POOL.submit(discovery::discover);
+    }
+
+    // The location tables are filled; the scan's json crawl may read them
+    public static void tablesReady() {
+        TextureDiscovery discovery = current;
+        if (discovery != null) {
+            discovery.tablesReady.complete(null);
+        }
+    }
+
+    // The reload failed before the tables were filled: the crawl fails rather than parking a pool thread for good, and the scan is dropped
+    public static void abandon(Throwable cause) {
+        TextureDiscovery discovery = current;
+        current = null;
+        pending = null;
+        if (discovery != null) {
+            discovery.tablesReady.completeExceptionally(cause);
+        }
     }
 
     // Blocks until the scan is done and hands over its result once
@@ -84,6 +107,7 @@ public final class TextureDiscovery {
             return Collections.emptySet();
         }
         pending = null;
+        current = null;
         return task.join();
     }
 
@@ -129,7 +153,7 @@ public final class TextureDiscovery {
 
     // Reads every blockstate and item model json the location tables name and follows the model references inside, so a texture in an unlisted folder is still found if a model uses it
     private List<ResourceLocation> crawlJson() {
-        ModelLocations.READY.join();
+        this.tablesReady.join();
         Set<ResourceLocation> blockstates = new ObjectOpenHashSet<>();
         Consumer<ModelResourceLocation> collect = location -> blockstates.add(new ResourceLocation(location.getNamespace(), location.getPath()));
         ModelLocations.ITEM_VARIANTS.forEach(collect);

@@ -18,13 +18,13 @@ import net.minecraftforge.client.model.IModel;
 import net.minecraftforge.common.MinecraftForge;
 
 import javax.annotation.Nullable;
+import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
 // The model registry ModelManager consults: bakes on request from the unbaked provider, keeps the result in an expiring soft cache, and holds permanently only what mods put or the item prebake baked (VintageFix's DynamicBakedModelProvider)
@@ -32,7 +32,7 @@ public final class BakedModelProvider extends RegistrySimple<ModelResourceLocati
     private final UnbakedModelProvider models;
     private final Map<ModelResourceLocation, IBakedModel> permanent = Collections.synchronizedMap(new Object2ObjectOpenHashMap<>());
     private final Cache<ModelResourceLocation, Optional<IBakedModel>> baked = CacheBuilder.newBuilder()
-            .expireAfterAccess(3, TimeUnit.MINUTES)
+            .expireAfterAccess(Duration.ofMinutes(3))
             .maximumSize(1000)
             .concurrencyLevel(8)
             .softValues()

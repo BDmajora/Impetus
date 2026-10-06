@@ -37,7 +37,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
-import java.util.zip.ZipError;
 import java.util.zip.ZipFile;
 
 // Every path a resource pack holds, the way 1.19.3+'s texture loading lists a pack's folders; the file and folder packs hand back the index the existence cache built, everything else is walked here
@@ -116,7 +115,7 @@ public final class PackPathLister {
                 try {
                     uri = new URI("jar:" + url.toString());
                     walkZipUri(uri, paths);
-                } catch (IOException | URISyntaxException | RuntimeException | ZipError e) {
+                } catch (IOException | URISyntaxException | RuntimeException e) {
                     Coarctatio.LOGGER.debug("Skipping classpath entry {}: {}", uri != null ? uri : url, e.toString());
                 }
             }

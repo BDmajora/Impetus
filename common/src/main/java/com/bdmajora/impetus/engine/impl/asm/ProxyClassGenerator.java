@@ -13,7 +13,7 @@ import java.util.Arrays;
 public class ProxyClassGenerator<DELEGATE, INTERFACE> {
     private static Definer DEFINER;
 
-    // Picks Lookup.defineClass on Java 9+ or the unlocked ClassLoader.defineClass on 8, once
+    // Picks Lookup.defineClass, or the unlocked ClassLoader.defineClass when the engine runs as the downgraded Java 8 jar; reflective so neither path depends on a JVM Downgrader stub
     private static synchronized Definer getDefiner() {
         if (DEFINER != null) {
             return DEFINER;
@@ -26,7 +26,7 @@ public class ProxyClassGenerator<DELEGATE, INTERFACE> {
         return DEFINER;
     }
 
-    // Java 9+ style: these public methods just don't exist on Java 8
+    // The path every Java 25 runtime takes; these public methods just don't exist on Java 8
     private static Definer modernDefiner() throws Exception {
         Method makePrivateLookup = MethodHandles.class.getMethod(
                 "privateLookupIn", Class.class, MethodHandles.Lookup.class
@@ -36,7 +36,7 @@ public class ProxyClassGenerator<DELEGATE, INTERFACE> {
         return (bytes, name) -> (Class<?>) defineClass.invoke(privateLookup, (Object) bytes);
     }
 
-    // Java 8 style; fails outright if the protected defineClass is missing too
+    // Legacy-jar path; fails outright if the protected defineClass is missing too
     private static Definer legacyDefiner() {
         try {
             Method defineClass = ClassLoader.class.getDeclaredMethod(

@@ -1,7 +1,5 @@
 package com.bdmajora.coarctatio.launch.discovery;
 
-import com.bdmajora.coarctatio.mixin.forge.ASMModParserAccessor;
-import com.bdmajora.coarctatio.mixin.forge.ModAnnotationAccessor;
 import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
 import net.minecraftforge.fml.common.discovery.asm.ASMModParser;
@@ -31,12 +29,11 @@ class ParserCodecTest {
     // A scan result the way Forge's class visitor would have left it
     static ASMModParser parser(ModAnnotation... annotations) {
         ASMModParser parser = Mc.uninitialized(ASMModParser.class);
-        ASMModParserAccessor fields = (ASMModParserAccessor) parser;
-        fields.coarctatio$setAsmType(Type.getType("Lcom/example/ExampleMod;"));
-        fields.coarctatio$setClassVersion(52);
-        fields.coarctatio$setAsmSuperType(Type.getType("Ljava/lang/Object;"));
-        fields.coarctatio$setInterfaces(new java.util.HashSet<>(Arrays.asList("java/io/Serializable")));
-        fields.coarctatio$setAnnotations(new LinkedList<>(Arrays.asList(annotations)));
+        Mixins.set(parser, "asmType", Type.getType("Lcom/example/ExampleMod;"));
+        Mixins.set(parser, "classVersion", 52);
+        Mixins.set(parser, "asmSuperType", Type.getType("Ljava/lang/Object;"));
+        Mixins.set(parser, "interfaces", new java.util.HashSet<>(Arrays.asList("java/io/Serializable")));
+        Mixins.set(parser, "annotations", new LinkedList<>(Arrays.asList(annotations)));
         return parser;
     }
 
@@ -45,7 +42,7 @@ class ParserCodecTest {
             Class<?> kind = Class.forName("net.minecraftforge.fml.common.discovery.asm.ASMModParser$AnnotationType");
             Constructor<?> ctor = ModAnnotation.class.getConstructor(kind, Type.class, String.class);
             ModAnnotation annotation = (ModAnnotation) ctor.newInstance(kind.getEnumConstants()[0], MOD, "modid");
-            ((ModAnnotationAccessor) annotation).coarctatio$setValues(values);
+            Mixins.set(annotation, "values", values);
             return annotation;
         } catch (ReflectiveOperationException e) {
             throw new AssertionError(e);
@@ -88,19 +85,18 @@ class ParserCodecTest {
         ASMModParser original = parser(annotation(values));
         ASMModParser restored = decoded(encoded(original));
 
-        ASMModParserAccessor fields = (ASMModParserAccessor) restored;
-        assertEquals(Type.getType("Lcom/example/ExampleMod;"), fields.coarctatio$asmType());
-        assertEquals(52, fields.coarctatio$classVersion());
-        assertEquals(Type.getType("Ljava/lang/Object;"), fields.coarctatio$asmSuperType());
-        assertEquals(Set.of("java/io/Serializable"), fields.coarctatio$interfaces());
+        assertEquals(Type.getType("Lcom/example/ExampleMod;"), Mixins.get(restored, "asmType"));
+        assertEquals(52, (int) Mixins.<Integer>get(restored, "classVersion"));
+        assertEquals(Type.getType("Ljava/lang/Object;"), Mixins.get(restored, "asmSuperType"));
+        assertEquals(Set.of("java/io/Serializable"), Mixins.get(restored, "interfaces"));
 
-        LinkedList<ModAnnotation> annotations = fields.coarctatio$annotations();
+        LinkedList<ModAnnotation> annotations = Mixins.get(restored, "annotations");
         assertEquals(1, annotations.size());
         ModAnnotation annotation = annotations.getFirst();
         assertEquals(MOD, annotation.getASMType());
         assertEquals("modid", annotation.getMember());
 
-        Map<String, Object> read = ((ModAnnotationAccessor) annotation).coarctatio$values();
+        Map<String, Object> read = Mixins.get(annotation, "values");
         assertNull(read.get("nothing"));
         assertEquals("example", read.get("string"));
         assertEquals(MOD, read.get("type"));
@@ -121,11 +117,11 @@ class ParserCodecTest {
     void aClassWithNothingToRecordEncodesToAlmostNothing() throws Exception {
         ASMModParser empty = Mc.uninitialized(ASMModParser.class);
         ASMModParser restored = decoded(encoded(empty));
-        ASMModParserAccessor fields = (ASMModParserAccessor) restored;
         // Null types and absent collections come back as nulls and empties rather than failing the decode
-        assertNull(fields.coarctatio$asmType());
-        assertTrue(fields.coarctatio$interfaces().isEmpty());
-        assertTrue(fields.coarctatio$annotations().isEmpty());
+        assertNull(Mixins.get(restored, "asmType"));
+        assertTrue(Mixins.<Set<String>>get(restored, "interfaces").isEmpty());
+        assertTrue(Mixins.<LinkedList<ModAnnotation>>get(restored, "annotations").isEmpty());
+        assertTrue(ParserCodec.canEncode());
         assertNotNull(Mixins.construct(ParserCodec.class));
     }
 

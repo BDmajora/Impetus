@@ -1,6 +1,6 @@
 package com.bdmajora.impetus.engine.impl.gl.sync;
 
-import com.bdmajora.impetus.lwjgl.GL32;
+import org.lwjgl.opengl.GL32;
 import com.bdmajora.impetus.lwjgl.MemoryStack;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;

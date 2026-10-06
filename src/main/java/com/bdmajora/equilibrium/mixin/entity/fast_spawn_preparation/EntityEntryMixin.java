@@ -50,13 +50,11 @@ public abstract class EntityEntryMixin {
         }
     }
 
-    // Java 8 has no MethodHandles.privateLookupIn, so the Lookup(Class) constructor is opened reflectively; if the runtime forbids that, the public lookup still serves public constructors
+    // Full-privilege lookup on the entity class, so private constructors get a spun factory too; entity classes and this one share the unnamed module, which opens everything, and the plain lookup still serves public constructors if a mod's loader says otherwise
     private static MethodHandles.Lookup privateLookup(Class<?> target) throws ReflectiveOperationException {
         try {
-            java.lang.reflect.Constructor<MethodHandles.Lookup> ctor = MethodHandles.Lookup.class.getDeclaredConstructor(Class.class);
-            ctor.setAccessible(true);
-            return ctor.newInstance(target);
-        } catch (ReflectiveOperationException | RuntimeException e) {
+            return MethodHandles.privateLookupIn(target, MethodHandles.lookup());
+        } catch (IllegalAccessException | RuntimeException e) {
             return MethodHandles.lookup();
         }
     }

@@ -62,6 +62,8 @@ import org.lwjgl.PointerBuffer;
  * so custom codecs can be used if necessary.
  * </p>
  */
+// LWJGL2 runtimes have no MemoryUtil, so this vendored copy keeps Unsafe; Java 25 builds only take this path through the legacy jar
+@SuppressWarnings({"removal", "sunapi"})
 public final class MemoryUtilities {
 
     /**

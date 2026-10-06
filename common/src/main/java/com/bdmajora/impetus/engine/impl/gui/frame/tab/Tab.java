@@ -1,6 +1,5 @@
 package com.bdmajora.impetus.engine.impl.gui.frame.tab;
 
-import lombok.Builder;
 import com.bdmajora.impetus.api.options.structure.Option;
 import com.bdmajora.impetus.api.options.structure.OptionPage;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
@@ -18,7 +17,7 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 // One sidebar entry and the frame it shows; every tab is its own page now, the earlier "stackable" mode that merged a mod's pages into one scroll made the Impetus group a two-hundred-row list
-@Builder(builderClassName = "Builder", setterPrefix = "set")
+@lombok.Builder(builderClassName = "Builder", setterPrefix = "set")
 public record Tab<T extends AbstractFrame>(
         OptionIdentifier<Void> id,
         TextComponent title,

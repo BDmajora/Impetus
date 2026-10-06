@@ -13,10 +13,10 @@ import com.bdmajora.impetus.umbra.gl.texture.PngTexture;
 import com.bdmajora.impetus.umbra.shaderpack.ShaderPack;
 import com.bdmajora.impetus.umbra.shaderpack.texture.CustomTextureData;
 import com.bdmajora.impetus.umbra.shaderpack.texture.TextureStage;
-import com.bdmajora.impetus.lwjgl.GL11;
-import com.bdmajora.impetus.lwjgl.GL12;
-import com.bdmajora.impetus.lwjgl.GL13;
-import com.bdmajora.impetus.lwjgl.GL30;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL12;
+import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GL30;
 
 import java.io.IOException;
 import java.lang.reflect.Field;

@@ -72,6 +72,9 @@ public class ImpetusVintage {
         // As early as a mod can run: the remapper has its mappings by now and most mod classes are still to be loaded through it
         com.bdmajora.coarctatio.launch.RemapperCompactor.run();
 
+        // Discovery is over once mods construct; Cleanroom's discoverer is loaded before any coremod, so this is the first point Impetus can write the scan cache from
+        com.bdmajora.coarctatio.launch.discovery.ModScanCache.save();
+
         // Seed the engine's hot-path option snapshot from the loaded config.
         com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions.apply(CONFIG);
 

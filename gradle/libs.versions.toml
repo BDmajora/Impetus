@@ -1,0 +1,62 @@
+# One place for every version the build resolves. The [versions] that mirror Cleanroom's installer
+# list (joml, fastutil, gson, guava, log4j, asm, netty) are what the game ships at runtime, so the
+# engine compiles against exactly those and never bundles its own copies.
+[versions]
+java = "25"
+minecraft = "1.12.2"
+cleanroom = "0.6.13-alpha"
+mcp-channel = "stable"
+mcp-mappings = "39-1.12"
+
+lwjgl = "3.4.1"
+lwjgl2 = "2.9.3"
+lwjglx = "1.0.0"
+
+joml = "1.10.9"
+fastutil = "8.5.18"
+gson = "2.14.0"
+guava = "33.6.0-jre"
+log4j = "2.26.0"
+asm = "9.10.1"
+cleanmix = "0.7.2"
+mixinextras = "0.5.5"
+jetbrains-annotations = "26.0.2"
+lombok = "1.18.48"
+
+junit = "6.0.3"
+mockito = "5.24.0"
+bytebuddy = "1.18.14"
+jacoco = "0.8.15"
+
+[libraries]
+lwjgl-bom = { module = "org.lwjgl:lwjgl-bom", version.ref = "lwjgl" }
+lwjgl-core = { module = "org.lwjgl:lwjgl" }
+lwjgl-opengl = { module = "org.lwjgl:lwjgl-opengl" }
+lwjgl-glfw = { module = "org.lwjgl:lwjgl-glfw" }
+lwjgl2 = { module = "org.lwjgl.lwjgl:lwjgl", version.ref = "lwjgl2" }
+lwjglx = { module = "com.cleanroommc:lwjglx", version.ref = "lwjglx" }
+
+joml = { module = "org.joml:joml", version.ref = "joml" }
+fastutil = { module = "it.unimi.dsi:fastutil", version.ref = "fastutil" }
+gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
+guava = { module = "com.google.guava:guava", version.ref = "guava" }
+log4j-api = { module = "org.apache.logging.log4j:log4j-api", version.ref = "log4j" }
+asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
+asm-tree = { module = "org.ow2.asm:asm-tree", version.ref = "asm" }
+asm-util = { module = "org.ow2.asm:asm-util", version.ref = "asm" }
+cleanmix = { module = "com.cleanroommc:cleanmix", version.ref = "cleanmix" }
+mixinextras = { module = "com.cleanroommc:mixinextras-common", version.ref = "mixinextras" }
+jetbrains-annotations = { module = "org.jetbrains:annotations", version.ref = "jetbrains-annotations" }
+lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
+
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+mockito = { module = "org.mockito:mockito-core", version.ref = "mockito" }
+bytebuddy = { module = "net.bytebuddy:byte-buddy", version.ref = "bytebuddy" }
+bytebuddy-agent = { module = "net.bytebuddy:byte-buddy-agent", version.ref = "bytebuddy" }
+
+[plugins]
+unimined = { id = "xyz.wagyourtail.unimined", version = "1.4.43-kappa" }
+shadow = { id = "com.gradleup.shadow", version = "9.6.1" }
+jvmdowngrader = { id = "xyz.wagyourtail.jvmdowngrader", version = "2.0.1" }

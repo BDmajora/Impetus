@@ -31,8 +31,12 @@ import org.lwjgl.opengl.GLSync;
 
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.nio.LongBuffer;
+import java.nio.ShortBuffer;
 
 // The LWJGL2 backend of LWJGLService, selected by LWJGLServiceProvider when the game is running on LWJGL 2
 // A record because the capability decisions — which VAO, timer-query and vertex-attrib entry points this driver
@@ -189,6 +193,7 @@ public record LWJGL2Service(
             case ARB_uniform_buffer_object -> caps.GL_ARB_uniform_buffer_object;
             case ARB_vertex_array_object -> caps.GL_ARB_vertex_array_object;
             case ARB_map_buffer_range -> caps.GL_ARB_map_buffer_range;
+            case ARB_pixel_buffer_object -> caps.GL_ARB_pixel_buffer_object;
             case ARB_copy_buffer -> caps.GL_ARB_copy_buffer;
             case ARB_texture_storage -> caps.GL_ARB_texture_storage;
             case ARB_base_instance -> caps.GL_ARB_base_instance;
@@ -1253,13 +1258,20 @@ public record LWJGL2Service(
         return MemoryUtilities.memAddress(buffer);
     }
 
-    // Address of a buffer element; null buffer treats position as an absolute address
+    // Address of element `position` counted from the buffer's base, whatever its current position; a null buffer makes position the address itself
     @Override
     public long memAddress(Buffer buffer, int position) {
-        if (buffer == null) {
-            return position;
-        }
-        return MemoryUtilities.memAddress0(buffer) + position;
+        return switch (buffer) {
+            case null -> position;
+            case ByteBuffer b -> MemoryUtilities.memAddress(b, position);
+            case ShortBuffer b -> MemoryUtilities.memAddress(b, position);
+            case CharBuffer b -> MemoryUtilities.memAddress(b, position);
+            case IntBuffer b -> MemoryUtilities.memAddress(b, position);
+            case FloatBuffer b -> MemoryUtilities.memAddress(b, position);
+            case LongBuffer b -> MemoryUtilities.memAddress(b, position);
+            case DoubleBuffer b -> MemoryUtilities.memAddress(b, position);
+            default -> throw new IllegalArgumentException("Unsupported buffer type: " + buffer.getClass());
+        };
     }
 
     // MemoryUtilities

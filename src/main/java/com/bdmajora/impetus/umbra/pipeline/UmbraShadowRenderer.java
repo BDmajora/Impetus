@@ -22,12 +22,12 @@ import com.bdmajora.impetus.umbra.shaderpack.ProgramSource;
 import com.bdmajora.impetus.umbra.targets.DepthTexture;
 import com.bdmajora.impetus.umbra.uniforms.CapturedRenderingState;
 import com.bdmajora.impetus.umbra.uniforms.CelestialUniforms;
-import com.bdmajora.impetus.lwjgl.GL11;
-import com.bdmajora.impetus.lwjgl.GL12;
-import com.bdmajora.impetus.lwjgl.GL14;
-import com.bdmajora.impetus.lwjgl.GL15;
-import com.bdmajora.impetus.lwjgl.GL30;
-import com.bdmajora.impetus.lwjgl.GL33;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL12;
+import org.lwjgl.opengl.GL14;
+import org.lwjgl.opengl.GL15;
+import org.lwjgl.opengl.GL30;
+import org.lwjgl.opengl.GL33;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;

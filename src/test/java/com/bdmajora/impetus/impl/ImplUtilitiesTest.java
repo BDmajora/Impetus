@@ -18,6 +18,7 @@ import com.bdmajora.impetus.mixin.core.terrain.RenderGlobalMixin;
 import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
 import com.bdmajora.testing.Statics;
+import com.bdmajora.testing.TestCaps;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.client.settings.GameSettings;
@@ -32,10 +33,9 @@ import net.minecraft.world.WorldType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.lwjgl.opengl.ContextCapabilities;
 import org.lwjgl.opengl.EXTTextureFilterAnisotropic;
 import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GLContext;
+import org.lwjgl.opengl.GL;
 import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
@@ -62,7 +62,6 @@ class ImplUtilitiesTest {
     @AfterEach
     void restore() {
         Mixins.set(BlockAtlasFiltering.class, "anisotropySupported", null);
-        GLContext.reset();
         ImpetusRuntimeOptions.pixelFiltering = ImpetusGameOptions.PixelFilteringMode.NEAREST;
     }
 
@@ -148,7 +147,8 @@ class ImplUtilitiesTest {
         TextureMap atlas = mock(TextureMap.class);
         when(atlas.getGlTextureId()).thenReturn(7);
         when(client.getTextureMapBlocks()).thenReturn(atlas);
-        try (MockedStatic<GL11> gl11 = Mockito.mockStatic(GL11.class)) {
+        try (MockedStatic<GL11> gl11 = Mockito.mockStatic(GL11.class);
+             MockedStatic<GL> gl = TestCaps.install(TestCaps.all())) {
             BlockAtlasFiltering.reapplyToBlockAtlas();
             gl11.verify(() -> GL11.glBindTexture(GL11.GL_TEXTURE_2D, 7));
             gl11.verify(() -> GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST_MIPMAP_LINEAR));
@@ -167,21 +167,12 @@ class ImplUtilitiesTest {
 
             // A driver without the extension, or no context at all, skips the anisotropy reset
             Mixins.set(BlockAtlasFiltering.class, "anisotropySupported", null);
-            ContextCapabilities caps = new ContextCapabilities();
-            caps.GL_EXT_texture_filter_anisotropic = false;
-            GLContext.capabilities = caps;
+            gl.when(GL::getCapabilities).thenReturn(TestCaps.with(TestCaps.all(), "GL_EXT_texture_filter_anisotropic", false));
             BlockAtlasFiltering.apply(9);
             Mixins.set(BlockAtlasFiltering.class, "anisotropySupported", null);
-            GLContext.capabilities = null;
+            gl.when(GL::getCapabilities).thenThrow(new IllegalStateException("no context"));
             BlockAtlasFiltering.apply(10);
             gl11.verify(() -> GL11.glTexParameterf(anyInt(), anyInt(), anyFloat()), Mockito.times(2));
-        }
-        try (MockedStatic<GL11> gl11 = Mockito.mockStatic(GL11.class);
-             MockedStatic<GLContext> context = Mockito.mockStatic(GLContext.class)) {
-            Mixins.set(BlockAtlasFiltering.class, "anisotropySupported", null);
-            context.when(GLContext::getCapabilities).thenThrow(new IllegalStateException("no context"));
-            BlockAtlasFiltering.apply(11);
-            gl11.verify(() -> GL11.glTexParameterf(anyInt(), anyInt(), anyFloat()), never());
         }
     }
 }

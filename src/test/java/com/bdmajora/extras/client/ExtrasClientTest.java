@@ -2,6 +2,7 @@ package com.bdmajora.extras.client;
 
 import com.bdmajora.extras.Extras;
 import com.bdmajora.extras.ExtrasConfig;
+import com.bdmajora.impetus.impl.platform.GameWindow;
 import com.bdmajora.extras.client.budget.RenderBudgetController;
 import com.bdmajora.extras.mixin.panini.ShaderGroupAccessor;
 import com.bdmajora.impetus.ImpetusVintage;
@@ -96,26 +97,52 @@ class ExtrasClientTest {
     }
 
     @Test
-    void adaptiveSyncIsReassertedOnlyWhenOnAndGivenUpOnFailure() throws Exception {
+    void adaptiveSyncIsReassertedOnlyWhenOnAndGivenUpOnFailure() {
         Object supported = Mixins.get(AdaptiveSync.class, "supported");
-        try {
+        try (MockedStatic<GameWindow> window = Mockito.mockStatic(GameWindow.class)) {
+            // Support is the tear-control extension on either platform, resolved once
+            Mixins.set(AdaptiveSync.class, "supported", null);
+            window.when(() -> GameWindow.platformExtensionSupported("WGL_EXT_swap_control_tear")).thenReturn(true);
+            assertTrue(AdaptiveSync.isSupported());
+            window.when(() -> GameWindow.platformExtensionSupported("WGL_EXT_swap_control_tear")).thenReturn(false);
+            assertTrue(AdaptiveSync.isSupported());
+            Mixins.set(AdaptiveSync.class, "supported", null);
+            assertFalse(AdaptiveSync.isSupported());
+            // A query that throws (no context yet) reads as unsupported
+            Mixins.set(AdaptiveSync.class, "supported", null);
+            window.when(() -> GameWindow.platformExtensionSupported("GLX_EXT_swap_control_tear")).thenThrow(new IllegalStateException("no context"));
+            assertFalse(AdaptiveSync.isSupported());
+
+            // Off, nothing is re-asserted; on and supported, the adaptive interval is set
             AdaptiveSync.reapply();
-            // A handle that works is called with the adaptive interval
+            window.verify(() -> GameWindow.setSwapInterval(Mockito.anyInt()), Mockito.never());
             config.extra.useAdaptiveSync = true;
             Mixins.set(AdaptiveSync.class, "supported", true);
-            Mixins.set(AdaptiveSync.class, "swapInterval", Integer.class.getMethod("toString", int.class));
             AdaptiveSync.reapply();
+            window.verify(() -> GameWindow.setSwapInterval(-1));
+            assertEquals(ExtrasConfig.VerticalSync.ADAPTIVE, AdaptiveSync.current());
+
+            // Applying a mode keeps vanilla's vsync flag in step and saves it
+            AdaptiveSync.apply(ExtrasConfig.VerticalSync.ON);
+            assertFalse(config.extra.useAdaptiveSync);
+            assertTrue(client.gameSettings.enableVsync);
+            window.verify(() -> GameWindow.setVsync(true));
+            assertEquals(ExtrasConfig.VerticalSync.ON, AdaptiveSync.current());
+            AdaptiveSync.apply(ExtrasConfig.VerticalSync.ADAPTIVE);
             assertTrue(config.extra.useAdaptiveSync);
-            // One that throws turns the mode off for good
-            Mixins.set(AdaptiveSync.class, "swapInterval", Object.class.getMethod("hashCode"));
+            window.verify(() -> GameWindow.setSwapInterval(-1), Mockito.times(2));
+            Mockito.verify(client.gameSettings, Mockito.times(2)).saveOptions();
+
+            // A swap interval the driver refuses turns the mode off for good
+            window.when(() -> GameWindow.setSwapInterval(-1)).thenThrow(new IllegalStateException("refused"));
             AdaptiveSync.reapply();
             assertFalse(config.extra.useAdaptiveSync);
-            assertNull(Mixins.get(AdaptiveSync.class, "swapInterval"));
+            assertFalse((Boolean) Mixins.get(AdaptiveSync.class, "supported"));
+            AdaptiveSync.apply(ExtrasConfig.VerticalSync.OFF);
             assertEquals(ExtrasConfig.VerticalSync.OFF, AdaptiveSync.current());
             assertNotNull(Mixins.construct(AdaptiveSync.class));
         } finally {
             Mixins.set(AdaptiveSync.class, "supported", supported);
-            Mixins.set(AdaptiveSync.class, "swapInterval", null);
         }
     }
 

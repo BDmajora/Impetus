@@ -54,7 +54,6 @@ class ModelLocationsTest {
         when(mapper.getVariants(Blocks.STONE)).thenReturn(Map.of(Blocks.STONE.getDefaultState(), variant));
 
         ModelLocations.init(loader, mapper);
-        assertTrue(ModelLocations.READY.isDone());
         assertTrue(ModelLocations.ALL_KNOWN.contains(variant));
         assertTrue(ModelLocations.ALL_KNOWN.contains(new ModelResourceLocation("minecraft:diamond_sword", "inventory")));
         // The item frame's models are loaded by the entity renderer, so nothing else would have listed them

@@ -3,7 +3,7 @@
   "minVersion": "0.8",
   "plugin": "com.bdmajora.impetus.mixin.ImpetusVintageMixinPlugin",
   "package": "com.bdmajora.impetus.mixin",
-  "compatibilityLevel": "JAVA_8",
+  "compatibilityLevel": "JAVA_25",
   "client": [
   ],
   "injectors": {

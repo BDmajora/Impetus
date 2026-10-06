@@ -1,6 +1,6 @@
 package org.lwjgl;
 
-// Test stand-in for LWJGL2's Sys, whose real static initialiser loads the lwjgl native library
+// Test stand-in for Sys, both LWJGL2's (whose static initialiser loads the lwjgl native library) and Cleanroom's bridge copy, which its Keyboard reads timestamps from
 public final class Sys {
     private Sys() {}
 
@@ -21,5 +21,19 @@ public final class Sys {
 
     public static long getTime() {
         return System.currentTimeMillis();
+    }
+
+    public static long getNanoTime() {
+        return System.nanoTime();
+    }
+
+    public static boolean openURL(String url) {
+        return false;
+    }
+
+    public static void alert(String title, String message) {}
+
+    public static String getClipboard() {
+        return "";
     }
 }

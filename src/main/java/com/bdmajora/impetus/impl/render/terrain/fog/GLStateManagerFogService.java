@@ -5,7 +5,7 @@ import net.minecraft.client.renderer.EntityRenderer;
 import net.minecraft.client.renderer.GlStateManager;
 import com.bdmajora.impetus.engine.impl.render.chunk.fog.FogService;
 import com.bdmajora.impetus.engine.impl.render.chunk.shader.ChunkFogMode;
-import com.bdmajora.impetus.lwjgl.GL20;
+import org.lwjgl.opengl.GL20;
 
 public class GLStateManagerFogService implements FogService {
     // From GlStateManager's cached fog state

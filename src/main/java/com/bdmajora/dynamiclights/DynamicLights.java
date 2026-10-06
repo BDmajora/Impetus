@@ -5,7 +5,7 @@ import com.bdmajora.dynamiclights.client.DynamicLightsEngine;
 import com.bdmajora.dynamiclights.client.TileEntityLightTicker;
 import com.bdmajora.dynamiclights.client.item.ItemLightSources;
 import net.minecraftforge.common.MinecraftForge;
-import com.bdmajora.impetus.booter.util.PropertiesConfig;
+import com.bdmajora.impetus.core.PropertiesConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 

@@ -55,8 +55,8 @@ public abstract class InventoryChangeTriggerMixin {
         context.equilibrium$setSlotCounts(full, empty, occupied);
     }
 
-    // Every count bound an advancement declares becomes a threshold the gate above knows about
-    @Inject(method = "deserializeInstance", at = @At("RETURN"))
+    // Every count bound an advancement declares becomes a threshold the gate above knows about; the typed method, not its ICriterionInstance bridge
+    @Inject(method = "deserializeInstance(Lcom/google/gson/JsonObject;Lcom/google/gson/JsonDeserializationContext;)Lnet/minecraft/advancements/critereon/InventoryChangeTrigger$Instance;", at = @At("RETURN"))
     private void equilibrium$collectThresholds(JsonObject json, JsonDeserializationContext context, CallbackInfoReturnable<InventoryChangeTrigger.Instance> cir, @Local ItemPredicate[] predicates) {
         for (ItemPredicate predicate : predicates) {
             Float min = ((MinMaxBoundsAccessor) ((ItemPredicateAccessor) predicate).equilibrium$count()).equilibrium$min();

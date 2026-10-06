@@ -1,6 +1,6 @@
 package com.bdmajora.impetus.engine.impl.render.mesh.gl;
 
-import com.bdmajora.impetus.lwjgl.GL15;
+import org.lwjgl.opengl.GL15;
 import com.bdmajora.impetus.lwjgl.GLNv;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 

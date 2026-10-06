@@ -4,7 +4,7 @@ import com.bdmajora.impetus.engine.impl.gl.shader.GlShader;
 import com.bdmajora.impetus.engine.impl.gl.shader.ShaderConstants;
 import com.bdmajora.impetus.engine.impl.gl.shader.ShaderType;
 import com.bdmajora.impetus.engine.impl.render.shader.ShaderLoader;
-import com.bdmajora.impetus.lwjgl.GL20;
+import org.lwjgl.opengl.GL20;
 
 import java.util.ArrayList;
 import java.util.List;

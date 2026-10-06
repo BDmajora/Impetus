@@ -1,7 +1,7 @@
 package com.bdmajora.impetus.umbra.shaderpack.loading;
 
 import com.bdmajora.impetus.umbra.gl.blending.BlendMode;
-import com.bdmajora.impetus.lwjgl.GL11;
+import org.lwjgl.opengl.GL11;
 
 import java.util.Locale;
 

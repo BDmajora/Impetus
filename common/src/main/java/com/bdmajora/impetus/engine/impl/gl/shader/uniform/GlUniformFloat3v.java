@@ -1,6 +1,6 @@
 package com.bdmajora.impetus.engine.impl.gl.shader.uniform;
 
-import com.bdmajora.impetus.lwjgl.GL30;
+import org.lwjgl.opengl.GL30;
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 

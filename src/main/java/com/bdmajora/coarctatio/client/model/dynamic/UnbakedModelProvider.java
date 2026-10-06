@@ -14,13 +14,13 @@ import net.minecraftforge.client.model.IModel;
 import net.minecraftforge.client.model.ModelLoaderRegistry;
 
 import javax.annotation.Nullable;
+import java.time.Duration;
 import java.lang.reflect.Field;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 // ModelLoaderRegistry.getModel's loader walk, done on request and remembered in an expiring soft cache instead of a map that holds every model until the next reload (VintageFix's DynamicModelProvider); loads are serialised on this since Forge's loaders keep per-call state
 public final class UnbakedModelProvider implements IRegistry<ResourceLocation, IModel> {
@@ -37,7 +37,7 @@ public final class UnbakedModelProvider implements IRegistry<ResourceLocation, I
     // Models put by mods (or the item prebake) that must not expire
     private final Map<ResourceLocation, IModel> permanent = new Object2ObjectOpenHashMap<>();
     private final Cache<ResourceLocation, Optional<IModel>> loaded = CacheBuilder.newBuilder()
-            .expireAfterAccess(3, TimeUnit.MINUTES)
+            .expireAfterAccess(Duration.ofMinutes(3))
             .maximumSize(1000)
             .concurrencyLevel(8)
             .softValues()

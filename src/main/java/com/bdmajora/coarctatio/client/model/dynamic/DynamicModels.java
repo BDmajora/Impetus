@@ -86,15 +86,24 @@ public final class DynamicModels {
                 ? PackPathLister.packsOf((SimpleReloadableResourceManager) resourceManager)
                 : Collections.emptyList();
         TextureDiscovery.start(resourceManager, packs);
-        ItemModelPrebake.stopAndJoin();
-        TconTextureExistence.clear();
-        for (IResourceManagerReloadListener listener : DEFERRED) {
-            listener.onResourceManagerReload(resourceManager);
+        ModelLoader loader;
+        ProgressManager.ProgressBar bar;
+        try {
+            ItemModelPrebake.stopAndJoin();
+            TconTextureExistence.clear();
+            for (IResourceManagerReloadListener listener : DEFERRED) {
+                listener.onResourceManagerReload(resourceManager);
+            }
+            loader = new ModelLoader(resourceManager, atlas, shapes);
+            bar = ProgressManager.push("Setting up dynamic models", 5);
+            bar.step("Model locations");
+            ModelLocations.init(loader, shapes.getBlockStateMapper());
+        } catch (RuntimeException | Error e) {
+            // The scan started above waits on the location tables; a deferred listener or the loader failing first must not leave it parked
+            TextureDiscovery.abandon(e);
+            throw e;
         }
-        ModelLoader loader = new ModelLoader(resourceManager, atlas, shapes);
-        ProgressManager.ProgressBar bar = ProgressManager.push("Setting up dynamic models", 5);
-        bar.step("Model locations");
-        ModelLocations.init(loader, shapes.getBlockStateMapper());
+        TextureDiscovery.tablesReady();
         UnbakedModelProvider models = new UnbakedModelProvider(ModelLoaderRegistryAccessor.coarctatio$loaders());
         BakedModelProvider bakedModels = new BakedModelProvider(models);
         unbaked = models;

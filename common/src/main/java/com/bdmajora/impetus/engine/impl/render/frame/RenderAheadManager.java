@@ -1,7 +1,6 @@
 package com.bdmajora.impetus.engine.impl.render.frame;
 
-import com.bdmajora.impetus.lwjgl.GL32;
-import com.bdmajora.impetus.lwjgl.GL32;
+import org.lwjgl.opengl.GL32;
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 import it.unimi.dsi.fastutil.longs.LongArrayFIFOQueue;

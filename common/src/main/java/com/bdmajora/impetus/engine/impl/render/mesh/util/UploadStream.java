@@ -3,9 +3,9 @@ package com.bdmajora.impetus.engine.impl.render.mesh.util;
 import com.bdmajora.impetus.engine.impl.gl.sync.GlFence;
 import com.bdmajora.impetus.engine.impl.render.mesh.gl.DeviceBuffer;
 import com.bdmajora.impetus.engine.impl.render.mesh.gl.MappedUploadBuffer;
-import com.bdmajora.impetus.lwjgl.GL32;
-import com.bdmajora.impetus.lwjgl.GL42;
-import com.bdmajora.impetus.lwjgl.GL44;
+import org.lwjgl.opengl.GL32;
+import org.lwjgl.opengl.GL42;
+import org.lwjgl.opengl.GL44;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 
 import java.util.ArrayDeque;

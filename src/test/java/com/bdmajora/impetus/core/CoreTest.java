@@ -1,124 +1,92 @@
 package com.bdmajora.impetus.core;
 
-import com.bdmajora.impetus.booter.BooterBootstrap;
-import com.bdmajora.impetus.booter.BooterCore;
-import com.gtnewhorizons.retrofuturabootstrap.SharedConfig;
-import com.gtnewhorizons.retrofuturabootstrap.api.RfbClassTransformerHandle;
 import com.bdmajora.testing.LaunchEnvironment;
+import net.minecraft.launchwrapper.Launch;
+import org.apache.logging.log4j.Logger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
-import org.objectweb.asm.ClassReader;
-import org.objectweb.asm.ClassWriter;
-import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.ClassNode;
 import org.spongepowered.asm.mixin.Mixins;
 import org.spongepowered.asm.mixin.transformer.Config;
+import zone.rong.mixinbooter.service.ModDiscoverer;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 class CoreTest {
-    // A class with one field of the given type
-    private static byte[] classWithField(String name, String fieldDescriptor) {
-        ClassWriter writer = new ClassWriter(0);
-        writer.visit(Opcodes.V1_8, Opcodes.ACC_PUBLIC, name, null, "java/lang/Object", null);
-        writer.visitField(Opcodes.ACC_PUBLIC, "field", fieldDescriptor, null, null).visitEnd();
-        writer.visitEnd();
-        return writer.toByteArray();
-    }
+    private static final List<String> IMPETUS_CONFIGS = List.of("mixins.impetus.json", "mixins.umbra.json", "mixins.coarctatio.json",
+            "mixins.fulgor.json", "mixins.equilibrium.json", "mixins.extras.json", "mixins.dynamiclights.json");
 
     @Test
-    void lwjglReferencesInImpetusClassesMoveToLwjgl3() {
-        ImpetusLWJGLRelocationTransformer transformer = new ImpetusLWJGLRelocationTransformer();
-        assertNull(transformer.transform("a", "com.bdmajora.impetus.A", null));
-        byte[] foreign = classWithField("net/minecraft/A", "Lorg/lwjgl/opengl/GL11;");
-        assertSame(foreign, transformer.transform("a", "net.minecraft.A", foreign));
-        // No LWJGL reference means ASM is never involved
-        byte[] plain = classWithField("com/bdmajora/impetus/Plain", "Ljava/lang/String;");
-        assertSame(plain, transformer.transform("a", "com.bdmajora.impetus.Plain", plain));
-        byte[] lwjgl = classWithField("com/bdmajora/impetus/Drawing", "Lorg/lwjgl/opengl/GL11;");
-        byte[] moved = transformer.transform("a", "com.bdmajora.impetus.Drawing", lwjgl);
-        ClassNode node = new ClassNode();
-        new ClassReader(moved).accept(node, 0);
-        assertEquals("Lorg/lwjgl3/opengl/GL11;", node.fields.get(0).desc);
-        // Bytes that only look like a class are handed back untouched
-        byte[] garbage = "not a class but mentions org/lwjgl/ anyway".getBytes(StandardCharsets.UTF_8);
-        assertSame(garbage, transformer.transform("a", "com.bdmajora.impetus.Garbage", garbage));
-        // The last possible window is still scanned
-        byte[] tail = "org/lwjgl/".getBytes(StandardCharsets.UTF_8);
-        assertSame(tail, transformer.transform("a", "com.bdmajora.impetus.Tail", tail));
-    }
-
-    @Test
-    void theRegistrarQueuesEveryConfigAndSuppressesSupersededLighting(@TempDir Path home, @TempDir Path classpath) throws IOException {
-        Files.writeString(classpath.resolve("mixins.phosphor.json"), "{}");
-        // A launch with a Mixin service in place, whose loader sees Phosphor's config but not Alfheim's
-        LaunchEnvironment.install(home, classpath.toUri().toURL());
-        try (MockedStatic<Mixins> mixins = Mockito.mockStatic(Mixins.class);
-             MockedStatic<Config> configs = Mockito.mockStatic(Config.class)) {
-            ImpetusMixinRegistrar.apply();
-            for (String config : List.of("mixins.impetus.json", "mixins.umbra.json", "mixins.coarctatio.json", "mixins.fulgor.json",
-                    "mixins.equilibrium.json", "mixins.extras.json", "mixins.dynamiclights.json")) {
+    void theRegistrarQueuesEveryImpetusConfig(@TempDir Path home) {
+        LaunchEnvironment.install(home);
+        try (MockedStatic<Mixins> mixins = Mockito.mockStatic(Mixins.class)) {
+            ImpetusMixinRegistrar.queueImpetusConfigs();
+            for (String config : IMPETUS_CONFIGS) {
                 mixins.verify(() -> Mixins.addConfiguration(config));
             }
+        } finally {
+            LaunchEnvironment.restore();
+        }
+    }
+
+    @Test
+    void theRegistrarSuppressesOnlyInstalledLightingEngines(@TempDir Path home) {
+        LaunchEnvironment.install(home);
+        try (MockedStatic<ModDiscoverer> mods = Mockito.mockStatic(ModDiscoverer.class);
+             MockedStatic<Config> configs = Mockito.mockStatic(Config.class)) {
+            // Cleanroom's discoverer knows Phosphor is installed, not Alfheim
+            mods.when(() -> ModDiscoverer.isModPresent("phosphor-lighting")).thenReturn(true);
+            ImpetusMixinRegistrar.hijackSupersededLighting();
             configs.verify(() -> Config.blacklist("mixins.phosphor.json"));
             configs.verify(() -> Config.blacklist("mixins.alfheim.json"), never());
-            // Without Distant Horizons on the classpath its depth-texture config is left alone
+        } finally {
+            LaunchEnvironment.restore();
+        }
+    }
+
+    @Test
+    void theRegistrarRestoresDistantHorizonsDepthTextureOnlyWhenPresent(@TempDir Path home, @TempDir Path classpath) throws IOException {
+        // Without Distant Horizons on the classpath its depth-texture config is left alone
+        LaunchEnvironment.install(home, classpath.toUri().toURL());
+        try (MockedStatic<Mixins> mixins = Mockito.mockStatic(Mixins.class)) {
+            ImpetusMixinRegistrar.restoreDistantHorizonsDepthTexture();
             mixins.verify(() -> Mixins.addConfiguration("DistantHorizons.iris.mixins.json"), never());
         } finally {
             LaunchEnvironment.restore();
         }
-    }
-
-    @Test
-    void theRegistrarRestoresDistantHorizonsDepthTextureMixin(@TempDir Path home, @TempDir Path classpath) throws IOException {
+        // DH skipped it on seeing Impetus's IrisApi, so Impetus queues it
         Files.writeString(classpath.resolve("DistantHorizons.iris.mixins.json"), "{}");
         LaunchEnvironment.install(home, classpath.toUri().toURL());
-        try (MockedStatic<Mixins> mixins = Mockito.mockStatic(Mixins.class);
-             MockedStatic<Config> configs = Mockito.mockStatic(Config.class)) {
-            ImpetusMixinRegistrar.apply();
-            // DH skipped it on seeing Impetus's IrisApi, so Impetus queues it after its own
+        try (MockedStatic<Mixins> mixins = Mockito.mockStatic(Mixins.class)) {
+            ImpetusMixinRegistrar.restoreDistantHorizonsDepthTexture();
             mixins.verify(() -> Mixins.addConfiguration("DistantHorizons.iris.mixins.json"));
-            mixins.verify(() -> Mixins.addConfiguration("mixins.impetus.json"));
         } finally {
             LaunchEnvironment.restore();
         }
     }
 
     @Test
-    void theLoadingPluginBringsUpMixinOnlyWhenItOwnsIt() {
-        try (MockedStatic<BooterBootstrap> bootstrap = Mockito.mockStatic(BooterBootstrap.class);
-             MockedStatic<BooterCore> core = Mockito.mockStatic(BooterCore.class);
-             MockedStatic<ImpetusMixinRegistrar> registrar = Mockito.mockStatic(ImpetusMixinRegistrar.class)) {
-            bootstrap.when(BooterBootstrap::initialize).thenReturn(BooterBootstrap.MIXIN_OWNED);
-            bootstrap.when(BooterBootstrap::state).thenReturn(BooterBootstrap.MIXIN_OWNED);
+    void theLoadingPluginRegistersFromItsConstructorAndDhFromInjectData() {
+        try (MockedStatic<ImpetusMixinRegistrar> registrar = Mockito.mockStatic(ImpetusMixinRegistrar.class)) {
             ImpetusLoadingPlugin plugin = new ImpetusLoadingPlugin();
-            core.verify(BooterCore::initialize);
-            List<Object> coremods = new ArrayList<>();
-            plugin.injectData(Map.of("coremodList", coremods));
-            core.verify(() -> BooterCore.injectData(coremods));
-            registrar.verify(ImpetusMixinRegistrar::apply);
-            assertThrows(RuntimeException.class, () -> plugin.injectData(Map.of("coremodList", "not a list")));
-
-            // Under another booter Impetus only registers its configs
-            bootstrap.when(BooterBootstrap::initialize).thenReturn(BooterBootstrap.DEFERRED);
-            bootstrap.when(BooterBootstrap::state).thenReturn(BooterBootstrap.DEFERRED);
-            ImpetusLoadingPlugin deferred = new ImpetusLoadingPlugin();
-            deferred.injectData(Map.of());
-            core.verify(BooterCore::initialize);
-            registrar.verify(ImpetusMixinRegistrar::apply, Mockito.times(2));
+            registrar.verify(ImpetusMixinRegistrar::hijackSupersededLighting);
+            registrar.verify(ImpetusMixinRegistrar::queueImpetusConfigs);
+            registrar.verify(ImpetusMixinRegistrar::restoreDistantHorizonsDepthTexture, never());
+            plugin.injectData(Map.of());
+            registrar.verify(ImpetusMixinRegistrar::restoreDistantHorizonsDepthTexture);
 
             assertEquals(0, plugin.getASMTransformerClass().length);
             assertNull(plugin.getModContainerClass());
@@ -128,22 +96,62 @@ class CoreTest {
     }
 
     @Test
-    void lwjgl3ifyIsToldToLeaveImpetusAlone() {
-        new ImpetusLwjgl3ifyCompat();
-        RfbClassTransformerHandle other = mock(RfbClassTransformerHandle.class);
-        when(other.id()).thenReturn("mixin:mixin");
-        RfbClassTransformerHandle redirect = mock(RfbClassTransformerHandle.class);
-        when(redirect.id()).thenReturn("lwjgl3ify:redirect");
-        List<String> exclusions = new ArrayList<>();
-        when(redirect.exclusions()).thenReturn(exclusions);
-        try (MockedStatic<SharedConfig> shared = Mockito.mockStatic(SharedConfig.class)) {
-            shared.when(SharedConfig::getRfbTransformers).thenReturn(List.of(other, redirect));
-            ImpetusLwjgl3ifyCompat.apply();
-            assertEquals(List.of("com.bdmajora.impetus.engine", "com.bdmajora.impetus"), exclusions);
-            // Without lwjgl3ify nothing is touched
-            shared.when(SharedConfig::getRfbTransformers).thenReturn(List.of(other));
-            ImpetusLwjgl3ifyCompat.apply();
-            assertEquals(2, exclusions.size());
+    void theSharedPropertiesFileParsesLeniently(@TempDir Path home) throws IOException {
+        LaunchEnvironment.install(home);
+        try {
+            Logger logger = mock(Logger.class);
+            PropertiesConfig config = new PropertiesConfig(logger, "switches.cfg", "Switches");
+            // Nothing to write before a load has resolved the file
+            config.save(Map.of("a", "b"));
+            Properties defaults = config.load();
+            assertTrue(defaults.isEmpty());
+            Map<String, String> values = PropertiesConfig.values();
+            values.put("flag", "true");
+            values.put("fuzzy", "maybe");
+            values.put("count", "5");
+            values.put("huge", "99");
+            values.put("word", "five");
+            values.put("items", " a, ,b ,");
+            config.save(values);
+            assertEquals(home.resolve("config/switches.cfg").toFile(), PropertiesConfig.configFile(logger, "switches.cfg"));
+            config.load();
+            assertTrue(config.bool("flag", false));
+            assertTrue(config.bool("fuzzy", true));
+            assertFalse(config.bool("absent", false));
+            assertEquals(5, config.integer("count", 1, 0, 10));
+            assertEquals(1, config.integer("huge", 1, 0, 10));
+            assertEquals(1, config.integer("word", 1, 0, 10));
+            assertEquals(1, config.integer("absent", 1, 0, 10));
+            assertArrayEquals(new String[] {"a", "b"}, config.list("items", ""));
+            assertArrayEquals(new String[] {"x", "y"}, config.list("absent", "x,y"));
+
+            // An unreadable file falls back to defaults, and a config directory that cannot exist is reported
+            Files.createDirectories(home.resolve("config/unreadable.cfg"));
+            assertTrue(new PropertiesConfig(logger, "unreadable.cfg", "").load().isEmpty());
+            Path blocked = home.resolve("blocked");
+            Files.createDirectories(blocked);
+            Files.writeString(blocked.resolve("config"), "a file where the directory belongs");
+            Launch.minecraftHome = blocked.toFile();
+            PropertiesConfig stranded = new PropertiesConfig(logger, "switches.cfg", "");
+            stranded.load();
+            stranded.save(values);
+            verify(logger, Mockito.atLeastOnce()).warn(Mockito.anyString(), Mockito.any(Object.class));
+            verify(logger).warn(Mockito.eq("Could not write {}"), Mockito.any(Object.class), Mockito.any(IOException.class));
+        } finally {
+            LaunchEnvironment.restore();
         }
+    }
+
+    @Test
+    void theSharedMixinPluginAppliesEverything() {
+        SimpleMixinPlugin plugin = new SimpleMixinPlugin() {
+        };
+        plugin.onLoad("com.example.mixin");
+        assertNull(plugin.getRefMapperConfig());
+        assertTrue(plugin.shouldApplyMixin("a.Target", "a.Mixin"));
+        plugin.acceptTargets(Set.of(), Set.of());
+        assertNull(plugin.getMixins());
+        plugin.preApply("a.Target", new ClassNode(), "a.Mixin", null);
+        plugin.postApply("a.Target", new ClassNode(), "a.Mixin", null);
     }
 }

@@ -250,8 +250,8 @@ class DynamicModelsTest {
 
         Mixins.set(DynamicModels.class, "reloadingAtlas", atlas);
         // The json crawl waits for the location tables, which a reload would have built
-        ModelLocations.READY.complete(null);
         TextureDiscovery.start(resources(indexed("assets/examplemod/textures/blocks/ore.png")), List.of(indexed("assets/examplemod/textures/blocks/ore.png")));
+        TextureDiscovery.tablesReady();
         // Lava's still texture is not in the packs, and the atlas refuses water's flowing one
         IResourceManager clientResources = client.getResourceManager();
         when(clientResources.getResource(new ResourceLocation("minecraft:textures/blocks/lava_still.png"))).thenThrow(new FileNotFoundException());

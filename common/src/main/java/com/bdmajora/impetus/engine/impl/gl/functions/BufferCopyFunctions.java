@@ -1,7 +1,7 @@
 package com.bdmajora.impetus.engine.impl.gl.functions;
 
-import com.bdmajora.impetus.lwjgl.GL15;
-import com.bdmajora.impetus.lwjgl.GL31;
+import org.lwjgl.opengl.GL15;
+import org.lwjgl.opengl.GL31;
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 import com.bdmajora.impetus.engine.impl.gl.buffer.GlBuffer;

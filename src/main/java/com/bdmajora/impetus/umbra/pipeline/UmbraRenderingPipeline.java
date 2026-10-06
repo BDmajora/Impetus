@@ -52,12 +52,12 @@ import com.bdmajora.impetus.umbra.uniforms.FrameUpdateNotifier;
 import com.bdmajora.impetus.umbra.uniforms.MatrixUniforms;
 import com.bdmajora.impetus.umbra.uniforms.SystemTimeUniforms;
 import com.bdmajora.impetus.umbra.features.FeatureFlags;
-import com.bdmajora.impetus.lwjgl.GL11;
-import com.bdmajora.impetus.lwjgl.GL12;
-import com.bdmajora.impetus.lwjgl.GL13;
-import com.bdmajora.impetus.lwjgl.GL14;
-import com.bdmajora.impetus.lwjgl.GL15;
-import com.bdmajora.impetus.lwjgl.GL30;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL12;
+import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GL14;
+import org.lwjgl.opengl.GL15;
+import org.lwjgl.opengl.GL30;
 import com.bdmajora.impetus.mixin.core.terrain.ActiveRenderInfoAccessor;
 
 import java.util.ArrayList;
@@ -2893,7 +2893,7 @@ public class UmbraRenderingPipeline {
         }
         // Umbra rebinds all images + paired samplers at every compute use; the shadow-terrain draw that just voxelized runs through managed code that can reset units, so re-establish the voxel/floodfill bindings here rather than trust the frame-start bindAll
         bindShaderPackResources();
-        LWJGL.glMemoryBarrier(com.bdmajora.impetus.lwjgl.GL42.GL_ALL_BARRIER_BITS);
+        LWJGL.glMemoryBarrier(org.lwjgl.opengl.GL42.GL_ALL_BARRIER_BITS);
         boolean drewRaster = false;
         for (FullscreenPass pass : this.shadowCompPasses) {
             // Only the images, not bindColorSamplers(pass), for compute-only entries: this runs between the shadow map and the gbuffers, and colortex0..7 would land on units 0..7, the atlas and lightmap units the world is about to render with; image units are a separate namespace
@@ -2939,12 +2939,12 @@ public class UmbraRenderingPipeline {
             }
             // Each floodfill iteration reads the previous one's writes, so every dispatch is fenced by default; `allowConcurrentCompute` is the pack asserting independence
             if (!this.allowConcurrentCompute) {
-                LWJGL.glMemoryBarrier(com.bdmajora.impetus.lwjgl.GL42.GL_ALL_BARRIER_BITS);
+                LWJGL.glMemoryBarrier(org.lwjgl.opengl.GL42.GL_ALL_BARRIER_BITS);
             }
         }
         if (this.allowConcurrentCompute) {
             // Still publish the whole group's writes before anything samples them.
-            LWJGL.glMemoryBarrier(com.bdmajora.impetus.lwjgl.GL42.GL_ALL_BARRIER_BITS);
+            LWJGL.glMemoryBarrier(org.lwjgl.opengl.GL42.GL_ALL_BARRIER_BITS);
         }
     }
 

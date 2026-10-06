@@ -46,7 +46,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.lwjgl.LWJGLException;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.Display;
@@ -150,11 +149,12 @@ class ImpetusGuiTest {
 
     @AfterEach
     void releaseNatives() {
-        keyboard.close();
-        mouse.close();
-        display.close();
-        gl13.close();
-        gl11.close();
+        // Null-safe: a mock that failed to open in setup must not keep the ones before it registered for every later suite
+        for (MockedStatic<?> mock : java.util.Arrays.asList(keyboard, mouse, display, gl13, gl11)) {
+            if (mock != null && !mock.isClosed()) {
+                mock.close();
+            }
+        }
         client.world = null;
         Statics.<List<?>>get(ImpetusNotifications.class, "NOTIFICATIONS").clear();
         Mixins.set(Loader.instance(), "namedMods", new HashMap<>());
@@ -253,11 +253,9 @@ class ImpetusGuiTest {
         FullscreenResolutions.apply(1);
         assertNotNull(Mixins.construct(FullscreenResolutions.class));
 
-        // A driver that cannot list its modes offers only the current resolution
+        // A monitor GLFW cannot list (headless, or no window yet) offers only the current resolution
         Statics.set(FullscreenResolutions.class, "modes", null);
-        display.when(Display::getAvailableDisplayModes).thenAnswer(invocation -> {
-            throw new LWJGLException("no modes");
-        });
+        display.when(Display::getAvailableDisplayModes).thenThrow(new IllegalStateException("no monitor"));
         assertEquals(1, FullscreenResolutions.count());
     }
 

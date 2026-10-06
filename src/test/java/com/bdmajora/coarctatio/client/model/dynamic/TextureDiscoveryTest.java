@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ForkJoinTask;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -87,7 +88,6 @@ class TextureDiscoveryTest {
         ModelLocations.VARIANTS_BY_BLOCKSTATE.put(broken, new ObjectOpenHashSet<>(List.of(brokenVariant)));
         ModelLocations.ITEM_VARIANTS.add(gemVariant);
         ModelLocations.addItemVariantFile(gemVariant, new ResourceLocation("examplemod:item/gem"));
-        ModelLocations.READY.complete(null);
 
         Map<ResourceLocation, String> json = new HashMap<>();
         json.put(new ResourceLocation("examplemod:blockstates/ore.json"), "{\"variants\":{\"normal\":{\"model\":\"examplemod:ore_block\"}}}");
@@ -105,6 +105,7 @@ class TextureDiscoveryTest {
 
         try {
             TextureDiscovery.start(resources(json, files), List.of(pack));
+            TextureDiscovery.tablesReady();
             Set<ResourceLocation> found = TextureDiscovery.take();
             assertTrue(found.contains(new ResourceLocation("examplemod:blocks/ore")));
             assertTrue(found.contains(new ResourceLocation("examplemod:entity/chest/big")));
@@ -117,6 +118,15 @@ class TextureDiscoveryTest {
             assertTrue(found.contains(new ResourceLocation("mekanism:entities/robit")));
             // The result is handed over once
             assertTrue(TextureDiscovery.take().isEmpty());
+            // A reload that dies before the tables exist fails its scan instead of parking a pool thread on them
+            TextureDiscovery.start(resources(json, files), List.of(pack));
+            ForkJoinTask<Set<ResourceLocation>> abandoned = Mixins.get(TextureDiscovery.class, "pending");
+            TextureDiscovery.abandon(new IllegalStateException("loader failed"));
+            assertThrows(RuntimeException.class, abandoned::join);
+            assertTrue(TextureDiscovery.take().isEmpty());
+            // With no scan running, both signals are no-ops
+            TextureDiscovery.tablesReady();
+            TextureDiscovery.abandon(new IllegalStateException("nothing to abandon"));
         } finally {
             ModelLocations.VARIANTS_BY_BLOCKSTATE.remove(ore);
             ModelLocations.VARIANTS_BY_BLOCKSTATE.remove(broken);

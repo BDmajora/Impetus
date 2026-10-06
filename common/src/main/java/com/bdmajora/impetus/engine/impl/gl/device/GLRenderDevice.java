@@ -10,7 +10,7 @@ import com.bdmajora.impetus.engine.impl.gl.sync.GlFence;
 import com.bdmajora.impetus.engine.impl.gl.tessellation.*;
 import com.bdmajora.impetus.engine.impl.gl.util.EnumBitField;
 import org.jetbrains.annotations.Nullable;
-import com.bdmajora.impetus.lwjgl.GL32;
+import org.lwjgl.opengl.GL32;
 
 import java.nio.ByteBuffer;
 

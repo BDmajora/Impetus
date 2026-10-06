@@ -6,7 +6,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.TextureMap;
 import org.lwjgl.opengl.EXTTextureFilterAnisotropic;
 import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GLContext;
+import org.lwjgl.opengl.GL;
 
 // Applies the block atlas sampler state on rebuild and options apply; minification is pinned to NEAREST_MIPMAP_LINEAR since the atlas has no sprite borders and any wider filter bleeds neighbours, while magnification stays configurable
 public final class BlockAtlasFiltering {
@@ -56,8 +56,7 @@ public final class BlockAtlasFiltering {
     private static boolean isAnisotropySupported() {
         if (anisotropySupported == null) {
             try {
-                var caps = GLContext.getCapabilities();
-                anisotropySupported = caps != null && caps.GL_EXT_texture_filter_anisotropic;
+                anisotropySupported = GL.getCapabilities().GL_EXT_texture_filter_anisotropic;
             } catch (Throwable t) {
                 anisotropySupported = false;
             }

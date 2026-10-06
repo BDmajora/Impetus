@@ -1,8 +1,8 @@
 package com.bdmajora.impetus.umbra.targets;
 
 import com.bdmajora.impetus.umbra.gl.texture.InternalTextureFormat;
-import com.bdmajora.impetus.lwjgl.GL11;
-import com.bdmajora.impetus.lwjgl.GL12;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL12;
 
 import java.nio.ByteBuffer;
 

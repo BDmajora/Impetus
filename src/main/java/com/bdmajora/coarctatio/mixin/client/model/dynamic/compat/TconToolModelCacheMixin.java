@@ -15,6 +15,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import javax.annotation.Nullable;
+import java.time.Duration;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Field;
@@ -22,7 +23,6 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 
 // TConstruct caches every assembled tool model forever, keyed by parent model and modifiers, which with dynamic loading would also pin every parent; the cache becomes one soft, expiring cache per parent, weakly keyed so a parent the registry let go takes its tools with it. Applied only when TConstruct is present
 @Pseudo
@@ -35,14 +35,14 @@ public abstract class TconToolModelCacheMixin {
 
     private final LoadingCache<IBakedModel, Cache<Object, IBakedModel>> coarctatio$byParent = CacheBuilder.newBuilder()
             .maximumSize(70)
-            .expireAfterWrite(3, TimeUnit.MINUTES)
+            .expireAfterWrite(Duration.ofMinutes(3))
             .weakKeys()
             .softValues()
             .build(new CacheLoader<IBakedModel, Cache<Object, IBakedModel>>() {
                 @Override
                 public Cache<Object, IBakedModel> load(IBakedModel parent) {
                     return CacheBuilder.newBuilder()
-                            .expireAfterWrite(3, TimeUnit.MINUTES)
+                            .expireAfterWrite(Duration.ofMinutes(3))
                             .maximumSize(50)
                             .build();
                 }

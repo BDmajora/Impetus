@@ -236,8 +236,7 @@ public final class ShaderPack {
         byte[] mcMeta = this.binaries.get(AbsolutePackPath.fromAbsolutePath("/" + path + ".mcmeta"));
         if (mcMeta != null) {
             try {
-                JsonObject meta = new JsonParser()
-                        .parse(new String(mcMeta, StandardCharsets.UTF_8)).getAsJsonObject();
+                JsonObject meta = JsonParser.parseString(new String(mcMeta, StandardCharsets.UTF_8)).getAsJsonObject();
                 if (meta.get("texture") != null) {
                     JsonObject texture = meta.get("texture").getAsJsonObject();
                     if (texture.get("blur") != null) {

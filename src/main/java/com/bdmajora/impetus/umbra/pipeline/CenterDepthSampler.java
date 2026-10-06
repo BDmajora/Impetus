@@ -1,12 +1,11 @@
 package com.bdmajora.impetus.umbra.pipeline;
 
 import com.bdmajora.impetus.umbra.gl.framebuffer.UmbraFramebuffer;
-import com.bdmajora.impetus.lwjgl.GL11;
-import com.bdmajora.impetus.lwjgl.GL15;
-import com.bdmajora.impetus.lwjgl.GL21;
-import com.bdmajora.impetus.lwjgl.GL30;
-import org.lwjgl.opengl.ContextCapabilities;
-import org.lwjgl.opengl.GLContext;
+import com.bdmajora.impetus.lwjgl.GLExtension;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL15;
+import org.lwjgl.opengl.GL21;
+import org.lwjgl.opengl.GL30;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -112,8 +111,8 @@ public final class CenterDepthSampler {
         if (this.packBuffers[0] != -1) {
             return true;
         }
-        ContextCapabilities caps = GLContext.getCapabilities();
-        if (!(caps.OpenGL21 || caps.GL_ARB_pixel_buffer_object) || !(caps.OpenGL30 || caps.GL_ARB_map_buffer_range)) {
+        if (!(LWJGL.isOpenGLVersionSupported(2, 1) || LWJGL.isExtensionSupported(GLExtension.ARB_pixel_buffer_object))
+                || !(LWJGL.isOpenGLVersionSupported(3, 0) || LWJGL.isExtensionSupported(GLExtension.ARB_map_buffer_range))) {
             this.packUnavailable = true;
             return false;
         }

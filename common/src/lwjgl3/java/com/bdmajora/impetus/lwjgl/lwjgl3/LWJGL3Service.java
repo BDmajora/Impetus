@@ -3,6 +3,8 @@ package com.bdmajora.impetus.lwjgl.lwjgl3;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.*;
+import org.lwjgl.system.FunctionProvider;
+import org.lwjgl.system.JNI;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.system.Pointer;
 import com.bdmajora.impetus.lwjgl.GLExtension;
@@ -12,14 +14,19 @@ import com.bdmajora.impetus.lwjgl.MemoryStack;
 
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.nio.LongBuffer;
+import java.nio.ShortBuffer;
 
-// LWJGL3 backend of LWJGLService (lwjgl3ify / RetroFuturaBootstrap on 1.12.2); capability decisions resolved once at creation
+// LWJGL3 backend of LWJGLService, the one Cleanroom runs on; capability decisions resolved once at creation
 public record LWJGL3Service(
         VAOMode vaoMode,
         TimerQueryMode timerQueryMode,
-        VertexAttribIMode vertexAttribIMode) implements LWJGLService {
+        VertexAttribIMode vertexAttribIMode,
+        BlendIMode blendIMode) implements LWJGLService {
     private static final Logger LOGGER = LogManager.getLogger("Impetus/LWJGL3Service");
 
     // ===================== CAPABILITIES =====================
@@ -67,6 +74,7 @@ public record LWJGL3Service(
             case ARB_uniform_buffer_object -> caps.GL_ARB_uniform_buffer_object;
             case ARB_vertex_array_object -> caps.GL_ARB_vertex_array_object;
             case ARB_map_buffer_range -> caps.GL_ARB_map_buffer_range;
+            case ARB_pixel_buffer_object -> caps.GL_ARB_pixel_buffer_object;
             case ARB_copy_buffer -> caps.GL_ARB_copy_buffer;
             case ARB_texture_storage -> caps.GL_ARB_texture_storage;
             case ARB_base_instance -> caps.GL_ARB_base_instance;
@@ -84,11 +92,10 @@ public record LWJGL3Service(
         };
     }
 
-    // GL 4.0 core or ARB_draw_buffers_blend
+    // GL 4.0 core or ARB_draw_buffers_blend, as resolved in create()
     @Override
     public boolean supportsBufferBlending() {
-        GLCapabilities caps = GL.getCapabilities();
-        return caps.OpenGL40 || caps.GL_ARB_draw_buffers_blend;
+        return blendIMode != BlendIMode.NONE;
     }
 
     // Native pointer width, for buffer stride arithmetic
@@ -194,7 +201,15 @@ public record LWJGL3Service(
         GL30C.glBindBufferBase(target, index, buffer);
     }
 
-    private enum VAOMode {
+    // How vertex array objects are reached; resolved once in create()
+    private sealed interface VAOMode {
+        int gen();
+        void delete(int array);
+        void bind(int array);
+    }
+
+    // The entry points LWJGL3 binds: GL30 core, ARB_vertex_array_object, or none at all
+    private enum BoundVAO implements VAOMode {
         CORE {
             @Override public int gen() { return GL30C.glGenVertexArrays(); }
             @Override public void delete(int array) { GL30C.glDeleteVertexArrays(array); }
@@ -205,55 +220,66 @@ public record LWJGL3Service(
             @Override public void delete(int array) { ARBVertexArrayObject.glDeleteVertexArrays(array); }
             @Override public void bind(int array) { ARBVertexArrayObject.glBindVertexArray(array); }
         },
-        APPLE {
-            @Override public int gen() {
-                try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
-                    java.nio.IntBuffer buf = stack.callocInt(1);
-                    org.lwjgl.system.JNI.callPV(1, MemoryUtil.memAddress(buf), glGenVertexArraysAPPLE);
-                    return buf.get(0);
-                }
-            }
-            @Override public void delete(int array) {
-                try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
-                    java.nio.IntBuffer buf = stack.ints(array);
-                    org.lwjgl.system.JNI.callPV(1, MemoryUtil.memAddress(buf), glDeleteVertexArraysAPPLE);
-                }
-            }
-            @Override public void bind(int array) { org.lwjgl.system.JNI.callV(array, glBindVertexArrayAPPLE); }
-        },
         NONE {
             @Override public int gen() { throw new UnsupportedOperationException("VAO not supported"); }
             @Override public void delete(int array) { throw new UnsupportedOperationException("VAO not supported"); }
             @Override public void bind(int array) { throw new UnsupportedOperationException("VAO not supported"); }
-        };
-
-        public abstract int gen();
-        public abstract void delete(int array);
-        public abstract void bind(int array);
+        }
     }
+
+    // APPLE_vertex_array_object (macOS legacy contexts) has neither an LWJGL3 binding nor a capability flag, so its entry points are looked up and called directly
+    private static final class AppleVAO implements VAOMode {
+        private final long gen;
+        private final long delete;
+        private final long bind;
+
+        private AppleVAO(FunctionProvider functions, long bind) {
+            this.gen = functions.getFunctionAddress("glGenVertexArraysAPPLE");
+            this.delete = functions.getFunctionAddress("glDeleteVertexArraysAPPLE");
+            this.bind = bind;
+        }
+
+        @Override
+        public int gen() {
+            try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+                IntBuffer buf = stack.callocInt(1);
+                JNI.callPV(1, MemoryUtil.memAddress(buf), gen);
+                return buf.get(0);
+            }
+        }
+
+        @Override
+        public void delete(int array) {
+            try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+                JNI.callPV(1, MemoryUtil.memAddress(stack.ints(array)), delete);
+            }
+        }
+
+        @Override
+        public void bind(int array) {
+            JNI.callV(array, bind);
+        }
+    }
+
     private enum TimerQueryMode { CORE, ARB, NONE }
     private enum VertexAttribIMode { CORE, EXT, NONE }
+    // GL40's glBlendFuncSeparatei and the ARB one are separate entry points, and calling one the driver did not load jumps through a null pointer
+    private enum BlendIMode { CORE, ARB, NONE }
 
-
-    // Cached function addresses for APPLE VAO extensions
-    private static final long glGenVertexArraysAPPLE = GL.getFunctionProvider().getFunctionAddress("glGenVertexArraysAPPLE");
-    private static final long glDeleteVertexArraysAPPLE = GL.getFunctionProvider().getFunctionAddress("glDeleteVertexArraysAPPLE");
-    private static final long glBindVertexArrayAPPLE = GL.getFunctionProvider().getFunctionAddress("glBindVertexArrayAPPLE");
-
-    // Resolves VAO, timer-query and vertex-attrib entry points once from the context capabilities
+    // Resolves VAO, timer-query, vertex-attrib and per-buffer blend entry points once from the context capabilities
     public static LWJGL3Service create() {
         GLCapabilities caps = GL.getCapabilities();
 
         VAOMode vaoMode;
 
         if (caps.OpenGL30) {
-            vaoMode = VAOMode.CORE;
+            vaoMode = BoundVAO.CORE;
         } else if (caps.GL_ARB_vertex_array_object) {
-            vaoMode = VAOMode.ARB;
-        } else if (glBindVertexArrayAPPLE != 0) {
-            vaoMode = VAOMode.APPLE;
+            vaoMode = BoundVAO.ARB;
         } else {
-            vaoMode = VAOMode.NONE;
+            FunctionProvider functions = GL.getFunctionProvider();
+            long bind = functions.getFunctionAddress("glBindVertexArrayAPPLE");
+            vaoMode = bind != MemoryUtil.NULL ? new AppleVAO(functions, bind) : BoundVAO.NONE;
         }
 
         TimerQueryMode timerQueryMode;
@@ -276,10 +302,19 @@ public record LWJGL3Service(
             vertexAttribIMode = VertexAttribIMode.NONE;
         }
 
-        return new LWJGL3Service(vaoMode, timerQueryMode, vertexAttribIMode);
+        BlendIMode blendIMode;
+        if (caps.OpenGL40) {
+            blendIMode = BlendIMode.CORE;
+        } else if (caps.GL_ARB_draw_buffers_blend) {
+            blendIMode = BlendIMode.ARB;
+        } else {
+            blendIMode = BlendIMode.NONE;
+        }
+
+        return new LWJGL3Service(vaoMode, timerQueryMode, vertexAttribIMode, blendIMode);
     }
 
-    // Through the resolved VAO mode: core, APPLE or unsupported
+    // Through the resolved VAO mode: core, ARB, APPLE or unsupported
     @Override
     public int glGenVertexArrays() {
         return vaoMode.gen();
@@ -344,16 +379,14 @@ public record LWJGL3Service(
         GL20C.glShaderSource(shader, source);
     }
 
-    // AMD workaround: null length forces null-terminator reliance, avoiding a driver read past the string
+    // AMD workaround: a null length array makes the driver read up to the terminator instead of misreading a length; sources outgrow the stack, so the string is heap-allocated
     @Override
     public void glShaderSourceSafe(int shader, CharSequence source) {
-        // AMD workaround: pass null for the string length so the driver relies on the null terminator instead of misreading the length
+        ByteBuffer sourceBuffer = MemoryUtil.memUTF8(source, true);
         try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
-            java.nio.ByteBuffer sourceBuffer = MemoryUtil.memUTF8(source, true);
-            org.lwjgl.PointerBuffer pointers = stack.mallocPointer(1);
-            pointers.put(sourceBuffer);
-            GL20C.nglShaderSource(shader, 1, pointers.address0(), 0);
-            org.lwjgl.system.APIUtil.apiArrayFree(pointers.address0(), 1);
+            GL20C.nglShaderSource(shader, 1, stack.pointers(sourceBuffer).address(), MemoryUtil.NULL);
+        } finally {
+            MemoryUtil.memFree(sourceBuffer);
         }
     }
 
@@ -366,7 +399,6 @@ public record LWJGL3Service(
     // Reads the info log into a String; LWJGL3's overload handles the length itself
     @Override
     public String glGetShaderInfoLog(int shader, int maxLength) {
-        // LWJGL3 doesn't need maxLength, but we accept it for API compatibility
         return GL20C.glGetShaderInfoLog(shader);
     }
 
@@ -420,10 +452,10 @@ public record LWJGL3Service(
 
     // LWJGL3 splits size and type into separate buffers, so they are packed back into the caller's one
     @Override
-    public String glGetActiveUniform(int program, int index, int maxLength, java.nio.IntBuffer sizeType) {
+    public String glGetActiveUniform(int program, int index, int maxLength, IntBuffer sizeType) {
         try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
-            java.nio.IntBuffer size = stack.mallocInt(1);
-            java.nio.IntBuffer type = stack.mallocInt(1);
+            IntBuffer size = stack.mallocInt(1);
+            IntBuffer type = stack.mallocInt(1);
             String name = GL20C.glGetActiveUniform(program, index, maxLength, size, type);
             sizeType.put(0, size.get(0));
             sizeType.put(1, type.get(0));
@@ -709,7 +741,7 @@ public record LWJGL3Service(
 
     // GL11C
     @Override
-    public void glReadPixels(int x, int y, int width, int height, int format, int type, java.nio.ByteBuffer pixels) {
+    public void glReadPixels(int x, int y, int width, int height, int format, int type, ByteBuffer pixels) {
         GL11C.glReadPixels(x, y, width, height, format, type, pixels);
     }
 
@@ -948,10 +980,14 @@ public record LWJGL3Service(
         GL14C.glBlendFuncSeparate(srcRGB, dstRGB, srcAlpha, dstAlpha);
     }
 
-    // ARBDrawBuffersBlend
+    // GL40C, else ARBDrawBuffersBlend; unsupported throws like the interface default instead of calling a null entry point
     @Override
     public void glBlendFuncSeparatei(int buffer, int srcRGB, int dstRGB, int srcAlpha, int dstAlpha) {
-        ARBDrawBuffersBlend.glBlendFuncSeparateiARB(buffer, srcRGB, dstRGB, srcAlpha, dstAlpha);
+        switch (blendIMode) {
+            case CORE -> GL40C.glBlendFuncSeparatei(buffer, srcRGB, dstRGB, srcAlpha, dstAlpha);
+            case ARB -> ARBDrawBuffersBlend.glBlendFuncSeparateiARB(buffer, srcRGB, dstRGB, srcAlpha, dstAlpha);
+            case NONE -> throw new UnsupportedOperationException("Per-buffer blending is not supported");
+        }
     }
 
     // GL11C
@@ -1144,24 +1180,20 @@ public record LWJGL3Service(
         return MemoryUtil.memAddress(buffer);
     }
 
-    // LWJGL3 has no positioned memAddress for a generic Buffer, so the offset is computed from the element size
+    // Address of element `position` counted from the buffer's base, whatever its current position (LWJGL3's typed overloads); a null buffer makes position the address itself, as on LWJGL2
     @Override
     public long memAddress(Buffer buffer, int position) {
-        // Generic Buffer has no positioned memAddress in LWJGL3, so add the position offset (scaled by element size) to the base address
-        long base = MemoryUtil.memAddress(buffer);
-        int elementSize;
-        if (buffer instanceof java.nio.ByteBuffer) {
-            elementSize = 1;
-        } else if (buffer instanceof java.nio.ShortBuffer || buffer instanceof java.nio.CharBuffer) {
-            elementSize = 2;
-        } else if (buffer instanceof java.nio.IntBuffer || buffer instanceof java.nio.FloatBuffer) {
-            elementSize = 4;
-        } else if (buffer instanceof java.nio.LongBuffer || buffer instanceof java.nio.DoubleBuffer) {
-            elementSize = 8;
-        } else {
-            throw new IllegalArgumentException("Unsupported buffer type: " + buffer.getClass());
-        }
-        return base + ((long) position * elementSize);
+        return switch (buffer) {
+            case null -> position;
+            case ByteBuffer b -> MemoryUtil.memAddress(b, position);
+            case ShortBuffer b -> MemoryUtil.memAddress(b, position);
+            case CharBuffer b -> MemoryUtil.memAddress(b, position);
+            case IntBuffer b -> MemoryUtil.memAddress(b, position);
+            case FloatBuffer b -> MemoryUtil.memAddress(b, position);
+            case LongBuffer b -> MemoryUtil.memAddress(b, position);
+            case DoubleBuffer b -> MemoryUtil.memAddress(b, position);
+            default -> throw new IllegalArgumentException("Unsupported buffer type: " + buffer.getClass());
+        };
     }
 
     // MemoryUtil

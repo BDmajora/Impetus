@@ -1,6 +1,6 @@
 package com.bdmajora.impetus.engine.impl.gl.tessellation;
 
-import com.bdmajora.impetus.lwjgl.GL32;
+import org.lwjgl.opengl.GL32;
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 

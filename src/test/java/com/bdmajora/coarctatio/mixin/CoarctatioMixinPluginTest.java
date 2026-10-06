@@ -9,11 +9,18 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.MockedStatic;
+import org.spongepowered.asm.service.IClassTracker;
+import org.spongepowered.asm.service.IMixinService;
+import org.spongepowered.asm.service.MixinService;
 
 import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.when;
 
 class CoarctatioMixinPluginTest {
     @TempDir
@@ -53,6 +60,7 @@ class CoarctatioMixinPluginTest {
         assertTrue(applies(plugin, "client.model.part.BlockPartMixin"));
         assertTrue(applies(plugin, "world.TemplateManagerMixin"));
         assertTrue(applies(plugin, "forge.JarDiscovererMixin"));
+        assertTrue(applies(plugin, "forge.ModCandidateMixin"));
         assertTrue(applies(plugin, "client.model.bake.ItemLayerModelQuadMixin"));
         // Off by default
         assertFalse(applies(plugin, "events.TickEventMixin"));
@@ -85,35 +93,36 @@ class CoarctatioMixinPluginTest {
     }
 
     @Test
-    void theRecycledEventMixinsAreOnlyListedWhenTheyAreWanted() {
+    void guardedMixinsAreListedWhenWantedAndBackOutAloneWhenTheirTargetIsAlreadyLoaded() {
         CoarctatioMixinPlugin plugin = new CoarctatioMixinPlugin();
         plugin.onLoad("com.bdmajora.coarctatio.mixin");
         CoarctatioConfig config = Mixins.get(plugin, "config");
+        IMixinService service = mock(IMixinService.class);
+        IClassTracker tracker = mock(IClassTracker.class);
+        try (MockedStatic<MixinService> services = mockStatic(MixinService.class)) {
+            services.when(MixinService::getService).thenReturn(service);
 
-        // Off by default, and the list is then left to the json
-        assertFalse(config.recycleEvents);
-        assertNull(plugin.getMixins());
+            // Defaults: the loader mixins are on, event recycling is off; no tracker means nothing can report a target loaded
+            when(service.getClassTracker()).thenReturn(null);
+            List<String> defaults = plugin.getMixins();
+            assertEquals(List.of("forge.ASMDataMixin", "forge.ModCandidateMixin", "forge.JarDiscovererMixin"), defaults);
 
-        config.recycleEvents = true;
-        org.spongepowered.asm.service.IMixinService service =
-                org.mockito.Mockito.mock(org.spongepowered.asm.service.IMixinService.class);
-        org.spongepowered.asm.service.IClassTracker tracker =
-                org.mockito.Mockito.mock(org.spongepowered.asm.service.IClassTracker.class);
-        try (org.mockito.MockedStatic<org.spongepowered.asm.service.MixinService> services =
-                     org.mockito.Mockito.mockStatic(org.spongepowered.asm.service.MixinService.class)) {
-            services.when(org.spongepowered.asm.service.MixinService::getService).thenReturn(service);
+            config.recycleEvents = true;
+            when(service.getClassTracker()).thenReturn(tracker);
+            List<String> all = plugin.getMixins();
+            assertTrue(all.contains("events.TickEventMixin"));
+            assertTrue(all.contains("events.ForgeEventFactoryMixin"));
+            assertTrue(all.contains("forge.ModCandidateMixin"));
 
-            // No tracker at all means nothing can say a target was already loaded
-            org.mockito.Mockito.when(service.getClassTracker()).thenReturn(null);
-            assertTrue(plugin.getMixins().contains("events.TickEventMixin"));
+            // A target another coremod already pulled in would fail the whole config, so only its own feature backs out
+            when(tracker.isClassLoaded("net.minecraftforge.fml.common.discovery.ModCandidate")).thenReturn(true);
+            when(tracker.isClassLoaded("net.minecraftforge.event.ForgeEventFactory")).thenReturn(true);
+            assertEquals(List.of("forge.ASMDataMixin", "forge.JarDiscovererMixin"), plugin.getMixins());
 
-            org.mockito.Mockito.when(service.getClassTracker()).thenReturn(tracker);
-            List<String> mixins = plugin.getMixins();
-            assertTrue(mixins.contains("events.TickEventMixin"));
-            assertTrue(mixins.contains("events.ForgeEventFactoryMixin"));
-
-            // A target another coremod already pulled in would fail the whole config, so the feature backs out
-            org.mockito.Mockito.when(tracker.isClassLoaded("net.minecraftforge.event.ForgeEventFactory")).thenReturn(true);
+            // With every guarded feature off the json's list stands alone
+            config.recycleEvents = false;
+            config.internLoaderStrings = false;
+            config.modScanCache = false;
             assertNull(plugin.getMixins());
         }
     }

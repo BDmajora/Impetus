@@ -1,106 +1,64 @@
 #!/usr/bin/env bash
-
+# ./run.sh opens the menu; ./run.sh build | test [--all] | clean runs one task and exits with its status
 set -euo pipefail
-
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-# Force Java 21 environment for this script execution
-force_java21() {
-    if [ -n "${JAVA21_HOME:-}" ]; then
-        export JAVA_HOME="$JAVA21_HOME"
-    elif command -v /usr/libexec/java_home &>/dev/null; then
-        export JAVA_HOME="$(/usr/libexec/java_home -v 21 2>/dev/null || true)"
-    elif [ -d "/usr/lib/jvm/java-21-openjdk" ]; then
-        export JAVA_HOME="/usr/lib/jvm/java-21-openjdk"
-    elif [ -d "/usr/lib/jvm/java-21-openjdk-amd64" ]; then
-        export JAVA_HOME="/usr/lib/jvm/java-21-openjdk-amd64"
-    fi
-
-    if [ -n "${JAVA_HOME:-}" ]; then
-        export PATH="$JAVA_HOME/bin:$PATH"
-    fi
-}
-
-# The wrapper loses its exec bit on some checkouts (notably fresh Windows clones).
+# The wrapper loses its exec bit on some checkouts (notably fresh Windows clones); Gradle provisions JDK 25 itself
 [ -x ./gradlew ] || chmod +x gradlew
 
-version() { grep -E '^project_base_version=' gradle.properties | cut -d= -f2 | tr -d '[:space:]'; }
-
-task_build() {
-    ./gradlew packageJar
-    echo
-    echo "Jar written to build/libs/$(version)/"
+build() {
+    local version
+    version=$(grep -E '^mod_version=' gradle.properties | cut -d= -f2 | tr -d '[:space:]')
+    if ! ./gradlew packageJar; then
+        echo -e "\nBuild failed; no jar was written."
+        return 1
+    fi
+    echo -e "\nJar written to build/libs/$version/"
 }
 
-# JUnit + JaCoCo over both modules; no packageJar, no reobf, and compileJava is up to date on a warm tree.
-# --continue keeps the second module running when the first has failures, so the summary is complete.
-task_test() {
-    ./gradlew --continue test jacocoTestReport || true
+# JUnit + JaCoCo over both modules; --continue keeps the second module running when the first fails, so the summary is complete
+test_all() {
+    ./gradlew --continue test jacocoTestReport :common:verifyLwjglNeutral || true
     echo
     python3 tools/test-summary.py "$@"
 }
 
-# Removes every build output, not just the root build/ directory. `gradlew clean` only owns the root
-# project's build/, so bin/, run/, the Gradle caches and the buildSrc/common outputs all survive it -
-# which is why this is the only clean offered.
-task_clean() {
-    local dirs=(build bin run .gradle
-                common/build common/.gradle
-                buildSrc/build buildSrc/.gradle buildSrc/.kotlin)
-
+# Every build output, not just build/: `gradlew clean` leaves run/, the Unimined caches and common/ behind
+clean() {
+    local dirs=(build bin run .gradle common/build common/.gradle)
     if [ "${1:-}" != "--force" ]; then
         echo "Removes: ${dirs[*]}"
-        echo "The next build re-decompiles Minecraft and will take several minutes."
+        echo "The next build re-runs Unimined's Cleanroom setup and will take several minutes."
         read -r -p "Continue? [y/N] " reply
-        case "$reply" in
-            [yY]*) ;;
-            *) echo "Aborted."; return 0 ;;
-        esac
+        [[ "$reply" == [yY]* ]] || { echo "Aborted."; return 0; }
     fi
-
     rm -rf "${dirs[@]}"
     echo "Done."
 }
 
-menu() {
-    cat <<'MENU'
-
-  Impetus - Minecraft 1.12.2 (Forge)
-
-    1) Build
-    2) Test
-    3) Clean
-    4) Quit
-
-MENU
-}
-
-dispatch() {
-    case "$1" in
-        1|build) task_build ;;
-        2|test) task_test ;;
-        3|clean) task_clean "${2-}" ;;
-        4|q|quit|exit) return 1 ;;
-        *) echo "Unknown option: $1" ;;
-    esac
-    return 0
-}
-
-force_java21
-
-# Non-interactive form, e.g. ./run.sh build or ./run.sh test --all - keeps the script usable from CI and aliases.
-# Such callers have already stated their intent, so clean skips the confirmation there.
+# Non-interactive callers have already stated their intent, so clean skips its confirmation there
 if [ $# -gt 0 ]; then
-    case "$1" in
-        2|test) shift; task_test "$@"; exit $? ;;
+    task=$1
+    shift
+    case "$task" in
+        build) build ;;
+        test) test_all "$@" ;;
+        clean) clean --force ;;
+        *) echo "Usage: ./run.sh [build | test [--all] | clean]"; exit 2 ;;
     esac
-    dispatch "$1" --force
-    exit $?
+    exit
 fi
 
+# Tasks run inside `||` here, where bash ignores set -e, so a failure is reported and the menu stays up
 while true; do
-    menu
+    echo -e "\n  Impetus - Cleanroom 1.12.2 (Java 25, LWJGL3)\n\n    1) Build\n    2) Test\n    3) Clean\n    4) Quit\n"
     read -r -p "  Select: " choice
     echo
-    dispatch "$choice" || break
+    case "$choice" in
+        1) build || true ;;
+        2) test_all || true ;;
+        3) clean || true ;;
+        4|q) exit 0 ;;
+        *) echo "Unknown option: $choice" ;;
+    esac
 done

@@ -5,7 +5,7 @@ import com.bdmajora.impetus.umbra.gl.program.GlProgram;
 import com.bdmajora.impetus.umbra.gl.program.ProgramBuilder;
 import com.bdmajora.impetus.umbra.gl.shader.GlShader;
 import com.bdmajora.impetus.umbra.gl.shader.ShaderType;
-import com.bdmajora.impetus.lwjgl.GL11;
+import org.lwjgl.opengl.GL11;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 

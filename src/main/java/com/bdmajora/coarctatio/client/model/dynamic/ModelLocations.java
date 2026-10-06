@@ -25,7 +25,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 
 // What vanilla's ModelBakery learns while loading every model, gathered without loading any: which locations exist, which block each blockstate file belongs to, and which variants each block can ask for
 public final class ModelLocations {
@@ -37,8 +36,6 @@ public final class ModelLocations {
     public static final Map<ModelResourceLocation, ResourceLocation> ITEM_VARIANT_FILES = new Object2ObjectOpenHashMap<>();
     // Blockstate file location to the variants the state mapper produces for it; the multipart membership check vanilla did in loadBlock
     public static final Map<ResourceLocation, Collection<ModelResourceLocation>> VARIANTS_BY_BLOCKSTATE = new Object2ObjectOpenHashMap<>();
-    // Completed once the tables above are filled, so the texture scan on the worker pool can wait for them
-    public static final CompletableFuture<Void> READY = new CompletableFuture<>();
 
     private static final Map<ResourceLocation, Block> BLOCK_BY_BLOCKSTATE = new Object2ObjectOpenHashMap<>();
     private static final Object2IntOpenHashMap<String> ERRORS_BY_NAMESPACE = new Object2IntOpenHashMap<>();
@@ -84,7 +81,6 @@ public final class ModelLocations {
             ((ObjectOpenHashSet<ModelResourceLocation>) variants).trim();
         }
         tablesBuilt = true;
-        READY.complete(null);
     }
 
     public static List<String> variantNames(Item item) {

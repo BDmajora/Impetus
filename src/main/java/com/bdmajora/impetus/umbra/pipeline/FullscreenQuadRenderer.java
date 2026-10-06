@@ -1,7 +1,7 @@
 package com.bdmajora.impetus.umbra.pipeline;
 
-import com.bdmajora.impetus.lwjgl.GL11;
-import com.bdmajora.impetus.lwjgl.GL15;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL15;
 import com.bdmajora.impetus.lwjgl.MemoryStack;
 
 import java.nio.ByteBuffer;

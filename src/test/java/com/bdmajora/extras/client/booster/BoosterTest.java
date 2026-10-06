@@ -2,6 +2,7 @@ package com.bdmajora.extras.client.booster;
 
 import com.bdmajora.extras.ExtrasConfig;
 import com.bdmajora.testing.Mixins;
+import com.bdmajora.testing.TestCaps;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.client.renderer.vertex.VertexFormatElement;
@@ -9,7 +10,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lwjgl.opengl.ARBBufferStorage;
-import org.lwjgl.opengl.ContextCapabilities;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL15;
@@ -17,11 +17,13 @@ import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL32;
 import org.lwjgl.opengl.GL44;
-import org.lwjgl.opengl.GLContext;
-import org.lwjgl.opengl.GLSync;
+import org.lwjgl.opengl.GL;
+import org.lwjgl.opengl.GLCapabilities;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.nio.ByteBuffer;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,12 +40,15 @@ import static org.mockito.Mockito.mock;
 class BoosterTest {
     private static final int REGION_SIZE = 4 << 20;
     private final Map<Class<?>, MockedStatic<?>> gl = new LinkedHashMap<>();
+    private GLCapabilities caps;
 
     @BeforeEach
     void mockGl() {
         for (Class<?> type : List.of(GL11.class, GL13.class, GL15.class, GL20.class, GL30.class, GL32.class, GL44.class, ARBBufferStorage.class)) {
             gl.put(type, Mockito.mockStatic(type));
         }
+        caps = TestCaps.all();
+        gl.put(GL.class, TestCaps.install(caps));
         reset();
         StreamingUploader.enabled = true;
     }
@@ -54,7 +59,6 @@ class BoosterTest {
         gl.clear();
         reset();
         StreamingUploader.enabled = false;
-        GLContext.reset();
     }
 
     private static void reset() {
@@ -64,7 +68,7 @@ class BoosterTest {
         Mixins.set(StreamingUploader.class, "mapped", null);
         Mixins.set(StreamingUploader.class, "region", 0);
         Mixins.set(StreamingUploader.class, "cursor", 0);
-        java.util.Arrays.fill(Mixins.<GLSync[]>get(StreamingUploader.class, "fences"), null);
+        java.util.Arrays.fill(Mixins.<long[]>get(StreamingUploader.class, "fences"), 0L);
     }
 
     @SuppressWarnings("unchecked")
@@ -83,8 +87,15 @@ class BoosterTest {
         return builder;
     }
 
-    private static ContextCapabilities caps() {
-        return GLContext.getCapabilities();
+    // The test classpath's GL32 is Cleanroom's merge, carrying both LWJGL3's long glFenceSync and the bridge's GLSync one, which javac cannot tell apart; the long form is the one StreamingUploader links against
+    private static long fenceSync(int condition, int flags) throws Throwable {
+        return (long) MethodHandles.publicLookup()
+                .findStatic(GL32.class, "glFenceSync", MethodType.methodType(long.class, int.class, int.class))
+                .invokeExact(condition, flags);
+    }
+
+    private void lack(String flag) {
+        TestCaps.with(caps, flag, false);
     }
 
     @Test
@@ -96,7 +107,7 @@ class BoosterTest {
         empty.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION);
         assertFalse(StreamingUploader.draw(empty));
         // Without core buffers the ring is never built
-        caps().OpenGL15 = false;
+        lack("OpenGL15");
         assertFalse(StreamingUploader.draw(quad()));
         assertFalse(StreamingUploader.draw(quad()));
         assertNotNull(Mixins.construct(StreamingUploader.class));
@@ -104,8 +115,8 @@ class BoosterTest {
 
     @Test
     void theOrphaningRingStreamsDrawsAndRespecifiesWhenFull() {
-        caps().OpenGL44 = false;
-        caps().GL_ARB_buffer_storage = false;
+        lack("OpenGL44");
+        lack("GL_ARB_buffer_storage");
         gl(GL15.class).when(GL15::glGenBuffers).thenReturn(7);
         BufferBuilder builder = quad();
         assertTrue(StreamingUploader.draw(builder));
@@ -133,7 +144,7 @@ class BoosterTest {
 
         // The ARB form is used where core 4.4 is missing
         reset();
-        caps().OpenGL44 = false;
+        lack("OpenGL44");
         assertTrue(StreamingUploader.draw(quad()));
         gl(ARBBufferStorage.class).verify(() -> ARBBufferStorage.glBufferStorage(eq(GL15.GL_ARRAY_BUFFER), anyLong(), anyInt()));
     }
@@ -142,8 +153,8 @@ class BoosterTest {
     void thePersistentRingMovesOnOnlyToRegionsTheGpuHasFinished() {
         ByteBuffer mapped = ByteBuffer.allocateDirect(4 * REGION_SIZE);
         gl(GL30.class).when(() -> GL30.glMapBufferRange(anyInt(), anyLong(), anyLong(), anyInt(), any())).thenReturn(mapped);
-        GLSync fence = mock(GLSync.class);
-        gl(GL32.class).when(() -> GL32.glFenceSync(anyInt(), anyInt())).thenReturn(fence);
+        long fence = 0x1234L;
+        gl(GL32.class).when(() -> fenceSync(anyInt(), anyInt())).thenReturn(fence);
         assertTrue(StreamingUploader.draw(quad()));
         assertTrue((boolean) Mixins.<Boolean>get(StreamingUploader.class, "persistent"));
         assertTrue(mapped.getFloat(0) == 0.0F);
@@ -152,22 +163,22 @@ class BoosterTest {
         Mixins.set(StreamingUploader.class, "cursor", REGION_SIZE);
         assertTrue(StreamingUploader.draw(quad()));
         assertEquals(1, (int) Mixins.<Integer>get(StreamingUploader.class, "region"));
-        GLSync[] fences = Mixins.get(StreamingUploader.class, "fences");
-        assertSame(fence, fences[0]);
+        long[] fences = Mixins.get(StreamingUploader.class, "fences");
+        assertEquals(fence, fences[0]);
 
         // A next region the GPU still reads sends this draw down vanilla's path, changing nothing
-        fences[2] = mock(GLSync.class);
-        gl(GL32.class).when(() -> GL32.glClientWaitSync(any(), anyInt(), anyLong())).thenReturn(GL32.GL_TIMEOUT_EXPIRED);
+        fences[2] = 0x2222L;
+        gl(GL32.class).when(() -> GL32.glClientWaitSync(anyLong(), anyInt(), anyLong())).thenReturn(GL32.GL_TIMEOUT_EXPIRED);
         Mixins.set(StreamingUploader.class, "cursor", REGION_SIZE);
         assertFalse(StreamingUploader.draw(quad()));
         assertEquals(1, (int) Mixins.<Integer>get(StreamingUploader.class, "region"));
         // Once it has signalled the fence is freed and the region used
-        gl(GL32.class).when(() -> GL32.glClientWaitSync(any(), anyInt(), anyLong())).thenReturn(GL32.GL_ALREADY_SIGNALED);
+        gl(GL32.class).when(() -> GL32.glClientWaitSync(anyLong(), anyInt(), anyLong())).thenReturn(GL32.GL_ALREADY_SIGNALED);
         assertTrue(StreamingUploader.draw(quad()));
-        assertNull(fences[2]);
+        assertEquals(0L, fences[2]);
         // A failed wait retires the ring for the session
-        fences[3] = mock(GLSync.class);
-        gl(GL32.class).when(() -> GL32.glClientWaitSync(any(), anyInt(), anyLong())).thenReturn(GL32.GL_WAIT_FAILED);
+        fences[3] = 0x3333L;
+        gl(GL32.class).when(() -> GL32.glClientWaitSync(anyLong(), anyInt(), anyLong())).thenReturn(GL32.GL_WAIT_FAILED);
         Mixins.set(StreamingUploader.class, "cursor", REGION_SIZE);
         assertFalse(StreamingUploader.draw(quad()));
         assertTrue((boolean) Mixins.<Boolean>get(StreamingUploader.class, "unavailable"));

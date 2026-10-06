@@ -1,35 +1,23 @@
-# Used when a commit is pushed to the repository
-# This makes use of caching for faster builds and uploads the resulting artifacts
-name: build-snapshot
+# Manually triggered release build
+name: build-release
 
 on:
   workflow_dispatch:
     inputs:
-      release_type:
-        type: choice
-        description: Release type
-        options:
-          - DRY_RUN
-          - DEV_BUILD
-          - PRERELEASE
-          - RELEASE
+      publish_engine:
+        type: boolean
+        description: Also publish the engine module (impetus-engine) to Maven
+        default: false
 
 env:
-  ORG_GRADLE_PROJECT_impetus_target_versions_pattern: ".*"
-  ORG_GRADLE_PROJECT_impetus_target_subprojects_pattern: ".*"
-  DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
   MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
   MAVEN_SECRET: ${{ secrets.MAVEN_SECRET }}
-  GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
-  IMPETUS_DISABLE_DECOMP: true
 
 jobs:
   build:
     runs-on: ubuntu-large
 
     steps:
-      - name: Verify that release channel is available
-        run: echo "Releasing for ${{ inputs.release_type }}" && test -n "${{ inputs.release_type }}"
       - name: Checkout sources
         uses: actions/checkout@v4
         with:
@@ -39,10 +27,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: |
-            8
-            17
-            21
+          java-version: '25'
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4.4.4
       - name: Initialize Unimined caches
@@ -50,16 +35,13 @@ jobs:
         with:
           path: |
             **/.gradle/unimined
-          key: unimined-v4-${{ runner.os }}-build-snapshot-${{ hashFiles('settings.gradle.kts') }}
+          key: unimined-v5-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
           restore-keys: |
-            unimined-v4-${{ runner.os }}-build-snapshot-
-      - name: Publish artifacts
-        if: ${{ inputs.release_type != 'DRY_RUN' }}
-        run: ./gradlew :taugradle_publish -Prelease_channel=${{ inputs.release_type }} --stacktrace
-      - name: Publish common module
-        if: ${{ inputs.release_type != 'DRY_RUN' }}
-        run: ./gradlew :common:publish -Prelease_channel=${{ inputs.release_type }}
-      - name: Build all packaged jars
-        run: ./gradlew packageJar
+            unimined-v5-${{ runner.os }}-
+      - name: Build the release jar and the legacy engine jar
+        run: ./gradlew packageJar :common:legacyJar --stacktrace
+      - name: Publish the engine module
+        if: ${{ inputs.publish_engine }}
+        run: ./gradlew :common:publish --stacktrace
       - name: Show checksums
-        run: find build/libs -name \*.jar | sort | xargs sha256sum
+        run: find build/libs common/build/libs -name \*.jar | sort | xargs sha256sum

@@ -94,6 +94,19 @@ public final class CoarctatioPropertyMap<K, V> extends ImmutableMap<K, V> {
         return ImmutableSet.copyOf(entries);
     }
 
+    // Guava 21 derived the key and value views from the entry set; Guava 33, which Cleanroom ships, leaves both abstract. Copies, so the shared keys array never escapes
+    @Override
+    @SuppressWarnings("unchecked")
+    ImmutableSet<K> createKeySet() {
+        return ImmutableSet.copyOf((K[]) this.keys);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    ImmutableCollection<V> createValues() {
+        return ImmutableList.copyOf((V[]) this.values);
+    }
+
     // Must be overridden, the whole reason the class exists: ImmutableMap.hashCode() lazily builds AND caches an entry set, StateImplementation.hashCode() delegates here, and block states sit in hash maps everywhere, so inheriting would give back every byte saved; Map.hashCode's sum of entry hashes is computed without allocating
     @Override
     public int hashCode() {

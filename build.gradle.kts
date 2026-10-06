@@ -1,126 +1,114 @@
-import com.bdmajora.impetus.engine.gradle.mdg.remapper.ReobfuscateCodeAndMixinsTask
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
-import com.gtnewhorizons.retrofuturagradle.mcp.ApplySourceAccessTransformersTask
-import com.gtnewhorizons.retrofuturagradle.modutils.ModUtils
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 
+// Impetus for Cleanroom: Java 25 and LWJGL3 first. Unimined sets up Cleanroom's patched 1.12.2 in MCP
+// names, the engine (:common) is shaded in, and the result is remapped to SRG with its mixin selectors
+// written straight into the annotations, so no refmap is involved at runtime.
 plugins {
-    id("org.taumc.gradle.versioning")
-    id("com.gtnewhorizons.retrofuturagradle") version "1.4.8"
-    id("com.gradleup.shadow") version "9.3.0"
-    id("impetus-mdg-remapper")
-    id("maven-publish")
-    id("jacoco")
+    java
+    `maven-publish`
+    jacoco
+    alias(libs.plugins.shadow)
+    alias(libs.plugins.unimined)
 }
 
+val modId = providers.gradleProperty("mod_id").get()
 group = "com.bdmajora"
-version = tau.versioning.version(rootProject.properties["project_base_version"].toString(), rootProject.properties["release_channel"])
+version = providers.gradleProperty("mod_version").get()
+base.archivesName = modId
 
 java {
+    toolchain.languageVersion = JavaLanguageVersion.of(libs.versions.java.get())
     withSourcesJar()
-    toolchain {
-        languageVersion.set(JavaLanguageVersion.of(8))
-    }
 }
 
-base.archivesName = "impetus-forge-mc12.2"
-
-val modCompileOnly by configurations.creating
-configurations.compileOnly.get().extendsFrom(modCompileOnly)
-val modRuntimeOnly by configurations.creating
-configurations.runtimeOnly.get().extendsFrom(modRuntimeOnly)
+// SRG-named mod jars Impetus has compat for; Unimined remaps them to MCP for compilation
+val modCompileOnly = configurations.create("modCompileOnly")
+val modRuntimeOnly = configurations.create("modRuntimeOnly")
+configurations.compileOnly { extendsFrom(modCompileOnly) }
+configurations.runtimeOnly { extendsFrom(modRuntimeOnly) }
 // Unit tests exercise the compat code directly, so the compileOnly mod APIs must be loadable there
-configurations.testImplementation.get().extendsFrom(modCompileOnly)
+configurations.testImplementation { extendsFrom(modCompileOnly) }
 
-// CleanMix + MixinExtras, shaded into a jar that is nested inside the mod jar rather than unpacked
-// into it. BooterBootstrap extracts it at runtime only when the install has no MixinBooter, so on
-// installs that do have one Impetus contributes zero org.spongepowered.asm classes and the
-// duplicate-class race that bundling normally causes cannot occur.
-val booterLibs by configurations.creating
+// The engine module, shaded into the mod jar
+val engine = configurations.create("engine") { isTransitive = false }
+// Cleanroom's LWJGL2 bridge, for the few vanilla signatures that still carry LWJGL2 types (see lwjglInterop)
+val lwjglx = configurations.create("lwjglx") { isTransitive = false }
 
-minecraft {
-    mcVersion.set("1.12.2")
+// Only the LWJGL2 types vanilla still exposes (input events, key codes, util.vector) and Display, which owns
+// Cleanroom's GLFW window, are visible at compile time; the rest of the bridge would shadow LWJGL3's own
+// org.lwjgl.opengl classes, which are the API Impetus uses (impl.platform.GameWindow is the only Display user)
+val lwjglInteropTypes = listOf(
+    "org/lwjgl/input/**", "org/lwjgl/util/vector/**", "org/lwjgl/LWJGLException.class",
+    "org/lwjgl/opengl/Display*.class"
+)
+val lwjglInterop = tasks.register<Jar>("lwjglInterop") {
+    archiveFileName = "lwjglx-interop.jar"
+    destinationDirectory = layout.buildDirectory.dir("lwjglx")
+    // Gradle does not see pattern edits inside a lazily sourced child spec, so the list is a declared input
+    inputs.property("types", lwjglInteropTypes)
+    from({ lwjglx.map { zipTree(it) } }) {
+        include(lwjglInteropTypes)
+    }
 }
 
 repositories {
     exclusiveContent {
-        forRepository { maven("https://maven.cleanroommc.com") }
-        filter {
-            includeGroup("zone.rong")
-            includeGroup("com.cleanroommc")
-        }
+        forRepository { maven("https://cursemaven.com") }
+        filter { includeGroup("curse.maven") }
     }
     exclusiveContent {
-        forRepository {
-            maven {
-                url = uri("https://cursemaven.com")
-            }
-        }
-        filter {
-            includeGroup("curse.maven")
-        }
-    }
-    exclusiveContent {
-        forRepository {
-            maven {
-                name = "Modrinth"
-                url = uri("https://api.modrinth.com/maven")
-            }
-        }
-        filter {
-            includeGroup("maven.modrinth")
-        }
-    }
-    exclusiveContent {
-        forRepository { maven("https://nexus.gtnewhorizons.com/repository/public/") }
-        filter {
-            includeGroupAndSubgroups("com.gtnewhorizons")
-            includeGroup("com.github.GTNewHorizons")
-        }
-    }
-    exclusiveContent {
-        forRepository { maven("https://maven.taumc.org/releases") }
-        filter {
-            includeGroupAndSubgroups("org.taumc")
-        }
+        forRepository { maven("https://api.modrinth.com/maven") { name = "Modrinth" } }
+        filter { includeGroup("maven.modrinth") }
     }
     mavenCentral()
 }
 
-configurations {
-    named("shadow") {
-        attributes {
-            attribute(ModUtils.DEOBFUSCATOR_TRANSFORMED, true)
+unimined.minecraft {
+    version(libs.versions.minecraft.get())
+
+    mappings {
+        mcp(libs.versions.mcp.channel.get(), libs.versions.mcp.mappings.get())
+    }
+
+    cleanroom {
+        loader(libs.versions.cleanroom.get())
+        accessTransformer(file("src/main/resources/META-INF/impetus_at.cfg"))
+    }
+
+    runs.all {
+        args("--username", "Developer")
+        systemProperty("fml.coreMods.load", "com.bdmajora.impetus.core.ImpetusLoadingPlugin")
+    }
+
+    // The shaded jar is what gets remapped, not the plain one
+    defaultRemapJar = false
+    remap(tasks.named<ShadowJar>("shadowJar").get()) {
+        mixinRemap {
+            enableBaseMixin()
+            enableMixinExtra()
+            disableRefmap()
         }
+    }
+
+    mods {
+        remap(modCompileOnly)
+        remap(modRuntimeOnly)
     }
 }
 
 dependencies {
-    val lombokVersion = rootProject.properties["lombok_version"].toString()
-    compileOnly("org.projectlombok:lombok:${lombokVersion}")
-    annotationProcessor("org.projectlombok:lombok:${lombokVersion}")
+    implementation(project(":common"))
+    engine(project(":common"))
 
-    val jabelVersion = rootProject.properties["jabel_version"].toString()
-    annotationProcessor("com.github.GTNewHorizons:jabel-javac-plugin:${jabelVersion}")
-    compileOnly("com.github.GTNewHorizons:jabel-javac-plugin:${jabelVersion}")
+    compileOnly(libs.lombok)
+    annotationProcessor(libs.lombok)
+    testCompileOnly(libs.lombok)
+    testAnnotationProcessor(libs.lombok)
 
-    implementation(project(":common", configuration = "downgraded")) {
-        isTransitive = false
-    }
-    shadow(project(":common", configuration = "downgraded")) {
-        isTransitive = false
-    }
+    lwjglx(libs.lwjglx)
+    compileOnly(files(lwjglInterop))
 
-    "shadow"("org.joml:joml:1.10.5")
-    implementation("org.joml:joml:1.10.5")
-    val cleanmixVersion = "0.7.2"
-    val mixinExtrasVersion = "0.5.5"
-    compileOnly("com.cleanroommc:cleanmix:${cleanmixVersion}")
-    compileOnly("com.cleanroommc:mixinextras-common:${mixinExtrasVersion}")
-    booterLibs("com.cleanroommc:cleanmix:${cleanmixVersion}")
-    booterLibs("com.cleanroommc:mixinextras-common:${mixinExtrasVersion}")
-    compileOnly("com.gtnewhorizons.retrofuturabootstrap:RetroFuturaBootstrap:1.0.11") {
-        exclude(group = "org.apache.logging.log4j")
-    }
     "modRuntimeOnly"("curse.maven:ae2-223794:2747063")
     modCompileOnly("maven.modrinth:fluidlogged-api:3.0.6")
     // Distant Horizons API, for the umbra DH compat (compat.dh); only loaded when DH is present
@@ -129,60 +117,39 @@ dependencies {
     modCompileOnly("curse.maven:littletiles-257818:5180387")
     modCompileOnly("curse.maven:creativecore-257814:4722163")
 
-    testImplementation("org.junit.jupiter:junit-jupiter:5.13.0")
-    testImplementation("org.mockito:mockito-core:5.17.0")
+    testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter)
+    testImplementation(libs.mockito)
     // The launcher and ByteBuddy are compiled against: Splice installs its agent from a launcher session listener
-    testImplementation("org.junit.platform:junit-platform-launcher")
-    testImplementation("net.bytebuddy:byte-buddy:1.15.11")
-    testImplementation("net.bytebuddy:byte-buddy-agent:1.15.11")
-    // Mixin handlers take CallbackInfo parameters and the booter touches RFB, so both must resolve at test runtime
-    testImplementation("com.cleanroommc:cleanmix:${cleanmixVersion}")
-    testImplementation("com.cleanroommc:mixinextras-common:${mixinExtrasVersion}")
-    testImplementation("com.gtnewhorizons.retrofuturabootstrap:RetroFuturaBootstrap:1.0.11") {
-        exclude(group = "org.apache.logging.log4j")
-    }
+    testImplementation(libs.junit.launcher)
+    testImplementation(libs.bytebuddy)
+    testImplementation(libs.bytebuddy.agent)
 }
 
-tasks.named<JavaCompile>("compileJava") {
-    sourceCompatibility = "21"
-    options.release = 8
-    // Targeting 8 is intentional (jabel lowers Java 21 syntax), so javac's "obsolete source/target"
-    // notices are pure noise. This is the suppression javac itself recommends.
-    options.compilerArgs.add("-Xlint:-options")
-    javaCompiler = javaToolchains.compilerFor {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
+tasks.withType<JavaCompile>().configureEach {
+    options.encoding = "UTF-8"
+    options.release = libs.versions.java.get().toInt()
+    options.compilerArgs.addAll(listOf("-Xlint:-options", "-parameters"))
 }
 
-// RFG keeps LWJGL2 compile-only, and its manifest seals org.lwjgl.opengl, which would reject the Display and GLContext stand-ins; tests load an unsealed copy instead
-val lwjgl2Classpath = configurations.named("lwjgl2Classpath")
-val unsealLwjgl by tasks.registering(Jar::class) {
-    archiveFileName = "lwjgl2-unsealed.jar"
-    destinationDirectory = layout.buildDirectory.dir("unsealed")
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    from({ lwjgl2Classpath.get().filter { it.name.startsWith("lwjgl-2") }.map { zipTree(it) } }) {
-        exclude("META-INF/MANIFEST.MF")
-    }
-}
+// Tests run against LWJGL3 with Cleanroom's lwjglx bridge merged in and the GL natives stubbed (gradle/test-lwjgl.gradle.kts)
+val mainRuntime = sourceSets.main.get().runtimeClasspath
+extra["testLwjgl.lwjgl3"] = mainRuntime.filter { it.name.matches(Regex("lwjgl(-[a-z]+)?-3[0-9.]+\\.jar")) }
+extra["testLwjgl.bridge"] = mainRuntime.filter { it.name.startsWith("lwjglxx-") }
+apply(from = rootProject.file("gradle/test-lwjgl.gradle.kts"))
+val prepareTestLwjgl = tasks.named("prepareTestLwjgl")
 
-// The GL test backend and LWJGL2 stand-ins live in common so both modules' tests share one copy
+// The GL test backend and LWJGL2 stand-ins live in common so both modules' tests share one copy. Unimined wires
+// Minecraft, Cleanroom and its libraries into main only, so tests take main's classpaths wholesale, with the
+// test LWJGL ahead of the plain LWJGL3 jars (test classes, and so the stand-ins, still come first)
 sourceSets.test {
     java.srcDir("common/src/testShared/java")
     resources.srcDir("common/src/testShared/resources")
-    runtimeClasspath = runtimeClasspath + files(unsealLwjgl) + lwjgl2Classpath.get().filter { !it.name.startsWith("lwjgl-2") }
+    compileClasspath = files(prepareTestLwjgl) + compileClasspath + sourceSets.main.get().compileClasspath
+    runtimeClasspath = output + files(prepareTestLwjgl) + runtimeClasspath + mainRuntime
 }
 
-// Tests never ship, so they skip jabel and compile as plain Java 21 against the Java 8 main classes
-tasks.named<JavaCompile>("compileTestJava") {
-    sourceCompatibility = "21"
-    targetCompatibility = "21"
-    options.release = 21
-    javaCompiler = javaToolchains.compilerFor {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
-
-tasks.named<Test>("test") {
+tasks.test {
     useJUnitPlatform()
     // run.sh test reports failures itself, and the coverage report must still be produced when tests fail
     ignoreFailures = true
@@ -190,28 +157,33 @@ tasks.named<Test>("test") {
     // Config code writes relative "config/" paths, so tests run from a scratch directory under build
     workingDir = layout.buildDirectory.dir("test-work").get().asFile
     doFirst { workingDir.mkdirs() }
-    javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-    // Mockito's inline mock maker self-attaches a ByteBuddy agent, which JDK 21 warns about unless allowed up front
-    jvmArgs("-XX:+EnableDynamicAgentLoading", "--add-opens", "java.base/java.nio=ALL-UNNAMED", "--add-opens", "java.base/java.lang=ALL-UNNAMED")
+    // Mockito's inline mock maker self-attaches a ByteBuddy agent; JDK 25 also wants native and Unsafe access granted up front
+    jvmArgs(
+        "-XX:+EnableDynamicAgentLoading",
+        "--enable-native-access=ALL-UNNAMED",
+        "--sun-misc-unsafe-memory-access=allow",
+        "--add-opens", "java.base/java.nio=ALL-UNNAMED",
+        "--add-opens", "java.base/java.lang=ALL-UNNAMED"
+    )
     systemProperty("impetus.lwjgl.service", "com.bdmajora.testing.TestGl")
+    // LWJGL3's GL classes load their JNI glue when a test mocks them; explicit init keeps them from also opening the system GL driver
+    systemProperty("org.lwjgl.opengl.explicitInit", "true")
     // Compatibility warnings pop Swing dialogs; keep the run headless and silent
     systemProperty("java.awt.headless", "true")
     systemProperty("impetus.hideMessageBoxes", "true")
     testLogging {
         events("failed")
-        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        exceptionFormat = TestExceptionFormat.FULL
     }
-    finalizedBy(tasks.named("jacocoTestReport"))
+    finalizedBy(tasks.jacocoTestReport)
 }
 
 jacoco {
-    toolVersion = "0.8.13"
+    toolVersion = libs.versions.jacoco.get()
 }
 
-tasks.named<JacocoReport>("jacocoTestReport") {
-    dependsOn(tasks.named("test"))
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
     reports {
         xml.required = true
         html.required = true
@@ -219,8 +191,8 @@ tasks.named<JacocoReport>("jacocoTestReport") {
 }
 
 // run.sh test reads the XML; this task is the gate for CI-style runs
-tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
-    dependsOn(tasks.named("test"))
+tasks.jacocoTestCoverageVerification {
+    dependsOn(tasks.test)
     violationRules {
         rule {
             limit { counter = "METHOD"; value = "COVEREDRATIO"; minimum = "1.0".toBigDecimal() }
@@ -229,99 +201,53 @@ tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
     }
 }
 
-tasks.named("reobfJar").configure {
-    enabled = false
-}
-
-tasks.register<ReobfuscateCodeAndMixinsTask>("impetusRemapJar") {
-    tsrgMappings = mcpTasks.srgFile("mcp-srg.srg")
-    deobfMinecraftJar = mcpTasks.taskPackagePatchedMc.flatMap { it.archiveFile }
-    classpath = sourceSets.main.get().compileClasspath
-    archiveBaseName.set(base.archivesName)
-    archiveClassifier.set("reobf")
-    input = tasks.named<Jar>("jar").flatMap { it.archiveFile }
-    dependsOn(mcpTasks.taskGenerateForgeSrgMappings)
-}
-
-// Inlined from buildSrc's ShadowHelper, which existed only to hold this.
-tasks.named<ShadowJar>("shadowJar") {
-    configurations = listOf()
-}
-
-tasks.register<ShadowJar>("shadowRemapJar") {
-    archiveClassifier.set("")
-    configurations = listOf(project.configurations.getByName("shadow"))
-    from(zipTree(tasks.named<Jar>("impetusRemapJar").get().archiveFile))
-    manifest.inheritFrom(tasks.named<Jar>("jar").get().manifest)
-    relocate("org.joml", "com.bdmajora.impetus.engine.impl.shadow.joml")
-    mergeServiceFiles()
-    from("LICENSE", "README.md")
-}
-
-tasks.named<ShadowJar>("shadowRemapJar") {
-    // Forge 1.12.2 cannot scan Java 9 module descriptors.
-    exclude("module-info.class")
-    exclude("**/module-info.class")
-    exclude("META-INF/versions/**/module-info.class")
-
-    // Keep the release jar name stable.
-    archiveFileName.set("impetus-${rootProject.properties["project_base_version"]}.0.jar")
-}
-
-tasks.named<ApplySourceAccessTransformersTask>("applySourceAccessTransformers") {
-    accessTransformerFiles.from("src/main/resources/META-INF/impetus_at.cfg")
-}
-
-val booterLibsJar = tasks.register<ShadowJar>("booterLibsJar") {
-    configurations = listOf(booterLibs)
-    archiveClassifier.set("booter-libs")
-    // The service declarations ship here rather than in the mod jar so that ServiceLoader cannot see
-    // Impetus' Mixin service at all unless the bundled implementation was actually extracted.
-    from("common/src/booterLibs/resources")
-    mergeServiceFiles()
-    exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "META-INF/MANIFEST.MF")
-    exclude("module-info.class", "**/module-info.class", "**/LICENSE*")
-    // Mixin's annotation processor and the hotswap agent are build-time only.
-    exclude("org/spongepowered/tools/**")
-    exclude("com/llamalad7/mixinextras/ap/**")
-    exclude("META-INF/services/javax.annotation.processing.Processor")
-    exclude("META-INF/services/org.spongepowered.tools.obfuscation.service.IObfuscationService")
-}
-
-tasks.named<Jar>("jar") {
-    from(booterLibsJar) {
-        into("com/bdmajora/impetus/booter")
-        rename { "impetus-booter-libs.jar" }
-    }
-    manifest {
-        attributes["FMLAT"] = "impetus_at.cfg"
-        attributes["FMLCorePlugin"] = "com.bdmajora.impetus.core.ImpetusLoadingPlugin"
-        attributes["FMLCorePluginContainsFMLMod"] = "true"
-        attributes["ForceLoadAsMod"] = "true"
-    }
-}
-
-tasks.register("packageJar", Copy::class) {
-    from(tasks.named<ShadowJar>("shadowRemapJar").get().archiveFile)
-    into("${rootProject.layout.buildDirectory.get()}/libs/${project.version}")
-    dependsOn(tasks.named("shadowRemapJar"))
-}
-
-tasks.processResources.configure {
+tasks.processResources {
     inputs.property("version", version)
     filesMatching("mcmod.info") {
-        expand(mapOf("version" to inputs.properties["version"]))
+        expand(mapOf("version" to version))
     }
 }
+
+tasks.jar {
+    archiveClassifier = "dev-slim"
+}
+
+tasks.named<ShadowJar>("shadowJar") {
+    archiveClassifier = "dev"
+    configurations = listOf(engine)
+    // Cleanroom ships JOML, fastutil, gson and ASM itself; only Impetus and its engine go in the jar
+    exclude("module-info.class", "META-INF/versions/**/module-info.class")
+    // Service files must reach the merging transformer as duplicates instead of being dropped by the EXCLUDE strategy
+    mergeServiceFiles()
+    filesMatching("META-INF/services/**") { duplicatesStrategy = DuplicatesStrategy.INCLUDE }
+    from("LICENSE", "README.md")
+    manifest {
+        attributes(
+            "FMLAT" to "impetus_at.cfg",
+            "FMLCorePlugin" to "com.bdmajora.impetus.core.ImpetusLoadingPlugin",
+            "FMLCorePluginContainsFMLMod" to "true",
+            "ForceLoadAsMod" to "true"
+        )
+    }
+}
+
+// The remapped jar is the release; copy it to a stable, versioned location
+val remapShadowJar = tasks.named<Jar>("remapShadowJar")
+tasks.register<Copy>("packageJar") {
+    group = "build"
+    description = "Builds the release jar into build/libs/<version>/"
+    from(remapShadowJar.flatMap { it.archiveFile })
+    into(layout.buildDirectory.dir("libs/$version"))
+    rename { "$modId-$version.jar" }
+}
+tasks.assemble { dependsOn(remapShadowJar) }
 
 publishing {
     publications {
-        create<MavenPublication>("default") {
+        create<MavenPublication>("mod") {
             artifactId = base.archivesName.get()
-            artifact(tasks.named<ShadowJar>("shadowRemapJar").map { it.archiveFile })
-            artifact(tasks.named("sourcesJar")) {
-                classifier = "sources"
-            }
+            artifact(remapShadowJar)
+            artifact(tasks.named("sourcesJar"))
         }
     }
 }

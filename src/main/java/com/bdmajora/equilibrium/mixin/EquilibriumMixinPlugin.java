@@ -3,7 +3,7 @@ package com.bdmajora.equilibrium.mixin;
 import com.bdmajora.equilibrium.Equilibrium;
 import com.bdmajora.equilibrium.config.EquilibriumConfig;
 import com.bdmajora.equilibrium.config.Option;
-import com.bdmajora.impetus.booter.mixin.SimpleMixinPlugin;
+import com.bdmajora.impetus.core.SimpleMixinPlugin;
 
 // Decides which mixins apply by resolving each package path against the option tree; the package is the switch, so adding a mixin under an existing option needs no change here
 public class EquilibriumMixinPlugin extends SimpleMixinPlugin {

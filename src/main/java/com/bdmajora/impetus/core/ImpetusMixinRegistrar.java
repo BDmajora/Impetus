@@ -1,9 +1,11 @@
 package com.bdmajora.impetus.core;
 
-import com.bdmajora.fulgor.Fulgor;
 import net.minecraft.launchwrapper.Launch;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.spongepowered.asm.mixin.Mixins;
 import org.spongepowered.asm.mixin.transformer.Config;
+import zone.rong.mixinbooter.service.ModDiscoverer;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -11,8 +13,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-// Registers Impetus' mixin configurations and suppresses superseded lighting engines, talking to Mixin directly so the same path works under an installed MixinBooter or the bundled copy
+// Registers Impetus' mixin configurations and suppresses superseded lighting engines, talking to Cleanroom's built-in Mixin (CleanMix) directly
 final class ImpetusMixinRegistrar {
+
+    // Fulgor's logger by name only: touching the Fulgor class from a coremod would link it, and with it game types, before any mixin is registered
+    private static final Logger FULGOR_LOGGER = LogManager.getLogger("Fulgor");
 
     // Legacy Phosphor-lineage mods mapped to their configs; Fulgor replaces them and running both would corrupt the lighting
     private static final Map<String, String> SUPERSEDED_LIGHTING_MODS = supersededLightingMods();
@@ -35,13 +40,11 @@ final class ImpetusMixinRegistrar {
         return Collections.unmodifiableMap(mods);
     }
 
-    // Hijacks first so blacklists land before any config is queued
-    static void apply() {
-        hijackSupersededLighting();
+    // Queues every Impetus config; from the coremod constructor, so they are in before any other coremod's injectData could load a target
+    static void queueImpetusConfigs() {
         for (String config : mixinConfigs()) {
             Mixins.addConfiguration(config);
         }
-        restoreDistantHorizonsDepthTexture();
     }
 
     // Order: Impetus/Umbra reserve early-load slots, Coarctatio must apply before vanilla NBT/ResourceLocation instantiation, Fulgor injects lighting fields into World/Chunk, Equilibrium loads last so Fulgor reads its chunk cache, Extras and Dynamic Lights are order-independent after those
@@ -52,24 +55,24 @@ final class ImpetusMixinRegistrar {
     }
 
     // DH's fade pass samples that depth texture through the accessor Impetus registers with DH; injectData runs after every coremod jar joined the classpath, so the resource lookup sees DH's
-    private static void restoreDistantHorizonsDepthTexture() {
+    static void restoreDistantHorizonsDepthTexture() {
         if (Launch.classLoader.getResource(DH_DEPTH_TEXTURE_CONFIG) != null) {
             Mixins.addConfiguration(DH_DEPTH_TEXTURE_CONFIG);
         }
     }
 
-    // Blacklists Phosphor and Alfheim configs when their json is on the classpath, since two lighting engines corrupt light
-    private static void hijackSupersededLighting() {
+    // Blacklists Phosphor and Alfheim configs when either mod is installed, since two lighting engines corrupt light; runs from the coremod constructor, before CleanMix queues any MixinBooter early loader's configs
+    static void hijackSupersededLighting() {
         for (Map.Entry<String, String> mod : SUPERSEDED_LIGHTING_MODS.entrySet()) {
             String config = mod.getValue();
 
-            // Presence is inferred from the config being on the classpath rather than a booter's mod index, keeping this independent of whichever booter is running
-            if (Launch.classLoader.getResource(config) == null) {
+            // Cleanroom's discoverer has read every jar's mod ids before the first coremod is built, while only coremod jars are on the classpath yet
+            if (!ModDiscoverer.isModPresent(mod.getKey())) {
                 continue;
             }
 
             // Warn the user to physically remove the conflicting jar
-            Fulgor.LOGGER.warn("{} was detected. Impetus' own lighting engine (Fulgor) replaces it "
+            FULGOR_LOGGER.warn("{} was detected. Impetus' own lighting engine (Fulgor) replaces it "
                     + "entirely and its patches will be suppressed; you should remove it.", mod.getKey());
 
             Config.blacklist(config);

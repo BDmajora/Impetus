@@ -3,8 +3,8 @@ package com.bdmajora.impetus.umbra.gl.texture;
 import com.bdmajora.impetus.umbra.gl.GlResource;
 import com.bdmajora.impetus.umbra.shaderpack.texture.CustomTextureData;
 import com.bdmajora.impetus.umbra.shaderpack.texture.TextureFilteringData;
-import com.bdmajora.impetus.lwjgl.GL11;
-import com.bdmajora.impetus.lwjgl.GL12;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL12;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;

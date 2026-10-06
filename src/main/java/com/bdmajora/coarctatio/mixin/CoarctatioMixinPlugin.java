@@ -2,33 +2,35 @@ package com.bdmajora.coarctatio.mixin;
 
 import com.bdmajora.coarctatio.Coarctatio;
 import com.bdmajora.coarctatio.CoarctatioConfig;
-import com.bdmajora.impetus.booter.mixin.SimpleMixinPlugin;
+import com.bdmajora.impetus.core.SimpleMixinPlugin;
 import org.spongepowered.asm.service.IClassTracker;
 import org.spongepowered.asm.service.MixinService;
 
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 
 // Gates each Coarctatio mixin on its config switch; off means never loaded, so a suspect feature can be disabled without a rebuild
 public class CoarctatioMixinPlugin extends SimpleMixinPlugin {
-    // The event-recycling mixins, added dynamically rather than from the json for the reason given in getMixins
-    private static final List<String> RECYCLED_EVENT_MIXINS = Arrays.asList(
-            "events.TickEventMixin",
-            "events.PlayerTickEventMixin",
-            "events.WorldTickEventMixin",
-            "events.RenderTickEventMixin",
-            "events.AttachCapabilitiesEventMixin",
-            "events.BlockEventMixin",
-            "events.NeighborNotifyEventMixin",
-            "events.FMLCommonHandlerMixin",
-            "events.ForgeEventFactoryMixin");
+    // A feature whose mixins getMixins lists instead of the json, and the targets that must still be unloaded for them to apply
+    private record Guarded(Predicate<CoarctatioConfig> enabled, String feature, List<String> mixins, List<String> targets) {
+    }
 
-    private static final List<String> RECYCLED_EVENT_TARGETS = Arrays.asList(
-            "net.minecraftforge.fml.common.gameevent.TickEvent",
-            "net.minecraftforge.event.AttachCapabilitiesEvent",
-            "net.minecraftforge.event.world.BlockEvent",
-            "net.minecraftforge.fml.common.FMLCommonHandler",
-            "net.minecraftforge.event.ForgeEventFactory");
+    // Classes another coremod may load before Mixin prepares: FML's discovery types (ModCandidate already is on some Cleanroom packs) and the event plumbing
+    private static final List<Guarded> GUARDED = List.of(
+            new Guarded(config -> config.recycleEvents, "event recycling",
+                    List.of("events.TickEventMixin", "events.PlayerTickEventMixin", "events.WorldTickEventMixin",
+                            "events.RenderTickEventMixin", "events.AttachCapabilitiesEventMixin", "events.BlockEventMixin",
+                            "events.NeighborNotifyEventMixin", "events.FMLCommonHandlerMixin", "events.ForgeEventFactoryMixin"),
+                    List.of("net.minecraftforge.fml.common.gameevent.TickEvent", "net.minecraftforge.event.AttachCapabilitiesEvent",
+                            "net.minecraftforge.event.world.BlockEvent", "net.minecraftforge.fml.common.FMLCommonHandler",
+                            "net.minecraftforge.event.ForgeEventFactory")),
+            new Guarded(config -> config.internLoaderStrings, "annotation string interning",
+                    List.of("forge.ASMDataMixin"), List.of("net.minecraftforge.fml.common.discovery.ASMDataTable$ASMData")),
+            new Guarded(config -> config.internLoaderStrings, "package name interning",
+                    List.of("forge.ModCandidateMixin"), List.of("net.minecraftforge.fml.common.discovery.ModCandidate")),
+            new Guarded(config -> config.modScanCache, "the mod scan cache",
+                    List.of("forge.JarDiscovererMixin"), List.of("net.minecraftforge.fml.common.discovery.JarDiscoverer")));
 
     private static final String PACKAGE = "com.bdmajora.coarctatio.mixin.";
 
@@ -138,10 +140,7 @@ public class CoarctatioMixinPlugin extends SimpleMixinPlugin {
             case "forge.ASMDataMixin":
             case "forge.ModCandidateMixin":
                 return this.config.internLoaderStrings;
-            case "forge.ASMModParserAccessor":
-            case "forge.ModAnnotationAccessor":
             case "forge.JarDiscovererMixin":
-            case "forge.ModDiscovererMixin":
                 return this.config.modScanCache;
             case "client.ModelManagerMixin":
                 // Drives the pool lifecycle and the statistics dump; pointless with nothing pooling, and the dynamic reload opens the pools itself
@@ -168,21 +167,22 @@ public class CoarctatioMixinPlugin extends SimpleMixinPlugin {
         }
     }
 
-    // Null means use the mixin list from the json
+    // Mixin checks every listed target at prepare time, before the plugin is asked, and fails the whole config over one already loaded; listing these here instead turns just that feature off. Null means the json's list alone
     @Override
     public List<String> getMixins() {
-        // Only listed when the option is on: Mixin validates every listed target at prepare time, before the plugin is asked, and refuses a config whose target is already loaded
-        if (!this.config.recycleEvents) {
-            return null;
-        }
-        // Another coremod may already have pulled one of the targets in, which would fail the whole config rather than just this feature
         IClassTracker tracker = MixinService.getService().getClassTracker();
-        for (String target : RECYCLED_EVENT_TARGETS) {
-            if (tracker != null && tracker.isClassLoaded(target)) {
-                Coarctatio.LOGGER.warn("{} was loaded before mixins could apply; event recycling is off for this launch", target);
-                return null;
+        List<String> mixins = new ArrayList<>();
+        for (Guarded group : GUARDED) {
+            if (!group.enabled().test(this.config)) {
+                continue;
             }
+            String early = tracker == null ? null : group.targets().stream().filter(tracker::isClassLoaded).findFirst().orElse(null);
+            if (early != null) {
+                Coarctatio.LOGGER.warn("{} was loaded before mixins could apply; {} is off for this launch", early, group.feature());
+                continue;
+            }
+            mixins.addAll(group.mixins());
         }
-        return RECYCLED_EVENT_MIXINS;
+        return mixins.isEmpty() ? null : mixins;
     }
 }

@@ -423,7 +423,6 @@ class SmallMixinsTest {
 
     @Test
     void theLightmapIsOnlyRebuiltWhenWhatItReadsChanges() {
-        Mc.dimensions();
         EntityRendererLightmapMixin renderer = Mixins.instance(EntityRendererLightmapMixin.class);
         Mixins.set(renderer, "mc", client);
         Mixins.set(renderer, "impetus$lightmapKey", Long.MIN_VALUE);

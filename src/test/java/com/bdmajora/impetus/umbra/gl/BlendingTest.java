@@ -35,9 +35,9 @@ class BlendingTest {
                 "CONSTANT_COLOR", "ONE_MINUS_CONSTANT_COLOR", "CONSTANT_ALPHA", "ONE_MINUS_CONSTANT_ALPHA"};
         int[] values = {GL11.GL_ZERO, GL11.GL_ONE, GL11.GL_SRC_COLOR, GL11.GL_ONE_MINUS_SRC_COLOR, GL11.GL_DST_COLOR,
                 GL11.GL_ONE_MINUS_DST_COLOR, GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_DST_ALPHA,
-                GL11.GL_ONE_MINUS_DST_ALPHA, GL11.GL_SRC_ALPHA_SATURATE, com.bdmajora.impetus.lwjgl.GL14.GL_CONSTANT_COLOR,
-                com.bdmajora.impetus.lwjgl.GL14.GL_ONE_MINUS_CONSTANT_COLOR, com.bdmajora.impetus.lwjgl.GL14.GL_CONSTANT_ALPHA,
-                com.bdmajora.impetus.lwjgl.GL14.GL_ONE_MINUS_CONSTANT_ALPHA};
+                GL11.GL_ONE_MINUS_DST_ALPHA, GL11.GL_SRC_ALPHA_SATURATE, org.lwjgl.opengl.GL14.GL_CONSTANT_COLOR,
+                org.lwjgl.opengl.GL14.GL_ONE_MINUS_CONSTANT_COLOR, org.lwjgl.opengl.GL14.GL_CONSTANT_ALPHA,
+                org.lwjgl.opengl.GL14.GL_ONE_MINUS_CONSTANT_ALPHA};
         for (int i = 0; i < names.length; i++) {
             assertEquals(values[i], BlendMode.parse(names[i] + " ONE").srcRgb(), names[i]);
         }

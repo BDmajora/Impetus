@@ -1,6 +1,5 @@
 package com.bdmajora.impetus.impl.render.terrain;
 
-import com.github.bsideup.jabel.Desugar;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.client.renderer.DestroyBlockProgress;
@@ -25,7 +24,6 @@ import java.util.*;
 // extends vanilla's RenderGlobal with the Impetus terrain renderer's own draw and visibility entry points
 public class ImpetusWorldRenderer extends SimpleWorldRenderer<WorldClient, VintageRenderSectionManager, BlockRenderLayer, TileEntity, ImpetusWorldRenderer.TileEntityRenderContext>  {
     // What the block entity pass needs from RenderGlobal
-    @Desugar
     public record TileEntityRenderContext(Map<Integer, DestroyBlockProgress> damagedBlocks, float partialTicks) {}
 
     // the ImpetusWorldRenderer for the current dimension

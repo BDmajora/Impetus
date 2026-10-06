@@ -22,8 +22,9 @@ public abstract class PacketBufferMixin {
         return NetworkLimits.stringLimit();
     }
 
-    // Only the generic cap is widened; a caller that asked for a small explicit limit (channel names, player names) keeps it
-    @ModifyVariable(method = "readString", at = @At("HEAD"), argsOnly = true, ordinal = 0)
+    // Only the generic cap is widened; a caller that asked for a small explicit limit (channel names, player names) keeps it.
+    // Described in full because Netty 4.2's ByteBuf.readString(int, Charset) makes the bare name ambiguous to the remapper
+    @ModifyVariable(method = "readString(I)Ljava/lang/String;", at = @At("HEAD"), argsOnly = true, ordinal = 0)
     private int impetus$readStringLimit(int maxLength) {
         return maxLength == NetworkLimits.VANILLA_STRING ? NetworkLimits.stringLimit() : maxLength;
     }

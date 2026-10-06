@@ -12,7 +12,7 @@ COUNTERS = ["CLASS", "METHOD", "LINE", "BRANCH"]
 
 def junit_results(module_dir):
     cases = []
-    for path in sorted(glob.glob(os.path.join(module_dir, "build", "test-results", "test", "*.xml"))):
+    for path in sorted(glob.glob(os.path.join(module_dir, "build", "test-results", "*", "*.xml"))):
         for case in ET.parse(path).getroot().iter("testcase"):
             status = "pass"
             detail = ""

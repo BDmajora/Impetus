@@ -2,7 +2,7 @@ package com.bdmajora.impetus.umbra.gl.shader;
 
 import com.bdmajora.impetus.umbra.gl.GlResource;
 import com.bdmajora.impetus.umbra.shaderpack.preprocessor.GlslPreprocessor;
-import com.bdmajora.impetus.lwjgl.GL20;
+import org.lwjgl.opengl.GL20;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 

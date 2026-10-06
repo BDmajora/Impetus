@@ -1,37 +1,24 @@
 package com.bdmajora.impetus.core;
 
-import com.bdmajora.impetus.booter.BooterBootstrap;
-import com.bdmajora.impetus.booter.BooterCore;
 import net.minecraftforge.fml.relauncher.IFMLLoadingPlugin;
 
-import java.util.List;
 import java.util.Map;
 
-// Impetus' single coremod entry point (FMLCorePlugin takes one class): brings up Mixin when nothing else has and registers Impetus' configs, holding no org.spongepowered.asm reference; sorted just after MixinBooter's MIN_VALUE + 1 so an installed MixinBooter always wins the Mixin service
+// Impetus' single coremod entry point (FMLCorePlugin takes one class); Cleanroom has Mixin running before any coremod is built, so all that is left here is registering Impetus' configs
 @IFMLLoadingPlugin.Name("Impetus")
 @IFMLLoadingPlugin.MCVersion("1.12.2")
-@IFMLLoadingPlugin.SortingIndex(Integer.MIN_VALUE + 2)
 public class ImpetusLoadingPlugin implements IFMLLoadingPlugin {
 
+    // As early as Impetus gets control: the blacklist must precede the superseded mods' own registration, and Impetus' configs must be queued before anything loads their targets
     public ImpetusLoadingPlugin() {
-        // Must happen in the constructor: Mixin has to be live before any other coremod's injectData runs.
-        if (BooterBootstrap.initialize() == BooterBootstrap.MIXIN_OWNED) {
-            BooterCore.initialize();
-        }
+        ImpetusMixinRegistrar.hijackSupersededLighting();
+        ImpetusMixinRegistrar.queueImpetusConfigs();
     }
 
-    // Runs the booter's own injection when Impetus owns Mixin, then registers Impetus' configs under either booter
+    // injectData runs once every coremod jar has joined the classpath, which DH's resource lookup needs
     @Override
     public void injectData(Map<String, Object> data) {
-        if (BooterBootstrap.state() == BooterBootstrap.MIXIN_OWNED) {
-            Object coremodList = data.get("coremodList");
-            if (!(coremodList instanceof List)) {
-                throw new RuntimeException("Blackboard property 'coremodList' must be of type List, early loaders were not able to be gathered");
-            }
-            BooterCore.injectData((List<?>) coremodList);
-        }
-        // Runs under either booter; Mixin is bootstrapped by this point in both paths.
-        ImpetusMixinRegistrar.apply();
+        ImpetusMixinRegistrar.restoreDistantHorizonsDepthTexture();
     }
 
     // Required by IFMLLoadingPlugin; left blank as Impetus has no ASM transformers
@@ -52,7 +39,7 @@ public class ImpetusLoadingPlugin implements IFMLLoadingPlugin {
         return null;
     }
 
-    // Required by IFMLLoadingPlugin; left blank as Impetus does not use access transformers
+    // Required by IFMLLoadingPlugin; the access transformer is declared through FMLAT in the manifest
     @Override
     public String getAccessTransformerClass() {
         return null;

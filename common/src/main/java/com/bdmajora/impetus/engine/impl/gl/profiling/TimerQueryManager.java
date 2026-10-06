@@ -1,8 +1,8 @@
 package com.bdmajora.impetus.engine.impl.gl.profiling;
 
-import com.bdmajora.impetus.lwjgl.GL15;
-import com.bdmajora.impetus.lwjgl.GL32;
-import com.bdmajora.impetus.lwjgl.GL33;
+import org.lwjgl.opengl.GL15;
+import org.lwjgl.opengl.GL32;
+import org.lwjgl.opengl.GL33;
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 import it.unimi.dsi.fastutil.ints.IntArrayFIFOQueue;

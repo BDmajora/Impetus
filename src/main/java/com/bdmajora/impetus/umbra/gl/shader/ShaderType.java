@@ -1,9 +1,9 @@
 package com.bdmajora.impetus.umbra.gl.shader;
 
-import com.bdmajora.impetus.lwjgl.GL20;
-import com.bdmajora.impetus.lwjgl.GL32;
-import com.bdmajora.impetus.lwjgl.GL40;
-import com.bdmajora.impetus.lwjgl.GL43;
+import org.lwjgl.opengl.GL20;
+import org.lwjgl.opengl.GL32;
+import org.lwjgl.opengl.GL40;
+import org.lwjgl.opengl.GL43;
 
 // GLSL stages an OptiFine-style 1.12.2 pack can supply: vertex/fragment mandatory, geometry needs GL3.2, tessellation GL4.0 (most 1.12.2 packs use neither)
 public enum ShaderType {

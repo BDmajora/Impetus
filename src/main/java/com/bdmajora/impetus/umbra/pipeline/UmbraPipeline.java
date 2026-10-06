@@ -7,8 +7,8 @@ import com.bdmajora.impetus.umbra.gl.program.ShaderProgramCompiler;
 import com.bdmajora.impetus.umbra.gl.shader.ShaderMacros;
 import com.bdmajora.impetus.umbra.shaderpack.ProgramSource;
 import com.bdmajora.impetus.umbra.shaderpack.ShaderPack;
-import com.bdmajora.impetus.lwjgl.GL11;
-import com.bdmajora.impetus.lwjgl.GL30;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL30;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

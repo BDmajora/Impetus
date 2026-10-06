@@ -10,7 +10,7 @@ import com.bdmajora.impetus.api.options.control.SliderControl;
 import com.bdmajora.impetus.api.options.control.TickBoxControl;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
-import org.lwjgl.opengl.Display;
+import com.bdmajora.impetus.impl.platform.GameWindow;
 import com.bdmajora.impetus.ImpetusVintage;
 import com.bdmajora.impetus.api.options.structure.OptionFlag;
 import com.bdmajora.impetus.api.options.structure.OptionGroup;
@@ -126,7 +126,7 @@ public class ImpetusGameOptionPages {
                         .setControl(TickBoxControl::new)
                         .setBinding((opts, value) -> {
                             opts.enableVsync = value;
-                            Display.setVSyncEnabled(opts.enableVsync);
+                            GameWindow.setVsync(opts.enableVsync);
                         }, opts -> opts.enableVsync)
                         .setImpact(OptionImpact.VARIES)
                         .build())

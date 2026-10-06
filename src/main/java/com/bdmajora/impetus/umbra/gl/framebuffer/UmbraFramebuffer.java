@@ -1,8 +1,8 @@
 package com.bdmajora.impetus.umbra.gl.framebuffer;
 
 import com.bdmajora.impetus.umbra.gl.GlResource;
-import com.bdmajora.impetus.lwjgl.GL11;
-import com.bdmajora.impetus.lwjgl.GL30;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL30;
 import com.bdmajora.impetus.lwjgl.MemoryStack;
 
 import java.util.Arrays;

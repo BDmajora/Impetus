@@ -51,7 +51,7 @@ import com.bdmajora.impetus.umbra.gl.uniform.UniformUpdateFrequency;
 import com.bdmajora.impetus.umbra.material.WorldRenderingSettings;
 import com.bdmajora.impetus.umbra.pipeline.ColorSpaceConverter;
 import com.bdmajora.impetus.umbra.vertices.UmbraChunkVertexType;
-import com.bdmajora.impetus.lwjgl.GL11;
+import org.lwjgl.opengl.GL11;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 

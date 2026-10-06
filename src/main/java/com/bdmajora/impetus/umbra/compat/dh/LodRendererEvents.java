@@ -1,6 +1,6 @@
 package com.bdmajora.impetus.umbra.compat.dh;
 
-import com.bdmajora.impetus.lwjgl.GL11;
+import org.lwjgl.opengl.GL11;
 import com.bdmajora.impetus.umbra.Umbra;
 import com.bdmajora.impetus.umbra.gl.GlTextureUnits;
 import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;

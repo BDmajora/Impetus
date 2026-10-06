@@ -2,9 +2,9 @@ package com.bdmajora.impetus.umbra.targets;
 
 import com.bdmajora.impetus.umbra.gl.framebuffer.UmbraFramebuffer;
 import com.bdmajora.impetus.umbra.gl.texture.InternalTextureFormat;
-import com.bdmajora.impetus.lwjgl.GL11;
-import com.bdmajora.impetus.lwjgl.GL14;
-import com.bdmajora.impetus.lwjgl.GL30;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL14;
+import org.lwjgl.opengl.GL30;
 
 import java.util.ArrayList;
 import java.util.Arrays;

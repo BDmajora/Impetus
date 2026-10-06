@@ -567,6 +567,16 @@ class LWJGL2ServiceTest {
         assertEquals(MemoryUtilities.memAddress(buffer), address);
         assertEquals(address + 4, service.memAddress(buffer, 4));
         assertEquals(4L, service.memAddress(null, 4));
+        // Positions count elements from the base, whatever the buffer's own position
+        buffer.position(8);
+        assertEquals(address + 4, service.memAddress(buffer, 4));
+        buffer.position(0);
+        assertEquals(address + 2, service.memAddress(buffer.asShortBuffer(), 1));
+        assertEquals(address + 2, service.memAddress(buffer.asCharBuffer(), 1));
+        assertEquals(address + 4, service.memAddress(buffer.asIntBuffer(), 1));
+        assertEquals(address + 4, service.memAddress(buffer.asFloatBuffer(), 1));
+        assertEquals(address + 8, service.memAddress(buffer.asLongBuffer(), 1));
+        assertEquals(address + 8, service.memAddress(buffer.asDoubleBuffer(), 1));
         assertEquals(32, service.memByteBuffer(address, 32).capacity());
         ByteBuffer slice = service.memSlice(buffer, 8, 8);
         assertEquals(address + 8, service.memAddress(slice));

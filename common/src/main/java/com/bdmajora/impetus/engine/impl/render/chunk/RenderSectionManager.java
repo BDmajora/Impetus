@@ -120,6 +120,9 @@ public abstract class RenderSectionManager {
     // pass of the same frame then skips re-running the search.
     private boolean shadowPassRanThisFrame;
 
+    // The frame every search stamps, ours rather than the caller's: the lattice's visit gate and the build-result ordering need one increasing sequence, and the terrain pass (vanilla's frameCount) and Umbra's shadow pass (its own counter, reset on pipeline rebuild) count separately
+    private int searchFrame;
+
     // Shared by every section (one allocation, not one per section); installed on each RenderSection so its
     // packedMetadata changes fan out to the list manager mirror(s).
     private final RenderSection.MetadataSink metadataSink = this::pushSectionMetadata;
@@ -231,7 +234,7 @@ public abstract class RenderSectionManager {
             // build results between the two passes carries over to the next frame.
             this.shadowPassRanThisFrame = false;
         } else {
-            this.createTerrainRenderList(positionedViewport, null, frame, spectator);
+            this.createTerrainRenderList(positionedViewport, null, ++this.searchFrame, spectator);
         }
 
         this.checkTranslucencyChange();
@@ -249,8 +252,11 @@ public abstract class RenderSectionManager {
         this.updateCameraPosition(playerViewport);
         this.shadowPassRanThisFrame = true;
 
+        // One stamp for both searches; they write separate visit-state arrays, so sharing it is safe
+        int searchFrame = ++this.searchFrame;
+
         if (this.renderListManager.isNeedsUpdate()) {
-            this.createTerrainRenderList(playerViewport, null, frame, spectator);
+            this.createTerrainRenderList(playerViewport, null, searchFrame, spectator);
         }
 
         Vector3fc lightVector = null;
@@ -259,7 +265,7 @@ public abstract class RenderSectionManager {
             lightVector = new Vector3f(searchFrustum.shadowLightX(), searchFrustum.shadowLightY(), searchFrustum.shadowLightZ());
         }
 
-        this.shadowRenderListManager.startShadowGraphUpdate(shadowViewport, frame, this.regions.getRegionIdsLength(),
+        this.shadowRenderListManager.startShadowGraphUpdate(shadowViewport, searchFrame, this.regions.getRegionIdsLength(),
                 this.getSearchDistance(null), lightVector, this.getTargetQueueSize());
     }
 

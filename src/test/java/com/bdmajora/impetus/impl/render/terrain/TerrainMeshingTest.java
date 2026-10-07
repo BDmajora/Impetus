@@ -942,10 +942,11 @@ class TerrainMeshingTest {
         assertTrue(renderer.isEntityVisible(far));
         options.performance.useEntityCulling = true;
 
-        // The shadow pass only culls, draws from the sun's matrices and sees every entity
+        // The shadow pass walks both lists through its own entry, draws from the sun's matrices and sees every entity
         Statics.set(UmbraShadowRenderer.class, "shadowPassActive", true);
         assertTrue(manager.isInShadowPass());
-        renderer.setupTerrain(viewport, camera, 4, false, false);
+        renderer.setupShadowTerrain(viewport, viewport, camera, 4, false);
+        assertTrue(manager.didShadowPassRunThisFrame());
         renderer.drawChunkLayer(BlockRenderLayer.SOLID, 8, 20, 8);
         assertTrue(renderer.isEntityVisible(far));
         Statics.set(UmbraShadowRenderer.class, "shadowPassActive", false);

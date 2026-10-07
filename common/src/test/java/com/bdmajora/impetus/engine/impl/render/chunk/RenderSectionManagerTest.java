@@ -217,6 +217,47 @@ class RenderSectionManagerTest {
         manager.scheduleAsyncTask(() -> {});
     }
 
+    // The terrain pass hands in vanilla's frameCount and Umbra's shadow pass its own counter from zero; the walks used to stamp those, so one under the smaller number reached only the camera section
+    @Test
+    void walksStampTheirOwnFramesWhateverTheCallerCounts() {
+        manager = new TestSectionManager(commands, 4, 0, 1, true, AsyncOcclusionMode.NONE, -1);
+        manager.onChunkAdded(0, 0);
+        manager.onChunkAdded(1, 0);
+        manager.onChunkAdded(2, 0);
+        Viewport viewport = Sections.viewport(8, 8, 8);
+        frames(viewport, 5000, true);
+        assertEquals(3, manager.getVisibleChunkCount());
+
+        // A player walk driven from the shadow pass under a far smaller number still reaches every section
+        manager.shadowPass = true;
+        manager.markGraphDirty();
+        manager.update(viewport, 1, false);
+        manager.shadowPass = false;
+        assertEquals(3, manager.getVisibleChunkCount());
+        assertTrue(manager.isSectionVisible(2, 0, 0));
+
+        // The shadow pass's own entry walks both lists, and the terrain pass after it reuses the player walk
+        manager.shadowPass = true;
+        manager.markGraphDirty();
+        manager.updateForShadowPass(viewport, viewport, 2, false);
+        assertTrue(manager.didShadowPassRunThisFrame());
+        assertEquals(3, manager.getVisibleChunkCount());
+        manager.shadowPass = false;
+        assertTrue(manager.needsUpdate());
+        manager.update(viewport, 6000, false);
+        assertFalse(manager.didShadowPassRunThisFrame());
+        assertEquals(3, manager.getVisibleChunkCount());
+
+        // A rebuild submitted after the mixed numbers is applied, not dropped as older than the last build
+        RenderSection far = manager.getRenderSectionOrNull(2, 0, 0);
+        int lastBuilt = far.getLastBuiltFrame();
+        int built = manager.builds.get();
+        manager.scheduleRebuild(2, 0, 0, false);
+        frames(viewport, 3, true);
+        assertEquals(built + 1, manager.builds.get());
+        assertTrue(far.getLastBuiltFrame() > lastBuilt);
+    }
+
     // Only the abstract hooks, so every base default runs
     private static final class Bare extends RenderSectionManager {
         Bare(CommandList commands) {

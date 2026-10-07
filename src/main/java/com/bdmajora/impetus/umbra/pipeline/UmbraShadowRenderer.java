@@ -13,8 +13,10 @@ import net.minecraft.world.World;
 import com.bdmajora.impetus.engine.impl.gl.device.RenderDevice;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.joml.FrustumIntersection;
 import org.joml.Matrix4f;
 import org.joml.Vector3d;
+import com.bdmajora.impetus.impl.render.terrain.CameraHelper;
 import com.bdmajora.impetus.impl.render.terrain.ImpetusWorldRenderer;
 import com.bdmajora.impetus.umbra.gl.framebuffer.UmbraFramebuffer;
 import com.bdmajora.impetus.umbra.gl.program.DrawBuffers;
@@ -107,7 +109,7 @@ public class UmbraShadowRenderer {
 
     private int failureCount;
     private boolean failed;
-    // Monotonic frame tag for the shadow pass's own render-list graph updates, independent of the camera pass's counter so neither satisfies the other's dirty check
+    // Only fills setupShadowTerrain's deprecated frame argument; the section manager stamps its searches from its own counter
     private int shadowListFrame;
     private boolean destroyed;
 
@@ -303,6 +305,18 @@ public class UmbraShadowRenderer {
         return this.cullingFrustum;
     }
 
+    // The player's view as RenderGlobal's terrain setup builds it (feet position plus third-person offset, frustum.culling honoured), but from Umbra's captured matrices, since vanilla's shared clipping helper is re-initialised later in the frame while an async search may still be reading it
+    static com.bdmajora.impetus.engine.impl.render.viewport.Viewport playerViewport(Vector3d camera) {
+        Vector3d position = new Vector3d(camera).add(CameraHelper.getThirdPersonOffset());
+        UmbraRenderingPipeline pipeline = com.bdmajora.impetus.umbra.Umbra.getRenderingPipeline();
+        if (pipeline != null && pipeline.shouldDisableFrustumCulling()) {
+            return new com.bdmajora.impetus.engine.impl.render.viewport.Viewport((minX, minY, minZ, maxX, maxY, maxZ) -> true, position);
+        }
+        FrustumIntersection frustum = new FrustumIntersection().set(
+                new Matrix4f(CapturedRenderingState.INSTANCE.getGbufferProjection()).mul(CapturedRenderingState.INSTANCE.getGbufferModelView()), true);
+        return new com.bdmajora.impetus.engine.impl.render.viewport.Viewport(frustum::testAab, position);
+    }
+
     // Whether the active pack draws Distant Horizons LODs into the shadow map this pass
     private static boolean dhShadowsActive() {
         UmbraRenderingPipeline pipeline = com.bdmajora.impetus.umbra.Umbra.getRenderingPipeline();
@@ -381,7 +395,7 @@ public class UmbraShadowRenderer {
 
             Vector3d camera = CapturedRenderingState.INSTANCE.getCameraPosition();
 
-            // Umbra `shadow.culling = reversed` parity: build the DEDICATED shadow render list of every built section in range with no frustum or occlusion culling (isInShadowPass() routes updates and draws onto the shadow RenderListManager); reusing the culled main lists made cave sections blink in the pack's voxelization and the floodfill strobed forever
+            // Umbra `shadow.culling = reversed` parity: build the DEDICATED shadow render list of every built section in range with no frustum or occlusion culling (setupShadowTerrain searches the shadow RenderListManager, isInShadowPass() routes the draws onto it); reusing the culled main lists made cave sections blink in the pack's voxelization and the floodfill strobed forever
             RenderDevice.enterManagedCode();
             try {
                 // `shadow.culling`: `off` keeps every loaded section, otherwise a box of the pack's shadowDistance (Umbra BoxCuller), position-only so the section set stays frame-stable; the advanced/safe-zone frustums derive from THIS frame's matrices and are rebuilt every pass. With DH LODs in the map the view frustum takes DH's far plane (Iris does the same), or the LODs past the vanilla far plane would never cast
@@ -392,12 +406,14 @@ public class UmbraShadowRenderer {
                         Minecraft.getMinecraft().gameSettings.renderDistanceChunks * 16,
                         this.sunPathRotation,
                         dhShadows ? DhCompat.getProjection() : CapturedRenderingState.INSTANCE.getGbufferProjection());
-                worldRenderer.setupTerrain(
+                // This pass precedes the terrain pass, so it also runs the player-view search, which takes the player's view rather than the sun's box
+                worldRenderer.setupShadowTerrain(
+                        playerViewport(camera),
                         new com.bdmajora.impetus.engine.impl.render.viewport.Viewport(
                                 this.cullingFrustum,
                                 new Vector3d(camera.x, camera.y, camera.z)),
                         ImpetusWorldRenderer.captureCameraState(mc.getRenderPartialTicks()),
-                        ++this.shadowListFrame, false, false);
+                        ++this.shadowListFrame, mc.player != null && mc.player.isSpectator());
             } finally {
                 RenderDevice.exitManagedCode();
             }

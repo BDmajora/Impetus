@@ -1,6 +1,7 @@
 package com.bdmajora.impetus.umbra.pipeline;
 
 import com.bdmajora.impetus.engine.impl.render.terrain.SimpleWorldRenderer;
+import com.bdmajora.impetus.engine.impl.render.viewport.Viewport;
 import com.bdmajora.impetus.impl.render.terrain.ImpetusWorldRenderer;
 import com.bdmajora.impetus.umbra.Umbra;
 import com.bdmajora.impetus.umbra.gl.blending.ProgramAlphaTest;
@@ -27,6 +28,7 @@ import com.bdmajora.testing.TestGl;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.client.multiplayer.WorldClient;
+import net.minecraft.client.renderer.ActiveRenderInfo;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.renderer.RenderGlobal;
 import net.minecraft.client.renderer.entity.RenderManager;
@@ -40,6 +42,7 @@ import net.minecraft.tileentity.TileEntity;
 import net.minecraft.tileentity.TileEntityFurnace;
 import net.minecraft.util.math.BlockPos;
 import org.joml.Matrix4f;
+import org.joml.Vector3d;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +50,7 @@ import org.junit.jupiter.api.Test;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL14;
+import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
@@ -54,6 +58,7 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -403,6 +408,12 @@ class UmbraRenderingPipelineTest {
         }
         verify(TestGl.gl(), Mockito.atLeastOnce()).glDispatchCompute(anyInt(), anyInt(), anyInt());
         verify(TestGl.gl(), Mockito.atLeastOnce()).glDispatchComputeIndirect(anyLong());
+        // The shadow pass walks both lists through setupShadowTerrain, the player's walk with the player's view (unculled, this pack turns frustum culling off), never through the camera pass's entry
+        ImpetusWorldRenderer worldRenderer = ImpetusWorldRenderer.instanceNullable();
+        ArgumentCaptor<Viewport> playerView = ArgumentCaptor.forClass(Viewport.class);
+        verify(worldRenderer, Mockito.atLeastOnce()).setupShadowTerrain(playerView.capture(), any(), any(), anyInt(), eq(false));
+        verify(worldRenderer, never()).setupTerrain(any(), any(), anyInt(), Mockito.anyBoolean(), Mockito.anyBoolean());
+        assertTrue(playerView.getValue().isBoxVisible(-1.0e6, -1.0e6, -1.0e6, -1.0e6 + 1, -1.0e6 + 1, -1.0e6 + 1));
 
         // A program that declared both shadow maps as plain sampler2D gets the raw-depth samplers
         when(TestGl.gl().glGetProgrami(77, 0x8B86)).thenReturn(2);
@@ -558,6 +569,27 @@ class UmbraRenderingPipelineTest {
         when(TestGl.gl().glCheckFramebufferStatus(anyInt())).thenReturn(0);
         assertThrows(IllegalStateException.class, () -> new UmbraRenderingPipeline(pack));
         verify(TestGl.gl(), Mockito.atLeastOnce()).glDeleteSamplers(anyInt());
+    }
+
+    @Test
+    void theShadowPassGivesThePlayerWalkTheCapturedPlayerView() {
+        // Identity matrices make the view the clip cube around the feet, and an identity model-view adds no third-person offset
+        Mixins.set(Umbra.class, "renderingPipeline", null);
+        FloatBuffer modelView = Statics.get(ActiveRenderInfo.class, "MODELVIEW");
+        float[] saved = new float[16];
+        modelView.get(0, saved);
+        modelView.put(0, new float[] {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1});
+        CapturedRenderingState.INSTANCE.setGbufferProjection(new Matrix4f());
+        CapturedRenderingState.INSTANCE.setGbufferModelView(new Matrix4f());
+        try {
+            Viewport view = UmbraShadowRenderer.playerViewport(new Vector3d(100.5, 64, 100.5));
+            assertEquals(6, view.getChunkCoord().x());
+            assertEquals(4, view.getChunkCoord().y());
+            assertTrue(view.isBoxVisible(100, 64, 100, 101, 65, 101));
+            assertFalse(view.isBoxVisible(110, 64, 100, 111, 65, 101));
+        } finally {
+            modelView.put(0, saved);
+        }
     }
 
     @Test

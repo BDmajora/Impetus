@@ -100,13 +100,9 @@ public class VintageRenderSectionManager extends RenderSectionManager {
         return ImpetusVintage.options().performance.useFogOcclusion;
     }
 
-    // Off inside opaque blocks or in spectator, matching vanilla
+    // Off inside opaque blocks or in spectator, matching vanilla; only the player-view search asks (the shadow pass runs it too), the shadow search is a frustum-only scan that keeps voxelization's section set frame-stable on its own
     @Override
     protected boolean shouldUseOcclusionCulling(Viewport positionedViewport, boolean spectator) {
-        if (isInShadowPass()) {
-            // Voxelization must see a FRAME-STABLE section set: occlusion culling lets marginal sections blink in and out of the shadow draw, so the pack's colored-lighting floodfill chases a different voxel field every frame and strobes
-            return false;
-        }
         // `occlusion.culling = false`: the pack needs geometry the player cannot see, since it samples the gbuffer from another angle (reflections, its own shadow logic)
         com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline pipeline =
                 com.bdmajora.impetus.umbra.Umbra.getRenderingPipeline();

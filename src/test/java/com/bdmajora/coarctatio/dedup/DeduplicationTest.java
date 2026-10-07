@@ -5,6 +5,7 @@ import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
 import com.bdmajora.testing.Statics;
 import com.google.common.collect.ImmutableList;
+import it.unimi.dsi.fastutil.floats.FloatArrays;
 import it.unimi.dsi.fastutil.ints.IntArrays;
 import net.minecraft.client.renderer.block.model.ItemCameraTransforms;
 import net.minecraft.client.renderer.block.model.ItemOverrideList;
@@ -16,6 +17,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -83,6 +90,19 @@ class DeduplicationTest {
         assertSame(first, pool.deduplicate(new int[] {1, 2, 3}));
         assertNotSame(first, pool.deduplicate(new int[] {9}));
         assertEquals(1, pool.shared());
+    }
+
+    @Test
+    void threadsRacingOnOneValueAllGetTheSameInstanceWithoutALock() {
+        DeduplicationCache<float[]> pool = new DeduplicationCache<>("Face UVs", 64, FloatArrays.HASH_STRATEGY);
+        List<float[]> handedOut = IntStream.range(0, 20_000).parallel()
+                .mapToObj(i -> pool.deduplicate(new float[] {0.0F, 0.0F, 16.0F, 16.0F}))
+                .collect(Collectors.toList());
+        Set<float[]> distinct = Collections.newSetFromMap(new IdentityHashMap<>());
+        distinct.addAll(handedOut);
+        assertEquals(1, distinct.size());
+        assertEquals(1, pool.size());
+        assertEquals(19_999, pool.shared());
     }
 
     @Test

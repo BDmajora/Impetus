@@ -9,7 +9,6 @@ mcp-channel = "stable"
 mcp-mappings = "39-1.12"
 
 lwjgl = "3.4.1"
-lwjgl2 = "2.9.3"
 lwjglx = "1.0.0"
 
 joml = "1.10.9"
@@ -33,7 +32,6 @@ lwjgl-bom = { module = "org.lwjgl:lwjgl-bom", version.ref = "lwjgl" }
 lwjgl-core = { module = "org.lwjgl:lwjgl" }
 lwjgl-opengl = { module = "org.lwjgl:lwjgl-opengl" }
 lwjgl-glfw = { module = "org.lwjgl:lwjgl-glfw" }
-lwjgl2 = { module = "org.lwjgl.lwjgl:lwjgl", version.ref = "lwjgl2" }
 lwjglx = { module = "com.cleanroommc:lwjglx", version.ref = "lwjglx" }
 
 joml = { module = "org.joml:joml", version.ref = "joml" }
@@ -59,4 +57,3 @@ bytebuddy-agent = { module = "net.bytebuddy:byte-buddy-agent", version.ref = "by
 [plugins]
 unimined = { id = "xyz.wagyourtail.unimined", version = "1.4.43-kappa" }
 shadow = { id = "com.gradleup.shadow", version = "9.6.1" }
-jvmdowngrader = { id = "xyz.wagyourtail.jvmdowngrader", version = "2.0.1" }

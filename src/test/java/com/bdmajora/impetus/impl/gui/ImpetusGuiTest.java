@@ -48,6 +48,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
+import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.DisplayMode;
 import org.lwjgl.opengl.GL11;
@@ -71,6 +72,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyFloat;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -201,14 +203,19 @@ class ImpetusGuiTest {
             set(general, 3, 2);
             assertEquals(2, vanilla.guiScale);
             verify(client, Mockito.atLeastOnce()).resize(854, 480);
-            // Entering fullscreen toggles the window, and a window that refuses leaves the option off
+            // Exclusive goes through vanilla's toggle, and a window that refuses leaves the option off
             when(client.isFullScreen()).thenReturn(false);
             set(general, 4, ImpetusGameOptions.FullscreenMode.EXCLUSIVE);
             verify(client).toggleFullscreen();
-            assertTrue(settings.fullScreen);
             assertEquals(ImpetusGameOptions.FullscreenMode.OFF, sodium.fullscreenMode);
-            when(client.isFullScreen()).thenReturn(false, true);
+            // Borderless from exclusive leaves exclusive first, then has Display make the undecorated window
+            display.when(Display::isCreated).thenReturn(true);
+            display.when(Display::getWindow).thenReturn(1L);
+            display.when(Display::isBorderless).thenReturn(false, true);
+            when(client.isFullScreen()).thenReturn(true, false);
             set(general, 4, ImpetusGameOptions.FullscreenMode.BORDERLESS);
+            verify(client, times(2)).toggleFullscreen();
+            display.verify(() -> Display.setBorderless(true));
             assertEquals(ImpetusGameOptions.FullscreenMode.BORDERLESS, sodium.fullscreenMode);
             set(general, 5, 1);
             assertEquals(1, sodium.fullscreenResolution);
@@ -242,15 +249,25 @@ class ImpetusGuiTest {
         assertEquals("1280x720", FullscreenResolutions.label(2));
         assertEquals("impetus.options.fullscreen_resolution.current", FullscreenResolutions.label(0));
         assertEquals("impetus.options.fullscreen_resolution.current", FullscreenResolutions.label(3));
-        // A mode is only switched to while already fullscreen, and a refusal never takes the game down
-        FullscreenResolutions.apply(0);
-        FullscreenResolutions.apply(1);
-        display.verify(() -> Display.setDisplayModeAndFullscreen(any()), never());
-        display.when(Display::isFullscreen).thenReturn(true);
-        FullscreenResolutions.apply(2);
-        display.verify(() -> Display.setDisplayModeAndFullscreen(any()));
-        display.when(() -> Display.setDisplayModeAndFullscreen(any())).thenThrow(new IllegalStateException("refused"));
-        FullscreenResolutions.apply(1);
+        // A mode is only switched to while the window owns a monitor; "Current" is the desktop's mode, and vanilla is told the new size
+        display.when(Display::isCreated).thenReturn(true);
+        display.when(Display::getWindow).thenReturn(1L);
+        display.when(Display::getDesktopDisplayMode).thenReturn(new DisplayMode(2560, 1440));
+        try (MockedStatic<GLFW> glfw = Mockito.mockStatic(GLFW.class)) {
+            FullscreenResolutions.apply(1);
+            glfw.verify(() -> GLFW.glfwSetWindowMonitor(anyLong(), anyLong(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt()), never());
+            glfw.when(() -> GLFW.glfwGetWindowMonitor(1L)).thenReturn(5L);
+            FullscreenResolutions.apply(2);
+            glfw.verify(() -> GLFW.glfwSetWindowMonitor(1L, 5L, 0, 0, 1280, 720, 60));
+            verify(client).resize(1280, 720);
+            FullscreenResolutions.apply(0);
+            verify(client).resize(2560, 1440);
+            // No desktop mode known, and a refusal, both leave the window alone without taking the game down
+            display.when(Display::getDesktopDisplayMode).thenReturn(null);
+            FullscreenResolutions.apply(0);
+            glfw.when(() -> GLFW.glfwSetWindowMonitor(anyLong(), anyLong(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt())).thenThrow(new IllegalStateException("refused"));
+            FullscreenResolutions.apply(1);
+        }
         assertNotNull(Mixins.construct(FullscreenResolutions.class));
 
         // A monitor GLFW cannot list (headless, or no window yet) offers only the current resolution

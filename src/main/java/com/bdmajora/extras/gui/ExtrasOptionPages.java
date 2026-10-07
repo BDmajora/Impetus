@@ -358,6 +358,8 @@ public final class ExtrasOptionPages {
                         config -> config.gpuBooster.fastMath, OptionImpact.LOW, null, enabled))
                 .add(OPTIONS.toggle("booster.stream_uploads", (config, value) -> config.gpuBooster.streamUploads = value,
                         config -> config.gpuBooster.streamUploads, OptionImpact.VARIES, null, enabled))
+                .add(OPTIONS.toggle("booster.vertex_format_cache", (config, value) -> config.gpuBooster.vertexFormatCache = value,
+                        config -> config.gpuBooster.vertexFormatCache, OptionImpact.MEDIUM, null, enabled))
                 .build();
     }
 

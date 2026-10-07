@@ -12,13 +12,48 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 
 // Enumerates display adapters via OS facilities (/sys/class/drm on Linux, Win32_VideoController via PowerShell on Windows); any failure degrades to an empty result
 public final class GraphicsAdapterProbe {
     private static final long PROCESS_TIMEOUT_SECONDS = 5;
 
+    // The one probe this launch runs, shared by the pre-window context decision and the startup checks
+    private static final AtomicReference<CompletableFuture<List<GraphicsAdapterInfo>>> SHARED = new AtomicReference<>();
+
     private GraphicsAdapterProbe() {
+    }
+
+    // Starts the shared probe on a virtual thread, so the PowerShell round trip on Windows overlaps loading instead of blocking whoever asks first
+    public static CompletableFuture<List<GraphicsAdapterInfo>> prefetch() {
+        var existing = SHARED.get();
+        if (existing != null) {
+            return existing;
+        }
+
+        var future = new CompletableFuture<List<GraphicsAdapterInfo>>();
+        if (!SHARED.compareAndSet(null, future)) {
+            return SHARED.get();
+        }
+
+        Thread.ofVirtual().name("Impetus Adapter Probe").start(() -> future.complete(probe()));
+        return future;
+    }
+
+    // The shared probe's adapters, waiting at most this long for them; empty when it is slower than that
+    public static List<GraphicsAdapterInfo> adapters(long timeoutMillis) {
+        try {
+            return prefetch().get(timeoutMillis, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Collections.emptyList();
+        } catch (ExecutionException | TimeoutException e) {
+            return Collections.emptyList();
+        }
     }
 
     // Enumerates adapters via sysfs on Linux or CIM on Windows; empty elsewhere

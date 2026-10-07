@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-// Every program declared by one "dimension" of a pack (almost always world0 on 1.12.2): flattened ProgramSources by ProgramId, numbered families by ProgramArrayId, and ShaderProperties; lookups walk OptiFine's fallback chain (terrain -> textured_lit -> textured -> basic), which is why three files can shade the world
+// Every program declared by one dimension folder of a pack (world0/ plus the root for the base set, world-1/ or world1/ alone for those dimensions): flattened ProgramSources by ProgramId, numbered families by ProgramArrayId, and ShaderProperties; lookups walk OptiFine's fallback chain (terrain -> textured_lit -> textured -> basic), which is why three files can shade the world
 public final class ProgramSet {
     private final Map<ProgramId, ProgramSource> programs = new EnumMap<>(ProgramId.class);
     private final Map<ProgramArrayId, ProgramSource[]> programArrays = new EnumMap<>(ProgramArrayId.class);

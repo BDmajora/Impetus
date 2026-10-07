@@ -14,18 +14,20 @@ class TimerQueryManagerTest {
         manager.startProfiling();
         assertThrows(IllegalStateException.class, manager::startProfiling);
         manager.finishProfiling();
-        manager.updateTime();
+        // Too young to read
+        assertFalse(manager.updateTime());
         assertEquals(0, manager.getLastTime());
         for (int i = 0; i < 2; i++) {
             manager.startProfiling();
             manager.finishProfiling();
         }
         Mockito.when(TestGl.gl().glGetQueryObjecti(Mockito.anyInt(), Mockito.anyInt())).thenReturn(0);
-        manager.updateTime();
+        // Old enough but the GPU has not got there
+        assertFalse(manager.updateTime());
         assertEquals(0, manager.getLastTime());
         Mockito.when(TestGl.gl().glGetQueryObjecti(Mockito.anyInt(), Mockito.anyInt())).thenReturn(1);
         Mockito.when(TestGl.gl().glGetQueryObjectui64(Mockito.anyInt(), Mockito.anyInt())).thenReturn(100L, 350L);
-        manager.updateTime();
+        assertTrue(manager.updateTime());
         assertEquals(250, manager.getLastTime());
         for (int i = 0; i < 12; i++) {
             manager.startProfiling();

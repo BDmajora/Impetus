@@ -105,6 +105,9 @@ public abstract class RenderGlobalMixin implements SimpleWorldRenderer.Provider<
     @Inject(method = "setWorldAndLoadRenderers", at = @At("HEAD"))
     private void impetus$beginWorldChange(WorldClient world, CallbackInfo ci) {
         this.impetus$changingWorld = true;
+        // Ahead of the renderer rebuild below, which compiles the terrain programs, so a dimension with its own pack folder compiles from it
+        net.minecraft.world.DimensionType type = world == null || world.provider == null ? null : world.provider.getDimensionType();
+        Umbra.onWorldChanged(type == null ? 0 : type.getId(), type == null ? null : type.getName());
     }
 
     // Tears down and rebuilds the renderer for the new world inside a managed-code scope

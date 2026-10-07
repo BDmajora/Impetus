@@ -213,7 +213,7 @@ public final class ExtrasConfig {
             ConfigProperty.bool(CAT_RENDER_BUDGET, "quickSetupShown", false, "Whether the one-time quick setup screen has been shown on a world join",
                     v -> renderBudget.quickSetupShown = v, () -> renderBudget.quickSetupShown),
             // --- GPU booster ------------------------------------------------------------------
-            ConfigProperty.bool(CAT_GPU_BOOSTER, "enabled", false, "Master switch for the GPU Booster set: fast random, fast math and streamed vertex uploads",
+            ConfigProperty.bool(CAT_GPU_BOOSTER, "enabled", false, "Master switch for the GPU Booster set: fast random, fast math, streamed vertex uploads and the vertex format cache",
                     v -> gpuBooster.enabled = v, () -> gpuBooster.enabled),
             ConfigProperty.bool(CAT_GPU_BOOSTER, "fastRandom", true, "Give entities and particles a cheaper random generator than java.util.Random",
                     v -> gpuBooster.fastRandom = v, () -> gpuBooster.fastRandom),
@@ -221,6 +221,8 @@ public final class ExtrasConfig {
                     v -> gpuBooster.fastMath = v, () -> gpuBooster.fastMath),
             ConfigProperty.bool(CAT_GPU_BOOSTER, "streamUploads", true, "Draw immediate-mode geometry through a streamed vertex buffer instead of client-side arrays",
                     v -> gpuBooster.streamUploads = v, () -> gpuBooster.streamUploads),
+            ConfigProperty.bool(CAT_GPU_BOOSTER, "vertexFormatCache", true, "Keep one vertex array object per vertex format for streamed draws, so each draw binds it instead of re-specifying every attribute",
+                    v -> gpuBooster.vertexFormatCache = v, () -> gpuBooster.vertexFormatCache),
             // --- Parallel ticking -------------------------------------------------------------
             ConfigProperty.bool(CAT_ASYNC, "enabled", true, "Master switch for parallel server ticking (entities, random ticks, mob spawning across the worker pool); takes effect on the next launch",
                     v -> async.enabled = v, () -> async.enabled),
@@ -807,6 +809,7 @@ ParticleClassRegistry registry = ParticleClassRegistry.getInstance();
         public boolean fastRandom = true;
         public boolean fastMath = true;
         public boolean streamUploads = true;
+        public boolean vertexFormatCache = true;
     }
 
     // Parallel server ticking (see async.ParallelProcessor), after AxalotL's Async; on by default for vanilla entities, random ticks and spawning, with modded entities the one opt-in since their code was never written to share the world; the master needs a relaunch since the concurrent collections go in at world construction, everything else is live

@@ -2,17 +2,18 @@ package com.bdmajora.impetus.engine.impl.render.chunk.vertex.builder;
 
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.material.Material;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexEncoder;
-import com.bdmajora.impetus.engine.impl.render.chunk.sorting.TranslucentQuadAnalyzer;
+import com.bdmajora.impetus.engine.impl.render.chunk.sorting.SortState;
+import com.bdmajora.impetus.engine.impl.render.chunk.sorting.TranslucentQuadRecorder;
 import org.jetbrains.annotations.Nullable;
-import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 import java.nio.ByteBuffer;
+import org.lwjgl.system.MemoryUtil;
 
 public class ChunkMeshBufferBuilder {
     private final ChunkVertexEncoder encoder;
     private final int stride;
 
     private final int initialCapacity;
-    private final TranslucentQuadAnalyzer analyzer;
+    private final TranslucentQuadRecorder analyzer;
 
     private ByteBuffer buffer;
     private int count;
@@ -28,11 +29,15 @@ public class ChunkMeshBufferBuilder {
         this.capacity = 0;
         this.initialCapacity = initialCapacity;
 
-        this.analyzer = collectSortState ? new TranslucentQuadAnalyzer() : null;
+        this.analyzer = collectSortState ? new TranslucentQuadRecorder() : null;
     }
 
     // Encodes one quad, growing the buffer and feeding the translucency analyzer
     public void push(ChunkVertexEncoder.Vertex[] vertices, Material material) {
+        if (this.encoder.supportsBilinearCorrection()) {
+            postprocessVertices(vertices);
+        }
+
         var vertexStart = this.count * this.stride;
         var vertexSize = vertices.length * this.stride;
 
@@ -40,7 +45,7 @@ public class ChunkMeshBufferBuilder {
             this.grow(vertexSize);
         }
 
-        long ptr = LWJGL.memAddress(this.buffer, vertexStart);
+        long ptr = MemoryUtil.memAddress(this.buffer, vertexStart);
 
         // One walk for both; the encoder never mutates the vertex, so the analyzer can read it first
         var analyzer = this.analyzer;
@@ -56,14 +61,42 @@ public class ChunkMeshBufferBuilder {
         this.count += vertices.length;
     }
 
-    // Doubles until the quad fits
+    private static void postprocessVertices(ChunkVertexEncoder.Vertex[] vertices) {
+        if (vertices.length != 4) {
+            for (var vertex : vertices) {
+                vertex.rdhFactor = 0;
+            }
+            return;
+        }
+
+        int color0 = vertices[0].color;
+        int color1 = vertices[1].color;
+        int color2 = vertices[2].color;
+        int color3 = vertices[3].color;
+        // TODO can likely do SWAR tricks if performance is an issue
+        int factor = encodeBilinearCorrection(color3, color1, color0, color2, 0)
+                | encodeBilinearCorrection(color3, color1, color0, color2, 8) << 8
+                | encodeBilinearCorrection(color3, color1, color0, color2, 16) << 16
+                | encodeBilinearCorrection(color3, color1, color0, color2, 24) << 24;
+
+        for (var vertex : vertices) {
+            vertex.rdhFactor = factor;
+        }
+    }
+
+    private static int encodeBilinearCorrection(int positive0, int positive1, int negative0, int negative1, int shift) {
+        int factor = ((positive0 >> shift) & 0xFF) + ((positive1 >> shift) & 0xFF)
+                - ((negative0 >> shift) & 0xFF) - ((negative1 >> shift) & 0xFF);
+        return Math.round(factor * (127.0F / 510.0F)) & 0xFF;
+    }
+
     private void grow(int bytesNeeded) {
         // Grow by a factor of 2, or by however many bytes more we need, whichever is larger.
         int newCapacity = Math.max(this.capacity * 2, this.capacity + bytesNeeded);
         // Ensure we allocate at least initialCapacity bytes
         newCapacity = Math.max(newCapacity, this.initialCapacity);
 
-        this.buffer = LWJGL.memRealloc(this.buffer, newCapacity);
+        this.buffer = MemoryUtil.memRealloc(this.buffer, newCapacity);
         this.capacity = newCapacity;
     }
 
@@ -78,7 +111,7 @@ public class ChunkMeshBufferBuilder {
 
     // The analyzer's classification of what was pushed
     @Nullable
-    public TranslucentQuadAnalyzer.SortState getSortState() {
+    public SortState getSortState() {
         return this.analyzer != null ? this.analyzer.getSortState() : null;
     }
 
@@ -92,7 +125,7 @@ public class ChunkMeshBufferBuilder {
     // Frees the native buffer
     public void destroy() {
         if (this.buffer != null) {
-            LWJGL.memFree(this.buffer);
+            MemoryUtil.memFree(this.buffer);
         }
 
         this.buffer = null;
@@ -112,7 +145,7 @@ public class ChunkMeshBufferBuilder {
             throw new IllegalStateException("No vertex data in buffer");
         }
 
-        return LWJGL.memSlice(this.buffer, 0, this.stride * this.count);
+        return MemoryUtil.memSlice(this.buffer, 0, this.stride * this.count);
     }
 
     // Vertices written

@@ -10,6 +10,7 @@ import org.mockito.Mockito;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import org.lwjgl.system.MemoryUtil;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -37,21 +38,21 @@ class BuffersTest {
     @Test
     void mappingsCopyIntoMappedMemory() {
         GlMutableBuffer buffer = new GlMutableBuffer();
-        ByteBuffer map = TestGl.gl().memCalloc(16);
+        ByteBuffer map = MemoryUtil.memCalloc(16);
         GlBufferMapping mapping = new GlBufferMapping(buffer, map);
         buffer.setActiveMapping(mapping);
         assertSame(mapping, buffer.getActiveMapping());
         assertSame(buffer, mapping.getBufferObject());
         assertSame(map, mapping.getMemoryBuffer());
-        ByteBuffer data = TestGl.gl().memAlloc(4);
+        ByteBuffer data = MemoryUtil.memAlloc(4);
         data.order(ByteOrder.nativeOrder()).putInt(0, 0x0A0B0C0D);
         mapping.write(data, 8);
         assertEquals(0x0A0B0C0D, map.order(ByteOrder.nativeOrder()).getInt(8));
         assertFalse(mapping.isDisposed());
         mapping.dispose();
         assertTrue(mapping.isDisposed());
-        TestGl.gl().memFree(map);
-        TestGl.gl().memFree(data);
+        MemoryUtil.memFree(map);
+        MemoryUtil.memFree(data);
     }
 
     @Test

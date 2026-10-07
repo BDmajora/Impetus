@@ -7,19 +7,17 @@
 #import <impetus:mesh/scene.glsl>
 #import <impetus:mesh/vertex_format.glsl>
 
-// Nothing is interpolated into this shader. The mesh shader passed only position and a packed primitive id, and
-// everything else is re-fetched here from the geometry arena and interpolated by hand against the barycentrics.
-//
-// That trade — three pointer loads per fragment instead of five interpolated varyings — is what keeps the mesh
-// shader's output buffer small enough to run many meshlets in flight.
-
+// Opaque terrain: only fog is interpolated; UV and shading are re-fetched by quad id and blended against the barycentrics, which keeps the mesh shader's output small
 layout(location = 0) out vec4 colour;
+
+layout(location = 1) in Interpolants {
+    float fogAmount;
+};
 
 layout(binding = 0) uniform sampler2D texDiffuse;
 layout(binding = 1) uniform sampler2D texLight;
 
-// Vertex colour times lightmap, per vertex, then interpolated. Doing it per vertex rather than interpolating the
-// light coordinate matches how the raster path shades and avoids banding across large quads.
+// Vertex colour times lightmap per vertex, then interpolated, matching the raster path's shading
 vec3 shadeVertex(Vertex v) {
     return decodeVertexColour(v) * texture(texLight, decodeLightUV(v)).rgb;
 }
@@ -28,7 +26,7 @@ void main() {
     uint quad = uint(gl_PrimitiveID) >> 4;
     bool firstTriangle = ((gl_PrimitiveID >> 3) & 1) == 0;
 
-    // The two triangles of a quad are (0,1,2) and (2,3,0); the mesh shader emitted them in that order.
+    // The mesh shader emitted (0,1,2) and (2,3,0)
     uvec3 corners = firstTriangle ? uvec3(0, 1, 2) : uvec3(2, 3, 0);
 
     Vertex v0 = terrainData[(quad << 2) + corners.x];
@@ -39,8 +37,7 @@ void main() {
             + gl_BaryCoordNV.y * decodeVertexUV(v1)
             + gl_BaryCoordNV.z * decodeVertexUV(v2);
 
-    // Bit 2 of the payload says the material is unmipped; a large negative bias picks the base level without
-    // needing a second sampler.
+    // An unmipped material gets a large negative bias, which picks the base level without a second sampler
     colour = texture(texDiffuse, uv, float((gl_PrimitiveID >> 2) & 1) * -8.0);
 
     if (colour.a < alphaCutoffValue(uint(gl_PrimitiveID & 3))) {
@@ -51,4 +48,5 @@ void main() {
     colour.rgb *= gl_BaryCoordNV.x * shadeVertex(v0)
                 + gl_BaryCoordNV.y * shadeVertex(v1)
                 + gl_BaryCoordNV.z * shadeVertex(v2);
+    colour.rgb = mix(colour.rgb, fogColour.rgb, fogAmount);
 }

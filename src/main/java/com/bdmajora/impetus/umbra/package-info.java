@@ -1,2 +1,2 @@
-// Iris-style OptiFine shader-pack support on Cleanroom 1.12.2; Java 25 throughout, and all GL access goes through com.bdmajora.impetus.lwjgl.* so the LWJGL2 backend keeps working as a translation layer
+// Iris-style OptiFine shader-pack support on Cleanroom 1.12.2; Java 25 and LWJGL3 throughout, with GL calls through com.bdmajora.impetus.lwjgl.LWJGLService like the engine's
 package com.bdmajora.impetus.umbra;

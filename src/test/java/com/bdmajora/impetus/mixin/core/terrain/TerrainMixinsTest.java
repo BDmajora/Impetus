@@ -441,7 +441,18 @@ class TerrainMixinsTest {
         assertSame(global.impetus$getWorldRenderer(), SimpleWorldRenderer.Provider.getWorldRenderer(global));
         Mixins.set(global, "renderer", renderer);
 
-        // A world change rebuilds once, skipping the reload vanilla does for the world being left
+        // A world change rebuilds once, skipping the reload vanilla does for the world being left; Umbra hears the dimension first, nothing for a world without a provider or no world at all
+        cancels(global, "impetus$beginWorldChange", (Object) null);
+        assertNull(Mixins.get(com.bdmajora.impetus.umbra.Umbra.class, "dimensionName"));
+        WorldProvider nether = mock(WorldProvider.class);
+        when(nether.getDimensionType()).thenReturn(net.minecraft.world.DimensionType.NETHER);
+        Mixins.set(scene.world, "provider", nether);
+        cancels(global, "impetus$beginWorldChange", scene.world);
+        assertEquals("the_nether", Mixins.get(com.bdmajora.impetus.umbra.Umbra.class, "dimensionName"));
+        assertEquals(-1, (int) Mixins.<Integer>get(com.bdmajora.impetus.umbra.Umbra.class, "dimensionId"));
+        when(nether.getDimensionType()).thenReturn(null);
+        cancels(global, "impetus$beginWorldChange", scene.world);
+        Mixins.set(scene.world, "provider", null);
         cancels(global, "impetus$beginWorldChange", scene.world);
         cancels(global, "onReload");
         verify(renderer, never()).reload();

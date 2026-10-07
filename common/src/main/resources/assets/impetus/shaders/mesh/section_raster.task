@@ -5,34 +5,33 @@
 
 #import <impetus:mesh/scene.glsl>
 
-// Phase 2, part one, and the piece that takes the CPU out of the draw loop.
-//
-// One workgroup per visible region. It does two things:
-//   - dispatches one meshlet per live section, for the box rasterization below
-//   - writes the indirect draw command the terrain rasterizer will consume NEXT frame
-// Nothing reads that command back on the CPU, which is why the terrain draw runs a frame behind.
-
+// One workgroup per visible region: a meshlet per live section for the box test below, plus the indirect commands next frame's terrain draw and this frame's translucent draw consume
 layout(local_size_x = 1) in;
 
 taskNV out Task {
-    // Base index into sectionVisibility for this region: regionId << 8.
+    // regionId << 8, the base of both the visibility bytes and the section headers
     uint32_t visibilityBase;
-    // Base index into sectionData; the same value, kept separate because the two arrays could diverge.
     uint32_t sectionBase;
-    // Section-space offset from the region to the camera, folded once here instead of per section.
+    // Region-to-camera shift in sections, folded once here
     ivec3 chunkShift;
 };
 
 void main() {
     uint commandIndex = gl_WorkGroupID.x;
+    // Regions arrive nearest first; translucency blends farthest first, so its commands are written mirrored
+    uint translucentIndex = uint(regionCount) - gl_WorkGroupID.x - 1u;
 
-    // The region rasterizer rejected this region, so nothing in it can be visible. Zero the command as well, or
-    // next frame's terrain draw would replay whatever was there before.
+    // A rejected region zeroes both commands, or next frame would replay whatever was there before
     if (regionVisibility[gl_WorkGroupID.x] == uint8_t(0)) {
         terrainCommandBuffer[commandIndex] = uvec2(0);
+        translucencyCommandBuffer[translucentIndex] = uvec2(0);
         gl_TaskCountNV = 0;
         return;
     }
+
+#ifdef STATISTICS_REGIONS
+    atomicAdd(statisticsBuffer, 1u);
+#endif
 
     uint32_t regionId = regionIndices[gl_WorkGroupID.x];
     Region data = regionData[regionId];
@@ -44,6 +43,7 @@ void main() {
 
     gl_TaskCountNV = count;
 
-    // Meshlet count and the section index base, exactly the uvec2 the terrain task shader expects.
+    // Meshlet count and the section id base, the uvec2 the terrain and translucent task shaders expect
     terrainCommandBuffer[commandIndex] = uvec2(uint32_t(count), visibilityBase);
+    translucencyCommandBuffer[translucentIndex] = uvec2(uint32_t(count), visibilityBase);
 }

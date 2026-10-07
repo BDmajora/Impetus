@@ -13,8 +13,12 @@ public enum ChunkUpdateType {
     // Like REBUILD, but blocks the main thread if the camera is near enough that the rebuild must be seen quickly
     IMPORTANT_REBUILD;
 
-    // values() clones per call, and the collector asks every frame
     public static final ChunkUpdateType[] VALUES = values();
+
+    @Deprecated
+    public static boolean canPromote(ChunkUpdateType prev, ChunkUpdateType next) {
+        return prev == null || (prev == REBUILD && next == IMPORTANT_REBUILD);
+    }
 
     // borrowed from PR #2016
     public static ChunkUpdateType getPromotionUpdateType(ChunkUpdateType prev, ChunkUpdateType next) {
@@ -42,5 +46,12 @@ public enum ChunkUpdateType {
     // true if the task only sorts, rather than performing a full chunk rebuild
     public boolean isSort() {
         return this == SORT || this == IMPORTANT_SORT;
+    }
+
+    static {
+        if (VALUES.length > 7) {
+            // See PackedSectionMetadata, OcclusionCuller, etc.
+            throw new AssertionError("The occlusion system currently assumes there are at most 7 update types");
+        }
     }
 }

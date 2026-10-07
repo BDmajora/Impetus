@@ -11,6 +11,7 @@ import com.bdmajora.impetus.engine.impl.gl.tessellation.*;
 import com.bdmajora.impetus.engine.impl.gl.util.EnumBitField;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.opengl.GL32;
+import com.bdmajora.impetus.lwjgl.GLExtension;
 
 import java.nio.ByteBuffer;
 
@@ -27,12 +28,6 @@ public class GLRenderDevice implements RenderDevice {
     private GlTessellation activeTessellation;
     private GpuDevice deviceInfo;
 
-    // TODO replace this with something less ugly
-    public static Runnable VANILLA_STATE_RESETTER = () -> {
-        throw new IllegalStateException("The host mod should replace the VANILLA_STATE_RESETTER with an implementation specific to the platform.");
-    };
-
-    // The single command list; GL has no real command buffers
     @Override
     public CommandList createCommandList() {
         GLRenderDevice.this.checkDeviceActive();
@@ -47,7 +42,7 @@ public class GLRenderDevice implements RenderDevice {
             return;
         }
 
-        VANILLA_STATE_RESETTER.run();
+        unbindArrayBuffer();
 
         this.stateTracker.clear();
         this.isActive = true;
@@ -64,13 +59,16 @@ public class GLRenderDevice implements RenderDevice {
             return;
         }
 
-        VANILLA_STATE_RESETTER.run();
+        unbindArrayBuffer();
 
         this.stateTracker.clear();
         this.isActive = false;
     }
 
-    // The best available implementations of each optional GL feature
+    private static void unbindArrayBuffer() {
+        LWJGL.glBindBuffer(GlBufferTarget.ARRAY_BUFFER.getTargetParameter(), 0);
+    }
+
     @Override
     public DeviceFunctions getDeviceFunctions() {
         return this.functions;
@@ -292,8 +290,7 @@ public class GLRenderDevice implements RenderDevice {
             GlImmutableBuffer buffer = new GlImmutableBuffer(flags);
 
             this.bindBuffer(GlBufferTarget.ARRAY_BUFFER, buffer);
-            GLRenderDevice.this.functions.bufferStorageFunctions()
-                    .createBufferStorage(GlBufferTarget.ARRAY_BUFFER, bufferSize, flags);
+            LWJGL.glBufferStorage(GlBufferTarget.ARRAY_BUFFER.getTargetParameter(), bufferSize, flags.getBitField());
 
             return buffer;
         }
@@ -306,8 +303,8 @@ public class GLRenderDevice implements RenderDevice {
 
         // Issues the batch through the best available multidraw function
         @Override
-        public void multiDrawElementsBaseVertex(MultiDrawBatch batch, GlPrimitiveType primitiveType, GlIndexType indexType) {
-            GLRenderDevice.this.functions.multidrawFunctions().multiDrawElementsBaseVertex(primitiveType.getId(),
+        public void multiDrawElementsBaseVertex(DirectMultiDrawBatch batch, GlPrimitiveType primitiveType, GlIndexType indexType) {
+            LWJGL.glMultiDrawElementsBaseVertex(primitiveType.getId(),
                     batch.pElementCount,
                     indexType.getFormatId(),
                     batch.pElementPointer,
@@ -317,8 +314,8 @@ public class GLRenderDevice implements RenderDevice {
 
         // Draws from an indirect buffer
         @Override
-        public void multiDrawElementsIndirect(GlBuffer indirectBuffer, int count, GlPrimitiveType primitiveType, GlIndexType indexType) {
-            LWJGL.glMultiDrawElementsIndirect(primitiveType.getId(), indexType.getFormatId(), 0, count, 0);
+        public void multiDrawElementsIndirect(long offset, int count, GlPrimitiveType primitiveType, GlIndexType indexType) {
+            LWJGL.glMultiDrawElementsIndirect(primitiveType.getId(), indexType.getFormatId(), offset, count, 0);
         }
 
         // Unbinds the tessellation

@@ -30,8 +30,8 @@ import com.bdmajora.impetus.impl.world.WorldSlice;
 
 import java.nio.ByteBuffer;
 import java.util.Objects;
+import org.lwjgl.system.MemoryUtil;
 
-import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 public class VintageChunkBuildContext extends ChunkBuildContext {
     public static final BlockRenderLayer[] LAYERS = BlockRenderLayer.values();
@@ -75,7 +75,7 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
     public BufferBuilder getBufferForLayer(BlockRenderLayer layer) {
         var builder = this.worldRenderers[layer.ordinal()];
         if (builder == null) {
-            builder = new BufferBuilder(131072);
+            builder = new ChunkBufferBuilder(131072, this, layer);
             this.worldRenderers[layer.ordinal()] = builder;
         }
         if (!this.usedWorldRenderers[layer.ordinal()]) {
@@ -182,7 +182,7 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
                                IntArrayList blockRuns) {
         int vsize = BLOCK_VERTEX_FORMAT_SIZE;
         int numQuads = source.limit() / (vsize * 4);
-        long ptr = LWJGL.memAddress(source);
+        long ptr = MemoryUtil.memAddress(source);
         var quad = ChunkVertexEncoder.Vertex.uninitializedQuad();
         var animatedSpritesList = ((MinecraftBuiltRenderSectionData<TextureAtlasSprite, TileEntity>)buffers.getSectionContextBundle()).animatedSprites;
         // Walk the per-block attribution runs in lockstep with the quads (see recordVanillaBlockAttribution).
@@ -215,18 +215,18 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
             float uSum = 0, vSum = 0, xSum = 0, ySum = 0, zSum = 0;
             for(int v = 0; v < 4; v++) {
                 var vertex = quad[v];
-                vertex.x = LWJGL.memGetFloat(ptr);
-                vertex.y = LWJGL.memGetFloat(ptr + 4);
-                vertex.z = LWJGL.memGetFloat(ptr + 8);
-                vertex.color = LWJGL.memGetInt(ptr + 12);
-                vertex.u = LWJGL.memGetFloat(ptr + 16);
-                vertex.v = LWJGL.memGetFloat(ptr + 20);
+                vertex.x = MemoryUtil.memGetFloat(ptr);
+                vertex.y = MemoryUtil.memGetFloat(ptr + 4);
+                vertex.z = MemoryUtil.memGetFloat(ptr + 8);
+                vertex.color = MemoryUtil.memGetInt(ptr + 12);
+                vertex.u = MemoryUtil.memGetFloat(ptr + 16);
+                vertex.v = MemoryUtil.memGetFloat(ptr + 20);
                 uSum += vertex.u;
                 vSum += vertex.v;
                 xSum += vertex.x;
                 ySum += vertex.y;
                 zSum += vertex.z;
-                vertex.light = LWJGL.memGetInt(ptr + 24);
+                vertex.light = MemoryUtil.memGetInt(ptr + 24);
                 ptr += vsize;
             }
             TextureAtlasSprite sprite = this.textureAtlas.impetus$findFromUV(uSum * 0.25f, vSum * 0.25f);

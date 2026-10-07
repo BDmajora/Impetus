@@ -1,5 +1,7 @@
 package com.bdmajora.impetus.engine.impl.render;
 
+import com.bdmajora.impetus.engine.impl.render.mesh.MeshTerrainRenderer;
+
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
@@ -40,9 +42,9 @@ public class ShaderModBridge {
         NVIDIUM_ENABLED = nvidiumEnabled;
     }
 
-    // Nvidium's static flag; false when it is not installed
+    // Whether terrain is drawn by mesh shaders: the built-in backend, or Nvidium's own static flag when that mod is installed; raster-only options grey out under either
     public static boolean isNvidiumEnabled() {
-        return invokeBoolean(NVIDIUM_ENABLED);
+        return MeshTerrainRenderer.isActive() || invokeBoolean(NVIDIUM_ENABLED);
     }
 
     // Whether a shader pack is loaded RIGHT NOW, not merely installed; used per-frame to pick between the vanilla and shader render paths

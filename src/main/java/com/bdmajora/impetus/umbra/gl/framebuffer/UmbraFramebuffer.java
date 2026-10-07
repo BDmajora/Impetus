@@ -3,7 +3,7 @@ package com.bdmajora.impetus.umbra.gl.framebuffer;
 import com.bdmajora.impetus.umbra.gl.GlResource;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
-import com.bdmajora.impetus.lwjgl.MemoryStack;
+import org.lwjgl.system.MemoryStack;
 
 import java.util.Arrays;
 import com.bdmajora.impetus.umbra.targets.UmbraRenderTargets;
@@ -121,7 +121,7 @@ public class UmbraFramebuffer extends GlResource {
             LWJGL.glDrawBuffers(GL11.GL_NONE);
             return;
         }
-        try (MemoryStack stack = LWJGL.stackPush()) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
             IntBuffer buffer = stack.mallocInt(count);
             // Attachment points are bounded by the GL limit (8 on every real driver), so a mask replaces a per-call table
             long seen = 0L;

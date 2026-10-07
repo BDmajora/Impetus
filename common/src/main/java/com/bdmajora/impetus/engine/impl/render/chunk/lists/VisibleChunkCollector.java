@@ -1,17 +1,21 @@
 package com.bdmajora.impetus.engine.impl.render.chunk.lists;
 
+import it.unimi.dsi.fastutil.longs.LongArrayList;
+import it.unimi.dsi.fastutil.longs.LongComparators;
+import it.unimi.dsi.fastutil.longs.LongHeaps;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import lombok.AccessLevel;
 import lombok.Getter;
 import com.bdmajora.impetus.engine.impl.render.chunk.ChunkUpdateType;
+import com.bdmajora.impetus.engine.impl.render.chunk.PackedSectionMetadata;
 import com.bdmajora.impetus.engine.impl.render.chunk.RenderSection;
 import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.EnumMap;
-import java.util.List;
-import java.util.Queue;
 import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.OcclusionCuller;
-import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.OcclusionNode;
+import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.SectionLattice;
 import com.bdmajora.impetus.engine.impl.render.chunk.region.RenderRegion;
+import org.joml.Vector3ic;
 
 public class VisibleChunkCollector implements OcclusionCuller.Visitor {
     @Getter(AccessLevel.PACKAGE)
@@ -20,27 +24,39 @@ public class VisibleChunkCollector implements OcclusionCuller.Visitor {
     private final int[] rebuildQueueOverflowCounts;
     private final ChunkRenderList[] renderListsByRegion;
 
+    private final LongArrayList[] rebuildCandidates;
+
     private final int frame;
 
     private final int targetQueueSize;
 
-    private boolean hasAdditionalUpdates;
+    private final SectionLattice lattice;
 
-    public VisibleChunkCollector(int frame, int regionIdsLength, int targetQueueSize) {
+    // Camera position in blocks, used as the origin for the rebuild ordering
+    private final int cameraX, cameraY, cameraZ;
+
+    private boolean hasAdditionalUpdates;
+    private boolean rebuildListsFinished;
+
+    public VisibleChunkCollector(SectionLattice lattice, int frame, int regionIdsLength, int targetQueueSize, Vector3ic cameraBlockPos) {
+        this.lattice = lattice;
         this.frame = frame;
 
         this.sortedRenderLists = new ObjectArrayList<>();
         this.sortedRebuildLists = new EnumMap<>(ChunkUpdateType.class);
         this.rebuildQueueOverflowCounts = new int[ChunkUpdateType.VALUES.length];
+        this.rebuildCandidates = new LongArrayList[ChunkUpdateType.VALUES.length];
         this.targetQueueSize = targetQueueSize;
         this.renderListsByRegion = new ChunkRenderList[regionIdsLength];
+        this.cameraX = cameraBlockPos.x();
+        this.cameraY = cameraBlockPos.y();
+        this.cameraZ = cameraBlockPos.z();
 
         for (var type : ChunkUpdateType.VALUES) {
             this.sortedRebuildLists.put(type, new ArrayDeque<>());
         }
     }
 
-    // One list per region, created on first visible section
     private ChunkRenderList createRenderList(RenderRegion region) {
         ChunkRenderList renderList = new ChunkRenderList(region);
         this.sortedRenderLists.add(renderList);
@@ -48,58 +64,129 @@ public class VisibleChunkCollector implements OcclusionCuller.Visitor {
         return renderList;
     }
 
-    // Called by the walk for every reached section
     @Override
-    public void visit(OcclusionNode node, boolean visible) {
-        var section = node.getRenderSection();
-
-        // Even a section without render objects must initialise its render list and enter the sorted queue, to keep draw call order correct
-        int regionId = node.getRenderRegionId();
+    public void visit(int latticeIndex, int regionId, int sectionIndex, int chunkX, int chunkY, int chunkZ, int meta, boolean visible) {
+        // Note: even if a section does not have render objects, we must ensure the render list is initialized and put
+        // into the sorted queue of lists, so that we maintain the correct order of draw calls.
         ChunkRenderList renderList = this.renderListsByRegion[regionId];
 
         if (renderList == null) {
-            renderList = this.createRenderList(section.getRegion());
+            renderList = this.createRenderList(this.lattice.sectionAt(latticeIndex).getRegion());
         }
 
         if (visible) {
-            if (section.hasAnythingToRender()) {
-                renderList.add(section);
+            int visualsFlags = PackedSectionMetadata.getCompactVisualsFlags(meta);
+            if (visualsFlags != 0) {
+                renderList.add(sectionIndex, visualsFlags);
             }
 
-            this.addToRebuildLists(section);
+            ChunkUpdateType type = PackedSectionMetadata.getCompactPendingUpdate(meta);
+
+            // Skip sections with an in-flight build to avoid redundant work. This is an advisory
+            // check only: submitRebuildTasks() will validate getPendingUpdate() independently before
+            // scheduling, so a stale read here cannot cause a double submission.
+            if (type != null && !PackedSectionMetadata.isCompactBuildInFlight(meta)) {
+                this.addRebuildCandidate(latticeIndex, chunkX, chunkY, chunkZ, type);
+            }
         }
     }
 
-    // Queues sections needing a rebuild, by importance
-    private void addToRebuildLists(RenderSection section) {
-        ChunkUpdateType type = section.getPendingUpdate();
+    private void addRebuildCandidate(int latticeIndex, int chunkX, int chunkY, int chunkZ, ChunkUpdateType type) {
+        long dx = ((long) chunkX << 4) + 8 - this.cameraX;
+        long dy = ((long) chunkY << 4) + 8 - this.cameraY;
+        long dz = ((long) chunkZ << 4) + 8 - this.cameraZ;
+        long distanceSq = Math.min(dx * dx + dy * dy + dz * dz, Integer.MAX_VALUE);
 
-        // Skip sections with an in-flight build; advisory only, since submitRebuildTasks() re-validates getPendingUpdate() so a stale null token cannot double-submit
-        if (type != null && section.getBuildCancellationToken() == null) {
-            Queue<RenderSection> queue = this.sortedRebuildLists.get(type);
+        var candidates = this.rebuildCandidates[type.ordinal()];
+
+        if (candidates == null) {
+            candidates = this.rebuildCandidates[type.ordinal()] = new LongArrayList();
+        }
+
+        candidates.add((distanceSq << 32) | (latticeIndex & 0xFFFFFFFFL));
+    }
+
+    public void finishRebuildLists() {
+        if (this.rebuildListsFinished) {
+            throw new IllegalStateException("Rebuild lists already finished");
+        }
+
+        this.rebuildListsFinished = true;
+
+        var types = ChunkUpdateType.VALUES;
+
+        for (int i = 0; i < types.length; i++) {
+            var candidates = this.rebuildCandidates[i];
+
+            if (candidates == null) {
+                continue;
+            }
+
+            var type = types[i];
+            long[] keys = candidates.elements();
+            int count = candidates.size();
 
             // Do not limit the queue size for rebuilds
-            if (type != ChunkUpdateType.INITIAL_BUILD || queue.size() < this.targetQueueSize) {
-                queue.add(section);
+            int limit = type == ChunkUpdateType.INITIAL_BUILD ? Math.min(count, this.targetQueueSize) : count;
+
+            // Only use max-heap selection when we need 1/3 or less of the full list
+            if (limit * 3 < count) {
+                keys = selectSmallest(keys, count, limit);
             } else {
-                this.rebuildQueueOverflowCounts[type.ordinal()]++;
+                Arrays.sort(keys, 0, count);
+            }
+
+            var queue = this.sortedRebuildLists.get(type);
+
+            for (int j = 0; j < limit; j++) {
+                queue.add(this.lattice.sectionAt((int) keys[j]));
+            }
+
+            if (limit < count) {
+                this.rebuildQueueOverflowCounts[i] += count - limit;
                 this.hasAdditionalUpdates = true;
             }
+
+            this.rebuildCandidates[i] = null;
         }
     }
 
-    // Finalises the lists in walk order
+    /**
+     * {@return the {@code k} smallest of the first {@code count} keys, in ascending order}
+     *
+     * <p>Uses a bounded max-heap: once it holds {@code k} keys, a candidate larger than the heap's root is rejected
+     * with a single comparison, so for the common case where most candidates are farther than the cutoff this runs
+     * in roughly linear time instead of the {@code n log n} of a full sort.</p>
+     */
+    private static long[] selectSmallest(long[] keys, int count, int k) {
+        var comparator = LongComparators.OPPOSITE_COMPARATOR;
+
+        long[] heap = Arrays.copyOf(keys, k);
+        LongHeaps.makeHeap(heap, k, comparator);
+
+        for (int i = k; i < count; i++) {
+            long key = keys[i];
+
+            if (key < heap[0]) {
+                heap[0] = key;
+                LongHeaps.downHeap(heap, k, 0, comparator);
+            }
+        }
+
+        Arrays.sort(heap);
+
+        return heap;
+    }
+
     public SortedRenderLists createRenderLists() {
         return new SortedRenderLists(this.sortedRenderLists);
     }
 
-    // The lists so far
-    public List<ChunkRenderList> getCollectedRenderLists() {
-        return this.sortedRenderLists;
-    }
-
-    // The rebuild queues
     public ChunkRebuildLists getRebuildLists() {
+        if (!this.rebuildListsFinished) {
+            throw new IllegalStateException("finishRebuildLists() must be called on the search thread first");
+        }
+
         EnumMap<ChunkUpdateType, Integer> overflowCounts = new EnumMap<>(ChunkUpdateType.class);
         if (this.hasAdditionalUpdates) {
             var values = ChunkUpdateType.VALUES;

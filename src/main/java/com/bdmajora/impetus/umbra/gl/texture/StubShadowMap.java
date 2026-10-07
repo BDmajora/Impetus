@@ -3,7 +3,7 @@ package com.bdmajora.impetus.umbra.gl.texture;
 import com.bdmajora.impetus.umbra.gl.GlResource;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL14;
-import com.bdmajora.impetus.lwjgl.MemoryStack;
+import org.lwjgl.system.MemoryStack;
 
 import java.nio.ByteBuffer;
 
@@ -15,7 +15,7 @@ public class StubShadowMap extends GlResource {
         setHandle(LWJGL.glGenTextures());
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, getGlId());
         TextureParameters.set2D(GL11.GL_NEAREST, GL11.GL_REPEAT);
-        try (MemoryStack stack = LWJGL.stackPush()) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
             ByteBuffer depth = stack.malloc(Float.BYTES);
             depth.putFloat(1.0f);
             depth.flip();

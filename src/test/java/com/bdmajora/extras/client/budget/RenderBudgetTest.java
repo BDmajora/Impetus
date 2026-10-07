@@ -5,6 +5,9 @@ import com.bdmajora.extras.ExtrasConfig;
 import com.bdmajora.impetus.umbra.Umbra;
 import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
+import com.bdmajora.testing.TestGl;
+import com.bdmajora.impetus.lwjgl.GLExtension;
+import org.mockito.Mockito;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.multiplayer.WorldClient;
@@ -82,10 +85,14 @@ class RenderBudgetTest {
         Mixins.<Map<?, ?>>get(RenderBudgetController.class, "decisions").clear();
         Mixins.<Map<?, ?>>get(RenderBudgetController.class, "particleCategories").clear();
         Mixins.set(RenderBudgetController.class, "particleCarry", 0.0D);
+        Mixins.<BottleneckDetector>get(RenderBudgetController.class, "bottleneck").reset();
     }
 
     @AfterEach
     void neutral() {
+        config.renderBudget.adaptive = false;
+        RenderBudgetController.onRenderTick(new TickEvent.RenderTickEvent(TickEvent.Phase.START, 0.0F));
+        TestGl.reset();
         Mixins.set(RenderBudgetController.class, "budget", RenderBudget.NEUTRAL);
         Mixins.set(Extras.class, "config", null);
     }
@@ -202,6 +209,79 @@ class RenderBudgetTest {
         frame();
         // The start of a client tick changes nothing
         RenderBudgetController.onClientTick(new TickEvent.ClientTickEvent(TickEvent.Phase.START));
+    }
+
+    private static void verdict(BottleneckDetector.State state) {
+        Mixins.set(Mixins.<BottleneckDetector>get(RenderBudgetController.class, "bottleneck"), "state", state);
+    }
+
+    @Test
+    void theAdaptiveStepTightensWhicheverSideIsBehind() {
+        pressure(22.0);
+        // CPU-bound: only the mobs, which are CPU work
+        verdict(BottleneckDetector.State.CPU_BOUND);
+        tick();
+        assertEquals(0.65, RenderBudgetController.budget().particleScale, 1e-9);
+        assertEquals(80, RenderBudgetController.budget().entityCullDistance);
+        assertEquals(BottleneckDetector.State.CPU_BOUND, RenderBudgetController.budget().bottleneck);
+        // GPU-bound: particles mostly, mobs a little
+        verdict(BottleneckDetector.State.GPU_BOUND);
+        tick();
+        assertEquals(0.45, RenderBudgetController.budget().particleScale, 1e-9);
+        assertEquals(88, RenderBudgetController.budget().entityCullDistance);
+        config.renderBudget.particleBudget = 100;
+        tick();
+        assertEquals(1.0, RenderBudgetController.budget().particleScale, 1e-9);
+        config.renderBudget.particleBudget = 65;
+        // Mixed or unmeasured: both, as before
+        verdict(BottleneckDetector.State.MIXED);
+        tick();
+        assertEquals(0.45, RenderBudgetController.budget().particleScale, 1e-9);
+        assertEquals(80, RenderBudgetController.budget().entityCullDistance);
+        // A detector that sees frames at target holds the step back even though the frame average says otherwise
+        verdict(BottleneckDetector.State.HEADROOM);
+        tick();
+        assertFalse(RenderBudgetController.budget().adaptiveActive);
+    }
+
+    @Test
+    void theGpuTimerFeedsTheDetectorOnlyWhileTheAdaptiveStepIsOn() {
+        BottleneckDetector detector = Mixins.get(RenderBudgetController.class, "bottleneck");
+        config.renderBudget.adaptive = true;
+        // Every pair reads back as 10 ms of GPU time once three frames old
+        Mockito.when(TestGl.gl().glGetQueryObjecti(Mockito.anyInt(), Mockito.anyInt())).thenReturn(1);
+        Mockito.when(TestGl.gl().glGetQueryObjectui64(Mockito.anyInt(), Mockito.anyInt())).thenReturn(0L, 10_000_000L);
+        for (int i = 0; i < 6; i++) {
+            frame();
+            RenderBudgetController.onRenderTick(new TickEvent.RenderTickEvent(TickEvent.Phase.END, 0.0F));
+        }
+        assertTrue(detector.gpuFrameMillis() > 0.0);
+        Mockito.verify(TestGl.gl(), Mockito.atLeast(12)).glQueryCounter(Mockito.anyInt(), Mockito.eq(0x8E28));
+        // A frame whose end never came is closed by the next start
+        frame();
+        frame();
+        assertNotNull(Mixins.get(RenderBudgetController.class, "gpuTimer"));
+
+        // Switching the step off hands the queries back and forgets the measurements
+        config.renderBudget.adaptive = false;
+        frame();
+        assertNull(Mixins.get(RenderBudgetController.class, "gpuTimer"));
+        assertEquals(0.0, detector.gpuFrameMillis());
+        frame();
+
+        // A driver without timer queries is asked once, and a thread without a context counts as one
+        config.renderBudget.adaptive = true;
+        Mockito.when(TestGl.gl().isOpenGLVersionSupported(3, 3)).thenReturn(false);
+        Mockito.when(TestGl.gl().isExtensionSupported(GLExtension.ARB_timer_query)).thenReturn(false);
+        frame();
+        assertEquals(BottleneckDetector.State.UNAVAILABLE, detector.state());
+        frame();
+        Mockito.verify(TestGl.gl(), Mockito.times(1)).isExtensionSupported(GLExtension.ARB_timer_query);
+        detector.reset();
+        Mockito.when(TestGl.gl().isOpenGLVersionSupported(3, 3)).thenThrow(new IllegalStateException("no context"));
+        frame();
+        assertEquals(BottleneckDetector.State.UNAVAILABLE, detector.state());
+        detector.reset();
     }
 
     private EntityPig pig(double x) {

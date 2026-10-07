@@ -1,8 +1,8 @@
 package com.bdmajora.impetus.engine.impl.gl.buffer;
 
-import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 import java.nio.ByteBuffer;
+import org.lwjgl.system.MemoryUtil;
 
 public class GlBufferMapping {
     private final GlBuffer buffer;
@@ -17,7 +17,7 @@ public class GlBufferMapping {
 
     // Copies into the mapped range
     public void write(ByteBuffer data, int writeOffset) {
-        LWJGL.memCopy(LWJGL.memAddress(data), LWJGL.memAddress(this.map, writeOffset), data.remaining());
+        MemoryUtil.memCopy(MemoryUtil.memAddress(data), MemoryUtil.memAddress(this.map, writeOffset), data.remaining());
     }
 
     // The buffer this maps

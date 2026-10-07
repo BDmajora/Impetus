@@ -1,8 +1,8 @@
 package com.bdmajora.impetus.engine.impl.render.mesh.gl;
 
 import org.lwjgl.opengl.GL15;
-import com.bdmajora.impetus.lwjgl.GLNv;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
+import org.lwjgl.opengl.ARBSparseBuffer;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
@@ -22,7 +22,7 @@ public class SparseBindlessBuffer implements DeviceBuffer {
     public SparseBindlessBuffer(long requestedSize) {
         this.size = alignUp(requestedSize, PAGE_SIZE);
         this.id = LWJGL.glCreateBuffers();
-        LWJGL.glNamedBufferStorage(this.id, this.size, GLNv.GL_SPARSE_STORAGE_BIT_ARB);
+        LWJGL.glNamedBufferStorage(this.id, this.size, ARBSparseBuffer.GL_SPARSE_STORAGE_BIT_ARB);
         LWJGL.glMakeNamedBufferResidentNV(this.id, GL15.GL_READ_WRITE);
         this.deviceAddress = LWJGL.glGetNamedBufferGpuAddressNV(this.id);
 

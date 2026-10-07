@@ -17,11 +17,19 @@ import org.lwjgl.opengl.GL32;
 import org.lwjgl.opengl.GL44;
 
 import java.nio.ByteBuffer;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 // Immediate-mode draws (GUI, items, entities, particles, block entities) through one streamed vertex buffer instead of client-side arrays: vanilla hands the driver a pointer into Java memory for every Tessellator draw, which the driver must copy before it can return and which the slower drivers route through a compatibility path. With buffer storage the bytes are memcpy'd straight into a persistently mapped, coherent ring split into fenced regions, so no driver call sits between the copy and the draw; without it the ring is a classic orphaned STREAM_DRAW buffer. Attribute pointers become offsets, and the array buffer is left unbound afterwards, matching what the chunk renderer expects
 public final class StreamingUploader {
     public static boolean enabled;
+    // GPUBooster's vertex format cache: one VAO per vertex layout with every pointer aimed at the ring, so a draw is bind, draw at the right first vertex, unbind
+    public static boolean formatCache;
+
+    // Formats past this many keep the per-draw pointer path, so a mod minting layouts per draw cannot grow the cache without bound
+    static final int MAX_CACHED_FORMATS = 64;
+    private static final Map<VertexFormat, Integer> VERTEX_ARRAYS = new HashMap<>();
 
     // Four regions of four mebibytes: a region is only reused after three others filled, and then only once its fence says the GPU is done reading it. The ring is never waited on: a region still in flight sends that one draw down vanilla's path instead (see reserve), since a blocking wait here serialises the CPU behind the GPU for every wrap, which with a heavy shader pack turned a busy scene into a stall per few megabytes of immediate-mode geometry
     private static final int REGIONS = 4;
@@ -62,8 +70,12 @@ public final class StreamingUploader {
             return false;
         }
 
+        // A cached layout reads the ring from offset zero, so its data has to start on a whole vertex
+        int vertexArray = formatCache ? vertexArrayFor(format) : 0;
+        int alignment = vertexArray != 0 ? stride : 4;
+
         // Persistent ring: find room before touching any state, so a region the GPU still reads costs nothing but this check and vanilla draws the call from client memory
-        if (persistent && !reserve(bytes)) {
+        if (persistent && !reserve(bytes + alignment - 1)) {
             return false;
         }
 
@@ -72,8 +84,21 @@ public final class StreamingUploader {
         data.limit(bytes);
 
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, buffer);
-        long base = persistent ? writePersistent(data, bytes) : writeOrphaning(data, bytes);
+        long base = persistent ? writePersistent(data, bytes, alignment) : writeOrphaning(data, bytes, alignment);
         data.limit(data.capacity());
+
+        if (vertexArray != 0) {
+            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+            GL30.glBindVertexArray(vertexArray);
+            GlStateManager.glDrawArrays(builder.getDrawMode(), (int) (base / stride), vertexCount);
+            GL30.glBindVertexArray(0);
+            // The colour array leaves the current colour undefined, as on the pointer path
+            if (format.hasColor()) {
+                GlStateManager.resetColor();
+            }
+            builder.reset();
+            return true;
+        }
 
         List<VertexFormatElement> elements = format.getElements();
         int count = elements.size();
@@ -109,9 +134,11 @@ public final class StreamingUploader {
         return true;
     }
 
-    // Appends into the current region; reserve() has already made the room
-    private static long writePersistent(ByteBuffer data, int bytes) {
-        long base = (long) region * REGION_SIZE + cursor;
+    // Appends into the current region on the given byte alignment; reserve() has already made room for the padding too
+    private static long writePersistent(ByteBuffer data, int bytes, int alignment) {
+        long regionStart = (long) region * REGION_SIZE;
+        long base = alignUp(regionStart + cursor, alignment);
+        cursor = (int) (base - regionStart);
         mapped.clear();
         mapped.position((int) base);
         mapped.put(data);
@@ -141,7 +168,8 @@ public final class StreamingUploader {
     }
 
     // Orphans the whole buffer when the ring wraps so the driver hands over fresh storage rather than waiting on in-flight draws
-    private static long writeOrphaning(ByteBuffer data, int bytes) {
+    private static long writeOrphaning(ByteBuffer data, int bytes, int alignment) {
+        cursor = (int) alignUp(cursor, alignment);
         if (cursor + bytes > CAPACITY) {
             GL15.glBufferData(GL15.GL_ARRAY_BUFFER, CAPACITY, GL15.GL_STREAM_DRAW);
             cursor = 0;
@@ -151,6 +179,37 @@ public final class StreamingUploader {
         GL15.glBufferSubData(GL15.GL_ARRAY_BUFFER, base, data);
         cursor = (cursor + bytes + 3) & ~3;
         return base;
+    }
+
+    // Rounds up to a multiple of the alignment, which need not be a power of two since vertex strides are not
+    static long alignUp(long value, int alignment) {
+        long remainder = value % alignment;
+        return remainder == 0 ? value : value + alignment - remainder;
+    }
+
+    // The cached VAO for a layout, built the first time it is drawn with every attribute aimed at the ring; 0 when VAOs are missing or the cache is full, which keeps the pointer path
+    private static int vertexArrayFor(VertexFormat format) {
+        Integer cached = VERTEX_ARRAYS.get(format);
+        if (cached != null) {
+            return cached;
+        }
+        if (VERTEX_ARRAYS.size() >= MAX_CACHED_FORMATS || !GL.getCapabilities().OpenGL30) {
+            return 0;
+        }
+
+        int vertexArray = GL30.glGenVertexArrays();
+        GL30.glBindVertexArray(vertexArray);
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, buffer);
+        int stride = format.getSize();
+        List<VertexFormatElement> elements = format.getElements();
+        for (int i = 0; i < elements.size(); i++) {
+            enable(elements.get(i), format.getOffset(i), stride);
+        }
+        GL30.glBindVertexArray(0);
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+
+        VERTEX_ARRAYS.put(format, vertexArray);
+        return vertexArray;
     }
 
     // Persistent mapping needs buffer storage (4.4 or its ARB form), map-range (3.0) and fences (3.2); anything with core 1.5 buffers gets the orphaning ring. The ARB-suffixed VBO path vanilla keeps for pre-2003 hardware is not worth a second code path

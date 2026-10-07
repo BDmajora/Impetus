@@ -1,6 +1,7 @@
 package com.bdmajora.testing;
 
 import com.bdmajora.impetus.lwjgl.LWJGLService;
+import org.lwjgl.system.MemoryUtil;
 import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
@@ -13,15 +14,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-// The unit-test LWJGL backend: one Mockito mock any test may stub or verify, whose unstubbed calls answer like a permissive driver
+// The unit-test GL: one Mockito mock of LWJGLService any test may stub or verify, whose unstubbed calls answer like a permissive driver
 public final class TestGl {
     private static final int GL_COMPILE_STATUS = 35713;
     private static final int GL_LINK_STATUS = 35714;
     private static final int GL_VALIDATE_STATUS = 35715;
     private static final int GL_FRAMEBUFFER_COMPLETE = 36053;
     private static final int GL_SIGNALED = 0x9119;
-    private static final TestNativeMemory MEMORY = new TestNativeMemory();
-    private static final Map<Method, Method> MEMORY_METHODS = new ConcurrentHashMap<>();
     private static final AtomicInteger NAMES = new AtomicInteger();
     private static final AtomicLong SYNCS = new AtomicLong();
     private static final LWJGLService SERVICE = Mockito.mock(LWJGLService.class, Mockito.withSettings().name("gl").defaultAnswer(TestGl::answer));
@@ -43,14 +42,14 @@ public final class TestGl {
         NAMES.set(0);
         SYNCS.set(0);
         for (long mapping : MAPPINGS.values()) {
-            MEMORY.nmemFree(mapping);
+            MemoryUtil.nmemFree(mapping);
         }
         MAPPINGS.clear();
     }
 
     private static final Map<Integer, Long> MAPPINGS = new ConcurrentHashMap<>();
 
-    // Stubs the LWJGL3-only DSA, bindless and sparse entry points, which are interface defaults that otherwise throw; persistent maps get real memory
+    // Stubs the DSA, bindless and sparse entry points the mesh backend needs; persistent maps get real memory
     public static void meshCapable() {
         Mockito.doAnswer(inv -> NAMES.incrementAndGet()).when(SERVICE).glCreateBuffers();
         Mockito.doNothing().when(SERVICE).glNamedBufferStorage(Mockito.anyInt(), Mockito.anyLong(), Mockito.anyInt());
@@ -60,7 +59,7 @@ public final class TestGl {
         Mockito.doAnswer(inv -> {
             int id = inv.getArgument(0);
             long size = inv.getArgument(2);
-            long address = MEMORY.nmemCalloc(1, size);
+            long address = MemoryUtil.nmemCalloc(1, size);
             MAPPINGS.put(id, address);
             return address;
         }).when(SERVICE).nglMapNamedBufferRange(Mockito.anyInt(), Mockito.anyLong(), Mockito.anyLong(), Mockito.anyInt());
@@ -81,20 +80,7 @@ public final class TestGl {
         Method method = invocation.getMethod();
         String name = method.getName();
         Object[] args = invocation.getArguments();
-        if (name.equals("stackPush")) {
-            return new TestMemoryStack();
-        }
-        if (name.startsWith("mem") || name.startsWith("nmem")) {
-            Method real = MEMORY_METHODS.computeIfAbsent(method, TestGl::memoryMethod);
-            if (real != null) {
-                return real.invoke(MEMORY, args);
-            }
-        }
-        if (method.isDefault()) {
-            return invocation.callRealMethod();
-        }
         switch (name) {
-            case "getPointerSize": return 8;
             case "isOpenGLVersionSupported":
             case "isExtensionSupported":
             case "supportsBufferBlending": return true;
@@ -135,13 +121,5 @@ public final class TestGl {
             return "";
         }
         return Mockito.RETURNS_DEFAULTS.answer(invocation);
-    }
-
-    private static Method memoryMethod(Method method) {
-        try {
-            return TestNativeMemory.class.getMethod(method.getName(), method.getParameterTypes());
-        } catch (NoSuchMethodException e) {
-            return null;
-        }
     }
 }

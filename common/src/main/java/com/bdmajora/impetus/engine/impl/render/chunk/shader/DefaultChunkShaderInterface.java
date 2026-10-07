@@ -8,14 +8,14 @@ import com.bdmajora.impetus.engine.impl.gl.shader.uniform.GlUniformMatrix4f;
 import com.bdmajora.impetus.engine.impl.gl.tessellation.GlPrimitiveType;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 import org.joml.Matrix4fc;
-import com.bdmajora.impetus.lwjgl.MemoryStack;
-import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
+import org.lwjgl.system.MemoryStack;
 
 import java.nio.FloatBuffer;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import org.lwjgl.system.MemoryUtil;
 
 // The engine's own forward-rendering chunk shader interface, used when no shader pack is active; Umbra swaps in UmbraTerrainShaderInterface, hence the interface
 public class DefaultChunkShaderInterface implements ChunkShaderInterface {
@@ -33,7 +33,7 @@ public class DefaultChunkShaderInterface implements ChunkShaderInterface {
 
     private GlPrimitiveType primitiveType;
 
-    public DefaultChunkShaderInterface(ShaderBindingContext context, ChunkShaderOptions options) {
+    public DefaultChunkShaderInterface(ShaderBindingContext context, ChunkShaderOptions options, ChunkShaderEnvironment environment) {
         this.uniformModelViewMatrix = context.bindUniform("u_ModelViewMatrix", GlUniformMatrix4f::new);
         this.uniformProjectionMatrix = context.bindUniform("u_ProjectionMatrix", GlUniformMatrix4f::new);
         this.uniformRegionOffset = context.bindUniform("u_RegionOffset", GlUniformFloat3v::new);
@@ -45,7 +45,7 @@ public class DefaultChunkShaderInterface implements ChunkShaderInterface {
             this.uniformTextures.put(ChunkShaderTextureSlot.LIGHT, context.bindUniform("u_LightTex", GlUniformInt::new));
         }
 
-        this.components = options.components().stream().map(c -> c.create(context)).toList();
+        this.components = options.components().stream().map(c -> c.create(context, environment)).toList();
     }
 
     // Binds textures and applies the pass's blend and cull state
@@ -94,11 +94,11 @@ public class DefaultChunkShaderInterface implements ChunkShaderInterface {
         var uniform = this.uniformChunkAges;
 
         if (uniform != null) {
-            try (MemoryStack stack = LWJGL.stackPush()) {
+            try (MemoryStack stack = MemoryStack.stackPush()) {
                 FloatBuffer buf = stack.callocFloat(loadTimes.length);
-                long ptr = LWJGL.memAddress(buf);
+                long ptr = MemoryUtil.memAddress(buf);
                 for (long loadTime : loadTimes) {
-                    LWJGL.memPutFloat(ptr, (float) Math.min(MAX_CHUNK_AGE, (timestamp - loadTime) / (1000000L)));
+                    MemoryUtil.memPutFloat(ptr, (float) Math.min(MAX_CHUNK_AGE, (timestamp - loadTime) / (1000000L)));
                     ptr += 4;
                 }
                 uniform.set(buf);

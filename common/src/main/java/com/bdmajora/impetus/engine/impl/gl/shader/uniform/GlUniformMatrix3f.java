@@ -3,7 +3,7 @@ package com.bdmajora.impetus.engine.impl.gl.shader.uniform;
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 import org.joml.Matrix3f;
-import com.bdmajora.impetus.lwjgl.MemoryStack;
+import org.lwjgl.system.MemoryStack;
 
 import java.nio.FloatBuffer;
 

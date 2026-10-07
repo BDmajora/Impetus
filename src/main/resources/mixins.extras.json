@@ -44,6 +44,7 @@
     "network.NetworkManagerFlushMixin",
     "network.NetworkSystemAccessor",
     "network.MinecraftServerFlushMixin",
+    "network.PacketThreadUtilMixin",
     "culling.EntityCullableMixin",
     "culling.TileEntityCullableMixin"
   ],
@@ -119,6 +120,8 @@
     "leaves.BlockLeavesCullMixin",
     "loading.MinecraftLoadWorldGcMixin",
     "loading.NetHandlerPlayClientRespawnMixin",
+    "network.MinecraftScheduledTasksMixin",
+    "network.NetHandlerPlayClientRetireMixin",
     "loading.ScreenShotHelperMixin",
     "atlas.MinecraftTextureSizeMixin",
     "atlas.SplashProgressTextureSizeMixin"

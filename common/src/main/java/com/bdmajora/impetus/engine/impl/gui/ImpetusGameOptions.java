@@ -30,6 +30,7 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
     public final AdvancedSettings advanced = new AdvancedSettings();
     public final PerformanceSettings performance = new PerformanceSettings();
     public final NotificationSettings notifications = new NotificationSettings();
+    public final MeshTerrainSettings meshTerrain = new MeshTerrainSettings();
 
     // Index into the monitor's available modes; 0 = current/desktop
     public int fullscreenResolution = 0;
@@ -81,8 +82,13 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
         public boolean useRenderPassConsolidation = true;
         public boolean useFasterClouds = true;
         public boolean useNoErrorGLContext = true;
+        // Terrain draws from a GPU-visible command ring with glMultiDrawElementsIndirect when the driver has GL 4.3 and 4.4 buffer storage
+        public boolean useMultiDrawIndirect = true;
 
         public AsyncOcclusionMode asyncOcclusionMode = AsyncOcclusionMode.ONLY_SHADOW;
+
+        // Software-rasterised occlusion of hidden terrain (Celeritas, grondag bitraster); adaptive, so its cost follows what it culls
+        public boolean useRasterOcclusionCulling = false;
 
         // Matches modern Sodium's Performance page.
         public DeferChunkUpdatesMode deferChunkUpdatesMode = DeferChunkUpdatesMode.ONE_FRAME;
@@ -125,6 +131,66 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
 
         // Visual-only guess at fluidlogging on servers that cannot report it; see FluidloggingInference. Touching by default since pool and fountain rims, the common case, only touch water on one side
         public FluidloggingGuess inferredFluidlogging = FluidloggingGuess.TOUCHING;
+    }
+
+    // The NV_mesh_shader terrain backend (Nvidium's design); every field is read when the section manager is built, so changes take a renderer reload
+    public static class MeshTerrainSettings {
+        // Used whenever the GPU qualifies and no shader pack is active, like Nvidium, which turns itself on by default
+        public boolean enabled = true;
+        // Draws sections that became visible this frame in a second pass, so the one-frame command lag never shows as holes when turning
+        public boolean temporalCoherence = true;
+        public MeshTranslucencySorting translucencySorting = MeshTranslucencySorting.QUADS;
+        // Sizes the geometry budget from free VRAM (NVX_gpu_memory_info) instead of maxGeometryMemory
+        public boolean automaticMemory = true;
+        public int maxGeometryMemory = 2048;
+        // Chunks of terrain kept on the GPU past the render distance; 0 keeps exactly the render distance, MeshTerrainConfig.MAX_KEEP_DISTANCE keeps everything until memory runs short
+        public int regionKeepDistance = 0;
+        public MeshStatistics statistics = MeshStatistics.NONE;
+    }
+
+    // How the mesh backend orders translucent geometry: build-time quad order only, plus a per-region section sort on the GPU, plus a per-frame quad swap pass on the GPU
+    public enum MeshTranslucencySorting implements TextProvider {
+        NONE("impetus.options.mesh_terrain.sorting.none"),
+        SECTIONS("impetus.options.mesh_terrain.sorting.sections"),
+        QUADS("impetus.options.mesh_terrain.sorting.quads");
+
+        private final TextComponent name;
+
+        MeshTranslucencySorting(String key) {
+            this.name = TextComponent.translatable(key);
+        }
+
+        // Display name for the cycler
+        @Override
+        public TextComponent getLocalizedName() {
+            return this.name;
+        }
+    }
+
+    // How much of the mesh backend's GPU-side counting reaches the F3 screen; each level adds atomics to the shaders, so NONE compiles them out
+    public enum MeshStatistics implements TextProvider {
+        NONE("impetus.options.mesh_terrain.statistics.none"),
+        FRUSTUM("impetus.options.mesh_terrain.statistics.frustum"),
+        REGIONS("impetus.options.mesh_terrain.statistics.regions"),
+        SECTIONS("impetus.options.mesh_terrain.statistics.sections"),
+        QUADS("impetus.options.mesh_terrain.statistics.quads");
+
+        private final TextComponent name;
+
+        MeshStatistics(String key) {
+            this.name = TextComponent.translatable(key);
+        }
+
+        // Display name for the cycler
+        @Override
+        public TextComponent getLocalizedName() {
+            return this.name;
+        }
+
+        // Whether this level counts at least as much as another
+        public boolean includes(MeshStatistics level) {
+            return this.ordinal() >= level.ordinal();
+        }
     }
 
     public static class NotificationSettings {
@@ -273,7 +339,7 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
         }
     }
 
-    // On LWJGL2/1.12.2, EXCLUSIVE and BORDERLESS both map to the display's fullscreen mode; distinction kept for config parity and future backends
+    // The window mode, applied by WindowModes in the mod: EXCLUSIVE owns the monitor at the chosen resolution, BORDERLESS is an undecorated monitor-sized window at the desktop mode
     public enum FullscreenMode implements TextProvider {
         OFF("impetus.options.fullscreen_mode.off"),
         BORDERLESS("impetus.options.fullscreen_mode.borderless"),
@@ -289,11 +355,6 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
         @Override
         public TextComponent getLocalizedName() {
             return this.name;
-        }
-
-        // Whether this window mode is fullscreen
-        public boolean isFullscreen() {
-            return this != OFF;
         }
     }
 

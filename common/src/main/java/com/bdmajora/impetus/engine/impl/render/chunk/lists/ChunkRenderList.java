@@ -3,7 +3,6 @@ package com.bdmajora.impetus.engine.impl.render.chunk.lists;
 import com.bdmajora.impetus.engine.impl.render.chunk.LocalSectionIndex;
 import com.bdmajora.impetus.engine.impl.render.chunk.RenderSection;
 import com.bdmajora.impetus.engine.impl.util.iterator.ByteIterator;
-import com.bdmajora.impetus.engine.impl.util.iterator.ReversibleByteArrayIterator;
 import com.bdmajora.impetus.engine.impl.util.iterator.ByteArrayIterator;
 import com.bdmajora.impetus.engine.impl.render.chunk.region.RenderRegion;
 import org.jetbrains.annotations.Nullable;
@@ -20,22 +19,21 @@ public class ChunkRenderList {
     private final byte[] sectionsWithEntities = new byte[RenderRegion.REGION_SIZE];
     private int sectionsWithEntitiesCount = 0;
 
+    private final byte[] sectionsNeedingDynamicSort = new byte[RenderRegion.REGION_SIZE];
+    private int sectionsNeedingDynamicSortCount = 0;
+
     private int size;
 
     public ChunkRenderList(RenderRegion region) {
         this.region = region;
     }
 
-    // Records the section and which of its flags apply
-    public void add(RenderSection render) {
+    public void add(int index, int flags) {
         if (this.size >= RenderRegion.REGION_SIZE) {
             throw new ArrayIndexOutOfBoundsException("Render list is full");
         }
 
         this.size++;
-
-        int index = render.getSectionIndex();
-        int flags = render.getVisualsServiceFlags();
 
         this.sectionsWithGeometry[this.sectionsWithGeometryCount] = (byte) index;
         this.sectionsWithGeometryCount += (flags >>> RenderVisualsService.HAS_BLOCK_GEOMETRY) & 1;
@@ -45,14 +43,25 @@ public class ChunkRenderList {
 
         this.sectionsWithEntities[this.sectionsWithEntitiesCount] = (byte) index;
         this.sectionsWithEntitiesCount += (flags >>> RenderVisualsService.HAS_BLOCK_ENTITIES) & 1;
+
+        this.sectionsNeedingDynamicSort[this.sectionsNeedingDynamicSortCount] = (byte) index;
+        this.sectionsNeedingDynamicSortCount += (flags >>> RenderVisualsService.NEEDS_DYNAMIC_SORT) & 1;
     }
 
-    public @Nullable ByteIterator sectionsWithGeometryIterator(boolean reverse) {
+    public @Nullable ByteIterator sectionsNeedingDynamicSortIterator() {
+        if (this.sectionsNeedingDynamicSortCount == 0) {
+            return null;
+        }
+
+        return new ByteArrayIterator(this.sectionsNeedingDynamicSort, this.sectionsNeedingDynamicSortCount);
+    }
+
+    public @Nullable ByteIterator sectionsWithGeometryIterator() {
         if (this.sectionsWithGeometryCount == 0) {
             return null;
         }
 
-        return new ReversibleByteArrayIterator(this.sectionsWithGeometry, this.sectionsWithGeometryCount, reverse);
+        return new ByteArrayIterator(this.sectionsWithGeometry, this.sectionsWithGeometryCount);
     }
 
     public @Nullable ByteIterator sectionsWithSpritesIterator() {
@@ -71,7 +80,17 @@ public class ChunkRenderList {
         return new ByteArrayIterator(this.sectionsWithEntities, this.sectionsWithEntitiesCount);
     }
 
-    // For the terrain pass
+    /**
+     * {@return the backing array of local section indices which have block geometry}
+     * <p>
+     * Only the first {@link #getSectionsWithGeometryCount()} entries are meaningful, and each index is stored narrowed
+     * to a byte, so mask with {@code 0xFF} before use. Exposed so that draw-command assembly can walk the list without
+     * allocating a {@link ByteIterator} or paying a virtual call per section. Callers must not mutate it.
+     */
+    public byte[] getSectionsWithGeometry() {
+        return this.sectionsWithGeometry;
+    }
+
     public int getSectionsWithGeometryCount() {
         return this.sectionsWithGeometryCount;
     }
@@ -99,7 +118,7 @@ public class ChunkRenderList {
     // For debugging
     @Override
     public String toString() {
-        var iterator = this.sectionsWithGeometryIterator(false);
+        var iterator = this.sectionsWithGeometryIterator();
         if (iterator == null) {
             return "[]";
         }

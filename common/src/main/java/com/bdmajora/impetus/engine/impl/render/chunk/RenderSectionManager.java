@@ -20,31 +20,36 @@ import com.bdmajora.impetus.engine.impl.render.chunk.compile.tasks.ChunkBuilderT
 import com.bdmajora.impetus.engine.impl.render.chunk.data.BuiltRenderSectionData;
 import com.bdmajora.impetus.engine.impl.render.chunk.data.BuiltSectionMeshParts;
 import com.bdmajora.impetus.engine.impl.render.chunk.data.MinecraftBuiltRenderSectionData;
+import com.bdmajora.impetus.engine.impl.render.chunk.fog.FogService;
 import com.bdmajora.impetus.engine.impl.render.chunk.lists.ChunkRenderList;
 import com.bdmajora.impetus.engine.impl.render.chunk.lists.RenderListManager;
+import com.bdmajora.impetus.engine.impl.render.chunk.lists.SectionGraph;
 import com.bdmajora.impetus.engine.impl.render.chunk.lists.SectionTicker;
 import com.bdmajora.impetus.engine.impl.render.chunk.lists.SortedRenderLists;
 import com.bdmajora.impetus.engine.impl.render.chunk.metrics.RenderSectionMetricsTracker;
 import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.AsyncOcclusionMode;
-import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.VisibilityEncoding;
 import com.bdmajora.impetus.engine.impl.render.chunk.region.RenderRegion;
 import com.bdmajora.impetus.engine.impl.render.chunk.region.RenderRegionManager;
-import com.bdmajora.impetus.engine.impl.render.chunk.shader.ChunkShaderFogComponent;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
+import com.bdmajora.impetus.engine.impl.render.mesh.MeshFog;
+import com.bdmajora.impetus.engine.impl.render.mesh.MeshTerrainConfig;
+import com.bdmajora.impetus.engine.impl.render.mesh.MeshTerrainRenderer;
 import com.bdmajora.impetus.engine.impl.render.viewport.CameraTransform;
 import com.bdmajora.impetus.engine.impl.common.util.MathUtil;
 import com.bdmajora.impetus.engine.impl.render.viewport.Viewport;
+import com.bdmajora.impetus.engine.impl.render.viewport.frustum.ShadowSearchFrustum;
 import com.bdmajora.impetus.engine.impl.util.PositionUtil;
 import com.bdmajora.impetus.engine.impl.util.iterator.ByteIterator;
-import com.bdmajora.impetus.engine.impl.render.chunk.sorting.TranslucentQuadAnalyzer;
-import com.bdmajora.impetus.engine.impl.render.chunk.sorting.trigger.NormalPlanes;
-import com.bdmajora.impetus.engine.impl.render.chunk.sorting.trigger.TranslucencyTriggerIndex;
+import com.bdmajora.impetus.engine.impl.render.chunk.compile.ChunkSortOutput;
+import com.bdmajora.impetus.engine.impl.render.chunk.sorting.CutPlaneIndex;
+import com.bdmajora.impetus.engine.impl.render.chunk.sorting.PartitionTree;
+import com.bdmajora.impetus.engine.impl.render.chunk.sorting.SortState;
 import com.bdmajora.impetus.engine.impl.util.suppliers.ExpiringSupplier;
 import org.jetbrains.annotations.MustBeInvokedByOverriders;
 import org.jetbrains.annotations.Nullable;
-import org.joml.Vector3d;
-import org.joml.Vector3ic;
+import org.joml.*;
 
+import java.lang.Math;
 import java.util.*;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.TimeUnit;
@@ -54,8 +59,18 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 public abstract class RenderSectionManager {
-    // When true, all sections are continuously marked for remeshing whenever the update queue empties
+    /**
+     * When true, the section manager will continuously mark all sections as needing to be remeshed whenever the
+     * update queue empties.
+     */
     protected static final boolean CONTINUOUSLY_REMESH_WORLD = false;
+
+    /**
+     * How many frames' worth of dispatch the BFS may collect into the initial-build list. The list only needs to
+     * outlast the interval between graph updates, and an overflow re-marks the graph dirty as soon as results are
+     * uploaded, so a small multiple of the in-flight target is sufficient.
+     */
+    private static final int REBUILD_LIST_FRAMES = 2;
 
     private final ChunkBuilder builder;
 
@@ -72,21 +87,19 @@ public abstract class RenderSectionManager {
 
     private final int renderDistance;
 
-    protected @Nullable Vector3ic lastCameraPosition;
-    protected final Vector3d cameraPosition = new Vector3d();
+    /** {@link #cameraPosition}, rounded down to block coordinates */
+    protected @Nullable Vector3ic cameraBlockPosition;
 
-    // Maps translucent geometry planes to their owning sections so camera movement re-sorts only where draw order can actually have changed
-    private final TranslucencyTriggerIndex translucencyTriggerIndex = new TranslucencyTriggerIndex();
+    protected Vector3d cameraPosition = new Vector3d();
 
-    // Dynamic sections without usable plane data (normal-count overflow) keep the legacy coarse movement-based re-sort heuristic
-    private final ReferenceOpenHashSet<RenderSection> coarseTriggeredSections = new ReferenceOpenHashSet<>();
+    /** last frame's exact camera position */
+    protected @Nullable Vector3d previousCameraPosition;
 
-    // The camera position the trigger planes were last tested from; unset until the first camera-pass update
-    private final Vector3d lastTriggerCameraPosition = new Vector3d();
-    private boolean hasTriggerCameraPosition;
+    private final CutPlaneIndex<RenderSection> cutPlaneIndex = new CutPlaneIndex<>();
 
-    // Movement (squared) beyond which we skip plane tests and re-sort every dynamic section (teleports).
-    private static final double TELEPORT_DISTANCE_SQ = 16.0 * 16.0;
+    private final ChunkJobMetricsTracker.MetricsData treeSortMetrics = new ChunkJobMetricsTracker.MetricsData();
+    private long treeStatsWindowStart = System.nanoTime();
+    private int treeTriggersThisSecond, treeTriggersLastSecond;
 
     @Getter
     private final RenderPassConfiguration<?> renderPassConfiguration;
@@ -95,10 +108,21 @@ public abstract class RenderSectionManager {
 
     private final int minSection, maxSection;
 
+    // Lattice and search thread shared by the terrain and shadow passes.
+    private final SectionGraph sectionGraph;
+
     protected final RenderListManager renderListManager;
 
     @Nullable
     protected final RenderListManager shadowRenderListManager;
+
+    // Set by the shadow pass, which precedes the terrain pass in a frame and submits both searches. The terrain
+    // pass of the same frame then skips re-running the search.
+    private boolean shadowPassRanThisFrame;
+
+    // Shared by every section (one allocation, not one per section); installed on each RenderSection so its
+    // packedMetadata changes fan out to the list manager mirror(s).
+    private final RenderSection.MetadataSink metadataSink = this::pushSectionMetadata;
 
     protected final ReferenceSet<RenderSection> sectionsWithGlobalEntities = new ReferenceOpenHashSet<>();
 
@@ -112,10 +136,25 @@ public abstract class RenderSectionManager {
     @Getter
     protected final RenderSectionMetricsTracker sectionMetricsTracker = new RenderSectionMetricsTracker();
 
+    // The Nvidium-style mesh-shader backend, when it replaces the multidraw renderer; it takes uploads and draws, the graph search still runs here
+    private final @Nullable MeshTerrainRenderer meshTerrain;
+
+    // The frame's main-pass viewport, which the mesh backend culls regions against on the GPU
+    private @Nullable Viewport frameViewport;
+
     public RenderSectionManager(RenderPassConfiguration<?> configuration, Supplier<ChunkBuildContext> contextSupplier,
                                 BiFunction<RenderDevice, RenderPassConfiguration<?>, ChunkRenderer> chunkRenderer,
                                 int renderDistance, CommandList commandList, int minSection, int maxSection,
                                 int requestedThreads, boolean hasShadowPass) {
+        this(configuration, contextSupplier, chunkRenderer, renderDistance, commandList, minSection, maxSection,
+                requestedThreads, hasShadowPass, null);
+    }
+
+    public RenderSectionManager(RenderPassConfiguration<?> configuration, Supplier<ChunkBuildContext> contextSupplier,
+                                BiFunction<RenderDevice, RenderPassConfiguration<?>, ChunkRenderer> chunkRenderer,
+                                int renderDistance, CommandList commandList, int minSection, int maxSection,
+                                int requestedThreads, boolean hasShadowPass, @Nullable MeshTerrainConfig meshTerrain) {
+        this.meshTerrain = meshTerrain != null ? new MeshTerrainRenderer(meshTerrain, (maxSection - minSection + 3) / 4) : null;
         this.chunkRenderer = chunkRenderer.apply(RenderDevice.INSTANCE, configuration);
 
         this.renderPassConfiguration = configuration;
@@ -124,13 +163,15 @@ public abstract class RenderSectionManager {
 
         this.renderDistance = renderDistance;
 
-        this.regions = new RenderRegionManager(commandList);
+        this.regions = new RenderRegionManager(commandList, this.renderPassConfiguration);
 
         this.minSection = minSection;
         this.maxSection = maxSection;
-        this.renderListManager = new RenderListManager(this.minSection, this.maxSection, this.getAsyncOcclusionMode() == AsyncOcclusionMode.EVERYTHING, this.createSectionTicker());
+        AsyncOcclusionMode asyncMode = this.getAsyncOcclusionMode();
+        this.sectionGraph = new SectionGraph(this.minSection, this.maxSection, asyncMode, hasShadowPass, this.useRasterOcclusionCulling());
+        this.renderListManager = new RenderListManager(this.sectionGraph, false, asyncMode, this.createSectionTicker());
         if (hasShadowPass) {
-            this.shadowRenderListManager = new RenderListManager(this.minSection, this.maxSection, this.getAsyncOcclusionMode() != AsyncOcclusionMode.NONE, this.createSectionTicker());
+            this.shadowRenderListManager = new RenderListManager(this.sectionGraph, true, asyncMode, this.createSectionTicker());
         } else {
             this.shadowRenderListManager = null;
         }
@@ -144,7 +185,6 @@ public abstract class RenderSectionManager {
         return null;
     }
 
-    // Waits productively by running build jobs on this thread
     public void managedBlock(BooleanSupplier isDone) {
         while (!isDone.getAsBoolean()) {
             Runnable task = this.asyncSubmittedTasks.poll();
@@ -156,7 +196,6 @@ public abstract class RenderSectionManager {
         }
     }
 
-    // Drains work other threads asked the render thread to do
     public void runAsyncTasks() {
         Runnable task;
 
@@ -167,88 +206,129 @@ public abstract class RenderSectionManager {
         this.renderPassDrawTimers.values().forEach(TimerQueryManager::updateTime);
     }
 
-    // whether terrain is being rendered for shadows
+    /**
+     * Whether terrain is being rendered for shadows.
+     */
     public boolean isInShadowPass() {
         return false;
     }
 
-    // Platform hook; gates the expensive debug strings
     protected boolean isDebugInfoShown() {
         return false;
     }
 
-    // Per-frame: check translucency triggers, then rebuild the render list
+    /**
+     * Terrain-pass update: run the terrain search (unless the shadow pass already ran it this frame) and the
+     * per-frame camera bookkeeping.
+     */
     public void update(Viewport positionedViewport, int frame, boolean spectator) {
-        if (isInShadowPass()) {
-            // Umbra parity: the shadow pass runs first every frame and must not write cameraPosition/lastCameraPosition (shared with the camera pass), or rebuild priority and sort distances measure against the SHADOW viewport
-            this.createTerrainRenderList(positionedViewport, frame, spectator);
-            return;
+        if (!this.shadowPassRanThisFrame) {
+            this.updateCameraPosition(positionedViewport);
         }
 
-        this.lastCameraPosition = positionedViewport.getBlockCoord();
-        var transform = positionedViewport.getTransform();
-        this.cameraPosition.set(transform.x, transform.y, transform.z);
-
-        this.createTerrainRenderList(positionedViewport, frame, spectator);
+        if (this.shadowPassRanThisFrame) {
+            // The shadow pass searched for this frame if the graph was dirty then. Any needsUpdate raised by
+            // build results between the two passes carries over to the next frame.
+            this.shadowPassRanThisFrame = false;
+        } else {
+            this.createTerrainRenderList(positionedViewport, null, frame, spectator);
+        }
 
         this.checkTranslucencyChange();
-
-        this.getCurrentRenderListManager().setNeedsUpdate(false);
     }
 
-    // Detects the camera crossing a trigger plane and schedules re-sorts
-    private void checkTranslucencyChange() {
-        if(lastCameraPosition == null)
-            return;
-
-        Vector3d previous = this.lastTriggerCameraPosition;
-        if (this.hasTriggerCameraPosition && !previous.equals(this.cameraPosition)) {
-            if (previous.distanceSquared(this.cameraPosition) > TELEPORT_DISTANCE_SQ) {
-                // Large jumps (teleports, dimension-ish moves) cross too many planes to be worth testing.
-                this.translucencyTriggerIndex.forEachSection(section -> section.pendingTriggeredSort = true);
-            } else {
-                this.translucencyTriggerIndex.collectTriggered(
-                        previous.x, previous.y, previous.z,
-                        this.cameraPosition.x, this.cameraPosition.y, this.cameraPosition.z,
-                        section -> section.pendingTriggeredSort = true);
-            }
+    /**
+     * Shadow-pass update. The shadow pass runs before the terrain pass in a frame, so this first runs the terrain
+     * search for the player viewport when one is due, then the shadow search.
+     */
+    public void updateForShadowPass(Viewport playerViewport, Viewport shadowViewport, int frame, boolean spectator) {
+        if (this.shadowRenderListManager == null) {
+            throw new IllegalStateException("No shadow pass configured");
         }
-        previous.set(this.cameraPosition);
-        this.hasTriggerCameraPosition = true;
+
+        this.updateCameraPosition(playerViewport);
+        this.shadowPassRanThisFrame = true;
+
+        if (this.renderListManager.isNeedsUpdate()) {
+            this.createTerrainRenderList(playerViewport, null, frame, spectator);
+        }
+
+        Vector3fc lightVector = null;
+
+        if (shadowViewport.getFrustum() instanceof ShadowSearchFrustum searchFrustum && searchFrustum.supportsOcclusionSearch()) {
+            lightVector = new Vector3f(searchFrustum.shadowLightX(), searchFrustum.shadowLightY(), searchFrustum.shadowLightZ());
+        }
+
+        this.shadowRenderListManager.startShadowGraphUpdate(shadowViewport, frame, this.regions.getRegionIdsLength(),
+                this.getSearchDistance(null), lightVector, this.getTargetQueueSize());
+    }
+
+    private void updateCameraPosition(Viewport positionedViewport) {
+        if (this.cameraBlockPosition != null) {
+            this.previousCameraPosition = this.cameraPosition;
+        }
+
+        this.cameraBlockPosition = positionedViewport.getBlockCoord();
+        var transform = positionedViewport.getTransform();
+        this.cameraPosition = new Vector3d(transform.x, transform.y, transform.z);
+    }
+
+    public boolean hasShadowPass() {
+        return this.shadowRenderListManager != null;
+    }
+
+    /**
+     * Whether the shadow pass has already run this frame, in which case the terrain pass must not join the
+     * searches it submitted.
+     */
+    public boolean didShadowPassRunThisFrame() {
+        return this.shadowPassRanThisFrame;
+    }
+
+    private void checkTranslucencyChange() {
+        long now = System.nanoTime();
+        if (now - this.treeStatsWindowStart >= ChunkJobMetricsTracker.OBSERVATION_COUNT_TIME) {
+            this.treeTriggersLastSecond = this.treeTriggersThisSecond;
+            this.treeTriggersThisSecond = 0;
+            this.treeSortMetrics.flipInterval();
+            this.treeStatsWindowStart = now;
+        }
+
+        // The mesh backend sorts translucent geometry itself, on the build workers and the GPU
+        if (cameraBlockPosition == null || this.meshTerrain != null)
+            return;
 
         int camSectionX = PositionUtil.posToSectionCoord(cameraPosition.x);
         int camSectionY = PositionUtil.posToSectionCoord(cameraPosition.y);
         int camSectionZ = PositionUtil.posToSectionCoord(cameraPosition.z);
 
         this.scheduleTranslucencyUpdates(camSectionX, camSectionY, camSectionZ);
+        this.scheduleTreeSortedUpdates();
     }
 
-    // Queues a sort task for every section the camera's move invalidated
     private void scheduleTranslucencyUpdates(int camSectionX, int camSectionY, int camSectionZ) {
+        var renderListManager = this.getCurrentRenderListManager();
+        var rebuildLists = renderListManager.getRebuildLists().byUpdateType();
+        var allowImportant = allowImportantRebuilds();
+        var translucentPass = this.renderPassConfiguration.defaultTranslucentMaterial().pass;
         if (!this.hasTranslucencySortedSections()) {
             return;
         }
-        var renderListManager = this.getCurrentRenderListManager();
-        var rebuildLists = renderListManager.getRebuildLists().byUpdateType();
-        var sortRebuildList = rebuildLists.get(ChunkUpdateType.SORT);
-        var importantSortRebuildList = rebuildLists.get(ChunkUpdateType.IMPORTANT_SORT);
-        var allowImportant = allowImportantRebuilds();
-        var translucentPass = this.renderPassConfiguration.defaultTranslucentMaterial().pass;
         for (Iterator<ChunkRenderList> it = renderListManager.getRenderLists().iterator(); it.hasNext(); ) {
             ChunkRenderList entry = it.next();
             var region = entry.getRegion();
             if (!region.hasSectionsInPass(translucentPass)) {
                 continue;
             }
-            ByteIterator sectionIterator = entry.sectionsWithGeometryIterator(false);
+            ByteIterator sectionIterator = entry.sectionsNeedingDynamicSortIterator();
             if (sectionIterator == null) {
                 continue;
             }
             while (sectionIterator.hasNext()) {
                 var section = region.getSection(sectionIterator.nextByteAsInt());
 
-                if (section == null || !section.isNeedsDynamicTranslucencySorting()) {
-                    // Sections without sortable translucent data are not relevant
+                // tree-sorted sections are retriggered by scheduleTreeSortedUpdates() instead
+                if (section == null || section.getSortMode() != RenderSection.SortMode.DYNAMIC) {
                     continue;
                 }
 
@@ -259,67 +339,97 @@ public abstract class RenderSectionManager {
                     continue;
                 }
 
-                boolean triggered = section.pendingTriggeredSort;
+                double dx = cameraPosition.x - section.lastCameraX;
+                double dy = cameraPosition.y - section.lastCameraY;
+                double dz = cameraPosition.z - section.lastCameraZ;
+                double camDelta = (dx * dx) + (dy * dy) + (dz * dz);
 
-                if (!triggered && this.coarseTriggeredSections.contains(section)) {
-                    // Legacy heuristic for sections whose plane data overflowed: re-sort after moving at least one block across the section grid or its axes
-                    double dx = cameraPosition.x - section.lastCameraX;
-                    double dy = cameraPosition.y - section.lastCameraY;
-                    double dz = cameraPosition.z - section.lastCameraZ;
-                    double camDelta = (dx * dx) + (dy * dy) + (dz * dz);
-
-                    if (camDelta >= 1) {
-                        boolean cameraChangedSection = camSectionX != PositionUtil.posToSectionCoord(section.lastCameraX) ||
-                                camSectionY != PositionUtil.posToSectionCoord(section.lastCameraY) ||
-                                camSectionZ != PositionUtil.posToSectionCoord(section.lastCameraZ);
-
-                        triggered = cameraChangedSection || section.isAlignedWithSectionOnGrid(camSectionX, camSectionY, camSectionZ);
-                    }
+                if (camDelta < 1) {
+                    // Didn't move enough, ignore
+                    continue;
                 }
 
-                if (triggered) {
-                    section.setPendingUpdate(update);
-                    // Inject it into the rebuild lists
-                    (update == ChunkUpdateType.IMPORTANT_SORT ? importantSortRebuildList : sortRebuildList).add(section);
+                boolean cameraChangedSection = camSectionX != PositionUtil.posToSectionCoord(section.lastCameraX) ||
+                        camSectionY != PositionUtil.posToSectionCoord(section.lastCameraY) ||
+                        camSectionZ != PositionUtil.posToSectionCoord(section.lastCameraZ);
 
-                    section.pendingTriggeredSort = false;
-                    section.lastCameraX = cameraPosition.x;
-                    section.lastCameraY = cameraPosition.y;
-                    section.lastCameraZ = cameraPosition.z;
+                if (!cameraChangedSection && !section.isAlignedWithSectionOnGrid(camSectionX, camSectionY, camSectionZ)) {
+                    continue;
                 }
+
+                section.setPendingUpdate(update);
+                // Inject it into the appropriate list
+                rebuildLists.get(update).add(section);
+
+                section.lastCameraX = cameraPosition.x;
+                section.lastCameraY = cameraPosition.y;
+                section.lastCameraZ = cameraPosition.z;
             }
         }
     }
 
-    // True if the renderer should respect per-frame queue limits rather than updating as many chunks as possible
+    /** Resorts tree-sorted sections whose cut planes this frame's movement crossed, visible or not */
+    private void scheduleTreeSortedUpdates() {
+        if (this.previousCameraPosition == null || this.cutPlaneIndex.size() == 0) {
+            return;
+        }
+
+        this.cutPlaneIndex.query(
+                this.previousCameraPosition.x, this.previousCameraPosition.y, this.previousCameraPosition.z,
+                this.cameraPosition.x, this.cameraPosition.y, this.cameraPosition.z,
+                section -> {
+                    this.treeTriggersThisSecond++;
+                    this.scheduleTreeSort(section);
+                }
+        );
+    }
+
+    private void scheduleTreeSort(RenderSection section) {
+        ChunkUpdateType update = ChunkUpdateType.getPromotionUpdateType(section.getPendingUpdate(),
+                (allowImportantRebuilds() && this.shouldPrioritizeRebuild(section)) ? ChunkUpdateType.IMPORTANT_SORT : ChunkUpdateType.SORT);
+
+        if (update == null) {
+            // We wouldn't be able to resort this section anyway
+            return;
+        }
+
+        section.setPendingUpdate(update);
+        this.getCurrentRenderListManager().getRebuildLists().byUpdateType().get(update).add(section);
+    }
+
+    /**
+     * {@return true if the renderer should respect per-frame queue limits and not try to update as many chunks as
+     * possible per frame}
+     */
     protected boolean shouldRespectUpdateTaskQueueSizeLimit() {
         return true;
     }
 
-    // Starts the occlusion walk for this frame
-    private void createTerrainRenderList(Viewport viewport, int frame, boolean spectator) {
-        final var searchDistance = this.getSearchDistance();
+    private void createTerrainRenderList(Viewport viewport, Matrix4fc projectionMatrix, int frame, boolean spectator) {
+        final var searchDistance = this.getSearchDistance(projectionMatrix);
         final var useOcclusionCulling = this.shouldUseOcclusionCulling(viewport, spectator);
-        final int targetQueueSize;
 
+        this.renderListManager.startGraphUpdate(viewport, frame, this.regions.getRegionIdsLength(),
+                searchDistance, useOcclusionCulling, this.getTargetQueueSize());
+    }
+
+    private int getTargetQueueSize() {
         if (this.shouldRespectUpdateTaskQueueSizeLimit()) {
-            targetQueueSize = (int)Math.min(Integer.MAX_VALUE, (long)this.builder.getTargetQueueSize() * 10);
+            return (int) Math.min(Integer.MAX_VALUE, (long) this.builder.getTargetQueueSize() * REBUILD_LIST_FRAMES);
         } else {
-            targetQueueSize = Integer.MAX_VALUE;
+            return Integer.MAX_VALUE;
         }
-
-        this.getCurrentRenderListManager().startGraphUpdate(viewport, frame, this.regions.getRegionIdsLength(),
-                searchDistance, useOcclusionCulling, targetQueueSize);
     }
 
     protected abstract boolean useFogOcclusion();
 
-    // Render distance in blocks, extended by fog occlusion when enabled
-    private float getSearchDistance() {
+    protected abstract boolean useRasterOcclusionCulling();
+
+    private float getSearchDistance(@Nullable Matrix4fc projectionMatrix) {
         float distance;
 
         if (this.useFogOcclusion()) {
-            distance = this.getEffectiveRenderDistance();
+            distance = this.getEffectiveRenderDistance(projectionMatrix);
         } else {
             distance = this.getRenderDistance();
         }
@@ -329,14 +439,14 @@ public abstract class RenderSectionManager {
 
     protected abstract boolean shouldUseOcclusionCulling(Viewport viewport, boolean spectator);
 
-    // Whether any section needs dynamic sorting at all
+    public abstract FogService getFogService();
+
     private boolean hasTranslucencySortedSections() {
-        return this.getCurrentRenderListManager().getRenderLists().hasSortedPass();
+        return this.getCurrentRenderListManager().getRenderLists().getPasses().stream().anyMatch(TerrainRenderPass::isSorted);
     }
 
     protected abstract boolean isSectionVisuallyEmpty(int x, int y, int z);
 
-    // Creates a section, attaches it to its region and the graph, and queues its first build
     public void onSectionAdded(int x, int y, int z) {
         long key = PositionUtil.packSection(x, y, z);
 
@@ -348,13 +458,12 @@ public abstract class RenderSectionManager {
 
         RenderSection renderSection = new RenderSection(region, x, y, z);
         region.addSection(renderSection);
+        renderSection.setMetadataSink(this.metadataSink);
 
         this.sectionByPosition.put(key, renderSection);
 
-        this.renderListManager.attachRenderSection(renderSection);
-        if (this.shadowRenderListManager != null) {
-            this.shadowRenderListManager.attachRenderSection(renderSection);
-        }
+        this.sectionGraph.attachRenderSection(renderSection);
+        this.markGraphDirty();
 
         this.invalidateCachedSectionData(renderSection);
 
@@ -364,10 +473,10 @@ public abstract class RenderSectionManager {
             renderSection.setPendingUpdate(ChunkUpdateType.INITIAL_BUILD);
         }
 
+
         this.markGraphDirty();
     }
 
-    // Detaches, cancels any build and frees the section
     public void onSectionRemoved(int x, int y, int z) {
         RenderSection section = this.sectionByPosition.remove(PositionUtil.packSection(x, y, z));
 
@@ -385,31 +494,36 @@ public abstract class RenderSectionManager {
 
         this.updateSectionInfo(section, null);
 
-        this.renderListManager.detachRenderSection(section);
-        if (this.shadowRenderListManager != null) {
-            this.shadowRenderListManager.detachRenderSection(section);
-        }
+        this.sectionGraph.detachRenderSection(section);
+        this.markGraphDirty();
 
         this.sectionMetricsTracker.removeSection(section);
 
-        this.translucencyTriggerIndex.remove(section);
-        this.coarseTriggeredSections.remove(section);
+        this.cutPlaneIndex.remove(section);
+
+        if (this.meshTerrain != null) {
+            this.meshTerrain.remove(x, y, z);
+        }
 
         section.delete();
 
         this.markGraphDirty();
     }
 
-    // Draws one pass over the current render lists
     public void renderLayer(ChunkRenderMatrices matrices, TerrainRenderPass pass, CameraTransform occlusionCamera, CameraTransform camera) {
         if (disabledRenderPasses.contains(pass)) {
+            return;
+        }
+
+        if (this.meshTerrain != null) {
+            this.renderMeshLayer(matrices, pass, camera);
             return;
         }
 
         RenderDevice device = RenderDevice.INSTANCE;
         CommandList commandList = device.createCommandList();
 
-        // Not in the shadow pass: it draws the same passes through this method, and sharing one timer per pass between the two enqueued two query pairs a frame while updateTime dequeued one, so the in-flight queue (and its GL query objects) grew by a pair every frame F3 was open
+        // The shadow pass reuses the main pass's timers, so it is not timed separately
         boolean shouldProfile = isDebugInfoShown() && !isInShadowPass();
 
         TimerQueryManager timer = null;
@@ -428,12 +542,41 @@ public abstract class RenderSectionManager {
         commandList.flush();
     }
 
-    // Whether the last walk reached the section
+    // The mesh backend draws every resident section at once: opaque from the solid pass, translucent from the sorted one; the pass's own GL state (blending) still applies
+    private void renderMeshLayer(ChunkRenderMatrices matrices, TerrainRenderPass pass, CameraTransform camera) {
+        pass.startDrawing();
+
+        if (pass.isSorted()) {
+            this.meshTerrain.renderTranslucent();
+        } else if (pass == this.renderPassConfiguration.defaultSolidMaterial().pass && this.frameViewport != null) {
+            this.meshTerrain.renderOpaque(this.frameViewport, matrices, MeshFog.from(this.getFogService()),
+                    camera.x, camera.y, camera.z, this.getFramebufferWidth(), this.getFramebufferHeight());
+        }
+
+        pass.endDrawing();
+    }
+
+    public void trackViewport(Viewport viewport) {
+        this.frameViewport = viewport;
+    }
+
+    // The framebuffer the mesh backend's hierarchical depth test samples; the platform knows it
+    protected int getFramebufferWidth() {
+        return 1;
+    }
+
+    protected int getFramebufferHeight() {
+        return 1;
+    }
+
+    public @Nullable MeshTerrainRenderer getMeshTerrain() {
+        return this.meshTerrain;
+    }
+
     public boolean isSectionVisible(int x, int y, int z) {
         return this.getCurrentRenderListManager().isSectionVisible(x, y, z);
     }
 
-    // Anything queued for rebuild
     private boolean rebuildListHasUpdates() {
         for (var queue : this.getCurrentRenderListManager().getRebuildLists().byUpdateType().values()) {
             if (!queue.isEmpty()) {
@@ -443,40 +586,46 @@ public abstract class RenderSectionManager {
         return false;
     }
 
-    // injects sections that requested a rebuild between graph updates into the appropriate rebuild lists
+    /**
+     * Inject sections that requested a rebuild between graph updates into the appropriate rebuild lists.
+     */
     private void promoteInterimRebuildList() {
-        var rebuildLists = this.getCurrentRenderListManager().getRebuildLists().byUpdateType();
-        for (var section : this.sectionsRequestingUpdate) {
-            rebuildLists.get(section.getPendingUpdate()).add(section);
+        if (this.sectionsRequestingUpdate.isEmpty()) {
+            return;
         }
+
+        var rebuildLists = this.getCurrentRenderListManager().getRebuildLists().byUpdateType();
+        boolean graphUpdatePending = this.getCurrentRenderListManager().isNeedsUpdate();
+
+        for (var section : this.sectionsRequestingUpdate) {
+            var updateType = section.getPendingUpdate();
+            if (updateType == null) {
+                // should never happen, but be defensive
+                continue;
+            }
+            if (!graphUpdatePending || updateType.isImportant()) {
+                rebuildLists.get(updateType).add(section);
+            }
+        }
+
+        this.sectionsRequestingUpdate.clear();
     }
 
-    // Submits rebuilds under the frame budget, running important ones on this thread
     public void updateChunks(boolean updateImmediately) {
         this.regions.update();
         this.jobMetricsTracker.tick();
 
-        // Advance the adaptive scheduling controller once per frame on the main pass only, so an extra shadow pass sharing the worker queue does not double-tick it
-        boolean mainPass = !this.isInShadowPass();
-
-        if (mainPass) {
-            this.builder.tickSchedulingBudget();
+        // Advance the scheduling controller once per frame, before any dispatch reads the budget. This runs only
+        // on the main terrain pass so that an additional shadow pass in the same frame does not double-tick the
+        // controller (which would halve its measured frame time); both passes share the same worker queue and
+        // in-flight target.
+        if (!this.isInShadowPass()) {
+            this.builder.tickSchedulingBudget(this.jobMetricsTracker);
         }
 
-        // Main pass only: sectionsRequestingUpdate is main-pass state and a graph update regenerates it anyway; the guard is a backstop, since draining it from the shadow pass would spend the shared ChunkBuilder budget and starve terrain
-        if (mainPass) {
-            if (!this.renderListManager.isNeedsUpdate() && !sectionsRequestingUpdate.isEmpty()) {
-                this.promoteInterimRebuildList();
-            }
-
-            this.sectionsRequestingUpdate.clear();
-        }
+        this.promoteInterimRebuildList();
 
         if (!rebuildListHasUpdates()) {
-            // Nothing was dispatched, so the workers cannot have been starved for lack of budget.
-            if (mainPass) {
-                this.builder.setDispatchBudgetLimited(false);
-            }
             if (CONTINUOUSLY_REMESH_WORLD && !this.getCurrentRenderListManager().getRebuildLists().hasAdditionalUpdates()) {
                 this.scheduleRebuildAll();
             }
@@ -489,18 +638,11 @@ public abstract class RenderSectionManager {
         this.submitRebuildTasks(blockingRebuilds, ChunkUpdateType.IMPORTANT_REBUILD);
         this.submitRebuildTasks(blockingRebuilds, ChunkUpdateType.IMPORTANT_SORT);
 
-        // Track whether deferred dispatch was throttled by the budget while work remained; with worker starvation this tells the controller to grow the in-flight target
-        boolean budgetLimited = false;
-        budgetLimited |= this.submitRebuildTasks(updateImmediately ? blockingRebuilds : deferredRebuilds, ChunkUpdateType.REBUILD);
-        budgetLimited |= this.submitRebuildTasks(updateImmediately ? blockingRebuilds : deferredRebuilds, ChunkUpdateType.INITIAL_BUILD);
-        // Candidates the BFS discarded for not fitting the rebuild lists also count as work we could not dispatch this frame
-        budgetLimited |= this.getCurrentRenderListManager().getRebuildLists().hasAdditionalUpdates();
-        if (mainPass) {
-            this.builder.setDispatchBudgetLimited(budgetLimited);
-        }
+        this.submitRebuildTasks(updateImmediately ? blockingRebuilds : deferredRebuilds, ChunkUpdateType.REBUILD);
+        this.submitRebuildTasks(updateImmediately ? blockingRebuilds : deferredRebuilds, ChunkUpdateType.INITIAL_BUILD);
 
-        // Count sort tasks as requiring a quarter of the resources of a mesh task
-        var deferredSorts = new ChunkJobCollector(Math.max(4, this.builder.getSchedulingBudget() * 4), this.buildResults::add);
+        // Sorts fill whatever worker time the mesh dispatch left over, scaled by their measured relative cost
+        var deferredSorts = new ChunkJobCollector(this.builder.getSortSchedulingBudget(), this.buildResults::add);
         this.submitRebuildTasks(updateImmediately ? blockingRebuilds : deferredSorts, ChunkUpdateType.SORT);
 
         blockingRebuilds.awaitCompletion(this.builder);
@@ -509,7 +651,6 @@ public abstract class RenderSectionManager {
         this.builder.tick();
     }
 
-    // Collects finished builds and uploads them
     public void uploadChunks() {
         var results = this.collectChunkBuildResults();
 
@@ -526,41 +667,49 @@ public abstract class RenderSectionManager {
             result.output().delete();
         }
 
-        // Force a graph update if the previous render list overflowed the update queue, so those additional chunks get queued
+        // Forcefully mark the graph as needing updates if the previous render list detected an overflow of the
+        // update queue. This is necessary to queue those additional chunks.
         if (this.getCurrentRenderListManager().getRebuildLists().hasAdditionalUpdates()) {
             this.markGraphDirty();
         }
     }
 
-    // Advances sprite animation
     public final void tickVisibleRenders() {
         this.getCurrentRenderListManager().tickVisibleRenders();
     }
 
-    // Installs each result's section data and queues its meshes
     private void processChunkBuildResults(ArrayList<ChunkJobResult.Success<? extends ChunkTaskOutput>> results) {
         var filtered = filterChunkBuildResults(results);
 
-        this.regions.uploadMeshes(RenderDevice.INSTANCE.createCommandList(), filtered, this::markGraphDirty);
+        if (this.meshTerrain != null) {
+            this.uploadMeshTerrain(filtered);
+        } else {
+            this.regions.uploadMeshes(RenderDevice.INSTANCE.createCommandList(), filtered, this::markGraphDirty);
+        }
 
         for (var holder : filtered) {
             var result = holder.output();
+
+            // whether this result belongs to the most recently submitted build
+            boolean latest = result.buildTime >= result.render.getLastSubmittedFrame();
+
             if (result instanceof ChunkBuildOutput buildResult) {
                 boolean changed = this.updateSectionInfo(result.render, buildResult.info);
 
                 if (changed) {
-                    // Rebuild the chunk graph when the section reports changed info (occlusion data, block entity add/remove, animated texture change, etc.)
+                    // The chunk graph must be rebuilt if the render section reports the info has changed. This
+                    // could indicate an occlusion data update, block entity addition/removal, animated texture
+                    // change, etc.
                     this.markGraphDirty();
                 }
 
                 // We only change the translucency info on full rebuilds, as sorts can keep using the same data
-                this.updateTranslucencyInfo(result.render, buildResult.meshes);
+                this.updateTranslucencyInfo(result.render, buildResult.meshes, latest);
             }
 
             var job = result.render.getBuildCancellationToken();
 
-            // Only clear the token if this result belongs to the most recent submission; a stale result must not clear a newer in-flight job's token
-            if (job != null && result.buildTime >= result.render.getLastSubmittedFrame()) {
+            if (job != null && latest) {
                 result.render.setBuildCancellationToken(null);
             }
 
@@ -569,74 +718,86 @@ public abstract class RenderSectionManager {
         }
     }
 
-    // Registers or clears the section's trigger planes
-    private void updateTranslucencyInfo(RenderSection render, Map<TerrainRenderPass, BuiltSectionMeshParts> meshes) {
-        Map<TerrainRenderPass, TranslucentQuadAnalyzer.SortState> sortStates = new Reference2ObjectArrayMap<>();
-        for(var entry : meshes.entrySet()) {
-            if(entry.getKey().isSorted()) {
-                sortStates.put(entry.getKey(), Objects.requireNonNull(entry.getValue().sortState()).compactForStorage());
+    // Hands each rebuilt section's packed geometry to the mesh backend; sorts never reach it
+    private void uploadMeshTerrain(Collection<ChunkJobResult.Success<? extends ChunkTaskOutput>> results) {
+        for (var holder : results) {
+            if (holder.output() instanceof ChunkBuildOutput output) {
+                var render = output.render;
+                this.meshTerrain.upload(render.getChunkX(), render.getChunkY(), render.getChunkZ(), output.meshGeometry);
             }
         }
-        render.setTranslucencySortStates(sortStates);
-
-        this.updateTranslucencyTriggerRegistration(render, sortStates);
     }
 
-    // (Re-)registers a section with the plane-crossing trigger index; overflowed or pre-mechanism plane data falls back to the legacy movement heuristic
-    private void updateTranslucencyTriggerRegistration(RenderSection render, Map<TerrainRenderPass, TranslucentQuadAnalyzer.SortState> sortStates) {
-        NormalPlanes[] planes = null;
-        boolean dynamic = false;
-        boolean missingPlanes = false;
+    /**
+     * @param latestBuild whether the meshes come from the most recent submission; a stale build keeps its planes
+     *                    indexed but leaves the camera bookkeeping to the build still in flight
+     */
+    private void updateTranslucencyInfo(RenderSection render, Map<TerrainRenderPass, BuiltSectionMeshParts> meshes, boolean latestBuild) {
+        Map<TerrainRenderPass, SortState.Resortable> sortStates = new Reference2ObjectArrayMap<>();
+        int highestIndex = RenderSection.NO_TRANSLUCENT_GEOMETRY;
 
-        for (var state : sortStates.values()) {
-            if (!state.requiresDynamicSorting()) {
+        for(var entry : meshes.entrySet()) {
+            if(!entry.getKey().isSorted()) {
                 continue;
             }
 
-            dynamic = true;
+            var state = Objects.requireNonNull(entry.getValue().sortState());
 
-            var statePlanes = state.triggerPlanes();
+            highestIndex = Math.max(highestIndex, state.debugIndex());
 
-            if (statePlanes == null) {
-                missingPlanes = true;
-            } else if (planes == null) {
-                planes = statePlanes;
-            } else {
-                var merged = new NormalPlanes[planes.length + statePlanes.length];
-                System.arraycopy(planes, 0, merged, 0, planes.length);
-                System.arraycopy(statePlanes, 0, merged, planes.length, statePlanes.length);
-                planes = merged;
+            // Only resortable states survive compaction; everything else is already in its final order.
+            if(state.compactForStorage() instanceof SortState.Resortable resortable) {
+                sortStates.put(entry.getKey(), resortable);
             }
         }
 
-        render.pendingTriggeredSort = false;
+        render.setTranslucencySortStates(sortStates.isEmpty() ? Collections.emptyMap() : sortStates, highestIndex);
 
-        boolean indexed = dynamic && !missingPlanes && planes != null;
-        if (indexed) {
-            this.translucencyTriggerIndex.update(render, planes);
+        if (render.isTreeSorted()) {
+            List<PartitionTree> trees = new ArrayList<>(sortStates.size());
+            for (var state : sortStates.values()) {
+                trees.add((PartitionTree) state);
+            }
+
+            this.cutPlaneIndex.put(render, PartitionTree.mergeCutPlanes(trees), render.getOriginX(), render.getOriginY(), render.getOriginZ());
+
+            // The build sorted for the camera at submission (see submitRebuildTasks). A crossing since then happened
+            // before the planes were indexed, so it has to be caught here or the order stays stale until the next one.
+            int ox = render.getOriginX(), oy = render.getOriginY(), oz = render.getOriginZ();
+            for (PartitionTree tree : trees) {
+                if (latestBuild && tree.crossesCutPlane(render.lastCameraX - ox, render.lastCameraY - oy, render.lastCameraZ - oz,
+                        this.cameraPosition.x - ox, this.cameraPosition.y - oy, this.cameraPosition.z - oz)) {
+                    this.treeTriggersThisSecond++;
+                    this.scheduleTreeSort(render);
+                    break;
+                }
+            }
+
+            // any crossing up to now was just handled. Dynamic sections keep the submission camera so that
+            // scheduleTranslucencyUpdates still sees movement made during the build.
+            if (latestBuild) {
+                render.lastCameraX = this.cameraPosition.x;
+                render.lastCameraY = this.cameraPosition.y;
+                render.lastCameraZ = this.cameraPosition.z;
+            }
         } else {
-            this.translucencyTriggerIndex.remove(render);
-        }
-        // A dynamic section the index cannot cover falls back to the coarse movement heuristic
-        if (dynamic && !indexed) {
-            this.coarseTriggeredSections.add(render);
-        } else {
-            this.coarseTriggeredSections.remove(render);
+            // a rebuild that is no longer tree-sorted must drop its stale planes
+            this.cutPlaneIndex.remove(render);
         }
     }
 
-    // Installs built data; true when visibility changed and the graph needs a walk
+    // Section MetadataSink: mirrors a section's packed metadata into the graph-search lattice on every
+    // packedMetadata mutation (visibility/visuals via setInfo, pending update, build-in-flight).
+    private void pushSectionMetadata(RenderSection section) {
+        this.sectionGraph.updateSectionMetadata(section.getChunkX(), section.getChunkY(), section.getChunkZ(),
+                section.getPackedMetadata(), this::markGraphDirty);
+    }
+
     @MustBeInvokedByOverriders
     protected boolean updateSectionInfo(RenderSection render, @Nullable BuiltRenderSectionData info) {
         boolean changed = render.setInfo(info);
 
         if (changed) {
-            long visibilityData = info != null ? info.visibilityData : VisibilityEncoding.NULL;
-            this.renderListManager.updateVisibilityData(render.getChunkX(), render.getChunkY(), render.getChunkZ(), visibilityData);
-            if (this.shadowRenderListManager != null) {
-                this.shadowRenderListManager.updateVisibilityData(render.getChunkX(), render.getChunkY(), render.getChunkZ(), visibilityData);
-            }
-
             if (!(info instanceof MinecraftBuiltRenderSectionData<?, ?> data)) {
                 this.sectionsWithGlobalEntities.remove(render);
             } else if (!data.globalBlockEntities.isEmpty()) {
@@ -647,8 +808,7 @@ public abstract class RenderSectionManager {
         return changed;
     }
 
-    // Drops results for sections rebuilt again since, keeping only the newest
-    private static Collection<ChunkJobResult.Success<? extends ChunkTaskOutput>> filterChunkBuildResults(ArrayList<ChunkJobResult.Success<? extends ChunkTaskOutput>> outputs) {
+    private static List<ChunkJobResult.Success<? extends ChunkTaskOutput>> filterChunkBuildResults(ArrayList<ChunkJobResult.Success<? extends ChunkTaskOutput>> outputs) {
         var map = new Reference2ReferenceLinkedOpenHashMap<RenderSection, ChunkJobResult.Success<? extends ChunkTaskOutput>>();
 
         for (var holder : outputs) {
@@ -665,10 +825,9 @@ public abstract class RenderSectionManager {
             }
         }
 
-        return map.values();
+        return new ArrayList<>(map.values());
     }
 
-    // Drains the builder's finished jobs, aborting failures
     private ArrayList<ChunkJobResult.Success<? extends ChunkTaskOutput>> collectChunkBuildResults() {
         ArrayList<ChunkJobResult.Success<? extends ChunkTaskOutput>> results = new ArrayList<>();
         ChunkJobResult<? extends ChunkTaskOutput> result;
@@ -676,6 +835,10 @@ public abstract class RenderSectionManager {
         while ((result = this.buildResults.poll()) != null) {
             if (result instanceof ChunkJobResult.Success<? extends ChunkTaskOutput> successfulResult) {
                 this.jobMetricsTracker.collectMetrics(successfulResult);
+
+                if (successfulResult.output() instanceof ChunkSortOutput sort && sort.render.isTreeSorted() && successfulResult.executionTimeNanos() >= 0) {
+                    this.treeSortMetrics.collect(successfulResult.executionTimeNanos());
+                }
                 results.add(successfulResult);
             } else if (result instanceof ChunkJobResult.Failure<? extends ChunkTaskOutput> failure) {
                 failure.abort();
@@ -687,11 +850,14 @@ public abstract class RenderSectionManager {
         return results;
     }
 
-    // True if dispatch stopped because the collector's budget ran out while sections remained, i.e. budget-limited rather than work-limited
-    private boolean submitRebuildTasks(ChunkJobCollector collector, ChunkUpdateType type) {
+    private void submitRebuildTasks(ChunkJobCollector collector, ChunkUpdateType type) {
         var queue = this.getCurrentRenderListManager().getRebuildLists().byUpdateType().get(type);
 
         int frame = this.getCurrentRenderListManager().getLastUpdatedFrame();
+
+        int cameraX = (int) Math.floor(this.cameraPosition.x);
+        int cameraY = (int) Math.floor(this.cameraPosition.y);
+        int cameraZ = (int) Math.floor(this.cameraPosition.z);
 
         while (!queue.isEmpty() && collector.canOffer()) {
             RenderSection section = queue.remove();
@@ -700,7 +866,13 @@ public abstract class RenderSectionManager {
                 continue;
             }
 
-            // The pending type may have changed since queuing: promoted SORT->REBUILD (the REBUILD pass picks it up), cleared by an earlier pass, or nulled after the async BFS (guards against double submission)
+            // The pending update type may have changed since this entry was queued. Cases:
+            //   - A SORT was promoted to REBUILD (e.g. a block changed while a sort was pending):
+            //     the section remains in the SORT queue but pendingUpdate is now REBUILD, so the
+            //     SORT pass skips it and the REBUILD pass picks it up correctly.
+            //   - The type was cleared by a prior pass in the same frame.
+            //   - The type was set to null after the async BFS generated the list (authoritative
+            //     guard against double submissions from a stale buildCancellationToken read).
             if (section.getPendingUpdate() != type) {
                 continue;
             }
@@ -714,14 +886,22 @@ public abstract class RenderSectionManager {
             }
 
             if (task != null) {
-                var job = this.builder.scheduleTask(task, type.isImportant(), collector::onJobFinished);
+                // Prioritize by distance so sections that only became reachable (and thus schedulable) after their
+                // neighbors were built still run ahead of farther sections that were queued in earlier frames.
+                long priority = (long) section.getSquaredDistanceFromBlockCenter(cameraX, cameraY, cameraZ);
+                var job = this.builder.scheduleTask(task, type.isImportant(), priority, collector::onJobFinished);
                 collector.addSubmittedJob(job);
 
                 section.setBuildCancellationToken(job);
 
                 if (!type.isSort()) {
                     // Prevent further sorts from being performed on this section
-                    section.setNeedsDynamicTranslucencySorting(false);
+                    section.clearTranslucencySortStates();
+
+                    // the meshing task sorts its translucent geometry for this camera
+                    section.lastCameraX = this.cameraPosition.x;
+                    section.lastCameraY = this.cameraPosition.y;
+                    section.lastCameraZ = this.cameraPosition.z;
                 }
             } else {
                 var result = new ChunkJobResult.Success<>(new ChunkBuildOutput(section, RenderSection.EMPTY_DATA, Reference2ReferenceMaps.emptyMap(), frame), -1);
@@ -733,21 +913,16 @@ public abstract class RenderSectionManager {
             section.setLastSubmittedFrame(frame);
             section.setPendingUpdate(null);
         }
-
-        // The loop only exits early on !canOffer(), so leftover sections mean we ran out of budget, not work.
-        return !queue.isEmpty();
     }
 
     protected abstract @Nullable ChunkBuilderTask<ChunkBuildOutput> createRebuildTask(RenderSection render, int frame);
 
-    // A re-sort for one section at the current camera
     public ChunkBuilderSortTask createSortTask(RenderSection render, int frame) {
-        if(!render.isNeedsDynamicTranslucencySorting())
+        if(render.getTranslucencySortStates().isEmpty())
             return null;
-        return new ChunkBuilderSortTask(render, (float)cameraPosition.x, (float)cameraPosition.y, (float)cameraPosition.z, frame, render.getTranslucencySortStates());
+        return new ChunkBuilderSortTask(render, cameraPosition.x, cameraPosition.y, cameraPosition.z, frame, render.getTranslucencySortStates(), this.renderPassConfiguration);
     }
 
-    // Forces a walk next frame
     public void markGraphDirty() {
         if (this.shadowRenderListManager != null) {
             this.shadowRenderListManager.setNeedsUpdate(true);
@@ -755,7 +930,6 @@ public abstract class RenderSectionManager {
         this.renderListManager.setNeedsUpdate(true);
     }
 
-    // Blocks on any async walk, e.g. before teardown
     public void finishAllGraphUpdates() {
         this.renderListManager.finishPreviousGraphUpdate();
         if (this.shadowRenderListManager != null) {
@@ -763,17 +937,21 @@ public abstract class RenderSectionManager {
         }
     }
 
-    // Whether a walk is pending
+    /**
+     * Whether {@link #update} must run in the current pass. In the terrain pass this is also true when the shadow
+     * pass already ran the terrain search this frame, so that {@link #update} can consume that state.
+     */
     public boolean needsUpdate() {
-        return this.getCurrentRenderListManager().isNeedsUpdate();
+        if (this.isInShadowPass()) {
+            return this.shadowRenderListManager.isNeedsUpdate();
+        }
+        return this.renderListManager.isNeedsUpdate() || this.shadowPassRanThisFrame;
     }
 
-    // The build thread pool
     public ChunkBuilder getBuilder() {
         return this.builder;
     }
 
-    // Stops the builder and frees every region
     public void destroy() {
         this.finishAllGraphUpdates();
 
@@ -787,6 +965,7 @@ public abstract class RenderSectionManager {
         if (this.shadowRenderListManager != null) {
             this.shadowRenderListManager.destroy();
         }
+        this.sectionGraph.destroy();
 
         try (CommandList commandList = RenderDevice.INSTANCE.createCommandList()) {
             this.regions.delete(commandList);
@@ -798,16 +977,15 @@ public abstract class RenderSectionManager {
 
         this.sectionsWithGlobalEntities.clear();
 
-        this.translucencyTriggerIndex.clear();
-        this.coarseTriggeredSections.clear();
+        if (this.meshTerrain != null) {
+            this.meshTerrain.delete();
+        }
     }
 
-    // For the debug screen
     public int getTotalSections() {
         return this.sectionByPosition.size();
     }
 
-    // For the debug screen
     public int getVisibleChunkCount() {
         var sections = 0;
         var iterator = this.getCurrentRenderListManager().getRenderLists().iterator();
@@ -820,7 +998,6 @@ public abstract class RenderSectionManager {
         return sections;
     }
 
-    // Queues work for the render thread from another thread
     public final void scheduleAsyncTask(Runnable runnable) {
         if (Thread.currentThread() == this.renderThread) {
             // Run immediately, otherwise the thread may deadlock waiting for itself
@@ -830,12 +1007,10 @@ public abstract class RenderSectionManager {
         }
     }
 
-    // Marshals a rebuild request onto the render thread
     private void scheduleRebuildOffThread(int x, int y, int z, boolean important) {
         scheduleAsyncTask(() -> this.scheduleSectionForRebuild(x, y, z, important));
     }
 
-    // Entry point from block updates, thread-safe
     public final void scheduleRebuild(int x, int y, int z, boolean important) {
         if (Thread.currentThread() != renderThread) {
             this.scheduleRebuildOffThread(x, y, z, important);
@@ -845,12 +1020,10 @@ public abstract class RenderSectionManager {
         this.scheduleSectionForRebuild(x, y, z, important);
     }
 
-    // Platform hook; drops cloned chunk data
     protected void invalidateCachedSectionData(RenderSection section) {
 
     }
 
-    // Queues a rebuild, promoting the update type if a lesser one was pending
     protected void scheduleSectionForRebuild(int x, int y, int z, boolean important) {
         RenderSection section = this.sectionByPosition.get(PositionUtil.packSection(x, y, z));
 
@@ -866,7 +1039,12 @@ public abstract class RenderSectionManager {
             }
 
             if (section.requestUpdate(pendingUpdate)) {
-                if (!this.getCurrentRenderListManager().isNeedsUpdate() && this.sectionsRequestingUpdate.size() < this.builder.getSchedulingBudget()) {
+                // Check importance using the section's new update type, as it may not be exactly what we requested
+                important = section.getPendingUpdate().isImportant();
+
+                if (important ||
+                        (!this.getCurrentRenderListManager().isNeedsUpdate() &&
+                            this.sectionsRequestingUpdate.size() < this.builder.getSchedulingBudget())) {
                     this.sectionsRequestingUpdate.add(section);
                 } else {
                     this.markGraphDirty();
@@ -875,7 +1053,6 @@ public abstract class RenderSectionManager {
         }
     }
 
-    // Every section, e.g. after a resource reload
     public void scheduleRebuildAll() {
         for (var section : this.sectionByPosition.values()) {
             if (!this.isSectionVisuallyEmpty(section.getChunkX(), section.getChunkY(), section.getChunkZ())) {
@@ -888,21 +1065,23 @@ public abstract class RenderSectionManager {
 
     private static final float NEARBY_REBUILD_DISTANCE = MathUtil.square(16.0f);
 
-    // Sections near the camera jump the queue
     private boolean shouldPrioritizeRebuild(RenderSection section) {
-        return this.lastCameraPosition != null && section.getSquaredDistanceFromBlockCenter(this.lastCameraPosition.x(), this.lastCameraPosition.y(), this.lastCameraPosition.z()) < NEARBY_REBUILD_DISTANCE;
+        return this.cameraBlockPosition != null && section.getSquaredDistanceFromBlockCenter(this.cameraBlockPosition.x(), this.cameraBlockPosition.y(), this.cameraBlockPosition.z()) < NEARBY_REBUILD_DISTANCE;
     }
 
-    // True if rebuilds near the player should block the main thread; reduces flickering but can cause lag spikes
+    /**
+     * {@return true if rebuilds of chunks near the player should block the main thread, reduces flickering but will
+     * potentially cause lag spikes}
+     */
     protected boolean allowImportantRebuilds() {
         return false;
     }
 
-    // Render distance clamped to the world's loaded area
-    private float getEffectiveRenderDistance() {
-        var color = ChunkShaderFogComponent.FOG_SERVICE.getFogColor();
+    private float getEffectiveRenderDistance(@Nullable Matrix4fc projectionMatrix) {
+        var color = this.getFogService().getFogColor();
         var alpha = color[3];
-        var distance = ChunkShaderFogComponent.FOG_SERVICE.getFogCutoff();
+        var distance = this.getFogService().getFogCutoff();
+        var shape = this.getFogService().getFogShapeIndex();
 
         var renderDistance = this.getRenderDistance();
 
@@ -911,25 +1090,71 @@ public abstract class RenderSectionManager {
             return renderDistance;
         }
 
+        if (shape == FogService.FOG_SHAPE_PLANAR) {
+            // The cullers measure the cylindrical distance max(|xz|, |y|) from the camera, which for spherical and
+            // cylindrical fog is never larger than the distance the shader fogs by, so the cutoff can be used
+            // as-is. Planar fog instead measures depth along the view axis, which is *smaller* than that distance,
+            // so the cutoff has to be scaled up to the worst case before the cullers can use it.
+            var secant = getMaximumFrustumSecant(projectionMatrix);
+
+            if (secant == 0.0f) {
+                // Not a projection we can bound the view cone of; assume fog can hide nothing.
+                return renderDistance;
+            }
+
+            distance *= secant;
+        }
+
         return Math.min(renderDistance, distance + 0.5f);
     }
 
-    // Render distance in blocks
+    /**
+     * Computes the largest factor by which a point inside the view frustum can be farther from the camera than its
+     * depth along the view axis.
+     *
+     * <p>Computing from the projection rather than from the game's setting keeps this correct
+     * under dynamic FOV, spyglasses, aspect ratio changes, temporal jitter, and any mod which alters the
+     * projection.
+     */
+    private static float getMaximumFrustumSecant(@Nullable Matrix4fc projectionMatrix) {
+        if (projectionMatrix == null) {
+            return 0.0f;
+        }
+
+        // A perspective projection divides by -z (m23 = -1 before any scaling). An orthographic one (used by the
+        // shadow pass) leaves w untouched, has no apex, and therefore no bounded view cone.
+        float w = Math.abs(projectionMatrix.m23());
+
+        if (w == 0.0f) {
+            return 0.0f;
+        }
+
+        float tanX = (w + Math.abs(projectionMatrix.m20())) / Math.abs(projectionMatrix.m00());
+        float tanY = (w + Math.abs(projectionMatrix.m21())) / Math.abs(projectionMatrix.m11());
+
+        float secant = (float)Math.sqrt(1.0 + (tanX * tanX) + (tanY * tanY));
+
+        // Rejects a degenerate projection (a zero or NaN term anywhere above lands here) rather than letting it
+        // poison the search distance.
+        if (!(secant >= 1.0f) || !Float.isFinite(secant)) {
+            return 0.0f;
+        }
+
+        return secant;
+    }
+
     private float getRenderDistance() {
         return this.renderDistance * 16.0f;
     }
 
-    // Section by coordinates, or null
-    public RenderSection getRenderSectionOrNull(int x, int y, int z) {
+    private RenderSection getRenderSection(int x, int y, int z) {
         return this.sectionByPosition.get(PositionUtil.packSection(x, y, z));
     }
 
-    // Every section
     public Collection<RenderSection> getAllRenderSections() {
         return Collections.unmodifiableCollection(this.sectionByPosition.values());
     }
 
-    // GPU time per pass from the timer queries
     private Object2LongMap<TerrainRenderPass> computeRenderPassTimingsMap() {
         Object2LongOpenHashMap<TerrainRenderPass> map = new Object2LongOpenHashMap<>();
         for (var entry : renderPassDrawTimers.entrySet()) {
@@ -940,9 +1165,12 @@ public abstract class RenderSectionManager {
 
     protected final Supplier<Object2LongMap<TerrainRenderPass>> renderPassTimingsDebounced = new ExpiringSupplier<>(this::computeRenderPassTimingsMap, 1, TimeUnit.SECONDS);
 
-    // Every line the debug screen shows
     public Collection<String> getDebugStrings() {
         List<String> list = new ArrayList<>();
+
+        if (this.meshTerrain != null) {
+            this.meshTerrain.addDebugStrings(list);
+        }
 
         int count = 0, indexCount = 0;
 
@@ -952,22 +1180,26 @@ public abstract class RenderSectionManager {
         long indexUsed = 0, indexAllocated = 0;
 
         for (var region : this.regions.getLoadedRegions()) {
-            for (var resources : region.getAllResources()) {
-                var buffer = resources.getGeometryArena();
+            var resources = region.getResources();
 
-                deviceUsed += buffer.getDeviceUsedMemoryL();
-                deviceAllocated += buffer.getDeviceAllocatedMemoryL();
-
-                var indexBuffer = resources.getIndexArena();
-
-                if (indexBuffer != null) {
-                    indexUsed += indexBuffer.getDeviceUsedMemoryL();
-                    indexAllocated += indexBuffer.getDeviceAllocatedMemoryL();
-                    indexCount++;
-                }
-
-                count++;
+            if (resources == null) {
+                continue;
             }
+
+            var buffer = resources.getGeometryArena();
+
+            deviceUsed += buffer.getDeviceUsedMemoryL();
+            deviceAllocated += buffer.getDeviceAllocatedMemoryL();
+
+            var indexBuffer = resources.getIndexArena();
+
+            if (indexBuffer != null) {
+                indexUsed += indexBuffer.getDeviceUsedMemoryL();
+                indexAllocated += indexBuffer.getDeviceAllocatedMemoryL();
+                indexCount++;
+            }
+
+            count++;
         }
 
         list.add(String.format("G: %d/%d, I: %d/%d MiB (%d buffers)", MathUtil.toMib(deviceUsed), MathUtil.toMib(deviceAllocated), MathUtil.toMib(indexUsed), MathUtil.toMib(indexAllocated), count));
@@ -975,7 +1207,6 @@ public abstract class RenderSectionManager {
 
         var uploadEstimator = this.regions.getUploadDurationEstimator();
         long lastUploadBytes = uploadEstimator.getLastUploadBytes();
-
         if (lastUploadBytes > 0L) {
             list.add(String.format("Upload Estimate: %d KiB, predicted %s, last %s",
                     lastUploadBytes / 1024L,
@@ -985,11 +1216,13 @@ public abstract class RenderSectionManager {
 
         var rebuildLists = this.getCurrentRenderListManager().getRebuildLists();
 
-        list.add(String.format("Chunk Queues: U=%02d (P0=%03d | P1=%03d | P2=%03d)",
+        list.add(String.format("Chunk Queues: U=%02d (P0=%03d | P1=%03d | P2=%03d) S=%03d/%03d",
                 this.buildResults.size(),
                 rebuildLists.getUpdateCount(ChunkUpdateType.IMPORTANT_REBUILD),
                 rebuildLists.getUpdateCount(ChunkUpdateType.REBUILD),
-                rebuildLists.getUpdateCount(ChunkUpdateType.INITIAL_BUILD)
+                rebuildLists.getUpdateCount(ChunkUpdateType.INITIAL_BUILD),
+                rebuildLists.getUpdateCount(ChunkUpdateType.IMPORTANT_SORT),
+                rebuildLists.getUpdateCount(ChunkUpdateType.SORT)
         ));
 
         var debugStats = renderListManager.getDebugStatistics();
@@ -1011,56 +1244,52 @@ public abstract class RenderSectionManager {
             list.add(entry.getKey().name() + " - " + entry.getIntValue() + " sections, " + time);
         }
 
-        if (renderListManager.getRenderLists().hasSortedPass()) {
+        if (renderListManager.getRenderLists().getPasses().stream().anyMatch(TerrainRenderPass::isSorted)) {
             list.add(debugStats.getSortingString());
+            list.add(String.format("Tree Sort: %d planes, %d trig/s, %d sorts/s, %s avg",
+                    this.cutPlaneIndex.planeCount(), this.treeTriggersLastSecond,
+                    this.treeSortMetrics.getObservationsInLastTimeInterval(),
+                    TimeUtil.stringifyTime((long) this.treeSortMetrics.getAverageNanos(0), TimeUnit.NANOSECONDS)));
         }
 
         return list;
     }
 
-    // The list manager for this frame
     private RenderListManager getCurrentRenderListManager() {
         return isInShadowPass() ? this.shadowRenderListManager : this.renderListManager;
     }
 
-    // The lists to draw
     public SortedRenderLists getRenderLists() {
         return this.getCurrentRenderListManager().getRenderLists();
     }
 
-    // Whether the section has data
     public boolean isSectionBuilt(int x, int y, int z) {
-        var section = this.getRenderSectionOrNull(x, y, z);
+        var section = this.getRenderSection(x, y, z);
         return section != null && section.isBuilt();
     }
 
-    // Column loaded; adds its sections
     public void onChunkAdded(int x, int z) {
         for (int y = this.minSection; y < this.maxSection; y++) {
             this.onSectionAdded(x, y, z);
         }
     }
 
-    // Column unloaded; removes its sections
     public void onChunkRemoved(int x, int z) {
         for (int y = this.minSection; y < this.maxSection; y++) {
             this.onSectionRemoved(x, y, z);
         }
     }
 
-    // Debug switch for one pass
     public void toggleRenderingForTerrainPass(TerrainRenderPass pass) {
         if (!this.disabledRenderPasses.add(pass)) {
             this.disabledRenderPasses.remove(pass);
         }
     }
 
-    // Sections whose block entities render regardless of visibility
     public final Collection<RenderSection> getSectionsWithGlobalEntities() {
         return ReferenceSets.unmodifiable(this.sectionsWithGlobalEntities);
     }
 
-    // From the sprite ticker
     public String getTickerDebugString() {
         return this.getCurrentRenderListManager().getTickerDebugString();
     }

@@ -47,11 +47,11 @@ final class ImpetusMixinRegistrar {
         }
     }
 
-    // Order: Impetus/Umbra reserve early-load slots, Coarctatio must apply before vanilla NBT/ResourceLocation instantiation, Fulgor injects lighting fields into World/Chunk, Equilibrium loads last so Fulgor reads its chunk cache, Extras and Dynamic Lights are order-independent after those
+    // Order: Impetus/Umbra reserve early-load slots, Coarctatio must apply before vanilla NBT/ResourceLocation instantiation, Fulgor injects lighting fields into World/Chunk, Equilibrium loads last so Fulgor reads its chunk cache, Extras, Dynamic Lights and Linux Extras are order-independent after those
     private static List<String> mixinConfigs() {
         return Arrays.asList("mixins.impetus.json", "mixins.umbra.json", "mixins.coarctatio.json",
                 "mixins.fulgor.json", "mixins.equilibrium.json", "mixins.extras.json",
-                "mixins.dynamiclights.json");
+                "mixins.dynamiclights.json", "mixins.linuxextras.json");
     }
 
     // DH's fade pass samples that depth texture through the accessor Impetus registers with DH; injectData runs after every coremod jar joined the classpath, so the resource lookup sees DH's

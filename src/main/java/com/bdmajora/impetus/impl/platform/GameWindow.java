@@ -58,8 +58,31 @@ public final class GameWindow {
         return Display.isFullscreen();
     }
 
-    // Switches resolution while staying fullscreen; Display remembers the windowed size to return to
-    public static void setFullscreenMode(DisplayMode mode) {
-        Display.setDisplayModeAndFullscreen(mode);
+    // Switches the monitor an exclusive-fullscreen window owns to this mode; Cleanroom's Display.setDisplayModeAndFullscreen is an unimplemented stub, so this is GLFW's own monitor switch. False when the window is not exclusive fullscreen
+    public static boolean setFullscreenMode(DisplayMode mode) {
+        long window = handle();
+        long monitor = window == 0L ? 0L : GLFW.glfwGetWindowMonitor(window);
+        if (monitor == 0L) {
+            return false;
+        }
+
+        int refresh = mode.getFrequency() > 0 ? mode.getFrequency() : GLFW.GLFW_DONT_CARE;
+        GLFW.glfwSetWindowMonitor(window, monitor, 0, 0, mode.getWidth(), mode.getHeight(), refresh);
+        return true;
+    }
+
+    // The monitor's mode when the game started, which is what Cleanroom enters fullscreen at
+    public static DisplayMode desktopMode() {
+        return Display.getDesktopDisplayMode();
+    }
+
+    // An undecorated window exactly covering its monitor at the desktop mode, which Cleanroom's Display can make and LWJGL2's could not
+    public static boolean isBorderless() {
+        return handle() != 0L && Display.isBorderless();
+    }
+
+    // Through Display, which keeps the windowed bounds to return to
+    public static void setBorderless(boolean borderless) {
+        Display.setBorderless(borderless);
     }
 }

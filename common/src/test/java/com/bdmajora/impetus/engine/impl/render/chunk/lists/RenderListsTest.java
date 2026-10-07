@@ -134,8 +134,9 @@ class RenderListsTest {
         assertEquals(1, rebuilds.getUpdateCount(ChunkUpdateType.REBUILD));
         assertEquals(2, rebuilds.getUpdateCount(ChunkUpdateType.INITIAL_BUILD));
         assertEquals(0, rebuilds.getUpdateCount(ChunkUpdateType.SORT));
-        assertTrue(ChunkRebuildLists.EMPTY.isEmpty());
-        assertFalse(new ChunkRebuildLists(ChunkRebuildLists.EMPTY.byUpdateType(), true, java.util.Map.of()).isEmpty());
+        assertTrue(ChunkRebuildLists.empty().isEmpty());
+        assertNotSame(ChunkRebuildLists.empty().byUpdateType(), ChunkRebuildLists.empty().byUpdateType());
+        assertFalse(new ChunkRebuildLists(ChunkRebuildLists.empty().byUpdateType(), true, java.util.Map.of()).isEmpty());
         VisibleChunkCollector quiet = new VisibleChunkCollector(2, regions.getRegionIdsLength(), 8);
         assertTrue(quiet.getRebuildLists().isEmpty());
         assertFalse(quiet.createRenderLists().hasSortedPass());

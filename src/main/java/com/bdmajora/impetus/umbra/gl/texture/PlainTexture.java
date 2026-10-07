@@ -2,7 +2,7 @@ package com.bdmajora.impetus.umbra.gl.texture;
 
 import com.bdmajora.impetus.umbra.gl.GlResource;
 import org.lwjgl.opengl.GL11;
-import com.bdmajora.impetus.lwjgl.MemoryStack;
+import org.lwjgl.system.MemoryStack;
 
 import java.nio.ByteBuffer;
 
@@ -16,7 +16,7 @@ public class PlainTexture extends GlResource {
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, getGlId());
         TextureParameters.set2D(GL11.GL_NEAREST, GL11.GL_REPEAT);
         // One RGBA pixel on the thread-local stack; nothing here outlives the constructor
-        try (MemoryStack stack = LWJGL.stackPush()) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
             ByteBuffer pixel = stack.malloc(4);
             pixel.put((byte) red).put((byte) green).put((byte) blue).put((byte) alpha);
             pixel.flip();

@@ -4,8 +4,8 @@ import com.bdmajora.impetus.engine.impl.gl.attribute.GlVertexAttributeFormat;
 import com.bdmajora.impetus.engine.impl.gl.attribute.GlVertexFormat;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexEncoder;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.impl.VanillaLikeChunkVertex;
+import org.lwjgl.system.MemoryUtil;
 
-import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 // The terrain vertex format while a pack is active: VanillaLikeChunkVertex's layout plus the OptiFine per-vertex attributes (normal, at_tangent, mc_midTexCoord, mc_Entity); only selected with a pack loaded, so the wider stride costs nothing otherwise
 public class UmbraChunkVertexType extends VanillaLikeChunkVertex {
@@ -46,21 +46,21 @@ public class UmbraChunkVertexType extends VanillaLikeChunkVertex {
             writeBase(ptr, material, vertex, sectionIndex);
 
             // OptiFine extended attributes, filled in by the meshing pipeline while shaders are active.
-            LWJGL.memPutInt(ptr + OFFSET_NORMAL, vertex.trueNormal);
-            LWJGL.memPutInt(ptr + OFFSET_TANGENT, vertex.tangent);
-            LWJGL.memPutFloat(ptr + OFFSET_MID_TEX, vertex.midTexU);
-            LWJGL.memPutFloat(ptr + OFFSET_MID_TEX + 4, vertex.midTexV);
-            LWJGL.memPutShort(ptr + OFFSET_ENTITY, clampShort(vertex.blockId));
-            LWJGL.memPutShort(ptr + OFFSET_ENTITY + 2, clampShort(vertex.blockRenderType));
-            LWJGL.memPutShort(ptr + OFFSET_ENTITY + 4, clampShort(vertex.blockData));
-            LWJGL.memPutShort(ptr + OFFSET_ENTITY + 6, (short) 1);
+            MemoryUtil.memPutInt(ptr + OFFSET_NORMAL, vertex.trueNormal);
+            MemoryUtil.memPutInt(ptr + OFFSET_TANGENT, vertex.tangent);
+            MemoryUtil.memPutFloat(ptr + OFFSET_MID_TEX, vertex.midTexU);
+            MemoryUtil.memPutFloat(ptr + OFFSET_MID_TEX + 4, vertex.midTexV);
+            MemoryUtil.memPutShort(ptr + OFFSET_ENTITY, clampShort(vertex.blockId));
+            MemoryUtil.memPutShort(ptr + OFFSET_ENTITY + 2, clampShort(vertex.blockRenderType));
+            MemoryUtil.memPutShort(ptr + OFFSET_ENTITY + 4, clampShort(vertex.blockData));
+            MemoryUtil.memPutShort(ptr + OFFSET_ENTITY + 6, (short) 1);
 
             // at_midBlock: offset-to-block-center (block units) * 64 plus block emission in w, like upstream Umbra.
             int mbx = clampByte(Math.round(vertex.midBlockX * 64.0f));
             int mby = clampByte(Math.round(vertex.midBlockY * 64.0f));
             int mbz = clampByte(Math.round(vertex.midBlockZ * 64.0f));
             int mbe = clampUnsignedByte(vertex.blockEmission);
-            LWJGL.memPutInt(ptr + OFFSET_MID_BLOCK, (mbx & 0xFF) | ((mby & 0xFF) << 8) | ((mbz & 0xFF) << 16) | ((mbe & 0xFF) << 24));
+            MemoryUtil.memPutInt(ptr + OFFSET_MID_BLOCK, (mbx & 0xFF) | ((mby & 0xFF) << 8) | ((mbz & 0xFF) << 16) | ((mbe & 0xFF) << 24));
 
             return ptr + STRIDE;
         };

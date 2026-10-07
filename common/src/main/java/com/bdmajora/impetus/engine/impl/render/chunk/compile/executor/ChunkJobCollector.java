@@ -1,6 +1,7 @@
 package com.bdmajora.impetus.engine.impl.render.chunk.compile.executor;
 
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.ChunkTaskOutput;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -20,10 +21,12 @@ public class ChunkJobCollector {
         this.collector = collector;
     }
 
-    // Counts a completion and stores the result
-    public void onJobFinished(ChunkJobResult<? extends ChunkTaskOutput> result) {
+    // Counts a completion and stores the result; a cancelled job finishes with none
+    public void onJobFinished(@Nullable ChunkJobResult<? extends ChunkTaskOutput> result) {
         this.semaphore.release(1);
-        this.collector.accept(result);
+        if (result != null) {
+            this.collector.accept(result);
+        }
     }
 
     // Blocks until every submitted job finished, stealing work meanwhile
@@ -32,8 +35,9 @@ public class ChunkJobCollector {
             return;
         }
 
+        // A started job is a worker's; a cancelled one is harmless to steal and finishes at once
         for (var job : this.submitted) {
-            if (job.isStarted() || job.isCancelled()) {
+            if (job.isStarted()) {
                 continue;
             }
 

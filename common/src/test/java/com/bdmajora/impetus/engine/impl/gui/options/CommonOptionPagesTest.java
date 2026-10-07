@@ -57,6 +57,15 @@ class CommonOptionPagesTest {
         assertTrue(NativeBuffer.ENABLE_MEMORY_TRACING);
         assertFalse(RenderRegionManager.USE_ADVANCED_STAGING_BUFFERS);
         assertTrue(options.advanced.disableIncompatibleModWarnings);
+        assertFalse(options.meshTerrain.enabled);
+        assertEquals(1, options.meshTerrain.regionKeepDistance);
         new CommonOptionPages();
+    }
+
+    @Test
+    void keepDistanceReadsAsRenderDistanceChunksOrUnlimited() {
+        assertEquals("impetus.options.mesh_terrain.keep_distance.render_distance", CommonOptionPages.formatKeepDistance(0).toString());
+        assertTrue(CommonOptionPages.formatKeepDistance(64).toString().contains("keep_distance.value"));
+        assertEquals("impetus.options.mesh_terrain.keep_distance.unlimited", CommonOptionPages.formatKeepDistance(256).toString());
     }
 }

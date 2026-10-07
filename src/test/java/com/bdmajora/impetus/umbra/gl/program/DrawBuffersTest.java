@@ -11,6 +11,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import org.mockito.Mockito;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -144,6 +146,25 @@ class DrawBuffersTest {
         assertTrue(water.vertex.startsWith("#version 120"), water.vertex);
         assertTrue(water.vertex.contains("#define mc_midTexCoord gl_MultiTexCoord0\n"), water.vertex);
         verify(TestGl.gl(), never()).glBindAttribLocation(anyInt(), eq(12), eq("at_tangent"));
+
+        // Tessellation needs both stages; a lone control stage is dropped, and a program reading mc_chunkFade outside terrain sees -1
+        ProgramSource tessellated = new ProgramSource("gbuffers_entities", "#version 400 compatibility\nout float fade;\nvoid main() { fade = mc_chunkFade; }",
+                null, "#version 400 compatibility\nlayout(vertices = 3) out;\nvoid main() {}",
+                "#version 400 compatibility\nlayout(triangles) in;\nvoid main() {}", "#version 400 compatibility\nvoid main() {}", null);
+        ShaderProgramCompiler.PatchedSource patchedTess = ShaderProgramCompiler.patchSource("gbuffers_entities", tessellated, Map.of());
+        assertNotNull(patchedTess.tessControl);
+        assertNotNull(patchedTess.tessEval);
+        assertTrue(patchedTess.vertex.contains("#define mc_chunkFade (-1.0)"), patchedTess.vertex);
+        assertTrue(patchedTess.tessEval.contains("#define mc_chunkFade (-1.0)"), patchedTess.tessEval);
+        // A define the caller already supplies wins
+        assertFalse(ShaderProgramCompiler.patchSource("gbuffers_entities", tessellated, Map.of("mc_chunkFade", "0.5")).vertex.contains("(-1.0)"));
+        ProgramSource controlOnly = new ProgramSource("gbuffers_entities", "void main() {}", null, "void main() {}", null, "void main() {}", null);
+        assertNull(ShaderProgramCompiler.patchSource("gbuffers_entities", controlOnly, Map.of()).tessControl);
+        Mockito.clearInvocations(TestGl.gl());
+        ShaderProgramCompiler.compile("gbuffers_entities", tessellated, Map.of());
+        verify(TestGl.gl()).glCreateShader(0x8E88);
+        verify(TestGl.gl()).glCreateShader(0x8E87);
+        verify(TestGl.gl(), times(4)).glDeleteShader(anyInt());
 
         ProgramSource broken = new ProgramSource("gbuffers_basic", null, null, null, null, "void main() {}", null);
         assertThrows(ProgramCreationException.class, () -> ShaderProgramCompiler.patchSource("gbuffers_basic", broken, Map.of()));

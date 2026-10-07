@@ -3,9 +3,11 @@ package com.bdmajora.impetus.engine.impl.common.util;
 import com.bdmajora.testing.TestGl;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
 import java.nio.ByteBuffer;
+import org.lwjgl.system.MemoryUtil;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -51,8 +53,10 @@ class NativeBufferTest {
 
     @Test
     void retriesAllocationThenGivesUp() {
-        Mockito.when(TestGl.gl().nmemAlloc(Mockito.anyLong())).thenReturn(0L);
-        assertThrows(OutOfMemoryError.class, () -> new NativeBuffer(8));
-        Mockito.verify(TestGl.gl(), Mockito.times(3)).nmemAlloc(8);
+        try (MockedStatic<MemoryUtil> memory = Mockito.mockStatic(MemoryUtil.class, Mockito.CALLS_REAL_METHODS)) {
+            memory.when(() -> MemoryUtil.nmemAlloc(Mockito.anyLong())).thenReturn(0L);
+            assertThrows(OutOfMemoryError.class, () -> new NativeBuffer(8));
+            memory.verify(() -> MemoryUtil.nmemAlloc(8), Mockito.times(3));
+        }
     }
 }

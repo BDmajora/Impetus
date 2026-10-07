@@ -24,6 +24,8 @@ public final class StartupChecks {
     private static final Logger LOGGER = LogManager.getLogger("Impetus");
     private static final AtomicBoolean CRASH_DIALOG_INSTALLED = new AtomicBoolean(false);
     private static final AtomicBoolean CRASH_DIALOG_SHOWN = new AtomicBoolean(false);
+    // Longer than the probe's own process timeout, so this thread only gives up on a probe that has hung
+    private static final long ADAPTER_WAIT_MILLIS = 10_000;
 
     private StartupChecks() {
     }
@@ -59,15 +61,13 @@ public final class StartupChecks {
 
     // Runs the checks off the render thread; they probe the OS and can block
     public static void runAsync(GlContextInfo context) {
-        var thread = new Thread(() -> run(context), "Impetus Compatibility Checks");
-        thread.setDaemon(true);
-        thread.start();
+        Thread.ofVirtual().name("Impetus Compatibility Checks").start(() -> run(context));
     }
 
     // The checks themselves, each tolerant of the others failing
     private static void run(GlContextInfo context) {
         try {
-            var adapters = GraphicsAdapterProbe.probe();
+            var adapters = GraphicsAdapterProbe.adapters(ADAPTER_WAIT_MILLIS);
             Workarounds.init(context, adapters);
             runBugChecks(context, adapters);
             scanForFrameHookOverlays();
@@ -84,12 +84,12 @@ public final class StartupChecks {
         if (Workarounds.isActive(Workarounds.Issue.NO_ERROR_CONTEXT_UNSAFE)) {
             ImpetusNotifications.warn("Driver workaround active",
                     "Older Intel Windows driver detected.",
-                    "No-error GL context will be avoided.");
+                    "No-error GL context is not requested.");
             MessageBoxUtil.showWarning("Impetus — Driver workaround active",
                     "Impetus detected an older Intel Windows graphics driver.\n\n" +
-                    "The no-error OpenGL context path is unsafe on this driver, so Impetus will avoid\n" +
-                    "using it where possible. If you still see black screens or driver crashes, update\n" +
-                    "your Intel graphics driver.");
+                    "The no-error OpenGL context is unsafe on this driver, so Impetus does not request\n" +
+                    "one whatever the No Error Context option says. If you still see black screens or\n" +
+                    "driver crashes, update your Intel graphics driver.");
         }
 
         if (context.vendor().isEmpty() || context.renderer().isEmpty()) {

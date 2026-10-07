@@ -13,5 +13,6 @@ public final class GpuBooster {
         FastMath.enabled = on && settings.fastMath;
         FastRandom.enabled = on && settings.fastRandom;
         StreamingUploader.enabled = on && settings.streamUploads;
+        StreamingUploader.formatCache = on && settings.streamUploads && settings.vertexFormatCache;
     }
 }

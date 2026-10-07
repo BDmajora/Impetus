@@ -38,12 +38,10 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
-// A fully parsed pack: every GLSL file by path, shaders.properties and the assembled ProgramSet; works over an in-memory map so it is Minecraft-free and testable, world0/ overrides the root, other dimensions unhandled
+// A fully parsed pack: every GLSL file by path, shaders.properties and the assembled ProgramSets; works over an in-memory map so it is Minecraft-free and testable. The base set reads the default dimension folder (world0/) ahead of the root, and another dimension with its own folder (world-1/, world1/, or whatever dimension.properties names) gets that folder alone, as Iris and OptiFine both do
 public final class ShaderPack {
     // The conventional location of shaders.properties, relative to shaders/
     public static final AbsolutePackPath PROPERTIES_PATH = AbsolutePackPath.fromAbsolutePath("/shaders.properties");
-    // The overworld override directory, checked BEFORE the pack root so a world0/ program wins
-    private static final String OVERWORLD_DIR = "/world0";
 
     // Matches `!defined(IS_IRIS) && MC_VERSION < <n>` — the shape detectLegacyPrograms below looks for
     private static final Pattern LEGACY_BRANCH_PATTERN = Pattern.compile(
@@ -60,6 +58,11 @@ public final class ShaderPack {
     private final IncludeProcessor includeProcessor;
     private final ShaderProperties properties;
     private final ProgramSet baseProgramSet;
+    // Which folder each dimension's programs come from, and the exclusive sets built for the ones visited so far, since most sessions never leave the overworld
+    private final DimensionFolders dimensionFolders;
+    private final Map<String, ProgramSet> dimensionProgramSets = new HashMap<>();
+    // The set the pipeline and terrain compile from: the base set until a dimension with its own folder is selected
+    private volatile ProgramSet activeProgramSet;
     // The features this pack DECLARED in iris.features.required/optional that this port honours; distinct from the IRIS_FEATURE_<NAME> defines, which advertise everything supported (Iris draws the same line between hasFeature and isUsable())
     private final Set<FeatureFlags> activeFeatures;
     // The pack's block/item/entity.properties maps preprocessed with the ACTIVE option values, since a pack gates its ID map on its own options
@@ -115,10 +118,11 @@ public final class ShaderPack {
         List<String> unsupportedRequired = FeatureFlags.findUnsupported(this.properties.getRaw().get("iris.features.required"));
         if (!unsupportedRequired.isEmpty()) {
             String missing = String.join(", ", unsupportedRequired);
-            LOGGER.error("[Umbra] This shader pack requires Umbra features not supported by this port: {}", missing);
+            String reason = FeatureFlags.describeUnsupported(unsupportedRequired);
+            LOGGER.error("[Umbra] This shader pack requires features {}: {}", reason, missing);
             ImpetusNotifications.warn(
                     "Shader pack may not work correctly",
-                    "Requires unsupported features:",
+                    "Requires features " + reason + ":",
                     missing);
         }
 
@@ -126,7 +130,9 @@ public final class ShaderPack {
         flattenSources.putAll(this.shaderPackOptions.getEditedSources());
         this.includeProcessor = new IncludeProcessor(flattenSources);
 
-        this.baseProgramSet = buildProgramSet();
+        this.dimensionFolders = DimensionFolders.from(this.sources, propertiesDefines);
+        this.baseProgramSet = buildProgramSet(this.dimensionFolders.baseFolder(), true);
+        this.activeProgramSet = this.baseProgramSet;
 
         this.idMap = new IdMap(this.sources, propertiesDefines);
 
@@ -392,9 +398,20 @@ public final class ShaderPack {
         return this.properties;
     }
 
-    // Every program source, by id
+    // Every program source, by id, for the selected dimension
     public ProgramSet getProgramSet() {
-        return this.baseProgramSet;
+        return this.activeProgramSet;
+    }
+
+    // Points getProgramSet at this dimension's programs; true when that changed which set is live, meaning everything compiled from the old one must be rebuilt
+    public boolean selectDimension(int dimensionId, String dimensionName) {
+        String folder = this.dimensionFolders.folderFor(dimensionId, dimensionName);
+        ProgramSet selected = folder == null || folder.equals(this.dimensionFolders.baseFolder())
+                ? this.baseProgramSet
+                : this.dimensionProgramSets.computeIfAbsent(folder, dir -> buildProgramSet(dir, false));
+        boolean changed = selected != this.activeProgramSet;
+        this.activeProgramSet = selected;
+        return changed;
     }
 
     // Whether the pack ASKED for a feature, distinct from whether this port provides it; a pack that never opted into SEPARATE_HARDWARE_SAMPLERS expects shadowtex0/1 to carry hardware comparison themselves
@@ -407,12 +424,13 @@ public final class ShaderPack {
         return this.sources;
     }
 
-    // Reads each program's stages, applying includes and option edits
-    private ProgramSet buildProgramSet() {
+    // Reads each program's stages from one folder, applying includes and option edits; rootFallback lets the pack root fill in what the folder lacks, which only the base set does
+    private ProgramSet buildProgramSet(String folder, boolean rootFallback) {
         ProgramSet set = new ProgramSet(this.properties);
+        StageLocator stages = new StageLocator(folder == null ? null : "/" + folder, rootFallback || folder == null);
 
         for (ProgramId id : ProgramId.VALUES) {
-            ProgramSource source = readProgram(id.getSourceName());
+            ProgramSource source = readProgram(stages, id.getSourceName());
             if (source != null) {
                 set.put(id, source);
             }
@@ -422,7 +440,7 @@ public final class ShaderPack {
             ProgramSource[] arr = new ProgramSource[arrayId.getNumPrograms()];
             boolean any = false;
             for (int i = 0; i < arr.length; i++) {
-                ProgramSource source = readProgram(arrayId.getSourceName(i));
+                ProgramSource source = readProgram(stages, arrayId.getSourceName(i));
                 if (source != null) {
                     arr[i] = source;
                     any = true;
@@ -437,27 +455,29 @@ public final class ShaderPack {
     }
 
     // Reads and flattens one program's stages by source name; null when the pack has neither a raster nor a compute stage for it, distinguishing an unshipped program from a failed parse
-    private ProgramSource readProgram(String sourceName) {
-        String vertex = readStage(sourceName, "vsh");
-        String fragment = readStage(sourceName, "fsh");
-        String[] computes = readComputeVariants(sourceName);
+    private ProgramSource readProgram(StageLocator stages, String sourceName) {
+        String vertex = readStage(stages, sourceName, "vsh");
+        String fragment = readStage(stages, sourceName, "fsh");
+        String[] computes = readComputeVariants(stages, sourceName);
         if (vertex == null && fragment == null && computes.length == 0) {
             return null;
         }
-        String geometry = readStage(sourceName, "gsh");
-        String tessControl = readStage(sourceName, "tcs");
-        String tessEval = readStage(sourceName, "tes");
+        String geometry = readStage(stages, sourceName, "gsh");
+        // Like Iris, tessellation stages exist only for a pack that declared the feature, so an older pack shipping stray .tcs files is unaffected
+        boolean tessellation = this.activeFeatures.contains(FeatureFlags.TESSELLATION_SHADERS);
+        String tessControl = tessellation ? readStage(stages, sourceName, "tcs") : null;
+        String tessEval = tessellation ? readStage(stages, sourceName, "tes") : null;
         return new ProgramSource(sourceName, vertex, geometry, tessControl, tessEval, fragment, computes);
     }
 
     // Reads a program's compute stages, <name>.csh plus _a through _z (Iris extension); the letter scan STOPS at the first missing suffix like Iris's readComputeArray since the suffixes are an ordered chain, returning empty or a 27-entry array that may hold nulls
-    private String[] readComputeVariants(String sourceName) {
+    private String[] readComputeVariants(StageLocator stages, String sourceName) {
         String[] computes = new String[ProgramSource.MAX_COMPUTE_VARIANTS];
-        computes[0] = readStage(sourceName, "csh");
+        computes[0] = readStage(stages, sourceName, "csh");
         boolean any = computes[0] != null;
 
         for (int variant = 1; variant < computes.length; variant++) {
-            computes[variant] = readStage(ProgramSource.computeVariantName(sourceName, variant), "csh");
+            computes[variant] = readStage(stages, ProgramSource.computeVariantName(sourceName, variant), "csh");
             if (computes[variant] == null) {
                 break;
             }
@@ -468,22 +488,36 @@ public final class ShaderPack {
     }
 
     // One stage file, or null when the pack has none
-    private String readStage(String sourceName, String extension) {
-        AbsolutePackPath path = locateStage(sourceName, extension);
+    private String readStage(StageLocator stages, String sourceName, String extension) {
+        AbsolutePackPath path = stages.locate(sourceName + "." + extension);
         if (path == null) {
             return null;
         }
         return String.join("\n", this.includeProcessor.process(path));
     }
 
-    // Looks in the overworld override directory FIRST and the pack root second, so a world0/ program shadows the root one
-    private AbsolutePackPath locateStage(String sourceName, String extension) {
-        AbsolutePackPath overworld = AbsolutePackPath.fromAbsolutePath(
-                OVERWORLD_DIR + "/" + sourceName + "." + extension);
-        if (this.sources.containsKey(overworld)) {
-            return overworld;
+    // Where one program set's stage files live: its folder FIRST, then the pack root when the set may fall back to it, so a world0/ program shadows the root one
+    private final class StageLocator {
+        private final String folder;
+        private final boolean root;
+
+        StageLocator(String folder, boolean root) {
+            this.folder = folder;
+            this.root = root;
         }
-        AbsolutePackPath root = AbsolutePackPath.fromAbsolutePath("/" + sourceName + "." + extension);
-        return this.sources.containsKey(root) ? root : null;
+
+        AbsolutePackPath locate(String file) {
+            if (this.folder != null) {
+                AbsolutePackPath inFolder = AbsolutePackPath.fromAbsolutePath(this.folder + "/" + file);
+                if (ShaderPack.this.sources.containsKey(inFolder)) {
+                    return inFolder;
+                }
+            }
+            if (!this.root) {
+                return null;
+            }
+            AbsolutePackPath atRoot = AbsolutePackPath.fromAbsolutePath("/" + file);
+            return ShaderPack.this.sources.containsKey(atRoot) ? atRoot : null;
+        }
     }
 }

@@ -1,10 +1,13 @@
 package com.bdmajora.impetus.umbra.terrain;
 
 import com.bdmajora.impetus.engine.impl.gl.shader.ShaderBindingContext;
+import com.bdmajora.impetus.engine.impl.gl.shader.uniform.GlUniformFloat;
 import com.bdmajora.impetus.engine.impl.gl.shader.uniform.GlUniformFloat3v;
+import com.bdmajora.impetus.engine.impl.gl.shader.uniform.GlUniformFloatArray;
 import com.bdmajora.impetus.engine.impl.gl.shader.uniform.GlUniformInt;
 import com.bdmajora.impetus.engine.impl.gl.shader.uniform.GlUniformMatrix4f;
 import com.bdmajora.impetus.engine.impl.gl.tessellation.GlPrimitiveType;
+import org.lwjgl.opengl.GL40;
 import com.bdmajora.impetus.engine.impl.render.chunk.shader.ChunkShaderInterface;
 import com.bdmajora.impetus.engine.impl.render.chunk.shader.ChunkShaderTextureSlot;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
@@ -22,11 +25,16 @@ import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;
 import java.util.EnumMap;
 import java.util.Map;
 
+import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
+
 // The ChunkShaderInterface for a pack terrain program: feeds the engine's per-draw state (u_ModelViewMatrix, u_ProjectionMatrix, u_RegionOffset, block/lightmap units) the generated prologue declares, and binds the pipeline's gbuffer so terrain lands there for the deferred chain
 public class UmbraTerrainShaderInterface implements ChunkShaderInterface {
     private final GlUniformMatrix4f uModelViewMatrix;
     private final GlUniformMatrix4f uProjectionMatrix;
     private final GlUniformFloat3v uRegionOffset;
+    // mc_chunkFade's inputs, present only when the pack reads it
+    private final GlUniformFloatArray uChunkAges;
+    private final GlUniformFloat uChunkFadeInv;
     private final Map<ChunkShaderTextureSlot, GlUniformInt> uTextures = new EnumMap<>(ChunkShaderTextureSlot.class);
     // The program's sanitised DRAWBUFFERS mask, re-applied to the gbuffer FBO on every bind; sanitised since a pack can name a buffer this driver lacks and an out-of-range slot fails the whole draw
     private final int[] drawBuffers;
@@ -38,17 +46,27 @@ public class UmbraTerrainShaderInterface implements ChunkShaderInterface {
     private ShadowSamplerKinds shadowSamplerKinds = ShadowSamplerKinds.ALL_COMPARE;
 
     private GlPrimitiveType primitiveType = GlPrimitiveType.TRIANGLES;
+    // Linked with tessellation stages, so the chunk draws go out as three-vertex patches
+    private final boolean tessellated;
     private boolean restoreAfterDraw;
     private int activeDrawBufferSlots;
 
     public UmbraTerrainShaderInterface(ShaderBindingContext context, int[] drawBuffers, ProgramBlendState blendState,
                                       ProgramAlphaTest alphaTest) {
+        this(context, drawBuffers, blendState, alphaTest, false);
+    }
+
+    public UmbraTerrainShaderInterface(ShaderBindingContext context, int[] drawBuffers, ProgramBlendState blendState,
+                                      ProgramAlphaTest alphaTest, boolean tessellated) {
+        this.tessellated = tessellated;
         this.drawBuffers = drawBuffers == null ? DrawBuffers.DEFAULT.clone() : drawBuffers.clone();
         this.blendState = blendState;
         this.alphaTest = alphaTest;
         this.uModelViewMatrix = context.bindUniformIfPresent("u_ModelViewMatrix", GlUniformMatrix4f::new);
         this.uProjectionMatrix = context.bindUniformIfPresent("u_ProjectionMatrix", GlUniformMatrix4f::new);
         this.uRegionOffset = context.bindUniformIfPresent("u_RegionOffset", GlUniformFloat3v::new);
+        this.uChunkAges = context.bindUniformIfPresent("iris_ChunkAgesMs", GlUniformFloatArray::new);
+        this.uChunkFadeInv = context.bindUniformIfPresent("iris_ChunkFadeInv", GlUniformFloat::new);
 
         GlUniformInt block = firstPresent(context, "tex", "texture", "gtexture", "gcolor");
         if (block != null) {
@@ -84,7 +102,13 @@ public class UmbraTerrainShaderInterface implements ChunkShaderInterface {
     // Binds the gbuffer framebuffer and per-pass state before drawing terrain
     @Override
     public void setupState(TerrainRenderPass pass) {
-        this.primitiveType = pass.primitiveType().getGlPrimitiveType();
+        if (this.tessellated) {
+            // The mesher's index buffer already splits quads into triangles, which are exactly the patches the pack's control stage expects
+            this.primitiveType = GlPrimitiveType.PATCHES;
+            LWJGL.glPatchParameteri(GL40.GL_PATCH_VERTICES, 3);
+        } else {
+            this.primitiveType = pass.primitiveType().getGlPrimitiveType();
+        }
         // Terrain draws into the frame pipeline's gbuffer; point its draw-buffer mask at this program's DRAWBUFFERS so iris_FragData[k] lands in the requested colortex (skipped in the shadow pass, where onTerrainDraw would rebind the gbuffer over the shadow framebuffer)
         UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
         boolean shadowPass = UmbraShadowRenderer.isShadowPass();
@@ -128,6 +152,23 @@ public class UmbraTerrainShaderInterface implements ChunkShaderInterface {
                 GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA,
                 GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ZERO);
         GlStateManager.depthMask(true);
+    }
+
+    // Section ages in milliseconds and the fade rate, for mc_chunkFade; ages cap at 30 s like the raster path so the float never loses precision
+    @Override
+    public void setSectionAges(long timestamp, long[] loadTimes) {
+        if (this.uChunkAges == null) {
+            return;
+        }
+        float[] ages = new float[loadTimes.length];
+        for (int i = 0; i < ages.length; i++) {
+            ages[i] = Math.min(30_000.0f, (timestamp - loadTimes[i]) / 1_000_000.0f);
+        }
+        this.uChunkAges.set(ages);
+        if (this.uChunkFadeInv != null) {
+            int durationMs = com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions.chunkFadeInDuration;
+            this.uChunkFadeInv.setFloat(durationMs > 0 ? 1.0f / durationMs : 0.0f);
+        }
     }
 
     // Triangles, as the mesher emits

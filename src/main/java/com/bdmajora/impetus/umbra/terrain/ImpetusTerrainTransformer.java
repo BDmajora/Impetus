@@ -151,8 +151,32 @@ public final class ImpetusTerrainTransformer {
             ""
     ) + "\n";
 
+    // Iris's FADE_VARIABLE: mc_chunkFade runs 0 to 1 as a section fades in on the camera path and is -1 in the shadow pass; only declared for a pack that reads it, since the age array costs an upload per region
+    static String chunkFadeDeclarations(String packSource, boolean shadow) {
+        if (!packSource.contains("mc_chunkFade")) {
+            return "";
+        }
+        if (shadow) {
+            return "const float mc_chunkFade = -1.0;\n";
+        }
+        return "uniform float iris_ChunkAgesMs[256];\nuniform float iris_ChunkFadeInv;\nfloat mc_chunkFade;\n";
+    }
+
+    // The per-vertex assignment matching chunkFadeDeclarations; a zero fade duration means sections appear at once, which is a fade already finished
+    static String chunkFadeAssignment(String packSource, boolean shadow) {
+        if (shadow || !packSource.contains("mc_chunkFade")) {
+            return "";
+        }
+        return "    mc_chunkFade = iris_ChunkFadeInv <= 0.0 ? 1.0 : clamp(iris_ChunkAgesMs[drawId] * iris_ChunkFadeInv, 0.0, 1.0);\n";
+    }
+
     // Full vertex rewrite: version bump, main rename, generated decode prologue
     public static String transformVertexShader(String source) {
+        return transformVertexShader(source, false);
+    }
+
+    // The same for the shadow pass, where mc_chunkFade is a constant
+    public static String transformVertexShader(String source, boolean shadow) {
         String body = stripVersion(source);
         body = renameMain(body);
         body = convertVaryings(body, "out");
@@ -160,7 +184,8 @@ public final class ImpetusTerrainTransformer {
         body = modernizeCommon(body);
         // Pack globals initialized from uniforms are undefined under 330 (drivers may evaluate before upload, giving zeros/NaNs); run those initializers at the top of the generated main like GLSL 120 did
         GlslGlobalInitHoister.Result hoist = GlslGlobalInitHoister.hoist(body);
-        return VERTEX_PROLOGUE + attributeAdapterDefines(source) + hoist.body + vertexMain(hoist.hoistedAssignments);
+        return VERTEX_PROLOGUE + attributeAdapterDefines(source) + chunkFadeDeclarations(source, shadow) + hoist.body
+                + vertexMain(chunkFadeAssignment(source, shadow) + hoist.hoistedAssignments);
     }
 
     // Fragment rewrite with default draw buffers
@@ -193,13 +218,19 @@ public final class ImpetusTerrainTransformer {
 
     // The same vertex bridge for modern single-source packs like Complementary: keeps the attribute decode, gl_* defines and generated main, drops every GLSL-120 Chocapic assumption (no varying conversion, no hoisting, crucially NO texture -> gtexture rename since modern packs call texture() everywhere); renameMain still renames BOTH stages' main, only the active one survives the driver's #ifdef
     public static String transformVertexShaderModern(String source) {
+        return transformVertexShaderModern(source, false);
+    }
+
+    // Modern variant for the shadow pass
+    public static String transformVertexShaderModern(String source, boolean shadow) {
         String body = stripVersion(source);
         body = renameMain(body);
         // Delete the pack's mc_Entity/mc_midTexCoord/at_tangent attribute declarations; the prologue #defines those names onto its own globals, so they would become illegal redeclarations
         body = dropAttributeStorageQualifier(body);
         body = rewriteFogParameters(body);
         body = ModernPackTransformer.rewriteUnsignedStrictness(body);
-        return compatFor(VERTEX_PROLOGUE, source) + attributeAdapterDefines(source) + body + vertexMain("");
+        return compatFor(VERTEX_PROLOGUE, source) + attributeAdapterDefines(source) + chunkFadeDeclarations(source, shadow) + body
+                + vertexMain(chunkFadeAssignment(source, shadow));
     }
 
     // Modern-pack variant that leaves the body alone
@@ -236,6 +267,94 @@ public final class ImpetusTerrainTransformer {
     private static final Pattern DECLARED_VERSION = Pattern.compile("#version\\s+(\\d+)");
 
     // The compatibility version for a modern pack: never below 330 (the prologue needs it), never below the pack's OWN declaration (Photon declares 400 and relies on implicit int-to-uint), and 430 when the source uses image load/store
+    // ------------------------------------------------------------------ geometry and tessellation stages
+
+    // The generated varyings as one interface block, so a stage between vertex and fragment can name its inputs and outputs apart; iris_AlphaCutoff loses flat here, since interpolation qualifiers on block members do not match across every stage pair on 330, and a material's cutoff is the same at every corner anyway
+    static final String VARYING_BLOCK = "IrisTerrainVaryings {\n    float iris_FogFragCoord;\n    vec4 iris_TexCoordArr[4];\n    float iris_AlphaCutoff;\n}";
+
+    private static final Pattern GL_IN_TEX_COORD = Pattern.compile("gl_in\\s*\\[([^\\]]+)\\]\\s*\\.\\s*gl_TexCoord\\b");
+    private static final Pattern GL_IN_FOG = Pattern.compile("gl_in\\s*\\[([^\\]]+)\\]\\s*\\.\\s*gl_FogFragCoord\\b");
+
+    // Re-declares a transformed terrain vertex or fragment shader's loose generated varyings as the shared block, which the stages in between can then pass along
+    public static String blockGeneratedVaryings(String transformed, boolean vertex) {
+        String direction = vertex ? "out" : "in";
+        String block = direction + " " + VARYING_BLOCK + ";";
+        return transformed
+                .replace(direction + " float iris_FogFragCoord;", block)
+                .replace(direction + " vec4 iris_TexCoordArr[4];\n", "")
+                .replace("flat " + direction + " float iris_AlphaCutoff;\n", "");
+    }
+
+    // A pack geometry or tessellation stage made to sit between the generated vertex and fragment stages: the same compatibility version, the engine's matrix uniforms behind the fixed-function names, the generated varyings read as a block array, and copied through to the next stage unless the pack writes them itself
+    public static String transformAuxiliaryStage(String source, com.bdmajora.impetus.engine.impl.gl.shader.ShaderType stage) {
+        String body = stripVersion(source);
+        body = GL_IN_TEX_COORD.matcher(body).replaceAll("iris_varyingsIn[$1].iris_TexCoordArr");
+        body = GL_IN_FOG.matcher(body).replaceAll("iris_varyingsIn[$1].iris_FogFragCoord");
+        body = rewriteFogParameters(body);
+        body = ModernPackTransformer.rewriteUnsignedStrictness(body);
+
+        boolean writesTexCoord = body.contains("gl_TexCoord");
+        boolean writesFog = body.contains("gl_FogFragCoord");
+
+        StringBuilder prologue = new StringBuilder(compatFor("#version 330 core\n", source))
+                .append("// ---- Impetus/Umbra terrain stage bridge (generated) ----\n")
+                .append("uniform mat4 u_ModelViewMatrix;\n")
+                .append("uniform mat4 u_ProjectionMatrix;\n")
+                .append("#define gl_ModelViewMatrix u_ModelViewMatrix\n")
+                .append("#define gl_ProjectionMatrix u_ProjectionMatrix\n")
+                .append("#define gl_ModelViewProjectionMatrix (u_ProjectionMatrix * u_ModelViewMatrix)\n")
+                .append("#define gl_NormalMatrix (mat3(transpose(inverse(u_ModelViewMatrix))))\n")
+                .append("in ").append(VARYING_BLOCK).append(" iris_varyingsIn[];\n");
+
+        String main;
+        switch (stage) {
+            case TESS_CTRL -> {
+                // Control outputs are per-vertex arrays indexed by invocation
+                prologue.append("out ").append(VARYING_BLOCK).append(" iris_varyingsOut[];\n");
+                // Interface blocks are not assignable as a whole, so member by member
+                main = "\nvoid main() {\n    irisMain();\n"
+                        + "    iris_varyingsOut[gl_InvocationID].iris_FogFragCoord = iris_varyingsIn[gl_InvocationID].iris_FogFragCoord;\n"
+                        + "    iris_varyingsOut[gl_InvocationID].iris_TexCoordArr = iris_varyingsIn[gl_InvocationID].iris_TexCoordArr;\n"
+                        + "    iris_varyingsOut[gl_InvocationID].iris_AlphaCutoff = iris_varyingsIn[gl_InvocationID].iris_AlphaCutoff;\n}\n";
+            }
+            case TESS_EVALUATE -> {
+                prologue.append("out ").append(VARYING_BLOCK).append(";\n")
+                        .append("#define gl_TexCoord iris_TexCoordArr\n")
+                        .append("#define gl_FogFragCoord iris_FogFragCoord\n");
+                // Three-vertex patches, so the new vertex's varyings are its barycentric blend of the corners
+                main = "\nvoid main() {\n"
+                        + (writesFog ? "" : "    iris_FogFragCoord = " + barycentric("iris_FogFragCoord") + ";\n")
+                        + (writesTexCoord ? "" : "    for (int i = 0; i < 4; i++) { iris_TexCoordArr[i] = " + barycentric("iris_TexCoordArr[i]") + "; }\n")
+                        + "    iris_AlphaCutoff = iris_varyingsIn[0].iris_AlphaCutoff;\n"
+                        + "    irisMain();\n}\n";
+            }
+            default -> {
+                prologue.append("out ").append(VARYING_BLOCK).append(";\n")
+                        .append("#define gl_TexCoord iris_TexCoordArr\n")
+                        .append("#define gl_FogFragCoord iris_FogFragCoord\n")
+                        .append("void iris_passVaryings();\n")
+                        // A function-like macro is not re-expanded inside itself, so the inner EmitVertex is the real one
+                        .append("#define EmitVertex() { iris_passVaryings(); EmitVertex(); }\n");
+                // Defined after the pack's body, where its input layout has sized the varyings array
+                main = "\nvoid iris_passVaryings() {\n"
+                        + (writesFog ? "" : "    iris_FogFragCoord = iris_varyingsIn[0].iris_FogFragCoord;\n")
+                        + (writesTexCoord ? "" : "    iris_TexCoordArr = iris_varyingsIn[0].iris_TexCoordArr;\n")
+                        + "    iris_AlphaCutoff = iris_varyingsIn[0].iris_AlphaCutoff;\n"
+                        + "}\n\nvoid main() {\n    irisMain();\n}\n";
+            }
+        }
+
+        prologue.append("// ---- end generated stage bridge ----\n");
+        return prologue + renameMain(body) + main;
+    }
+
+    // One varying blended across a triangle patch's corners by gl_TessCoord
+    private static String barycentric(String member) {
+        return "gl_TessCoord.x * iris_varyingsIn[0]." + member
+                + " + gl_TessCoord.y * iris_varyingsIn[1]." + member
+                + " + gl_TessCoord.z * iris_varyingsIn[2]." + member;
+    }
+
     static String compatFor(String prologue, String packBody) {
         int version = 330;
         Matcher declared = DECLARED_VERSION.matcher(packBody);

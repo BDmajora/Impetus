@@ -2,7 +2,7 @@ package com.bdmajora.impetus.engine.impl.compat.environment;
 
 import java.util.Locale;
 
-// Coarse OS classification, string-based on purpose so it behaves identically on downgraded Java 8 and modern JVMs across every launcher
+// Coarse OS classification from os.name, which every launcher and JVM reports the same way
 public enum OsKind {
     WINDOWS,
     LINUX,

@@ -43,6 +43,10 @@ public final class Umbra {
     // Latched when construction failed for the current pack, so the attempt is not repeated and re-logged every frame
     private static boolean renderingPipelineFailed;
 
+    // The dimension last reported by onWorldChanged, so a pack loaded mid-game starts on the right program set
+    private static int dimensionId;
+    private static String dimensionName;
+
     private Umbra() {
     }
 
@@ -111,12 +115,25 @@ public final class Umbra {
             effective.getStringValues().forEach(toSave::setProperty);
             writeConfigProperties(configTxt, toSave);
 
+            // A pack picked from the menu mid-game starts on the dimension already being played
+            if (dimensionName != null) {
+                pack.selectDimension(dimensionId, dimensionName);
+            }
             currentPack = pack;
             pipelineNeedsInit = true;
-            List<String> programs = pack.getProgramSet().listDeclaredPrograms();
         } catch (Exception e) {
             currentPack = null;
             LOGGER.error("Failed to load shader pack '" + name + "'; shaders disabled", e);
+        }
+    }
+
+    // The world is about to change, before its renderer is rebuilt: a dimension with its own pack folder swaps the program set, and the frame pipeline follows on the next frame; null name means no world
+    public static synchronized void onWorldChanged(int id, String name) {
+        dimensionId = id;
+        dimensionName = name;
+        if (name != null && currentPack != null && currentPack.selectDimension(id, name)) {
+            LOGGER.info("[Umbra] Dimension {} ({}) uses its own programs; rebuilding the pipeline", name, id);
+            pipelineNeedsInit = true;
         }
     }
 

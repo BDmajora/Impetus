@@ -266,6 +266,121 @@ class UmbraTerrainTest {
     }
 
     @Test
+    void stagesBetweenVertexAndFragmentCarryTheGeneratedVaryings() {
+        // Vertex and fragment re-declare the generated varyings as one block
+        String vertex = ImpetusTerrainTransformer.blockGeneratedVaryings(ImpetusTerrainTransformer.transformVertexShaderModern(MODERN_VERTEX), true);
+        assertTrue(vertex.contains("out IrisTerrainVaryings {"), vertex);
+        assertFalse(vertex.contains("flat out float iris_AlphaCutoff;"), vertex);
+        String fragment = ImpetusTerrainTransformer.blockGeneratedVaryings(ImpetusTerrainTransformer.transformFragmentShaderModern(MODERN_FRAGMENT), false);
+        assertTrue(fragment.contains("in IrisTerrainVaryings {"), fragment);
+
+        // A geometry stage that leaves the built-ins alone gets them copied through on every EmitVertex
+        String geometry = ImpetusTerrainTransformer.transformAuxiliaryStage(
+                "#version 330 compatibility\nlayout(triangles) in;\nvoid main() { EmitVertex(); }",
+                com.bdmajora.impetus.engine.impl.gl.shader.ShaderType.GEOM);
+        assertTrue(geometry.startsWith("#version 330 compatibility"), geometry);
+        assertTrue(geometry.contains("in IrisTerrainVaryings"), geometry);
+        assertTrue(geometry.contains("#define EmitVertex() { iris_passVaryings(); EmitVertex(); }"), geometry);
+        assertTrue(geometry.contains("iris_TexCoordArr = iris_varyingsIn[0].iris_TexCoordArr;"), geometry);
+        assertTrue(geometry.contains("void irisMain()"), geometry);
+        // One that reads the old built-ins through gl_in and writes its own keeps them
+        String written = ImpetusTerrainTransformer.transformAuxiliaryStage(
+                "#version 400 compatibility\nvoid main() { gl_TexCoord[0] = gl_in[0].gl_TexCoord[0]; gl_FogFragCoord = gl_in[1].gl_FogFragCoord; imageStore(x, ivec2(0), vec4(0)); }",
+                com.bdmajora.impetus.engine.impl.gl.shader.ShaderType.GEOM);
+        assertTrue(written.contains("iris_varyingsIn[0].iris_TexCoordArr[0]"), written);
+        assertTrue(written.contains("iris_varyingsIn[1].iris_FogFragCoord"), written);
+        assertFalse(written.contains("iris_TexCoordArr = iris_varyingsIn[0].iris_TexCoordArr;"), written);
+        assertTrue(written.startsWith("#version 430 compatibility"), written);
+
+        String control = ImpetusTerrainTransformer.transformAuxiliaryStage("#version 400 core\nlayout(vertices = 3) out;\nvoid main() {}",
+                com.bdmajora.impetus.engine.impl.gl.shader.ShaderType.TESS_CTRL);
+        assertTrue(control.contains("out IrisTerrainVaryings {"), control);
+        assertTrue(control.contains("iris_varyingsOut[gl_InvocationID].iris_AlphaCutoff = iris_varyingsIn[gl_InvocationID].iris_AlphaCutoff;"), control);
+        String evaluation = ImpetusTerrainTransformer.transformAuxiliaryStage("#version 400 core\nlayout(triangles) in;\nvoid main() {}",
+                com.bdmajora.impetus.engine.impl.gl.shader.ShaderType.TESS_EVALUATE);
+        assertTrue(evaluation.contains("gl_TessCoord.x * iris_varyingsIn[0].iris_FogFragCoord"), evaluation);
+        String evaluationWrites = ImpetusTerrainTransformer.transformAuxiliaryStage(
+                "#version 400 core\nvoid main() { gl_TexCoord[0] = vec4(0.0); gl_FogFragCoord = 1.0; }",
+                com.bdmajora.impetus.engine.impl.gl.shader.ShaderType.TESS_EVALUATE);
+        assertFalse(evaluationWrites.contains("gl_TessCoord.x * iris_varyingsIn[0].iris_FogFragCoord"), evaluationWrites);
+
+        // mc_chunkFade: live on the camera path, a constant in the shadow pass, absent when unread
+        String fading = ImpetusTerrainTransformer.transformVertexShader("#version 120\nvarying float f;\nvoid main() { f = mc_chunkFade; }", false);
+        assertTrue(fading.contains("uniform float iris_ChunkAgesMs[256];"), fading);
+        assertTrue(fading.contains("mc_chunkFade = iris_ChunkFadeInv <= 0.0 ? 1.0"), fading);
+        String shadowFade = ImpetusTerrainTransformer.transformVertexShaderModern("#version 330\nout float f;\nvoid main() { f = mc_chunkFade; }", true);
+        assertTrue(shadowFade.contains("const float mc_chunkFade = -1.0;"), shadowFade);
+        assertFalse(shadowFade.contains("iris_ChunkAgesMs"), shadowFade);
+        assertFalse(ImpetusTerrainTransformer.transformVertexShaderModern(MODERN_VERTEX).contains("mc_chunkFade"));
+    }
+
+    @Test
+    void auxiliaryStagesLinkWhenTheyCanAndFallAwayWhenTheyCannot() {
+        Map<AbsolutePackPath, String> sources = new HashMap<>();
+        sources.put(ShaderPack.PROPERTIES_PATH, "iris.features.optional = TESSELLATION_SHADERS");
+        sources.put(path("/gbuffers_terrain.vsh"), MODERN_VERTEX);
+        sources.put(path("/gbuffers_terrain.fsh"), MODERN_FRAGMENT);
+        sources.put(path("/gbuffers_terrain.tcs"), "#version 400 compatibility\nlayout(vertices = 3) out;\nvoid main() {}");
+        sources.put(path("/gbuffers_terrain.tes"), "#version 400 compatibility\nlayout(triangles) in;\nvoid main() {}");
+        sources.put(path("/gbuffers_water.vsh"), MODERN_VERTEX);
+        sources.put(path("/gbuffers_water.fsh"), MODERN_FRAGMENT);
+        sources.put(path("/gbuffers_water.gsh"), "#version 330 compatibility\nlayout(triangles) in;\nvoid main() { EmitVertex(); }");
+        Mixins.set(Umbra.class, "currentPack", new ShaderPack(sources));
+
+        // The tessellated terrain program draws patches
+        GlProgram<ChunkShaderInterface> terrain = UmbraTerrainProgramOverride.getProgramOverride(options(false, false));
+        assertNotNull(terrain);
+        verify(TestGl.gl()).glCreateShader(0x8E88);
+        // The real uniforms read the client; the draw-state switch is what matters here
+        ((UmbraTerrainShaderInterface) terrain.getInterface()).setUniforms(mock(ProgramUniforms.class));
+        terrain.getInterface().setupState(options(false, false).pass());
+        assertEquals(GlPrimitiveType.PATCHES, terrain.getInterface().getPrimitiveType());
+        verify(TestGl.gl()).glPatchParameteri(0x8E72, 3);
+
+        // A geometry stage the link rejects costs only that stage
+        when(TestGl.gl().glGetProgrami(anyInt(), eq(0x8B82))).thenReturn(0, 1);
+        GlProgram<ChunkShaderInterface> water = UmbraTerrainProgramOverride.getProgramOverride(options(true, false));
+        assertNotNull(water);
+        ((UmbraTerrainShaderInterface) water.getInterface()).setUniforms(mock(ProgramUniforms.class));
+        water.getInterface().setupState(options(true, false).pass());
+        assertEquals(GlPrimitiveType.TRIANGLES, water.getInterface().getPrimitiveType());
+    }
+
+    @Test
+    void sectionAgesFeedTheFadeOnlyWhenThePackReadsIt() {
+        com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions.chunkFadeInDuration = 0;
+        try {
+            ShaderBindingContext context = mock(ShaderBindingContext.class);
+            when(context.bindUniformIfPresent(any(), any())).thenAnswer(invocation ->
+                    ((java.util.function.IntFunction<?>) invocation.getArgument(1)).apply(4));
+            UmbraTerrainShaderInterface fading = new UmbraTerrainShaderInterface(context, null, ProgramBlendState.empty(), ProgramAlphaTest.empty(), false);
+            // Ages in milliseconds, capped at thirty seconds; no fade duration reads as a finished fade
+            fading.setSectionAges(100_000_000_000L, new long[] {99_000_000_000L, 0L});
+            verify(TestGl.gl()).glUniform1fv(eq(4), any(FloatBuffer.class));
+            verify(TestGl.gl()).glUniform1f(4, 0.0f);
+            com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions.chunkFadeInDuration = 500;
+            fading.setSectionAges(1_000_000L, new long[] {0L});
+            verify(TestGl.gl()).glUniform1f(4, 0.002f);
+
+            // A context with the ages but no fade rate still uploads the ages
+            ShaderBindingContext agesOnly = mock(ShaderBindingContext.class);
+            when(agesOnly.bindUniformIfPresent(any(), any())).thenAnswer(invocation -> "iris_ChunkAgesMs".equals(invocation.getArgument(0))
+                    ? ((java.util.function.IntFunction<?>) invocation.getArgument(1)).apply(6) : null);
+            new UmbraTerrainShaderInterface(agesOnly, null, ProgramBlendState.empty(), ProgramAlphaTest.empty(), false)
+                    .setSectionAges(1_000_000L, new long[] {0L});
+            verify(TestGl.gl()).glUniform1fv(eq(6), any(FloatBuffer.class));
+
+            // No fade in the program: nothing uploads
+            Mockito.clearInvocations(TestGl.gl());
+            new UmbraTerrainShaderInterface(mock(ShaderBindingContext.class), null, ProgramBlendState.empty(), ProgramAlphaTest.empty())
+                    .setSectionAges(1L, new long[] {0L});
+            verify(TestGl.gl(), never()).glUniform1fv(anyInt(), any(FloatBuffer.class));
+        } finally {
+            com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions.chunkFadeInDuration = 0;
+        }
+    }
+
+    @Test
     void globalInitialisersNeedingUniformsMoveIntoMain() {
         GlslGlobalInitHoister.Result result = GlslGlobalInitHoister.hoist(String.join("\n",
                 "#ifdef FOG",

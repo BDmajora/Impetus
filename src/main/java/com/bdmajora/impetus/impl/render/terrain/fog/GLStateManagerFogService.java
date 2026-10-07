@@ -7,7 +7,10 @@ import com.bdmajora.impetus.engine.impl.render.chunk.fog.FogService;
 import com.bdmajora.impetus.engine.impl.render.chunk.shader.ChunkFogMode;
 import org.lwjgl.opengl.GL20;
 
+// The live fixed-function fog, read from GlStateManager's cache; one instance, handed to the chunk renderers
 public class GLStateManagerFogService implements FogService {
+    public static final GLStateManagerFogService INSTANCE = new GLStateManagerFogService();
+
     // From GlStateManager's cached fog state
     @Override
     public float getFogEnd() {

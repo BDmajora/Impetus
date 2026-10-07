@@ -1,5 +1,9 @@
 package com.bdmajora.testing;
 
+import com.bdmajora.impetus.engine.impl.render.chunk.RenderPassConfiguration;
+import com.bdmajora.impetus.engine.impl.render.mesh.MeshTerrainConfig;
+import com.bdmajora.impetus.engine.impl.render.mesh.region.SectionGeometryPacker;
+
 import com.bdmajora.impetus.engine.api.util.ColorABGR;
 import com.bdmajora.impetus.engine.impl.gl.device.CommandList;
 import com.bdmajora.impetus.engine.impl.gl.device.RenderDevice;
@@ -51,9 +55,23 @@ public class TestSectionManager extends RenderSectionManager {
     public final AtomicInteger builds = new AtomicInteger();
     public final AtomicInteger invalidations = new AtomicInteger();
 
+    // The pass set builds go into; the mesh constructor swaps in the mesh-layout passes
+    private final RenderPassConfiguration<String> passes;
+    // Set when this manager drives the mesh backend, so builds pack their geometry like the real meshing task
+    private final boolean meshTerrain;
+
     public TestSectionManager(CommandList commandList, int renderDistance, int minSection, int maxSection, boolean hasShadowPass, AsyncOcclusionMode asyncMode, int threads) {
         super(Passes.CONFIG, () -> new ChunkBuildContext(Passes.CONFIG), (device, config) -> new Renderer(device), renderDistance, commandList, minSection, maxSection, threads, hasShadowPass);
         this.asyncMode = asyncMode;
+        this.passes = Passes.CONFIG;
+        this.meshTerrain = false;
+    }
+
+    // A manager whose terrain belongs to the mesh-shader backend; builds run inline
+    public TestSectionManager(CommandList commandList, int renderDistance, int minSection, int maxSection, MeshTerrainConfig mesh) {
+        super(Passes.MESH_CONFIG, () -> new ChunkBuildContext(Passes.MESH_CONFIG), (device, config) -> new Renderer(device), renderDistance, commandList, minSection, maxSection, -1, false, mesh);
+        this.passes = Passes.MESH_CONFIG;
+        this.meshTerrain = true;
     }
 
     private static final class Renderer extends DefaultChunkRenderer {
@@ -138,19 +156,20 @@ public class TestSectionManager extends RenderSectionManager {
                 }
                 var buffers = context.buffers;
                 buffers.init(data, render.getSectionIndex());
-                ChunkModelBuilder solid = buffers.get(Passes.SOLID);
-                solid.getVertexBuffer(ModelQuadFacing.POS_Y).push(quad(0, 1, 0, 0, 1, 0), Passes.SOLID_MATERIAL);
+                ChunkModelBuilder solid = buffers.get(passes.defaultSolidMaterial().pass);
+                solid.getVertexBuffer(ModelQuadFacing.POS_Y).push(quad(0, 1, 0, 0, 1, 0), passes.defaultSolidMaterial());
                 if (sorted) {
-                    ChunkModelBuilder glass = buffers.get(Passes.TRANSLUCENT);
+                    ChunkModelBuilder glass = buffers.get(passes.defaultTranslucentMaterial().pass);
                     // Two quads a quarter turn apart are distinct normals; twenty at 4.5 degree steps overflow the trigger index's normal table
                     int normals = overflow ? 20 : 2;
                     for (int i = 0; i < normals; i++) {
                         float angle = (float) (i * (overflow ? Math.PI / 40 : Math.PI / 2));
-                        glass.getVertexBuffer(ModelQuadFacing.UNASSIGNED).push(quad(0, 0, 0, (float) Math.cos(angle), 1, (float) Math.sin(angle)), Passes.TRANSLUCENT_MATERIAL);
+                        glass.getVertexBuffer(ModelQuadFacing.UNASSIGNED).push(quad(0, 0, 0, (float) Math.cos(angle), 1, (float) Math.sin(angle)), passes.defaultTranslucentMaterial());
                     }
                 }
                 var meshes = BuiltSectionMeshParts.groupFromBuildBuffers(buffers, 0, 0, 0);
-                return new ChunkBuildOutput(render, data, meshes, frame);
+                var geometry = meshTerrain ? SectionGeometryPacker.pack(meshes, 0, 0, 0) : null;
+                return new ChunkBuildOutput(render, data, meshes, geometry, frame);
             }
         };
     }

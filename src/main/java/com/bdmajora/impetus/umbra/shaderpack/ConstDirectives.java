@@ -10,7 +10,9 @@ import java.util.regex.Pattern;
 public final class ConstDirectives {
     // The GLSL float literal grammar, as permissive as Float#parseFloat (sign, .5 and 1. forms, exponent)
     public static final String FLOAT_LITERAL = "([-+]?(?:[0-9]+\\.?[0-9]*|\\.[0-9]+)(?:[eE][-+]?[0-9]+)?)[fF]?";
-    private static final Pattern CONST = Pattern.compile("const\\s+(int|float|bool)\\s+(\\w+)\\s*=\\s*([^;]+?)\\s*;");
+    private static final Pattern CONST = Pattern.compile("const\\s+(int|float|bool|vec4)\\s+(\\w+)\\s*=\\s*([^;]+?)\\s*;");
+    // vec4(x, y, z, w), or vec4(x) splatted, the two spellings packs write clear colours in
+    private static final Pattern VEC4 = Pattern.compile("^vec4\\s*\\(([^)]*)\\)$");
     // Only the leading literal of a value is read, as the per-directive scans did, so `2048 * 2` still yields 2048 rather than a parse failure
     private static final Pattern INT_PREFIX = Pattern.compile("^[-+]?\\d+");
     private static final Pattern FLOAT_PREFIX = Pattern.compile("^" + FLOAT_LITERAL);
@@ -18,6 +20,7 @@ public final class ConstDirectives {
     private final Map<String, String> ints = new HashMap<>();
     private final Map<String, String> floats = new HashMap<>();
     private final Map<String, String> bools = new HashMap<>();
+    private final Map<String, String> vec4s = new HashMap<>();
 
     public ConstDirectives(String text) {
         Matcher matcher = CONST.matcher(text);
@@ -27,6 +30,7 @@ public final class ConstDirectives {
             switch (matcher.group(1)) {
                 case "int" -> ints.put(name, value);
                 case "float" -> floats.put(name, value);
+                case "vec4" -> vec4s.put(name, value);
                 default -> bools.put(name, value);
             }
         }
@@ -93,5 +97,36 @@ public final class ConstDirectives {
             return Optional.of(Boolean.FALSE);
         }
         return Optional.empty();
+    }
+
+    // The raw value of a const int, for directives whose value is an identifier rather than a number (const int shadowcolor0Format = RGBA16F;)
+    public Optional<String> getIntToken(String name) {
+        return Optional.ofNullable(ints.get(name));
+    }
+
+    // const vec4 NAME = vec4(...); a single component fills all four, anything malformed reads as absent
+    public Optional<float[]> getVec4(String name) {
+        String value = vec4s.get(name);
+        if (value == null) {
+            return Optional.empty();
+        }
+        Matcher matcher = VEC4.matcher(value);
+        if (!matcher.find()) {
+            return Optional.empty();
+        }
+        String[] parts = matcher.group(1).split(",");
+        if (parts.length != 1 && parts.length != 4) {
+            return Optional.empty();
+        }
+        float[] components = new float[4];
+        try {
+            for (int i = 0; i < 4; i++) {
+                String part = parts[parts.length == 1 ? 0 : i].trim();
+                components[i] = Float.parseFloat(part.endsWith("f") || part.endsWith("F") ? part.substring(0, part.length() - 1) : part);
+            }
+        } catch (NumberFormatException e) {
+            return Optional.empty();
+        }
+        return Optional.of(components);
     }
 }

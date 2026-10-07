@@ -31,10 +31,13 @@ import org.lwjgl.opengl.GL33;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.Arrays;
+import java.util.BitSet;
 import java.nio.FloatBuffer;
 import java.util.Map;
 
-import com.bdmajora.impetus.umbra.gl.texture.TextureParameters;
+import com.bdmajora.impetus.umbra.gl.texture.InternalTextureFormat;
+import com.bdmajora.impetus.umbra.pipeline.shadow.ShadowColorSettings;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
@@ -74,18 +77,20 @@ public class UmbraShadowRenderer {
     private final boolean packVoxelizes;
     // shadowDistance * shadowDistanceRenderMul, the distance the pass culls against, deliberately not the distance the projection covers
     private final float cullDistance;
-    private final int colorTexture0;
-    private final int colorTexture1;
+    // Per-buffer format, clear and filtering, from the pack's shadowcolorN directives
+    private final ShadowColorSettings colorSettings;
+    // One texture per shadow colour buffer, 0 for buffers past OptiFine's two that the pack never touches, since a 4096 map costs 64 MB a buffer
+    private final int[] colorTextures;
+    // The buffers that exist, in index order; the frame-start clear and the attachment set
+    private final int[] allocatedColorBuffers;
     private final UmbraFramebuffer framebuffer;
     private final boolean[] hardwareFiltering;
     private final boolean[] mipmapDepth;
     private final boolean[] nearestDepth;
     private final boolean separateHardwareSamplers;
-    // Both shadowcolor attachments, for the frame-start clear — only 0 and 1 exist on this version
-    private static final int[] CLEAR_MASK = {0, 1};
     // Texture unit for one-off raw work (creating shadow textures, mipmaps, depth copies), above CACHED_UNITS and clear of every pipeline unit so it never rewrites a tracked slot; always pair selectScratch with releaseScratch
     private static final int TEXTURE_SETUP_UNIT = 31;
-    // The pack's shadow DRAWBUFFERS mask for the geometry draws, sanitised down to shadowcolor0 and 1, the only two that exist
+    // The pack's shadow DRAWBUFFERS mask for the geometry draws, sanitised down to the buffers that exist
     private final int[] shadowDrawBuffers;
     private final Runnable shaderPackResourceRestorer;
     // The FIXED-FUNCTION flavour of the pack's shadow program for entities and block entities, a separate compile since they draw immediate-mode and the Impetus-format terrain program cannot consume that; null when it failed, and entity shadows are then skipped
@@ -120,7 +125,8 @@ public class UmbraShadowRenderer {
                               Map<String, String> shaderDefines, boolean[] hardwareFiltering,
                               boolean[] mipmapDepth, boolean[] nearestDepth, boolean separateHardwareSamplers,
                               Runnable shaderPackResourceRestorer, ShadowContentSettings content,
-                              float voxelDistance, float cullDistance, boolean packVoxelizes) {
+                              float voxelDistance, float cullDistance, boolean packVoxelizes,
+                              ShadowColorSettings colorSettings, BitSet usedColorBuffers) {
         this.resolution = resolution;
         this.halfPlaneLength = shadowDistance;
         this.nearPlane = nearPlane;
@@ -143,20 +149,31 @@ public class UmbraShadowRenderer {
         this.depthTextureNoTranslucents = createShadowDepthTexture(resolution, this.hardwareFiltering[1],
                 this.mipmapDepth[1], this.nearestDepth[1], this.separateHardwareSamplers);
 
-        // shadowcolor0/1: the shadow program's color outputs (white where nothing draws = untinted shadows).
-        this.colorTexture0 = createShadowColorTexture(resolution);
-        this.colorTexture1 = createShadowColorTexture(resolution);
-
+        // shadowcolor0/1 always exist, as OptiFine's do; the rest only when something references them
+        this.colorSettings = colorSettings;
+        this.colorTextures = new int[colorSettings.count()];
         this.framebuffer = new UmbraFramebuffer();
-        this.framebuffer.addColorAttachment(0, this.colorTexture0);
-        this.framebuffer.addColorAttachment(1, this.colorTexture1);
+        int allocated = 0;
+        for (int index = 0; index < this.colorTextures.length; index++) {
+            if (index < ShadowColorSettings.OPTIFINE_BUFFERS || usedColorBuffers.get(index)) {
+                this.colorTextures[index] = createShadowColorTexture(resolution, colorSettings, index);
+                this.framebuffer.addColorAttachment(index, this.colorTextures[index]);
+                allocated++;
+            }
+        }
+        this.allocatedColorBuffers = new int[allocated];
+        for (int index = 0, slot = 0; index < this.colorTextures.length; index++) {
+            if (this.colorTextures[index] != 0) {
+                this.allocatedColorBuffers[slot++] = index;
+            }
+        }
         this.framebuffer.addDepthAttachment(this.depthTexture.getTextureId());
-        this.framebuffer.drawBuffers(CLEAR_MASK);
+        this.framebuffer.drawBuffers(this.allocatedColorBuffers);
 
-        // The shadow program's DRAWBUFFERS (0, or 01 when it also writes shadowcolor1); indices past the two shadowcolor attachments would reference missing images, so they are dropped
+        // The shadow program's DRAWBUFFERS; an index naming a buffer that does not exist would reference a missing image, so it is dropped
         this.shadowDrawBuffers = shadowSource.getFragmentSource()
                 .map(source -> DrawBuffers.parseActive(source, shaderDefines))
-                .map(buffers -> DrawBuffers.sanitize(buffers, 2))
+                .map(buffers -> keepAllocated(DrawBuffers.sanitize(buffers, this.colorTextures.length)))
                 .orElse(new int[]{0});
 
         // shadow_entities / shadow_block, both falling back to plain `shadow` through the ProgramSet chain; for a pack shipping only `shadow` these are the identical ProgramSource and the second compile is skipped
@@ -207,19 +224,33 @@ public class UmbraShadowRenderer {
         return nearest ? GL11.GL_NEAREST : GL11.GL_LINEAR;
     }
 
-    // The internal format of shadowcolor0 and 1, which glBindImageTexture needs to expose them as shadowcolorimgN
-    public static final int SHADOW_COLOR_INTERNAL_FORMAT = GL11.GL_RGBA8;
+    // Drops draw buffers naming a shadowcolor that was never allocated, keeping shadowcolor0 when nothing is left
+    private int[] keepAllocated(int[] drawBuffers) {
+        int[] kept = new int[drawBuffers.length];
+        int count = 0;
+        for (int buffer : drawBuffers) {
+            if (this.colorTextures[buffer] != 0) {
+                kept[count++] = buffer;
+            }
+        }
+        return count == 0 ? new int[]{0} : Arrays.copyOf(kept, count);
+    }
 
-    // One shadowcolor texture at the shadow resolution
-    private static int createShadowColorTexture(int resolution) {
+    // One shadowcolor texture at the shadow resolution in the pack's format, clamped at the edges like Iris's render targets
+    private static int createShadowColorTexture(int resolution, ShadowColorSettings settings, int index) {
         int texture = LWJGL.glGenTextures();
+        InternalTextureFormat format = settings.format(index);
         // Scratch unit, for the same reason as createShadowDepthTexture.
         GlTextureUnits.selectScratch(TEXTURE_SETUP_UNIT);
         try {
             LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, texture);
-            TextureParameters.setFilter2D(GL11.GL_LINEAR);
-            LWJGL.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, resolution, resolution, 0,
-                    GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
+            boolean nearest = settings.nearest(index);
+            LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, shadowMinFilter(settings.mipmap(index), nearest));
+            LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, nearest ? GL11.GL_NEAREST : GL11.GL_LINEAR);
+            LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
+            LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+            LWJGL.glTexImage2D(GL11.GL_TEXTURE_2D, 0, format.getInternalFormat(), resolution, resolution, 0,
+                    format.getPixelFormat(), format.getPixelType(), (ByteBuffer) null);
             LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, 0);
         } finally {
             GlTextureUnits.releaseScratch();
@@ -242,14 +273,19 @@ public class UmbraShadowRenderer {
         return this.depthTextureNoTranslucents.getTextureId();
     }
 
-    // shadowcolor0
-    public int getColorTextureId() {
-        return this.colorTexture0;
+    // shadowcolor<index>, or 0 when the pack never touches that buffer
+    public int getColorTextureId(int index) {
+        return index < this.colorTextures.length ? this.colorTextures[index] : 0;
     }
 
-    // shadowcolor1
-    public int getColorTexture1Id() {
-        return this.colorTexture1;
+    // The internal format of shadowcolor<index>, which glBindImageTexture needs to expose it as shadowcolorimg<index>
+    public int getColorInternalFormat(int index) {
+        return this.colorSettings.format(index).getInternalFormat();
+    }
+
+    // How many shadowcolor buffers the pack may address: two, or eight under HIGHER_SHADOWCOLOR
+    public int getColorBufferCount() {
+        return this.colorTextures.length;
     }
 
     // Shadow map size from the pack
@@ -257,7 +293,7 @@ public class UmbraShadowRenderer {
         return this.resolution;
     }
 
-    // The shadow framebuffer (shadowcolor0/1 + shadowtex0), for the Distant Horizons compat to draw LODs into during the pass
+    // The shadow framebuffer (every shadowcolor + shadowtex0), for the Distant Horizons compat to draw LODs into during the pass
     public UmbraFramebuffer getFramebuffer() {
         return this.framebuffer;
     }
@@ -331,10 +367,9 @@ public class UmbraShadowRenderer {
             GlStateManager.depthFunc(GL11.GL_LEQUAL);
             GlStateManager.clearDepth(1.0D);
             GlStateManager.disableCull();
-            // shadowcolor clears to white (no tint); GlStateManager keeps the vanilla clear-color cache coherent.
-            this.framebuffer.drawBuffers(CLEAR_MASK);
-            GlStateManager.clearColor(1.0f, 1.0f, 1.0f, 1.0f);
-            LWJGL.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+            // Each shadowcolor clears to its own colour (white by default, no tint) unless the pack keeps it across frames; GlStateManager keeps the vanilla clear-color cache coherent
+            clearColorBuffers();
+            LWJGL.glClear(GL11.GL_DEPTH_BUFFER_BIT);
             this.framebuffer.drawBuffers(this.shadowDrawBuffers);
             // Put the clear colour back immediately: it is GLOBAL, cached by GlStateManager, and vanilla sets it once per frame BEFORE the "frustum" section this hooks, so leaked white survived to the next frame's clear of the DEFAULT framebuffer and flashed whenever the blit was delayed (screenshots); the mixin sets the fog colour just before calling, alpha 0 like vanilla
             org.joml.Vector3f fog = CapturedRenderingState.INSTANCE.getFogColor();
@@ -422,15 +457,48 @@ public class UmbraShadowRenderer {
         }
     }
 
+    // Clears every allocated shadowcolor the pack wants cleared, one at a time since each has its own colour; integer formats go through glClearTexImage (GL 4.4), as a float clear colour is undefined for them
+    private void clearColorBuffers() {
+        for (int index : this.allocatedColorBuffers) {
+            if (!this.colorSettings.clear(index)) {
+                continue;
+            }
+            float[] color = this.colorSettings.clearColor(index);
+            InternalTextureFormat format = this.colorSettings.format(index);
+
+            if (format.isInteger() && LWJGL.isOpenGLVersionSupported(4, 4)) {
+                ByteBuffer data = ByteBuffer.allocateDirect(16).order(ByteOrder.nativeOrder());
+                for (float component : color) {
+                    data.putInt((int) component);
+                }
+                data.flip();
+                LWJGL.glClearTexImage(this.colorTextures[index], 0, format.getPixelFormat(), GL11.GL_INT, data);
+                continue;
+            }
+
+            this.framebuffer.drawBuffers(new int[]{index});
+            GlStateManager.clearColor(color[0], color[1], color[2], color[3]);
+            LWJGL.glClear(GL11.GL_COLOR_BUFFER_BIT);
+        }
+    }
+
     // Terrain in the shadow pass still samples the atlas for cutouts
     private static void bindBlockAtlas(Minecraft mc) {
         mc.getTextureManager().bindTexture(net.minecraft.client.renderer.texture.TextureMap.LOCATION_BLOCKS_TEXTURE);
     }
 
-    // Mips on the depth textures the pack asked for
+    // Mips on the depth and colour textures the pack asked for
     private void generateMipmaps() {
         generateDepthMipmap(this.depthTexture, this.mipmapDepth[0], this.nearestDepth[0]);
         generateDepthMipmap(this.depthTextureNoTranslucents, this.mipmapDepth[1], this.nearestDepth[1]);
+        for (int index : this.allocatedColorBuffers) {
+            if (this.colorSettings.mipmap(index)) {
+                GlTextureUnits.selectScratch(TEXTURE_SETUP_UNIT);
+                LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, this.colorTextures[index]);
+                LWJGL.glGenerateMipmap(GL11.GL_TEXTURE_2D);
+                LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+            }
+        }
         GlTextureUnits.resetToUnit0();
         this.shaderPackResourceRestorer.run();
     }
@@ -627,8 +695,9 @@ public class UmbraShadowRenderer {
         this.framebuffer.destroy();
         this.depthTexture.destroy();
         this.depthTextureNoTranslucents.destroy();
-        LWJGL.glDeleteTextures(this.colorTexture0);
-        LWJGL.glDeleteTextures(this.colorTexture1);
+        for (int index : this.allocatedColorBuffers) {
+            LWJGL.glDeleteTextures(this.colorTextures[index]);
+        }
         // Only when it is genuinely a second program: with no shadow_block this is the same object as entityShadowProgram, and destroying it would double-free
         if (!this.blockEntityProgramShared && this.blockEntityShadowProgram != null) {
             this.blockEntityShadowProgram.getProgram().destroy();

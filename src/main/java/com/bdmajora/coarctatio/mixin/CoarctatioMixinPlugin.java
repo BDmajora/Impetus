@@ -113,6 +113,11 @@ public class CoarctatioMixinPlugin extends SimpleMixinPlugin {
             case "client.texture.TextureMapPrefetchMixin":
             case "client.texture.TextureAtlasSpritePrefetchMixin":
                 return this.config.parallelTextureLoad;
+            case "client.model.ModelLoaderPrefetchMixin":
+            case "client.model.ModelBakeryPrefetchMixin":
+            case "client.model.ModelBlockAnimationPrefetchMixin":
+                // The dynamic reload never runs the eager loader pass the prefetch feeds
+                return this.config.parallelModelLoad && !this.config.dynamicModels;
             case "forge.OreDictionaryMixin":
                 return this.config.primitiveOreDictionary;
             case "forge.GameDataMixin":
@@ -153,10 +158,15 @@ public class CoarctatioMixinPlugin extends SimpleMixinPlugin {
             case "client.model.dynamic.RenderItemPrebakeMixin":
             case "client.model.dynamic.ItemModelMesherForgeAccessor":
                 return this.config.dynamicModels && this.config.dynamicModelsPrebakeItems;
+            case "client.model.dynamic.SimpleReloadableResourceManagerAccessor":
+            case "client.model.dynamic.FallbackResourceManagerAccessor":
+            case "client.model.dynamic.LegacyV2AdapterAccessor":
+                // PackPathLister's pack walk, which the model prefetch shares with the dynamic reload's texture scan
+                return this.config.dynamicModels || this.config.parallelModelLoad;
             case "client.model.dynamic.FileResourcePackAccessor":
             case "client.model.dynamic.AbstractResourcePackAccessor":
                 // Only needed to list packs the existence index has not already indexed
-                return this.config.dynamicModels && !this.config.resourceExistenceCache;
+                return (this.config.dynamicModels || this.config.parallelModelLoad) && !this.config.resourceExistenceCache;
             default:
                 // The dynamic-model mixins and their compat pseudo-mixins all hang off the one switch
                 if (name.startsWith("client.model.dynamic.")) {

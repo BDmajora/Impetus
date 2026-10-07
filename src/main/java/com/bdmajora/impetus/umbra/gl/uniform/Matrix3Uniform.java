@@ -1,7 +1,7 @@
 package com.bdmajora.impetus.umbra.gl.uniform;
 
 import org.joml.Matrix3fc;
-import com.bdmajora.impetus.lwjgl.MemoryStack;
+import org.lwjgl.system.MemoryStack;
 
 import java.nio.FloatBuffer;
 import java.util.function.Supplier;
@@ -23,7 +23,7 @@ public class Matrix3Uniform extends Uniform {
         if (matrix == null) {
             return;
         }
-        try (MemoryStack stack = LWJGL.stackPush()) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
             FloatBuffer buffer = stack.mallocFloat(9);
             matrix.get(buffer);
             LWJGL.glUniformMatrix3fv(this.location, false, buffer);

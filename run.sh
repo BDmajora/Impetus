@@ -18,7 +18,7 @@ build() {
 
 # JUnit + JaCoCo over both modules; --continue keeps the second module running when the first fails, so the summary is complete
 test_all() {
-    ./gradlew --continue test jacocoTestReport :common:verifyLwjglNeutral || true
+    ./gradlew --continue test jacocoTestReport || true
     echo
     python3 tools/test-summary.py "$@"
 }

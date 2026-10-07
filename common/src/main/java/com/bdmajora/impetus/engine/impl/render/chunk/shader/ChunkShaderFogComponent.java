@@ -6,15 +6,26 @@ import com.bdmajora.impetus.engine.impl.gl.shader.uniform.GlUniformFloat4v;
 import com.bdmajora.impetus.engine.impl.gl.shader.uniform.GlUniformInt;
 import com.bdmajora.impetus.engine.impl.render.chunk.fog.FogService;
 
-import java.util.ServiceLoader;
-
-// Fixed-function fog reproduced in the chunk shaders from live GL fog state, using camera distance instead of z so fog does not shift with head turns (what Minecraft wants from NVIDIA-only NV_fog_distance)
+/**
+ * These shader implementations try to remain compatible with the deprecated fixed function pipeline by manually
+ * copying the state into each shader's uniforms. The shader code itself is a straight-forward implementation of the
+ * fog functions themselves from the fixed-function pipeline, except that they use the distance from the camera
+ * rather than the z-buffer to produce better looking fog that doesn't move with the player's view angle.
+ *
+ * Minecraft itself will actually try to enable distance-based fog by using the proprietary NV_fog_distance extension,
+ * but as the name implies, this only works on graphics cards produced by NVIDIA. The shader implementation however does
+ * not depend on any vendor-specific extensions and is written using very simple GLSL code.
+ */
 public abstract class ChunkShaderFogComponent implements ChunkShaderComponent {
-    public static final FogService FOG_SERVICE = ServiceLoader.load(FogService.class).findFirst().orElseThrow();
+    protected final FogService fogService;
+
+    protected ChunkShaderFogComponent(FogService fogService) {
+        this.fogService = fogService;
+    }
 
     public static class None extends ChunkShaderFogComponent {
-        public None(ShaderBindingContext context) {
-
+        public None(ShaderBindingContext context, ChunkShaderEnvironment environment) {
+            super(environment.fogService());
         }
 
         // Uploads this mode's fog uniforms
@@ -24,11 +35,31 @@ public abstract class ChunkShaderFogComponent implements ChunkShaderComponent {
         }
     }
 
+    public static class Exp extends ChunkShaderFogComponent {
+        private final GlUniformFloat4v uFogColor;
+        private final GlUniformFloat uFogDensity;
+
+        public Exp(ShaderBindingContext context, ChunkShaderEnvironment environment) {
+            super(environment.fogService());
+
+            this.uFogColor = context.bindUniform("u_FogColor", GlUniformFloat4v::new);
+            this.uFogDensity = context.bindUniform("u_FogDensity", GlUniformFloat::new);
+        }
+
+        @Override
+        public void setup() {
+            this.uFogColor.set(this.fogService.getFogColor());
+            this.uFogDensity.set(this.fogService.getFogDensity());
+        }
+    }
+
     public static class Exp2 extends ChunkShaderFogComponent {
         private final GlUniformFloat4v uFogColor;
         private final GlUniformFloat uFogDensity;
 
-        public Exp2(ShaderBindingContext context) {
+        public Exp2(ShaderBindingContext context, ChunkShaderEnvironment environment) {
+            super(environment.fogService());
+
             this.uFogColor = context.bindUniform("u_FogColor", GlUniformFloat4v::new);
             this.uFogDensity = context.bindUniform("u_FogDensity", GlUniformFloat::new);
         }
@@ -36,8 +67,8 @@ public abstract class ChunkShaderFogComponent implements ChunkShaderComponent {
         // Uploads this mode's fog uniforms
         @Override
         public void setup() {
-            this.uFogColor.set(FOG_SERVICE.getFogColor());
-            this.uFogDensity.set(FOG_SERVICE.getFogDensity());
+            this.uFogColor.set(this.fogService.getFogColor());
+            this.uFogDensity.set(this.fogService.getFogDensity());
         }
     }
 
@@ -48,7 +79,9 @@ public abstract class ChunkShaderFogComponent implements ChunkShaderComponent {
         private final GlUniformFloat uFogStart;
         private final GlUniformFloat uFogEnd;
 
-        public Smooth(ShaderBindingContext context) {
+        public Smooth(ShaderBindingContext context, ChunkShaderEnvironment environment) {
+            super(environment.fogService());
+
             this.uFogColor = context.bindUniform("u_FogColor", GlUniformFloat4v::new);
             this.uFogShape = context.bindUniform("u_FogShape", GlUniformInt::new);
             this.uFogStart = context.bindUniform("u_FogStart", GlUniformFloat::new);
@@ -58,11 +91,11 @@ public abstract class ChunkShaderFogComponent implements ChunkShaderComponent {
         // Uploads this mode's fog uniforms
         @Override
         public void setup() {
-            this.uFogColor.set(FOG_SERVICE.getFogColor());
-            this.uFogShape.set(FOG_SERVICE.getFogShapeIndex());
+            this.uFogColor.set(this.fogService.getFogColor());
+            this.uFogShape.set(this.fogService.getFogShapeIndex());
 
-            this.uFogStart.set(FOG_SERVICE.getFogStart());
-            this.uFogEnd.set(FOG_SERVICE.getFogEnd());
+            this.uFogStart.set(this.fogService.getFogStart());
+            this.uFogEnd.set(this.fogService.getFogEnd());
         }
     }
 

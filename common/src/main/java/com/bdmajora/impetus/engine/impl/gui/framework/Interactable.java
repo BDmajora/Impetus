@@ -23,7 +23,7 @@ public interface Interactable {
         return false;
     }
 
-    // typedChar is '\0' when none; keyCode is LWJGL2 or GLFW depending on runtime - match typedChar when possible
+    // typedChar is '\0' when none; keyCode is vanilla's (lwjglx, LWJGL2 numbering) - match typedChar when possible
     default boolean keyTyped(char typedChar, int keyCode) {
         return false;
     }

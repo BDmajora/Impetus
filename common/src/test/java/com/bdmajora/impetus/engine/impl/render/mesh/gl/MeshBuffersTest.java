@@ -6,6 +6,7 @@ import com.bdmajora.testing.TestGl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.lwjgl.system.MemoryUtil;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -62,7 +63,7 @@ class MeshBuffersTest {
         assertEquals(128, buffer.getSize());
         assertTrue(buffer.getId() > 0);
         assertTrue(buffer.getClientAddress() != 0);
-        TestGl.gl().memPutInt(buffer.getClientAddress(), 7);
+        MemoryUtil.memPutInt(buffer.getClientAddress(), 7);
         buffer.flush(0, 4);
         Mockito.verify(TestGl.gl()).glFlushMappedNamedBufferRange(buffer.getId(), 0, 4);
         buffer.delete();

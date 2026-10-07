@@ -59,9 +59,39 @@ class GameWindowTest {
         Display.availableDisplayModes = new DisplayMode[] {big};
         assertArrayEquals(new DisplayMode[] {big}, GameWindow.fullscreenModes());
         assertFalse(GameWindow.isFullscreen());
-        GameWindow.setFullscreenMode(big);
-        assertTrue(GameWindow.isFullscreen());
-        assertSame(big, Display.displayMode);
+        assertSame(Display.desktopDisplayMode, GameWindow.desktopMode());
+        // Borderless is Display's, and only answers yes once the window exists
+        GameWindow.setBorderless(true);
+        assertTrue(GameWindow.isBorderless());
+        Display.created = false;
+        assertFalse(GameWindow.isBorderless());
+        Display.reset();
         assertNotNull(Mixins.construct(GameWindow.class));
+    }
+
+    @Test
+    void fullscreenModesSwitchTheMonitorTheWindowOwns() {
+        Display.reset();
+        Display.window = WINDOW;
+        DisplayMode mode = new DisplayMode(1280, 720);
+        try (MockedStatic<GLFW> glfw = Mockito.mockStatic(GLFW.class)) {
+            // A windowed (or borderless) window owns no monitor, so there is nothing to switch
+            assertFalse(GameWindow.setFullscreenMode(mode));
+            glfw.when(() -> GLFW.glfwGetWindowMonitor(WINDOW)).thenReturn(5L);
+            // A mode without a refresh rate lets GLFW pick one
+            assertTrue(GameWindow.setFullscreenMode(mode));
+            glfw.verify(() -> GLFW.glfwSetWindowMonitor(WINDOW, 5L, 0, 0, 1280, 720, GLFW.GLFW_DONT_CARE));
+            DisplayMode fast = Mockito.mock(DisplayMode.class);
+            Mockito.when(fast.getWidth()).thenReturn(1920);
+            Mockito.when(fast.getHeight()).thenReturn(1080);
+            Mockito.when(fast.getFrequency()).thenReturn(144);
+            assertTrue(GameWindow.setFullscreenMode(fast));
+            glfw.verify(() -> GLFW.glfwSetWindowMonitor(WINDOW, 5L, 0, 0, 1920, 1080, 144));
+            // No window at all
+            Display.created = false;
+            assertFalse(GameWindow.setFullscreenMode(mode));
+        } finally {
+            Display.reset();
+        }
     }
 }

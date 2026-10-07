@@ -31,21 +31,34 @@ public final class ShaderProgramCompiler {
         public final String vertex;
         public final String fragment;
         public final String geometry;
+        public final String tessControl;
+        public final String tessEval;
         public final int[] drawBuffers;
 
-        PatchedSource(String vertex, String fragment, String geometry, int[] drawBuffers) {
+        PatchedSource(String vertex, String fragment, String geometry, String tessControl, String tessEval, int[] drawBuffers) {
             this.vertex = vertex;
             this.fragment = fragment;
             this.geometry = geometry;
+            this.tessControl = tessControl;
+            this.tessEval = tessEval;
             this.drawBuffers = drawBuffers;
         }
     }
 
     // Applies defines and the name transforms without compiling, for inspection and caching
     public static PatchedSource patchSource(String name, ProgramSource source, Map<String, String> defines) {
+        // Iris's FADE_VARIABLE outside chunk terrain: everything that is not a fading section reads -1
+        if (source.getVertexSource().map(vertex -> vertex.contains("mc_chunkFade")).orElse(false) && !defines.containsKey("mc_chunkFade")) {
+            defines = new java.util.LinkedHashMap<>(defines);
+            defines.put("mc_chunkFade", "(-1.0)");
+        }
+
         String vertexSource = source.getVertexSource().orElse(null);
         String fragmentSource = source.getFragmentSource().orElse(null);
         String geometrySource = source.getGeometrySource().orElse(null);
+        // Both tessellation stages or neither: a control stage alone is legal GL but useless, and an evaluation stage alone runs with default levels no pack expects
+        String tessControlSource = source.getTessEvalSource().isPresent() ? source.getTessControlSource().orElse(null) : null;
+        String tessEvalSource = tessControlSource != null ? source.getTessEvalSource().orElse(null) : null;
 
         if (vertexSource == null || fragmentSource == null) {
             throw new ProgramCreationException("Program '" + name + "' is missing a vertex or fragment stage");
@@ -55,6 +68,8 @@ public final class ShaderProgramCompiler {
         vertexSource = CustomTextureTransformer.transform(name, vertexSource, TextureStage.GBUFFERS_AND_SHADOW);
         fragmentSource = CustomTextureTransformer.transform(name, fragmentSource, TextureStage.GBUFFERS_AND_SHADOW);
         geometrySource = CustomTextureTransformer.transform(name, geometrySource, TextureStage.GBUFFERS_AND_SHADOW);
+        tessControlSource = CustomTextureTransformer.transform(name, tessControlSource, TextureStage.GBUFFERS_AND_SHADOW);
+        tessEvalSource = CustomTextureTransformer.transform(name, tessEvalSource, TextureStage.GBUFFERS_AND_SHADOW);
 
         // Modern single-source dual-stage packs (Complementary) need #version bumped to "330 compatibility" on the compat context like the fullscreen/terrain paths, or these phases fall back to vanilla (for gbuffers_clouds that is the "clouds move with the player" bug); GLSL-120 packs skip the bump but share the dense routing
         int[] drawBuffers = DrawBuffers.sanitize(
@@ -62,16 +77,16 @@ public final class ShaderProgramCompiler {
         if (ModernPackTransformer.isModernSource(fragmentSource)) {
             vertexSource = ModernPackTransformer.transform(vertexSource);
             fragmentSource = ModernPackTransformer.transform(fragmentSource);
-            if (geometrySource != null) {
-                geometrySource = ModernPackTransformer.transform(geometrySource);
-            }
+            geometrySource = transformIfPresent(geometrySource, ModernPackTransformer::transform);
+            tessControlSource = transformIfPresent(tessControlSource, ModernPackTransformer::transform);
+            tessEvalSource = transformIfPresent(tessEvalSource, ModernPackTransformer::transform);
         }
         // Modern (1.17+) attribute/matrix names -> fixed-function built-ins, before the hand bridge so a hand program written against vaUV2 still goes through impetus_HandLightmap
         vertexSource = VanillaNameTransformer.transform(vertexSource);
         fragmentSource = VanillaNameTransformer.transform(fragmentSource);
-        if (geometrySource != null) {
-            geometrySource = VanillaNameTransformer.transform(geometrySource);
-        }
+        geometrySource = transformIfPresent(geometrySource, VanillaNameTransformer::transform);
+        tessControlSource = transformIfPresent(tessControlSource, VanillaNameTransformer::transform);
+        tessEvalSource = transformIfPresent(tessEvalSource, VanillaNameTransformer::transform);
         vertexSource = neutralizeUnfedVanillaAttributes(vertexSource);
         if (isFirstPersonHandProgram(name)) {
             vertexSource = injectHandLightmapBridge(vertexSource);
@@ -81,10 +96,20 @@ public final class ShaderProgramCompiler {
         return new PatchedSource(
                 UmbraRenderingPipeline.stabilizeShaderSource(name, applyDefines(vertexSource, defines)),
                 UmbraRenderingPipeline.stabilizeShaderSource(name, applyDefines(fragmentSource, defines)),
-                geometrySource == null
-                        ? null
-                        : UmbraRenderingPipeline.stabilizeShaderSource(name, applyDefines(geometrySource, defines)),
+                finishStage(name, geometrySource, defines),
+                finishStage(name, tessControlSource, defines),
+                finishStage(name, tessEvalSource, defines),
                 drawBuffers);
+    }
+
+    // Applies one transform to an optional stage
+    private static String transformIfPresent(String stage, java.util.function.UnaryOperator<String> transform) {
+        return stage == null ? null : transform.apply(stage);
+    }
+
+    // Defines and source stabilisation for an optional stage
+    private static String finishStage(String name, String stage, Map<String, String> defines) {
+        return stage == null ? null : UmbraRenderingPipeline.stabilizeShaderSource(name, applyDefines(stage, defines));
     }
 
     // Patches, compiles, binds attributes and links; throws on any failure
@@ -98,6 +123,8 @@ public final class ShaderProgramCompiler {
         GlShader vertexShader = null;
         GlShader fragmentShader = null;
         GlShader geometryShader = null;
+        GlShader tessControlShader = null;
+        GlShader tessEvalShader = null;
         try {
             vertexShader = new GlShader(ShaderType.VERTEX, name + ".vsh", processedVertex);
             fragmentShader = new GlShader(ShaderType.FRAGMENT, name + ".fsh", processedFragment);
@@ -109,6 +136,12 @@ public final class ShaderProgramCompiler {
             if (geometrySource != null) {
                 geometryShader = new GlShader(ShaderType.GEOMETRY, name + ".gsh", geometrySource);
                 builder.attach(geometryShader);
+            }
+            if (patched.tessEval != null) {
+                tessControlShader = new GlShader(ShaderType.TESS_CONTROL, name + ".tcs", patched.tessControl);
+                builder.attach(tessControlShader);
+                tessEvalShader = new GlShader(ShaderType.TESS_EVALUATION, name + ".tes", patched.tessEval);
+                builder.attach(tessEvalShader);
             }
 
             bindOptifineAttributes(builder, processedVertex);
@@ -125,6 +158,12 @@ public final class ShaderProgramCompiler {
             }
             if (geometryShader != null) {
                 geometryShader.destroy();
+            }
+            if (tessControlShader != null) {
+                tessControlShader.destroy();
+            }
+            if (tessEvalShader != null) {
+                tessEvalShader.destroy();
             }
         }
     }

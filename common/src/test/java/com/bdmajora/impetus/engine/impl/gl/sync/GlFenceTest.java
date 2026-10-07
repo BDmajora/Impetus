@@ -24,14 +24,13 @@ class GlFenceTest {
         assertFalse(fence.isCompleted());
         Mockito.when(TestGl.gl().glGetSynci(Mockito.eq(7L), Mockito.eq(0x9114), Mockito.any())).thenReturn(0x9119);
         assertThrows(RuntimeException.class, fence::isCompleted);
-        fence.sync();
-        Mockito.verify(TestGl.gl()).glWaitSync(7, 1, Long.MAX_VALUE);
-        fence.sync(5);
-        Mockito.verify(TestGl.gl()).glWaitSync(7, 1, 5);
+        // The CPU wait retries through timeouts until the GPU passes the fence
+        Mockito.when(TestGl.gl().glClientWaitSync(7, 1, 1_000_000L)).thenReturn(0x911B, 0x911C);
+        fence.await();
+        Mockito.verify(TestGl.gl(), Mockito.times(2)).glClientWaitSync(7, 1, 1_000_000L);
         fence.delete();
         Mockito.verify(TestGl.gl()).glDeleteSync(7);
         assertThrows(IllegalStateException.class, fence::isCompleted);
-        assertThrows(IllegalStateException.class, fence::sync);
-        assertThrows(IllegalStateException.class, () -> fence.sync(1));
+        assertThrows(IllegalStateException.class, fence::await);
     }
 }

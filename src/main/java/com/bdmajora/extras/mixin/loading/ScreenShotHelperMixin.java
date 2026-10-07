@@ -75,7 +75,7 @@ public abstract class ScreenShotHelperMixin {
                 return;
             }
             final File file = event.getScreenshotFile();
-            Thread writer = new Thread(() -> {
+            Thread.ofVirtual().name("Impetus Screenshot Writer").start(() -> {
                 try {
                     ImageIO.write(image, "png", file);
                 } catch (Exception e) {
@@ -83,9 +83,7 @@ public abstract class ScreenShotHelperMixin {
                     Minecraft.getMinecraft().addScheduledTask(() -> Minecraft.getMinecraft().ingameGUI.getChatGUI()
                             .printChatMessage(new TextComponentTranslation("screenshot.failure", e.getMessage())));
                 }
-            }, "Impetus Screenshot Writer");
-            writer.setDaemon(true);
-            writer.start();
+            });
             ITextComponent link = new TextComponentString(file.getName());
             link.getStyle().setClickEvent(new ClickEvent(ClickEvent.Action.OPEN_FILE, file.getAbsolutePath()));
             link.getStyle().setUnderlined(true);

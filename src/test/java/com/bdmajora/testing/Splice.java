@@ -95,6 +95,7 @@ public final class Splice implements LauncherSessionListener {
             return;
         }
         installed = true;
+        GlResetExtension.onReset(org.lwjgl.opengl.Display::reset);
         // Cleanroom's launcher records the side before anything asks; FMLLaunchHandler's initialiser reads it, and the client is the side every suite runs as
         com.cleanroommc.common.CleanroomEnvironment.setSide(net.minecraftforge.fml.relauncher.Side.CLIENT);
         ByteBuddyAgent.install();

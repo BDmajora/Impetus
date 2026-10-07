@@ -1,12 +1,11 @@
 package com.bdmajora.impetus.engine.impl.gl.sync;
 
 import org.lwjgl.opengl.GL32;
-import com.bdmajora.impetus.lwjgl.MemoryStack;
-
-import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
-
+import org.lwjgl.system.MemoryStack;
 
 import java.nio.IntBuffer;
+
+import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 public class GlFence {
     private final long id;
@@ -34,19 +33,6 @@ public class GlFence {
         return result == GL32.GL_SIGNALED;
     }
 
-    // Blocks until signalled
-    public void sync() {
-        this.checkDisposed();
-        this.sync(Long.MAX_VALUE);
-    }
-
-    // Blocks up to the timeout
-    public void sync(long timeout) {
-        this.checkDisposed();
-        LWJGL.glWaitSync(this.id, GL32.GL_SYNC_FLUSH_COMMANDS_BIT, timeout);
-    }
-
-    // glDeleteSync
     public void delete() {
         LWJGL.glDeleteSync(this.id);
         this.disposed = true;

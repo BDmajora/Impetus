@@ -5,7 +5,6 @@ import it.unimi.dsi.fastutil.objects.Reference2ReferenceMaps;
 import it.unimi.dsi.fastutil.objects.Reference2ReferenceOpenHashMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import com.bdmajora.impetus.lwjgl.LWJGLServiceProvider;
 
 import java.lang.ref.PhantomReference;
 import java.lang.ref.Reference;
@@ -14,8 +13,8 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
+import org.lwjgl.system.MemoryUtil;
 
-import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 public class NativeBuffer {
     private static final Logger LOGGER = LogManager.getLogger(NativeBuffer.class);
@@ -40,7 +39,7 @@ public class NativeBuffer {
     // Allocates and copies src's remaining bytes
     public static NativeBuffer copy(ByteBuffer src) {
         NativeBuffer dst = new NativeBuffer(src.remaining());
-        LWJGL.memCopy(src, dst.getDirectBuffer());
+        MemoryUtil.memCopy(src, dst.getDirectBuffer());
         return dst;
     }
 
@@ -48,7 +47,7 @@ public class NativeBuffer {
     public ByteBuffer getDirectBuffer() {
         this.ref.checkFreed();
 
-        return LWJGL.memByteBuffer(this.ref.address, this.ref.length);
+        return MemoryUtil.memByteBuffer(this.ref.address, this.ref.length);
     }
 
     // Releases immediately rather than waiting for the cleaner
@@ -109,9 +108,9 @@ public class NativeBuffer {
         int attempts = 0;
 
         while (++attempts <= MAX_ALLOCATION_ATTEMPTS) {
-            address = LWJGL.nmemAlloc(bytes);
+            address = MemoryUtil.nmemAlloc(bytes);
 
-            if (address != LWJGLServiceProvider.NULL) {
+            if (address != MemoryUtil.NULL) {
                 break;
             }
 
@@ -122,7 +121,7 @@ public class NativeBuffer {
             reclaim(true);
         }
 
-        if (address == LWJGLServiceProvider.NULL) {
+        if (address == MemoryUtil.NULL) {
             throw new OutOfMemoryError("Couldn't allocate %s bytes after %s attempts".formatted(bytes, attempts));
         }
 
@@ -139,7 +138,7 @@ public class NativeBuffer {
         ref.checkFreed();
         ref.freed = true;
 
-        LWJGL.nmemFree(ref.address);
+        MemoryUtil.nmemFree(ref.address);
 
         ALLOCATED.addAndGet(-ref.length);
     }

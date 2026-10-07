@@ -18,6 +18,7 @@ import org.mockito.Mockito;
 
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
+import org.lwjgl.system.MemoryUtil;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -57,7 +58,7 @@ class StagingBuffersTest {
         assertEquals("Mapped (0/0 MiB)", staging.toString());
         GlMutableBuffer dst = commands.createMutableBuffer();
         GlMutableBuffer other = commands.createMutableBuffer();
-        ByteBuffer twelve = TestGl.gl().memCalloc(12);
+        ByteBuffer twelve = MemoryUtil.memCalloc(12);
         staging.enqueueCopy(commands, twelve, dst, 0);
         staging.enqueueCopy(commands, twelve, dst, 12);
         staging.flush(commands);
@@ -66,7 +67,7 @@ class StagingBuffersTest {
         staging.flush(commands);
 
         // Only 8 bytes of the ring are unfenced, so a larger copy takes the fallback path
-        ByteBuffer big = TestGl.gl().memCalloc(64);
+        ByteBuffer big = MemoryUtil.memCalloc(64);
         staging.enqueueCopy(commands, big, dst, 0);
         Mockito.verify(commands).uploadData(Mockito.any(GlMutableBuffer.class), Mockito.eq(big), Mockito.eq(GlBufferUsage.STREAM_COPY));
 
@@ -88,8 +89,8 @@ class StagingBuffersTest {
         }).when(TestGl.gl()).glGetSynci(Mockito.anyLong(), Mockito.anyInt(), Mockito.any());
         staging.flip();
         staging.delete(commands);
-        TestGl.gl().memFree(twelve);
-        TestGl.gl().memFree(big);
+        MemoryUtil.memFree(twelve);
+        MemoryUtil.memFree(big);
     }
 
     @Test

@@ -214,7 +214,8 @@ class UmbraRenderingPipelineTest {
                 "shadow.culling = reversed",
                 "shadowLightBlockEntities = true",
                 "shadowBlockEntities = false",
-                "uniform.float.myUniform = 1.0"));
+                "uniform.float.myUniform = 1.0",
+                "iris.features.optional = HIGHER_SHADOWCOLOR TESSELLATION_SHADERS"));
         sources.put(path("/block.properties"), "block.10 = stone\nlayer.translucent = glass\n");
         sources.put(path("/setup.csh"), "#version 430\nlayout(local_size_x = 8, local_size_y = 8) in;\nconst ivec3 workGroups = ivec3(2, 2, 1);\nvoid main() {}");
         sources.put(path("/begin.vsh"), LEGACY_VERTEX);
@@ -223,10 +224,11 @@ class UmbraRenderingPipelineTest {
         sources.put(path("/prepare.fsh"), "#version 120\n/* DRAWBUFFERS:9 */\nvoid main() { gl_FragData[0] = vec4(1.0); }");
         sources.put(path("/prepare.csh"), "#version 430\nlayout(local_size_x = 4) in;\nconst int workGroupsX = 3;\nvoid main() {}");
         // The voxel volume is 16^3 at local 8x8x1: a declared 1x1x1 does not cover it and is widened
-        sources.put(path("/shadowcomp.csh"), "#version 430\nlayout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;\nconst ivec3 workGroups = ivec3(1, 1, 1);\nvoid main() { imageStore(colorimg4, ivec2(0), vec4(0)); }");
+        sources.put(path("/shadowcomp.csh"), "#version 430\nlayout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;\nconst ivec3 workGroups = ivec3(1, 1, 1);\nvoid main() { imageStore(colorimg4, ivec2(0), vec4(0)); imageStore(shadowcolorimg2, ivec2(0), vec4(0)); imageStore(shadowcolorimg6, ivec2(0), vec4(0)); }");
         sources.put(path("/shadowcomp_a.csh"), "#version 430\nlayout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;\nvoid main() {}");
         sources.put(path("/shadowcomp1.vsh"), LEGACY_VERTEX);
-        sources.put(path("/shadowcomp1.fsh"), "#version 120\n/* DRAWBUFFERS:02 */\nvoid main() { gl_FragData[0] = vec4(1.0); }");
+        // shadowcolor2 exists under HIGHER_SHADOWCOLOR; 9 is past even Iris's eight and is dropped
+        sources.put(path("/shadowcomp1.fsh"), "#version 120\n/* DRAWBUFFERS:029 */\nvoid main() { gl_FragData[0] = vec4(1.0); }");
         sources.put(path("/deferred.vsh"), "#version 330 compatibility\nvoid main() { gl_Position = ftransform(); }");
         sources.put(path("/deferred.fsh"), "#version 330 compatibility\n/* RENDERTARGETS: 0,4 */\nlayout(location = 0) out vec4 color;\nlayout(location = 1) out vec4 aux;\nuniform sampler2D colortex4;\nvoid main() { color = vec4(1.0); aux = vec4(0.0); }");
         sources.put(path("/deferred_a.csh"), "#version 430\nlayout(local_size_x = 16, local_size_y = 16) in;\nconst vec2 workGroupsRender = vec2(0.5f, 0.5f);\nvoid main() { imageStore(colorimg4, ivec2(0), vec4(0)); }");
@@ -240,6 +242,17 @@ class UmbraRenderingPipelineTest {
                 "const int colortex3Format = RGBA16F;",
                 "const int gaux2Format = BOGUS;",
                 "const int shadowcolor0Format = RGBA8;",
+                "const int shadowcolor2Format = RGBA16F;",
+                "const int shadowcolor3Format = R32UI;",
+                "const int shadowcolor4Format = BOGUS;",
+                "const bool shadowcolor2Clear = false;",
+                "const vec4 shadowcolor3ClearColor = vec4(1.0, 0.0, 0.0, 1.0);",
+                "const bool generateShadowColorMipmap = true;",
+                "const bool shadowcolor1Mipmap = false;",
+                "const bool shadowColor2Mipmap = true;",
+                "const bool shadowcolor0Nearest = true;",
+                "const bool shadowColor1Nearest = true;",
+                "const bool shadowColor2MinMagNearest = true;",
                 "const bool colortex3Clear = false;",
                 "const bool colortex2Clear = false;",
                 "const vec4 colortex3ClearColor = vec4(1.0, 0.5, 0.25f, 1.0);",
@@ -259,7 +272,7 @@ class UmbraRenderingPipelineTest {
         sources.put(path("/composite1.vsh"), LEGACY_VERTEX);
         sources.put(path("/composite1.fsh"), "#version 120\n/* DRAWBUFFERS:1 */\nvoid main() { imageStore(shadowcolorimg0, ivec2(0), vec4(0)); gl_FragData[0] = vec4(1.0); }");
         sources.put(path("/composite3.vsh"), LEGACY_VERTEX);
-        sources.put(path("/composite3.fsh"), "#version 120\nvoid main() { gl_FragColor = vec4(1.0); }");
+        sources.put(path("/composite3.fsh"), "#version 120\nuniform sampler2D shadowcolor3;\nvoid main() { gl_FragColor = texture2D(shadowcolor3, vec2(0.0)); }");
         sources.put(path("/final.vsh"), LEGACY_VERTEX);
         sources.put(path("/final.fsh"), "#version 120\nuniform sampler2D colortex0;\nvoid main() { gl_FragColor = texture2D(colortex0, vec2(0.0)); }");
         for (String gbuffer : new String[] {"gbuffers_basic", "gbuffers_textured", "gbuffers_textured_lit", "gbuffers_skybasic",
@@ -268,6 +281,9 @@ class UmbraRenderingPipelineTest {
             sources.put(path("/" + gbuffer + ".vsh"), "#version 120\nattribute vec4 mc_Entity;\nvoid main() { gl_Position = ftransform(); }");
             sources.put(path("/" + gbuffer + ".fsh"), "#version 120\n/* DRAWBUFFERS:024 */\nuniform sampler2D gaux1;\nvoid main() { gl_FragData[0] = vec4(1.0); }");
         }
+        // A tessellated entity program: both stages compile, and immediate draws under it become patches
+        sources.put(path("/gbuffers_entities.tcs"), "#version 400 compatibility\nlayout(vertices = 3) out;\nvoid main() {}");
+        sources.put(path("/gbuffers_entities.tes"), "#version 400 compatibility\nlayout(triangles) in;\nvoid main() {}");
         sources.put(path("/gbuffers_terrain.vsh"), "#version 120\nvoid main() { gl_Position = ftransform(); }");
         sources.put(path("/gbuffers_terrain.fsh"), "#version 120\n/* DRAWBUFFERS:0245 */\nvoid main() { gl_FragData[0] = vec4(1.0); }");
         sources.put(path("/gbuffers_water.vsh"), "#version 120\nvoid main() { gl_Position = ftransform(); }");
@@ -397,6 +413,16 @@ class UmbraRenderingPipelineTest {
         });
         pipeline.applyShadowSamplerKinds(ShadowSamplerKinds.detect(77), false);
         UmbraShadowRenderer shadow = pipeline.getShadowRenderer();
+        // Eight addressable shadowcolor buffers; only the touched ones exist, each in its own format
+        assertEquals(8, shadow.getColorBufferCount());
+        assertNotEquals(0, shadow.getColorTextureId(2));
+        assertNotEquals(0, shadow.getColorTextureId(3));
+        assertNotEquals(0, shadow.getColorTextureId(6));
+        assertEquals(0, shadow.getColorTextureId(5));
+        assertEquals(0, shadow.getColorTextureId(9));
+        assertEquals(0x881A, shadow.getColorInternalFormat(2));
+        verify(TestGl.gl(), Mockito.atLeastOnce()).glClearTexImage(anyInt(), eq(0), anyInt(), eq(GL11.GL_INT), any(java.nio.ByteBuffer.class));
+        verify(TestGl.gl(), Mockito.atLeastOnce()).glAttachShader(anyInt(), anyInt());
         assertNotNull(shadow.getFramebuffer());
         assertNotNull(shadow.getCullingFrustum());
         assertNotNull(shadow.getShadowModelView());

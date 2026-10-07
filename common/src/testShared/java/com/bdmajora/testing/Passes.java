@@ -7,6 +7,7 @@ import com.bdmajora.impetus.engine.impl.render.chunk.terrain.material.Material;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.material.parameters.AlphaCutoffParameter;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkMeshFormats;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexType;
+import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.impl.MeshChunkVertex;
 
 import java.util.List;
 import java.util.Map;
@@ -27,6 +28,20 @@ public final class Passes {
             Map.of("solid", SOLID_MATERIAL, "cutout", CUTOUT_MATERIAL, "translucent", TRANSLUCENT_MATERIAL),
             Map.of("solid", List.of(SOLID), "cutout", List.of(CUTOUT), "translucent", List.of(TRANSLUCENT)),
             SOLID_MATERIAL, CUTOUT_MATERIAL, TRANSLUCENT_MATERIAL);
+
+    // The same three passes built in the mesh backend's 16-byte layout
+    public static final TerrainRenderPass MESH_SOLID = pass("mesh_solid", false, false, MeshChunkVertex.INSTANCE);
+    public static final TerrainRenderPass MESH_CUTOUT = pass("mesh_cutout", true, false, MeshChunkVertex.INSTANCE);
+    public static final TerrainRenderPass MESH_TRANSLUCENT = pass("mesh_translucent", false, true, MeshChunkVertex.INSTANCE);
+
+    public static final Material MESH_SOLID_MATERIAL = new Material(MESH_SOLID, AlphaCutoffParameter.ZERO, true);
+    public static final Material MESH_CUTOUT_MATERIAL = new Material(MESH_CUTOUT, AlphaCutoffParameter.ONE_TENTH, false);
+    public static final Material MESH_TRANSLUCENT_MATERIAL = new Material(MESH_TRANSLUCENT, AlphaCutoffParameter.ZERO, true);
+
+    public static final RenderPassConfiguration<String> MESH_CONFIG = new RenderPassConfiguration<>(
+            Map.of("solid", MESH_SOLID_MATERIAL, "cutout", MESH_CUTOUT_MATERIAL, "translucent", MESH_TRANSLUCENT_MATERIAL),
+            Map.of("solid", List.of(MESH_SOLID), "cutout", List.of(MESH_CUTOUT), "translucent", List.of(MESH_TRANSLUCENT)),
+            MESH_SOLID_MATERIAL, MESH_CUTOUT_MATERIAL, MESH_TRANSLUCENT_MATERIAL);
 
     private Passes() {}
 

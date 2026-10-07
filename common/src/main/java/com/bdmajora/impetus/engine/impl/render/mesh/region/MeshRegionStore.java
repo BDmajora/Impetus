@@ -11,8 +11,9 @@ import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Deque;
+import java.util.function.IntConsumer;
+import org.lwjgl.system.MemoryUtil;
 
-import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 // Region and section header buffers the GPU walks to find geometry (section id = (regionId << 8) | slot); headers are staged per region and uploaded as one 8 KB block
 public class MeshRegionStore {
@@ -36,6 +37,9 @@ public class MeshRegionStore {
 
     private final Deque<Region> dirtyRegions = new ArrayDeque<>();
 
+    // Told the id of every region whose headers were re-uploaded, since that resets the GPU-side translucent draw order the section sorter wrote
+    private IntConsumer uploadListener = regionId -> {};
+
     public MeshRegionStore(int maxRegions, UploadStream uploadStream) {
         this.regionIdByKey.defaultReturnValue(-1);
         this.uploadStream = uploadStream;
@@ -57,6 +61,16 @@ public class MeshRegionStore {
     // Capacity
     public int getMaxRegions() {
         return this.regions.length;
+    }
+
+    // Called with each region id commit() uploads
+    public void setUploadListener(IntConsumer listener) {
+        this.uploadListener = listener;
+    }
+
+    // Whether the region a section belongs to is already allocated, i.e. placing it needs no new region id
+    public boolean hasRegionFor(int sectionX, int sectionY, int sectionZ) {
+        return this.regionIdByKey.containsKey(regionKey(sectionX, sectionY, sectionZ));
     }
 
     // Live regions
@@ -144,7 +158,7 @@ public class MeshRegionStore {
             return;
         }
 
-        LWJGL.memSet(region.sectionHeaders + (long) index * SECTION_HEADER_BYTES, 0, SECTION_HEADER_BYTES);
+        MemoryUtil.memSet(region.sectionHeaders + (long) index * SECTION_HEADER_BYTES, 0, SECTION_HEADER_BYTES);
         region.slotToIndex[slot] = -1;
         region.indexToSlot[index] = -1;
 
@@ -154,9 +168,9 @@ public class MeshRegionStore {
             // Move the tail entry into the hole
             int movedSlot = region.indexToSlot[lastIndex];
 
-            LWJGL.memCopy(region.sectionHeaders + (long) lastIndex * SECTION_HEADER_BYTES,
+            MemoryUtil.memCopy(region.sectionHeaders + (long) lastIndex * SECTION_HEADER_BYTES,
                     region.sectionHeaders + (long) index * SECTION_HEADER_BYTES, SECTION_HEADER_BYTES);
-            LWJGL.memSet(region.sectionHeaders + (long) lastIndex * SECTION_HEADER_BYTES, 0, SECTION_HEADER_BYTES);
+            MemoryUtil.memSet(region.sectionHeaders + (long) lastIndex * SECTION_HEADER_BYTES, 0, SECTION_HEADER_BYTES);
 
             region.indexToSlot[lastIndex] = -1;
             region.indexToSlot[index] = movedSlot;
@@ -164,9 +178,9 @@ public class MeshRegionStore {
 
             // The header carries its own index, for the translucency draw order, so patch it after the move
             long headerY = region.sectionHeaders + (long) index * SECTION_HEADER_BYTES + 4L;
-            int packed = LWJGL.memGetInt(headerY);
+            int packed = MemoryUtil.memGetInt(headerY);
             packed = (packed & ~(0xFF << 18)) | (index << 18);
-            LWJGL.memPutInt(headerY, packed);
+            MemoryUtil.memPutInt(headerY, packed);
         }
 
         if (region.count == 0) {
@@ -195,11 +209,11 @@ public class MeshRegionStore {
                 // Wipe both blocks, or the GPU renders whatever the departed region left behind
                 long header = this.uploadStream.upload(this.regionBuffer,
                         (long) region.id * REGION_HEADER_BYTES, REGION_HEADER_BYTES);
-                LWJGL.memSet(header, -1, REGION_HEADER_BYTES);
+                MemoryUtil.memSet(header, -1, REGION_HEADER_BYTES);
 
                 long sections = this.uploadStream.upload(this.sectionBuffer,
                         (long) region.id * REGION_SECTION_BLOCK_BYTES, REGION_SECTION_BLOCK_BYTES);
-                LWJGL.memSet(sections, 0, REGION_SECTION_BLOCK_BYTES);
+                MemoryUtil.memSet(sections, 0, REGION_SECTION_BLOCK_BYTES);
                 continue;
             }
 
@@ -209,7 +223,9 @@ public class MeshRegionStore {
 
             long sections = this.uploadStream.upload(this.sectionBuffer,
                     (long) region.id * REGION_SECTION_BLOCK_BYTES, REGION_SECTION_BLOCK_BYTES);
-            LWJGL.memCopy(region.sectionHeaders, sections, REGION_SECTION_BLOCK_BYTES);
+            MemoryUtil.memCopy(region.sectionHeaders, sections, REGION_SECTION_BLOCK_BYTES);
+
+            this.uploadListener.accept(region.id);
         }
     }
 
@@ -236,6 +252,24 @@ public class MeshRegionStore {
                 + Math.abs((region.x << 3) + 3 - cameraSectionX)
                 + Math.abs((region.y << 2) + 1 - cameraSectionY)
                 + Math.abs((region.z << 3) + 3 - cameraSectionZ)) >> 1;
+    }
+
+    // Whether the camera sits inside the region's slab on any axis, where moving even slightly can change which of its sections is farther
+    public boolean isRegionInCameraAxis(int regionId, double cameraX, double cameraY, double cameraZ) {
+        Region region = this.regions[regionId];
+
+        return ((region.x << 7) <= cameraX && cameraX <= ((region.x + 1) << 7))
+                || ((region.y << 6) <= cameraY && cameraY <= ((region.y + 1) << 6))
+                || ((region.z << 7) <= cameraZ && cameraZ <= ((region.z + 1) << 7));
+    }
+
+    // Whether the region's centre lies within a square of the given chunk radius around the camera's section, on every axis
+    public boolean isWithinChunks(int regionId, int distance, int cameraSectionX, int cameraSectionY, int cameraSectionZ) {
+        Region region = this.regions[regionId];
+
+        return Math.abs((region.x << 3) + 4 - cameraSectionX) <= distance
+                && Math.abs((region.y << 2) + 2 - cameraSectionY) <= distance
+                && Math.abs((region.z << 3) + 4 - cameraSectionZ) <= distance;
     }
 
     // Frees the GPU tables
@@ -291,8 +325,8 @@ public class MeshRegionStore {
         long y = (((long) region.y << 2) + minY) & 0xFFFFFF;
         long z = ((((long) region.z << 3) + minZ) & 0xFFFFFF) << 40;
 
-        LWJGL.memPutLong(ptr, size | count | x | y);
-        LWJGL.memPutLong(ptr + 8, z);
+        MemoryUtil.memPutLong(ptr, size | count | x | y);
+        MemoryUtil.memPutLong(ptr + 8, z);
     }
 
     // Section coordinates to the containing region's key
@@ -331,14 +365,14 @@ public class MeshRegionStore {
             Arrays.fill(this.slotToIndex, -1);
             Arrays.fill(this.indexToSlot, -1);
 
-            this.sectionHeaders = LWJGL.nmemAlloc(REGION_SECTION_BLOCK_BYTES);
-            LWJGL.memSet(this.sectionHeaders, 0, REGION_SECTION_BLOCK_BYTES);
+            this.sectionHeaders = MemoryUtil.nmemAlloc(REGION_SECTION_BLOCK_BYTES);
+            MemoryUtil.memSet(this.sectionHeaders, 0, REGION_SECTION_BLOCK_BYTES);
         }
 
         // Releases the native mirrors
         private void free() {
             if (this.sectionHeaders != 0L) {
-                LWJGL.nmemFree(this.sectionHeaders);
+                MemoryUtil.nmemFree(this.sectionHeaders);
                 this.sectionHeaders = 0L;
             }
         }

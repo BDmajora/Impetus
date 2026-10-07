@@ -6,6 +6,7 @@ import org.apache.logging.log4j.Logger;
 import com.bdmajora.impetus.engine.impl.gl.device.CommandList;
 import com.bdmajora.impetus.engine.impl.gl.device.RenderDevice;
 import com.bdmajora.impetus.engine.impl.gl.shader.*;
+import com.bdmajora.impetus.engine.impl.render.chunk.fog.FogService;
 import com.bdmajora.impetus.engine.impl.render.chunk.shader.*;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 import com.bdmajora.impetus.engine.impl.render.shader.ShaderLoader;
@@ -14,9 +15,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Pattern;
-
-import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
+import java.util.Objects;
 
 public abstract class ShaderChunkRenderer implements ChunkRenderer {
     private static final Logger LOGGER = LogManager.getLogger(ShaderChunkRenderer.class);
@@ -31,10 +30,13 @@ public abstract class ShaderChunkRenderer implements ChunkRenderer {
 
     protected final boolean enableLegacyGLPatches;
 
-    public ShaderChunkRenderer(RenderDevice device, RenderPassConfiguration<?> renderPassConfiguration) {
+    protected final ChunkShaderEnvironment environment;
+
+    public ShaderChunkRenderer(RenderDevice device, RenderPassConfiguration<?> renderPassConfiguration, FogService fogService) {
         this.device = device;
+        this.environment = new ChunkShaderEnvironment(fogService);
         this.renderPassConfiguration = renderPassConfiguration;
-        this.enableLegacyGLPatches = !LWJGL.isOpenGLVersionSupported(3, 2);
+        this.enableLegacyGLPatches = ShaderLoader.useLegacyGlsl();
         if (this.enableLegacyGLPatches) {
             LOGGER.warn("System does not support modern GLSL, will attempt to patch terrain shaders");
         }
@@ -55,46 +57,15 @@ public abstract class ShaderChunkRenderer implements ChunkRenderer {
         return program;
     }
 
-    private static final Pattern VERSION_DIRECTIVE = Pattern.compile("^#version.*$", Pattern.MULTILINE);
-    private static final Pattern IN_PARAM = Pattern.compile("^in ", Pattern.MULTILINE);
-    private static final Pattern OUT_PARAM = Pattern.compile("^out ", Pattern.MULTILINE);
-    private static final String LEGACY_PREAMBLE = String.join("\n",
-            "#version 120",
-            "#extension GL_EXT_gpu_shader4 : require",
-            "#define LEGACY",
-            "#define uint unsigned int",
-            "#define texture texture2D"
-    ) + "\n";
-
-    // Loads, preprocesses and compiles one stage
-    private GlShader loadShader(ShaderType type, String path, ShaderConstants constants) {
-        String shaderSource = ShaderParser.parseShader(ShaderLoader.getShaderSource(path), ShaderLoader::getShaderSource, constants);
-        if (this.enableLegacyGLPatches) {
-            if (type != ShaderType.VERTEX && type != ShaderType.FRAGMENT) {
-                throw new IllegalStateException("Cannot load non-vertex/fragment shader on old GL");
-            }
-            // Downlevel to GLSL 1.20
-            shaderSource = VERSION_DIRECTIVE.matcher(shaderSource).replaceFirst(LEGACY_PREAMBLE);
-            if (type == ShaderType.VERTEX) {
-                shaderSource = IN_PARAM.matcher(shaderSource).replaceAll("attribute ");
-            } else {
-                shaderSource = IN_PARAM.matcher(shaderSource).replaceAll("varying ");
-            }
-            shaderSource = OUT_PARAM.matcher(shaderSource).replaceAll("varying ");
-        }
-        return new GlShader(type, path, shaderSource);
-    }
-
-    // Links the terrain program for a set of options, or a shader pack's override
     protected GlProgram<ChunkShaderInterface> createShader(String path, ChunkShaderOptions options) {
         ShaderConstants constants = options.constants();
 
         List<GlShader> loadedShaders = new ArrayList<>();
 
-        loadedShaders.add(loadShader(ShaderType.VERTEX,
+        loadedShaders.add(ShaderLoader.loadShader(ShaderType.VERTEX,
                 "impetus:" + path + ".vsh", constants));
 
-        loadedShaders.add(loadShader(ShaderType.FRAGMENT,
+        loadedShaders.add(ShaderLoader.loadShader(ShaderType.FRAGMENT,
                 "impetus:" + path + ".fsh", constants));
 
         try {
@@ -107,7 +78,7 @@ public abstract class ShaderChunkRenderer implements ChunkRenderer {
             if (!this.enableLegacyGLPatches) {
                 builder.bindFragmentData("fragColor", ChunkShaderBindingPoints.FRAG_COLOR);
             }
-            return builder.link((shader) -> new DefaultChunkShaderInterface(shader, options));
+            return builder.link((shader) -> new DefaultChunkShaderInterface(shader, options, this.environment));
         } finally {
             loadedShaders.forEach(GlShader::delete);
         }
@@ -116,7 +87,7 @@ public abstract class ShaderChunkRenderer implements ChunkRenderer {
     // Fog and any platform extras
     protected List<ChunkShaderComponent.Factory<?>> getShaderComponents() {
         var componentFactories = new ArrayList<ChunkShaderComponent.Factory<?>>(4);
-        componentFactories.add(ChunkShaderFogComponent.FOG_SERVICE.getFogMode());
+        componentFactories.add(this.environment.fogService().getFogMode());
         return componentFactories;
     }
 

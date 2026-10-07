@@ -303,7 +303,22 @@ class ShaderPackParsingTest {
                 "const int shadowDistance = 120;",
                 "const bool shadowHardwareFiltering = true;",
                 "const bool generateShadowMipmap = false;",
-                "const bool odd = maybe;"));
+                "const bool odd = maybe;",
+                "const int shadowcolor0Format = RGBA16F;",
+                "const vec4 clear4 = vec4(1.0, 0.5f, 0.25, 1.0);",
+                "const vec4 clear1 = vec4(0.5);",
+                "const vec4 clear2 = vec4(1.0, 2.0);",
+                "const vec4 clearBad = vec4(a, b, c, d);",
+                "const vec4 clearCall = mix(x, y);"));
+        assertEquals(Optional.of("RGBA16F"), consts.getIntToken("shadowcolor0Format"));
+        assertEquals(Optional.empty(), consts.getIntToken("missing"));
+        assertArrayEquals(new float[] {1.0f, 0.5f, 0.25f, 1.0f}, consts.getVec4("clear4").orElseThrow());
+        assertArrayEquals(new float[] {0.5f, 0.5f, 0.5f, 0.5f}, consts.getVec4("clear1").orElseThrow());
+        // Two components, unparsable components, a non-vec4 initialiser and an absent name all read as absent
+        assertEquals(Optional.empty(), consts.getVec4("clear2"));
+        assertEquals(Optional.empty(), consts.getVec4("clearBad"));
+        assertEquals(Optional.empty(), consts.getVec4("clearCall"));
+        assertEquals(Optional.empty(), consts.getVec4("missing"));
         assertEquals(2048, consts.getInt("shadowMapResolution", 0));
         assertEquals(7, consts.getInt("broken", 7));
         assertEquals(7, consts.getInt("huge", 7));

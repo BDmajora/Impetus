@@ -8,15 +8,15 @@ import com.bdmajora.impetus.engine.impl.util.Dim2i;
 
 import java.util.function.Consumer;
 
-// Text-input field for filtering the options list; matches key input on typedChar first, LWJGL2/GLFW keyCode as fallback
+// Text-input field for filtering the options list; matches key input on typedChar first, vanilla's key code as fallback
 public class SearchBarWidget extends AbstractWidget {
     private static final int TEXT_PADDING = 6;
 
-    // Editing keys, by produced character and by (LWJGL2, GLFW) key code.
+    // Editing keys, by produced character and by the key code vanilla screens pass on (lwjglx keeps the LWJGL2 numbering)
     private static final char CHAR_BACKSPACE = '\b';
     private static final char CHAR_ESCAPE = 27;
-    private static final int LWJGL2_KEY_ESCAPE = 1, GLFW_KEY_ESCAPE = 256;
-    private static final int LWJGL2_KEY_BACK = 14, GLFW_KEY_BACKSPACE = 259;
+    private static final int KEY_ESCAPE = 1;
+    private static final int KEY_BACK = 14;
 
     private final Dim2i dim;
     private final StringBuilder query = new StringBuilder();
@@ -77,14 +77,14 @@ public class SearchBarWidget extends AbstractWidget {
             return false;
         }
 
-        if (typedChar == CHAR_ESCAPE || keyCode == LWJGL2_KEY_ESCAPE || keyCode == GLFW_KEY_ESCAPE) {
+        if (typedChar == CHAR_ESCAPE || keyCode == KEY_ESCAPE) {
             if (this.query.length() == 0) {
                 this.focused = false;
             } else {
                 this.query.setLength(0);
                 this.fireQueryChanged();
             }
-        } else if (typedChar == CHAR_BACKSPACE || keyCode == LWJGL2_KEY_BACK || keyCode == GLFW_KEY_BACKSPACE) {
+        } else if (typedChar == CHAR_BACKSPACE || keyCode == KEY_BACK) {
             if (this.query.length() > 0) {
                 this.query.setLength(this.query.length() - 1);
                 this.fireQueryChanged();

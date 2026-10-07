@@ -9,9 +9,11 @@ import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 // A single compiled GLSL stage, mirroring OptiFine's createVertShader/createFragShader through the LWJGL abstraction; the caller must already have run GlslPreprocessor
 public class GlShader extends GlResource {
     private final String name;
+    private final ShaderType type;
 
     public GlShader(ShaderType type, String name, String source) {
         this.name = name;
+        this.type = type;
 
         // Strict-driver rewrites for the paths reaching the driver through THIS class (gbuffer, fullscreen chain, compute); the terrain/shadow override builds the engine's GlShader instead and calls finalizeForDriver itself
         source = GlslPreprocessor.finalizeForDriver(name, source);
@@ -39,6 +41,11 @@ public class GlShader extends GlResource {
     // Pack path, for compile error messages
     public String getName() {
         return this.name;
+    }
+
+    // The stage, which tells a program whether it was linked with tessellation
+    public ShaderType getType() {
+        return this.type;
     }
 
     // glDeleteShader

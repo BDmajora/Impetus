@@ -74,7 +74,7 @@ public final class CoarctatioConfig {
     public boolean cacheStateHashes;
     // Indexes resource packs once per reload instead of a native or filesystem lookup per probe.
     public boolean resourceExistenceCache;
-    // Throws the resource manager's file-not-found without filling a stack trace.
+    // Throws the resource manager's file-not-found without filling a stack trace, and opens resources without the debug leak tracker.
     public boolean stacklessResourceExceptions;
     // Packs the texture atlas with a shelf algorithm instead of vanilla's recursive slot search.
     public boolean fastAtlasStitching;
@@ -94,6 +94,8 @@ public final class CoarctatioConfig {
     public boolean fastItemLayerBaking;
     // Decodes every atlas sprite's PNG across the common pool before the atlas loop, which otherwise decodes them one at a time on the client thread (StellarCore).
     public boolean parallelTextureLoad;
+    // Reads and parses every model file the packs hold across all cores before the model loader asks for them one at a time on the client thread.
+    public boolean parallelModelLoad;
     // Backs the ore dictionary's two lookup maps with primitive collections instead of boxed Integers and List<Integer> (StellarCore).
     public boolean primitiveOreDictionary;
     // Pools the UV arrays and texture-name strings of unbaked model parts, and stores each element's faces in an EnumMap (StellarCore).
@@ -148,6 +150,7 @@ public final class CoarctatioConfig {
         this.dynamicModelsEagerNamespaces = props.list("dynamicModelsEagerNamespaces", DEFAULT_EAGER_NAMESPACES);
         this.fastItemLayerBaking = props.bool("fastItemLayerBaking", true);
         this.parallelTextureLoad = props.bool("parallelTextureLoad", true);
+        this.parallelModelLoad = props.bool("parallelModelLoad", true);
         this.primitiveOreDictionary = props.bool("primitiveOreDictionary", true);
         this.canonicalizeModelParts = props.bool("canonicalizeModelParts", true);
         this.compactRemapperCaches = props.bool("compactRemapperCaches", true);
@@ -221,6 +224,7 @@ public final class CoarctatioConfig {
         values.put("dynamicModelsEagerNamespaces", String.join(",", this.dynamicModelsEagerNamespaces));
         values.put("fastItemLayerBaking", Boolean.toString(this.fastItemLayerBaking));
         values.put("parallelTextureLoad", Boolean.toString(this.parallelTextureLoad));
+        values.put("parallelModelLoad", Boolean.toString(this.parallelModelLoad));
         values.put("primitiveOreDictionary", Boolean.toString(this.primitiveOreDictionary));
         values.put("canonicalizeModelParts", Boolean.toString(this.canonicalizeModelParts));
         values.put("compactRemapperCaches", Boolean.toString(this.compactRemapperCaches));

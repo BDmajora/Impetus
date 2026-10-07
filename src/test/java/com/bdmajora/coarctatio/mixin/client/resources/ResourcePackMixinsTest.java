@@ -6,6 +6,7 @@ import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
 import it.unimi.dsi.fastutil.objects.Object2BooleanOpenHashMap;
 import net.minecraft.util.ResourceLocation;
+import org.apache.logging.log4j.Logger;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -21,6 +22,7 @@ import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
 class ResourcePackMixinsTest {
     @TempDir
@@ -140,6 +142,10 @@ class ResourcePackMixinsTest {
         FallbackResourceManagerMixin fallback = Mixins.concrete(FallbackResourceManagerMixin.class);
         assertInstanceOf(StacklessFileNotFoundException.class,
                 Mixins.call(fallback, "coarctatio$stackless", "minecraft:models/block/stone.json"));
+        // Streams are opened without the debug leak tracker, whatever the logger's level
+        Mc.Recorded<Boolean> debugEnabled = Mc.operation(true);
+        assertFalse((boolean) Mixins.call(fallback, "coarctatio$untrackedStreams", mock(Logger.class), debugEnabled));
+        assertTrue(debugEnabled.calls.isEmpty());
 
         SimpleReloadableResourceManagerMixin manager = Mixins.concrete(SimpleReloadableResourceManagerMixin.class);
         assertInstanceOf(StacklessFileNotFoundException.class,

@@ -20,6 +20,7 @@ import org.mockito.Mockito;
 
 import java.nio.IntBuffer;
 import java.util.Map;
+import org.lwjgl.system.MemoryUtil;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -44,7 +45,7 @@ public class MeshStoresTest {
     // A mesh of quads quads, each a unit square at block (x, 0, 0) for x = 0..quads-1
     public static BuiltSectionMeshParts mesh(int quads, ModelQuadFacing facing) {
         NativeBuffer vertices = new NativeBuffer(quads * 4 * MeshChunkVertex.STRIDE);
-        long ptr = TestGl.gl().memAddress(vertices.getDirectBuffer());
+        long ptr = MemoryUtil.memAddress(vertices.getDirectBuffer());
         var encoder = MeshChunkVertex.INSTANCE.createEncoder();
         var vertex = new com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexEncoder.Vertex();
         for (int q = 0; q < quads; q++) {

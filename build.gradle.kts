@@ -139,9 +139,9 @@ extra["testLwjgl.bridge"] = mainRuntime.filter { it.name.startsWith("lwjglxx-") 
 apply(from = rootProject.file("gradle/test-lwjgl.gradle.kts"))
 val prepareTestLwjgl = tasks.named("prepareTestLwjgl")
 
-// The GL test backend and LWJGL2 stand-ins live in common so both modules' tests share one copy. Unimined wires
-// Minecraft, Cleanroom and its libraries into main only, so tests take main's classpaths wholesale, with the
-// test LWJGL ahead of the plain LWJGL3 jars (test classes, and so the stand-ins, still come first)
+// The GL test mock lives in common so both modules' tests share one copy. Unimined wires Minecraft, Cleanroom and its
+// libraries into main only, so tests take main's classpaths wholesale, with the test LWJGL ahead of the plain LWJGL3
+// jars (test classes, and so the Display and Sys stand-ins, still come first)
 sourceSets.test {
     java.srcDir("common/src/testShared/java")
     resources.srcDir("common/src/testShared/resources")

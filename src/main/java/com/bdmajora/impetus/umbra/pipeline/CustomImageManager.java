@@ -277,10 +277,9 @@ public class CustomImageManager {
         }
     }
 
-    // Zero-fills via a blank upload
+    // A null data pointer means "clear to zero" without touching client memory or a bound pixel-unpack buffer
     private void clearTexture(int texture, int format, int pixelType) {
-        // Umbra clears custom images with a null data pointer, meaning "clear to zero" without touching client memory or a bound pixel-unpack buffer
-        LWJGL.glClearTexImage(texture, 0, format, pixelType);
+        LWJGL.glClearTexImage(texture, 0, format, pixelType, null);
     }
 
     // Binds every image READ_WRITE on its image unit and its texture on the paired sampler unit, each to exactly the texture the pack declared; this used to alias floodfill_sampler_copy onto floodfill_img, which pointed every even frame of Complementary's framemod2 ping-pong at the volume that had NOT been updated

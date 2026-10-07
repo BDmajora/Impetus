@@ -7,12 +7,16 @@ public interface ChunkVertexEncoder {
     // Writes the vertex at ptr and returns the pointer just past it; sectionIndex identifies the section for formats packing a section-relative origin
     long write(long ptr, Material material, Vertex vertex, int sectionIndex);
 
-    // A single in-flight vertex, mutable and reused per corner by the mesher, so nothing may hold on to it past the write call
+    default boolean supportsBilinearCorrection() {
+        return true;
+    }
+
     class Vertex {
         public float x;
         public float y;
         public float z;
         public int color;
+        public int rdhFactor;
         public float u;
         public float v;
         public int light;

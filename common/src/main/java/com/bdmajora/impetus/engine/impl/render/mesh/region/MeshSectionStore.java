@@ -8,8 +8,8 @@ import com.bdmajora.impetus.engine.impl.util.PositionUtil;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.lwjgl.system.MemoryUtil;
 
-import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 // Where a finished build lands: geometry into the quad arena, a 32-byte header into the region store so the section rasteriser decides visibility from one cache line
 public class MeshSectionStore {
@@ -73,7 +73,7 @@ public class MeshSectionStore {
         this.sectionQuads.put(key, quadAddress);
 
         long staging = this.arena.beginUpload(this.uploadStream, quadAddress);
-        LWJGL.memCopy(LWJGL.memAddress(geometry.geometry().getDirectBuffer()), staging, geometry.geometry().getLength());
+        MemoryUtil.memCopy(MemoryUtil.memAddress(geometry.geometry().getDirectBuffer()), staging, geometry.geometry().getLength());
 
         int sectionId = this.sectionIds.get(key);
 
@@ -132,11 +132,11 @@ public class MeshSectionStore {
         int sectionIndex = this.regions.getSectionIndex(sectionId);
 
         // Chunk Y is masked to 9 bits and sign-extended in the shader, covering every build height the game has had while leaving the top bits for the section index
-        LWJGL.memPutInt(ptr, (sectionX << 8) | (geometry.sizeX() << 4) | geometry.minX());
-        LWJGL.memPutInt(ptr + 4, ((sectionY & 0x1FF) << 8) | (geometry.sizeY() << 4) | geometry.minY()
+        MemoryUtil.memPutInt(ptr, (sectionX << 8) | (geometry.sizeX() << 4) | geometry.minX());
+        MemoryUtil.memPutInt(ptr + 4, ((sectionY & 0x1FF) << 8) | (geometry.sizeY() << 4) | geometry.minY()
                 | (sectionIndex << 18));
-        LWJGL.memPutInt(ptr + 8, (sectionZ << 8) | (geometry.sizeZ() << 4) | geometry.minZ());
-        LWJGL.memPutInt(ptr + 12, quadAddress);
+        MemoryUtil.memPutInt(ptr + 8, (sectionZ << 8) | (geometry.sizeZ() << 4) | geometry.minZ());
+        MemoryUtil.memPutInt(ptr + 12, quadAddress);
 
         // Eight uint16s: six directional quad counts, the unassigned count, then the base quad; the task shader accumulates them into absolute offsets so a section can exceed a 16-bit offset
         short[] counts = geometry.quadsPerFacing();
@@ -145,10 +145,10 @@ public class MeshSectionStore {
         for (int i = 0; i < 3; i++) {
             int low = Short.toUnsignedInt(counts[i * 2]);
             int high = Short.toUnsignedInt(counts[i * 2 + 1]);
-            LWJGL.memPutInt(ranges + i * 4L, low | (high << 16));
+            MemoryUtil.memPutInt(ranges + i * 4L, low | (high << 16));
         }
 
         int unassigned = Short.toUnsignedInt(counts[ModelQuadFacing.UNASSIGNED.ordinal()]);
-        LWJGL.memPutInt(ranges + 12L, unassigned | (Short.toUnsignedInt(geometry.baseQuad()) << 16));
+        MemoryUtil.memPutInt(ranges + 12L, unassigned | (Short.toUnsignedInt(geometry.baseQuad()) << 16));
     }
 }

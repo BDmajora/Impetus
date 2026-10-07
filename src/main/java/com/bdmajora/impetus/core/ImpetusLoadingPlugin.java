@@ -13,6 +13,10 @@ public class ImpetusLoadingPlugin implements IFMLLoadingPlugin {
     public ImpetusLoadingPlugin() {
         ImpetusMixinRegistrar.hijackSupersededLighting();
         ImpetusMixinRegistrar.queueImpetusConfigs();
+        // The window's no-error decision needs the adapter list; on Windows that is a PowerShell round trip, which this lets run alongside the rest of the launch
+        com.bdmajora.impetus.engine.impl.compat.probe.GraphicsAdapterProbe.prefetch();
+        // Cleanroom picks X11 or Wayland once, when its Display first starts GLFW, which is long after this
+        com.bdmajora.linuxextras.LinuxExtras.chooseWindowSystem();
     }
 
     // injectData runs once every coremod jar has joined the classpath, which DH's resource lookup needs

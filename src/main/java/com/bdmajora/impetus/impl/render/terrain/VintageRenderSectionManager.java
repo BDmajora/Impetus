@@ -20,6 +20,7 @@ import com.bdmajora.impetus.engine.impl.render.chunk.shader.ChunkShaderInterface
 import com.bdmajora.impetus.engine.impl.render.chunk.shader.ChunkShaderTextureSlot;
 import com.bdmajora.impetus.engine.impl.render.chunk.sprite.GenericSectionSpriteTicker;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexType;
+import com.bdmajora.impetus.engine.impl.render.mesh.MeshTerrainConfig;
 import com.bdmajora.impetus.engine.impl.render.viewport.Viewport;
 import com.bdmajora.impetus.engine.impl.util.position.SectionPos;
 import org.jetbrains.annotations.Nullable;
@@ -31,6 +32,8 @@ import com.bdmajora.impetus.impl.world.WorldSlice;
 import com.bdmajora.impetus.impl.world.cloned.ChunkRenderContext;
 import com.bdmajora.impetus.impl.world.cloned.ClonedChunkSectionCache;
 
+import com.bdmajora.impetus.engine.impl.render.chunk.fog.FogService;
+import com.bdmajora.impetus.impl.render.terrain.fog.GLStateManagerFogService;
 import java.util.List;
 
 public class VintageRenderSectionManager extends RenderSectionManager {
@@ -38,8 +41,9 @@ public class VintageRenderSectionManager extends RenderSectionManager {
     @Getter
     private final ClonedChunkSectionCache sectionCache;
 
-    public VintageRenderSectionManager(RenderPassConfiguration<?> configuration, WorldClient world, int renderDistance, CommandList commandList, int minSection, int maxSection) {
-        super(configuration, () -> new VintageChunkBuildContext(world, configuration), ChunkRenderer::new, renderDistance, commandList, minSection, maxSection, ImpetusVintage.options().performance.chunkBuilderThreads, true);
+    public VintageRenderSectionManager(RenderPassConfiguration<?> configuration, WorldClient world, int renderDistance, CommandList commandList, int minSection, int maxSection,
+                                       @Nullable MeshTerrainConfig meshTerrain) {
+        super(configuration, () -> new VintageChunkBuildContext(world, configuration), ChunkRenderer::new, renderDistance, commandList, minSection, maxSection, ImpetusVintage.options().performance.chunkBuilderThreads, true, meshTerrain);
         this.world = world;
         this.sectionCache = new ClonedChunkSectionCache(world);
     }
@@ -50,9 +54,32 @@ public class VintageRenderSectionManager extends RenderSectionManager {
         return com.bdmajora.impetus.umbra.pipeline.UmbraShadowRenderer.isShadowPass();
     }
 
-    // Factory, since the base class needs the vertex type before construction
-    public static VintageRenderSectionManager create(ChunkVertexType vertexType, WorldClient world, int renderDistance, CommandList commandList) {
-        return new VintageRenderSectionManager(VintageRenderPassConfigurationBuilder.build(vertexType), world, renderDistance, commandList, 0, 16);
+    // Factory, since the base class needs the vertex type before construction; a mesh config switches the mesh-shader backend on
+    public static VintageRenderSectionManager create(ChunkVertexType vertexType, WorldClient world, int renderDistance, CommandList commandList,
+                                                     @Nullable MeshTerrainConfig meshTerrain) {
+        return new VintageRenderSectionManager(VintageRenderPassConfigurationBuilder.build(vertexType), world, renderDistance, commandList, 0, 16, meshTerrain);
+    }
+
+    // The window's framebuffer, which the mesh backend culls sub-pixel triangles against
+    @Override
+    protected int getFramebufferWidth() {
+        return Minecraft.getMinecraft().displayWidth;
+    }
+
+    // Framebuffer height
+    @Override
+    protected int getFramebufferHeight() {
+        return Minecraft.getMinecraft().displayHeight;
+    }
+
+    @Override
+    protected boolean useRasterOcclusionCulling() {
+        return ImpetusVintage.options().performance.useRasterOcclusionCulling;
+    }
+
+    @Override
+    public FogService getFogService() {
+        return GLStateManagerFogService.INSTANCE;
     }
 
     // From the Impetus option
@@ -172,7 +199,7 @@ public class VintageRenderSectionManager extends RenderSectionManager {
     private static class ChunkRenderer extends DefaultChunkRenderer {
 
         public ChunkRenderer(RenderDevice device, RenderPassConfiguration<?> renderPassConfiguration) {
-            super(device, renderPassConfiguration);
+            super(device, renderPassConfiguration, GLStateManagerFogService.INSTANCE);
         }
 
         // Never in the shadow pass (Umbra does the same in MixinDefaultChunkRenderer): getVisibleFaces culls by facing relative to the player's occlusion camera, which from underground drops every upward block top above the player, so the ground never reaches the shadow map and sunlight leaks into caves

@@ -12,6 +12,8 @@ import com.bdmajora.impetus.engine.impl.render.ShaderModBridge;
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.executor.ChunkBuilder;
 import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.AsyncOcclusionMode;
 import com.bdmajora.impetus.engine.impl.render.chunk.region.RenderRegionManager;
+import com.bdmajora.impetus.engine.impl.render.mesh.MeshShaderSupport;
+import com.bdmajora.impetus.engine.impl.render.mesh.MeshTerrainConfig;
 import com.bdmajora.impetus.api.options.structure.*;
 
 import java.util.ArrayList;
@@ -172,6 +174,15 @@ public class CommonOptionPages {
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .build())
                 .add(OptionImpl.createBuilder(boolean.class, gameOpts)
+                        .setId(StandardOptions.Option.RASTER_OCCLUSION_CULLING.cast())
+                        .setName(TextComponent.translatable("impetus.options.raster_occlusion_culling.name"))
+                        .setTooltip(TextComponent.translatable("impetus.options.raster_occlusion_culling.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setImpact(OptionImpact.VARIES)
+                        .setBinding((opts, value) -> opts.performance.useRasterOcclusionCulling = value, opts -> opts.performance.useRasterOcclusionCulling)
+                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .build())
+                .add(OptionImpl.createBuilder(boolean.class, gameOpts)
                         .setId(StandardOptions.Option.COMPACT_VERTEX_FORMAT.cast())
                         .setName(TextComponent.translatable("impetus.options.use_compact_vertex_format.name"))
                         .setTooltip(TextComponent.translatable("impetus.options.use_compact_vertex_format.tooltip"))
@@ -219,6 +230,18 @@ public class CommonOptionPages {
                         }, opts -> opts.advanced.useAdvancedStagingBuffers)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .build())
+                .add(OptionImpl.createBuilder(boolean.class, gameOpts)
+                        .setId(StandardOptions.Option.MULTI_DRAW_INDIRECT.cast())
+                        .setName(TextComponent.translatable("impetus.options.use_multi_draw_indirect.name"))
+                        .setTooltip(TextComponent.translatable("impetus.options.use_multi_draw_indirect.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setImpact(OptionImpact.MEDIUM)
+                        .setBinding((opts, value) -> {
+                            opts.performance.useMultiDrawIndirect = value;
+                            ImpetusRuntimeOptions.apply(opts);
+                        }, opts -> opts.performance.useMultiDrawIndirect)
+                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .build())
                 .add(OptionImpl.createBuilder(int.class, gameOpts)
                         .setId(StandardOptions.Option.CPU_FRAMES_AHEAD.cast())
                         .setName(TextComponent.translatable("impetus.options.cpu_render_ahead_limit.name"))
@@ -253,6 +276,100 @@ public class CommonOptionPages {
                         .build())
                 .build());
 
+        groups.add(meshTerrainGroup(gameOpts));
+
         return new OptionPage(StandardOptions.Pages.PERFORMANCE, TextComponent.translatable("impetus.options.pages.performance"), List.copyOf(groups));
+    }
+
+    // The NV_mesh_shader backend; everything greys out on hardware without it
+    public static OptionGroup meshTerrainGroup(ImpetusGameOptions gameOpts) {
+        boolean supported = MeshShaderSupport.isSupported();
+
+        var master = OptionImpl.createBuilder(boolean.class, gameOpts)
+                .setId(StandardOptions.Option.MESH_TERRAIN.cast())
+                .setName(TextComponent.translatable("impetus.options.mesh_terrain.enabled.name"))
+                .setTooltip(TextComponent.translatable("impetus.options.mesh_terrain.enabled.tooltip"))
+                .setControl(TickBoxControl::new)
+                .setImpact(OptionImpact.HIGH)
+                .setEnabled(supported)
+                .setBinding((opts, value) -> opts.meshTerrain.enabled = value, opts -> opts.meshTerrain.enabled)
+                .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                .build();
+
+        return OptionGroup.createBuilder()
+                .setId(StandardOptions.Group.MESH_TERRAIN)
+                .add(master)
+                .add(OptionImpl.createBuilder(boolean.class, gameOpts)
+                        .setId(StandardOptions.Option.MESH_TEMPORAL_COHERENCE.cast())
+                        .setName(TextComponent.translatable("impetus.options.mesh_terrain.temporal.name"))
+                        .setTooltip(TextComponent.translatable("impetus.options.mesh_terrain.temporal.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setImpact(OptionImpact.LOW)
+                        .setEnabled(supported)
+                        .setBinding((opts, value) -> opts.meshTerrain.temporalCoherence = value, opts -> opts.meshTerrain.temporalCoherence)
+                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .build())
+                .add(OptionImpl.createBuilder(ImpetusGameOptions.MeshTranslucencySorting.class, gameOpts)
+                        .setId(StandardOptions.Option.MESH_TRANSLUCENCY_SORTING.cast())
+                        .setName(TextComponent.translatable("impetus.options.mesh_terrain.sorting.name"))
+                        .setTooltip(TextComponent.translatable("impetus.options.mesh_terrain.sorting.tooltip"))
+                        .setControl(o -> new CyclingControl<>(o, ImpetusGameOptions.MeshTranslucencySorting.class))
+                        .setImpact(OptionImpact.MEDIUM)
+                        .setEnabled(supported)
+                        .setBinding((opts, value) -> opts.meshTerrain.translucencySorting = value, opts -> opts.meshTerrain.translucencySorting)
+                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .build())
+                .add(OptionImpl.createBuilder(boolean.class, gameOpts)
+                        .setId(StandardOptions.Option.MESH_AUTOMATIC_MEMORY.cast())
+                        .setName(TextComponent.translatable("impetus.options.mesh_terrain.automatic_memory.name"))
+                        .setTooltip(TextComponent.translatable("impetus.options.mesh_terrain.automatic_memory.tooltip"))
+                        .setControl(TickBoxControl::new)
+                        .setImpact(OptionImpact.VARIES)
+                        .setEnabled(supported)
+                        .setBinding((opts, value) -> opts.meshTerrain.automaticMemory = value, opts -> opts.meshTerrain.automaticMemory)
+                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .build())
+                .add(OptionImpl.createBuilder(int.class, gameOpts)
+                        .setId(StandardOptions.Option.MESH_MAX_MEMORY.cast())
+                        .setName(TextComponent.translatable("impetus.options.mesh_terrain.max_memory.name"))
+                        .setTooltip(TextComponent.translatable("impetus.options.mesh_terrain.max_memory.tooltip"))
+                        .setControl(o -> new SliderControl(o, 512, 16384, 512, ControlValueFormatter.translateVariable("impetus.options.mesh_terrain.max_memory.value")))
+                        .setImpact(OptionImpact.VARIES)
+                        .setEnabled(supported)
+                        .setBinding((opts, value) -> opts.meshTerrain.maxGeometryMemory = value, opts -> opts.meshTerrain.maxGeometryMemory)
+                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .build())
+                .add(OptionImpl.createBuilder(int.class, gameOpts)
+                        .setId(StandardOptions.Option.MESH_KEEP_DISTANCE.cast())
+                        .setName(TextComponent.translatable("impetus.options.mesh_terrain.keep_distance.name"))
+                        .setTooltip(TextComponent.translatable("impetus.options.mesh_terrain.keep_distance.tooltip"))
+                        .setControl(o -> new SliderControl(o, 0, MeshTerrainConfig.MAX_KEEP_DISTANCE, 16, CommonOptionPages::formatKeepDistance))
+                        .setImpact(OptionImpact.VARIES)
+                        .setEnabled(supported)
+                        .setBinding((opts, value) -> opts.meshTerrain.regionKeepDistance = value, opts -> opts.meshTerrain.regionKeepDistance)
+                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .build())
+                .add(OptionImpl.createBuilder(ImpetusGameOptions.MeshStatistics.class, gameOpts)
+                        .setId(StandardOptions.Option.MESH_STATISTICS.cast())
+                        .setName(TextComponent.translatable("impetus.options.mesh_terrain.statistics.name"))
+                        .setTooltip(TextComponent.translatable("impetus.options.mesh_terrain.statistics.tooltip"))
+                        .setControl(o -> new CyclingControl<>(o, ImpetusGameOptions.MeshStatistics.class))
+                        .setImpact(OptionImpact.LOW)
+                        .setEnabled(supported)
+                        .setBinding((opts, value) -> opts.meshTerrain.statistics = value, opts -> opts.meshTerrain.statistics)
+                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .build())
+                .build();
+    }
+
+    // Zero keeps exactly the render distance and the top of the range never evicts for distance
+    static TextComponent formatKeepDistance(int value) {
+        if (value == 0) {
+            return TextComponent.translatable("impetus.options.mesh_terrain.keep_distance.render_distance");
+        }
+        if (value >= MeshTerrainConfig.MAX_KEEP_DISTANCE) {
+            return TextComponent.translatable("impetus.options.mesh_terrain.keep_distance.unlimited");
+        }
+        return TextComponent.translatable("impetus.options.mesh_terrain.keep_distance.value", value);
     }
 }

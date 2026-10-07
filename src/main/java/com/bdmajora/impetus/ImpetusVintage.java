@@ -54,7 +54,6 @@ public class ImpetusVintage {
     // Earliest Forge hook: loads config and registers the event handlers that need it
     @EventHandler
     public void onConstruct(FMLConstructionEvent event) {
-        GLRenderDevice.VANILLA_STATE_RESETTER = () -> OpenGlHelper.glBindBuffer(OpenGlHelper.GL_ARRAY_BUFFER, 0);
         VERSION = Loader.instance().getIndexedModList().get(MODID).getVersion();
         MinecraftForge.EVENT_BUS.register(this);
 
@@ -125,11 +124,12 @@ public class ImpetusVintage {
         Fulgor.onPostInit();
     }
 
-    // Drives per-frame work that has no better home: toasts and the pack scanner
+    // Drives per-frame work that has no better home: the window mode on the first frame, toasts and the pack scanner
     @SubscribeEvent
     public void onRenderTick(TickEvent.RenderTickEvent event) {
         // Render thread with a live GL context: build/rebuild the Umbra pipeline the first frame after a pack change; no-op otherwise and safe with Umbra disabled
         if (event.phase == TickEvent.Phase.START) {
+            com.bdmajora.impetus.impl.platform.WindowModes.restoreOnce(Minecraft.getMinecraft(), CONFIG);
             ResourcePackScanner.tick(Minecraft.getMinecraft());
             Umbra.updatePipeline();
         }

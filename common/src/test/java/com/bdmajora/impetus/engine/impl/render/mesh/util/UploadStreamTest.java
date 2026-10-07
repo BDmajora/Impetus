@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 import java.nio.IntBuffer;
+import org.lwjgl.system.MemoryUtil;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -30,7 +31,7 @@ class UploadStreamTest {
         long first = stream.upload(target, 0, 16);
         long second = stream.upload(target, 16, 16);
         assertEquals(first + 16, second);
-        TestGl.gl().memPutInt(first, 1);
+        MemoryUtil.memPutInt(first, 1);
         stream.commit();
         Mockito.verify(TestGl.gl()).glCopyNamedBufferSubData(Mockito.anyInt(), Mockito.eq(target.getId()), Mockito.eq(0L), Mockito.eq(0L), Mockito.eq(16L));
         stream.commit();

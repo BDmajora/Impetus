@@ -39,7 +39,7 @@ vec2 decodeLightUV(Vertex v) {
 }
 
 // Material bits, matching the raster backend's Material.bits():
-//   [0..1] alpha cutoff selector, [2] mipmapped
+//   [0..1] alpha cutoff selector (AlphaCutoffParameter: 0, 0.1, 0.5, 1.0), [2] mipmapped
 bool hasMipmapping(Vertex v) {
     return ((v.y >> 16) & 4u) != 0u;
 }
@@ -49,5 +49,5 @@ uint rawAlphaCutoff(Vertex v) {
 }
 
 float alphaCutoffValue(uint selector) {
-    return float[](0.0, 0.1, 0.5)[selector];
+    return float[](0.0, 0.1, 0.5, 1.0)[selector];
 }

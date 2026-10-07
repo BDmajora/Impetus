@@ -3,6 +3,7 @@ package com.bdmajora.impetus.umbra.gl.program;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import com.bdmajora.impetus.umbra.gl.shader.GlShader;
+import com.bdmajora.impetus.umbra.gl.shader.ShaderType;
 import org.lwjgl.opengl.GL20;
 
 import java.util.ArrayList;
@@ -71,8 +72,9 @@ public class ProgramBuilder {
             LOGGER.warn("Program link log for '{}': {}", this.name, log.trim());
         }
 
+        boolean tessellated = this.attached.stream().anyMatch(shader -> shader.getType() == ShaderType.TESS_EVALUATION);
         detachAll();
-        return new GlProgram(this.program, this.name);
+        return new GlProgram(this.program, this.name, tessellated);
     }
 
     // Detaches every stage after linking, so the shader objects can be deleted

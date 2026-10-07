@@ -17,6 +17,7 @@ import com.bdmajora.impetus.engine.impl.render.chunk.map.ChunkStatus;
 import com.bdmajora.impetus.engine.impl.render.chunk.map.ChunkTracker;
 import com.bdmajora.impetus.engine.impl.render.chunk.map.ChunkTrackerHolder;
 import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.AsyncOcclusionMode;
+import com.bdmajora.impetus.engine.impl.render.mesh.MeshShaderSupport;
 import com.bdmajora.impetus.engine.impl.render.chunk.shader.ChunkFogMode;
 import com.bdmajora.impetus.engine.impl.render.chunk.sprite.SpriteTransparencyLevel;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
@@ -42,6 +43,9 @@ import com.bdmajora.impetus.impl.world.cloned.ClonedChunkSection;
 import com.bdmajora.impetus.impl.world.cloned.ClonedChunkSectionCache;
 import com.bdmajora.impetus.impl.world.cloned.ImpetusBlockAccess;
 import com.bdmajora.impetus.mixin.core.terrain.BakedQuadMixin;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import net.minecraft.client.renderer.BlockModelRenderer;
+import com.bdmajora.impetus.mixin.core.terrain.BlockRendererDispatcherMixin;
 import com.bdmajora.impetus.mixin.core.terrain.BlockColorsAccessor;
 import com.bdmajora.impetus.mixin.core.terrain.RenderGlobalMixin;
 import com.bdmajora.impetus.mixin.core.terrain.VertexFormatMixin;
@@ -237,6 +241,8 @@ class TerrainMeshingTest {
         options.performance.chunkBuilderThreads = -1;
         options.performance.asyncOcclusionMode = AsyncOcclusionMode.NONE;
         options.performance.alwaysDeferChunkUpdates = false;
+        // TestGl reports every extension, so mesh terrain would otherwise be tried (and fall back) under every raster test
+        options.meshTerrain.enabled = false;
         Statics.set(ImpetusVintage.class, "CONFIG", options);
         FulgorConfig fulgor = Mc.uninitialized(FulgorConfig.class);
         Mixins.set(FulgorConfig.class, "instance", fulgor);
@@ -246,6 +252,8 @@ class TerrainMeshingTest {
         device = Devices.active();
         when(TestGl.gl().glGetUniformLocation(anyInt(), any())).thenReturn(1);
         TestFogService.cutoff = 1_000_000f;
+        // These tests assert on client-array multi-draws; another test applying the default config would otherwise switch them to indirect
+        com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions.multiDrawIndirect = false;
     }
 
     @AfterEach
@@ -427,18 +435,30 @@ class TerrainMeshingTest {
                 }
                 return side == null ? general : faces.get(side);
             });
-            // Chests draw nothing into their layer, lava blows up with a crash report, anything else is one quad
+            // Chests draw nothing into their layer, lava blows up with a crash report, anything else is one quad; a model goes through the call the dispatcher hook wraps, as in vanilla's renderBlock
+            BlockRendererDispatcherMixin hook = Mixins.instance(BlockRendererDispatcherMixin.class);
+            BlockModelRenderer modelRenderer = mock(BlockModelRenderer.class);
             when(dispatcher.renderBlock(any(), any(), any(), any())).thenAnswer(invocation -> {
                 IBlockState state = invocation.getArgument(0);
-                vanilla.put(invocation.<BlockPos>getArgument(1).toImmutable(), state);
-                if (state.getBlock() == Blocks.CHEST) {
-                    return false;
+                BlockPos pos = invocation.getArgument(1);
+                IBlockAccess access = invocation.getArgument(2);
+                BufferBuilder buffer = invocation.getArgument(3);
+                Operation<Boolean> original = args -> {
+                    vanilla.put(pos.toImmutable(), state);
+                    if (state.getBlock() == Blocks.CHEST) {
+                        return false;
+                    }
+                    if (state.getBlock() == Blocks.LAVA) {
+                        throw new ReportedException(CrashReport.makeCrashReport(new IllegalStateException("lava"), "Rendering lava"));
+                    }
+                    writeQuad(buffer, pos, state.getBlock() == Blocks.WATER ? 0.25F : 0.75F);
+                    return true;
+                };
+                if (state.getRenderType() != EnumBlockRenderType.MODEL) {
+                    return original.call();
                 }
-                if (state.getBlock() == Blocks.LAVA) {
-                    throw new ReportedException(CrashReport.makeCrashReport(new IllegalStateException("lava"), "Rendering lava"));
-                }
-                writeQuad(invocation.getArgument(3), invocation.getArgument(1), state.getBlock() == Blocks.WATER ? 0.25F : 0.75F);
-                return true;
+                IBlockState actual = state.getBlock().getExtendedState(state.getActualState(access, pos), access, pos);
+                return (boolean) Mixins.call(hook, "impetus$useFastBlockRenderer", modelRenderer, access, model, actual, pos, buffer, true, original);
             });
 
             Statics.set(TileEntityRendererDispatcher.class, "instance", blockEntities);
@@ -944,10 +964,72 @@ class TerrainMeshingTest {
     }
 
     @Test
+    void theMeshBackendTakesTheTerrainWhenTheGpuQualifiesAndStepsAsideWhenItFails() {
+        TestGl.meshCapable();
+        when(TestGl.gl().isExtensionSupported(any())).thenReturn(true);
+        doAnswer(inv -> {
+            inv.<java.nio.IntBuffer>getArgument(2).put(0, 1);
+            return 0x9119;
+        }).when(TestGl.gl()).glGetSynci(anyLong(), anyInt(), any());
+        Statics.set(MeshShaderSupport.class, "supported", null);
+        options.meshTerrain.enabled = true;
+        options.meshTerrain.automaticMemory = false;
+        options.meshTerrain.maxGeometryMemory = 512;
+        try {
+            Terrain terrain = new Terrain().build();
+            ImpetusWorldRenderer renderer = new ImpetusWorldRenderer();
+            RenderGlobalMixin global = Mixins.instance(RenderGlobalMixin.class);
+            Mixins.set(global, "renderer", renderer);
+            Mixins.set(terrain.client, "renderGlobal", global);
+            FloatBuffer identity = FloatBuffer.wrap(new float[] {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1});
+            Statics.<FloatBuffer>get(ActiveRenderInfo.class, "PROJECTION").clear();
+            Statics.<FloatBuffer>get(ActiveRenderInfo.class, "PROJECTION").put(identity).flip();
+            identity.rewind();
+            Statics.<FloatBuffer>get(ActiveRenderInfo.class, "MODELVIEW").clear();
+            Statics.<FloatBuffer>get(ActiveRenderInfo.class, "MODELVIEW").put(identity).flip();
+
+            assertTrue(ImpetusWorldRenderer.shouldUseMeshTerrain());
+            renderer.setWorld(terrain.world);
+            VintageRenderSectionManager manager = renderer.getRenderSectionManager();
+            assertNotNull(manager.getMeshTerrain());
+            assertEquals(terrain.client.displayWidth, (int) Mixins.<Integer>call(manager, "getFramebufferWidth"));
+            assertEquals(terrain.client.displayHeight, (int) Mixins.<Integer>call(manager, "getFramebufferHeight"));
+
+            Viewport viewport = Sections.viewport(8, 20, 8);
+            SimpleWorldRenderer.CameraState camera = new SimpleWorldRenderer.CameraState(8, 20, 8, 0, 0, 1000f);
+            for (int frame = 0; frame < 4; frame++) {
+                renderer.setupTerrain(viewport, camera, frame, false, true);
+            }
+            // The build workers packed the column for the GPU store instead of the raster regions
+            assertTrue(manager.getMeshTerrain().getPipeline().getSections().getRegions().getRegionCount() > 0);
+            for (BlockRenderLayer layer : BlockRenderLayer.values()) {
+                renderer.drawChunkLayer(layer, 8, 20, 8);
+            }
+            verify(TestGl.gl(), atLeastOnce()).glDrawMeshTasksNV(eq(0), anyInt());
+            verify(TestGl.gl(), never()).glMultiDrawElementsBaseVertex(anyInt(), anyLong(), anyInt(), anyLong(), anyInt(), anyLong());
+
+            // A driver that advertises everything but refuses a program gets the raster renderer, for the rest of the session
+            when(TestGl.gl().glGetProgrami(anyInt(), eq(0x8B82))).thenReturn(0);
+            renderer.reload();
+            assertNull(renderer.getRenderSectionManager().getMeshTerrain());
+            assertFalse(MeshShaderSupport.isSupported());
+            assertFalse(ImpetusWorldRenderer.shouldUseMeshTerrain());
+
+            // Off in the options means off
+            Statics.set(MeshShaderSupport.class, "supported", null);
+            options.meshTerrain.enabled = false;
+            assertFalse(ImpetusWorldRenderer.shouldUseMeshTerrain());
+            renderer.setWorld(null);
+        } finally {
+            Statics.set(MeshShaderSupport.class, "supported", null);
+        }
+    }
+
+    @Test
     void aVisuallyEmptySectionIsNeverBuilt() {
         Terrain terrain = new Terrain().build();
         CommandList commands = device.createCommandList();
-        VintageRenderSectionManager manager = VintageRenderSectionManager.create(ChunkMeshFormats.COMPACT, terrain.world, 2, commands);
+        VintageRenderSectionManager manager = VintageRenderSectionManager.create(ChunkMeshFormats.COMPACT, terrain.world, 2, commands, null);
         assertEquals(AsyncOcclusionMode.NONE, Mixins.<AsyncOcclusionMode>call(manager, "getAsyncOcclusionMode"));
         assertTrue(Mixins.<Boolean>call(manager, "shouldRespectUpdateTaskQueueSizeLimit"));
         assertTrue(Mixins.<Boolean>call(manager, "useFogOcclusion"));

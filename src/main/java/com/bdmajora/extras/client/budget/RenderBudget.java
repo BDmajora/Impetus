@@ -2,7 +2,7 @@ package com.bdmajora.extras.client.budget;
 
 // One tick's resolved limits: the fraction of cosmetic particles allowed to spawn and the distances past which idle mobs, block entities and item frames may be skipped; NEUTRAL means "do nothing"
 public final class RenderBudget {
-    public static final RenderBudget NEUTRAL = new RenderBudget(1.0, Integer.MAX_VALUE, Integer.MAX_VALUE, false, false, 16.7, 0.0, 0.0, false);
+    public static final RenderBudget NEUTRAL = new RenderBudget(1.0, Integer.MAX_VALUE, Integer.MAX_VALUE, false, false, 16.7, 0.0, 0.0, false, BottleneckDetector.State.UNKNOWN);
 
     public final double particleScale;
     public final int entityCullDistance;
@@ -17,9 +17,12 @@ public final class RenderBudget {
     public final double framePressure;
     // Whether the adaptive step tightened this budget past the configured values
     public final boolean adaptiveActive;
+    // The detector's verdict the adaptive step followed
+    public final BottleneckDetector.State bottleneck;
 
     RenderBudget(double particleScale, int entityCullDistance, int blockEntityCullDistance, boolean itemFramesLimited,
-                 boolean armed, double targetFrameMillis, double emaFrameMillis, double framePressure, boolean adaptiveActive) {
+                 boolean armed, double targetFrameMillis, double emaFrameMillis, double framePressure, boolean adaptiveActive,
+                 BottleneckDetector.State bottleneck) {
         this.particleScale = particleScale;
         this.entityCullDistance = entityCullDistance;
         this.blockEntityCullDistance = blockEntityCullDistance;
@@ -29,6 +32,7 @@ public final class RenderBudget {
         this.emaFrameMillis = emaFrameMillis;
         this.framePressure = framePressure;
         this.adaptiveActive = adaptiveActive;
+        this.bottleneck = bottleneck;
     }
 
     // Whether any cosmetic particle can be refused under this budget

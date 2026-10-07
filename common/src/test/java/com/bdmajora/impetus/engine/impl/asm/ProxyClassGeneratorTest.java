@@ -1,6 +1,5 @@
 package com.bdmajora.impetus.engine.impl.asm;
 
-import com.bdmajora.testing.Statics;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -49,22 +48,12 @@ class ProxyClassGeneratorTest {
     }
 
     @Test
-    void bothDefinersCanDefineAClass() throws Exception {
-        Object modern = Statics.call(ProxyClassGenerator.class, "modernDefiner");
-        Object legacy = Statics.call(ProxyClassGenerator.class, "legacyDefiner");
-        assertNotNull(modern);
-        assertNotNull(legacy);
-        // The generator defines its class under this exact name, so the legacy definer gets fresh bytes for a different one
-        String name = "LegacyProxy" + System.nanoTime();
-        ProxyClassGenerator<Impl, Greeter> generator = new ProxyClassGenerator<>(Impl.class, name + "Modern", Greeter.class);
-        Statics.set(generator.getClass(), "DEFINER", null);
-        var nameField = ProxyClassGenerator.class.getDeclaredField("proxyClassName");
-        nameField.setAccessible(true);
-        nameField.set(generator, "com/bdmajora/impetus/engine/impl/asm/" + name);
-        byte[] bytes = Statics.callInstance(generator, "createWrapperClassBytecode");
-        var define = legacy.getClass().getDeclaredMethods()[0];
-        define.setAccessible(true);
-        Class<?> defined = (Class<?>) define.invoke(legacy, bytes, "com.bdmajora.impetus.engine.impl.asm." + name);
-        assertEquals("com.bdmajora.impetus.engine.impl.asm." + name, defined.getName());
+    void proxiesLiveBesideTheGeneratorAndNamesAreDefinedOnce() {
+        String name = "OnceProxy" + System.nanoTime();
+        Greeter proxy = new ProxyClassGenerator<>(Impl.class, name, Greeter.class).generateWrapper(new Impl());
+        assertSame(ProxyClassGenerator.class.getClassLoader(), proxy.getClass().getClassLoader());
+        assertEquals(ProxyClassGenerator.class.getPackageName(), proxy.getClass().getPackageName());
+        // A second class under the same name is a linkage error, reported as the generator's own failure
+        assertThrows(RuntimeException.class, () -> new ProxyClassGenerator<>(Impl.class, name, Greeter.class));
     }
 }

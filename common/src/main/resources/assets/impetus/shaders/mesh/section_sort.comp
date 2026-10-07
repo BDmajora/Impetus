@@ -1,0 +1,88 @@
+#version 460
+#extension GL_ARB_shading_language_include : enable
+#extension GL_NV_gpu_shader5 : require
+#extension GL_NV_shader_buffer_load : require
+
+#import <impetus:mesh/scene.glsl>
+
+// Orders a region's sections farthest first for the translucent pass: a 256-wide bitonic network in shared memory, then each slot's draw-slot bits are pointed at the section that should draw there
+#define NETWORK_SIZE 256
+
+layout(local_size_x = NETWORK_SIZE / 2) in;
+
+shared float sortKey[NETWORK_SIZE];
+shared uint8_t sortIndex[NETWORK_SIZE];
+
+// Manhattan section distance to the camera; empty slots sink to the end
+void populate(uint regionId, uint slot) {
+    ivec4 header = sectionData[(regionId << 8) | slot].header;
+    sortIndex[slot] = uint8_t(slot);
+
+    if (sectionEmpty(header)) {
+        sortKey[slot] = -1.0e9;
+    } else {
+        ivec3 delta = unpackSectionChunk(header) - cameraChunk.xyz;
+        sortKey[slot] = float(abs(delta.x) + abs(delta.y) + abs(delta.z));
+    }
+}
+
+void exchange(uint a, uint b) {
+    if (sortKey[a] < sortKey[b]) {
+        float key = sortKey[a];
+        sortKey[a] = sortKey[b];
+        sortKey[b] = key;
+
+        uint8_t index = sortIndex[a];
+        sortIndex[a] = sortIndex[b];
+        sortIndex[b] = index;
+    }
+}
+
+// Merges blocks of 2^(scale+1) by comparing mirrored pairs
+void mergeStep(uint scale) {
+    uint thread = gl_LocalInvocationID.x;
+    uint base = (thread >> scale) << (scale + 1u);
+    uint offset = thread & ((1u << scale) - 1u);
+    exchange(base + offset, base + ((1u << (scale + 1u)) - 1u - offset));
+
+    barrier();
+    memoryBarrierShared();
+}
+
+// Cleans up a block of 2^(scale+1) with pairs a fixed distance apart
+void cleanStep(uint scale) {
+    uint thread = gl_LocalInvocationID.x;
+    uint base = ((thread >> scale) << (scale + 1u)) + (thread & ((1u << scale) - 1u));
+    exchange(base, base + (1u << scale));
+
+    barrier();
+    memoryBarrierShared();
+}
+
+void writeSlot(uint regionId, uint slot) {
+    uint id = (regionId << 8) | slot;
+    ivec4 header = sectionData[id].header;
+    header.y = (header.y & ~(0xFF << 18)) | (int(uint(sortIndex[slot])) << 18);
+    sectionData[id].header = header;
+}
+
+void main() {
+    uint regionId = uint(sortingRegionList[gl_WorkGroupID.x]);
+    uint thread = gl_LocalInvocationID.x;
+
+    populate(regionId, thread << 1);
+    populate(regionId, (thread << 1) | 1u);
+
+    barrier();
+    memoryBarrierShared();
+
+    for (uint network = 0u; network < 8u; network++) {
+        mergeStep(network);
+        for (int clean = int(network) - 1; clean >= 0; clean--) {
+            cleanStep(uint(clean));
+        }
+    }
+
+    writeSlot(regionId, thread << 1);
+    writeSlot(regionId, (thread << 1) | 1u);
+}

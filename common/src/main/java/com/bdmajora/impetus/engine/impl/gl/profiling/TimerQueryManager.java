@@ -80,21 +80,22 @@ public class TimerQueryManager implements Closeable {
         startQueryId = INVALID_ID;
     }
 
-    // Reads back the oldest pair once it is old enough AND its result is in; GL_QUERY_RESULT on a pair the GPU has not reached blocks the render thread until it has, which with F3 open was a stall every frame the GPU ran more than the lag behind
-    public void updateTime() {
+    // Reads back the oldest pair once it is old enough AND its result is in, true when a new reading landed; GL_QUERY_RESULT on a pair the GPU has not reached blocks the render thread until it has, which with F3 open was a stall every frame the GPU ran more than the lag behind
+    public boolean updateTime() {
         while (inFlightQueries.size() > MAX_IN_FLIGHT) {
             inFlightQueries.dequeue().delete();
         }
         if (inFlightQueries.size() < QUERY_FRAME_LAG_COUNT) {
-            return;
+            return false;
         }
         var query = inFlightQueries.first();
         if (!query.isAvailable()) {
-            return;
+            return false;
         }
         inFlightQueries.dequeue();
         lastTime = query.getTimeDelta();
         query.delete();
+        return true;
     }
 
     // Returns every query to the shared pool; the GL names themselves live as long as the context

@@ -15,11 +15,13 @@ import com.bdmajora.testing.TestGl;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.lwjgl.system.MemoryUtil;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -76,7 +78,9 @@ class SectionRenderDataStorageTest {
         storage.delete();
         first.getLength();
         new SectionRenderDataUnsafe();
-        Mockito.when(TestGl.gl().nmemCalloc(Mockito.anyLong(), Mockito.anyLong())).thenReturn(0L);
-        assertThrows(OutOfMemoryError.class, () -> new SectionRenderDataStorage(QuadPrimitiveType.DIRECT));
+        try (MockedStatic<MemoryUtil> memory = Mockito.mockStatic(MemoryUtil.class, Mockito.CALLS_REAL_METHODS)) {
+            memory.when(() -> MemoryUtil.nmemCalloc(Mockito.anyLong(), Mockito.anyLong())).thenReturn(0L);
+            assertThrows(OutOfMemoryError.class, () -> new SectionRenderDataStorage(QuadPrimitiveType.DIRECT));
+        }
     }
 }

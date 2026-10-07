@@ -7,6 +7,7 @@ import com.bdmajora.extras.network.FlushBatch;
 import com.bdmajora.extras.network.NetworkLimits;
 import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
+import com.google.common.util.concurrent.ListenableFuture;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.buffer.UnpooledByteBufAllocator;
@@ -22,11 +23,13 @@ import io.netty.handler.timeout.ReadTimeoutHandler;
 import io.netty.util.Attribute;
 import io.netty.util.concurrent.GenericFutureListener;
 import net.minecraft.network.EnumConnectionState;
+import net.minecraft.network.INetHandler;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.NetworkSystem;
 import net.minecraft.network.PacketBuffer;
 import net.minecraft.network.play.server.SPacketKeepAlive;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.util.IThreadListener;
 import net.minecraftforge.fml.common.network.internal.FMLProxyPacket;
 import org.apache.logging.log4j.LogManager;
 import org.junit.jupiter.api.AfterEach;
@@ -36,9 +39,12 @@ import org.junit.jupiter.api.Test;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Queue;
 import java.util.Random;
+import java.util.concurrent.FutureTask;
 import java.util.zip.Deflater;
 import java.util.zip.Inflater;
 
@@ -359,5 +365,49 @@ class NetworkMixinsTest {
         config.network.readTimeoutSeconds = 120;
         Mixins.call(manager, "impetus$widenReadTimeout", ctx, Mixins.ci());
         verify(pipeline).replace(eq("timeout"), eq("timeout"), any(ReadTimeoutHandler.class));
+    }
+
+    @Test
+    void theClientRunsItsQueuedTasksOutsideTheLock() {
+        MinecraftScheduledTasksMixin client = Mixins.instance(MinecraftScheduledTasksMixin.class);
+        Mixins.set(MinecraftScheduledTasksMixin.class, "LOGGER", LogManager.getLogger("test"));
+        Queue<FutureTask<?>> queue = new ArrayDeque<>();
+        List<String> ran = new ArrayList<>();
+        queue.add(new FutureTask<>(() -> ran.add("packet"), null));
+        Mixins.set(client, "scheduledTasks", queue);
+        Mixins.call(client, "impetus$drainOutsideLock", Mixins.ci());
+        assertEquals(List.of("packet"), ran);
+        assertTrue(queue.isEmpty());
+        // Vanilla's own synchronized loop is always told there is nothing left to run
+        assertTrue((boolean) Mixins.call(client, "impetus$skipLockedDrain", false));
+    }
+
+    @Test
+    void packetsQueuedForADisconnectedClientAreDropped() {
+        assertNotNull(Mixins.instance(PacketThreadUtilMixin.class));
+        NetHandlerPlayClientRetireMixin connection = Mixins.instance(NetHandlerPlayClientRetireMixin.class);
+        assertFalse(connection.impetus$isRetired());
+        IThreadListener scheduler = mock(IThreadListener.class);
+        Mc.Recorded<ListenableFuture<Object>> enqueue = Mc.operation(null);
+        List<String> ran = new ArrayList<>();
+        Runnable packet = () -> ran.add("packet");
+
+        // Server handlers are queued untouched
+        INetHandler server = mock(INetHandler.class);
+        Mixins.call(PacketThreadUtilMixin.class, "impetus$skipOnceRetired", scheduler, packet, enqueue, server);
+        assertSame(scheduler, enqueue.last()[0]);
+        assertSame(packet, enqueue.last()[1]);
+
+        // A client packet runs while the connection is up and is skipped once loadWorld(null) has cleaned the handler up
+        Mixins.call(PacketThreadUtilMixin.class, "impetus$skipOnceRetired", scheduler, packet, enqueue, connection);
+        Runnable live = (Runnable) enqueue.last()[1];
+        Mixins.call(PacketThreadUtilMixin.class, "impetus$skipOnceRetired", scheduler, packet, enqueue, connection);
+        Runnable stale = (Runnable) enqueue.last()[1];
+        assertNotSame(packet, stale);
+        live.run();
+        Mixins.call(connection, "impetus$retire", Mixins.ci());
+        assertTrue(connection.impetus$isRetired());
+        stale.run();
+        assertEquals(List.of("packet"), ran);
     }
 }

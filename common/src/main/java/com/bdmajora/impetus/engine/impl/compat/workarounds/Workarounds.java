@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
-// Registry of driver/environment issues on this machine; limited to in-process behaviour changes plus loud diagnostics, since LWJGL2/Java 8 cannot mutate the native environment before the driver loads
+// Registry of driver/environment issues on this machine, decided once the context exists; what has to act before the driver loads is decided in ContextCreationHints, from the same rules
 public final class Workarounds {
     private static final Logger LOGGER = LogManager.getLogger("Impetus-Workarounds");
 
@@ -23,9 +23,9 @@ public final class Workarounds {
     }
 
     public enum Issue {
-        // NVIDIA "Threaded Optimization" corrupts state when a second thread issues GL commands; detection-only, surfaced as a warning to disable it in the driver panel
+        // NVIDIA "Threaded Optimization" corrupts state when a second thread issues GL commands; switched off at context creation by ContextCreationHints, recorded here so logs show the driver needed it
         NVIDIA_THREADED_OPTIMIZATIONS,
-        // KHR_no_error contexts crash or misrender on older Intel Windows drivers, so consumers must not request them while active
+        // KHR_no_error contexts crash or misrender on older Intel Windows drivers; ContextCreationHints already declined one before the window existed
         NO_ERROR_CONTEXT_UNSAFE,
         // A frame-hooking overlay (e.g. RivaTuner Statistics Server) was detected; a common source of unexplainable crashes with modified renderers
         FRAME_HOOK_OVERLAY_PRESENT
@@ -77,7 +77,12 @@ public final class Workarounds {
 
     // Intel Gen7 and older on Windows, whose driver breaks with certain buffer usage
     private static boolean isIntelLegacyWindowsDriver(GraphicsVendor vendor, OsKind os, List<GraphicsAdapterInfo> adapters) {
-        if (vendor != GraphicsVendor.INTEL || os != OsKind.WINDOWS) {
+        return vendor == GraphicsVendor.INTEL && hasLegacyIntelWindowsAdapter(os, adapters);
+    }
+
+    // The adapter half of that rule, answerable before any context exists; on a hybrid laptop the context may land on the other GPU, which only makes this cautious
+    static boolean hasLegacyIntelWindowsAdapter(OsKind os, List<GraphicsAdapterInfo> adapters) {
+        if (os != OsKind.WINDOWS) {
             return false;
         }
 
@@ -94,7 +99,7 @@ public final class Workarounds {
             }
         }
 
-        // Without OS driver info, err on the safe side for Intel + Windows: no-error contexts gain little and a driver crash is far worse
+        // Without OS driver info, err on the safe side: no-error contexts gain little and a driver crash is far worse
         return adapters.isEmpty();
     }
 }

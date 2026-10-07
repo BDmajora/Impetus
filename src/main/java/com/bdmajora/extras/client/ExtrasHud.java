@@ -2,6 +2,7 @@ package com.bdmajora.extras.client;
 
 import com.bdmajora.extras.Extras;
 import com.bdmajora.extras.ExtrasConfig;
+import com.bdmajora.extras.client.budget.BottleneckDetector;
 import com.bdmajora.extras.client.budget.RenderBudget;
 import com.bdmajora.extras.client.budget.RenderBudgetController;
 import net.minecraft.client.Minecraft;
@@ -122,7 +123,8 @@ public final class ExtrasHud {
                 String.format(Locale.ROOT, "%.1f", budget.emaFrameMillis),
                 String.format(Locale.ROOT, "%.1f", budget.targetFrameMillis),
                 Math.round(budget.framePressure * 100.0),
-                budget.adaptiveActive ? I18n.format("impetus.options.extras.overlay.budget.adaptive") : ""));
+                budget.adaptiveActive ? I18n.format("impetus.options.extras.overlay.budget.adaptive") : "",
+                bottleneckLabel(budget.bottleneck)));
 
         lines.add(I18n.format("impetus.options.extras.overlay.budget.limits",
                 Math.round(budget.particleScale * 100.0),
@@ -134,6 +136,16 @@ public final class ExtrasHud {
                 RenderBudgetController.particlesSkipped(), RenderBudgetController.particlesProtected(),
                 RenderBudgetController.blockEntitiesSkipped(), RenderBudgetController.blockEntitiesProtected(),
                 RenderBudgetController.itemFramesSkipped(), RenderBudgetController.itemFramesProtected()));
+    }
+
+    // " | CPU-bound" and the like once the GPU timer has a verdict, nothing before it or without timer queries
+    private static String bottleneckLabel(BottleneckDetector.State state) {
+        return switch (state) {
+            case CPU_BOUND -> I18n.format("impetus.options.extras.overlay.budget.cpu_bound");
+            case GPU_BOUND -> I18n.format("impetus.options.extras.overlay.budget.gpu_bound");
+            case MIXED -> I18n.format("impetus.options.extras.overlay.budget.mixed");
+            default -> "";
+        };
     }
 
     // "off", "96m (idle)" while under target, or "96m" while skipping is live

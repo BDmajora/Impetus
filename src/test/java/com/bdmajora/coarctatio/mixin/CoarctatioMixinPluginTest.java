@@ -86,6 +86,21 @@ class CoarctatioMixinPluginTest {
         assertFalse(applies(plugin, "client.model.dynamic.RenderItemPrebakeMixin"));
         config.resourceExistenceCache = true;
         assertFalse(applies(plugin, "client.model.dynamic.FileResourcePackAccessor"));
+        // The model prefetch feeds the eager loader pass, which the dynamic reload replaces
+        assertFalse(applies(plugin, "client.model.ModelLoaderPrefetchMixin"));
+        config.dynamicModels = false;
+        assertTrue(applies(plugin, "client.model.ModelLoaderPrefetchMixin"));
+        assertTrue(applies(plugin, "client.model.ModelBakeryPrefetchMixin"));
+        assertTrue(applies(plugin, "client.model.ModelBlockAnimationPrefetchMixin"));
+        // It lists packs through the same accessors as the dynamic texture scan, so either feature keeps them
+        assertTrue(applies(plugin, "client.model.dynamic.SimpleReloadableResourceManagerAccessor"));
+        assertTrue(applies(plugin, "client.model.dynamic.LegacyV2AdapterAccessor"));
+        config.resourceExistenceCache = false;
+        assertTrue(applies(plugin, "client.model.dynamic.AbstractResourcePackAccessor"));
+        config.parallelModelLoad = false;
+        assertFalse(applies(plugin, "client.model.ModelBakeryPrefetchMixin"));
+        assertFalse(applies(plugin, "client.model.dynamic.FallbackResourceManagerAccessor"));
+        assertFalse(applies(plugin, "client.model.dynamic.FileResourcePackAccessor"));
 
         // Anything the switch table does not know is applied, with a warning
         assertTrue(applies(plugin, "something.UnknownMixin"));

@@ -5,50 +5,39 @@
 
 #import <impetus:mesh/scene.glsl>
 
-// Phase 3, part one: decide which quads of a section are worth meshing, and how many meshlets that needs.
-//
-// This is where backface culling happens, per section rather than per triangle. Quads are grouped by facing at
-// build time, so "is the camera on the +X side of this section" answers whether the entire +X group can be
-// skipped. Six comparisons replace a per-triangle winding test.
-//
-// One workgroup per section; gl_TaskCountNV meshlets are launched, each covering MESH_WORKLOAD quads.
-
+// Opaque terrain, one workgroup per section: per-section backface culling by facing group, then enough meshlets of MESH_WORKLOAD quads to cover what survives
 #define MESH_WORKLOAD 16
 
 layout(local_size_x = 1) in;
 
 taskNV out Task {
-    // Section origin relative to the camera's section, in blocks.
+    // Section origin relative to the camera's section, in blocks
     vec3 origin;
-    // First quad of this section in the geometry arena.
+    // First quad of this section in the geometry arena
     uint baseOffset;
-    // Total quads the meshlets will cover.
     uint quadCount;
-
-    // The surviving quad ranges, as a running index and a source offset each. A meshlet thread finds its quad by
-    // walking these: at most eight comparisons, and every thread in a workgroup takes the same branch.
+    // Surviving quad ranges as running end index and source offset; meshlet threads walk at most eight of them
     uvec4 rangeEndA;
     uvec4 rangeEndB;
     uvec4 rangeStartA;
     uvec4 rangeStartB;
 };
 
-void appendRange(inout uint slot, inout uint runningIndex, uint offset, uint length) {
+void appendRange(inout uint slot, inout uint runningIndex, uint offset, uint count) {
     uint id = slot++;
 
     if (id < 4u) {
-        rangeEndA[id] = runningIndex + length;
+        rangeEndA[id] = runningIndex + count;
         rangeStartA[id] = offset;
     } else {
-        rangeEndB[id - 4u] = runningIndex + length;
+        rangeEndB[id - 4u] = runningIndex + count;
         rangeStartB[id - 4u] = offset;
     }
 
-    runningIndex += length;
+    runningIndex += count;
 }
 
-// ranges holds eight uint16 quad COUNTS. They are accumulated here into absolute offsets, which is what lets a
-// section hold more quads than a 16-bit absolute offset could address.
+// The ranges are counts accumulated here into offsets, so a section can hold more quads than a 16-bit offset reaches
 void selectRanges(ivec3 relativeChunk, uvec4 ranges) {
     uint slot = 0u;
     uint runningIndex = 0u;
@@ -56,61 +45,72 @@ void selectRanges(ivec3 relativeChunk, uvec4 ranges) {
     rangeEndA = uvec4(0);
     rangeEndB = uvec4(0);
 
-    // Slot 7 is the section's own base quad within its allocation.
+    // The opaque groups start after the translucent quads
     uint cursor = (ranges.w >> 16) & 0xFFFFu;
 
-    // Slots 0..5 are POS_X, POS_Y, POS_Z, NEG_X, NEG_Y, NEG_Z, in the order the mesher groups them.
-    // A section at or west of the camera shows its +X faces, and so on; the >= and <= overlap deliberately so a
-    // section level with the camera on an axis keeps both of its faces on that axis.
-    uint length = ranges.x & 0xFFFFu;
-    if (relativeChunk.x <= 0 && length > 0u) { appendRange(slot, runningIndex, cursor, length); }
-    cursor += length;
+    // A section level with the camera on an axis keeps both of its faces on that axis, hence <= and >=
+    uint count = ranges.x & 0xFFFFu;
+    if (relativeChunk.x <= 0 && count > 0u) { appendRange(slot, runningIndex, cursor, count); }
+    cursor += count;
 
-    length = (ranges.x >> 16) & 0xFFFFu;
-    if (relativeChunk.y <= 0 && length > 0u) { appendRange(slot, runningIndex, cursor, length); }
-    cursor += length;
+    count = (ranges.x >> 16) & 0xFFFFu;
+    if (relativeChunk.y <= 0 && count > 0u) { appendRange(slot, runningIndex, cursor, count); }
+    cursor += count;
 
-    length = ranges.y & 0xFFFFu;
-    if (relativeChunk.z <= 0 && length > 0u) { appendRange(slot, runningIndex, cursor, length); }
-    cursor += length;
+    count = ranges.y & 0xFFFFu;
+    if (relativeChunk.z <= 0 && count > 0u) { appendRange(slot, runningIndex, cursor, count); }
+    cursor += count;
 
-    length = (ranges.y >> 16) & 0xFFFFu;
-    if (relativeChunk.x >= 0 && length > 0u) { appendRange(slot, runningIndex, cursor, length); }
-    cursor += length;
+    count = (ranges.y >> 16) & 0xFFFFu;
+    if (relativeChunk.x >= 0 && count > 0u) { appendRange(slot, runningIndex, cursor, count); }
+    cursor += count;
 
-    length = ranges.z & 0xFFFFu;
-    if (relativeChunk.y >= 0 && length > 0u) { appendRange(slot, runningIndex, cursor, length); }
-    cursor += length;
+    count = ranges.z & 0xFFFFu;
+    if (relativeChunk.y >= 0 && count > 0u) { appendRange(slot, runningIndex, cursor, count); }
+    cursor += count;
 
-    length = (ranges.z >> 16) & 0xFFFFu;
-    if (relativeChunk.z >= 0 && length > 0u) { appendRange(slot, runningIndex, cursor, length); }
-    cursor += length;
+    count = (ranges.z >> 16) & 0xFFFFu;
+    if (relativeChunk.z >= 0 && count > 0u) { appendRange(slot, runningIndex, cursor, count); }
+    cursor += count;
 
-    // Unassigned quads have no single facing, so they are always drawn.
+    // Unassigned quads have no single facing, so they always draw
     appendRange(slot, runningIndex, cursor, ranges.w & 0xFFFFu);
 
     quadCount = runningIndex;
     gl_TaskCountNV = (runningIndex + MESH_WORKLOAD - 1u) / MESH_WORKLOAD;
 }
 
+// The main pass draws whatever was visible last frame; the temporal pass draws only what turned visible this frame (history bits 01)
+bool shouldDraw(uint sectionId) {
+    uint8_t history = sectionVisibility[sectionId];
+#ifdef TEMPORAL
+    return (history & uint8_t(3)) == uint8_t(1);
+#else
+    return (history & uint8_t(1)) != uint8_t(0);
+#endif
+}
+
 void main() {
     uint sectionId = gl_WorkGroupID.x;
 
-    // Bit 0 of the visibility byte is this frame's result from the section rasterizer, written LAST frame.
-    if ((sectionVisibility[sectionId] & uint8_t(1)) == uint8_t(0)) {
+    if (!shouldDraw(sectionId)) {
         gl_TaskCountNV = 0;
         return;
     }
 
     ivec4 header = sectionData[sectionId].header;
-
-    ivec3 chunk = ivec3(header.xyz) >> 8;
-    chunk.y &= 0x1FF;
-    chunk.y = (chunk.y << 23) >> 23;
-    chunk -= cameraChunk.xyz;
+    ivec3 chunk = unpackSectionChunk(header) - cameraChunk.xyz;
 
     origin = vec3(chunk << 4);
     baseOffset = uint(header.w);
 
     selectRanges(chunk, uvec4(sectionData[sectionId].renderRanges));
+
+    // The temporal pass redraws sections the main pass already counted
+#if defined(STATISTICS_SECTIONS) && !defined(TEMPORAL)
+    atomicAdd(statisticsBuffer + 1, 1u);
+#endif
+#if defined(STATISTICS_QUADS) && !defined(TEMPORAL)
+    atomicAdd(statisticsBuffer + 2, quadCount);
+#endif
 }

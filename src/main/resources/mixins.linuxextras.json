@@ -1,0 +1,16 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "plugin": "com.bdmajora.linuxextras.mixin.LinuxExtrasMixinPlugin",
+  "package": "com.bdmajora.linuxextras.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "mixins": [],
+  "client": [
+    "GuiScreenLinkMixin",
+    "MinecraftWindowMixin",
+    "OpenGlHelperOpenFileMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

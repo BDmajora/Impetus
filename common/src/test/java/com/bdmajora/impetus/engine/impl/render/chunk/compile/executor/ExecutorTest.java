@@ -51,13 +51,17 @@ class ExecutorTest {
         assertInstanceOf(ChunkJobResult.Success.class, results.get(0));
         new ChunkJobTyped<>(task("throw"), results::add).execute(context());
         assertInstanceOf(ChunkJobResult.Failure.class, results.get(1));
+        // A job cancelled mid-run or before it starts still reports, with no result, so a waiting collector wakes
         new ChunkJobTyped<>(task("null"), results::add).execute(context());
-        assertEquals(2, results.size());
+        assertEquals(3, results.size());
+        assertNull(results.get(2));
         ChunkJobTyped<ChunkBuilderTask<ChunkSortOutput>, ChunkSortOutput> cancelled = new ChunkJobTyped<>(task("ok"), results::add);
         cancelled.setCancelled();
         assertTrue(cancelled.isCancelled());
         cancelled.execute(context());
-        assertEquals(2, results.size());
+        assertFalse(cancelled.isStarted());
+        assertEquals(4, results.size());
+        assertNull(results.get(3));
         ChunkJobTyped<ChunkBuilderTask<ChunkSortOutput>, ChunkSortOutput> badConsumer = new ChunkJobTyped<>(task("ok"), r -> {
             throw new IllegalArgumentException("consumer");
         });

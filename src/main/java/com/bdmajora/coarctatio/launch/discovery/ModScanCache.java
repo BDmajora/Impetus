@@ -87,9 +87,8 @@ public final class ModScanCache {
         Coarctatio.LOGGER.info("Mod scan cache served {} classes and scanned {}", served, scanned);
         Map<String, Map<String, byte[]>> snapshot = new HashMap<>(current);
         loaded = null;
-        Thread writer = new Thread(() -> write(snapshot), "Impetus Mod Scan Cache Writer");
-        writer.setDaemon(true);
-        writer.start();
+        // Virtual, so daemon like before: a launch that exits first just keeps last launch's cache
+        Thread.ofVirtual().name("Impetus Mod Scan Cache Writer").start(() -> write(snapshot));
     }
 
     private static Map<String, Map<String, byte[]>> read() {

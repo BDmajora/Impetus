@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.core;
 
+import com.bdmajora.linuxextras.LinuxExtras;
 import com.bdmajora.testing.LaunchEnvironment;
 import net.minecraft.launchwrapper.Launch;
 import org.apache.logging.log4j.Logger;
@@ -27,7 +28,8 @@ import static org.mockito.Mockito.verify;
 
 class CoreTest {
     private static final List<String> IMPETUS_CONFIGS = List.of("mixins.impetus.json", "mixins.umbra.json", "mixins.coarctatio.json",
-            "mixins.fulgor.json", "mixins.equilibrium.json", "mixins.extras.json", "mixins.dynamiclights.json");
+            "mixins.fulgor.json", "mixins.equilibrium.json", "mixins.extras.json", "mixins.dynamiclights.json",
+            "mixins.linuxextras.json");
 
     @Test
     void theRegistrarQueuesEveryImpetusConfig(@TempDir Path home) {
@@ -80,10 +82,13 @@ class CoreTest {
 
     @Test
     void theLoadingPluginRegistersFromItsConstructorAndDhFromInjectData() {
-        try (MockedStatic<ImpetusMixinRegistrar> registrar = Mockito.mockStatic(ImpetusMixinRegistrar.class)) {
+        try (MockedStatic<ImpetusMixinRegistrar> registrar = Mockito.mockStatic(ImpetusMixinRegistrar.class);
+             MockedStatic<LinuxExtras> linux = Mockito.mockStatic(LinuxExtras.class)) {
             ImpetusLoadingPlugin plugin = new ImpetusLoadingPlugin();
             registrar.verify(ImpetusMixinRegistrar::hijackSupersededLighting);
             registrar.verify(ImpetusMixinRegistrar::queueImpetusConfigs);
+            // The window system is settled before anything can start GLFW
+            linux.verify(LinuxExtras::chooseWindowSystem);
             registrar.verify(ImpetusMixinRegistrar::restoreDistantHorizonsDepthTexture, never());
             plugin.injectData(Map.of());
             registrar.verify(ImpetusMixinRegistrar::restoreDistantHorizonsDepthTexture);

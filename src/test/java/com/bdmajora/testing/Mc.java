@@ -102,13 +102,8 @@ public final class Mc {
     }
 
     // A real instance of a game class with no constructor run, for code that only looks at its type
-    @SuppressWarnings("unchecked")
     public static <T> T uninitialized(Class<T> type) {
-        try {
-            return (T) TestNativeMemory.UNSAFE.allocateInstance(type);
-        } catch (InstantiationException e) {
-            throw new AssertionError(e);
-        }
+        return Statics.allocate(type);
     }
 
     // A @Share/@Local reference holding one value

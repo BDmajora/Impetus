@@ -42,6 +42,11 @@ public class SortedRenderLists implements ChunkRenderListIterable {
 
     // Reverse for translucent passes, which draw back-to-front
     @Override
+    public int getNumRegions() {
+        return this.lists.size();
+    }
+
+    @Override
     public ReversibleObjectArrayIterator<ChunkRenderList> iterator(boolean reverse) {
         return new ReversibleObjectArrayIterator<>(this.lists, reverse);
     }

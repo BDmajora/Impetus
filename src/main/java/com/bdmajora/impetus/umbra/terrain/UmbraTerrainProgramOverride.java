@@ -20,7 +20,9 @@ import com.bdmajora.impetus.umbra.shaderpack.loading.ProgramId;
 import com.bdmajora.impetus.umbra.uniforms.CommonUniforms;
 import com.bdmajora.impetus.umbra.uniforms.MatrixUniforms;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -91,8 +93,6 @@ public final class UmbraTerrainProgramOverride {
 
     // Transforms and compiles one pack program; any failure is logged and yields null
     private static GlProgram<ChunkShaderInterface> build(ShaderPack pack, ChunkShaderOptions options, ProgramId programId) {
-        GlShader vertexShader = null;
-        GlShader fragmentShader = null;
         try {
             Optional<ProgramSource> sourceOpt = pack.getProgramSet().get(programId);
             if (!sourceOpt.isPresent()) {
@@ -127,13 +127,14 @@ public final class UmbraTerrainProgramOverride {
             int[] drawBuffers = UmbraRenderingPipeline.sanitizeDrawBuffers(
                     programId.getSourceName(), DrawBuffers.parseActive(fshSource, macros));
             // The GLSL-120 terrain path needs the same MC_*/IS_IRIS macro environment as the other paths, or gbuffers_water compiles its pre-Umbra branch writing gl_FragData[2] against a DRAWBUFFERS:41 layout and corrupts colortex1; the macros inject after the 330 rewrite, so the legacy conditional fold runs at the END where it sees what the driver sees (Pastel's malformed `#if (in(biome, ...)` otherwise failed the water pass to the Impetus default)
+            boolean shadow = programId.getSourceName().startsWith("shadow");
             String vsh = modern
                     ? ImpetusTerrainTransformer.transformVertexShaderModern(
                             UmbraRenderingPipeline.stabilizeShaderSource(programId.getSourceName(),
-                                    com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.injectDefines(vshSource, macros)))
+                                    com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.injectDefines(vshSource, macros)), shadow)
                     : UmbraRenderingPipeline.foldUncompilableConditionals(programId.getSourceName(),
                             com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.injectDefines(
-                                    ImpetusTerrainTransformer.transformVertexShader(vshSource), macros));
+                                    ImpetusTerrainTransformer.transformVertexShader(vshSource, shadow), macros));
             // Umbra SodiumPrograms exactly: the pack's alphaTest.<program> wins, else TRANSLUCENT -> NON_ZERO_ALPHA, CUTOUT/SHADOW_CUTOUT -> HALF_ALPHA, else ALWAYS, which emits no discard at all
             String programName = programId.getSourceName();
             ProgramAlphaTest packAlphaTest = ProgramAlphaTest.from(pack.getProperties(), source.getName());
@@ -161,25 +162,26 @@ public final class UmbraTerrainProgramOverride {
             // Name the shader after the program it actually is: this builds every terrain-family pass, and the old hardcoded "iris_gbuffers_terrain" reported water-pass failures as gbuffers_terrain errors beside logs saying gbuffers_terrain built fine; the dump filenames already use getSourceName()
             String shaderName = "iris_" + programId.getSourceName();
             // This path builds the ENGINE's GlShader, not umbra.gl.shader.GlShader, so it does not inherit the strict-driver rewrites and must ask for them; skipping this is why Mesa kept rejecting `#extension` mid-shader and texture2D(usampler2D) in exactly the terrain and shadow programs
-            vsh = com.bdmajora.impetus.umbra.shaderpack.preprocessor.GlslPreprocessor
-                    .finalizeForDriver(shaderName + ".vsh", vsh);
-            fsh = com.bdmajora.impetus.umbra.shaderpack.preprocessor.GlslPreprocessor
-                    .finalizeForDriver(shaderName + ".fsh", fsh);
-            vertexShader = new GlShader(ShaderType.VERTEX, shaderName + ".vsh", vsh);
-            fragmentShader = new GlShader(ShaderType.FRAGMENT, shaderName + ".fsh", fsh);
-
-            var builder = GlProgram.builder("impetus:iris_terrain");
-            builder.attachShader(vertexShader);
-            builder.attachShader(fragmentShader);
-            int index = 0;
-            for (var attribute : options.pass().vertexType().getVertexFormat().getAttributes()) {
-                builder.bindAttribute(attribute.getName(), index++);
-            }
             ProgramBlendState blendState = ProgramBlendState.from(pack.getProperties(), source.getName());
             ProgramAlphaTest alphaTest = packAlphaTest;
-            UmbraRenderingPipeline.drainGlError();
-            GlProgram<ChunkShaderInterface> program =
-                    builder.link(context -> new UmbraTerrainShaderInterface(context, drawBuffers, blendState, alphaTest));
+
+            // Geometry and tessellation stages need the generated varyings as a block they can pass along; GLSL-120 packs cannot have them, so only the modern path looks
+            Map<ShaderType, String> auxiliary = modern ? auxiliaryStages(source, macros, shaderName) : Map.of();
+            GlProgram<ChunkShaderInterface> program = null;
+            if (!auxiliary.isEmpty()) {
+                try {
+                    program = link(shaderName, ImpetusTerrainTransformer.blockGeneratedVaryings(vsh, true),
+                            ImpetusTerrainTransformer.blockGeneratedVaryings(fsh, false), auxiliary, options, drawBuffers,
+                            blendState, alphaTest, auxiliary.containsKey(ShaderType.TESS_EVALUATE));
+                } catch (RuntimeException e) {
+                    // A pack stage this bridge cannot carry costs that stage, not the whole program: it renders as it did before the stages were attached
+                    LOGGER.warn("[Umbra] '{}' failed to link with its geometry/tessellation stages; drawing without them: {}",
+                            programId.getSourceName(), e.getMessage());
+                }
+            }
+            if (program == null) {
+                program = link(shaderName, vsh, fsh, Map.of(), options, drawBuffers, blendState, alphaTest, false);
+            }
             UmbraRenderingPipeline.reportGlError("terrain '" + programId.getSourceName() + "' link");
 
             // The pack program needs the full OptiFine uniform set (LIGHT round-trips positions through gbufferModelView(Inverse), and zeros collapse every vertex to the origin); sampler units get the standard mapping, the block/lightmap samplers stay with the interface
@@ -201,12 +203,58 @@ public final class UmbraTerrainProgramOverride {
         } catch (Exception e) {
             LOGGER.error("[Umbra] Failed to build terrain override; using Impetus default", e);
             return null;
-        } finally {
-            if (vertexShader != null) {
-                vertexShader.delete();
+        }
+    }
+
+    // The pack's geometry stage and its tessellation pair (both or neither), each through the same rewrites as the vertex stage and then the stage bridge
+    static Map<ShaderType, String> auxiliaryStages(ProgramSource source, Map<String, String> macros, String shaderName) {
+        Map<ShaderType, String> stages = new java.util.EnumMap<>(ShaderType.class);
+        source.getGeometrySource().ifPresent(geometry -> stages.put(ShaderType.GEOM, geometry));
+        if (source.getTessControlSource().isPresent() && source.getTessEvalSource().isPresent()) {
+            stages.put(ShaderType.TESS_CTRL, source.getTessControlSource().get());
+            stages.put(ShaderType.TESS_EVALUATE, source.getTessEvalSource().get());
+        }
+
+        stages.replaceAll((type, stage) -> {
+            String name = shaderName + "." + type.fileExtension;
+            String rewritten = com.bdmajora.impetus.umbra.shaderpack.texture.CustomTextureTransformer.transform(
+                    source.getName(), stage, com.bdmajora.impetus.umbra.shaderpack.texture.TextureStage.GBUFFERS_AND_SHADOW);
+            rewritten = VanillaNameTransformer.transform(rewritten);
+            rewritten = UmbraRenderingPipeline.stabilizeShaderSource(source.getName(),
+                    com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.injectDefines(rewritten, macros));
+            return com.bdmajora.impetus.umbra.shaderpack.preprocessor.GlslPreprocessor.finalizeForDriver(name,
+                    ImpetusTerrainTransformer.transformAuxiliaryStage(rewritten, type));
+        });
+        return stages;
+    }
+
+    // Compiles and links one terrain program, binding the engine's vertex attributes in format order; every stage object is freed whether or not the link succeeds
+    private static GlProgram<ChunkShaderInterface> link(String shaderName, String vsh, String fsh, Map<ShaderType, String> auxiliary,
+                                                        ChunkShaderOptions options, int[] drawBuffers, ProgramBlendState blendState,
+                                                        ProgramAlphaTest alphaTest, boolean tessellated) {
+        List<GlShader> shaders = new ArrayList<>();
+        try {
+            shaders.add(new GlShader(ShaderType.VERTEX, shaderName + ".vsh", com.bdmajora.impetus.umbra.shaderpack.preprocessor.GlslPreprocessor
+                    .finalizeForDriver(shaderName + ".vsh", vsh)));
+            shaders.add(new GlShader(ShaderType.FRAGMENT, shaderName + ".fsh", com.bdmajora.impetus.umbra.shaderpack.preprocessor.GlslPreprocessor
+                    .finalizeForDriver(shaderName + ".fsh", fsh)));
+            for (var stage : auxiliary.entrySet()) {
+                shaders.add(new GlShader(stage.getKey(), shaderName + "." + stage.getKey().fileExtension, stage.getValue()));
             }
-            if (fragmentShader != null) {
-                fragmentShader.delete();
+
+            var builder = GlProgram.builder("impetus:iris_terrain");
+            for (GlShader shader : shaders) {
+                builder.attachShader(shader);
+            }
+            int index = 0;
+            for (var attribute : options.pass().vertexType().getVertexFormat().getAttributes()) {
+                builder.bindAttribute(attribute.getName(), index++);
+            }
+            UmbraRenderingPipeline.drainGlError();
+            return builder.link(context -> new UmbraTerrainShaderInterface(context, drawBuffers, blendState, alphaTest, tessellated));
+        } finally {
+            for (GlShader shader : shaders) {
+                shader.delete();
             }
         }
     }

@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.impl.render.terrain;
 
+import com.bdmajora.impetus.impl.render.terrain.fog.GLStateManagerFogService;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.client.renderer.DestroyBlockProgress;
@@ -12,9 +13,11 @@ import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraftforge.client.MinecraftForgeClient;
 import com.bdmajora.impetus.engine.impl.gl.device.CommandList;
 import com.bdmajora.impetus.engine.impl.render.chunk.ChunkRenderMatrices;
-import com.bdmajora.impetus.engine.impl.render.chunk.shader.ChunkShaderFogComponent;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkMeshFormats;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexType;
+import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.impl.MeshChunkVertex;
+import com.bdmajora.impetus.engine.impl.render.mesh.MeshShaderSupport;
+import com.bdmajora.impetus.engine.impl.render.mesh.MeshTerrainConfig;
 import com.bdmajora.impetus.engine.impl.render.terrain.SimpleWorldRenderer;
 import com.bdmajora.impetus.ImpetusVintage;
 import com.bdmajora.impetus.mixin.core.terrain.ActiveRenderInfoAccessor;
@@ -65,10 +68,31 @@ public class ImpetusWorldRenderer extends SimpleWorldRenderer<WorldClient, Vinta
         return new ChunkRenderMatrices(ActiveRenderInfoAccessor.getProjectionMatrix(), ActiveRenderInfoAccessor.getModelViewMatrix());
     }
 
-    // Factory hook for the 1.12.2 section manager
+    // Factory hook for the 1.12.2 section manager; the mesh backend is decided once here, since it fixes the vertex layout every build uses
     @Override
     protected VintageRenderSectionManager createRenderSectionManager(CommandList commandList) {
-        return VintageRenderSectionManager.create(chooseVertexType(), this.world, this.getEffectiveRenderDistance(), commandList);
+        int renderDistance = this.getEffectiveRenderDistance();
+
+        if (shouldUseMeshTerrain()) {
+            var config = MeshTerrainConfig.from(ImpetusVintage.options().meshTerrain, renderDistance);
+
+            try {
+                return VintageRenderSectionManager.create(MeshChunkVertex.INSTANCE, this.world, renderDistance, commandList, config);
+            } catch (RuntimeException e) {
+                // A driver that advertises the extensions but rejects the programs gets the raster renderer instead of a crash
+                ImpetusVintage.logger().error("Mesh-shader terrain failed to start; using the standard renderer", e);
+                MeshShaderSupport.markBroken(String.valueOf(e.getMessage()));
+            }
+        }
+
+        return VintageRenderSectionManager.create(chooseVertexType(), this.world, renderDistance, commandList, null);
+    }
+
+    // Mesh shaders draw the terrain when the option is on, the GPU has NV_mesh_shader and friends, and no shader pack needs its own gbuffer programs
+    static boolean shouldUseMeshTerrain() {
+        return ImpetusVintage.options().meshTerrain.enabled
+                && !com.bdmajora.impetus.umbra.terrain.UmbraTerrainProgramOverride.areShadersActive()
+                && MeshShaderSupport.isSupported();
     }
 
     // performs a render pass for the given BlockRenderLayer, drawing every visible chunk for it
@@ -100,7 +124,7 @@ public class ImpetusWorldRenderer extends SimpleWorldRenderer<WorldClient, Vinta
 
         float pitch = viewEntity.rotationPitch;
         float yaw = viewEntity.rotationYaw;
-        float fogDistance = ChunkShaderFogComponent.FOG_SERVICE.getFogCutoff();
+        float fogDistance = GLStateManagerFogService.INSTANCE.getFogCutoff();
 
         return new CameraState(x, y, z, pitch, yaw, fogDistance);
     }

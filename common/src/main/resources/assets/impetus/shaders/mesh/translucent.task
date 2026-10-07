@@ -1,0 +1,65 @@
+#version 460
+#extension GL_ARB_shading_language_include : enable
+#extension GL_NV_mesh_shader : require
+#extension GL_NV_gpu_shader5 : require
+
+#import <impetus:mesh/scene.glsl>
+
+// Translucent terrain, one workgroup per section slot of a visible region, drawn farthest region first from the mirrored command buffer
+#define MESH_WORKLOAD 32
+
+layout(local_size_x = 1) in;
+
+taskNV out Task {
+    // xyz: section origin relative to the camera's section; w: first quad, as raw bits
+    vec4 originAndBase;
+    uint quadCount;
+#ifdef SORT_QUADS
+    // 0 or 1, alternating per frame so the in-place pair swaps cover both pairings over two frames
+    uint jiggle;
+#endif
+};
+
+void main() {
+    uint sectionId = gl_WorkGroupID.x;
+
+#ifdef SORT_SECTIONS
+    // The section sorter rewrote each slot's draw-slot bits to name the section that should draw at that position, farthest first
+    ivec4 slotHeader = sectionData[sectionId].header;
+    if (sectionEmpty(slotHeader)) {
+        gl_TaskCountNV = 0;
+        return;
+    }
+    sectionId = (sectionId & ~0xFFu) | uint((slotHeader.y >> 18) & 0xFF);
+#endif
+
+    if ((sectionVisibility[sectionId] & uint8_t(1)) == uint8_t(0)) {
+        gl_TaskCountNV = 0;
+        return;
+    }
+
+    ivec4 header = sectionData[sectionId].header;
+    uint base = uint(header.w);
+
+    originAndBase.xyz = vec3((unpackSectionChunk(header) - cameraChunk.xyz) << 4);
+    // The translucent quads sit in front of the opaque groups, and the header's last count says how many
+    quadCount = (uint(sectionData[sectionId].renderRanges.w) >> 16) & 0xFFFFu;
+
+    if (quadCount == 0u) {
+        gl_TaskCountNV = 0;
+        return;
+    }
+
+#ifdef SORT_QUADS
+    jiggle = min(quadCount >> 1, uint(frameId) & 1u);
+    quadCount += jiggle;
+    base -= jiggle;
+#endif
+
+    originAndBase.w = uintBitsToFloat(base);
+    gl_TaskCountNV = (quadCount + MESH_WORKLOAD - 1u) / MESH_WORKLOAD;
+
+#ifdef STATISTICS_QUADS
+    atomicAdd(statisticsBuffer + 2, quadCount);
+#endif
+}

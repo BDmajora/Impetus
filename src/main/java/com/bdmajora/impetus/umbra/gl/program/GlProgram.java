@@ -8,22 +8,28 @@ import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 public class GlProgram extends GlResource {
     // Only for log messages and debugging; GL never sees it
     private final String name;
+    // Linked with tessellation stages, so draws made while it is bound must be patches
+    private final boolean tessellated;
 
     // Package-private: ProgramBuilder is the only way to get one, since an unchecked handle is indistinguishable from a working one until the first draw renders nothing
-    GlProgram(int handle, String name) {
+    GlProgram(int handle, String name, boolean tessellated) {
         this.name = name;
+        this.tessellated = tessellated;
         setHandle(handle);
     }
 
-    // glUseProgram
+    // glUseProgram, telling the immediate-mode patch conversion whether it now applies
     public void bind() {
         LWJGL.glUseProgram(getGlId());
+        ImmediateTessellation.programBound(getGlId(), this.tessellated);
     }
 
     // Binds program 0; deliberately does NOT restore what was bound before, so the caller rebinds if it had something
     public void unbind() {
         LWJGL.glUseProgram(0);
+        ImmediateTessellation.programBound(0, false);
     }
+
 
     // -1 when the name is not in the linked program, including uniforms the compiler optimised out; callers treat that as "skip", not an error
     public int getUniformLocation(CharSequence name) {

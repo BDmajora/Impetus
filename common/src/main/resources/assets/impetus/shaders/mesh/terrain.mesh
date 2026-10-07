@@ -8,17 +8,14 @@
 #import <impetus:mesh/scene.glsl>
 #import <impetus:mesh/vertex_format.glsl>
 
-// Phase 3, part two: quads to triangles.
-//
-// One thread per quad, sixteen per meshlet. Each thread loads its four vertices through a raw pointer, projects
-// them, drops either triangle that lands entirely between pixel centres, and then the subgroup does a prefix sum
-// to work out where everyone writes. No index buffer, no attribute fetch, no per-vertex shader invocation.
-//
-// The fragment shader re-fetches the vertices it needs by quad id, so nothing is interpolated across the
-// task/mesh boundary except position.
-
+// Quads to triangles, one thread per quad and sixteen per meshlet; sub-pixel triangles are dropped and a subgroup prefix sum places the survivors without atomics
 layout(local_size_x = 16) in;
 layout(triangles, max_vertices = 64, max_primitives = 32) out;
+
+// Fog is the only interpolant; the fragment shader re-fetches everything else by quad id
+layout(location = 1) out Interpolants {
+    float fogAmount;
+} OUT[];
 
 taskNV in Task {
     vec3 origin;
@@ -31,8 +28,7 @@ taskNV in Task {
     uvec4 rangeStartB;
 };
 
-// Maps this thread's position in the meshlet to a quad in the arena, walking the ranges the task shader kept.
-// Threads in a workgroup almost always land in the same range, so the branch is uniform in practice.
+// This thread's quad in the arena, walking the ranges the task shader kept; uniform across the workgroup in practice
 uint resolveQuad() {
     uint index = gl_GlobalInvocationID.x;
 
@@ -48,8 +44,14 @@ uint resolveQuad() {
     return uint(-1);
 }
 
-vec4 project(Vertex v) {
-    return MVP * vec4(decodeVertexPosition(v) + origin, 1.0);
+// Camera-relative position: the MVP already carries the in-section offset, so it is added back only for fog distance
+vec3 relativePosition(Vertex v) {
+    return decodeVertexPosition(v) + origin;
+}
+
+void emit(uint slot, Vertex v, vec4 clip) {
+    gl_MeshVerticesNV[slot].gl_Position = clip;
+    OUT[slot].fogAmount = computeFog(relativePosition(v) + subChunkOffset.xyz, clip.w);
 }
 
 void main() {
@@ -63,24 +65,22 @@ void main() {
         return;
     }
 
-    // Vertices 0 and 2 are the diagonal shared by both triangles of the quad.
+    // Vertices 0 and 2 are the diagonal both triangles share
     Vertex v0 = terrainData[(quad << 2) + 0u];
     Vertex v1 = terrainData[(quad << 2) + 1u];
     Vertex v2 = terrainData[(quad << 2) + 2u];
     Vertex v3 = terrainData[(quad << 2) + 3u];
 
-    vec4 p0 = project(v0);
-    vec4 p1 = project(v1);
-    vec4 p2 = project(v2);
-    vec4 p3 = project(v3);
+    vec4 p0 = MVP * vec4(relativePosition(v0), 1.0);
+    vec4 p1 = MVP * vec4(relativePosition(v1), 1.0);
+    vec4 p2 = MVP * vec4(relativePosition(v2), 1.0);
+    vec4 p3 = MVP * vec4(relativePosition(v3), 1.0);
 
     bool drawT0;
     bool drawT1;
 
     {
-        // Screen-space bounds of each triangle. If a triangle's bounds round to the same pixel in both x and y
-        // it cannot cover a pixel centre, so rasterizing it would produce nothing. Culling it here is far
-        // cheaper than letting the rasterizer discover that, and at distance most triangles are in this state.
+        // A triangle whose screen bounds round to one pixel in either axis covers no pixel centre, so it is dropped here instead of by the rasterizer
         vec2 shared0 = ((p0.xy / p0.w) + 1.0) * screenSize;
         vec2 shared2 = ((p2.xy / p2.w) + 1.0) * screenSize;
 
@@ -98,8 +98,6 @@ void main() {
         return;
     }
 
-    // Prefix sums over the subgroup give every surviving thread its slice of the meshlet's vertex and primitive
-    // arrays without an atomic or a barrier.
     uint triangles = uint(drawT0) + uint(drawT1);
     uint triIndex = subgroupExclusiveAdd(triangles);
     uint vertBase = subgroupExclusiveAdd((drawT0 == drawT1) ? 4u : 3u);
@@ -108,16 +106,15 @@ void main() {
     uint indexCursor = triIndex * 3u;
     uint vertCursor = vertBase;
 
-    gl_MeshVerticesNV[vertCursor++].gl_Position = p0;
-    gl_MeshVerticesNV[vertCursor++].gl_Position = p2;
+    emit(vertCursor++, v0, p0);
+    emit(vertCursor++, v2, p2);
 
-    // Everything the fragment shader needs beyond position, packed into the primitive id: the quad to re-fetch,
-    // the mip bias, the alpha cutoff selector, and which of the two triangles this is.
+    // The primitive id carries the quad to re-fetch, the mip bias, the alpha cutoff selector and which triangle this is
     uint lodBias = hasMipmapping(v0) ? 0u : 1u;
     int payload = int((lodBias << 2) | rawAlphaCutoff(v0) | (quad << 4));
 
     if (drawT0) {
-        gl_MeshVerticesNV[vertCursor].gl_Position = p1;
+        emit(vertCursor, v1, p1);
         gl_PrimitiveIndicesNV[indexCursor++] = vertBase + 0u;
         gl_PrimitiveIndicesNV[indexCursor++] = vertCursor;
         gl_PrimitiveIndicesNV[indexCursor++] = vertBase + 1u;
@@ -127,7 +124,7 @@ void main() {
     }
 
     if (drawT1) {
-        gl_MeshVerticesNV[vertCursor].gl_Position = p3;
+        emit(vertCursor, v3, p3);
         gl_PrimitiveIndicesNV[indexCursor++] = vertBase + 1u;
         gl_PrimitiveIndicesNV[indexCursor++] = vertCursor;
         gl_PrimitiveIndicesNV[indexCursor++] = vertBase + 0u;

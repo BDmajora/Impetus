@@ -10,6 +10,8 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -36,6 +38,27 @@ class ProbeTest {
         assertEquals(GraphicsVendor.OTHER, GraphicsVendor.fromContext(new GlContextInfo("Apple", "r", "v")));
         GraphicsAdapterInfo info = new GraphicsAdapterInfo(GraphicsVendor.INTEL, "n", "1.0");
         assertEquals("n", info.name());
+    }
+
+    @Test
+    void adaptersComeFromOneSharedProbeAndNeverThrow() {
+        CompletableFuture<List<GraphicsAdapterInfo>> first = GraphicsAdapterProbe.prefetch();
+        assertSame(first, GraphicsAdapterProbe.prefetch());
+        assertEquals(first.join(), GraphicsAdapterProbe.adapters(10_000));
+
+        AtomicReference<CompletableFuture<List<GraphicsAdapterInfo>>> shared = Statics.get(GraphicsAdapterProbe.class, "SHARED");
+        try {
+            // A probe slower than the wait, an interrupted waiter and a failed probe all read as no adapters
+            shared.set(new CompletableFuture<>());
+            assertTrue(GraphicsAdapterProbe.adapters(1).isEmpty());
+            Thread.currentThread().interrupt();
+            assertTrue(GraphicsAdapterProbe.adapters(10_000).isEmpty());
+            assertTrue(Thread.interrupted());
+            shared.set(CompletableFuture.failedFuture(new IllegalStateException("probe")));
+            assertTrue(GraphicsAdapterProbe.adapters(10_000).isEmpty());
+        } finally {
+            shared.set(first);
+        }
     }
 
     @Test

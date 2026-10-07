@@ -419,6 +419,14 @@ class ExtrasClientTest {
         RenderBudgetController.onClientTick(new TickEvent.ClientTickEvent(TickEvent.Phase.END));
         ExtrasHud.onRenderOverlay(overlay());
         Mixins.set(RenderBudgetController.class, "budget", com.bdmajora.extras.client.budget.RenderBudget.NEUTRAL);
+        // The detector's verdict trails the first line once there is one
+        for (var state : com.bdmajora.extras.client.budget.BottleneckDetector.State.values()) {
+            String label = com.bdmajora.testing.Statics.call(ExtrasHud.class, "bottleneckLabel", state);
+            boolean named = state == com.bdmajora.extras.client.budget.BottleneckDetector.State.CPU_BOUND
+                    || state == com.bdmajora.extras.client.budget.BottleneckDetector.State.GPU_BOUND
+                    || state == com.bdmajora.extras.client.budget.BottleneckDetector.State.MIXED;
+            assertEquals(named, !label.isEmpty(), state.name());
+        }
         assertNotNull(Mixins.construct(ExtrasHud.class));
     }
 

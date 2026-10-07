@@ -1,7 +1,7 @@
 package com.bdmajora.impetus.engine.impl.render.chunk.compile.sorting;
 
 import com.bdmajora.impetus.engine.impl.gl.tessellation.GlPrimitiveType;
-import com.bdmajora.impetus.engine.impl.render.chunk.sorting.TranslucentQuadAnalyzer;
+import com.bdmajora.impetus.engine.impl.render.chunk.sorting.SortState;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.ByteBuffer;
@@ -25,8 +25,21 @@ public interface ChunkPrimitiveType {
     // Generates a "simple" index buffer drawing numPrimitives in vertex-buffer order; the caller supplies a buffer sized by getIndexBufferSize(int)
     void generateSimpleIndexBuffer(ByteBuffer indexBuffer, int numPrimitives);
 
-    // Generates a sorted index buffer for numPrimitives from chunkData; x/y/z is the subchunk-relative camera so it compares directly against SortState positions
-    void generateSortedIndexBuffer(ByteBuffer indexBuffer, int numPrimitives, @Nullable TranslucentQuadAnalyzer.SortState chunkData, float x, float y, float z);
+    /**
+     * Generate a sorted index buffer for numPrimitives primitives, with data on the primitives provided in chunkData.
+     * <p>
+     * The caller is responsible for providing a buffer of size given by {@link ChunkPrimitiveType#getIndexBufferSize(int)}.
+     * <p>
+     * The provided camera position will be subchunk-relative, and thus makes sense to compare directly with the vertex
+     * positions provided in the SortState.
+     * @param indexBuffer a NativeBuffer that should be populated with 32-bit integers
+     * @param numPrimitives the number of primitives to generate the buffer for
+     * @param chunkData the sorting data for the given primitives
+     * @param x x position of the camera
+     * @param y y position of the camera
+     * @param z z position of the camera
+     */
+    void generateSortedIndexBuffer(ByteBuffer indexBuffer, int numPrimitives, @Nullable SortState chunkData, float x, float y, float z);
 
     // Shader defines this primitive type needs
     default List<String> getDefines() {

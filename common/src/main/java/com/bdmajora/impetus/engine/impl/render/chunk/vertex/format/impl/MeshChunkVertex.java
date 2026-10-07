@@ -8,8 +8,8 @@ import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexTy
 
 import java.util.Map;
 
-import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 import com.bdmajora.impetus.engine.impl.common.util.MathUtil;
+import org.lwjgl.system.MemoryUtil;
 
 // 16-byte terrain vertex read by the mesh shader as one uvec4: shade folded into 24-bit colour on the CPU, light in two bytes; the GlVertexFormat exists only because ChunkVertexType demands one
 public class MeshChunkVertex implements ChunkVertexType {
@@ -21,7 +21,7 @@ public class MeshChunkVertex implements ChunkVertexType {
             .build();
 
     private static final int POSITION_MAX_VALUE = 65536;
-    private static final int TEXTURE_MAX_VALUE = 32768;
+    public static final int TEXTURE_MAX_VALUE = 32768;
 
     private static final float MODEL_ORIGIN = 8.0f;
     private static final float MODEL_RANGE = 32.0f;
@@ -67,10 +67,10 @@ public class MeshChunkVertex implements ChunkVertexType {
         return (ptr, material, vertex, sectionIndex) -> {
             int light = packLight(vertex.light);
 
-            LWJGL.memPutInt(ptr + 0, encodePosition(vertex.x) | (encodePosition(vertex.y) << 16));
-            LWJGL.memPutInt(ptr + 4, encodePosition(vertex.z) | ((material.bits() & 0xFF) << 16) | ((light & 0xFF) << 24));
-            LWJGL.memPutInt(ptr + 8, packShadedColor(vertex.color) | (((light >> 8) & 0xFF) << 24));
-            LWJGL.memPutInt(ptr + 12, encodeTexture(vertex.u) | (encodeTexture(vertex.v) << 16));
+            MemoryUtil.memPutInt(ptr + 0, encodePosition(vertex.x) | (encodePosition(vertex.y) << 16));
+            MemoryUtil.memPutInt(ptr + 4, encodePosition(vertex.z) | ((material.bits() & 0xFF) << 16) | ((light & 0xFF) << 24));
+            MemoryUtil.memPutInt(ptr + 8, packShadedColor(vertex.color) | (((light >> 8) & 0xFF) << 24));
+            MemoryUtil.memPutInt(ptr + 12, encodeTexture(vertex.u) | (encodeTexture(vertex.v) << 16));
 
             return ptr + STRIDE;
         };
@@ -88,17 +88,17 @@ public class MeshChunkVertex implements ChunkVertexType {
     // ---- readers, for the section bounding box ----
 
     public static int readPackedX(long ptr) {
-        return LWJGL.memGetInt(ptr) & 0xFFFF;
+        return MemoryUtil.memGetInt(ptr) & 0xFFFF;
     }
 
     // Reads the packed y field from a vertex in memory
     public static int readPackedY(long ptr) {
-        return (LWJGL.memGetInt(ptr) >>> 16) & 0xFFFF;
+        return (MemoryUtil.memGetInt(ptr) >>> 16) & 0xFFFF;
     }
 
     // Reads the packed z field
     public static int readPackedZ(long ptr) {
-        return LWJGL.memGetInt(ptr + 4) & 0xFFFF;
+        return MemoryUtil.memGetInt(ptr + 4) & 0xFFFF;
     }
 
     // Packed position back to its 1-block cell in the section, clamped to 0..15 since vertices may sit slightly outside the section (fence posts) and the occlusion box is per-section

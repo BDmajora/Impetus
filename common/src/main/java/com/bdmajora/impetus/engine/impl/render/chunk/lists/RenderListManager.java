@@ -1,30 +1,27 @@
 package com.bdmajora.impetus.engine.impl.render.chunk.lists;
 
-import it.unimi.dsi.fastutil.longs.Long2ReferenceMap;
-import it.unimi.dsi.fastutil.longs.Long2ReferenceOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import lombok.Getter;
 import lombok.Setter;
-import com.bdmajora.impetus.engine.impl.render.chunk.async.ChunkCullTask;
+import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.AsyncOcclusionMode;
+import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.SectionLattice;
 import com.bdmajora.impetus.engine.impl.render.chunk.RenderSection;
-import com.bdmajora.impetus.engine.impl.render.chunk.data.SectionRenderDataUnsafe;
-import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.GraphDirection;
-import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.OcclusionCuller;
-import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.OcclusionNode;
-import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.SectionTree;
-import com.bdmajora.impetus.engine.impl.render.chunk.sorting.TranslucentQuadAnalyzer;
+import com.bdmajora.impetus.engine.impl.render.chunk.sorting.SortState;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 import com.bdmajora.impetus.engine.impl.render.viewport.Viewport;
-import com.bdmajora.impetus.engine.impl.util.PositionUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.joml.Vector3fc;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
+/**
+ * Owns the render lists of one pass (terrain, or the shadow pass) and the search that produces them. The lattice
+ * and search thread are shared between passes through {@link SectionGraph}.
+ */
 public class RenderListManager {
     @Getter
     @NotNull
@@ -33,12 +30,15 @@ public class RenderListManager {
     @NotNull
     private ChunkRebuildLists rebuildLists;
 
-    private final OcclusionCuller occlusionCuller;
+    private final SectionGraph graph;
+    private final SectionLattice lattice;
+    // Whether this manager produces the shadow pass's lists. The shadow search is orthographic and receiver-driven;
+    // the terrain search is the camera-rooted one with the angular frustum clamp.
+    private final boolean shadow;
+    // Whether this pass's searches run on the shared search thread rather than inline.
+    private final boolean async;
 
-    private final Long2ReferenceMap<OcclusionNode> occlusionNodes = new Long2ReferenceOpenHashMap<>();
-    private final SectionTree sectionTree = new SectionTree();
-
-    // Non-null while an async graph search runs; structural mutations to occlusionNodes are forbidden and visibilityData updates are deferred to updateTasks while set
+    // Non-null for the duration of an in-progress graph search (already completed when the search ran inline).
     private CompletableFuture<VisibleChunkCollector> currentOcclusionFuture;
 
     @Getter
@@ -50,28 +50,28 @@ public class RenderListManager {
 
     private int pendingLastUpdatedFrame;
 
-    // Tasks deferred by submitUpdateTask() during an async search, drained on the render thread in finishPreviousGraphUpdate() after join() establishes happens-before
-    private final ArrayDeque<Runnable> updateTasks = new ArrayDeque<>();
+    @NotNull
+    private SectionLattice.VisibilitySnapshot visibilitySnapshot = SectionLattice.VisibilitySnapshot.EMPTY;
 
-    private final ExecutorService asyncGraphExecutor;
+    // Snapshot produced by the in-progress search. Written on the async thread; read on the render thread
+    // in finishPreviousGraphUpdate() after join() establishes happens-before, then published to visibilitySnapshot.
+    @Nullable
+    private SectionLattice.VisibilitySnapshot pendingVisibilitySnapshot;
 
     @Nullable
     private final SectionTicker sectionTicker;
 
-    // Per-pass and per-sort-type counts for the debug screen
     public record RenderListDebugStatistics(Object2IntOpenHashMap<TerrainRenderPass> renderPassCounts, int[] sortingSectionCounts) {
-        // Sort counts formatted
         public String getSortingString() {
             StringBuilder sb = new StringBuilder();
 
             sb.append("Sorting: ");
-            TranslucentQuadAnalyzer.Level[] values = TranslucentQuadAnalyzer.Level.VALUES;
-            for (int i = 0; i < values.length; i++) {
-                TranslucentQuadAnalyzer.Level level = values[i];
-                sb.append(level.name());
+            String[] names = SortState.DEBUG_NAMES;
+            for (int i = 0; i < names.length; i++) {
+                sb.append(names[i]);
                 sb.append('=');
-                sb.append(sortingSectionCounts[level.ordinal()]);
-                if((i + 1) < values.length) {
+                sb.append(sortingSectionCounts[i]);
+                if((i + 1) < names.length) {
                     sb.append(", ");
                 }
             }
@@ -82,48 +82,86 @@ public class RenderListManager {
 
     private RenderListDebugStatistics debugStatistics;
 
-    public RenderListManager(int minSectionY, int maxSectionY, boolean useAsyncGraphSearch, @Nullable SectionTicker sectionTicker) {
+    /**
+     * @param graph  the lattice and search thread shared with the other pass's manager
+     * @param shadow whether this manager serves the shadow pass
+     * @param mode   which passes search asynchronously: {@code EVERYTHING} for both, {@code ONLY_SHADOW} for the
+     *               shadow pass alone, {@code NONE} for neither
+     */
+    public RenderListManager(SectionGraph graph, boolean shadow, AsyncOcclusionMode mode, @Nullable SectionTicker sectionTicker) {
+        this.graph = graph;
+        this.lattice = graph.getLattice();
+        this.shadow = shadow;
+        this.async = mode == AsyncOcclusionMode.EVERYTHING || (shadow && mode == AsyncOcclusionMode.ONLY_SHADOW);
         this.sectionTicker = sectionTicker;
-
-        if (useAsyncGraphSearch) {
-            this.asyncGraphExecutor = Executors.newSingleThreadExecutor(runnable -> {
-                Thread thread = new Thread(runnable);
-                thread.setName("Impetus chunk graph search thread");
-                thread.setDaemon(true);
-                return thread;
-            });
-        } else {
-            this.asyncGraphExecutor = null;
-        }
-        this.occlusionCuller = new OcclusionCuller(this.occlusionNodes, this.sectionTree, minSectionY, maxSectionY);
         this.renderLists = SortedRenderLists.empty();
-        this.rebuildLists = ChunkRebuildLists.EMPTY;
+        this.rebuildLists = ChunkRebuildLists.empty();
     }
 
-    // Kicks off the occlusion walk, async when enabled
+    /**
+     * Start the terrain search from the camera section. Only valid on the terrain manager.
+     */
     public void startGraphUpdate(Viewport viewport, int frame, int regionIdsLength, float searchDistance, boolean useOcclusionCulling, int targetQueueSize) {
+        if (this.shadow) {
+            throw new IllegalStateException("startGraphUpdate is for the terrain pass; use startShadowGraphUpdate");
+        }
+
+        this.lattice.ensureWindowCovers(viewport.getChunkCoord(), searchDistance);
+
+        this.submitSearch(frame, regionIdsLength, targetQueueSize, viewport, visitor ->
+                this.lattice.findVisible(visitor, viewport, searchDistance, regionIdsLength, useOcclusionCulling, true, frame));
+    }
+
+    /**
+     * Start the shadow search. Only valid on the shadow manager, and only after the terrain manager has submitted
+     * its search for this frame.
+     *
+     * @param lightVector unit vector toward the shadow light, or {@code null} to run the frustum-only scan instead
+     */
+    public void startShadowGraphUpdate(Viewport shadowViewport, int frame, int regionIdsLength, float searchDistance, @Nullable Vector3fc lightVector, int targetQueueSize) {
+        if (!this.shadow) {
+            throw new IllegalStateException("startShadowGraphUpdate is for the shadow pass; use startGraphUpdate");
+        }
+
+        this.lattice.ensureWindowCovers(shadowViewport.getChunkCoord(), searchDistance);
+
+        this.submitSearch(frame, regionIdsLength, targetQueueSize, shadowViewport, visitor ->
+                this.lattice.findShadowVisible(visitor, shadowViewport, searchDistance, regionIdsLength, lightVector, frame));
+    }
+
+    private void submitSearch(int frame, int regionIdsLength, int targetQueueSize, Viewport viewport,
+                              Function<VisibleChunkCollector, SectionLattice.VisibilitySnapshot> search) {
         if (this.currentOcclusionFuture != null) {
             throw new IllegalStateException("Occlusion work in progress while trying to submit next task");
         }
 
-        var visitor = new VisibleChunkCollector(frame, regionIdsLength, targetQueueSize);
+        var visitor = new VisibleChunkCollector(this.lattice, frame, regionIdsLength, targetQueueSize, viewport.getBlockCoord());
 
-        var occlusionTask = new ChunkCullTask(this.occlusionCuller, visitor, viewport, searchDistance,
-                useOcclusionCulling, frame, this.sectionTicker);
+        Supplier<VisibleChunkCollector> occlusionTask = () -> {
+            this.pendingVisibilitySnapshot = search.apply(visitor);
+
+            // Sort the rebuild lists here rather than on the render thread when the result is joined
+            visitor.finishRebuildLists();
+
+            // WARNING: when async, this runs on the search thread.
+            // SectionTicker.onRenderListUpdated() must be safe to call off the render thread.
+            if (this.sectionTicker != null) {
+                this.sectionTicker.onRenderListUpdated(visitor.getSortedRenderLists());
+            }
+
+            return visitor;
+        };
 
         this.pendingLastUpdatedFrame = frame;
+        this.currentOcclusionFuture = this.graph.submit(occlusionTask, this.async);
 
-        if (this.asyncGraphExecutor != null) {
-            this.currentOcclusionFuture = CompletableFuture.supplyAsync(occlusionTask, this.asyncGraphExecutor);
-        } else {
-            this.currentOcclusionFuture = CompletableFuture.completedFuture(occlusionTask.get());
+        if (!this.async) {
             this.finishPreviousGraphUpdate();
         }
 
         this.needsUpdate = false;
     }
 
-    // Collects the walk's result into the current render lists
     public void finishPreviousGraphUpdate() {
         if (currentOcclusionFuture != null) {
             VisibleChunkCollector visitor = currentOcclusionFuture.join();
@@ -131,154 +169,44 @@ public class RenderListManager {
             this.renderLists = visitor.createRenderLists();
             this.rebuildLists = visitor.getRebuildLists();
 
+            // Publish the finished search's snapshot before advancing lastUpdatedFrame, so any concurrent
+            // reader that observes the new frame also observes the snapshot produced for it.
+            this.visibilitySnapshot = this.pendingVisibilitySnapshot;
+            this.pendingVisibilitySnapshot = null;
+
             this.currentOcclusionFuture = null;
             this.lastUpdatedFrame = this.pendingLastUpdatedFrame;
 
             this.debugStatistics = null;
+
+            this.graph.onSearchJoined();
         }
 
-        // Run tasks deferred during the async search; the join() above establishes happens-before for the async thread's OcclusionNode writes
-        Runnable task;
-
-        while ((task = updateTasks.poll()) != null) {
-            task.run();
-        }
+        // Run tasks deferred while searches were in flight. The join() above establishes happens-before,
+        // so the search thread's writes to the lattice arrays are visible here. A no-op while the other
+        // pass's search is still running.
+        this.graph.runDeferredTasks();
     }
 
-    // Stops the async walker
     public void destroy() {
         if (currentOcclusionFuture != null) {
             currentOcclusionFuture.join();
             currentOcclusionFuture = null;
-        }
-
-        if (asyncGraphExecutor != null) {
-            asyncGraphExecutor.shutdown();
-
-            try {
-                if (!asyncGraphExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
-                    throw new InterruptedException();
-                }
-            } catch (InterruptedException e) {
-                throw new IllegalStateException("Async graph executor has somehow not shut down");
-            }
+            this.graph.onSearchJoined();
         }
     }
 
-    // Node by section coordinates, or null
-    private OcclusionNode getOcclusionNode(int x, int y, int z) {
-        return this.occlusionNodes.get(PositionUtil.packSection(x, y, z));
-    }
-
-    // Links a new node to its six neighbours
-    private void connectNeighborNodes(OcclusionNode render) {
-        for (int direction = 0; direction < GraphDirection.COUNT; direction++) {
-            OcclusionNode adj = this.getOcclusionNode(render.getChunkX() + GraphDirection.x(direction),
-                    render.getChunkY() + GraphDirection.y(direction),
-                    render.getChunkZ() + GraphDirection.z(direction));
-
-            if (adj != null) {
-                adj.setAdjacentNode(GraphDirection.opposite(direction), render);
-                render.setAdjacentNode(direction, adj);
-            }
-        }
-    }
-
-    // Unlinks a removed node
-    private void disconnectNeighborNodes(OcclusionNode render) {
-        for (int direction = 0; direction < GraphDirection.COUNT; direction++) {
-            OcclusionNode adj = render.getAdjacent(direction);
-
-            if (adj != null) {
-                adj.setAdjacentNode(GraphDirection.opposite(direction), null);
-                render.setAdjacentNode(direction, null);
-            }
-        }
-    }
-
-    // Structural mutations to occlusionNodes are unsafe while the async thread holds the map via OcclusionCuller
-    private void assertOcclusionNotRunning() {
-        if (this.currentOcclusionFuture != null) {
-            throw new IllegalStateException("Attempted to update occlusion graph during occlusion!");
-        }
-    }
-
-    // Adds a section to the graph
-    public void attachRenderSection(RenderSection section) {
-        this.assertOcclusionNotRunning();
-
-        var key = section.positionAsLong();
-
-        OcclusionNode occlusionNode = this.occlusionNodes.get(key);
-
-        if (occlusionNode != null) {
-            throw new IllegalStateException("Occlusion node already exists for section " + section);
-        }
-
-        var node = new OcclusionNode(section);
-        this.occlusionNodes.put(key, node);
-        this.sectionTree.add(node);
-        this.connectNeighborNodes(node);
-        this.needsUpdate = true;
-    }
-
-    // Removes a section from the graph
-    public void detachRenderSection(RenderSection section) {
-        this.assertOcclusionNotRunning();
-
-        var key = section.positionAsLong();
-
-        OcclusionNode occlusionNode = this.occlusionNodes.remove(key);
-
-        if (occlusionNode == null) {
-            throw new IllegalStateException("Occlusion node does not exist for section " + section);
-        }
-
-        this.disconnectNeighborNodes(occlusionNode);
-        this.sectionTree.remove(occlusionNode);
-        this.needsUpdate = true;
-    }
-
-    // Runs immediately if no async search is active, otherwise defers to finishPreviousGraphUpdate() to avoid concurrent OcclusionNode writes
-    private void submitUpdateTask(Runnable runnable) {
-        if (this.currentOcclusionFuture == null) {
-            runnable.run();
-        } else {
-            this.updateTasks.add(runnable);
-        }
-    }
-
-    // Installs a section's face-to-face visibility after a build
-    public void updateVisibilityData(int x, int y, int z, long visibilityData) {
-        this.submitUpdateTask(() -> {
-            var node = this.getOcclusionNode(x, y, z);
-            if (node != null) {
-                node.setVisibilityData(visibilityData);
-                this.needsUpdate = true;
-            }
-        });
-    }
-
-    // Whether the last walk reached the section
     public boolean isSectionVisible(int x, int y, int z) {
-        OcclusionNode render = this.getOcclusionNode(x, y, z);
-
-        if (render == null) {
-            return false;
-        }
-
-        // lastUpdatedFrame only advances in finishPreviousGraphUpdate(), so mid-search this reflects the previous committed frame: a section may appear visible slightly early but never invisible too early
-        return render.getLastVisibleFrame() >= this.lastUpdatedFrame;
+        return this.visibilitySnapshot.isSectionVisible(x, y, z, this.lastUpdatedFrame);
     }
 
-    // Advances sprite animation for visible sections
     public void tickVisibleRenders() {
         if (this.sectionTicker != null) {
             this.sectionTicker.tickVisibleRenders();
         }
     }
 
-    // Computed lazily per frame
+
     public RenderListDebugStatistics getDebugStatistics() {
         if (this.debugStatistics == null) {
             this.debugStatistics = computeDebugStatistics();
@@ -286,7 +214,6 @@ public class RenderListManager {
         return this.debugStatistics;
     }
 
-    // From the section ticker
     public String getTickerDebugString() {
         if (this.sectionTicker == null) {
             return "";
@@ -294,15 +221,14 @@ public class RenderListManager {
         return this.sectionTicker.getDebugString();
     }
 
-    // Walks the render lists once
     private RenderListDebugStatistics computeDebugStatistics() {
         Object2IntOpenHashMap<TerrainRenderPass> renderPassCounts = new Object2IntOpenHashMap<>();
 
         var iterator = renderLists.iterator();
 
-        int[] sectionCounts = new int[TranslucentQuadAnalyzer.Level.VALUES.length];
+        int[] sectionCounts = new int[SortState.DEBUG_NAMES.length];
 
-        boolean isSorting = renderLists.hasSortedPass();
+        boolean isSorting = renderLists.getPasses().stream().anyMatch(TerrainRenderPass::isSorted);
 
         while (iterator.hasNext()) {
             var renderList = iterator.next();
@@ -316,13 +242,12 @@ public class RenderListManager {
             for (TerrainRenderPass pass : region.getPasses()) {
                 int numToAdd = 0;
                 var storage = region.getStorage(pass);
-                var iter = Objects.requireNonNull(renderList.sectionsWithGeometryIterator(false));
+                var iter = Objects.requireNonNull(renderList.sectionsWithGeometryIterator());
 
                 while (iter.hasNext()) {
                     int sectionIndex = iter.nextByteAsInt();
-                    var pMeshData = storage.getDataPointer(sectionIndex);
 
-                    if (SectionRenderDataUnsafe.getSliceMask(pMeshData) != 0) {
+                    if (storage.getSliceMask(sectionIndex) != 0) {
                         numToAdd++;
                     }
                 }
@@ -333,18 +258,18 @@ public class RenderListManager {
             }
 
             if (isSorting) {
-                var iter = Objects.requireNonNull(renderList.sectionsWithGeometryIterator(false));
+                var iter = Objects.requireNonNull(renderList.sectionsWithGeometryIterator());
 
                 while (iter.hasNext()) {
                     int sectionIndex = iter.nextByteAsInt();
                     var section = region.getSection(sectionIndex);
 
                     // Do not count sections without translucent data
-                    if(section == null || section.getTranslucencySortStates().isEmpty()) {
+                    if(section == null || section.getHighestSortingIndex() == RenderSection.NO_TRANSLUCENT_GEOMETRY) {
                         continue;
                     }
 
-                    sectionCounts[section.getHighestSortingLevel().ordinal()]++;
+                    sectionCounts[section.getHighestSortingIndex()]++;
                 }
             }
         }

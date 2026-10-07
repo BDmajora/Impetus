@@ -4,10 +4,10 @@ import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL32;
 import org.lwjgl.opengl.GL42;
 import org.lwjgl.opengl.GL43;
-import com.bdmajora.impetus.lwjgl.GLNv;
 
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
+import org.lwjgl.opengl.NVMeshShader;
 
 // The shader stages this engine compiles, each carrying its GL type enum
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
@@ -19,8 +19,8 @@ public enum ShaderType {
     TESS_EVALUATE(GL42.GL_TESS_EVALUATION_SHADER, "tes"),
     COMPUTE(GL43.GL_COMPUTE_SHADER, "csh"),
     // NV_mesh_shader stages for the mesh-shader terrain backend; a driver without the extension rejects them at glCreateShader, so MeshShaderSupport is checked first
-    TASK(GLNv.GL_TASK_SHADER_NV, "task"),
-    MESH(GLNv.GL_MESH_SHADER_NV, "mesh");
+    TASK(NVMeshShader.GL_TASK_SHADER_NV, "task"),
+    MESH(NVMeshShader.GL_MESH_SHADER_NV, "mesh");
 
     public final int id;
     public final String fileExtension;

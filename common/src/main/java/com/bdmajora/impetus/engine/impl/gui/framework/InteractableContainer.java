@@ -6,7 +6,15 @@ import java.util.stream.Stream;
 public interface InteractableContainer extends Interactable {
     Stream<? extends Interactable> interactableChildren();
 
-    // First child that handles it wins
+    /**
+     * the child that most recently claimed a mouseClicked. while set, drag events
+     * are routed straight to it instead of being re-checked against the cursor position each time,
+     * so a drag started on e.g. a slider isn't dropped the moment the cursor strays off its narrow
+     * hitbox. Cleared on mouseReleased.
+     */
+    Interactable getCapturedChild();
+    void setCapturedChild(Interactable child);
+
     private boolean runSingleChildAction(Predicate<Interactable> action) {
         // Defensive copy to handle mutation
         return interactableChildren().toList().stream().anyMatch(action);
@@ -20,18 +28,35 @@ public interface InteractableContainer extends Interactable {
     // First child that handles it
     @Override
     default boolean mouseClicked(InteractionContext context, double mouseX, double mouseY, int button) {
-        return runSingleChildAction(i -> i.mouseClicked(context, mouseX, mouseY, button));
+        setCapturedChild(null);
+        return runSingleChildAction(i -> {
+            if (i.mouseClicked(context, mouseX, mouseY, button)) {
+                setCapturedChild(i);
+                return true;
+            }
+            return false;
+        });
     }
 
     // First child that handles it
     @Override
     default boolean mouseReleased(InteractionContext context, double mouseX, double mouseY, int button) {
+        Interactable captured = getCapturedChild();
+        setCapturedChild(null);
+        if (captured != null) {
+            captured.mouseReleased(context, mouseX, mouseY, button);
+            return true;
+        }
         return runSingleChildAction(i -> i.mouseReleased(context, mouseX, mouseY, button));
     }
 
     // First child that handles it
     @Override
     default boolean mouseDragged(InteractionContext context, double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+        Interactable captured = getCapturedChild();
+        if (captured != null) {
+            return captured.mouseDragged(context, mouseX, mouseY, button, deltaX, deltaY);
+        }
         return runSingleChildAction(i -> i.isMouseOver(mouseX, mouseY) && i.mouseDragged(context, mouseX, mouseY, button, deltaX, deltaY));
     }
 

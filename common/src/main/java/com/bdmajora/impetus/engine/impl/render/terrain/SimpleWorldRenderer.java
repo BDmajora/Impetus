@@ -8,6 +8,8 @@ import com.bdmajora.impetus.engine.impl.render.chunk.ChunkRenderMatrices;
 import com.bdmajora.impetus.engine.impl.render.chunk.RenderPassConfiguration;
 import com.bdmajora.impetus.engine.impl.render.chunk.RenderSectionManager;
 import com.bdmajora.impetus.engine.impl.render.chunk.data.MinecraftBuiltRenderSectionData;
+import com.bdmajora.impetus.engine.impl.render.chunk.lists.ChunkRenderList;
+import com.bdmajora.impetus.engine.impl.render.chunk.lists.SortedRenderLists;
 import com.bdmajora.impetus.engine.impl.render.chunk.map.ChunkTracker;
 import com.bdmajora.impetus.engine.impl.render.chunk.map.ChunkTrackerHolder;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
@@ -18,30 +20,24 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
+import java.util.function.Consumer;
 
-// Version-independent half of the world renderer; each game version subclasses it with its own world, layer and block-entity types so the per-frame ordering is written once
+/**
+ * Provides an extension to a game's regular world renderer.
+ */
 public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSectionManager, LAYER, BLOCKENTITY, BLOCKENTITY_RENDER_CONTEXT> {
-    // Null until a world is loaded; used as the "is a world loaded" flag as well as the world itself
     protected WORLD world;
-    // The distance the section manager was last built for, so a settings change can be noticed and force a reload
     protected int renderDistance;
 
-    // Everything about the camera that invalidates the visibility graph when changed, as a record so the dirty check is one equals(); fogDistance is in since fog clips the traversal
     public record CameraState(double x, double y, double z, double pitch, double yaw, float fogDistance) {}
 
-    // The camera state the graph was last built for; null before the first frame
     protected CameraState lastCameraState;
 
-    // The viewport of the pass currently being set up, read back by drawChunkLayer for its occlusion camera
     protected Viewport currentViewport;
-
-    // The real camera the last layer drew with, reused while the position holds
-    private CameraTransform realCamera;
 
     @Getter
     protected SECTIONMANAGER renderSectionManager;
 
-    // Swaps to a different world, tearing down and rebuilding the section manager; called on join, on leave with null, and on dimension change
     public void setWorld(WORLD world) {
         // Check that the world is actually changing
         if (this.world == world) {
@@ -59,7 +55,6 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
         }
     }
 
-    // Brings up the section manager for a new world; the command list wraps initRenderer because GPU buffer allocation needs one, and try-with-resources frees it even if init throws
     protected void loadWorld(WORLD world) {
         this.world = world;
 
@@ -68,7 +63,6 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
         }
     }
 
-    // Tears down the manager then forgets the world, in that order so nothing observes a live manager pointing at a dead world
     protected void unloadWorld() {
         if (this.renderSectionManager != null) {
             this.renderSectionManager.destroy();
@@ -78,12 +72,16 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
         this.world = null;
     }
 
-    // Number of chunk sections the last graph update found visible in the camera frustum; the F3 "C:" figure
+    /**
+     * @return The number of chunk renders which are visible in the current camera's frustum
+     */
     public int getVisibleChunkCount() {
         return this.renderSectionManager.getVisibleChunkCount();
     }
 
-    // Marks the visibility graph stale for the next setupTerrain; for changes other than camera movement, e.g. a block update opening a sightline
+    /**
+     * Notifies the chunk renderer that the graph scene has changed and should be re-computed.
+     */
     public void scheduleTerrainUpdate() {
         // BUG: seems to be called before init
         if (this.renderSectionManager != null) {
@@ -91,14 +89,25 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
         }
     }
 
-    // True once nothing is queued for rebuild, i.e. the world is fully meshed; the loading screen waits on this
+    /**
+     * @return True if no chunks are pending rebuilds
+     */
     public boolean isTerrainRenderComplete() {
         return this.renderSectionManager.getBuilder().isBuildQueueEmpty();
     }
 
     public abstract int getEffectiveRenderDistance();
 
-    // Per-pass entry point before any chunk drawing: reclaims retired native buffers, finishes any in-flight graph update (everything below assumes no mid-traversal), then updates the manager; `frame` is deprecated
+    /**
+     * Whether terrain is currently being set up or rendered for a shadow pass.
+     */
+    public boolean isInShadowPass() {
+        return this.renderSectionManager.isInShadowPass();
+    }
+
+    /**
+     * Called prior to any chunk rendering in order to update necessary state.
+     */
     public void setupTerrain(Viewport viewport,
                              CameraState cameraState,
                              @Deprecated(forRemoval = true) int frame,
@@ -106,18 +115,13 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
                              boolean updateChunksImmediately) {
         NativeBuffer.reclaim(false);
 
-        if (this.renderSectionManager != null) {
+        // When a shadow pass preceded this one, it joined the previous frame's searches, applied the chunk events
+        // and submitted this frame's searches; joining again here would stall on those, and chunk events must
+        // be applied while no search is in flight.
+        if (!this.renderSectionManager.didShadowPassRunThisFrame()) {
             this.renderSectionManager.finishAllGraphUpdates();
+            this.processChunkEvents();
         }
-
-        if (this.renderSectionManager.isInShadowPass()) {
-            // Umbra parity: the shadow pass is culling-only and runs first, so lastCameraState (it would win the dirty check), updateChunks (it would spend the shared build budget on the shadow list) and tickVisibleRenders (double-ticked sprites) are all skipped; only currentViewport is assigned for drawChunkLayer's occlusion camera
-            this.currentViewport = viewport;
-            this.renderSectionManager.update(viewport, frame, spectator);
-            return;
-        }
-
-        this.processChunkEvents();
 
         this.renderSectionManager.runAsyncTasks();
 
@@ -125,18 +129,7 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
             this.reload();
         }
 
-        boolean dirty = this.lastCameraState == null || !this.lastCameraState.equals(cameraState);
-
-        if (dirty) {
-            this.renderSectionManager.markGraphDirty();
-            this.lastCameraState = cameraState;
-        }
-
-        this.currentViewport = viewport;
-
-        this.renderSectionManager.runAsyncTasks();
-
-        this.renderSectionManager.updateChunks(updateChunksImmediately);
+        this.prepareFrame(viewport, cameraState, updateChunksImmediately);
 
         this.renderSectionManager.uploadChunks();
 
@@ -151,7 +144,49 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
         this.renderSectionManager.tickVisibleRenders();
     }
 
-    // Drains the chunk tracker's add/remove events into the section manager once per frame on the render thread, so the section table reshapes once
+    /**
+     * Shadow-pass counterpart of {@link #setupTerrain}. The shadow pass precedes the terrain pass in a frame, so
+     * this joins the previous frame's searches, applies chunk load/unload events while the lattice is quiescent,
+     * and runs the terrain search for {@code playerViewport} when one is due; the terrain pass then reuses it.
+     * Render-distance reloads and uploads are left to the terrain pass.
+     *
+     * @param playerViewport the player camera's viewport for this frame
+     * @param shadowViewport the shadow frustum, centred on the player camera
+     */
+    public void setupShadowTerrain(Viewport playerViewport,
+                                   Viewport shadowViewport,
+                                   CameraState cameraState,
+                                   @Deprecated(forRemoval = true) int frame,
+                                   boolean spectator) {
+        NativeBuffer.reclaim(false);
+
+        this.renderSectionManager.finishAllGraphUpdates();
+
+        this.processChunkEvents();
+
+        this.prepareFrame(shadowViewport, cameraState, false);
+
+        this.renderSectionManager.updateForShadowPass(playerViewport, shadowViewport, frame, spectator);
+
+        this.renderSectionManager.tickVisibleRenders();
+    }
+
+    // Steps common to both passes: camera-change detection, async task draining and chunk build scheduling.
+    private void prepareFrame(Viewport viewport, CameraState cameraState, boolean updateChunksImmediately) {
+        boolean dirty = this.lastCameraState == null || !this.lastCameraState.equals(cameraState);
+
+        if (dirty) {
+            this.renderSectionManager.markGraphDirty();
+            this.lastCameraState = cameraState;
+        }
+
+        this.currentViewport = viewport;
+
+        this.renderSectionManager.runAsyncTasks();
+
+        this.renderSectionManager.updateChunks(updateChunksImmediately);
+    }
+
     private void processChunkEvents() {
         var tracker = ChunkTrackerHolder.get(this.world);
         tracker.forEachEvent(this.renderSectionManager::onChunkAdded, this.renderSectionManager::onChunkRemoved);
@@ -159,12 +194,13 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
 
     protected abstract ChunkRenderMatrices createChunkRenderMatrices();
 
-    // The viewport the most recent setupTerrain ran with; drawChunkLayer needs it for the occlusion camera
     public Viewport getLastViewport() {
         return this.currentViewport;
     }
 
-    // Draws every visible section for one vanilla layer (a layer may map to several passes); the occlusion camera is the one the graph was built against and the real camera is the caller's current position, and mixing them pops geometry or breaks sorting
+    /**
+     * Performs a render pass for the given {@link LAYER} and draws all visible chunks for it.
+     */
     public void drawChunkLayer(LAYER renderLayer, double x, double y, double z) {
         ChunkRenderMatrices matrices = createChunkRenderMatrices();
 
@@ -172,19 +208,13 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
 
         if (passes != null && !passes.isEmpty()) {
             var occlusionCamera = this.getLastViewport().getTransform();
-            var realCamera = this.realCamera;
-
-            // Every layer of a frame draws from the same position, so the split transform is built once per move
-            if (realCamera == null || realCamera.x != x || realCamera.y != y || realCamera.z != z) {
-                this.realCamera = realCamera = new CameraTransform(x, y, z);
-            }
+            var realCamera = new CameraTransform(x, y, z);
             for (var pass : passes) {
                 this.renderSectionManager.renderLayer(matrices, pass, occlusionCamera, realCamera);
             }
         }
     }
 
-    // Tears down and recreates the section manager, e.g. after a render distance change
     public void reload() {
         if (this.world == null) {
             return;
@@ -197,7 +227,6 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
 
     protected abstract SECTIONMANAGER createRenderSectionManager(CommandList commandList);
 
-    // Creates the section manager for the current world
     protected void initRenderer(CommandList commandList) {
         if (this.renderSectionManager != null) {
             this.renderSectionManager.destroy();
@@ -214,10 +243,9 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
 
     protected abstract void renderBlockEntityList(List<BLOCKENTITY> list, BLOCKENTITY_RENDER_CONTEXT context);
 
-    // Block entities drawn by the current renderBlockEntities call
     private int renderedBlockEntities;
 
-    // Both passes; returns the count for the debug screen
+    // Visible sections' culled block entities, then every global one; returns how many were drawn
     public int renderBlockEntities(BLOCKENTITY_RENDER_CONTEXT renderContext) {
         this.renderedBlockEntities = 0;
         MinecraftBuiltRenderSectionData.forEachVisibleSectionData(this.renderSectionManager.getRenderLists(),
@@ -227,7 +255,6 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
         return this.renderedBlockEntities;
     }
 
-    // Skips empty lists and keeps the per-frame tally the caller reports
     @SuppressWarnings("unchecked")
     private void drawBlockEntityList(List<?> list, BLOCKENTITY_RENDER_CONTEXT renderContext) {
         if (!list.isEmpty()) {
@@ -242,7 +269,6 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
     public abstract int getMinimumBuildHeight();
     public abstract int getMaximumBuildHeight();
 
-    // Whether the section containing a point was drawn
     public boolean isPointVisible(double x, double y, double z) {
         if (y < getMinimumBuildHeight() + 0.5D || y > getMaximumBuildHeight() - 0.5D) {
             return true;
@@ -255,9 +281,9 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
         );
     }
 
-    // Whether any section a box overlaps was drawn
     public boolean isBoxVisible(double x1, double y1, double z1, double x2, double y2, double z2) {
-        // Boxes outside the valid world height never map to a rendered chunk, so always render them or they are culled incorrectly
+        // Boxes outside the valid world height will never map to a rendered chunk
+        // Always render these boxes or they'll be culled incorrectly!
         if (y2 < getMinimumBuildHeight() + 0.5D || y1 > getMaximumBuildHeight() - 0.5D) {
             return true;
         }
@@ -288,7 +314,6 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
         return false;
     }
 
-    // The C: line for the debug screen
     public String getChunksDebugString() {
         // C: visible/total D: distance
         return String.format("C: %d/%d D: %d %s", this.renderSectionManager.getVisibleChunkCount(),
@@ -296,17 +321,20 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
                 this.renderSectionManager.getTickerDebugString());
     }
 
-    // The pass set in use
     public RenderPassConfiguration<?> getRenderPassConfiguration() {
         return this.renderSectionManager.getRenderPassConfiguration();
     }
 
-    // Rebuilds every section overlapping a block-coordinate region; >> 4 is an arithmetic shift so negative coordinates floor correctly, unlike division
+    /**
+     * Schedules chunk rebuilds for all chunks in the specified block region.
+     */
     public void scheduleRebuildForBlockArea(int minX, int minY, int minZ, int maxX, int maxY, int maxZ, boolean important) {
         this.scheduleRebuildForChunks(minX >> 4, minY >> 4, minZ >> 4, maxX >> 4, maxY >> 4, maxZ >> 4, important);
     }
 
-    // Rebuilds every section in an inclusive section-coordinate box (hence <=), since callers pass the min and max section actually touched
+    /**
+     * Schedules chunk rebuilds for all chunks in the specified chunk region.
+     */
     public void scheduleRebuildForChunks(int minX, int minY, int minZ, int maxX, int maxY, int maxZ, boolean important) {
         for (int chunkX = minX; chunkX <= maxX; chunkX++) {
             for (int chunkY = minY; chunkY <= maxY; chunkY++) {
@@ -317,12 +345,13 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
         }
     }
 
-    // Queues one section for remeshing; `important` uses the blocking queue drained before the frame draws, which a just-placed block needs
+    /**
+     * Schedules a chunk rebuild for the render belonging to the given chunk section position.
+     */
     public void scheduleRebuildForChunk(int x, int y, int z, boolean important) {
         this.renderSectionManager.scheduleRebuild(x, y, z, important);
     }
 
-    // Lines for the F3 overlay; the viewport block is skipped before the first setupTerrain, when it is still null
     public Collection<String> getDebugStrings() {
         var debugStrings = new ArrayList<String>();
         if (this.currentViewport != null) {
@@ -335,12 +364,13 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
         return debugStrings;
     }
 
-    // Whether a section has been built at least once
     public boolean isSectionReady(int x, int y, int z) {
         return this.renderSectionManager.isSectionBuilt(x, y, z);
     }
 
-    // Implemented by mixin on the game's own WorldRenderer so anything holding one can reach ours; the impetus$ prefix avoids name collisions
+    /**
+     * This interface should be implemented on the WorldRenderer or equivalent class.
+     */
     public interface Provider<T extends SimpleWorldRenderer<?, ?, ?, ?, ?>> {
         T impetus$getWorldRenderer();
 

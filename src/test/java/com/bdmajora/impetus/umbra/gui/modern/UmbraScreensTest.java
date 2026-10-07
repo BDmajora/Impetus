@@ -231,8 +231,10 @@ class UmbraScreensTest {
         assertNull(Umbra.getCurrentPack());
         assertEquals(List.of("Bare", "Demo"), Umbra.listAvailablePacks());
 
-        // Selecting a pack persists it and parses it; option changes are written to the pack's own .txt
+        // Selecting a pack persists it and parses it, starting on the dimension already being played; option changes are written to the pack's own .txt
+        Umbra.onWorldChanged(-1, "the_nether");
         Umbra.setShaderpackAndReload("Demo");
+        Umbra.onWorldChanged(0, null);
         assertEquals("Demo", Umbra.getSelectedPackName());
         assertNotNull(Umbra.getCurrentPack());
         assertTrue(Umbra.isShaderPackInUse());

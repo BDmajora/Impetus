@@ -6,6 +6,8 @@ import org.lwjgl.opengl.GL32;
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 import com.bdmajora.impetus.engine.impl.gl.GlObject;
+import com.bdmajora.impetus.engine.impl.gl.attribute.GlVertexFormat;
+import com.bdmajora.impetus.engine.impl.gl.debug.GLDebug;
 import com.bdmajora.impetus.engine.impl.gl.shader.uniform.GlUniform;
 import com.bdmajora.impetus.engine.impl.gl.shader.uniform.GlUniformBlock;
 import org.apache.logging.log4j.LogManager;
@@ -117,7 +119,16 @@ public class GlProgram<T> extends GlObject implements ShaderBindingContext {
             return this;
         }
 
-        // Fixes a fragment output location before link
+        public Builder bindAttributes(GlVertexFormat format, int firstAttributeIndex) {
+            int index = firstAttributeIndex;
+
+            for (var attribute : format.getAttributes()) {
+                this.bindAttribute(attribute.getName(), index++);
+            }
+
+            return this;
+        }
+
         public Builder bindFragmentData(String name, int index) {
             LWJGL.glBindFragDataLocation(this.program, index, name);
 

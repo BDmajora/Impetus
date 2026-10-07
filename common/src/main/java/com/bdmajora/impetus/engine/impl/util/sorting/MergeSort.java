@@ -33,6 +33,16 @@ package com.bdmajora.impetus.engine.impl.util.sorting;
 public class MergeSort {
     private static final int INSERTION_SORT_THRESHOLD = 16;
 
+    // The indices 0..n-1 ordered by their keys
+    public static int[] mergeSort(float[] keys) {
+        int[] indices = new int[keys.length];
+        for (int i = 0; i < indices.length; i++) {
+            indices[i] = i;
+        }
+        mergeSort(indices, keys);
+        return indices;
+    }
+
     // Sorts an index array by its keys in place
     public static void mergeSort(final int[] indices, final float[] keys) {
         mergeSort(indices, keys, 0, indices.length, null);

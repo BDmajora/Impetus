@@ -18,6 +18,7 @@ public abstract class AbstractFrame extends AbstractWidget implements Interactab
     protected final List<Renderable> drawable = new ArrayList<>();
     protected final List<ControlElement<?>> controlElements = new ArrayList<>();
     protected boolean renderOutline;
+    private Interactable capturedChild;
 
     public AbstractFrame(Dim2i dim, boolean renderOutline) {
         this.dim = dim;
@@ -46,7 +47,9 @@ public abstract class AbstractFrame extends AbstractWidget implements Interactab
             drawContext.drawBorder(this.dim.x(), this.dim.y(), this.dim.getLimitX(), this.dim.getLimitY(), 0xFFAAAAAA);
         }
         for (Renderable drawable : this.drawable) {
-            drawable.render(drawContext, mouseX, mouseY, delta);
+            // While a child is captured (mid-drag), don't let the cursor also "hover" its siblings.
+            boolean isOtherWhileCapturing = this.capturedChild != null && drawable != this.capturedChild;
+            drawable.render(drawContext, isOtherWhileCapturing ? -1 : mouseX, isOtherWhileCapturing ? -1 : mouseY, delta);
         }
     }
 
@@ -56,7 +59,16 @@ public abstract class AbstractFrame extends AbstractWidget implements Interactab
         return this.children.stream();
     }
 
-    // Frame bounds
+    @Override
+    public Interactable getCapturedChild() {
+        return this.capturedChild;
+    }
+
+    @Override
+    public void setCapturedChild(Interactable child) {
+        this.capturedChild = child;
+    }
+
     public Dim2i getDimensions() {
         return this.dim;
     }

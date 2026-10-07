@@ -18,10 +18,12 @@ import com.bdmajora.testing.TestGl;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.lwjgl.system.MemoryUtil;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -144,17 +146,16 @@ class GLRenderDeviceTest {
         MultiDrawBatch batch = new MultiDrawBatch(4);
         assertEquals(4, batch.capacity());
         assertTrue(batch.isEmpty());
-        TestGl.gl().memPutInt(batch.pElementCount, 6);
-        TestGl.gl().memPutInt(batch.pElementCount + 4, 12);
+        MemoryUtil.memPutInt(batch.pElementCount, 6);
+        MemoryUtil.memPutInt(batch.pElementCount + 4, 12);
         batch.size = 2;
         assertEquals(2, batch.size());
         assertFalse(batch.isEmpty());
         assertEquals(12, batch.getIndexBufferSize());
         draw.multiDrawElementsBaseVertex(batch, GlPrimitiveType.TRIANGLES, GlIndexType.UNSIGNED_INT);
         Mockito.verify(TestGl.gl()).glMultiDrawElementsBaseVertex(4, batch.pElementCount, 0x1405, batch.pElementPointer, 2, batch.pBaseVertex);
-        GlMutableBuffer indirect = list.createMutableBuffer();
-        draw.multiDrawElementsIndirect(indirect, 3, GlPrimitiveType.TRIANGLES, GlIndexType.UNSIGNED_SHORT);
-        Mockito.verify(TestGl.gl()).glMultiDrawElementsIndirect(4, 0x1403, 0, 3, 0);
+        draw.multiDrawElementsIndirect(64L, 3, GlPrimitiveType.TRIANGLES, GlIndexType.UNSIGNED_SHORT);
+        Mockito.verify(TestGl.gl()).glMultiDrawElementsIndirect(4, 0x1403, 64L, 3, 0);
         batch.clear();
         assertTrue(batch.isEmpty());
         batch.delete();
@@ -168,14 +169,16 @@ class GLRenderDeviceTest {
 
     @Test
     void batchAllocationFailuresAreReported() {
-        long real = TestGl.gl().nmemAlloc(64);
-        Mockito.when(TestGl.gl().nmemAlignedAlloc(Mockito.anyLong(), Mockito.anyLong())).thenReturn(0L);
-        assertThrows(OutOfMemoryError.class, () -> new MultiDrawBatch(1));
-        Mockito.when(TestGl.gl().nmemAlignedAlloc(Mockito.anyLong(), Mockito.anyLong())).thenReturn(real, 0L);
-        Mockito.doNothing().when(TestGl.gl()).nmemAlignedFree(Mockito.anyLong());
-        assertThrows(OutOfMemoryError.class, () -> new MultiDrawBatch(1));
-        Mockito.when(TestGl.gl().nmemAlignedAlloc(Mockito.anyLong(), Mockito.anyLong())).thenReturn(real, real, 0L);
-        assertThrows(OutOfMemoryError.class, () -> new MultiDrawBatch(1));
-        TestGl.gl().nmemFree(real);
+        long real = MemoryUtil.nmemAlloc(64);
+        try (MockedStatic<MemoryUtil> memory = Mockito.mockStatic(MemoryUtil.class, Mockito.CALLS_REAL_METHODS)) {
+            memory.when(() -> MemoryUtil.nmemAlignedAlloc(Mockito.anyLong(), Mockito.anyLong())).thenReturn(0L);
+            assertThrows(OutOfMemoryError.class, () -> new MultiDrawBatch(1));
+            memory.when(() -> MemoryUtil.nmemAlignedAlloc(Mockito.anyLong(), Mockito.anyLong())).thenReturn(real, 0L);
+            memory.when(() -> MemoryUtil.nmemAlignedFree(Mockito.anyLong())).then(inv -> null);
+            assertThrows(OutOfMemoryError.class, () -> new MultiDrawBatch(1));
+            memory.when(() -> MemoryUtil.nmemAlignedAlloc(Mockito.anyLong(), Mockito.anyLong())).thenReturn(real, real, 0L);
+            assertThrows(OutOfMemoryError.class, () -> new MultiDrawBatch(1));
+        }
+        MemoryUtil.nmemFree(real);
     }
 }

@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 import java.nio.ByteBuffer;
+import org.lwjgl.system.MemoryUtil;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -53,19 +54,19 @@ class FunctionsTest {
         MultidrawFunctions.CORE.multiDrawElementsBaseVertex(4, 1, 2, 3, 4, 5);
         Mockito.verify(TestGl.gl()).glMultiDrawElementsBaseVertex(4, 1, 2, 3, 4, 5);
 
-        long counts = TestGl.gl().nmemCalloc(2, 4);
-        long pointers = TestGl.gl().nmemCalloc(2, 8);
-        long base = TestGl.gl().nmemCalloc(2, 4);
-        TestGl.gl().memPutInt(counts, 6);
-        TestGl.gl().memPutInt(counts + 4, 0);
-        TestGl.gl().memPutAddress(pointers, 100);
-        TestGl.gl().memPutInt(base, 7);
+        long counts = MemoryUtil.nmemCalloc(2, 4);
+        long pointers = MemoryUtil.nmemCalloc(2, 8);
+        long base = MemoryUtil.nmemCalloc(2, 4);
+        MemoryUtil.memPutInt(counts, 6);
+        MemoryUtil.memPutInt(counts + 4, 0);
+        MemoryUtil.memPutAddress(pointers, 100);
+        MemoryUtil.memPutInt(base, 7);
         MultidrawFunctions.FALLBACK.multiDrawElementsBaseVertex(4, counts, 2, pointers, 2, base);
         Mockito.verify(TestGl.gl()).glDrawElementsBaseVertex(4, 6, 2, 100, 7);
         Mockito.verify(TestGl.gl(), Mockito.times(1)).glDrawElementsBaseVertex(Mockito.anyInt(), Mockito.anyInt(), Mockito.anyInt(), Mockito.anyLong(), Mockito.anyInt());
-        TestGl.gl().nmemFree(counts);
-        TestGl.gl().nmemFree(pointers);
-        TestGl.gl().nmemFree(base);
+        MemoryUtil.nmemFree(counts);
+        MemoryUtil.nmemFree(pointers);
+        MemoryUtil.nmemFree(base);
     }
 
     @Test
@@ -78,13 +79,13 @@ class FunctionsTest {
         Mockito.verify(TestGl.gl()).glCopyBufferSubData(0x8F36, 0x8F37, 1, 2, 3);
 
         assertThrows(IllegalStateException.class, () -> BufferCopyFunctions.PIXEL_PACK.copyBufferSubData(list, src, dst, 0, 0, 4));
-        long srcMem = TestGl.gl().nmemCalloc(1, 16);
-        long dstMem = TestGl.gl().nmemCalloc(1, 16);
-        TestGl.gl().memPutInt(srcMem + 4, 42);
+        long srcMem = MemoryUtil.nmemCalloc(1, 16);
+        long dstMem = MemoryUtil.nmemCalloc(1, 16);
+        MemoryUtil.memPutInt(srcMem + 4, 42);
         Mockito.when(TestGl.gl().nglMapBuffer(GlBufferTarget.PIXEL_PACK_BUFFER.getTargetParameter(), 0x88B8)).thenReturn(srcMem);
         Mockito.when(TestGl.gl().nglMapBuffer(GlBufferTarget.PIXEL_UNPACK_BUFFER.getTargetParameter(), 0x88B9)).thenReturn(dstMem);
         BufferCopyFunctions.PIXEL_PACK.copyBufferSubData(list, src, dst, 4, 8, 4);
-        assertEquals(42, TestGl.gl().memGetInt(dstMem + 8));
+        assertEquals(42, MemoryUtil.memGetInt(dstMem + 8));
         Mockito.verify(list).bindBuffer(GlBufferTarget.PIXEL_PACK_BUFFER, null);
 
         Mockito.when(TestGl.gl().nglMapBuffer(GlBufferTarget.PIXEL_UNPACK_BUFFER.getTargetParameter(), 0x88B9)).thenReturn(0L);
@@ -93,8 +94,8 @@ class FunctionsTest {
         assertThrows(IllegalStateException.class, () -> BufferCopyFunctions.PIXEL_PACK.copyBufferSubData(list, src, dst, 0, 0, 4));
         src.setActiveMapping(new GlBufferMapping(src, ByteBuffer.allocate(1)));
         assertThrows(IllegalStateException.class, () -> BufferCopyFunctions.PIXEL_PACK.copyBufferSubData(list, src, dst, 0, 0, 4));
-        TestGl.gl().nmemFree(srcMem);
-        TestGl.gl().nmemFree(dstMem);
+        MemoryUtil.nmemFree(srcMem);
+        MemoryUtil.nmemFree(dstMem);
     }
 
     @Test

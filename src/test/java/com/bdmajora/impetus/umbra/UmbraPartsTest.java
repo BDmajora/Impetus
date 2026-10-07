@@ -52,8 +52,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.lwjgl.system.MemoryUtil;
 
-import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -126,17 +126,17 @@ class UmbraPartsTest {
         vertex.blockEmission = 300;
         Material material = mock(Material.class);
         java.nio.ByteBuffer memory = java.nio.ByteBuffer.allocateDirect(UmbraChunkVertexType.STRIDE * 2);
-        long base = LWJGL.memAddress(memory);
+        long base = MemoryUtil.memAddress(memory);
         long next = UmbraChunkVertexType.INSTANCE.createEncoder().write(base, material, vertex, 2);
         assertEquals(base + UmbraChunkVertexType.STRIDE, next);
         // Ids clamp to the short range and the mid-block offset and emission to their bytes
-        assertEquals(Short.MAX_VALUE, LWJGL.memGetShort(base + 44));
-        assertEquals(Short.MIN_VALUE, LWJGL.memGetShort(base + 46));
-        assertEquals(0x7F | (0x80 << 8) | (16 << 16) | (0xFF << 24), LWJGL.memGetInt(base + 52));
+        assertEquals(Short.MAX_VALUE, MemoryUtil.memGetShort(base + 44));
+        assertEquals(Short.MIN_VALUE, MemoryUtil.memGetShort(base + 46));
+        assertEquals(0x7F | (0x80 << 8) | (16 << 16) | (0xFF << 24), MemoryUtil.memGetInt(base + 52));
         vertex.midBlockX = 0.0F;
         vertex.blockEmission = -5;
         UmbraChunkVertexType.INSTANCE.createEncoder().write(next, material, vertex, 0);
-        assertEquals((0x80 << 8) | (16 << 16), LWJGL.memGetInt(next + 52));
+        assertEquals((0x80 << 8) | (16 << 16), MemoryUtil.memGetInt(next + 52));
 
         // A flat quad's normal points out of it, and the tangent follows the U direction
         Vector3f normal = new Vector3f();

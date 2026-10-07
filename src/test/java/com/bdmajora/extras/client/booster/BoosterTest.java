@@ -69,6 +69,8 @@ class BoosterTest {
         Mixins.set(StreamingUploader.class, "region", 0);
         Mixins.set(StreamingUploader.class, "cursor", 0);
         java.util.Arrays.fill(Mixins.<long[]>get(StreamingUploader.class, "fences"), 0L);
+        Mixins.<java.util.Map<?, ?>>get(StreamingUploader.class, "VERTEX_ARRAYS").clear();
+        StreamingUploader.formatCache = false;
     }
 
     @SuppressWarnings("unchecked")
@@ -197,6 +199,69 @@ class BoosterTest {
     }
 
     @Test
+    void cachedLayoutsDrawThroughOneVertexArrayEach() {
+        StreamingUploader.formatCache = true;
+        lack("OpenGL44");
+        lack("GL_ARB_buffer_storage");
+        gl(GL15.class).when(GL15::glGenBuffers).thenReturn(7);
+        gl(GL30.class).when(GL30::glGenVertexArrays).thenReturn(11, 12);
+
+        // The layout's data starts on a whole vertex, and the draw starts at that vertex
+        Mixins.set(StreamingUploader.class, "buffer", -1);
+        assertTrue(StreamingUploader.draw(quad()));
+        Mixins.set(StreamingUploader.class, "cursor", 5);
+        assertTrue(StreamingUploader.draw(quad()));
+        int stride = DefaultVertexFormats.POSITION_TEX_COLOR_NORMAL.getSize();
+        gl(GL11.class).verify(() -> GL11.glDrawArrays(GL11.GL_QUADS, 1, 4));
+        gl(GL30.class).verify(() -> GL30.glBindVertexArray(11), Mockito.times(3));
+        gl(GL30.class).verify(GL30::glGenVertexArrays, Mockito.times(1));
+        gl(GL15.class).verify(() -> GL15.glBufferSubData(eq(GL15.GL_ARRAY_BUFFER), eq((long) stride), any(ByteBuffer.class)));
+
+        // A layout without colour gets its own array and skips the colour reset
+        BufferBuilder plain = new BufferBuilder(64);
+        plain.begin(GL11.GL_TRIANGLES, DefaultVertexFormats.POSITION);
+        for (int i = 0; i < 3; i++) {
+            plain.pos(i, 0, 0).endVertex();
+        }
+        assertTrue(StreamingUploader.draw(plain));
+        gl(GL30.class).verify(() -> GL30.glBindVertexArray(12), Mockito.times(2));
+
+        // A full cache, or no VAOs at all, keeps the per-draw pointers
+        java.util.Map<Object, Integer> cache = Mixins.get(StreamingUploader.class, "VERTEX_ARRAYS");
+        for (int i = cache.size(); i < StreamingUploader.MAX_CACHED_FORMATS; i++) {
+            cache.put(new Object(), 99);
+        }
+        BufferBuilder other = new BufferBuilder(64);
+        other.begin(GL11.GL_TRIANGLES, DefaultVertexFormats.POSITION_COLOR);
+        for (int i = 0; i < 3; i++) {
+            other.pos(i, 0, 0).color(1.0F, 1.0F, 1.0F, 1.0F).endVertex();
+        }
+        assertTrue(StreamingUploader.draw(other));
+        cache.clear();
+        lack("OpenGL30");
+        assertTrue(StreamingUploader.draw(quad()));
+        gl(GL30.class).verify(GL30::glGenVertexArrays, Mockito.times(2));
+    }
+
+    @Test
+    void cachedLayoutsAlignInsideThePersistentRingToo() {
+        StreamingUploader.formatCache = true;
+        ByteBuffer mapped = ByteBuffer.allocateDirect(4 * REGION_SIZE);
+        gl(GL30.class).when(() -> GL30.glMapBufferRange(anyInt(), anyLong(), anyLong(), anyInt(), any())).thenReturn(mapped);
+        gl(GL30.class).when(GL30::glGenVertexArrays).thenReturn(11);
+        assertTrue(StreamingUploader.draw(quad()));
+        // The second region starts off a whole vertex, so the draw is pushed up to the next one
+        Mixins.set(StreamingUploader.class, "region", 1);
+        Mixins.set(StreamingUploader.class, "cursor", 0);
+        assertTrue(StreamingUploader.draw(quad()));
+        int stride = DefaultVertexFormats.POSITION_TEX_COLOR_NORMAL.getSize();
+        long first = StreamingUploader.alignUp(REGION_SIZE, stride) / stride;
+        gl(GL11.class).verify(() -> GL11.glDrawArrays(GL11.GL_QUADS, (int) first, 4));
+        assertEquals(30, StreamingUploader.alignUp(29, 10));
+        assertEquals(30, StreamingUploader.alignUp(30, 10));
+    }
+
+    @Test
     void theMasterSwitchGatesEveryBoosterPart() {
         ExtrasConfig.GpuBoosterSettings settings = new ExtrasConfig.GpuBoosterSettings();
         settings.enabled = true;
@@ -204,10 +269,13 @@ class BoosterTest {
         settings.fastRandom = true;
         settings.streamUploads = true;
         GpuBooster.apply(settings);
-        assertTrue(FastMath.enabled && FastRandom.enabled && StreamingUploader.enabled);
+        assertTrue(FastMath.enabled && FastRandom.enabled && StreamingUploader.enabled && StreamingUploader.formatCache);
+        settings.vertexFormatCache = false;
+        GpuBooster.apply(settings);
+        assertFalse(StreamingUploader.formatCache);
         settings.enabled = false;
         GpuBooster.apply(settings);
-        assertFalse(FastMath.enabled || FastRandom.enabled || StreamingUploader.enabled);
+        assertFalse(FastMath.enabled || FastRandom.enabled || StreamingUploader.enabled || StreamingUploader.formatCache);
         assertNotNull(Mixins.construct(GpuBooster.class));
     }
 

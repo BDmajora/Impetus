@@ -7,14 +7,16 @@ import com.bdmajora.impetus.engine.impl.gl.device.CommandList;
 import com.bdmajora.impetus.engine.impl.gl.device.RenderDevice;
 import com.bdmajora.impetus.engine.impl.gl.functions.BufferCopyFunctions;
 import com.bdmajora.impetus.engine.impl.gl.functions.BufferMapRangeFunctions;
-import com.bdmajora.impetus.engine.impl.gl.functions.BufferStorageFunctions;
 import com.bdmajora.impetus.engine.impl.gl.sync.GlFence;
 import com.bdmajora.impetus.engine.impl.gl.util.EnumBitField;
 import com.bdmajora.impetus.engine.impl.common.util.MathUtil;
+import com.bdmajora.impetus.lwjgl.GLExtension;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+
+import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 public class MappedStagingBuffer implements StagingBuffer {
     private static final EnumBitField<GlBufferStorageFlags> STORAGE_FLAGS =
@@ -52,7 +54,8 @@ public class MappedStagingBuffer implements StagingBuffer {
     // Needs persistent mapping and buffer storage
     public static boolean isSupported(RenderDevice instance) {
         var functions = instance.getDeviceFunctions();
-        return functions.bufferStorageFunctions() != BufferStorageFunctions.NONE
+        return (LWJGL.isOpenGLVersionSupported(4, 4)
+                || LWJGL.isExtensionSupported(GLExtension.ARB_buffer_storage))
                 && functions.bufferCopyFunctions() != BufferCopyFunctions.PIXEL_PACK
                 && functions.bufferMapRangeFunctions() == BufferMapRangeFunctions.CORE;
     }
@@ -146,12 +149,15 @@ public class MappedStagingBuffer implements StagingBuffer {
         return merged;
     }
 
-    // Unmaps and frees
+    // Unmaps and frees, fences still in flight included, or teardown leaks every sync object
     @Override
     public void delete(CommandList commandList) {
         this.mappedBuffer.delete(commandList);
         this.fallbackStagingBuffer.delete(commandList);
         this.pendingCopies.clear();
+        while (!this.fencedRegions.isEmpty()) {
+            this.fencedRegions.dequeue().fence().delete();
+        }
     }
 
     // Reclaims regions whose fences have signalled

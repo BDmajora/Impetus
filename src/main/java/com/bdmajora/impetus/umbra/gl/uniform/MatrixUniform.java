@@ -1,7 +1,7 @@
 package com.bdmajora.impetus.umbra.gl.uniform;
 
 import org.joml.Matrix4fc;
-import com.bdmajora.impetus.lwjgl.MemoryStack;
+import org.lwjgl.system.MemoryStack;
 
 import java.nio.FloatBuffer;
 import java.util.function.Supplier;
@@ -26,7 +26,7 @@ public class MatrixUniform extends Uniform {
             return;
         }
         // Thread-local stack rather than a field or fresh allocation: the buffer lives only for this call and try-with-resources pops it even if the upload throws
-        try (MemoryStack stack = LWJGL.stackPush()) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
             FloatBuffer buffer = stack.mallocFloat(16);
             matrix.get(buffer);
             // false = do not transpose; JOML already stores column-major, which is what GL expects

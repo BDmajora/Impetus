@@ -251,6 +251,11 @@ public final class CoarctatioOptionPages {
                         OptionImpact.MEDIUM,
                         (config, value) -> config.parallelTextureLoad = value,
                         config -> config.parallelTextureLoad))
+                .add(restartToggle("parallel_model_load",
+                        "impetus.options.coarctatio.parallel_model_load",
+                        OptionImpact.HIGH,
+                        (config, value) -> config.parallelModelLoad = value,
+                        config -> config.parallelModelLoad))
                 .add(restartToggle("compact_remapper_caches",
                         "impetus.options.coarctatio.remapper_caches",
                         OptionImpact.MEDIUM,

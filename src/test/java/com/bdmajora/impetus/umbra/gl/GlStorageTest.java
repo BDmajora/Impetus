@@ -32,6 +32,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -180,7 +181,7 @@ class GlStorageTest {
         assertEquals(-1, holder.getBufferId(5));
         verify(TestGl.gl()).glBufferStorage(SSBO, 1024L, 0);
         verify(TestGl.gl()).glBufferStorage(SSBO, 16L * 50 * 25, 0);
-        verify(TestGl.gl(), atLeast(1)).glClearBufferData(eq(SSBO), anyInt(), anyInt(), anyInt(), any(ByteBuffer.class));
+        verify(TestGl.gl(), atLeast(1)).glClearBufferData(eq(SSBO), anyInt(), anyInt(), anyInt(), isNull());
         // A failed index still binds, to buffer 0
         verify(TestGl.gl()).glBindBufferBase(SSBO, 20, 0);
 

@@ -1,6 +1,7 @@
 package com.bdmajora.extras.mixin.models;
 
 import com.bdmajora.extras.Extras;
+import com.bdmajora.impetus.umbra.gl.program.ImmediateTessellation;
 import net.minecraft.client.model.ModelRenderer;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.util.math.MathHelper;
@@ -77,13 +78,13 @@ public abstract class ModelRendererMatrixMixin {
             this.compileDisplayList(scale);
         }
         if (!this.impetus$hasTransform()) {
-            GlStateManager.callList(this.displayList);
+            ImmediateTessellation.callModelList((ModelRenderer) (Object) this, this.displayList, scale);
             this.impetus$renderChildren(scale);
             return;
         }
         GlStateManager.pushMatrix();
         this.impetus$multiply(scale, true, false);
-        GlStateManager.callList(this.displayList);
+        ImmediateTessellation.callModelList((ModelRenderer) (Object) this, this.displayList, scale);
         this.impetus$renderChildren(scale);
         GlStateManager.popMatrix();
     }
@@ -103,7 +104,7 @@ public abstract class ModelRendererMatrixMixin {
         GlStateManager.pushMatrix();
         // renderWithRotation applies its rotations in Y, X, Z order, unlike render's Z, Y, X
         this.impetus$multiply(scale, false, true);
-        GlStateManager.callList(this.displayList);
+        ImmediateTessellation.callModelList((ModelRenderer) (Object) this, this.displayList, scale);
         GlStateManager.popMatrix();
     }
 

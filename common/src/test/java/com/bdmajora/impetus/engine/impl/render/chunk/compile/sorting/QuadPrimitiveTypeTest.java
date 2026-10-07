@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.BitSet;
+import org.lwjgl.system.MemoryUtil;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -22,7 +23,7 @@ class QuadPrimitiveTypeTest {
     }
 
     private static ByteBuffer indices(int quads, QuadPrimitiveType type) {
-        return TestGl.gl().memCalloc(type.getIndexBufferSize(quads)).order(ByteOrder.nativeOrder());
+        return MemoryUtil.memCalloc(type.getIndexBufferSize(quads)).order(ByteOrder.nativeOrder());
     }
 
     // Two horizontal quads stacked at the given heights, captured through the analyzer
@@ -58,8 +59,8 @@ class QuadPrimitiveTypeTest {
         assertEquals(GlPrimitiveType.QUADS, QuadPrimitiveType.DIRECT.getGlPrimitiveType());
         assertTrue(QuadPrimitiveType.DIRECT.getDefines().isEmpty());
         assertThrows(IllegalStateException.class, () -> QuadPrimitiveType.DIRECT.generateSimpleIndexBuffer(direct, 5));
-        TestGl.gl().memFree(tri);
-        TestGl.gl().memFree(direct);
+        MemoryUtil.memFree(tri);
+        MemoryUtil.memFree(direct);
     }
 
     @Test
@@ -99,7 +100,7 @@ class QuadPrimitiveTypeTest {
         ImpetusRuntimeOptions.quadSplittingEnabled = true;
         TranslucentQuadAnalyzer.SortState degenerate = new TranslucentQuadAnalyzer.SortState(TranslucentQuadAnalyzer.Level.DYNAMIC, dynamic.centers(), new float[6], 6, new BitSet(), new Vector3f(), null);
         QuadPrimitiveType.TRIANGULATED.generateSortedIndexBuffer(buffer, 2, degenerate, 0.5f, 10f, 0.5f);
-        TestGl.gl().memFree(buffer);
+        MemoryUtil.memFree(buffer);
     }
 
     @Test

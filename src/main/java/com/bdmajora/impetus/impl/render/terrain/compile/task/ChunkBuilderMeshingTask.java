@@ -30,6 +30,9 @@ import com.bdmajora.impetus.engine.impl.render.chunk.data.MinecraftBuiltRenderSe
 import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.GraphDirection;
 import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.VisibilityEncoding;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
+import com.bdmajora.impetus.engine.impl.render.mesh.MeshTerrainRenderer;
+import com.bdmajora.impetus.engine.impl.render.mesh.region.SectionGeometry;
+import com.bdmajora.impetus.engine.impl.render.mesh.region.SectionGeometryPacker;
 import com.bdmajora.impetus.engine.impl.util.task.CancellationToken;
 import org.joml.Vector3d;
 import com.bdmajora.impetus.impl.compat.fluidlogged.FluidloggedCompat;
@@ -87,7 +90,6 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
 
         // Pack-wide switches read once per section rather than per block
         boolean voxelizeLightBlocks = com.bdmajora.impetus.umbra.material.WorldRenderingSettings.isVoxelizeLightBlocks();
-        boolean useNewBlockRenderer = USE_NEW_BLOCK_RENDERER;
         var blockRenderer = buildContext.getBlockRenderer();
 
         try {
@@ -145,14 +147,11 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                                     : block.canRenderInLayer(blockState, layer);
                             if (renderHere) {
                                 ForgeHooksClient.setRenderLayer(layer);
-                                if (useNewBlockRenderer && blockState.getRenderType() == EnumBlockRenderType.MODEL) {
-                                    blockRenderer.renderBlock(blockState, blockPos, slice, layer);
-                                } else {
-                                    var buffer = buildContext.getBufferForLayer(layer);
-                                    dispatcher.renderBlock(blockState, blockPos, slice, buffer);
-                                    // Attribute the emitted quads to this block for Umbra terrain attributes.
-                                    buildContext.recordVanillaBlockAttribution(layer, blockState, blockPos);
-                                }
+                                // Model rendering is redirected to the fast block renderer by BlockRendererDispatcherMixin when it is on
+                                var buffer = buildContext.getBufferForLayer(layer);
+                                dispatcher.renderBlock(blockState, blockPos, slice, buffer);
+                                // Attributes whatever reached the vanilla buffer to this block for Umbra terrain attributes
+                                buildContext.recordVanillaBlockAttribution(layer, blockState, blockPos);
                             }
                         }
 
@@ -194,7 +193,13 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
 
         encodeVisibilityData(occluder, renderData);
 
-        return new ChunkBuildOutput(this.render, renderData, meshes, this.buildTime);
+        // The mesh backend draws one merged blob per section; packing here keeps that copy and the translucent sort off the render thread
+        SectionGeometry meshGeometry = null;
+        if (MeshTerrainRenderer.isActive()) {
+            meshGeometry = SectionGeometryPacker.pack(meshes, (float) camera.x - minX, (float) camera.y - minY, (float) camera.z - minZ);
+        }
+
+        return new ChunkBuildOutput(this.render, renderData, meshes, meshGeometry, this.buildTime);
     }
 
     // Attaches the offending block and position to a rendering crash

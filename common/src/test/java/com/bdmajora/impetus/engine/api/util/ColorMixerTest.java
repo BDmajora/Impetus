@@ -16,9 +16,12 @@ class ColorMixerTest {
 
     @Test
     void multiplyScalesEachChannel() {
-        assertEquals(0x7F7F7F7F, ColorMixer.mul(0xFFFFFFFF, 0x80808080));
+        assertEquals(0x80808080, ColorMixer.mul(0xFFFFFFFF, 0x80808080));
         int rgb = ColorMixer.mulSingleWithoutAlpha(0xFFFFFFFF, 0x180);
-        assertEquals(0xFF7F7F7F, rgb);
+        assertEquals(0xFF808080, rgb);
+        // Multiplying by white is exact, where truncating took every channel down a step
+        assertEquals(0x12345678, ColorMixer.mul(0x12345678, 0xFFFFFFFF));
+        assertEquals(0x00345678, ColorMixer.mulSingleWithoutAlpha(0x00345678, 0xFF));
         assertEquals(0x00000000, ColorMixer.mul(0, 0xFFFFFFFF));
         new ColorMixer();
     }

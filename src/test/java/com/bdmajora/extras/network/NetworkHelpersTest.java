@@ -7,11 +7,19 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 import net.minecraft.network.PacketBuffer;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -98,5 +106,52 @@ class NetworkHelpersTest {
         FlushBatch.endTick();
         assertFalse(FlushBatch.shouldDefer());
         assertNotNull(Mixins.construct(FlushBatch.class));
+    }
+
+    @Test
+    void scheduledTasksRunWithoutHoldingTheQueueMonitor() {
+        Queue<FutureTask<?>> queue = new ArrayDeque<>();
+        Logger logger = LogManager.getLogger("test");
+        List<String> ran = new ArrayList<>();
+        AtomicBoolean networkParked = new AtomicBoolean(true);
+        // The network thread queues a packet while the first task runs, taking the monitor the way addScheduledTask does; vanilla's drain would park it until the task ended
+        queue.add(new FutureTask<>(() -> {
+            Thread network = new Thread(() -> {
+                synchronized (queue) {
+                    queue.add(new FutureTask<>(() -> ran.add("late"), null));
+                }
+            });
+            network.start();
+            network.join(5000);
+            networkParked.set(network.isAlive());
+            ran.add("first");
+            return null;
+        }));
+        // A failing task is logged and the drain goes on
+        queue.add(new FutureTask<>(() -> {
+            throw new IllegalStateException("logged, not thrown");
+        }));
+        queue.add(new FutureTask<>(() -> ran.add("second"), null));
+        ScheduledTaskDrain.drain(queue, logger);
+        assertFalse(networkParked.get());
+        assertEquals(List.of("first", "second"), ran);
+        // What arrived during the drain waits for the next frame
+        assertEquals(1, queue.size());
+        ScheduledTaskDrain.drain(queue, logger);
+        assertEquals(List.of("first", "second", "late"), ran);
+        ScheduledTaskDrain.drain(queue, logger);
+        assertEquals(3, ran.size());
+
+        // A task that empties the queue itself ends the drain early
+        queue.add(new FutureTask<>(() -> {
+            synchronized (queue) {
+                queue.clear();
+            }
+            return null;
+        }));
+        queue.add(new FutureTask<>(() -> ran.add("cleared"), null));
+        ScheduledTaskDrain.drain(queue, logger);
+        assertFalse(ran.contains("cleared"));
+        assertNotNull(Mixins.construct(ScheduledTaskDrain.class));
     }
 }

@@ -48,8 +48,8 @@ class ChunkHelpersTest {
     void colourWritersFoldAoDifferently() {
         int white = ColorABGR.pack(255, 255, 255, 255);
         assertEquals(ChunkColorWriter.IMPETUS, ChunkColorWriter.active());
-        // 0.5 becomes the byte 127, and 255 * 127 >> 8 truncates to 126
-        assertEquals(ColorABGR.pack(126, 126, 126, 255), ChunkColorWriter.IMPETUS.writeColor(white, 0.5f));
+        // 0.5 becomes the byte 127, and (255 * 127 + 255) >> 8 rounds to 127
+        assertEquals(ColorABGR.pack(127, 127, 127, 255), ChunkColorWriter.IMPETUS.writeColor(white, 0.5f));
         ChunkColorWriter.SeparateAoState.set(true);
         assertTrue(ChunkColorWriter.SeparateAoState.isEnabled());
         assertEquals(ChunkColorWriter.SEPARATE_AO, ChunkColorWriter.active());

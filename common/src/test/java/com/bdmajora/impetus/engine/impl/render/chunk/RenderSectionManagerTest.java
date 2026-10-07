@@ -39,6 +39,8 @@ class RenderSectionManagerTest {
         commands = device.createCommandList();
         Mockito.when(TestGl.gl().glGetUniformLocation(Mockito.anyInt(), Mockito.any())).thenReturn(1);
         TestFogService.cutoff = 1_000_000f;
+        // These tests assert on client-array multi-draws; another test applying the default config would otherwise switch them to indirect
+        com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions.multiDrawIndirect = false;
     }
 
     @AfterEach

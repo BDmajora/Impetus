@@ -8,14 +8,36 @@ import java.lang.reflect.InvocationTargetException;
 
 // Reflection helpers for the static state production code caches at class-init (final fields included) and for private static helpers
 public final class Statics {
+    static final Unsafe UNSAFE = unsafe();
+
     private Statics() {}
+
+    private static Unsafe unsafe() {
+        try {
+            Field theUnsafe = Unsafe.class.getDeclaredField("theUnsafe");
+            theUnsafe.setAccessible(true);
+            return (Unsafe) theUnsafe.get(null);
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    // A bare instance, no constructor run, for classes whose constructors need a running game
+    @SuppressWarnings("unchecked")
+    public static <T> T allocate(Class<T> type) {
+        try {
+            return (T) UNSAFE.allocateInstance(type);
+        } catch (InstantiationException e) {
+            throw new AssertionError(e);
+        }
+    }
 
     // Writes even a static final field, through Unsafe, so cached environment facts can be swapped per test
     public static void set(Class<?> owner, String name, Object value) {
         try {
             Field field = owner.getDeclaredField(name);
             field.setAccessible(true);
-            Unsafe unsafe = TestNativeMemory.UNSAFE;
+            Unsafe unsafe = UNSAFE;
             Object base = unsafe.staticFieldBase(field);
             long offset = unsafe.staticFieldOffset(field);
             if (field.getType() == boolean.class) {

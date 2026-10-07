@@ -3,35 +3,44 @@ package com.bdmajora.impetus.engine.impl.render.chunk.compile.executor;
 import org.jetbrains.annotations.Nullable;
 import java.util.ArrayDeque;
 import java.util.Collection;
-import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.Comparator;
+import java.util.PriorityQueue;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 class ChunkJobQueue {
-    private final ConcurrentLinkedDeque<ChunkJob> jobs = new ConcurrentLinkedDeque<>();
+    /**
+     * Priority given to important jobs, which always run before any deferred job.
+     */
+    static final long IMPORTANT_PRIORITY = Long.MIN_VALUE;
+
+    @SuppressWarnings("ComparatorCombinators")
+    private static final Comparator<ChunkJobTyped<?, ?>> ORDER = (a, b) -> {
+        int result = Long.compare(a.priority, b.priority);
+        return result != 0 ? result : Long.compare(a.sequence, b.sequence);
+    };
+
+    // PriorityQueue is not thread-safe; every access must hold the jobs lock, including worker polls.
+    private final PriorityQueue<ChunkJobTyped<?, ?>> jobs = new PriorityQueue<>(ORDER);
+    private long nextSequence;
 
     private final Semaphore semaphore = new Semaphore(0);
 
     private final AtomicBoolean isRunning = new AtomicBoolean(true);
 
-    // Set by a worker whenever it blocks on an empty queue; read and cleared once per frame by the scheduler to detect under-provisioning
-    private final AtomicBoolean workerBlocked = new AtomicBoolean(false);
-
-    // False after shutdown
     public boolean isRunning() {
         return this.isRunning.get();
     }
 
-    // Important jobs go to the front
-    public void add(ChunkJob job, boolean important) {
+    public void add(ChunkJobTyped<?, ?> job, long priority) {
         if (!this.isRunning()) {
             throw new IllegalStateException("Queue is no longer running");
         }
 
-        if (important) {
-            this.jobs.addFirst(job);
-        } else {
-            this.jobs.addLast(job);
+        synchronized (this.jobs) {
+            job.priority = priority;
+            job.sequence = this.nextSequence++;
+            this.jobs.add(job);
         }
 
         this.semaphore.release(1);
@@ -40,7 +49,7 @@ class ChunkJobQueue {
     // Next job or null, without blocking
     @Nullable
     public ChunkJob pollJob() {
-        return this.isRunning() && this.semaphore.tryAcquire() ? this.jobs.poll() : null;
+        return this.isRunning() && this.semaphore.tryAcquire() ? this.getNextTask() : null;
     }
 
     // Blocks until a job arrives or shutdown
@@ -50,28 +59,22 @@ class ChunkJobQueue {
             return null;
         }
 
-        if (!this.semaphore.tryAcquire()) {
-            // No work available and about to block, so record it so the scheduler can grow the in-flight target
-            this.workerBlocked.set(true);
-            this.semaphore.acquire();
-        }
+        this.semaphore.acquire();
 
         // Important jobs sit at the front
-        return this.jobs.poll();
+        return this.getNextTask();
     }
 
-    // Whether any worker blocked on an empty queue since the last call, read-and-cleared atomically so two windows never count the same block; the scheduler's starvation signal
-    public boolean checkAndClearWorkerBlocked() {
-        return this.workerBlocked.getAndSet(false);
-    }
-
-    // Removes a specific job if still queued, so a thief can run it
     public boolean stealJob(ChunkJob job) {
         if (!this.semaphore.tryAcquire()) {
             return false;
         }
 
-        var success = this.jobs.remove(job);
+        boolean success;
+
+        synchronized (this.jobs) {
+            success = this.jobs.remove(job);
+        }
 
         if (!success) {
             // If we didn't manage to actually steal the task, then we need to release the permit which we did steal
@@ -81,14 +84,20 @@ class ChunkJobQueue {
         return success;
     }
 
-    // Stops accepting and returns whatever was still queued
+    @Nullable
+    private ChunkJob getNextTask() {
+        synchronized (this.jobs) {
+            return this.jobs.poll();
+        }
+    }
+
     public Collection<ChunkJob> shutdown() {
         var list = new ArrayDeque<ChunkJob>();
 
         this.isRunning.set(false);
 
         while (this.semaphore.tryAcquire()) {
-            var task = this.jobs.poll();
+            var task = this.getNextTask();
 
             if (task != null) {
                 list.add(task);
@@ -101,12 +110,12 @@ class ChunkJobQueue {
         return list;
     }
 
-    // Both queues
+    // Jobs not yet claimed by a worker
     public int size() {
         return this.semaphore.availablePermits();
     }
 
-    // Both queues
+    // Whether any jobs remain unclaimed
     public boolean isEmpty() {
         return this.size() == 0;
     }

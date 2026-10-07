@@ -231,7 +231,7 @@ class ShaderPackTest {
         assertEquals(java.util.Optional.of(false), pack.getProperties().getProgramEnabled("composite1"));
         assertTrue(pack.hasFeature(FeatureFlags.SSBO));
         assertTrue(pack.hasFeature(FeatureFlags.CUSTOM_IMAGES));
-        assertFalse(pack.hasFeature(FeatureFlags.TESSELLATION_SHADERS));
+        assertTrue(pack.hasFeature(FeatureFlags.TESSELLATION_SHADERS));
 
         // Other mods' metadata never reaches the option scan
         assertFalse(pack.getSources().containsKey(path("/voxy.json")));

@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.impl.gui;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.I18n;
 import com.bdmajora.impetus.impl.platform.GameWindow;
 import org.lwjgl.opengl.DisplayMode;
@@ -64,15 +65,13 @@ public final class FullscreenResolutions {
         return mode.getWidth() + "x" + mode.getHeight();
     }
 
-    // applies the mode only if already fullscreen; otherwise it's just recorded for the next fullscreen switch
+    // Switches an exclusive-fullscreen window to the chosen mode, "Current" being the desktop's; a windowed or borderless window just keeps the choice for its next exclusive switch
     public static void apply(int index) {
-        if (index <= 0 || index > modes().size()) {
-            return;
-        }
-
         try {
-            if (GameWindow.isFullscreen()) {
-                GameWindow.setFullscreenMode(modes().get(index - 1));
+            DisplayMode mode = index > 0 && index <= modes().size() ? modes().get(index - 1) : GameWindow.desktopMode();
+            // Vanilla only follows window resizes while windowed, so the new fullscreen size is handed to it here, as Cleanroom does on entering fullscreen
+            if (mode != null && GameWindow.setFullscreenMode(mode)) {
+                Minecraft.getMinecraft().resize(mode.getWidth(), mode.getHeight());
             }
         } catch (Throwable t) {
             // Never let a resolution change take the game down.

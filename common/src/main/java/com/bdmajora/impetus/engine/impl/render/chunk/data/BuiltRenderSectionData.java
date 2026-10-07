@@ -2,7 +2,9 @@ package com.bdmajora.impetus.engine.impl.render.chunk.data;
 
 import com.bdmajora.impetus.engine.impl.render.chunk.lists.RenderVisualsService;
 import org.jetbrains.annotations.MustBeInvokedByOverriders;
+import org.jetbrains.annotations.Nullable;
 
+import java.util.Arrays;
 import java.util.Objects;
 
 // What a finished build produced for one render section; extended per game version so a version-specific renderer can hang its own data off it
@@ -10,7 +12,8 @@ public class BuiltRenderSectionData {
     public boolean hasBlockGeometry;
     public long visibilityData;
 
-    // Which of geometry, sprites and entities the section has
+    public int @Nullable [] occluderBoxes;
+
     public int getVisualBitmaskForSection() {
         return this.hasBlockGeometry ? (1 << RenderVisualsService.HAS_BLOCK_GEOMETRY) : 0;
     }
@@ -26,12 +29,13 @@ public class BuiltRenderSectionData {
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
         BuiltRenderSectionData that = (BuiltRenderSectionData) o;
-        return hasBlockGeometry == that.hasBlockGeometry && visibilityData == that.visibilityData;
+        return hasBlockGeometry == that.hasBlockGeometry && visibilityData == that.visibilityData
+                && Arrays.equals(occluderBoxes, that.occluderBoxes);
     }
 
     // By contents
     @Override
     public int hashCode() {
-        return Objects.hash(hasBlockGeometry, visibilityData);
+        return (Objects.hash(hasBlockGeometry, visibilityData) * 31) + Arrays.hashCode(occluderBoxes);
     }
 }

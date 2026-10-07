@@ -43,13 +43,14 @@ Impetus ships as a single jar containing several subsystems, each with its own m
 
 | Module | Purpose |
 | :----- | :------ |
-| `impetus` | The core rendering engine and chunk pipeline |
+| `impetus` | The core rendering engine and chunk pipeline, with GL 4.3 multi-draw indirect terrain and, on NVIDIA Turing and newer, a mesh-shader terrain backend after Nvidium |
 | `umbra` | The bundled shader pipeline, descended from Iris / Oculus |
 | `fulgor` | Lighting engine, superseding Phosphor and Alfheim: a deferred Phosphor-style engine with parallel light passes in the manner of ScalableLux, and a Starlight-style asynchronous engine after Pulsar that lights chunks on worker threads and persists their light |
-| `coarctatio` | Memory and allocation reductions across vanilla systems, including FerriteCore's block-state and model deduplication techniques, lazy item capabilities, resource lookup caches, a between-launch mod scan cache, parallel texture decoding, a primitive ore dictionary, compacted remapper caches and opt-in on-demand model loading with a pack-scan atlas |
+| `coarctatio` | Memory and allocation reductions across vanilla systems, including FerriteCore's block-state and model deduplication techniques, lazy item capabilities, resource lookup caches, a between-launch mod scan cache, parallel texture decoding and model reading, a primitive ore dictionary, compacted remapper caches and opt-in on-demand model loading with a pack-scan atlas |
 | `equilibrium` | Chunk and world access caching, world generation fast paths, and the server-side tick optimizations: advancement triggers, crafting and furnace caches, ghost-chunk guards, spawn preload skipping and the opt-in tick budget |
 | `dynamiclights` | Dynamic light sources for held and dropped items |
 | `extras` | Optional feature toggles: the Render Budget and GPU Booster pair for weaker machines, parallel server ticking, parallel particles, baked block entities, ray-cast occlusion culling, HUD caching, text batching, network flush consolidation, wire limits and thread scheduling |
+| `linuxextras` | Linux desktop fixes: on a Wayland session the window runs natively instead of through XWayland, goes fullscreen on the primary monitor (KDE's display order, or outputs named in `impetus-linuxextras.cfg`) rather than the leftmost one, gets its icon through `xdg-toplevel-icon-v1`, and opens links and folders with `xdg-open` instead of offering only Copy to Clipboard |
 
 Impetus suppresses the mixin configurations of superseded lighting mods (Phosphor, Alfheim) when it detects
 them, since running two lighting engines at once corrupts world lighting. Remove those mods rather than
@@ -84,11 +85,10 @@ so the next build re-runs the Cleanroom setup and takes several minutes.
 
 ### LWJGL
 
-Impetus is written against LWJGL 3. The engine (`common/`) reaches OpenGL only through its `LWJGLService`
-abstraction, which has an LWJGL 3 backend (used on Cleanroom) and an LWJGL 2 backend kept as a translation
-layer; `:common:verifyLwjglNeutral` fails the build if engine code calls LWJGL directly. `./gradlew
-:common:legacyJar` builds the engine alone as a Java 8 jar (via
-[JvmDowngrader](https://github.com/unimined/JvmDowngrader)) for the legacy Forge line.
+Impetus is LWJGL 3 only. Engine GL calls go through one `LWJGLService` instance, which resolves the
+version-dependent entry points once per context and is what the unit tests mock; native memory and stack
+allocations use LWJGL's own `MemoryUtil` and `MemoryStack`, which on Java 25 run on the Foreign Function & Memory
+API.
 
 Vanilla code on Cleanroom still links against LWJGL 2 names, which Cleanroom provides by merging its lwjglx
 bridge into LWJGL 3 at class load. Impetus only touches that bridge where vanilla's own signatures demand it
@@ -100,7 +100,7 @@ plain LWJGL 3 and GLFW.
 | Path | Contents |
 | :--- | :------- |
 | `src/` | The Cleanroom 1.12.2 mod: engine glue, mixins and the coremod that registers them |
-| `common/` | Platform-agnostic renderer code (Java 25) with the `lwjglCommon`, `lwjgl3` and `lwjgl2` source sets |
+| `common/` | Platform-agnostic renderer code (Java 25, LWJGL 3) with no Minecraft dependency |
 | `gradle/libs.versions.toml` | Every dependency version; the libraries Cleanroom ships are pinned to its versions |
 | `gradle/wrapper/` | The Gradle wrapper; required by `gradlew` and intentionally committed |
 
@@ -134,10 +134,11 @@ independent, original implementations.
 * **embeddedt**, for developing Celeritas and Embeddium, from which Impetus is forked
 * **The CaffeineMC team**, for developing Sodium 0.5.11 and older, and making it open source
 * **The Iris project and the Oculus port**, the origin of the bundled shader pipeline
+* **MCRcortex**, for Nvidium (LGPL-3), whose mesh-shader terrain renderer the `impetus` module's Mesh Terrain backend is ported from
 * **Rongmario**, for MixinBooter
 * **Mumfrey**, for creating the Mixin bytecode patching system, and **CleanroomMC** for Cleanroom and CleanMix
 * **LlamaLad7**, for MixinExtras
-* **orf**, for GpuShift (MIT), whose adaptive render-budget design the Extras page's Render Budget group reimplements for 1.12.2
+* **orf**, for GpuShift (MIT), whose adaptive render-budget design, CPU/GPU bottleneck detector included, the Extras page's Render Budget group reimplements for 1.12.2
 * **Mr.Toad**, for GPUBooster, ported to 1.12.2 with permission as the Extras page's GPU Booster group
 * **AxalotL** and the MCMT / JMT-MCMT authors, for Async (GPL-3), whose parallel entity ticking design the Extras page's Parallel Ticking group reimplements for 1.12.2
 * **Harvey_Husky**, for AsyncParticles (LGPL-3), the model for the parallel particle ticking, light cache and off-screen culling

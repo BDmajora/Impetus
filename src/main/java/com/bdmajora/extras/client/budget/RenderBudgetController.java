@@ -2,6 +2,8 @@ package com.bdmajora.extras.client.budget;
 
 import com.bdmajora.extras.Extras;
 import com.bdmajora.extras.ExtrasConfig;
+import com.bdmajora.impetus.engine.impl.gl.profiling.TimerQueryManager;
+import com.bdmajora.impetus.lwjgl.GLExtension;
 import com.bdmajora.impetus.umbra.Umbra;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.Particle;
@@ -33,6 +35,8 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
+
 // Adaptive client render budgeting, a 1.12.2 reimplementation of GpuShift 1.2.8 by orf (MIT): an EMA of frame time against a per-profile target yields a pressure figure, which tightens a particle spawn budget and the distances past which idle mobs, decorative block entities and item frames are skipped; particles are refused evenly by a carry accumulator, mobs by a per-entity hysteresis so nothing flickers at the boundary. Every per-frame path is O(1) with no allocation: the only map is keyed by entity identity and swept on a fixed cadence
 @Mod.EventBusSubscriber(Side.CLIENT)
 @SideOnly(Side.CLIENT)
@@ -57,6 +61,12 @@ public final class RenderBudgetController {
     private static long frameIndex;
     private static boolean armedLastTick;
     private static volatile RenderBudget budget = RenderBudget.NEUTRAL;
+
+    // GPU time of each frame between the render tick's start and end, read back a few frames late, feeding the detector that decides which half the adaptive step tightens; null while adaptive budgeting is off or the driver has no timer queries
+    private static final BottleneckDetector bottleneck = new BottleneckDetector();
+    private static TimerQueryManager gpuTimer;
+    // A start timestamp is out and its end still owed
+    private static boolean gpuFrameOpen;
 
     // Last-applied settings, compared each tick so an options change resets the caches instead of bleeding stale decisions through
     private static boolean lastEnabled;
@@ -99,17 +109,20 @@ public final class RenderBudgetController {
     @SubscribeEvent
     public static void onRenderTick(TickEvent.RenderTickEvent event) {
         if (event.phase != TickEvent.Phase.START) {
+            closeGpuFrame();
             return;
         }
 
         long now = System.nanoTime();
+        double frameMillis = 0.0;
         if (lastFrameNanos != 0 && now > lastFrameNanos) {
-            double frameMillis = (now - lastFrameNanos) / 1_000_000.0;
+            frameMillis = (now - lastFrameNanos) / 1_000_000.0;
             emaFrameMillis = emaFrameMillis <= 0.0
                     ? frameMillis
                     : emaFrameMillis + EMA_ALPHA * (frameMillis - emaFrameMillis);
         }
         lastFrameNanos = now;
+        openGpuFrame(frameMillis);
 
         frameIndex++;
         if (frameIndex % CACHE_SWEEP_INTERVAL_FRAMES == 0 && !decisions.isEmpty()) {
@@ -119,6 +132,59 @@ public final class RenderBudgetController {
                     iterator.remove();
                 }
             }
+        }
+    }
+
+    // Hands the detector this frame's CPU time with the newest GPU reading, then opens the next GPU measurement; only while the adaptive step can act on the verdict
+    private static void openGpuFrame(double cpuMillis) {
+        ExtrasConfig.RenderBudgetSettings settings = Extras.options().renderBudget;
+        if (!settings.enabled || !settings.adaptive) {
+            stopGpuTiming();
+            return;
+        }
+        if (gpuTimer == null) {
+            if (bottleneck.state() == BottleneckDetector.State.UNAVAILABLE) {
+                return;
+            }
+            if (!timerQueriesSupported()) {
+                bottleneck.markUnavailable();
+                return;
+            }
+            gpuTimer = new TimerQueryManager();
+        }
+
+        // A frame whose end never came (an exception mid-render) is closed here so the pairs stay balanced
+        closeGpuFrame();
+        if (gpuTimer.updateTime()) {
+            bottleneck.record(cpuMillis, gpuTimer.getLastTime() / 1_000_000.0, settings.profile.targetFrameMillis);
+        }
+        gpuTimer.startProfiling();
+        gpuFrameOpen = true;
+    }
+
+    private static void closeGpuFrame() {
+        if (gpuFrameOpen) {
+            gpuTimer.finishProfiling();
+            gpuFrameOpen = false;
+        }
+    }
+
+    // Budgeting or its adaptive step switched off: queries go back to the pool and the next measurement starts from scratch
+    private static void stopGpuTiming() {
+        if (gpuTimer != null) {
+            closeGpuFrame();
+            gpuTimer.close();
+            gpuTimer = null;
+            bottleneck.reset();
+        }
+    }
+
+    // GL_TIMESTAMP queries are GL 3.3 core or ARB_timer_query
+    private static boolean timerQueriesSupported() {
+        try {
+            return LWJGL.isOpenGLVersionSupported(3, 3) || LWJGL.isExtensionSupported(GLExtension.ARB_timer_query);
+        } catch (IllegalStateException e) {
+            return false;
         }
     }
 
@@ -211,12 +277,25 @@ public final class RenderBudgetController {
             default -> { }
         }
 
-        boolean adaptive = settings.adaptive && pressure >= ADAPTIVE_PRESSURE_THRESHOLD;
+        // Which half the adaptive step tightens follows the bottleneck, as GpuShift does: far mobs are CPU work, particles mostly GPU fill; unmeasured or mixed, both
+        BottleneckDetector.State bound = bottleneck.state();
+        boolean adaptive = settings.adaptive && pressure >= ADAPTIVE_PRESSURE_THRESHOLD && bound != BottleneckDetector.State.HEADROOM;
         if (adaptive) {
-            if (!particlesUnlimited) {
-                particleScale = Math.max(0.25, particleScale - 0.2);
+            switch (bound) {
+                case CPU_BOUND -> entityDistance = Math.max(48, entityDistance - 16);
+                case GPU_BOUND -> {
+                    if (!particlesUnlimited) {
+                        particleScale = Math.max(0.25, particleScale - 0.2);
+                    }
+                    entityDistance = Math.max(48, entityDistance - 8);
+                }
+                default -> {
+                    if (!particlesUnlimited) {
+                        particleScale = Math.max(0.25, particleScale - 0.2);
+                    }
+                    entityDistance = Math.max(48, entityDistance - 16);
+                }
             }
-            entityDistance = Math.max(48, entityDistance - 16);
         }
 
         boolean shaderPack = Umbra.isShaderPackInUse();
@@ -246,7 +325,8 @@ public final class RenderBudgetController {
                 target,
                 Math.round(ema * 100.0) / 100.0,
                 Math.round(pressure * 100.0) / 100.0,
-                adaptive);
+                adaptive,
+                bound);
     }
 
     // The budget in force for the current tick

@@ -10,7 +10,9 @@ import com.bdmajora.testing.TestGl;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
+import org.lwjgl.system.MemoryUtil;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -49,23 +51,23 @@ class MultiDrawEmittersTest {
         assertFalse(emitter.isEmpty());
         assertEquals(3, emitter.batch().size());
         assertEquals(18, emitter.getIndexBufferSize());
-        assertEquals(101, TestGl.gl().memGetInt(emitter.batch().pBaseVertex + 4));
-        assertEquals(24, TestGl.gl().memGetAddress(emitter.batch().pElementPointer + 8));
+        assertEquals(101, MemoryUtil.memGetInt(emitter.batch().pBaseVertex + 4));
+        assertEquals(24, MemoryUtil.memGetAddress(emitter.batch().pElementPointer + 8));
         emitter.addDrawCommands(data, 0b101, 0);
         assertEquals(5, emitter.batch().size());
-        assertEquals(0, TestGl.gl().memGetAddress(emitter.batch().pElementPointer + 3 * 8));
+        assertEquals(0, MemoryUtil.memGetAddress(emitter.batch().pElementPointer + 3 * 8));
         GlTessellation tessellation = Mockito.mock(GlTessellation.class);
         emitter.executeBatch(commands, tessellation, GlPrimitiveType.TRIANGLES);
         Mockito.verify(TestGl.gl()).glMultiDrawElementsBaseVertex(4, emitter.batch().pElementCount, 0x1405, emitter.batch().pElementPointer, 5, emitter.batch().pBaseVertex);
         emitter.clear();
         assertTrue(emitter.isEmpty());
-        emitter.delete();
+        emitter.delete(commands);
         SectionRenderDataUnsafe.freeHeap(data);
         assertEquals(7 * 256 + 1, MultiDrawEmitter.MAX_COMMAND_COUNT);
     }
 
     @Test
-    void indirectEmitterWritesGpuCommands() {
+    void indirectEmitterDrawsFromAFencedCommandRing() {
         long data = sectionData();
         IndirectMultiDrawEmitter emitter = new IndirectMultiDrawEmitter();
         assertTrue(emitter.isEmpty());
@@ -75,13 +77,65 @@ class MultiDrawEmittersTest {
         assertEquals(12, emitter.getIndexBufferSize());
         GlTessellation tessellation = Mockito.mock(GlTessellation.class);
         emitter.executeBatch(commands, tessellation, GlPrimitiveType.TRIANGLES);
-        Mockito.verify(commands).uploadData(Mockito.any(), Mockito.anyLong(), Mockito.eq(40L), Mockito.any());
-        Mockito.verify(TestGl.gl()).glMultiDrawElementsIndirect(4, 0x1405, 0, 2, 0);
+        // The ring is created and persistently mapped once, then each batch lands right after the last
+        Mockito.verify(commands).createImmutableBuffer(Mockito.eq((long) IndirectMultiDrawEmitter.RING_BYTES), Mockito.any());
+        Mockito.verify(TestGl.gl()).glMultiDrawElementsIndirect(4, 0x1405, 0L, 2, 0);
+        emitter.executeBatch(commands, tessellation, GlPrimitiveType.TRIANGLES);
+        Mockito.verify(TestGl.gl()).glMultiDrawElementsIndirect(4, 0x1405, 40L, 2, 0);
+        emitter.finishPass(commands);
+        // Nothing new since the fence: no second fence, and the signalled one is reclaimed
+        emitter.finishPass(commands);
+        Mockito.verify(commands, Mockito.times(1)).createFence();
         emitter.clear();
         assertTrue(emitter.isEmpty());
-        emitter.delete();
+        emitter.delete(commands);
+        Mockito.verify(commands).deleteBuffer(Mockito.any());
         SectionRenderDataUnsafe.freeHeap(data);
-        Mockito.when(TestGl.gl().nmemAlignedAlloc(Mockito.anyLong(), Mockito.anyLong())).thenReturn(0L);
-        assertThrows(OutOfMemoryError.class, IndirectMultiDrawEmitter::new);
+        try (MockedStatic<MemoryUtil> memory = Mockito.mockStatic(MemoryUtil.class, Mockito.CALLS_REAL_METHODS)) {
+            memory.when(() -> MemoryUtil.nmemAlignedAlloc(Mockito.anyLong(), Mockito.anyLong())).thenReturn(0L);
+            assertThrows(OutOfMemoryError.class, IndirectMultiDrawEmitter::new);
+        }
+    }
+
+    @Test
+    void aFullRingWrapsAndWaitsOnlyWhenItMust() {
+        long data = sectionData();
+        // Room for two 40-byte batches and a 20-byte tail
+        IndirectMultiDrawEmitter emitter = new IndirectMultiDrawEmitter(100);
+        emitter.addDrawCommands(data, 0b011, 0);
+        GlTessellation tessellation = Mockito.mock(GlTessellation.class);
+        emitter.executeBatch(commands, tessellation, GlPrimitiveType.TRIANGLES);
+        emitter.executeBatch(commands, tessellation, GlPrimitiveType.TRIANGLES);
+        // A third batch in the same pass has nothing fenced to wait for, so the GPU is drained and the ring starts over
+        emitter.executeBatch(commands, tessellation, GlPrimitiveType.TRIANGLES);
+        Mockito.verify(TestGl.gl()).glFinish();
+        Mockito.verify(TestGl.gl(), Mockito.times(2)).glMultiDrawElementsIndirect(4, 0x1405, 0L, 2, 0);
+
+        // With the fence still pending, the next wrap waits on it from the CPU
+        Mockito.doAnswer(inv -> {
+            inv.<java.nio.IntBuffer>getArgument(2).put(0, 1);
+            return 0x9118;
+        }).when(TestGl.gl()).glGetSynci(Mockito.anyLong(), Mockito.anyInt(), Mockito.any());
+        emitter.finishPass(commands);
+        emitter.executeBatch(commands, tessellation, GlPrimitiveType.TRIANGLES);
+        emitter.executeBatch(commands, tessellation, GlPrimitiveType.TRIANGLES);
+        Mockito.verify(TestGl.gl(), Mockito.atLeastOnce()).glClientWaitSync(Mockito.anyLong(), Mockito.anyInt(), Mockito.anyLong());
+        emitter.finishPass(commands);
+        // Pending fences go with the emitter
+        emitter.delete(commands);
+        SectionRenderDataUnsafe.freeHeap(data);
+    }
+
+    @Test
+    void theIndirectEmitterIsChosenOnlyWhenAskedForAndSupported() {
+        assertInstanceOf(IndirectMultiDrawEmitter.class, MultiDrawEmitter.create(device, true));
+        assertInstanceOf(DirectMultiDrawEmitter.class, MultiDrawEmitter.create(device, false));
+        var gpu = Mockito.mock(com.bdmajora.impetus.engine.impl.gpu.device.GpuDevice.class);
+        var limited = Mockito.mock(com.bdmajora.impetus.engine.impl.gl.device.RenderDevice.class);
+        Mockito.when(limited.getGpuDevice()).thenReturn(gpu);
+        Mockito.when(gpu.supports(com.bdmajora.impetus.engine.impl.gpu.device.GpuDeviceFeature.MULTI_DRAW_INDIRECT)).thenReturn(true);
+        assertInstanceOf(DirectMultiDrawEmitter.class, MultiDrawEmitter.create(limited, true));
+        Mockito.when(gpu.supports(com.bdmajora.impetus.engine.impl.gpu.device.GpuDeviceFeature.MULTI_DRAW_INDIRECT)).thenReturn(false);
+        assertInstanceOf(DirectMultiDrawEmitter.class, MultiDrawEmitter.create(limited, true));
     }
 }

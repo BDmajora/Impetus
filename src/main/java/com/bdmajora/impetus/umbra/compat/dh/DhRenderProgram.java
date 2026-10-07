@@ -1,6 +1,6 @@
 package com.bdmajora.impetus.umbra.compat.dh;
 
-import com.bdmajora.impetus.lwjgl.MemoryStack;
+import org.lwjgl.system.MemoryStack;
 import com.bdmajora.impetus.umbra.gl.blending.ProgramAlphaTest;
 import com.bdmajora.impetus.umbra.gl.blending.ProgramBlendState;
 import com.bdmajora.impetus.umbra.gl.program.DrawBuffers;
@@ -88,7 +88,7 @@ abstract class DhRenderProgram {
         if (location == -1) {
             return;
         }
-        try (MemoryStack stack = LWJGL.stackPush()) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
             FloatBuffer buffer = stack.mallocFloat(16);
             matrix.get(buffer);
             LWJGL.glUniformMatrix4fv(location, false, buffer);
@@ -99,7 +99,7 @@ abstract class DhRenderProgram {
         if (location == -1) {
             return;
         }
-        try (MemoryStack stack = LWJGL.stackPush()) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
             FloatBuffer buffer = stack.mallocFloat(9);
             matrix.get(buffer);
             LWJGL.glUniformMatrix3fv(location, false, buffer);

@@ -3,11 +3,13 @@ package com.bdmajora.impetus.engine.impl.render.chunk;
 import lombok.Getter;
 import lombok.Setter;
 import com.bdmajora.impetus.engine.impl.render.chunk.data.BuiltRenderSectionData;
+import com.bdmajora.impetus.engine.impl.render.chunk.lists.RenderVisualsService;
 import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.VisibilityEncoding;
 import com.bdmajora.impetus.engine.impl.render.chunk.region.RenderRegion;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 import com.bdmajora.impetus.engine.impl.util.task.CancellationToken;
-import com.bdmajora.impetus.engine.impl.render.chunk.sorting.TranslucentQuadAnalyzer;
+import com.bdmajora.impetus.engine.impl.render.chunk.sorting.PartitionTree;
+import com.bdmajora.impetus.engine.impl.render.chunk.sorting.SortState;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -15,12 +17,16 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
 
-// Render state for a chunk section: the graphics state for each render pass plus its data in the chunk visibility graph
+/**
+ * The render state object for a chunk section. This contains all the graphics state for each render pass along with
+ * data about the render in the chunk visibility graph.
+ */
 public class RenderSection extends AbstractSection {
     // Render Region State
     private final RenderRegion region;
 
-    // Must be EVERYTHING for the default visibility encoding so ContextBundle.empty() matches the data generated for an empty section
+    // We must use EVERYTHING here for the default visibility encoding, so that ContextBundle.empty() would correspond
+    // to the data generated for an empty section.
     public static final BuiltRenderSectionData EMPTY_DATA = new BuiltRenderSectionData();
 
     static {
@@ -30,30 +36,58 @@ public class RenderSection extends AbstractSection {
 
     // Rendering State
     private BuiltRenderSectionData contextData;
-    private boolean hasAnythingToRender;
-    @Getter
-    private int visualsServiceFlags;
 
-    // Maps each translucent render pass to its sort state (data needed to re-sort as the camera moves); empty for sections without translucent passes
+    // Packed encoding of the visibility encoding, visuals flags, pending update type, and build-in-flight bit;
+    // see PackedSectionMetadata for the bit layout. The graph search reads a mirror of this in SectionLattice, so
+    // mutate it only through writeMetadata(), which notifies the mirror.
+    private long packedMetadata;
+
+    // Notified on every packedMetadata change to keep the lattice mirror in sync. Null until the section is
+    // attached to its manager (the initial constructor write predates attachment).
+    @Nullable
+    private MetadataSink metadataSink;
+
+    public interface MetadataSink {
+        void onMetadataChanged(RenderSection section);
+    }
+
+    /** Marks a section with no translucent render passes at all, which the debug overlay does not count */
+    public static final int NO_TRANSLUCENT_GEOMETRY = -1;
+
+    /**
+     * A mapping from translucent render passes to the sort state for that particular pass, holding the data needed to
+     * resort that pass' geometry as the camera moves. Only passes that actually need resorting appear here, so this is
+     * empty for sections whose translucent geometry (if any) was sorted once at mesh time.
+     */
     @Getter
     @NotNull
-    private Map<TerrainRenderPass, TranslucentQuadAnalyzer.SortState> translucencySortStates = Collections.emptyMap();
+    private Map<TerrainRenderPass, SortState.Resortable> translucencySortStates = Collections.emptyMap();
+
+    /**
+     * The {@link SortState#debugIndex()} of the most expensive sort among this section's translucent passes, or
+     * {@link #NO_TRANSLUCENT_GEOMETRY} if it has none. Only consumed by the debug overlay.
+     */
+    @Getter
+    private int highestSortingIndex = NO_TRANSLUCENT_GEOMETRY;
+
+    public enum SortMode {
+        NONE,
+        TREE,
+        DYNAMIC
+    }
 
     @Getter
-    private TranslucentQuadAnalyzer.Level highestSortingLevel = TranslucentQuadAnalyzer.Level.NONE;
-
-    @Getter
-    @Setter
-    private boolean needsDynamicTranslucencySorting;
+    @NotNull
+    private SortMode sortMode = SortMode.NONE;
 
     // Pending Update State
 
-    // In-flight build job, if any: lets delete() cancel early and lets VisibleChunkCollector skip re-queuing (submitRebuildTasks does the authoritative type check)
+    // The in-flight build job for this section, if one exists. Serves two purposes:
+    //   1. Cancellation: allows delete() to abort a queued or executing build early.
+    //   2. Deduplication hint: VisibleChunkCollector skips re-queuing a section whose build
+    //      is already in flight. submitRebuildTasks() performs the authoritative type check.
     @Nullable
     private CancellationToken buildCancellationToken = null;
-
-    @Nullable
-    private ChunkUpdateType pendingUpdateType;
 
     private int lastBuiltFrame = -1;
     private int lastSubmittedFrame = -1;
@@ -68,9 +102,6 @@ public class RenderSection extends AbstractSection {
     // Used by the translucency sorter, to determine when a section needs sorting again
     public double lastCameraX, lastCameraY, lastCameraZ;
 
-    // Set when the camera crossed one of this section's translucent geometry planes (see TranslucencyTriggerIndex), cleared when the sort task is scheduled; only meaningful for dynamically sorted sections
-    public boolean pendingTriggeredSort;
-
     public RenderSection(RenderRegion region, int chunkX, int chunkY, int chunkZ) {
         super(chunkX, chunkY, chunkZ);
 
@@ -80,41 +111,43 @@ public class RenderSection extends AbstractSection {
         this.updateCachedContextDataFlags();
     }
 
-    // Deletes all data attached to this render and drops pending tasks; the object cannot be used afterwards
+    /**
+     * Deletes all data attached to this render and drops any pending tasks. This should be used when the render falls
+     * out of view or otherwise needs to be destroyed. After the render has been destroyed, the object can no longer
+     * be used.
+     */
     public void delete() {
         if (this.buildCancellationToken != null) {
             this.buildCancellationToken.setCancelled();
-            this.buildCancellationToken = null;
+            this.setBuildCancellationToken(null);
         }
 
         this.setInfo(null);
         this.disposed = true;
     }
 
-    // Installs built data; true when the visual flags changed
     public boolean setInfo(@Nullable BuiltRenderSectionData info) {
         boolean changed = !Objects.equals(info, this.contextData);
         if (changed) {
+            var region = this.getRegion();
             if (this.contextData == null) {
-                this.getRegion().updateSectionLoadTime(this);
+                region.updateSectionLoadTime(this);
             }
+            region.onSectionDataChanged();
             this.contextData = info;
             this.updateCachedContextDataFlags();
         }
         return changed;
     }
 
-    // Whether removed
     public boolean isDisposed() {
         return this.disposed;
     }
 
-    // Whether it has data
     public boolean isBuilt() {
         return this.contextData != null;
     }
 
-    // Owning region
     public RenderRegion getRegion() {
         return this.region;
     }
@@ -123,82 +156,122 @@ public class RenderSection extends AbstractSection {
         return this.contextData;
     }
 
-    // Refreshes the flags from the data
     public void updateCachedContextDataFlags() {
-        this.visualsServiceFlags = this.contextData != null ? this.contextData.getVisualBitmaskForSection() : 0;
-        this.hasAnythingToRender = this.visualsServiceFlags != 0;
-    }
-
-    // Geometry, sprites or entities
-    public boolean hasAnythingToRender() {
-        return this.hasAnythingToRender;
-    }
-
-    // Records what re-sorting each pass needs
-    public void setTranslucencySortStates(@NotNull Map<TerrainRenderPass, TranslucentQuadAnalyzer.SortState> sortStates) {
-        this.translucencySortStates = Map.copyOf(sortStates);
-
-        TranslucentQuadAnalyzer.Level level = TranslucentQuadAnalyzer.Level.NONE;
-        boolean needsDynamicSorting = false;
-
-        // The highest level among all sort states
-        for (TranslucentQuadAnalyzer.SortState state : sortStates.values()) {
-            if (state.level().ordinal() > level.ordinal()) {
-                level = state.level();
+        int flags = 0;
+        if (this.contextData != null) {
+            flags = this.contextData.getVisualBitmaskForSection();
+            if (this.sortMode == SortMode.DYNAMIC) {
+                flags |= 1 << RenderVisualsService.NEEDS_DYNAMIC_SORT;
             }
-            needsDynamicSorting |= state.requiresDynamicSorting();
         }
+        long visibilityData = this.contextData != null ? this.contextData.visibilityData : VisibilityEncoding.NULL;
+        boolean hasOccluderData = this.contextData != null && this.contextData.occluderBoxes != null;
 
-        this.highestSortingLevel = level;
-        this.needsDynamicTranslucencySorting = needsDynamicSorting;
+        this.writeMetadata(PackedSectionMetadata.withHasOccluderData(PackedSectionMetadata.withVisibilityData(
+                PackedSectionMetadata.withVisualsFlags(this.packedMetadata, flags), visibilityData), hasOccluderData));
+    }
+
+    // The sole writer of packedMetadata: stores the new word and notifies the mirror.
+    private void writeMetadata(long packed) {
+        this.packedMetadata = packed;
+        if (this.metadataSink != null) {
+            this.metadataSink.onMetadataChanged(this);
+        }
+    }
+
+    public long getPackedMetadata() {
+        return this.packedMetadata;
+    }
+
+    public void setMetadataSink(@Nullable MetadataSink sink) {
+        this.metadataSink = sink;
+    }
+
+    public int getVisualsServiceFlags() {
+        return PackedSectionMetadata.getVisualsFlags(this.packedMetadata);
+    }
+
+    public long getVisibilityData() {
+        return PackedSectionMetadata.getVisibilityData(this.packedMetadata);
+    }
+
+    public boolean hasAnythingToRender() {
+        return this.getVisualsServiceFlags() != 0;
+    }
+
+    /**
+     * @param sortStates the passes needing a resort as the camera moves; every entry implies dynamic sorting
+     * @param highestSortingIndex the highest variant seen before compaction, or {@link #NO_TRANSLUCENT_GEOMETRY}
+     */
+    public void setTranslucencySortStates(@NotNull Map<TerrainRenderPass, SortState.Resortable> sortStates, int highestSortingIndex) {
+        this.translucencySortStates = Map.copyOf(sortStates);
+        this.highestSortingIndex = highestSortingIndex;
+        if (sortStates.isEmpty()) {
+            this.sortMode = SortMode.NONE;
+        } else if (sortStates.values().stream().allMatch(state -> state instanceof PartitionTree)) {
+            this.sortMode = SortMode.TREE;
+        } else {
+            this.sortMode = SortMode.DYNAMIC;
+        }
+        this.updateCachedContextDataFlags();
+    }
+
+    public void clearTranslucencySortStates() {
+        this.translucencySortStates = Collections.emptyMap();
+        this.sortMode = SortMode.NONE;
+        this.updateCachedContextDataFlags();
+    }
+
+    public boolean isTreeSorted() {
+        return this.sortMode == SortMode.TREE;
     }
 
     public @Nullable CancellationToken getBuildCancellationToken() {
         return this.buildCancellationToken;
     }
 
-    // So a superseded build can be cancelled
     public void setBuildCancellationToken(@Nullable CancellationToken token) {
         this.buildCancellationToken = token;
+        this.writeMetadata(PackedSectionMetadata.withBuildInFlight(this.packedMetadata, token != null));
     }
 
     public @Nullable ChunkUpdateType getPendingUpdate() {
-        return this.pendingUpdateType;
+        return PackedSectionMetadata.getPendingUpdate(this.packedMetadata);
     }
 
-    // The queued rebuild type, or null
     public void setPendingUpdate(@Nullable ChunkUpdateType type) {
-        this.pendingUpdateType = type;
+        this.writeMetadata(PackedSectionMetadata.withPendingUpdate(this.packedMetadata, type));
     }
 
-    // Requests a chunk update, possibly "upgrading" an existing pending one; returns true if the pending type actually changed
+    /**
+     * Request a type of chunk update for this render section. This may "upgrade" an existing pending update for the
+     * section.
+     * @param type the chunk update
+     * @return true if the section's chunk update type has changed
+     */
     public boolean requestUpdate(ChunkUpdateType type) {
-        type = ChunkUpdateType.getPromotionUpdateType(this.pendingUpdateType, type);
+        type = ChunkUpdateType.getPromotionUpdateType(this.getPendingUpdate(), type);
 
         if (type != null) {
-            this.pendingUpdateType = type;
+            this.setPendingUpdate(type);
             return true;
         } else {
             return false;
         }
     }
 
-    // For result filtering
     public int getLastBuiltFrame() {
         return this.lastBuiltFrame;
     }
 
-    // Stamped on install
     public void setLastBuiltFrame(int lastBuiltFrame) {
         this.lastBuiltFrame = lastBuiltFrame;
     }
 
-    // For result filtering
     public int getLastSubmittedFrame() {
         return this.lastSubmittedFrame;
     }
 
-    // Stamped on submit
     public void setLastSubmittedFrame(int lastSubmittedFrame) {
         this.lastSubmittedFrame = lastSubmittedFrame;
     }

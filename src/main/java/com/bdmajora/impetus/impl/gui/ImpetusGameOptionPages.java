@@ -11,6 +11,7 @@ import com.bdmajora.impetus.api.options.control.TickBoxControl;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.impl.platform.GameWindow;
+import com.bdmajora.impetus.impl.platform.WindowModes;
 import com.bdmajora.impetus.ImpetusVintage;
 import com.bdmajora.impetus.api.options.structure.OptionFlag;
 import com.bdmajora.impetus.api.options.structure.OptionGroup;
@@ -95,17 +96,8 @@ public class ImpetusGameOptionPages {
                         .setTooltip(TextComponent.translatable("impetus.options.fullscreen.tooltip"))
                         .setControl(option -> new CyclingControl<>(option, ImpetusGameOptions.FullscreenMode.class))
                         .setImpact(OptionImpact.HIGH)
-                        .setBinding((opts, value) -> {
-                            opts.fullscreenMode = value;
-                            Minecraft client = Minecraft.getMinecraft();
-                            boolean wantFullscreen = value.isFullscreen();
-                            client.gameSettings.fullScreen = wantFullscreen;
-                            if (client.isFullScreen() != wantFullscreen) {
-                                client.toggleFullscreen();
-                                // The client might not be able to enter full-screen mode.
-                                opts.fullscreenMode = client.isFullScreen() ? value : ImpetusGameOptions.FullscreenMode.OFF;
-                            }
-                        }, opts -> opts.fullscreenMode)
+                        // The window might refuse a mode, so the option holds where it actually ended up
+                        .setBinding((opts, value) -> opts.fullscreenMode = WindowModes.apply(Minecraft.getMinecraft(), value), opts -> opts.fullscreenMode)
                         .build())
                 .add(OptionImpl.createBuilder(int.class, sodiumOpts)
                         .setId(StandardOptions.Option.FULLSCREEN_RESOLUTION.cast())

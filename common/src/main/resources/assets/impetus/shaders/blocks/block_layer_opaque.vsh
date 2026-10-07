@@ -1,14 +1,25 @@
 #version 330 core
 
+#ifdef LEGACY
+#extension GL_EXT_gpu_shader4 : require
+#endif
+
 #import <impetus:include/fog.glsl>
 #import <impetus:include/chunk_vertex.glsl>
 #import <impetus:include/chunk_matrices.glsl>
 #import <impetus:include/chunk_material.glsl>
 
+// The solid and cutout copies of this program must land on identical depths or their quads z-fight on some hardware
+invariant gl_Position;
+
 out vec4 v_Color;
+out vec4 v_RdhFactor;
+out vec2 v_QuadCoord;
 out vec2 v_TexCoord;
 
+#if defined(USE_FOG) && defined(CHUNK_FADE_IN_DURATION_MS) && CHUNK_FADE_IN_DURATION_MS > 0
 out float v_ChunkAgeMs;
+#endif
 
 out float v_MaterialMipBias;
 #ifdef USE_FRAGMENT_DISCARD
@@ -34,7 +45,10 @@ vec4 _sample_lightmap(sampler2D lightMap, ivec2 uv) {
 }
 #endif
 
+// Declared only when the fade reads it, so no unread varying and no per-draw upload otherwise
+#if defined(USE_FOG) && defined(CHUNK_FADE_IN_DURATION_MS) && CHUNK_FADE_IN_DURATION_MS > 0
 uniform float impetus_ChunkAges[REGION_SIZE];
+#endif
 
 void main() {
     _vert_init();
@@ -57,16 +71,25 @@ void main() {
     gl_Position = u_ProjectionMatrix * viewPosition;
 
     // Add the light color to the vertex color, and pass the texture coordinates to the fragment shader
+    v_RdhFactor = _vert_rdh_factor * 2.0;
 #ifdef IMPETUS_NO_LIGHTMAP
     v_Color = _vert_color;
 #else
-    v_Color = _vert_color * _sample_lightmap(u_LightTex, _vert_tex_light_coord);
+    vec4 lightColor = _sample_lightmap(u_LightTex, _vert_tex_light_coord);
+    v_Color = _vert_color * lightColor;
+    v_RdhFactor.rgb *= lightColor.rgb;
 #endif
+    
+    int corner = gl_VertexID & 3;
+    v_QuadCoord = vec2(corner >= 2 ? 1.0 : 0.0,
+            corner == 1 || corner == 2 ? 1.0 : 0.0);
     v_TexCoord = _vert_tex_diffuse_coord;
 
     v_MaterialMipBias = _material_mip_bias(_material_params);
 #ifdef USE_FRAGMENT_DISCARD
     v_MaterialAlphaCutoff = _material_alpha_cutoff(_material_params);
 #endif
+#if defined(USE_FOG) && defined(CHUNK_FADE_IN_DURATION_MS) && CHUNK_FADE_IN_DURATION_MS > 0
     v_ChunkAgeMs = impetus_ChunkAges[_draw_id];
+#endif
 }

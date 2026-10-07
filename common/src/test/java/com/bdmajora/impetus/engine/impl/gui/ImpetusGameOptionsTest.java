@@ -74,8 +74,11 @@ class ImpetusGameOptionsTest {
         assertEquals(1, ImpetusGameOptions.FluidloggingGuess.TOUCHING.minSides);
         assertEquals(Integer.MAX_VALUE, ImpetusGameOptions.FluidloggingGuess.OFF.minSides);
         assertNotNull(ImpetusGameOptions.FluidloggingGuess.SURROUNDED.getLocalizedName());
-        assertTrue(ImpetusGameOptions.FullscreenMode.BORDERLESS.isFullscreen());
-        assertFalse(ImpetusGameOptions.FullscreenMode.OFF.isFullscreen());
         assertNotNull(ImpetusGameOptions.FullscreenMode.EXCLUSIVE.getLocalizedName());
+        assertNotNull(ImpetusGameOptions.MeshTranslucencySorting.QUADS.getLocalizedName());
+        assertNotNull(ImpetusGameOptions.MeshStatistics.SECTIONS.getLocalizedName());
+        assertTrue(ImpetusGameOptions.MeshStatistics.QUADS.includes(ImpetusGameOptions.MeshStatistics.REGIONS));
+        assertFalse(ImpetusGameOptions.MeshStatistics.FRUSTUM.includes(ImpetusGameOptions.MeshStatistics.REGIONS));
+        assertTrue(new ImpetusGameOptions().meshTerrain.enabled);
     }
 }

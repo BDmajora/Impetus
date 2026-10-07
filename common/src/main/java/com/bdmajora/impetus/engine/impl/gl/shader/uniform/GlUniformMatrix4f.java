@@ -4,7 +4,7 @@ import org.lwjgl.opengl.GL30;
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 import org.joml.Matrix4fc;
-import com.bdmajora.impetus.lwjgl.MemoryStack;
+import org.lwjgl.system.MemoryStack;
 
 import java.nio.FloatBuffer;
 

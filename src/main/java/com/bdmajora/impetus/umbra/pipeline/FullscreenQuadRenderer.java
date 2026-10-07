@@ -2,7 +2,7 @@ package com.bdmajora.impetus.umbra.pipeline;
 
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
-import com.bdmajora.impetus.lwjgl.MemoryStack;
+import org.lwjgl.system.MemoryStack;
 
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
@@ -29,7 +29,7 @@ public class FullscreenQuadRenderer {
         LWJGL.glBindVertexArray(this.vertexArray);
         LWJGL.glBindBuffer(GL15.GL_ARRAY_BUFFER, this.vertexBuffer);
 
-        try (MemoryStack stack = LWJGL.stackPush()) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
             ByteBuffer data = stack.malloc(4 * STRIDE);
             FloatBuffer floats = data.asFloatBuffer();
             floats.put(new float[]{

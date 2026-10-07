@@ -121,7 +121,7 @@ public class OptionPageFrame extends AbstractFrame {
         this.renderSectionHeader(drawContext);
         this.renderGroupHeadings(drawContext);
 
-        ControlElement<?> hoveredElement = this.isMouseOver(mouseX, mouseY) ? this.findHoveredControl(mouseX, mouseY) : null;
+        ControlElement<?> hoveredElement = this.getCapturedChild() == null && this.isMouseOver(mouseX, mouseY) ? this.findHoveredControl(mouseX, mouseY) : null;
         super.render(drawContext, mouseX, mouseY, delta);
         if (hoveredElement != null && this.lastHoveredElement == hoveredElement) {
             if (this.lastTime == 0) {

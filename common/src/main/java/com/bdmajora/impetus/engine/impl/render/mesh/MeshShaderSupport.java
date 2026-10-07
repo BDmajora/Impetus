@@ -14,6 +14,10 @@ import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 public final class MeshShaderSupport {
     private static final Logger LOGGER = LogManager.getLogger("Impetus/MeshBackend");
 
+    // NV_bindless_multi_draw_indirect's indirect-buffer address tokens, which LWJGL's NVVertexBufferUnifiedMemory leaves out
+    public static final int GL_DRAW_INDIRECT_UNIFIED_NV = 0x8F40;
+    public static final int GL_DRAW_INDIRECT_ADDRESS_NV = 0x8F41;
+
     // All required, no partial path: Turing and newer NVIDIA has all of it, nothing else has NV_mesh_shader at all
     private static final GLExtension[] REQUIRED = {
             GLExtension.NV_mesh_shader,
@@ -51,6 +55,13 @@ public final class MeshShaderSupport {
     public static boolean supportsSparseGeometry() {
         isSupported();
         return sparseGeometry;
+    }
+
+    // Turns the backend off for the rest of the session after it failed to start on hardware that advertised everything, so every reload does not fail again
+    public static void markBroken(String reason) {
+        supported = false;
+        unsupportedReason = reason;
+        LOGGER.error("Mesh-shader terrain backend disabled: {}", reason);
     }
 
     // Checks the extensions and a minimal compile, since some drivers advertise but fail

@@ -60,6 +60,8 @@ import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL30;
 import com.bdmajora.impetus.mixin.core.terrain.ActiveRenderInfoAccessor;
 
+import com.bdmajora.impetus.umbra.pipeline.shadow.ShadowColorSettings;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
@@ -91,6 +93,8 @@ public class UmbraRenderingPipeline {
     // Distant Horizons' LOD depth (dhDepthTex0/1), above every fixed and pack-allocated unit and shared by both layouts; a sampler may address any unit below GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS (48 minimum on 3.3), the per-stage limit only caps how many a stage samples. Without DH they alias depthtex0/1 as before
     private static final int DH_DEPTH_TEX_0_UNIT = 35;
     private static final int DH_DEPTH_TEX_1_UNIT = 36;
+    // shadowcolor2..7, which only exist under HIGHER_SHADOWCOLOR; shared by both layouts above the DH units, all still under the 48 combined units GL 3.3 guarantees
+    private static final int SHADOW_COLOR_2_UNIT = 37;
     // OptiFine 1.12 gbuffers-stage units from Shaders.useProgram(): texture/lightmap/normals/specular 0..3, shadow maps 4/5, depthtex0 6, gaux1..4 7..10, depthtex1 12, shadowcolor0/1 13/14, noisetex 15
     private static final int GBUFFER_DEPTH_TEX_0_UNIT = 6;
     private static final int GBUFFER_DEPTH_TEX_1_UNIT = 12;
@@ -178,6 +182,9 @@ public class UmbraRenderingPipeline {
         putSharedSampler(FULLSCREEN_SAMPLER_UNITS, "shadowtex0HW", SHADOW_TEX_0_HW_UNIT);
         putSharedSampler(FULLSCREEN_SAMPLER_UNITS, "shadowtex1HW", SHADOW_TEX_1_HW_UNIT);
         putSharedSampler(FULLSCREEN_SAMPLER_UNITS, "noisetex", NOISE_TEX_UNIT);
+        for (int i = ShadowColorSettings.OPTIFINE_BUFFERS; i < ShadowColorSettings.IRIS_BUFFERS; i++) {
+            putSharedSampler(FULLSCREEN_SAMPLER_UNITS, "shadowcolor" + i, shadowColorUnit(i));
+        }
         // OptiFine gbuffer-stage PBR samplers; during fullscreen passes these units are also colortex2/3, so the mapping stays correct for packs leaving the aliases in shared includes
         putSharedSampler(FULLSCREEN_SAMPLER_UNITS, "normals", 2);
         putSharedSampler(FULLSCREEN_SAMPLER_UNITS, "texNorm", 2);
@@ -201,6 +208,11 @@ public class UmbraRenderingPipeline {
         putGbufferSampler("shadowtex1", GBUFFER_SHADOW_TEX_1_UNIT);
         putGbufferSampler("shadowtex1DH", GBUFFER_SHADOW_TEX_1_UNIT);
         putGbufferSampler("noisetex", GBUFFER_NOISE_TEX_UNIT);
+    }
+
+    // The shared unit of shadowcolor2..7
+    private static int shadowColorUnit(int index) {
+        return SHADOW_COLOR_2_UNIT + index - ShadowColorSettings.OPTIFINE_BUFFERS;
     }
 
     // Registers a sampler name in the fullscreen layout
@@ -706,31 +718,21 @@ public class UmbraRenderingPipeline {
         }
     }
 
-    // Reserves image units for shadowcolorimg0/1, after the render-target images so they share one ascending allocation, and only when a shadow renderer exists to own the textures
+    // Reserves image units for shadowcolorimgN, after the render-target images so they share one ascending allocation, and only for buffers the shadow renderer actually owns
     private void allocateShadowColorImageUnits(List<ProgramSource> sources) {
         if (this.shadowRenderer == null) {
             return;
         }
         TreeSet<Integer> referenced = new TreeSet<>();
-        Pattern pattern = Pattern.compile("\\bshadowcolorimg([01])\\b");
+        Pattern pattern = Pattern.compile("\\bshadowcolorimg([0-7])\\b");
         for (ProgramSource source : sources) {
-            for (String stage : new String[]{source.getVertexSource().orElse(null),
-                    source.getFragmentSource().orElse(null), source.getGeometrySource().orElse(null)}) {
-                if (stage == null) {
-                    continue;
-                }
+            for (String stage : allStages(source)) {
                 Matcher matcher = pattern.matcher(stage);
                 while (matcher.find()) {
-                    referenced.add(Integer.parseInt(matcher.group(1)));
-                }
-            }
-            for (String compute : source.getComputeSources()) {
-                if (compute == null) {
-                    continue;
-                }
-                Matcher matcher = pattern.matcher(compute);
-                while (matcher.find()) {
-                    referenced.add(Integer.parseInt(matcher.group(1)));
+                    int index = Integer.parseInt(matcher.group(1));
+                    if (this.shadowRenderer.getColorTextureId(index) != 0) {
+                        referenced.add(index);
+                    }
                 }
             }
         }
@@ -1009,11 +1011,61 @@ public class UmbraRenderingPipeline {
                     shadowSamplerUnits, this.shaderDefines,
                     this.shadowHardwareFiltering, this.shadowMipmap, this.shadowNearest,
                     this.separateHardwareSamplers, this::bindShaderPackResources, content,
-                    voxelDistance, cullDistance, packVoxelizes);
+                    voxelDistance, cullDistance, packVoxelizes,
+                    ShadowColorSettings.parse(consts, shadowColorBufferCount(pack)), usedShadowColorBuffers(pack));
         } catch (Exception e) {
             LOGGER.error("[Umbra] Failed to create the shadow renderer; shadows disabled", e);
             return null;
         }
+    }
+
+    // Two shadowcolor buffers like OptiFine, or Iris's eight for a pack declaring HIGHER_SHADOWCOLOR
+    private static int shadowColorBufferCount(ShaderPack pack) {
+        return pack.hasFeature(FeatureFlags.HIGHER_SHADOWCOLOR) ? ShadowColorSettings.IRIS_BUFFERS : ShadowColorSettings.OPTIFINE_BUFFERS;
+    }
+
+    // Every shadowcolor index the pack touches: sampled or bound as an image by name anywhere, or written by the shadow program's or a shadowcomp's DRAWBUFFERS
+    private BitSet usedShadowColorBuffers(ShaderPack pack) {
+        BitSet used = new BitSet();
+        Pattern named = Pattern.compile("\\bshadowcolor(?:img)?([0-7])\\b");
+        for (ProgramSource source : collectAllProgramSources(pack)) {
+            for (String stage : allStages(source)) {
+                Matcher matcher = named.matcher(stage);
+                while (matcher.find()) {
+                    used.set(Integer.parseInt(matcher.group(1)));
+                }
+            }
+        }
+        List<ProgramSource> writers = new ArrayList<>();
+        pack.getProgramSet().get(ProgramId.Shadow).ifPresent(writers::add);
+        for (int i = 0; i < ProgramArrayId.ShadowComposite.getNumPrograms(); i++) {
+            pack.getProgramSet().get(ProgramArrayId.ShadowComposite, i).ifPresent(writers::add);
+        }
+        for (ProgramSource writer : writers) {
+            writer.getFragmentSource().ifPresent(fragment -> {
+                for (int buffer : DrawBuffers.parseActive(fragment,
+                        com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.forProgram(this.shaderDefines, writer.getName()))) {
+                    used.set(buffer);
+                }
+            });
+        }
+        return used;
+    }
+
+    // Every stage of a program that has source, compute included
+    private static List<String> allStages(ProgramSource source) {
+        List<String> stages = new ArrayList<>();
+        source.getVertexSource().ifPresent(stages::add);
+        source.getGeometrySource().ifPresent(stages::add);
+        source.getTessControlSource().ifPresent(stages::add);
+        source.getTessEvalSource().ifPresent(stages::add);
+        source.getFragmentSource().ifPresent(stages::add);
+        for (String compute : source.getComputeSources()) {
+            if (compute != null) {
+                stages.add(compute);
+            }
+        }
+        return stages;
     }
 
     // Appends one stage to both scans, raw as authored and active with conditionals resolved; consts must be read from active, since Complementary declares shadowMapResolution 4096 under one branch and 2048 under #else, and the wrong map size sent every texelFetch-based light shaft into one quadrant of cleared depth, shining through terrain
@@ -2552,9 +2604,7 @@ public class UmbraRenderingPipeline {
             int[] drawBuffers = sanitizeShadowCompositeDrawBuffers(name, program.getDrawBuffers());
             UmbraFramebuffer framebuffer = new UmbraFramebuffer();
             for (int i = 0; i < drawBuffers.length; i++) {
-                framebuffer.addColorAttachment(drawBuffers[i], i, drawBuffers[i] == 0
-                        ? this.shadowRenderer.getColorTextureId()
-                        : this.shadowRenderer.getColorTexture1Id());
+                framebuffer.addColorAttachment(drawBuffers[i], i, this.shadowRenderer.getColorTextureId(drawBuffers[i]));
             }
             checkFramebufferComplete(framebuffer, "shadowcomp", drawBuffers);
 
@@ -2572,13 +2622,13 @@ public class UmbraRenderingPipeline {
         }
     }
 
-    // Only shadowcolor0/1 exist, so any higher index a shadowcomp DRAWBUFFERS names has nothing to attach to.
-    private static int[] sanitizeShadowCompositeDrawBuffers(String name, int[] drawBuffers) {
+    // A shadowcomp DRAWBUFFERS index past the shadowcolor buffers that exist has nothing to attach to
+    private int[] sanitizeShadowCompositeDrawBuffers(String name, int[] drawBuffers) {
         int[] sanitized = new int[drawBuffers.length];
         int count = 0;
         for (int buffer : drawBuffers) {
-            if (buffer > 1) {
-                LOGGER.warn("[Umbra] '{}' writes shadowcolor{}, but only shadowcolor0/1 exist; dropping it",
+            if (this.shadowRenderer.getColorTextureId(buffer) == 0) {
+                LOGGER.warn("[Umbra] '{}' writes shadowcolor{}, which this pack does not have; dropping it",
                         name, buffer);
                 continue;
             }
@@ -3221,20 +3271,15 @@ public class UmbraRenderingPipeline {
         bindShadowColorImages();
     }
 
-    // Binds shadowcolorimg0/1 over the shadow pass's colour attachments; they do not ping-pong, so no flip state to follow
+    // Binds shadowcolorimgN over the shadow pass's colour attachments in each buffer's own format; they do not ping-pong, so no flip state to follow
     private void bindShadowColorImages() {
         if (this.shadowColorImageUnits.isEmpty() || this.shadowRenderer == null) {
             return;
         }
         for (Map.Entry<Integer, Integer> entry : this.shadowColorImageUnits.entrySet()) {
-            int texture = entry.getKey() == 0
-                    ? this.shadowRenderer.getColorTextureId()
-                    : this.shadowRenderer.getColorTexture1Id();
-            if (texture == 0) {
-                continue;
-            }
-            LWJGL.glBindImageTexture(entry.getValue(), texture, 0, false, 0, GL15.GL_READ_WRITE,
-                    UmbraShadowRenderer.SHADOW_COLOR_INTERNAL_FORMAT);
+            int index = entry.getKey();
+            LWJGL.glBindImageTexture(entry.getValue(), this.shadowRenderer.getColorTextureId(index), 0, false, 0, GL15.GL_READ_WRITE,
+                    this.shadowRenderer.getColorInternalFormat(index));
         }
     }
 
@@ -3310,8 +3355,8 @@ public class UmbraRenderingPipeline {
         } else {
             depth0 = this.shadowRenderer.getDepthTextureId();
             depth1 = this.shadowRenderer.getDepthTextureNoTranslucentsId();
-            color0 = this.shadowRenderer.getColorTextureId();
-            color1 = this.shadowRenderer.getColorTexture1Id();
+            color0 = this.shadowRenderer.getColorTextureId(0);
+            color1 = this.shadowRenderer.getColorTextureId(1);
         }
         int sampler0 = shadowHardwareSamplerFor(0);
         int sampler1 = shadowHardwareSamplerFor(1);
@@ -3331,6 +3376,9 @@ public class UmbraRenderingPipeline {
         bindTextureUnit(SHADOW_COLOR_1_UNIT, color1);
         bindTextureUnit(GBUFFER_SHADOW_COLOR_0_UNIT, color0);
         bindTextureUnit(GBUFFER_SHADOW_COLOR_1_UNIT, color1);
+        for (int index = ShadowColorSettings.OPTIFINE_BUFFERS; index < ShadowColorSettings.IRIS_BUFFERS; index++) {
+            bindTextureUnit(shadowColorUnit(index), this.shadowRenderer == null ? 0 : this.shadowRenderer.getColorTextureId(index));
+        }
         GlTextureUnits.resetToUnit0();
     }
 
@@ -3637,6 +3685,7 @@ public class UmbraRenderingPipeline {
         if (this.stubShadowMap != null) {
             this.stubShadowMap.destroy();
         }
+        com.bdmajora.impetus.umbra.gl.program.ImmediateTessellation.reset();
         LWJGL.glDeleteSamplers(this.shadowLinearHwSampler);
         LWJGL.glDeleteSamplers(this.shadowNearestHwSampler);
         LWJGL.glDeleteSamplers(this.shadowMippedLinearHwSampler);

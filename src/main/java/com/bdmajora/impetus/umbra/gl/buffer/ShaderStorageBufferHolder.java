@@ -269,9 +269,8 @@ public final class ShaderStorageBufferHolder {
     // Zeroes the bound SSBO, since fresh storage is UNDEFINED and a pack only writes entries it visits; glClearBufferData server-side like Iris, else the chunked glBufferSubData fallback, which needs the client-writable allocation allocateStorage already made there
     private static void zeroFill(long bytes) {
         if (canClearServerSide()) {
-            // One texel of source data per GL_R8/GL_RED/GL_UNSIGNED_BYTE; LWJGL 2 calls MemoryUtil.getAddress and checkBuffer(data, 1), so unlike Umbra on LWJGL 3 it cannot pass null for "clear to zero"
-            ByteBuffer zero = ByteBuffer.allocateDirect(1); // allocateDirect is already zeroed
-            LWJGL.glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R8, GL_RED, GL_UNSIGNED_BYTE, zero);
+            // Null source data is GL's "clear to zero"
+            LWJGL.glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R8, GL_RED, GL_UNSIGNED_BYTE, null);
             return;
         }
         int chunk = (int) Math.min(bytes, ZERO_FILL_CHUNK_BYTES);
@@ -283,7 +282,7 @@ public final class ShaderStorageBufferHolder {
         }
     }
 
-    // glClearBufferData is GL 4.3 core like SSBOs themselves, so any driver running such a pack has it; queried anyway because LWJGL 2 THROWS from checkFunctionAddress on a missing entry point
+    // glClearBufferData is GL 4.3 core like SSBOs themselves, so any driver running such a pack has it; queried anyway because LWJGL calls a missing entry point through a null pointer
     private static boolean canClearServerSide() {
         if (serverSideClearAvailable == null) {
             serverSideClearAvailable = LWJGL.isOpenGLVersionSupported(4, 3)

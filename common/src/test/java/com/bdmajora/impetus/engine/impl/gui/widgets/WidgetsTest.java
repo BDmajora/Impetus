@@ -71,9 +71,9 @@ class WidgetsTest {
         assertEquals("ab", bar.getQuery());
         assertTrue(bar.keyTyped('\0', 14));
         assertEquals("a", bar.getQuery());
-        assertTrue(bar.keyTyped('\0', 259));
+        assertTrue(bar.keyTyped('\0', 14));
         assertEquals("", bar.getQuery());
-        assertTrue(bar.keyTyped('\0', 259));
+        assertTrue(bar.keyTyped('\0', 14));
         assertTrue(bar.keyTyped((char) 127, 0));
         assertTrue(bar.keyTyped('\0', 500));
         assertEquals("", bar.getQuery());
@@ -83,8 +83,11 @@ class WidgetsTest {
         assertTrue(bar.isFocused());
         assertTrue(bar.keyTyped('\0', 1));
         assertFalse(bar.isFocused());
+        // A GLFW key code is not what vanilla screens pass on, so it is just swallowed
         assertTrue(bar.mouseClicked(ctx, 5, 5, 0));
         assertTrue(bar.keyTyped('\0', 256));
+        assertTrue(bar.isFocused());
+        assertTrue(bar.keyTyped((char) 27, 0));
         assertFalse(bar.isFocused());
         assertEquals(List.of("abc", "ab", "a", "", "z", ""), seen);
         assertFalse(bar.mouseClicked(ctx, 500, 5, 0));

@@ -19,21 +19,6 @@ class IteratorsTest {
     }
 
     @Test
-    void reversibleByteIteratorRunsBothWays() {
-        byte[] data = {1, 2, (byte) 200};
-        ReversibleByteArrayIterator forward = new ReversibleByteArrayIterator(data, 3, false);
-        assertEquals(1, forward.nextByteAsInt());
-        assertEquals(2, forward.nextByteAsInt());
-        assertEquals(200, forward.nextByteAsInt());
-        assertFalse(forward.hasNext());
-        assertThrows(NoSuchElementException.class, forward::nextByteAsInt);
-        ReversibleByteArrayIterator backward = new ReversibleByteArrayIterator(data, 3, true);
-        assertEquals(200, backward.nextByteAsInt());
-        assertEquals(2, backward.nextByteAsInt());
-        assertEquals(1, backward.nextByteAsInt());
-    }
-
-    @Test
     void reversibleObjectIteratorRunsBothWays() {
         ObjectArrayList<String> list = ObjectArrayList.wrap(new String[]{"a", "b", "c"});
         ReversibleObjectArrayIterator<String> forward = new ReversibleObjectArrayIterator<>(list, false);

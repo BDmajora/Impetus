@@ -10,9 +10,9 @@ import com.bdmajora.impetus.api.options.control.SliderControl;
 import com.bdmajora.impetus.api.options.control.TickBoxControl;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
-import com.bdmajora.impetus.impl.platform.GameWindow;
 import com.bdmajora.impetus.impl.platform.WindowModes;
 import com.bdmajora.impetus.ImpetusVintage;
+import com.bdmajora.impetus.api.options.structure.Option;
 import com.bdmajora.impetus.api.options.structure.OptionFlag;
 import com.bdmajora.impetus.api.options.structure.OptionGroup;
 import com.bdmajora.impetus.api.options.structure.OptionImpact;
@@ -20,8 +20,8 @@ import com.bdmajora.impetus.api.options.structure.OptionImpl;
 import com.bdmajora.impetus.api.options.structure.OptionPage;
 import com.bdmajora.impetus.api.options.structure.OptionStorage;
 import com.bdmajora.impetus.api.options.structure.StandardOptions;
-import com.bdmajora.impetus.impl.compat.fluidlogged.FluidloggedCompat;
 import com.bdmajora.impetus.impl.compat.modernui.MuiGuiScaleHook;
+import com.bdmajora.extras.gui.ExtrasOptionPages;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -30,8 +30,6 @@ import java.util.List;
 public class ImpetusGameOptionPages {
     private static final ImpetusGameOptions sodiumOpts = ImpetusVintage.options();
     private static final MinecraftOptionsStorage vanillaOpts = new MinecraftOptionsStorage();
-    private static final MenuState menuState = new MenuState();
-    private static final OptionStorage<MenuState> menuOpts = () -> menuState;
 
     // Pushes the leaves setting to every leaf block, which caches it
     private static void applyLeavesQuality(boolean seeThrough) {
@@ -39,8 +37,8 @@ public class ImpetusGameOptionPages {
         Blocks.LEAVES2.setGraphicsLevel(seeThrough);
     }
 
-    // Render distance, brightness, GUI scale and the like
-    public static OptionPage general() {
+    // Render distance, brightness, GUI scale and the like; the Graphics API option comes from the screen, which shares it with the Performance page
+    public static OptionPage general(Option<ImpetusGameOptions.GraphicsApi> graphicsApi) {
         List<OptionGroup> groups = new ArrayList<>();
 
         // Group 1: render/simulation distance + brightness
@@ -111,17 +109,8 @@ public class ImpetusGameOptionPages {
                             FullscreenResolutions.apply(value);
                         }, opts -> opts.fullscreenResolution)
                         .build())
-                .add(OptionImpl.createBuilder(boolean.class, vanillaOpts)
-                        .setId(StandardOptions.Option.VSYNC.cast())
-                        .setName(TextComponent.translatable("options.vsync"))
-                        .setTooltip(TextComponent.translatable("impetus.options.v_sync.tooltip"))
-                        .setControl(TickBoxControl::new)
-                        .setBinding((opts, value) -> {
-                            opts.enableVsync = value;
-                            GameWindow.setVsync(opts.enableVsync);
-                        }, opts -> opts.enableVsync)
-                        .setImpact(OptionImpact.VARIES)
-                        .build())
+                // Off, On or Adaptive; the cycler keeps vanilla's VSync flag in step with the adaptive switch
+                .add(ExtrasOptionPages.verticalSync())
                 .add(OptionImpl.createBuilder(int.class, vanillaOpts)
                         .setId(StandardOptions.Option.MAX_FRAMERATE.cast())
                         .setName(TextComponent.translatable("options.framerateLimit"))
@@ -153,16 +142,10 @@ public class ImpetusGameOptionPages {
                         .build())
                 .build());
 
-        // Group 4: graphics backend
+        // Group 4: graphics API, OpenGL or Nvidium
         groups.add(OptionGroup.createBuilder()
                 .setId(StandardOptions.Group.GRAPHICS)
-                .add(OptionImpl.createBuilder(String.class, menuOpts)
-                        .setId(StandardOptions.Option.GRAPHICS_API.cast())
-                        .setName(TextComponent.translatable("options.graphicsApi"))
-                        .setTooltip(TextComponent.translatable("impetus.options.graphics_api.tooltip"))
-                        .setControl(o -> new CyclingControl<>(o, new String[] { "OpenGL" }, new TextComponent[] { TextComponent.literal("OpenGL") }))
-                        .setBinding((state, value) -> { }, state -> "OpenGL")
-                        .build())
+                .add(graphicsApi)
                 .build());
 
         return new OptionPage(StandardOptions.Pages.GENERAL, TextComponent.translatable("impetus.options.pages.general"), ImmutableList.copyOf(groups));
@@ -347,16 +330,6 @@ public class ImpetusGameOptionPages {
                         .setImpact(OptionImpact.LOW)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .build())
-                // Needs Fluidlogged API on the client to render the guessed fluid at all
-                .addConditionally(FluidloggedCompat.IS_LOADED, () -> OptionImpl.createBuilder(ImpetusGameOptions.FluidloggingGuess.class, sodiumOpts)
-                        .setId(StandardOptions.Option.INFERRED_FLUIDLOGGING.cast())
-                        .setName(TextComponent.translatable("impetus.options.inferred_fluidlogging.name"))
-                        .setTooltip(TextComponent.translatable("impetus.options.inferred_fluidlogging.tooltip"))
-                        .setControl(option -> new CyclingControl<>(option, ImpetusGameOptions.FluidloggingGuess.class))
-                        .setBinding((opts, value) -> opts.quality.inferredFluidlogging = value, opts -> opts.quality.inferredFluidlogging)
-                        .setImpact(OptionImpact.LOW)
-                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
-                        .build())
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
                         .setId(StandardOptions.Option.ENTITY_SORTING.cast())
                         .setName(TextComponent.translatable("impetus.options.closest_point_entity_sort.name"))
@@ -370,6 +343,24 @@ public class ImpetusGameOptionPages {
         return new OptionPage(StandardOptions.Pages.QUALITY, TextComponent.translatable("impetus.options.pages.quality"), ImmutableList.copyOf(groups));
     }
 
+    // Fluidlogged API's client-side guess on a page of its own; the screen only adds it when Fluidlogged API is loaded, since nothing renders the guessed fluid without it
+    public static OptionPage fluidlogging() {
+        OptionGroup group = OptionGroup.createBuilder()
+                .setId(StandardOptions.Group.FLUIDLOGGING)
+                .add(OptionImpl.createBuilder(ImpetusGameOptions.FluidloggingGuess.class, sodiumOpts)
+                        .setId(StandardOptions.Option.INFERRED_FLUIDLOGGING.cast())
+                        .setName(TextComponent.translatable("impetus.options.inferred_fluidlogging.name"))
+                        .setTooltip(TextComponent.translatable("impetus.options.inferred_fluidlogging.tooltip"))
+                        .setControl(option -> new CyclingControl<>(option, ImpetusGameOptions.FluidloggingGuess.class))
+                        .setBinding((opts, value) -> opts.quality.inferredFluidlogging = value, opts -> opts.quality.inferredFluidlogging)
+                        .setImpact(OptionImpact.LOW)
+                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
+                        .build())
+                .build();
+
+        return new OptionPage(StandardOptions.Pages.FLUIDLOGGING, TextComponent.translatable("impetus.options.pages.fluidlogging"), ImmutableList.of(group));
+    }
+
     // Storage over vanilla's GameSettings
     public static OptionStorage<GameSettings> getVanillaOpts() {
         return vanillaOpts;
@@ -378,8 +369,5 @@ public class ImpetusGameOptionPages {
     // Storage over Impetus' own options
     public static OptionStorage<ImpetusGameOptions> getSodiumOpts() {
         return sodiumOpts;
-    }
-
-    private static class MenuState {
     }
 }

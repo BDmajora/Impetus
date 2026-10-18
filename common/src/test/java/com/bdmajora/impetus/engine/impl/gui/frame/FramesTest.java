@@ -170,6 +170,8 @@ class FramesTest {
         assertTrue(none.mouseClicked(ctx, 5, 5, 0));
         assertFalse(none.mouseScrolled(ctx, 5, 5, 0, 1));
         assertFalse(none.mouseDragged(ctx, 5, 5, 0, 0, 0));
+        // The button that took the click is handed the release, wherever the cursor ends up
+        assertTrue(none.mouseReleased(ctx, 5, 5, 0));
         assertFalse(none.mouseReleased(ctx, 5, 5, 0));
     }
 }

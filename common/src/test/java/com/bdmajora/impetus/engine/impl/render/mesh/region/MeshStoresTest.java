@@ -163,6 +163,40 @@ public class MeshStoresTest {
         stream.delete();
     }
 
+    // A private field of the store or one of its regions
+    private static Object field(Object owner, String name) throws ReflectiveOperationException {
+        var field = owner.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        return field.get(owner);
+    }
+
+    @Test
+    void sectionsKeepThePlacementTimeTheFadeInCountsFrom() throws ReflectiveOperationException {
+        UploadStream stream = new UploadStream(1 << 20);
+        MeshRegionStore regions = new MeshRegionStore(4, stream);
+        assertTrue(regions.getSectionTimeBufferAddress() != 0);
+        int before = regions.currentTimeMs();
+        regions.allocateSection(0, 0, 0);
+        int second = regions.allocateSection(1, 0, 0);
+        int third = regions.allocateSection(2, 0, 0);
+        long times = (long) field(((Object[]) field(regions, "regions"))[0], "sectionTimes");
+        int stamped = MemoryUtil.memGetInt(times);
+        assertTrue(stamped >= before && stamped <= regions.currentTimeMs());
+
+        // New geometry for a placed section keeps its time, so a rebuild does not fade in again
+        MemoryUtil.memPutInt(times + 8, 12345);
+        regions.beginSectionUpdate(third);
+        assertEquals(12345, MemoryUtil.memGetInt(times + 8));
+        // Removing a middle section moves the last one's time along with its header
+        regions.removeSection(second);
+        assertEquals(1, regions.getSectionIndex(third));
+        assertEquals(12345, MemoryUtil.memGetInt(times + 4));
+        regions.commit();
+        stream.commit();
+        regions.delete();
+        stream.delete();
+    }
+
     @Test
     void aFullArenaDropsTheSection() {
         UploadStream stream = new UploadStream(1 << 16);

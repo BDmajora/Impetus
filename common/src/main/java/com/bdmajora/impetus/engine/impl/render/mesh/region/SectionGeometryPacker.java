@@ -6,6 +6,7 @@ import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFacing;
 import com.bdmajora.impetus.engine.impl.render.chunk.data.BuiltSectionMeshParts;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.impl.MeshChunkVertex;
+import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.impl.MeshVertexLayout;
 import it.unimi.dsi.fastutil.longs.LongArrays;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -14,25 +15,34 @@ import java.util.Map;
 import org.lwjgl.system.MemoryUtil;
 
 
-// Merges every pass of one build into the single blob the mesh backend draws: translucent quads first, sorted back to front from the build camera, then every opaque pass's quads grouped by facing (Nvidium's repackage step)
+// Merges every pass of one build into the single blob the mesh backend draws: translucent quads first, sorted back to front from the build camera, then every opaque pass's quads grouped by facing (Nvidium's repackage step); any MeshVertexLayout stride
 public final class SectionGeometryPacker {
     private static final Logger LOGGER = LogManager.getLogger("Impetus/MeshBackend");
 
-    private static final int STRIDE = MeshChunkVertex.STRIDE;
-    private static final int QUAD_BYTES = STRIDE * 4;
     // Section headers carry every count as a uint16
     private static final int MAX_GROUP_QUADS = 0xFFFF;
 
     private SectionGeometryPacker() {
     }
 
+    // Packs a build for the mesh backend when its passes were built in a mesh layout, null otherwise; the build worker asks this for every build, so the decision follows the passes rather than any global switch
+    public static SectionGeometry packForMeshBackend(Map<TerrainRenderPass, BuiltSectionMeshParts> meshes, float cameraX, float cameraY, float cameraZ) {
+        for (TerrainRenderPass pass : meshes.keySet()) {
+            if (!(pass.vertexType() instanceof MeshVertexLayout)) {
+                return null;
+            }
+        }
+        return pack(meshes, cameraX, cameraY, cameraZ);
+    }
+
     // Packs a build's meshes; null when nothing was built, which tells the store to drop the section; relative camera is camera minus section origin, in blocks
     public static SectionGeometry pack(Map<TerrainRenderPass, BuiltSectionMeshParts> meshes, float cameraX, float cameraY, float cameraZ) {
+        int stride = 0;
         int translucentQuads = 0;
         int[] opaquePerFacing = new int[ModelQuadFacing.COUNT];
 
         for (var entry : meshes.entrySet()) {
-            requireMeshLayout(entry.getKey());
+            stride = requireMeshLayout(entry.getKey(), stride);
 
             for (ModelQuadFacing facing : ModelQuadFacing.VALUES) {
                 int quads = quadsIn(entry.getValue(), facing);
@@ -58,12 +68,13 @@ public final class SectionGeometryPacker {
             return null;
         }
 
-        NativeBuffer output = new NativeBuffer(total * QUAD_BYTES);
+        int quadBytes = stride * 4;
+        NativeBuffer output = new NativeBuffer(total * quadBytes);
         long base = MemoryUtil.memAddress(output.getDirectBuffer());
 
-        writeTranslucent(meshes, base, translucentQuads, cameraX, cameraY, cameraZ);
+        writeTranslucent(meshes, base, translucentQuads, stride, cameraX, cameraY, cameraZ);
 
-        long cursor = base + (long) translucentQuads * QUAD_BYTES;
+        long cursor = base + (long) translucentQuads * quadBytes;
         short[] quadsPerFacing = new short[ModelQuadFacing.COUNT];
 
         for (ModelQuadFacing facing : ModelQuadFacing.VALUES) {
@@ -78,23 +89,24 @@ public final class SectionGeometryPacker {
                 int quads = Math.min(quadsIn(entry.getValue(), facing), budget);
 
                 if (quads > 0) {
-                    MemoryUtil.memCopy(rangeAddress(entry.getValue(), facing), cursor, (long) quads * QUAD_BYTES);
-                    cursor += (long) quads * QUAD_BYTES;
+                    MemoryUtil.memCopy(rangeAddress(entry.getValue(), facing, stride), cursor, (long) quads * quadBytes);
+                    cursor += (long) quads * quadBytes;
                     budget -= quads;
                 }
             }
         }
 
-        return SectionGeometry.bounded(total, output, quadsPerFacing, (short) translucentQuads);
+        return SectionGeometry.bounded(total, output, quadsPerFacing, (short) translucentQuads, stride);
     }
 
     // Copies every translucent quad and orders them farthest first, the order blending needs; the GPU's per-frame swap pass only has to fix what camera movement disturbs
-    private static void writeTranslucent(Map<TerrainRenderPass, BuiltSectionMeshParts> meshes, long destination, int quadCount,
+    private static void writeTranslucent(Map<TerrainRenderPass, BuiltSectionMeshParts> meshes, long destination, int quadCount, int stride,
                                          float cameraX, float cameraY, float cameraZ) {
         if (quadCount == 0) {
             return;
         }
 
+        int quadBytes = stride * 4;
         long[] sources = new long[quadCount];
         long[] keys = new long[quadCount];
         int index = 0;
@@ -105,13 +117,13 @@ public final class SectionGeometryPacker {
             }
 
             for (ModelQuadFacing facing : ModelQuadFacing.VALUES) {
-                long quad = rangeAddress(entry.getValue(), facing);
+                long quad = rangeAddress(entry.getValue(), facing, stride);
                 int quads = quadsIn(entry.getValue(), facing);
 
-                for (int i = 0; i < quads && index < quadCount; i++, quad += QUAD_BYTES) {
+                for (int i = 0; i < quads && index < quadCount; i++, quad += quadBytes) {
                     sources[index] = quad;
                     // Distances are non-negative, so their float bits order like the floats; the low half carries the quad's slot
-                    keys[index] = ((long) Float.floatToRawIntBits(distanceSquared(quad, cameraX, cameraY, cameraZ)) << 32) | index;
+                    keys[index] = ((long) Float.floatToRawIntBits(distanceSquared(quad, stride, cameraX, cameraY, cameraZ)) << 32) | index;
                     index++;
                 }
             }
@@ -122,16 +134,16 @@ public final class SectionGeometryPacker {
         // Ascending distance, written from the end so the farthest quad lands first
         for (int i = 0; i < quadCount; i++) {
             long source = sources[(int) keys[i]];
-            MemoryUtil.memCopy(source, destination + (long) (quadCount - 1 - i) * QUAD_BYTES, QUAD_BYTES);
+            MemoryUtil.memCopy(source, destination + (long) (quadCount - 1 - i) * quadBytes, quadBytes);
         }
     }
 
     // Squared distance from the camera to a quad's centre, all in section-local blocks
-    static float distanceSquared(long quad, float cameraX, float cameraY, float cameraZ) {
+    static float distanceSquared(long quad, int stride, float cameraX, float cameraY, float cameraZ) {
         float x = 0.0f, y = 0.0f, z = 0.0f;
 
         for (int vertex = 0; vertex < 4; vertex++) {
-            long ptr = quad + (long) vertex * STRIDE;
+            long ptr = quad + (long) vertex * stride;
             x += MeshChunkVertex.decodePosition(MeshChunkVertex.readPackedX(ptr));
             y += MeshChunkVertex.decodePosition(MeshChunkVertex.readPackedY(ptr));
             z += MeshChunkVertex.decodePosition(MeshChunkVertex.readPackedZ(ptr));
@@ -150,17 +162,22 @@ public final class SectionGeometryPacker {
     }
 
     // Native address of a facing's first quad in a pass's vertex buffer
-    private static long rangeAddress(BuiltSectionMeshParts mesh, ModelQuadFacing facing) {
+    private static long rangeAddress(BuiltSectionMeshParts mesh, ModelQuadFacing facing, int stride) {
         VertexRange range = mesh.ranges().get(facing);
-        long start = range == null ? 0L : (long) range.vertexStart() * STRIDE;
+        long start = range == null ? 0L : (long) range.vertexStart() * stride;
         return MemoryUtil.memAddress(mesh.vertexBuffer().getDirectBuffer()) + start;
     }
 
-    // The mesh shaders read four 16-byte vertices per quad and nothing else
-    private static void requireMeshLayout(TerrainRenderPass pass) {
-        if (pass.vertexType().getVertexFormat().getStride() != STRIDE || pass.primitiveType().getVerticesPerPrimitive() != 4) {
+    // The mesh shaders read four vertices per quad in a mesh layout, and every pass of one section must agree on the stride; returns the pass's stride
+    private static int requireMeshLayout(TerrainRenderPass pass, int expectedStride) {
+        int stride = pass.vertexType().getVertexFormat().getStride();
+
+        if (!(pass.vertexType() instanceof MeshVertexLayout) || pass.primitiveType().getVerticesPerPrimitive() != 4
+                || (expectedStride != 0 && stride != expectedStride)) {
             throw new IllegalStateException("Pass " + pass.name() + " was not built in the mesh vertex layout");
         }
+
+        return stride;
     }
 
     // Caps one header count at 16 bits

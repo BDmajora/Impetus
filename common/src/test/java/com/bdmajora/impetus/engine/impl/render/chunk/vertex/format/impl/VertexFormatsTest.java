@@ -26,32 +26,52 @@ class VertexFormatsTest {
         return v;
     }
 
+    // A 21-bit compact position from its high 16 bits and the 5 low bits packed alongside the other axes
+    private static float compactAxis(long ptr, int axis) {
+        int high = Short.toUnsignedInt(MemoryUtil.memGetShort(ptr + axis * 2L));
+        int low = (Short.toUnsignedInt(MemoryUtil.memGetShort(ptr + 6)) >> (axis * 5)) & 31;
+        return CompactChunkVertex.decodePosition((high << 5) | low);
+    }
+
     @Test
     void compactFormatQuantisesPositionsAndUvs() {
         ChunkVertexType type = ChunkMeshFormats.COMPACT;
-        assertEquals(20, type.getVertexFormat().getStride());
+        assertEquals(24, type.getVertexFormat().getStride());
         assertEquals(-8f, type.getPositionOffset());
         assertTrue(type.getPositionScale() > 0);
         Map<String, String> defines = type.getDefines();
         assertTrue(defines.containsKey("USE_VERTEX_COMPRESSION"));
         assertEquals(String.valueOf(type.getTextureScale()), defines.get("VERT_TEX_SCALE"));
         long ptr = MemoryUtil.nmemCalloc(1, 64);
-        long next = type.createEncoder().write(ptr, Passes.CUTOUT_MATERIAL, vertex(), 7);
+        ChunkVertexEncoder.Vertex vertex = vertex();
+        vertex.rdhFactor = 0x01020304;
+        long next = type.createEncoder().write(ptr, Passes.CUTOUT_MATERIAL, vertex, 7);
         assertEquals(ptr + CompactChunkVertex.STRIDE, next);
-        assertEquals(1.5f, CompactChunkVertex.decodePosition(MemoryUtil.memGetShort(ptr)), 1e-3);
-        assertEquals(2.25f, CompactChunkVertex.decodePosition(MemoryUtil.memGetShort(ptr + 2)), 1e-3);
-        assertEquals(-0.5f, CompactChunkVertex.decodePosition(MemoryUtil.memGetShort(ptr + 4)), 1e-3);
-        assertEquals(Passes.CUTOUT_MATERIAL.bits(), MemoryUtil.memGetByte(ptr + 6));
-        assertEquals(7, MemoryUtil.memGetByte(ptr + 7));
-        assertEquals(0x00F000A0, MemoryUtil.memGetInt(ptr + 16));
+        assertEquals(1.5f, compactAxis(ptr, 0), 1e-4);
+        assertEquals(2.25f, compactAxis(ptr, 1), 1e-4);
+        assertEquals(-0.5f, compactAxis(ptr, 2), 1e-4);
+        assertEquals(vertex.color, MemoryUtil.memGetInt(ptr + 8));
         assertEquals(8192, MemoryUtil.memGetShort(ptr + 12));
+        assertEquals(24576, Short.toUnsignedInt(MemoryUtil.memGetShort(ptr + 14)));
+        int params = MemoryUtil.memGetInt(ptr + 16);
+        assertEquals(Passes.CUTOUT_MATERIAL.bits() & 0xF, params & 0xF);
+        assertEquals(7, (params >> 8) & 0xFF);
+        assertEquals(0xA0 | (0xF0 << 8), params >>> 16);
+        assertEquals(0x01020304, MemoryUtil.memGetInt(ptr + 20));
+        // The two low bits of each UV ride in the draw parameters
+        ChunkVertexEncoder.Vertex fine = vertex();
+        fine.u = 0.25f + 3f / 131072;
+        fine.v = 0.75f + 2f / 131072;
+        type.createEncoder().write(ptr, Passes.CUTOUT_MATERIAL, fine, 0);
+        assertEquals(8192, MemoryUtil.memGetShort(ptr + 12));
+        assertEquals((3 << 4) | (2 << 6), MemoryUtil.memGetInt(ptr + 16) & 0xF0);
         MemoryUtil.nmemFree(ptr);
     }
 
     @Test
     void vanillaLikeFormatKeepsFullPrecision() {
         ChunkVertexType type = ChunkMeshFormats.VANILLA_LIKE;
-        assertEquals(28, type.getVertexFormat().getStride());
+        assertEquals(32, type.getVertexFormat().getStride());
         assertEquals(1f, type.getPositionScale());
         assertEquals(0f, type.getPositionOffset());
         assertEquals(1f, type.getTextureScale());
@@ -64,6 +84,7 @@ class VertexFormatsTest {
         assertEquals(Passes.CUTOUT_MATERIAL.bits(), params & 0xFF);
         assertEquals(3, (params >> 8) & 0xFF);
         assertEquals(0xA0 | (0xF0 << 8), params >>> 16);
+        assertEquals(0, MemoryUtil.memGetInt(ptr + 28));
         assertEquals(32, VanillaLikeChunkVertex.baseFormat(32).addElement("extra", 28, com.bdmajora.impetus.engine.impl.gl.attribute.GlVertexAttributeFormat.FLOAT, 1, false, false).build().getStride());
         MemoryUtil.nmemFree(ptr);
     }

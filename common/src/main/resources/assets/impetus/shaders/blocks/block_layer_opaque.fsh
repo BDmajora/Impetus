@@ -81,10 +81,10 @@ void main() {
 #endif
 
 #ifdef USE_FOG
-
 #if defined(CHUNK_FADE_IN_DURATION_MS) && CHUNK_FADE_IN_DURATION_MS > 0
     // Make chunk fade in over a short duration
     diffuseColor = vec4(mix(u_FogColor.rgb, diffuseColor.rgb, (clamp(v_ChunkAgeMs, 0, CHUNK_FADE_IN_DURATION_MS) / CHUNK_FADE_IN_DURATION_MS)), diffuseColor.a);
+#endif
 #endif
 
 #if defined(USE_FOG_POSTMODERN)

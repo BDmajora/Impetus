@@ -114,6 +114,37 @@ class MeshTerrainSectionManagerTest {
     }
 
     @Test
+    void theShadowPassDrawsTheShadowMapThroughTheMeshBackend() {
+        var config = new MeshTerrainConfig(false, MeshTranslucencySorting.NONE, MeshStatistics.NONE, false, 512, 0, 4);
+        var shading = new com.bdmajora.testing.RecordingShading();
+        manager = new TestSectionManager(commands, 4, 0, 2, config, shading);
+        manager.onChunkAdded(0, 0);
+        Viewport viewport = Sections.viewport(8, 8, 8);
+        frame(viewport, 1);
+        frame(viewport, 2);
+
+        // Without a shadow frustum yet the shadow pass has nothing to cull with
+        manager.shadowPass = true;
+        CameraTransform camera = viewport.getTransform();
+        manager.renderLayer(MATRICES, Passes.MESH_SOLID, camera, camera);
+        assertTrue(shading.calls.isEmpty());
+
+        manager.updateForShadowPass(viewport, viewport, 3, false);
+        Mockito.doAnswer(inv -> {
+            int[] size = inv.getArgument(1);
+            size[2] = 2048;
+            size[3] = 2048;
+            return null;
+        }).when(TestGl.gl()).glGetIntegerv(Mockito.eq(0x0BA2), Mockito.any(int[].class));
+        manager.renderLayer(MATRICES, Passes.MESH_SOLID, camera, camera);
+        // Cutout passes ride along with the solid one, and the sorted pass draws the shadow map's translucency
+        manager.renderLayer(MATRICES, Passes.MESH_CUTOUT, camera, camera);
+        manager.renderLayer(MATRICES, Passes.MESH_TRANSLUCENT, camera, camera);
+        assertEquals(java.util.List.of("opaque SHADOW", "finish", "translucent SHADOW", "finish"), shading.calls);
+        manager.shadowPass = false;
+    }
+
+    @Test
     void theOpaquePassWaitsForAViewport() {
         var config = new MeshTerrainConfig(false, MeshTranslucencySorting.NONE, MeshStatistics.NONE, false, 512, 0, 4);
         manager = new TestSectionManager(commands, 4, 0, 1, config);

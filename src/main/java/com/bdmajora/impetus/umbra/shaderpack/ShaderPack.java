@@ -46,6 +46,9 @@ public final class ShaderPack {
     // Matches `!defined(IS_IRIS) && MC_VERSION < <n>` — the shape detectLegacyPrograms below looks for
     private static final Pattern LEGACY_BRANCH_PATTERN = Pattern.compile(
             "!\\s*defined\\s*\\(?\\s*IS_IRIS\\s*\\)?\\s*&&\\s*MC_VERSION\\s*<\\s*(\\d+)");
+    // The Nvidium port's stage files, gbuffers_terrain.mesh and gbuffers_terrain.mesh.fsh beside gbuffers_terrain.vsh
+    public static final String MESH_EXTENSION = "mesh";
+    public static final String MESH_FRAGMENT_EXTENSION = "mesh.fsh";
     // The extensions that make a pack file a shader STAGE rather than an include; everything else only reaches the driver by being included
     private static final Set<String> STAGE_EXTENSIONS =
             new HashSet<>(Arrays.asList("vsh", "fsh", "gsh", "csh", "tcs", "tes"));
@@ -467,7 +470,10 @@ public final class ShaderPack {
         boolean tessellation = this.activeFeatures.contains(FeatureFlags.TESSELLATION_SHADERS);
         String tessControl = tessellation ? readStage(stages, sourceName, "tcs") : null;
         String tessEval = tessellation ? readStage(stages, sourceName, "tes") : null;
-        return new ProgramSource(sourceName, vertex, geometry, tessControl, tessEval, fragment, computes);
+        // An Nvidium port ships these beside the OpenGL stages; ordinary packs never have them
+        String mesh = readStage(stages, sourceName, MESH_EXTENSION);
+        String meshFragment = readStage(stages, sourceName, MESH_FRAGMENT_EXTENSION);
+        return new ProgramSource(sourceName, vertex, geometry, tessControl, tessEval, fragment, computes, mesh, meshFragment);
     }
 
     // Reads a program's compute stages, <name>.csh plus _a through _z (Iris extension); the letter scan STOPS at the first missing suffix like Iris's readComputeArray since the suffixes are an ordered chain, returning empty or a 27-entry array that may hold nulls

@@ -3,7 +3,6 @@ package com.bdmajora.impetus.engine.impl.render.chunk;
 import com.bdmajora.impetus.engine.impl.gl.device.CommandList;
 import com.bdmajora.impetus.engine.impl.gl.device.GLRenderDevice;
 import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.AsyncOcclusionMode;
-import com.bdmajora.impetus.engine.impl.render.chunk.sorting.TranslucentQuadAnalyzer;
 import com.bdmajora.impetus.engine.impl.render.viewport.CameraTransform;
 import com.bdmajora.impetus.engine.impl.render.viewport.Viewport;
 import com.bdmajora.impetus.engine.impl.util.PositionUtil;
@@ -127,7 +126,7 @@ class RenderSectionManagerTest {
         manager.refused.add(PositionUtil.packSection(0, 0, 0));
         manager.scheduleRebuild(0, 0, 0, false);
         frames(viewport, 7, true);
-        assertFalse(manager.getRenderSectionOrNull(0, 0, 0).hasAnythingToRender());
+        assertFalse(manager.section(0, 0, 0).hasAnythingToRender());
 
         manager.onChunkRemoved(1, 0);
         manager.onChunkRemoved(1, 0);
@@ -140,81 +139,114 @@ class RenderSectionManagerTest {
         assertFalse(manager.getSectionMetricsTracker().getSlowestSections().isEmpty());
     }
 
+    // A camera move from the previous viewport to this one, with a fresh search so the move is seen
+    private void moveTo(double x, double y, double z, int number) {
+        manager.markGraphDirty();
+        frames(Sections.viewport(x, y, z), number, true);
+    }
+
     @Test
     void cameraMovementResortsTranslucentSections() {
         manager = new TestSectionManager(commands, 4, 0, 1, false, AsyncOcclusionMode.NONE, -1);
         manager.translucent.add(PositionUtil.packSection(0, 0, 0));
-        manager.translucent.add(PositionUtil.packSection(1, 0, 0));
-        manager.manyNormals.add(PositionUtil.packSection(1, 0, 0));
+        manager.distanceSorted.add(PositionUtil.packSection(1, 0, 0));
         manager.onChunkAdded(0, 0);
         manager.onChunkAdded(1, 0);
-        Viewport start = Sections.viewport(8, 8, 8);
-        frames(start, 1, true);
-        RenderSection indexed = manager.getRenderSectionOrNull(0, 0, 0);
-        RenderSection coarse = manager.getRenderSectionOrNull(1, 0, 0);
-        assertEquals(TranslucentQuadAnalyzer.Level.DYNAMIC, indexed.getHighestSortingLevel());
-        assertTrue(coarse.isNeedsDynamicTranslucencySorting());
+        frames(Sections.viewport(8, 8, 2), 1, true);
+        RenderSection tree = manager.section(0, 0, 0);
+        RenderSection distance = manager.section(1, 0, 0);
+        assertTrue(tree.isTreeSorted());
+        assertEquals(RenderSection.SortMode.DYNAMIC, distance.getSortMode());
+        assertEquals(3, distance.getHighestSortingIndex());
         int built = manager.builds.get();
+        assertEquals(0, manager.sorts.get());
 
-        // A small move across the plane triggers the indexed section; the coarse one waits for a whole block of movement
-        manager.markGraphDirty();
-        frames(Sections.viewport(8, 8.6, 8), 3, true);
-        manager.markGraphDirty();
-        frames(Sections.viewport(8, 9, 8), 5, true);
-        manager.markGraphDirty();
-        frames(Sections.viewport(20, 9, 8), 7, true);
-        // Crossing the x=0 plane of the indexed section's vertical quad triggers its re-sort
-        manager.markGraphDirty();
-        frames(Sections.viewport(-2, 9, 8), 21, true);
-        manager.markGraphDirty();
-        frames(Sections.viewport(2, 9, 8), 23, true);
-        // A teleport marks every indexed section
-        manager.markGraphDirty();
-        frames(Sections.viewport(200, 9, 200), 9, true);
-        manager.markGraphDirty();
-        frames(Sections.viewport(8, 8, 8), 11, false);
+        // Crossing the tree's cut plane at z=5 re-sorts it; the distance-sorted section re-sorts on any whole block of movement
+        moveTo(8, 8, 6, 3);
+        assertEquals(2, manager.sorts.get());
+        // Less than a block, and no plane crossed: nothing to do
+        moveTo(8, 8, 6.5, 5);
+        assertEquals(2, manager.sorts.get());
+        // Back across the plane re-sorts both again
+        moveTo(8, 8, 4, 7);
+        assertEquals(4, manager.sorts.get());
+        // Into another section: both again
+        moveTo(8, 24, 24, 9);
+        assertEquals(6, manager.sorts.get());
+        // Moving within a section that shares no grid line with the distance-sorted one, and crossing no plane, sorts nothing
+        moveTo(10, 26, 26, 11);
+        assertEquals(6, manager.sorts.get());
         assertEquals(built, manager.builds.get());
+
+        // Near sections sort before the frame continues when important rebuilds are allowed
         manager.importantRebuilds = true;
-        manager.markGraphDirty();
-        frames(Sections.viewport(8, 8, 9), 13, false);
+        moveTo(8, 8, 4, 13);
+        assertEquals(8, manager.sorts.get());
+        // A pending rebuild takes over from a sort, and a rebuilt section re-indexes its planes
         manager.scheduleRebuild(0, 0, 0, false);
-        manager.scheduleRebuild(1, 0, 0, false);
-        frames(Sections.viewport(8, 8, 9), 15, true);
-        assertTrue(manager.getDebugStrings().stream().anyMatch(s -> s.startsWith("Sorting:")));
+        frames(Sections.viewport(8, 8, 4), 15, true);
+        assertEquals(built + 1, manager.builds.get());
+        assertTrue(tree.isTreeSorted());
+        moveTo(8, 8, 6, 17);
+        assertEquals(10, manager.sorts.get());
+        Collection<String> debug = manager.getDebugStrings();
+        assertTrue(debug.stream().anyMatch(s -> s.startsWith("Sorting:")));
+        assertTrue(debug.stream().anyMatch(s -> s.startsWith("Tree Sort: 1 planes")));
+
+        // Fog that hides everything past it shortens the search; translucent fog does not
         manager.fogOcclusion = true;
         manager.respectQueueLimit = false;
-        manager.markGraphDirty();
-        frames(Sections.viewport(8, 8, 9), 17, true);
+        moveTo(8, 8, 4, 19);
         TestFogService.color = new float[]{0, 0, 0, 0.5f};
-        manager.markGraphDirty();
-        frames(Sections.viewport(8, 8, 9), 19, true);
+        moveTo(8, 8, 4, 21);
         TestFogService.color = new float[]{0.5f, 0.6f, 0.7f, 1f};
+        TestFogService.shape = com.bdmajora.impetus.engine.impl.render.chunk.fog.FogService.FOG_SHAPE_PLANAR;
+        moveTo(8, 8, 4, 23);
+        TestFogService.shape = 0;
         assertTrue(manager.getVisibleChunkCount() > 0);
-        RenderSection plain = new RenderSection(null, 9, 9, 9);
-        assertNull(manager.createSortTask(plain, 1));
+        assertNull(manager.createSortTask(new RenderSection(null, 9, 9, 9), 1));
+
+        // Removing a tree-sorted section drops its planes from the index
+        manager.onChunkRemoved(0, 0);
+        manager.runAsyncTasks();
+        assertTrue(manager.getDebugStrings().stream().anyMatch(s -> s.startsWith("Tree Sort: 0 planes")));
     }
 
     @Test
-    void shadowPassAndAsyncWalksShareTheBuilder() {
+    void theShadowPassSearchesForBothPassesAndSharesTheBuilder() {
         manager = new TestSectionManager(commands, 4, 0, 1, true, AsyncOcclusionMode.EVERYTHING, -1);
-        manager.asyncMode = AsyncOcclusionMode.EVERYTHING;
         manager.onChunkAdded(0, 0);
         Viewport viewport = Sections.viewport(8, 8, 8);
+        assertTrue(manager.hasShadowPass());
         frames(viewport, 1, true);
         manager.finishAllGraphUpdates();
+        frames(viewport, 3, true);
+        manager.finishAllGraphUpdates();
+        // The shadow pass runs first in a frame and submits the player search too
         manager.shadowPass = true;
-        manager.update(viewport, 2, false);
+        assertTrue(manager.needsUpdate());
+        manager.updateForShadowPass(viewport, viewport, 4, false);
         manager.finishAllGraphUpdates();
         manager.updateChunks(false);
         manager.renderLayer(MATRICES, Passes.SOLID, viewport.getTransform(), viewport.getTransform());
         assertTrue(manager.isSectionVisible(0, 0, 0));
         manager.shadowPass = false;
+        assertTrue(manager.needsUpdate());
+        manager.update(viewport, 4, false);
+        manager.finishAllGraphUpdates();
+        assertTrue(manager.isSectionVisible(0, 0, 0));
         manager.onChunkRemoved(0, 0);
         manager.markGraphDirty();
-        frames(viewport, 3, true);
+        frames(viewport, 5, true);
+        manager.finishAllGraphUpdates();
         assertFalse(manager.isSectionVisible(0, 0, 0));
         manager.managedBlock(() -> true);
         manager.scheduleAsyncTask(() -> {});
+
+        TestSectionManager plain = new TestSectionManager(commands, 4, 0, 1, false, AsyncOcclusionMode.NONE, -1);
+        assertFalse(plain.hasShadowPass());
+        assertThrows(IllegalStateException.class, () -> plain.updateForShadowPass(viewport, viewport, 1, false));
+        plain.destroy();
     }
 
     // The terrain pass hands in vanilla's frameCount and Umbra's shadow pass its own counter from zero; the walks used to stamp those, so one under the smaller number reached only the camera section
@@ -249,7 +281,7 @@ class RenderSectionManagerTest {
         assertEquals(3, manager.getVisibleChunkCount());
 
         // A rebuild submitted after the mixed numbers is applied, not dropped as older than the last build
-        RenderSection far = manager.getRenderSectionOrNull(2, 0, 0);
+        RenderSection far = manager.section(2, 0, 0);
         int lastBuilt = far.getLastBuiltFrame();
         int built = manager.builds.get();
         manager.scheduleRebuild(2, 0, 0, false);
@@ -262,7 +294,7 @@ class RenderSectionManagerTest {
     private static final class Bare extends RenderSectionManager {
         Bare(CommandList commands) {
             super(Passes.CONFIG, () -> new com.bdmajora.impetus.engine.impl.render.chunk.compile.ChunkBuildContext(Passes.CONFIG),
-                    (device, config) -> new DefaultChunkRenderer(device, config) {
+                    (device, config) -> new DefaultChunkRenderer(device, config, new TestFogService()) {
                         @Override
                         protected void configureShaderInterface(com.bdmajora.impetus.engine.impl.render.chunk.shader.ChunkShaderInterface shader) {}
                     }, 2, commands, 0, 1, -1, false);
@@ -276,6 +308,16 @@ class RenderSectionManagerTest {
         @Override
         protected boolean useFogOcclusion() {
             return false;
+        }
+
+        @Override
+        protected boolean useRasterOcclusionCulling() {
+            return false;
+        }
+
+        @Override
+        public com.bdmajora.impetus.engine.impl.render.chunk.fog.FogService getFogService() {
+            return new TestFogService();
         }
 
         @Override
@@ -320,8 +362,9 @@ class RenderSectionManagerTest {
     @Test
     void workerThreadsRunBuildsOffTheRenderThread() {
         manager = new TestSectionManager(commands, 4, 0, 1, false, AsyncOcclusionMode.NONE, 1);
+        // Neighbours, since the walk only reaches sections through loaded ones
         manager.onChunkAdded(0, 0);
-        manager.onChunkAdded(2, 0);
+        manager.onChunkAdded(1, 0);
         Viewport viewport = Sections.viewport(8, 8, 8);
         frames(viewport, 1, false);
         manager.getBuilder().managedBlock(() -> manager.builds.get() >= 2);

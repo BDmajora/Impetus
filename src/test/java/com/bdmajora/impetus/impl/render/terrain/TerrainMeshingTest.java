@@ -241,8 +241,8 @@ class TerrainMeshingTest {
         options.performance.chunkBuilderThreads = -1;
         options.performance.asyncOcclusionMode = AsyncOcclusionMode.NONE;
         options.performance.alwaysDeferChunkUpdates = false;
-        // TestGl reports every extension, so mesh terrain would otherwise be tried (and fall back) under every raster test
-        options.meshTerrain.enabled = false;
+        // TestGl reports every extension, so this stays on OpenGL or mesh terrain would be tried (and fall back) under every raster test
+        assertEquals(ImpetusGameOptions.GraphicsApi.OPENGL, options.graphicsApi);
         Statics.set(ImpetusVintage.class, "CONFIG", options);
         FulgorConfig fulgor = Mc.uninitialized(FulgorConfig.class);
         Mixins.set(FulgorConfig.class, "instance", fulgor);
@@ -395,6 +395,8 @@ class TerrainMeshingTest {
 
             Mixins.set(client, "world", world);
             Mixins.set(client, "gameSettings", settings);
+            // Fog occlusion reads the fog colour off the entity renderer when it sizes the search
+            client.entityRenderer = mock(EntityRenderer.class);
             Mixins.set(client, "renderChunksMany", true);
             settings.renderDistanceChunks = 2;
             settings.ambientOcclusion = 2;
@@ -973,7 +975,7 @@ class TerrainMeshingTest {
             return 0x9119;
         }).when(TestGl.gl()).glGetSynci(anyLong(), anyInt(), any());
         Statics.set(MeshShaderSupport.class, "supported", null);
-        options.meshTerrain.enabled = true;
+        options.graphicsApi = ImpetusGameOptions.GraphicsApi.NVIDIUM;
         options.meshTerrain.automaticMemory = false;
         options.meshTerrain.maxGeometryMemory = 512;
         try {
@@ -1008,6 +1010,8 @@ class TerrainMeshingTest {
             }
             verify(TestGl.gl(), atLeastOnce()).glDrawMeshTasksNV(eq(0), anyInt());
             verify(TestGl.gl(), never()).glMultiDrawElementsBaseVertex(anyInt(), anyLong(), anyInt(), anyLong(), anyInt(), anyLong());
+            // F3 names the backend first
+            assertEquals("Terrain: Nvidium", renderer.getDebugStrings().iterator().next());
 
             // A driver that advertises everything but refuses a program gets the raster renderer, for the rest of the session
             when(TestGl.gl().glGetProgrami(anyInt(), eq(0x8B82))).thenReturn(0);
@@ -1015,14 +1019,94 @@ class TerrainMeshingTest {
             assertNull(renderer.getRenderSectionManager().getMeshTerrain());
             assertFalse(MeshShaderSupport.isSupported());
             assertFalse(ImpetusWorldRenderer.shouldUseMeshTerrain());
+            assertEquals("Terrain: OpenGL, Nvidium off: " + MeshShaderSupport.getUnsupportedReason(), renderer.getDebugStrings().iterator().next());
 
-            // Off in the options means off
+            // OpenGL as the Graphics API means no mesh shaders on a GPU that has them
             Statics.set(MeshShaderSupport.class, "supported", null);
-            options.meshTerrain.enabled = false;
+            options.graphicsApi = ImpetusGameOptions.GraphicsApi.OPENGL;
+            assertFalse(ImpetusWorldRenderer.shouldUseMeshTerrain());
+            assertEquals("Terrain: OpenGL", ImpetusWorldRenderer.terrainBackend(false));
+            // Nvidium picked again, the raster renderer stands until the reload that follows
+            options.graphicsApi = ImpetusGameOptions.GraphicsApi.NVIDIUM;
+            assertEquals("Terrain: OpenGL, Nvidium off: waiting for the renderer to reload", ImpetusWorldRenderer.terrainBackend(false));
+            renderer.setWorld(null);
+        } finally {
+            Statics.set(MeshShaderSupport.class, "supported", null);
+            // A failure above must not leave build workers packing for a backend that is gone
+            Statics.set(com.bdmajora.impetus.engine.impl.render.mesh.MeshTerrainRenderer.class, "activeConfig", null);
+        }
+    }
+
+    @Test
+    void underAShaderPackTheMeshBackendCarriesThePackOrHandsItBackToOpenGl() {
+        TestGl.meshCapable();
+        when(TestGl.gl().isExtensionSupported(any())).thenReturn(true);
+        doAnswer(inv -> {
+            inv.<java.nio.IntBuffer>getArgument(2).put(0, 1);
+            return 0x9119;
+        }).when(TestGl.gl()).glGetSynci(anyLong(), anyInt(), any());
+        Statics.set(MeshShaderSupport.class, "supported", null);
+        options.graphicsApi = ImpetusGameOptions.GraphicsApi.NVIDIUM;
+        options.meshTerrain.automaticMemory = false;
+        options.meshTerrain.maxGeometryMemory = 512;
+        // An unported pack keeps the OpenGL terrain even with Nvidium picked
+        Map<com.bdmajora.impetus.umbra.shaderpack.include.AbsolutePackPath, String> sources = new HashMap<>();
+        sources.put(com.bdmajora.impetus.umbra.shaderpack.ShaderPack.PROPERTIES_PATH, "");
+        sources.put(com.bdmajora.impetus.umbra.shaderpack.include.AbsolutePackPath.fromAbsolutePath("/gbuffers_terrain.vsh"),
+                "#version 120\nvarying vec2 uv;\nvoid main() { gl_Position = ftransform(); uv = gl_MultiTexCoord0.xy; }");
+        sources.put(com.bdmajora.impetus.umbra.shaderpack.include.AbsolutePackPath.fromAbsolutePath("/gbuffers_terrain.fsh"),
+                "#version 120\nvarying vec2 uv;\nuniform sampler2D texture;\nvoid main() { gl_FragData[0] = texture2D(texture, uv); }");
+        Mixins.set(com.bdmajora.impetus.umbra.Umbra.class, "currentPack", new com.bdmajora.impetus.umbra.shaderpack.ShaderPack(sources));
+        sources.putAll(com.bdmajora.impetus.umbra.terrain.mesh.NvidiumPackPorter.portSources(sources, new ArrayList<>(), new ArrayList<>()));
+        com.bdmajora.impetus.umbra.shaderpack.ShaderPack pack = new com.bdmajora.impetus.umbra.shaderpack.ShaderPack(sources);
+        // Every static answers its default under the mock, so the port's terrain program never prepares and the build fails
+        try (MockedStatic<UmbraTerrainProgramOverride> overrides = Mockito.mockStatic(UmbraTerrainProgramOverride.class)) {
+            overrides.when(UmbraTerrainProgramOverride::areShadersActive).thenReturn(true);
+            assertFalse(ImpetusWorldRenderer.shouldUseMeshTerrain());
+            assertEquals("Terrain: OpenGL, Nvidium off: the pack's terrain program has no Nvidium port", ImpetusWorldRenderer.terrainBackend(false));
+            Mixins.set(com.bdmajora.impetus.umbra.Umbra.class, "currentPack", pack);
+            Terrain terrain = new Terrain().build();
+            ImpetusWorldRenderer renderer = new ImpetusWorldRenderer();
+            RenderGlobalMixin global = Mixins.instance(RenderGlobalMixin.class);
+            Mixins.set(global, "renderer", renderer);
+            Mixins.set(terrain.client, "renderGlobal", global);
+
+            assertTrue(ImpetusWorldRenderer.shouldUseMeshTerrain());
+            renderer.setWorld(terrain.world);
+            VintageRenderSectionManager manager = renderer.getRenderSectionManager();
+            assertNotNull(manager.getMeshTerrain());
+            // Builds go out in the shader pack's mesh layout
+            assertSame(com.bdmajora.impetus.umbra.vertices.UmbraMeshVertex.INSTANCE,
+                    manager.getRenderPassConfiguration().defaultSolidMaterial().pass.vertexType());
+            assertEquals("Terrain: Nvidium (shader pack port)", renderer.getDebugStrings().iterator().next());
+
+            Viewport viewport = Sections.viewport(8, 20, 8);
+            SimpleWorldRenderer.CameraState camera = new SimpleWorldRenderer.CameraState(8, 20, 8, 0, 0, 1000f);
+            for (int frame = 0; frame < 4; frame++) {
+                renderer.setupTerrain(viewport, camera, frame, false, true);
+            }
+            assertTrue(manager.getMeshTerrain().getPipeline().getSections().getRegions().getRegionCount() > 0);
+
+            // The first draw builds the port's programs, cannot, and draws nothing with them
+            renderer.drawChunkLayer(BlockRenderLayer.SOLID, 8, 20, 8);
+            verify(TestGl.gl(), never()).glMultiDrawMeshTasksIndirectNV(anyLong(), anyInt(), anyInt());
+            assertFalse(com.bdmajora.impetus.umbra.terrain.UmbraMeshShading.canRun(pack));
+            assertEquals("Terrain: OpenGL, Nvidium off: no gbuffers_terrain program", ImpetusWorldRenderer.terrainBackend(false));
+
+            // The next frame rebuilds on OpenGL with the raster path's pack vertex
+            renderer.setupTerrain(viewport, camera, 5, false, true);
+            VintageRenderSectionManager raster = renderer.getRenderSectionManager();
+            assertNotSame(manager, raster);
+            assertNull(raster.getMeshTerrain());
+            assertSame(com.bdmajora.impetus.umbra.vertices.UmbraChunkVertexType.INSTANCE,
+                    raster.getRenderPassConfiguration().defaultSolidMaterial().pass.vertexType());
             assertFalse(ImpetusWorldRenderer.shouldUseMeshTerrain());
             renderer.setWorld(null);
         } finally {
             Statics.set(MeshShaderSupport.class, "supported", null);
+            Mixins.set(com.bdmajora.impetus.umbra.Umbra.class, "currentPack", null);
+            Mixins.set(com.bdmajora.impetus.umbra.terrain.UmbraMeshShading.class, "failedPack", null);
+            Statics.set(com.bdmajora.impetus.engine.impl.render.mesh.MeshTerrainRenderer.class, "activeConfig", null);
         }
     }
 

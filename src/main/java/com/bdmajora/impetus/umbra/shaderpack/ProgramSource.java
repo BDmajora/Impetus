@@ -15,6 +15,9 @@ public final class ProgramSource {
     private final String fragmentSource;
     // The program's compute stages: index 0 is <name>.csh, 1..26 are _a through _z (an Iris extension, Photon's deferred4_a.csh generates the skylight SH); empty when none, and entries may be null since a pack can ship _a and _c without _b
     private final String[] computeSources;
+    // The Nvidium port's stages, <name>.mesh and <name>.mesh.fsh, which a port in nvidium_shaderpacks/ carries beside its OpenGL ones
+    private final String meshSource;
+    private final String meshFragmentSource;
 
     public ProgramSource(String name,
                          String vertexSource,
@@ -23,6 +26,18 @@ public final class ProgramSource {
                          String tessEvalSource,
                          String fragmentSource,
                          String[] computeSources) {
+        this(name, vertexSource, geometrySource, tessControlSource, tessEvalSource, fragmentSource, computeSources, null, null);
+    }
+
+    public ProgramSource(String name,
+                         String vertexSource,
+                         String geometrySource,
+                         String tessControlSource,
+                         String tessEvalSource,
+                         String fragmentSource,
+                         String[] computeSources,
+                         String meshSource,
+                         String meshFragmentSource) {
         this.name = name;
         this.vertexSource = vertexSource;
         this.geometrySource = geometrySource;
@@ -30,6 +45,8 @@ public final class ProgramSource {
         this.tessEvalSource = tessEvalSource;
         this.fragmentSource = fragmentSource;
         this.computeSources = computeSources == null ? new String[0] : computeSources.clone();
+        this.meshSource = meshSource;
+        this.meshFragmentSource = meshFragmentSource;
     }
 
     // The name a compute variant is compiled and logged under: variant 0 is unsuffixed, 1..26 append _a through _z
@@ -65,6 +82,21 @@ public final class ProgramSource {
     // .fsh, if present
     public Optional<String> getFragmentSource() {
         return Optional.ofNullable(this.fragmentSource);
+    }
+
+    // .mesh, the Nvidium port of the vertex stage, if present
+    public Optional<String> getMeshSource() {
+        return Optional.ofNullable(this.meshSource);
+    }
+
+    // .mesh.fsh, the fragment stage paired with it, if present
+    public Optional<String> getMeshFragmentSource() {
+        return Optional.ofNullable(this.meshFragmentSource);
+    }
+
+    // Whether the program carries both ported stages, i.e. the mesh backend can draw it as shipped
+    public boolean hasMeshStages() {
+        return this.meshSource != null && this.meshFragmentSource != null;
     }
 
     // The unsuffixed compute stage alone, which is what the shadowcomp and composite compute passes run

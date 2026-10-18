@@ -37,6 +37,9 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
 
     public FullscreenMode fullscreenMode = FullscreenMode.OFF;
 
+    // OpenGL unless the player switches to Nvidium; older configs' mesh_terrain.enabled is dropped, so nobody lands on mesh shaders without choosing them
+    public GraphicsApi graphicsApi = GraphicsApi.OPENGL;
+
     private boolean readOnly;
 
     private Path configPath;
@@ -135,8 +138,6 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
 
     // The NV_mesh_shader terrain backend (Nvidium's design); every field is read when the section manager is built, so changes take a renderer reload
     public static class MeshTerrainSettings {
-        // Used whenever the GPU qualifies and no shader pack is active, like Nvidium, which turns itself on by default
-        public boolean enabled = true;
         // Draws sections that became visible this frame in a second pass, so the one-frame command lag never shows as holes when turning
         public boolean temporalCoherence = true;
         public MeshTranslucencySorting translucencySorting = MeshTranslucencySorting.QUADS;
@@ -333,6 +334,24 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
             this.minSides = minSides;
         }
 
+        @Override
+        public TextComponent getLocalizedName() {
+            return this.name;
+        }
+    }
+
+    // The terrain backend: OPENGL is the raster renderer every GPU runs, NVIDIUM is the NV_mesh_shader backend, used only while the GPU has it and no shader pack is active
+    public enum GraphicsApi implements TextProvider {
+        OPENGL("impetus.options.graphics_api.opengl"),
+        NVIDIUM("impetus.options.graphics_api.nvidium");
+
+        private final TextComponent name;
+
+        GraphicsApi(String key) {
+            this.name = TextComponent.translatable(key);
+        }
+
+        // Display name for the cycler
         @Override
         public TextComponent getLocalizedName() {
             return this.name;

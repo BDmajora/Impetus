@@ -2,20 +2,21 @@ package com.bdmajora.testing;
 
 import com.bdmajora.impetus.engine.impl.render.chunk.RenderSection;
 import com.bdmajora.impetus.engine.impl.render.chunk.data.BuiltRenderSectionData;
-import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.GraphDirection;
-import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.OcclusionNode;
+import com.bdmajora.impetus.engine.impl.render.chunk.lists.SortedRenderLists;
+import com.bdmajora.impetus.engine.impl.render.chunk.lists.VisibleChunkCollector;
+import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.SectionLattice;
 import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.VisibilityEncoding;
 import com.bdmajora.impetus.engine.impl.render.chunk.region.RenderRegionManager;
 import com.bdmajora.impetus.engine.impl.render.viewport.Viewport;
 import com.bdmajora.impetus.engine.impl.render.viewport.frustum.Frustum;
-import com.bdmajora.impetus.engine.impl.util.PositionUtil;
-import it.unimi.dsi.fastutil.longs.Long2ReferenceOpenHashMap;
 import org.joml.Vector3d;
 
-// Builds small loaded worlds of sections and occlusion nodes for the culling and list tests
+// Builds small loaded worlds of sections, and runs the lattice search over them, for the culling and list tests
 public final class Sections {
     public static final Frustum EVERYTHING = (a, b, c, d, e, f) -> true;
     public static final Frustum NOTHING = (a, b, c, d, e, f) -> false;
+    // Far enough for every fixture world, small enough to keep the lattice window cheap
+    public static final float DISTANCE = 1000f;
 
     private Sections() {}
 
@@ -34,30 +35,32 @@ public final class Sections {
         return section;
     }
 
-    // Nodes for every section in a box, linked to their neighbours, keyed the way the culler looks them up
-    public static Long2ReferenceOpenHashMap<OcclusionNode> grid(RenderRegionManager regions, int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
-        Long2ReferenceOpenHashMap<OcclusionNode> nodes = new Long2ReferenceOpenHashMap<>();
-        for (int x = minX; x <= maxX; x++) {
-            for (int y = minY; y <= maxY; y++) {
-                for (int z = minZ; z <= maxZ; z++) {
-                    OcclusionNode node = new OcclusionNode(section(regions, x, y, z));
-                    node.setVisibilityData(VisibilityEncoding.EVERYTHING);
-                    nodes.put(PositionUtil.packSection(x, y, z), node);
-                }
-            }
+    // The sections attached to a lattice spanning their heights, its window placed around the viewport
+    public static SectionLattice lattice(Viewport viewport, RenderSection... sections) {
+        int minY = Integer.MAX_VALUE, maxY = Integer.MIN_VALUE;
+        for (RenderSection section : sections) {
+            minY = Math.min(minY, section.getChunkY());
+            maxY = Math.max(maxY, section.getChunkY());
         }
-        link(nodes);
-        return nodes;
+        SectionLattice lattice = sections.length == 0 ? new SectionLattice(0, 1, false, false) : new SectionLattice(minY, maxY + 1, false, false);
+        for (RenderSection section : sections) {
+            lattice.attach(section);
+        }
+        lattice.ensureWindowCovers(viewport.getChunkCoord(), DISTANCE);
+        return lattice;
     }
 
-    // Connects every node to the neighbours present in the map
-    public static void link(Long2ReferenceOpenHashMap<OcclusionNode> nodes) {
-        for (OcclusionNode node : nodes.values()) {
-            for (int dir = 0; dir < GraphDirection.COUNT; dir++) {
-                OcclusionNode adjacent = nodes.get(PositionUtil.packSection(
-                        node.getChunkX() + GraphDirection.x(dir), node.getChunkY() + GraphDirection.y(dir), node.getChunkZ() + GraphDirection.z(dir)));
-                node.setAdjacentNode(dir, adjacent);
-            }
-        }
+    // One unoccluded search over the sections, collected the way RenderListManager collects it
+    public static VisibleChunkCollector collect(RenderRegionManager regions, Viewport viewport, int frame, RenderSection... sections) {
+        SectionLattice lattice = lattice(viewport, sections);
+        VisibleChunkCollector collector = new VisibleChunkCollector(lattice, frame, regions.getRegionIdsLength(), 64, viewport.getBlockCoord());
+        lattice.findVisible(collector, viewport, DISTANCE, regions.getRegionIdsLength(), false, false, frame);
+        collector.finishRebuildLists();
+        return collector;
+    }
+
+    // The render lists of one such search
+    public static SortedRenderLists renderLists(RenderRegionManager regions, Viewport viewport, RenderSection... sections) {
+        return collect(regions, viewport, 1, sections).createRenderLists();
     }
 }

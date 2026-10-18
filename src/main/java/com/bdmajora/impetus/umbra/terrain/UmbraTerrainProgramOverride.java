@@ -94,85 +94,22 @@ public final class UmbraTerrainProgramOverride {
     // Transforms and compiles one pack program; any failure is logged and yields null
     private static GlProgram<ChunkShaderInterface> build(ShaderPack pack, ChunkShaderOptions options, ProgramId programId) {
         try {
-            Optional<ProgramSource> sourceOpt = pack.getProgramSet().get(programId);
-            if (!sourceOpt.isPresent()) {
-                LOGGER.warn("[Umbra] no {} source in pack", programId.getSourceName());
+            PreparedProgram prepared = prepare(pack, programId);
+            if (prepared == null) {
                 return null;
             }
-            ProgramSource source = sourceOpt.get();
-            if (!pack.getProperties().getProgramEnabled(source.getName()).orElse(Boolean.TRUE)) {
-                return null;
-            }
-            String vshSource = source.getVertexSource().orElse(null);
-            String fshSource = source.getFragmentSource().orElse(null);
-            if (vshSource == null || fshSource == null) {
-                return null;
-            }
-            // Raw texture.gbuffers.<sampler> directives: type-checked rename to the minted customtexN sampler.
-            vshSource = com.bdmajora.impetus.umbra.shaderpack.texture.CustomTextureTransformer.transform(
-                    source.getName(), vshSource,
-                    com.bdmajora.impetus.umbra.shaderpack.texture.TextureStage.GBUFFERS_AND_SHADOW);
-            fshSource = com.bdmajora.impetus.umbra.shaderpack.texture.CustomTextureTransformer.transform(
-                    source.getName(), fshSource,
-                    com.bdmajora.impetus.umbra.shaderpack.texture.TextureStage.GBUFFERS_AND_SHADOW);
-            // Modern (1.17+) attribute/matrix names -> fixed-function built-ins.
-            vshSource = VanillaNameTransformer.transform(vshSource);
-            fshSource = VanillaNameTransformer.transform(fshSource);
-
-            // Modern (#version 130+) dual-stage packs (Complementary) use the compatibility stage normalizer; the GLSL-120 Chocapic family (LIGHT) keeps the full rewrite
-            boolean modern = ModernPackTransformer.isModernSource(fshSource);
-            // Scoped per program: a program in `impetus.umbra.legacyPrograms` compiles without IS_IRIS, and the same map feeds parseActive and injectDefines so the DRAWBUFFERS layout and the compiled branch agree (mismatching corrupted colortex1 on water)
-            Map<String, String> macros = com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.forProgram(
-                    pack.getEnvironmentDefines(), programId.getSourceName());
-            int[] drawBuffers = UmbraRenderingPipeline.sanitizeDrawBuffers(
-                    programId.getSourceName(), DrawBuffers.parseActive(fshSource, macros));
-            // The GLSL-120 terrain path needs the same MC_*/IS_IRIS macro environment as the other paths, or gbuffers_water compiles its pre-Umbra branch writing gl_FragData[2] against a DRAWBUFFERS:41 layout and corrupts colortex1; the macros inject after the 330 rewrite, so the legacy conditional fold runs at the END where it sees what the driver sees (Pastel's malformed `#if (in(biome, ...)` otherwise failed the water pass to the Impetus default)
-            boolean shadow = programId.getSourceName().startsWith("shadow");
-            String vsh = modern
-                    ? ImpetusTerrainTransformer.transformVertexShaderModern(
-                            UmbraRenderingPipeline.stabilizeShaderSource(programId.getSourceName(),
-                                    com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.injectDefines(vshSource, macros)), shadow)
-                    : UmbraRenderingPipeline.foldUncompilableConditionals(programId.getSourceName(),
-                            com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.injectDefines(
-                                    ImpetusTerrainTransformer.transformVertexShader(vshSource, shadow), macros));
-            // Umbra SodiumPrograms exactly: the pack's alphaTest.<program> wins, else TRANSLUCENT -> NON_ZERO_ALPHA, CUTOUT/SHADOW_CUTOUT -> HALF_ALPHA, else ALWAYS, which emits no discard at all
-            String programName = programId.getSourceName();
-            ProgramAlphaTest packAlphaTest = ProgramAlphaTest.from(pack.getProperties(), source.getName());
-            String alphaTestSnippet;
-            if (packAlphaTest.hasDirectives()) {
-                alphaTestSnippet = packAlphaTest.toGlslDiscard("iris_FragData[0].a", "    ");
-            } else if (programName.endsWith("_solid")) {
-                alphaTestSnippet = "";                                    // AlphaTest.ALWAYS
-            } else if (programName.contains("cutout")) {
-                alphaTestSnippet = ProgramAlphaTest.glslDiscard(          // AlphaTests.HALF_ALPHA
-                        "iris_FragData[0].a", ">", "0.5", "    ");
-            } else {
-                alphaTestSnippet = ProgramAlphaTest.glslDiscard(          // AlphaTests.NON_ZERO_ALPHA
-                        "iris_FragData[0].a", ">", "0.0001", "    ");
-            }
-            String fsh = modern
-                    ? ImpetusTerrainTransformer.transformFragmentShaderModern(
-                            UmbraRenderingPipeline.stabilizeShaderSource(programId.getSourceName(),
-                                    com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.injectDefines(fshSource, macros)),
-                            drawBuffers, alphaTestSnippet)
-                    : UmbraRenderingPipeline.foldUncompilableConditionals(programId.getSourceName(),
-                            com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.injectDefines(
-                                    ImpetusTerrainTransformer.transformFragmentShader(fshSource, drawBuffers,
-                                            alphaTestSnippet), macros));
-            // Name the shader after the program it actually is: this builds every terrain-family pass, and the old hardcoded "iris_gbuffers_terrain" reported water-pass failures as gbuffers_terrain errors beside logs saying gbuffers_terrain built fine; the dump filenames already use getSourceName()
-            String shaderName = "iris_" + programId.getSourceName();
-            // This path builds the ENGINE's GlShader, not umbra.gl.shader.GlShader, so it does not inherit the strict-driver rewrites and must ask for them; skipping this is why Mesa kept rejecting `#extension` mid-shader and texture2D(usampler2D) in exactly the terrain and shadow programs
-            ProgramBlendState blendState = ProgramBlendState.from(pack.getProperties(), source.getName());
-            ProgramAlphaTest alphaTest = packAlphaTest;
+            String vsh = prepared.vertex();
+            String fsh = prepared.fragment(prepared.alphaTestSnippet());
+            String shaderName = prepared.shaderName();
 
             // Geometry and tessellation stages need the generated varyings as a block they can pass along; GLSL-120 packs cannot have them, so only the modern path looks
-            Map<ShaderType, String> auxiliary = modern ? auxiliaryStages(source, macros, shaderName) : Map.of();
+            Map<ShaderType, String> auxiliary = prepared.modern() ? auxiliaryStages(prepared.source(), prepared.macros(), shaderName) : Map.of();
             GlProgram<ChunkShaderInterface> program = null;
             if (!auxiliary.isEmpty()) {
                 try {
                     program = link(shaderName, ImpetusTerrainTransformer.blockGeneratedVaryings(vsh, true),
-                            ImpetusTerrainTransformer.blockGeneratedVaryings(fsh, false), auxiliary, options, drawBuffers,
-                            blendState, alphaTest, auxiliary.containsKey(ShaderType.TESS_EVALUATE));
+                            ImpetusTerrainTransformer.blockGeneratedVaryings(fsh, false), auxiliary, options, prepared.drawBuffers(),
+                            prepared.blendState(), prepared.alphaTest(), auxiliary.containsKey(ShaderType.TESS_EVALUATE));
                 } catch (RuntimeException e) {
                     // A pack stage this bridge cannot carry costs that stage, not the whole program: it renders as it did before the stages were attached
                     LOGGER.warn("[Umbra] '{}' failed to link with its geometry/tessellation stages; drawing without them: {}",
@@ -180,30 +117,149 @@ public final class UmbraTerrainProgramOverride {
                 }
             }
             if (program == null) {
-                program = link(shaderName, vsh, fsh, Map.of(), options, drawBuffers, blendState, alphaTest, false);
+                program = link(shaderName, vsh, fsh, Map.of(), options, prepared.drawBuffers(), prepared.blendState(), prepared.alphaTest(), false);
             }
             UmbraRenderingPipeline.reportGlError("terrain '" + programId.getSourceName() + "' link");
 
-            // The pack program needs the full OptiFine uniform set (LIGHT round-trips positions through gbufferModelView(Inverse), and zeros collapse every vertex to the origin); sampler units get the standard mapping, the block/lightmap samplers stay with the interface
-            program.bind();
-            UmbraRenderingPipeline.assignSamplerUnitsToBoundProgram(program.handle());
-            UmbraRenderingPipeline.reportGlError("terrain '" + programId.getSourceName() + "' sampler-units");
-            program.unbind();
-            ProgramUniforms.Builder uniforms = ProgramUniforms.builder(programId.getSourceName(), program.handle());
-            CommonUniforms.addCommonUniforms(uniforms);
-            MatrixUniforms.addMatrixUniforms(uniforms);
-            com.bdmajora.impetus.umbra.uniforms.custom.ActiveCustomUniforms.assignTo(uniforms);
-            ((UmbraTerrainShaderInterface) program.getInterface()).setUniforms(uniforms.buildUniforms());
-            // Read off the linked program like the uniforms: gbuffers_terrain/water may sample shadowtex0 as a plain sampler2D, and the bind path then needs the raw-depth sampler on that unit
-            ((UmbraTerrainShaderInterface) program.getInterface())
-                    .setShadowSamplerKinds(ShadowSamplerKinds.detect(program.handle()));
-            UmbraRenderingPipeline.reportGlError("terrain '" + programId.getSourceName() + "' uniforms");
-
+            configureUniforms(program, programId.getSourceName());
             return program;
         } catch (Exception e) {
             LOGGER.error("[Umbra] Failed to build terrain override; using Impetus default", e);
             return null;
         }
+    }
+
+    // One pack terrain program's sources run through every rewrite the raster bridge needs, with the fragment stage's alpha test left for the caller to choose; null when the pack has no such program or switched it off
+    static PreparedProgram prepare(ShaderPack pack, ProgramId programId) {
+        ProgramSource source = resolve(pack, programId);
+        if (source == null || source.getVertexSource().isEmpty() || source.getFragmentSource().isEmpty()) {
+            return null;
+        }
+        // Raw texture.gbuffers.<sampler> directives: type-checked rename to the minted customtexN sampler, then modern (1.17+) attribute/matrix names to the fixed-function built-ins
+        String vshSource = VanillaNameTransformer.transform(customTextures(source, source.getVertexSource().get()));
+        String fshSource = VanillaNameTransformer.transform(customTextures(source, source.getFragmentSource().get()));
+
+        // Modern (#version 130+) dual-stage packs (Complementary) use the compatibility stage normalizer; the GLSL-120 Chocapic family (LIGHT) keeps the full rewrite
+        boolean modern = ModernPackTransformer.isModernSource(fshSource);
+        Map<String, String> macros = macros(pack, programId);
+        // The GLSL-120 terrain path needs the same MC_*/IS_IRIS macro environment as the other paths, or gbuffers_water compiles its pre-Umbra branch writing gl_FragData[2] against a DRAWBUFFERS:41 layout and corrupts colortex1; the macros inject after the 330 rewrite, so the legacy conditional fold runs at the END where it sees what the driver sees (Pastel's malformed `#if (in(biome, ...)` otherwise failed the water pass to the Impetus default)
+        boolean shadow = programId.getSourceName().startsWith("shadow");
+        String vsh = modern
+                ? ImpetusTerrainTransformer.transformVertexShaderModern(
+                        UmbraRenderingPipeline.stabilizeShaderSource(programId.getSourceName(),
+                                com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.injectDefines(vshSource, macros)), shadow)
+                : UmbraRenderingPipeline.foldUncompilableConditionals(programId.getSourceName(),
+                        com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.injectDefines(
+                                ImpetusTerrainTransformer.transformVertexShader(vshSource, shadow), macros));
+        return prepared(pack, programId, source, vsh, fshSource, modern, macros, false);
+    }
+
+    // The same program from its Nvidium port: the mesh stage only takes the per-load passes every pack file gets (custom textures, the option and environment defines, the driver fixes), since the port already holds it translated; null when the pack has no such program, and a program the port left out throws
+    static PreparedProgram prepareMesh(ShaderPack pack, ProgramId programId) {
+        ProgramSource source = resolve(pack, programId);
+        if (source == null) {
+            return null;
+        }
+        if (!source.hasMeshStages()) {
+            throw new com.bdmajora.impetus.umbra.terrain.mesh.MeshShaderTranslator.UnsupportedProgramException(
+                    source.getName() + " has no Nvidium port; port the pack from the shader pack screen");
+        }
+        String mesh = customTextures(source, source.getMeshSource().get());
+        String fshSource = customTextures(source, source.getMeshFragmentSource().get());
+        boolean modern = ModernPackTransformer.isModernSource(fshSource);
+        Map<String, String> macros = macros(pack, programId);
+        String vertex = UmbraRenderingPipeline.stabilizeShaderSource(programId.getSourceName(),
+                com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.injectDefines(mesh, macros));
+        return prepared(pack, programId, source, vertex, fshSource, modern, macros, true);
+    }
+
+    // The program a phase draws with, null when the pack has none or switched it off
+    private static ProgramSource resolve(ShaderPack pack, ProgramId programId) {
+        Optional<ProgramSource> sourceOpt = pack.getProgramSet().get(programId);
+        if (sourceOpt.isEmpty()) {
+            LOGGER.warn("[Umbra] no {} source in pack", programId.getSourceName());
+            return null;
+        }
+        ProgramSource source = sourceOpt.get();
+        return pack.getProperties().getProgramEnabled(source.getName()).orElse(Boolean.TRUE) ? source : null;
+    }
+
+    // Raw texture.gbuffers.<sampler> directives renamed to their minted customtexN samplers
+    private static String customTextures(ProgramSource source, String stage) {
+        return com.bdmajora.impetus.umbra.shaderpack.texture.CustomTextureTransformer.transform(
+                source.getName(), stage, com.bdmajora.impetus.umbra.shaderpack.texture.TextureStage.GBUFFERS_AND_SHADOW);
+    }
+
+    // Scoped per program: a program in `impetus.umbra.legacyPrograms` compiles without IS_IRIS, and the same map feeds parseActive and injectDefines so the DRAWBUFFERS layout and the compiled branch agree (mismatching corrupted colortex1 on water)
+    private static Map<String, String> macros(ShaderPack pack, ProgramId programId) {
+        return com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.forProgram(pack.getEnvironmentDefines(), programId.getSourceName());
+    }
+
+    // The fragment side both paths share: draw buffers, blend, and Umbra SodiumPrograms' alpha test exactly (the pack's alphaTest.<program> wins, else TRANSLUCENT -> NON_ZERO_ALPHA, CUTOUT/SHADOW_CUTOUT -> HALF_ALPHA, else ALWAYS, which emits no discard at all)
+    private static PreparedProgram prepared(ShaderPack pack, ProgramId programId, ProgramSource source, String vertex, String fshSource,
+                                            boolean modern, Map<String, String> macros, boolean mesh) {
+        String programName = programId.getSourceName();
+        int[] drawBuffers = UmbraRenderingPipeline.sanitizeDrawBuffers(programName, DrawBuffers.parseActive(fshSource, macros));
+        ProgramAlphaTest packAlphaTest = ProgramAlphaTest.from(pack.getProperties(), source.getName());
+        String alphaTestSnippet;
+        if (packAlphaTest.hasDirectives()) {
+            alphaTestSnippet = packAlphaTest.toGlslDiscard("iris_FragData[0].a", "    ");
+        } else if (programName.endsWith("_solid")) {
+            alphaTestSnippet = "";                                    // AlphaTest.ALWAYS
+        } else if (programName.contains("cutout")) {
+            alphaTestSnippet = ProgramAlphaTest.glslDiscard(          // AlphaTests.HALF_ALPHA
+                    "iris_FragData[0].a", ">", "0.5", "    ");
+        } else {
+            alphaTestSnippet = ProgramAlphaTest.glslDiscard(          // AlphaTests.NON_ZERO_ALPHA
+                    "iris_FragData[0].a", ">", "0.0001", "    ");
+        }
+        // Name the shader after the program it actually is: this builds every terrain-family pass, and the old hardcoded "iris_gbuffers_terrain" reported water-pass failures as gbuffers_terrain errors beside logs saying gbuffers_terrain built fine
+        String shaderName = "iris_" + programName;
+        ProgramBlendState blendState = ProgramBlendState.from(pack.getProperties(), source.getName());
+        return new PreparedProgram(programId, source, shaderName, vertex, fshSource, modern, macros, drawBuffers, blendState,
+                packAlphaTest, alphaTestSnippet, mesh);
+    }
+
+    // A pack terrain program ready to link: the transformed vertex stage (the ported mesh stage for the mesh path), and what the fragment transform needs so a caller can pick the alpha test it injects
+    record PreparedProgram(ProgramId id, ProgramSource source, String shaderName, String vertex, String fragmentSource, boolean modern,
+                           Map<String, String> macros, int[] drawBuffers, ProgramBlendState blendState, ProgramAlphaTest alphaTest,
+                           String alphaTestSnippet, boolean mesh) {
+        // The transformed fragment stage with the given discard after the pack's main; a ported one also gets its bridge inputs pinned where the port put them
+        String fragment(String alphaSnippet) {
+            String name = this.id.getSourceName();
+            String transformed = this.modern
+                    ? ImpetusTerrainTransformer.transformFragmentShaderModern(
+                            UmbraRenderingPipeline.stabilizeShaderSource(name,
+                                    com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.injectDefines(this.fragmentSource, this.macros)),
+                            this.drawBuffers, alphaSnippet)
+                    : UmbraRenderingPipeline.foldUncompilableConditionals(name,
+                            com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.injectDefines(
+                                    ImpetusTerrainTransformer.transformFragmentShader(this.fragmentSource, this.drawBuffers,
+                                            alphaSnippet), this.macros));
+            return this.mesh ? com.bdmajora.impetus.umbra.terrain.mesh.MeshShaderTranslator.pinBridgeInputs(transformed) : transformed;
+        }
+
+        // Whether the pack attaches a geometry or tessellation stage to this program
+        boolean hasAuxiliaryStages() {
+            return this.source.getGeometrySource().isPresent() || this.source.getTessControlSource().isPresent()
+                    || this.source.getTessEvalSource().isPresent();
+        }
+    }
+
+    // The pack's OptiFine uniform set, sampler units and shadow sampler kinds onto a linked terrain program; the raster and mesh paths both need all of it (LIGHT round-trips positions through gbufferModelView(Inverse), and zeros collapse every vertex to the origin)
+    static void configureUniforms(GlProgram<ChunkShaderInterface> program, String programName) {
+        program.bind();
+        UmbraRenderingPipeline.assignSamplerUnitsToBoundProgram(program.handle());
+        UmbraRenderingPipeline.reportGlError("terrain '" + programName + "' sampler-units");
+        program.unbind();
+        ProgramUniforms.Builder uniforms = ProgramUniforms.builder(programName, program.handle());
+        CommonUniforms.addCommonUniforms(uniforms);
+        MatrixUniforms.addMatrixUniforms(uniforms);
+        com.bdmajora.impetus.umbra.uniforms.custom.ActiveCustomUniforms.assignTo(uniforms);
+        ((UmbraTerrainShaderInterface) program.getInterface()).setUniforms(uniforms.buildUniforms());
+        // Read off the linked program like the uniforms: gbuffers_terrain/water may sample shadowtex0 as a plain sampler2D, and the bind path then needs the raw-depth sampler on that unit
+        ((UmbraTerrainShaderInterface) program.getInterface()).setShadowSamplerKinds(ShadowSamplerKinds.detect(program.handle()));
+        UmbraRenderingPipeline.reportGlError("terrain '" + programName + "' uniforms");
     }
 
     // The pack's geometry stage and its tessellation pair (both or neither), each through the same rewrites as the vertex stage and then the stage bridge

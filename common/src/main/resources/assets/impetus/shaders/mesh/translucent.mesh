@@ -14,6 +14,7 @@ layout(triangles, max_vertices = 128, max_primitives = 64) out;
 taskNV in Task {
     vec4 originAndBase;
     uint quadCount;
+    float fade;
 #ifdef SORT_QUADS
     uint jiggle;
 #endif
@@ -44,7 +45,7 @@ vec3 emitVertex(uint quad, uint corner) {
     gl_MeshVerticesNV[slot].gl_Position = clip;
     OUT[slot].uv = decodeVertexUV(v);
     OUT[slot].tint = decodeVertexColour(v) * textureLod(texLight, decodeLightUV(v), 0.0).rgb;
-    OUT[slot].fogAmount = computeFog(relative, clip.w);
+    OUT[slot].fogAmount = 1.0 - fade * (1.0 - computeFog(relative, clip.w));
 
     return relative;
 }

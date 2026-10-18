@@ -61,7 +61,7 @@ public final class ExtrasOptionPages {
         pages.add(page("budget", renderBudget(), gpuBooster()));
         pages.add(page("system", parallelTicking(), threadScheduling(), loading(), network()));
         pages.add(page("interface", hud(), textAndModels(), overlay(), toasts()));
-        pages.add(page("quality_of_life", qualityOfLife()));
+        pages.add(page("quality_of_life", qualityOfLife(), zoom()));
         return pages;
     }
 
@@ -654,7 +654,6 @@ public final class ExtrasOptionPages {
         OptionGroup.Builder builder = OptionGroup.createBuilder()
                 .setId(OPTIONS.group("misc"))
                 .setName(groupName("misc"))
-                .add(verticalSync())
                 .add(steadyHud)
                 .add(OPTIONS.slider("steady_debug_hud_refresh",
                         ExtrasConfig.ExtraSettings.STEADY_HUD_REFRESH_MIN,
@@ -688,10 +687,33 @@ public final class ExtrasOptionPages {
         return builder.build();
     }
 
+    // Logical Zoom; the key itself is bound on the vanilla controls screen, and the strength reads as magnification since a share of the view width means little on its own
+    private static OptionGroup zoom() {
+        OptionImpl<ExtrasConfig, Boolean> master = OPTIONS.toggle("zoom.enabled",
+                (config, value) -> config.zoom.enabled = value,
+                config -> config.zoom.enabled, null, null, null);
+        BooleanSupplier enabled = master::getValue;
+
+        return OptionGroup.createBuilder()
+                .setId(OPTIONS.group("zoom"))
+                .setName(groupName("zoom"))
+                .add(master)
+                .add(OPTIONS.slider("zoom.level", ExtrasConfig.ZoomSettings.LEVEL_MIN, ExtrasConfig.ZoomSettings.LEVEL_MAX, 1,
+                        value -> TextComponent.literal(String.format(Locale.ROOT, "%.2fx",
+                                (float) ExtrasConfig.ZoomSettings.LEVEL_SCALE / value)),
+                        (config, value) -> config.zoom.level = value,
+                        config -> config.zoom.level, null, null, enabled))
+                .add(OPTIONS.toggle("zoom.smooth_camera", (config, value) -> config.zoom.smoothCamera = value,
+                        config -> config.zoom.smoothCamera, null, null, enabled))
+                .add(OPTIONS.toggle("zoom.hide_hand", (config, value) -> config.zoom.hideHand = value,
+                        config -> config.zoom.hideHand, null, null, enabled))
+                .build();
+    }
+
     // Options that do not bind to the Extras config
 
-    // Vertical sync folding adaptive sync in with vanilla's on/off; values resolve at page build, since offering ADAPTIVE without driver tear control would silently do nothing
-    private static OptionImpl<ExtrasConfig, ExtrasConfig.VerticalSync> verticalSync() {
+    // Vertical sync folding adaptive sync in with vanilla's on/off, shown on the General page beside the other window settings; values resolve at page build, since offering ADAPTIVE without driver tear control would silently do nothing
+    public static OptionImpl<ExtrasConfig, ExtrasConfig.VerticalSync> verticalSync() {
         ExtrasConfig.VerticalSync[] available = AdaptiveSync.isSupported()
                 ? ExtrasConfig.VerticalSync.values()
                 : new ExtrasConfig.VerticalSync[] {

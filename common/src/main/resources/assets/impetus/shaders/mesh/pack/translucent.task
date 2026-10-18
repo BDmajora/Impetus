@@ -1,0 +1,69 @@
+#version 460
+#extension GL_ARB_shading_language_include : enable
+#extension GL_NV_mesh_shader : require
+#extension GL_NV_gpu_shader5 : require
+
+#import <impetus:mesh/scene.glsl>
+#import <impetus:mesh/pack/box.glsl>
+
+// Translucent terrain for an Nvidium-ported shader pack's programs, one workgroup per section slot; the main draw walks the mirrored command buffer farthest region first in the sorter's order, the shadow map draws whatever the shadow frustum reaches
+layout(local_size_x = 1) in;
+
+// 0 the main draw, 2 the shadow map
+uniform int umbra_TaskMode;
+
+taskNV out UmbraTask {
+    vec3 origin;
+    uint baseOffset;
+    uint quadCount;
+    // 0 or 1, alternating per frame so the in-place pair swaps cover both pairings over two frames
+    uint jiggle;
+    // Milliseconds since the section was placed, for the pack's mc_chunkFade
+    float ageMs;
+};
+
+void main() {
+    uint sectionId = gl_WorkGroupID.x;
+    bool shadow = umbra_TaskMode == 2;
+
+#ifdef SORT_SECTIONS
+    // The section sorter rewrote each slot's draw-slot bits to name the section that should draw at that position, farthest first
+    if (!shadow) {
+        ivec4 slotHeader = sectionData[sectionId].header;
+        if (sectionEmpty(slotHeader)) {
+            gl_TaskCountNV = 0;
+            return;
+        }
+        sectionId = (sectionId & ~0xFFu) | uint((slotHeader.y >> 18) & 0xFF);
+    }
+#endif
+
+    ivec4 header = sectionData[sectionId].header;
+    ivec3 chunk = unpackSectionChunk(header) - cameraChunk.xyz;
+    bool visible = shadow
+            ? !sectionEmpty(header) && (header.y & (1 << 17)) == 0 && umbra_sectionInFrustum(header, chunk)
+            : (sectionVisibility[sectionId] & uint8_t(1)) != uint8_t(0);
+
+    // The translucent quads sit in front of the opaque groups, and the header's last count says how many
+    quadCount = (uint(sectionData[sectionId].renderRanges.w) >> 16) & 0xFFFFu;
+
+    if (!visible || quadCount == 0u) {
+        gl_TaskCountNV = 0;
+        return;
+    }
+
+    origin = vec3(chunk << 4);
+    baseOffset = uint(header.w);
+    jiggle = 0u;
+    ageMs = float(timeMs - sectionLoadTimes[sectionId]);
+
+#ifdef SORT_QUADS
+    if (!shadow) {
+        jiggle = min(quadCount >> 1, uint(frameId) & 1u);
+        quadCount += jiggle;
+        baseOffset -= jiggle;
+    }
+#endif
+
+    gl_TaskCountNV = (quadCount + UMBRA_MESH_QUADS - 1u) / UMBRA_MESH_QUADS;
+}

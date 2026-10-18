@@ -7,6 +7,7 @@ import com.bdmajora.impetus.api.options.structure.OptionPage;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusVideoOptionsController;
 import com.bdmajora.impetus.engine.impl.gui.options.CommonOptionPages;
 import com.bdmajora.impetus.engine.impl.render.ShaderModBridge;
+import com.bdmajora.impetus.impl.compat.fluidlogged.FluidloggedCompat;
 import com.bdmajora.coarctatio.gui.CoarctatioOptionPages;
 import com.bdmajora.equilibrium.gui.EquilibriumOptionPages;
 import com.bdmajora.dynamiclights.gui.DynamicLightsOptionPages;
@@ -38,6 +39,11 @@ public class ImpetusVideoOptionsScreen extends GuiScreen {
 
                 Minecraft client = Minecraft.getMinecraft();
 
+                // A Graphics API switch can point the selected shader pack at its Nvidium port or back, which has to load before the renderers rebuild around it
+                if (flags.contains(OptionFlag.REQUIRES_RENDERER_RELOAD)) {
+                    com.bdmajora.impetus.umbra.Umbra.reloadIfTerrainBackendChanged();
+                }
+
                 if (client.world != null) {
                     if (flags.contains(OptionFlag.REQUIRES_RENDERER_RELOAD)) {
                         client.renderGlobal.loadRenderers();
@@ -56,7 +62,7 @@ public class ImpetusVideoOptionsScreen extends GuiScreen {
                 // Push hot-path option values into the engine's runtime snapshot.
                 com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions.apply(ImpetusVintage.options());
 
-                // The General page's VSync tickbox writes the swap interval directly, clearing adaptive sync; re-assert after any apply, no-op unless it is on
+                // Anything else that toggles vanilla VSync writes the swap interval directly, clearing adaptive sync; re-assert after any apply, no-op unless it is on
                 com.bdmajora.extras.client.AdaptiveSync.reapply();
             }
         };
@@ -66,9 +72,15 @@ public class ImpetusVideoOptionsScreen extends GuiScreen {
     // Assembles every subsystem's pages in sidebar order; pages group under their namespace, so Extras and its nine topic pages fold as one section beneath Impetus
     private static List<OptionPage> createPages(GuiScreen parent) {
         List<OptionPage> pages = new ArrayList<>();
-        pages.add(ImpetusGameOptionPages.general());
+        // One Graphics API option on General, read by the Nvidium page so its settings grey out as the cycler moves
+        var graphicsApi = CommonOptionPages.graphicsApi(ImpetusVintage.options());
+        pages.add(ImpetusGameOptionPages.general(graphicsApi));
         pages.add(ImpetusGameOptionPages.quality());
         pages.add(CommonOptionPages.performance(ImpetusVintage.options()));
+        pages.add(CommonOptionPages.nvidium(ImpetusVintage.options(), graphicsApi));
+        if (FluidloggedCompat.IS_LOADED) {
+            pages.add(ImpetusGameOptionPages.fluidlogging());
+        }
         pages.addAll(ExtrasOptionPages.pages());
         pages.addAll(CoarctatioOptionPages.pages());
         pages.add(FulgorOptionPages.lighting());

@@ -2,7 +2,6 @@ package com.bdmajora.impetus.engine.impl.gl.functions;
 
 import com.bdmajora.impetus.engine.impl.gl.buffer.GlBufferMapFlags;
 import com.bdmajora.impetus.engine.impl.gl.buffer.GlBufferMapping;
-import com.bdmajora.impetus.engine.impl.gl.buffer.GlBufferStorageFlags;
 import com.bdmajora.impetus.engine.impl.gl.buffer.GlBufferTarget;
 import com.bdmajora.impetus.engine.impl.gl.buffer.GlMutableBuffer;
 import com.bdmajora.impetus.engine.impl.gl.device.CommandList;
@@ -29,44 +28,19 @@ class FunctionsTest {
     @Test
     void pickBestFallsBackWhenTheDriverLacksFeatures() {
         versions(true);
-        assertEquals(BufferStorageFunctions.CORE, BufferStorageFunctions.pickBest(device));
-        assertEquals(MultidrawFunctions.CORE, MultidrawFunctions.pickBest(device));
         assertEquals(BufferCopyFunctions.CORE, BufferCopyFunctions.pickBest(device));
         assertEquals(BufferMapRangeFunctions.CORE, BufferMapRangeFunctions.pickBest(device));
         DeviceFunctions functions = new DeviceFunctions(device);
-        assertEquals(BufferStorageFunctions.CORE, functions.bufferStorageFunctions());
+        assertEquals(BufferCopyFunctions.CORE, functions.bufferCopyFunctions());
+        assertEquals(BufferMapRangeFunctions.CORE, functions.bufferMapRangeFunctions());
         versions(false);
-        assertEquals(BufferStorageFunctions.NONE, BufferStorageFunctions.pickBest(device));
-        assertEquals(MultidrawFunctions.NONE, MultidrawFunctions.pickBest(device));
         assertEquals(BufferCopyFunctions.PIXEL_PACK, BufferCopyFunctions.pickBest(device));
         assertEquals(BufferMapRangeFunctions.MAP_FULL_AND_SLICE, BufferMapRangeFunctions.pickBest(device));
-        Mockito.when(TestGl.gl().isExtensionSupported(GLExtension.ARB_draw_elements_base_vertex)).thenReturn(true);
-        assertEquals(MultidrawFunctions.FALLBACK, MultidrawFunctions.pickBest(device));
-    }
-
-    @Test
-    void storageAndMultidrawImplementations() {
-        EnumBitField<GlBufferStorageFlags> flags = EnumBitField.of(GlBufferStorageFlags.MAP_WRITE);
-        BufferStorageFunctions.CORE.createBufferStorage(GlBufferTarget.ARRAY_BUFFER, 64, flags);
-        Mockito.verify(TestGl.gl()).glBufferStorage(GlBufferTarget.ARRAY_BUFFER.getTargetParameter(), 64, flags.getBitField());
-        assertThrows(UnsupportedOperationException.class, () -> BufferStorageFunctions.NONE.createBufferStorage(GlBufferTarget.ARRAY_BUFFER, 64, flags));
-        assertThrows(UnsupportedOperationException.class, () -> MultidrawFunctions.NONE.multiDrawElementsBaseVertex(4, 0, 0, 0, 0, 0));
-        MultidrawFunctions.CORE.multiDrawElementsBaseVertex(4, 1, 2, 3, 4, 5);
-        Mockito.verify(TestGl.gl()).glMultiDrawElementsBaseVertex(4, 1, 2, 3, 4, 5);
-
-        long counts = MemoryUtil.nmemCalloc(2, 4);
-        long pointers = MemoryUtil.nmemCalloc(2, 8);
-        long base = MemoryUtil.nmemCalloc(2, 4);
-        MemoryUtil.memPutInt(counts, 6);
-        MemoryUtil.memPutInt(counts + 4, 0);
-        MemoryUtil.memPutAddress(pointers, 100);
-        MemoryUtil.memPutInt(base, 7);
-        MultidrawFunctions.FALLBACK.multiDrawElementsBaseVertex(4, counts, 2, pointers, 2, base);
-        Mockito.verify(TestGl.gl()).glDrawElementsBaseVertex(4, 6, 2, 100, 7);
-        Mockito.verify(TestGl.gl(), Mockito.times(1)).glDrawElementsBaseVertex(Mockito.anyInt(), Mockito.anyInt(), Mockito.anyInt(), Mockito.anyLong(), Mockito.anyInt());
-        MemoryUtil.nmemFree(counts);
-        MemoryUtil.nmemFree(pointers);
-        MemoryUtil.nmemFree(base);
+        // Either the core version or the extension alone is enough
+        Mockito.when(TestGl.gl().isExtensionSupported(GLExtension.ARB_copy_buffer)).thenReturn(true);
+        Mockito.when(TestGl.gl().isExtensionSupported(GLExtension.ARB_map_buffer_range)).thenReturn(true);
+        assertEquals(BufferCopyFunctions.CORE, BufferCopyFunctions.pickBest(device));
+        assertEquals(BufferMapRangeFunctions.CORE, BufferMapRangeFunctions.pickBest(device));
     }
 
     @Test
@@ -86,7 +60,8 @@ class FunctionsTest {
         Mockito.when(TestGl.gl().nglMapBuffer(GlBufferTarget.PIXEL_UNPACK_BUFFER.getTargetParameter(), 0x88B9)).thenReturn(dstMem);
         BufferCopyFunctions.PIXEL_PACK.copyBufferSubData(list, src, dst, 4, 8, 4);
         assertEquals(42, MemoryUtil.memGetInt(dstMem + 8));
-        Mockito.verify(list).bindBuffer(GlBufferTarget.PIXEL_PACK_BUFFER, null);
+        // The copy that failed to map unbinds in its finally as well
+        Mockito.verify(list, Mockito.times(2)).bindBuffer(GlBufferTarget.PIXEL_PACK_BUFFER, null);
 
         Mockito.when(TestGl.gl().nglMapBuffer(GlBufferTarget.PIXEL_UNPACK_BUFFER.getTargetParameter(), 0x88B9)).thenReturn(0L);
         assertThrows(IllegalStateException.class, () -> BufferCopyFunctions.PIXEL_PACK.copyBufferSubData(list, src, dst, 0, 0, 4));

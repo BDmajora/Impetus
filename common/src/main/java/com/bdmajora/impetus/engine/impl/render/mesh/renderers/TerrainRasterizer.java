@@ -30,13 +30,18 @@ public class TerrainRasterizer {
         drawIndirect(regionCount, commandBufferAddress);
     }
 
+    // glUseProgram, for a caller drawing several command lists with it
+    public void bind() {
+        this.program.bind();
+    }
+
     // Frees the program
     public void delete() {
         this.program.delete();
     }
 
     // Binds a command buffer by address and draws it; stride 0 means tightly packed, which is what the section rasterizer writes
-    static void drawIndirect(int regionCount, long commandBufferAddress) {
+    public static void drawIndirect(int regionCount, long commandBufferAddress) {
         LWJGL.glBufferAddressRangeNV(MeshShaderSupport.GL_DRAW_INDIRECT_ADDRESS_NV, 0, commandBufferAddress, (long) regionCount * COMMAND_BYTES);
         LWJGL.glMultiDrawMeshTasksIndirectNV(0L, regionCount, 0);
     }

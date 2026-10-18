@@ -3,19 +3,22 @@ package com.bdmajora.impetus.engine.impl.render.chunk;
 import com.bdmajora.impetus.engine.impl.render.chunk.data.BuiltRenderSectionData;
 import com.bdmajora.impetus.engine.impl.render.chunk.region.RenderRegionManager;
 import com.bdmajora.impetus.engine.impl.render.chunk.region.RenderRegion;
-import com.bdmajora.impetus.engine.impl.render.chunk.sorting.TranslucentQuadAnalyzer;
+import com.bdmajora.impetus.engine.impl.render.chunk.lists.RenderVisualsService;
+import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.VisibilityEncoding;
+import com.bdmajora.impetus.engine.impl.render.chunk.sorting.PartitionTree;
+import com.bdmajora.impetus.engine.impl.render.chunk.sorting.SortState;
 import com.bdmajora.impetus.engine.impl.util.PositionUtil;
 import com.bdmajora.impetus.engine.impl.util.task.CancellationToken;
 import com.bdmajora.testing.Devices;
 import com.bdmajora.testing.Passes;
-import org.joml.Vector3f;
+import com.bdmajora.testing.Quads;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.BitSet;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -26,7 +29,7 @@ class RenderSectionTest {
     @BeforeEach
     void activate() {
         device = Devices.active();
-        regions = new RenderRegionManager(device.createCommandList());
+        regions = new RenderRegionManager(device.createCommandList(), Passes.CONFIG);
     }
 
     @AfterEach
@@ -85,12 +88,38 @@ class RenderSectionTest {
         section.setLastBuildDurationNanos(9);
         assertEquals(9, section.getLastBuildDurationNanos());
 
-        TranslucentQuadAnalyzer.SortState dynamic = new TranslucentQuadAnalyzer.SortState(TranslucentQuadAnalyzer.Level.DYNAMIC, new float[3], new float[3], 3, new BitSet(), new Vector3f(), null);
-        section.setTranslucencySortStates(Map.of(Passes.TRANSLUCENT, dynamic, Passes.CUTOUT, TranslucentQuadAnalyzer.SortState.NONE));
-        assertEquals(TranslucentQuadAnalyzer.Level.DYNAMIC, section.getHighestSortingLevel());
-        assertTrue(section.isNeedsDynamicTranslucencySorting());
+        // Every mirror of the packed word hears about each change to it
+        AtomicInteger notified = new AtomicInteger();
+        section.setMetadataSink(changed -> {
+            assertSame(section, changed);
+            notified.incrementAndGet();
+        });
+        section.setPendingUpdate(ChunkUpdateType.SORT);
+        assertEquals(1, notified.get());
+        assertEquals(ChunkUpdateType.SORT, PackedSectionMetadata.getPendingUpdate(section.getPackedMetadata()));
+        section.setPendingUpdate(null);
+
+        // Only a distance sort makes the section ask to be re-sorted as the camera moves
+        assertEquals(RenderSection.SortMode.NONE, section.getSortMode());
+        assertEquals(RenderSection.NO_TRANSLUCENT_GEOMETRY, section.getHighestSortingIndex());
+        SortState.Dynamic dynamic = new SortState.Dynamic(new float[3]);
+        PartitionTree tree = (PartitionTree) Quads.record(Quads.straddling(0)).getSortState();
+        section.setTranslucencySortStates(Map.of(Passes.TRANSLUCENT, dynamic, Passes.WIDE, tree), dynamic.debugIndex());
+        assertEquals(RenderSection.SortMode.DYNAMIC, section.getSortMode());
+        assertEquals(3, section.getHighestSortingIndex());
         assertEquals(2, section.getTranslucencySortStates().size());
-        section.setNeedsDynamicTranslucencySorting(false);
+        assertNotEquals(0, section.getVisualsServiceFlags() & (1 << RenderVisualsService.NEEDS_DYNAMIC_SORT));
+        section.setTranslucencySortStates(Map.of(Passes.TRANSLUCENT, tree), tree.debugIndex());
+        assertTrue(section.isTreeSorted());
+        assertEquals(0, section.getVisualsServiceFlags() & (1 << RenderVisualsService.NEEDS_DYNAMIC_SORT));
+        section.setTranslucencySortStates(Map.of(), RenderSection.NO_TRANSLUCENT_GEOMETRY);
+        assertEquals(RenderSection.SortMode.NONE, section.getSortMode());
+        section.setTranslucencySortStates(Map.of(Passes.TRANSLUCENT, dynamic), dynamic.debugIndex());
+        section.clearTranslucencySortStates();
+        assertTrue(section.getTranslucencySortStates().isEmpty());
+        assertFalse(section.isTreeSorted());
+        assertEquals(VisibilityEncoding.NULL, section.getVisibilityData());
+        section.setMetadataSink(null);
 
         AtomicBoolean cancelled = new AtomicBoolean();
         CancellationToken token = new CancellationToken() {
@@ -106,6 +135,7 @@ class RenderSectionTest {
         };
         section.setBuildCancellationToken(token);
         assertSame(token, section.getBuildCancellationToken());
+        assertTrue(PackedSectionMetadata.isBuildInFlight(section.getPackedMetadata()));
         assertFalse(section.isDisposed());
         section.delete();
         assertTrue(cancelled.get());

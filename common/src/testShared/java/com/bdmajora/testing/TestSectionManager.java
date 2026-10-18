@@ -2,6 +2,7 @@ package com.bdmajora.testing;
 
 import com.bdmajora.impetus.engine.impl.render.chunk.RenderPassConfiguration;
 import com.bdmajora.impetus.engine.impl.render.mesh.MeshTerrainConfig;
+import com.bdmajora.impetus.engine.impl.render.mesh.MeshTerrainShading;
 import com.bdmajora.impetus.engine.impl.render.mesh.region.SectionGeometryPacker;
 
 import com.bdmajora.impetus.engine.api.util.ColorABGR;
@@ -14,10 +15,12 @@ import com.bdmajora.impetus.engine.impl.render.chunk.RenderSectionManager;
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.ChunkBuildContext;
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.ChunkBuildOutput;
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.buffers.ChunkModelBuilder;
+import com.bdmajora.impetus.engine.impl.render.chunk.compile.tasks.ChunkBuilderSortTask;
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.tasks.ChunkBuilderTask;
 import com.bdmajora.impetus.engine.impl.render.chunk.data.BuiltRenderSectionData;
 import com.bdmajora.impetus.engine.impl.render.chunk.data.BuiltSectionMeshParts;
 import com.bdmajora.impetus.engine.impl.render.chunk.data.MinecraftBuiltRenderSectionData;
+import com.bdmajora.impetus.engine.impl.render.chunk.fog.FogService;
 import com.bdmajora.impetus.engine.impl.render.chunk.lists.SectionTicker;
 import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.AsyncOcclusionMode;
 import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.VisibilityEncoding;
@@ -35,6 +38,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 // A section manager whose builds run on the calling thread and mesh whatever the test says a section contains
 public class TestSectionManager extends RenderSectionManager {
+    // The settable statics the chunk shaders also read
+    private static final FogService FOG = new TestFogService();
+
     public AsyncOcclusionMode asyncMode = AsyncOcclusionMode.NONE;
     public boolean fogOcclusion;
     public boolean occlusionCulling;
@@ -44,15 +50,16 @@ public class TestSectionManager extends RenderSectionManager {
     public boolean respectQueueLimit = true;
     // Sections that mesh to nothing at all
     public final LongOpenHashSet empty = new LongOpenHashSet();
-    // Sections that build translucent geometry with several normals, so they need dynamic sorting
+    // Sections whose translucent geometry needs a partition tree, re-sorted when the camera crosses its cut plane
     public final LongOpenHashSet translucent = new LongOpenHashSet();
-    // Sections whose translucent geometry has too many normals for the trigger index
-    public final LongOpenHashSet manyNormals = new LongOpenHashSet();
+    // Sections whose translucent geometry can only be distance-sorted, every time the camera moves far enough
+    public final LongOpenHashSet distanceSorted = new LongOpenHashSet();
     // Sections that carry a global block entity
     public final LongOpenHashSet globalEntities = new LongOpenHashSet();
     // Sections whose rebuild task is refused outright
     public final LongOpenHashSet refused = new LongOpenHashSet();
     public final AtomicInteger builds = new AtomicInteger();
+    public final AtomicInteger sorts = new AtomicInteger();
     public final AtomicInteger invalidations = new AtomicInteger();
 
     // The pass set builds go into; the mesh constructor swaps in the mesh-layout passes
@@ -74,9 +81,16 @@ public class TestSectionManager extends RenderSectionManager {
         this.meshTerrain = true;
     }
 
+    // The same with outside mesh shading, as a shader pack brings, and a shadow pass to drive it
+    public TestSectionManager(CommandList commandList, int renderDistance, int minSection, int maxSection, MeshTerrainConfig mesh, MeshTerrainShading shading) {
+        super(Passes.MESH_CONFIG, () -> new ChunkBuildContext(Passes.MESH_CONFIG), (device, config) -> new Renderer(device), renderDistance, commandList, minSection, maxSection, -1, true, mesh, shading);
+        this.passes = Passes.MESH_CONFIG;
+        this.meshTerrain = true;
+    }
+
     private static final class Renderer extends DefaultChunkRenderer {
         Renderer(RenderDevice device) {
-            super(device, Passes.CONFIG);
+            super(device, Passes.CONFIG, FOG);
         }
 
         @Override
@@ -87,6 +101,17 @@ public class TestSectionManager extends RenderSectionManager {
     @Override
     protected AsyncOcclusionMode getAsyncOcclusionMode() {
         return asyncMode == null ? AsyncOcclusionMode.NONE : asyncMode;
+    }
+
+    // Read during construction; the tests drive the CPU occlusion graph
+    @Override
+    protected boolean useRasterOcclusionCulling() {
+        return false;
+    }
+
+    @Override
+    public FogService getFogService() {
+        return FOG;
     }
 
     @Override
@@ -140,8 +165,8 @@ public class TestSectionManager extends RenderSectionManager {
         if (refused.contains(key)) {
             return null;
         }
-        boolean sorted = translucent.contains(key);
-        boolean overflow = manyNormals.contains(key);
+        boolean distance = distanceSorted.contains(key);
+        boolean sorted = distance || translucent.contains(key);
         boolean global = globalEntities.contains(key);
         return new ChunkBuilderTask<>() {
             @Override
@@ -160,11 +185,9 @@ public class TestSectionManager extends RenderSectionManager {
                 solid.getVertexBuffer(ModelQuadFacing.POS_Y).push(quad(0, 1, 0, 0, 1, 0), passes.defaultSolidMaterial());
                 if (sorted) {
                     ChunkModelBuilder glass = buffers.get(passes.defaultTranslucentMaterial().pass);
-                    // Two quads a quarter turn apart are distinct normals; twenty at 4.5 degree steps overflow the trigger index's normal table
-                    int normals = overflow ? 20 : 2;
-                    for (int i = 0; i < normals; i++) {
-                        float angle = (float) (i * (overflow ? Math.PI / 40 : Math.PI / 2));
-                        glass.getVertexBuffer(ModelQuadFacing.UNASSIGNED).push(quad(0, 0, 0, (float) Math.cos(angle), 1, (float) Math.sin(angle)), passes.defaultTranslucentMaterial());
+                    // The straddling pair is cut at local z=5
+                    for (float[][] quad : distance ? Quads.pinwheel(4) : Quads.straddling(4)) {
+                        glass.getVertexBuffer(ModelQuadFacing.UNASSIGNED).push(Quads.vertices(quad), passes.defaultTranslucentMaterial());
                     }
                 }
                 var meshes = BuiltSectionMeshParts.groupFromBuildBuffers(buffers, 0, 0, 0);
@@ -186,6 +209,26 @@ public class TestSectionManager extends RenderSectionManager {
             quad[i].light = 0x00F000F0;
         }
         return quad;
+    }
+
+    @Override
+    public ChunkBuilderSortTask createSortTask(RenderSection render, int frame) {
+        ChunkBuilderSortTask task = super.createSortTask(render, frame);
+        if (task != null) {
+            sorts.incrementAndGet();
+        }
+        return task;
+    }
+
+    // The loaded section at a position, or null
+    public RenderSection section(int x, int y, int z) {
+        long key = PositionUtil.packSection(x, y, z);
+        for (RenderSection section : getAllRenderSections()) {
+            if (section.positionAsLong() == key) {
+                return section;
+            }
+        }
+        return null;
     }
 
     // Every section key currently loaded, for assertions

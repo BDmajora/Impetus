@@ -30,7 +30,6 @@ import com.bdmajora.impetus.engine.impl.render.chunk.data.MinecraftBuiltRenderSe
 import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.GraphDirection;
 import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.VisibilityEncoding;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
-import com.bdmajora.impetus.engine.impl.render.mesh.MeshTerrainRenderer;
 import com.bdmajora.impetus.engine.impl.render.mesh.region.SectionGeometry;
 import com.bdmajora.impetus.engine.impl.render.mesh.region.SectionGeometryPacker;
 import com.bdmajora.impetus.engine.impl.util.task.CancellationToken;
@@ -193,11 +192,9 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
 
         encodeVisibilityData(occluder, renderData);
 
-        // The mesh backend draws one merged blob per section; packing here keeps that copy and the translucent sort off the render thread
-        SectionGeometry meshGeometry = null;
-        if (MeshTerrainRenderer.isActive()) {
-            meshGeometry = SectionGeometryPacker.pack(meshes, (float) camera.x - minX, (float) camera.y - minY, (float) camera.z - minZ);
-        }
+        // The mesh backend draws one merged blob per section; packing here keeps that copy and the translucent sort off the render thread, and the passes' own vertex layout says whether this build is for it
+        SectionGeometry meshGeometry = SectionGeometryPacker.packForMeshBackend(meshes,
+                (float) camera.x - minX, (float) camera.y - minY, (float) camera.z - minZ);
 
         return new ChunkBuildOutput(this.render, renderData, meshes, meshGeometry, this.buildTime);
     }

@@ -98,6 +98,11 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
 
     public abstract int getEffectiveRenderDistance();
 
+    // Whether the section manager has to be rebuilt before this frame, beyond a render distance change
+    protected boolean needsRebuild() {
+        return false;
+    }
+
     /**
      * Whether terrain is currently being set up or rendered for a shadow pass.
      */
@@ -125,11 +130,14 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
 
         this.renderSectionManager.runAsyncTasks();
 
-        if (getEffectiveRenderDistance() != this.renderDistance) {
+        if (getEffectiveRenderDistance() != this.renderDistance || this.needsRebuild()) {
             this.reload();
         }
 
         this.prepareFrame(viewport, cameraState, updateChunksImmediately);
+
+        // The mesh backend culls its regions against the player's view when it draws opaque terrain; the shadow pass never sets it
+        this.renderSectionManager.trackViewport(viewport);
 
         this.renderSectionManager.uploadChunks();
 

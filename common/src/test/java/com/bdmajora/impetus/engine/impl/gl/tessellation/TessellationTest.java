@@ -27,7 +27,7 @@ class TessellationTest {
         assertEquals(GlBufferTarget.ARRAY_BUFFER, vertexBinding.target());
         assertEquals(GlBufferTarget.ELEMENT_BUFFER, indexBinding.target());
         assertEquals(0, indexBinding.attributeBindings().length);
-        assertThrows(NullPointerException.class, () -> TessellationBinding.forVertexBuffer(vertices, null));
+        assertThrows(NullPointerException.class, () -> TessellationBinding.forVertexBuffer(vertices, (com.bdmajora.impetus.engine.impl.gl.attribute.GlVertexFormat) null));
 
         GlVertexArrayTessellation tessellation = new GlVertexArrayTessellation(array, new TessellationBinding[]{vertexBinding, indexBinding});
         tessellation.init(list);

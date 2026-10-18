@@ -12,6 +12,7 @@ import net.minecraft.util.BlockRenderLayer;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraftforge.client.MinecraftForgeClient;
 import com.bdmajora.impetus.engine.impl.gl.device.CommandList;
+import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions;
 import com.bdmajora.impetus.engine.impl.render.chunk.ChunkRenderMatrices;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkMeshFormats;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexType;
@@ -21,6 +22,10 @@ import com.bdmajora.impetus.engine.impl.render.mesh.MeshTerrainConfig;
 import com.bdmajora.impetus.engine.impl.render.terrain.SimpleWorldRenderer;
 import com.bdmajora.impetus.ImpetusVintage;
 import com.bdmajora.impetus.mixin.core.terrain.ActiveRenderInfoAccessor;
+import com.bdmajora.impetus.umbra.Umbra;
+import com.bdmajora.impetus.umbra.terrain.UmbraMeshShading;
+import com.bdmajora.impetus.umbra.terrain.UmbraTerrainProgramOverride;
+import com.bdmajora.impetus.umbra.vertices.UmbraMeshVertex;
 
 import java.util.*;
 
@@ -68,16 +73,26 @@ public class ImpetusWorldRenderer extends SimpleWorldRenderer<WorldClient, Vinta
         return new ChunkRenderMatrices(ActiveRenderInfoAccessor.getProjectionMatrix(), ActiveRenderInfoAccessor.getModelViewMatrix());
     }
 
+    // The shader pack's mesh programs the current section manager draws with, watched so a pack they cannot carry rebuilds the renderer on OpenGL
+    private UmbraMeshShading meshShading;
+
     // Factory hook for the 1.12.2 section manager; the mesh backend is decided once here, since it fixes the vertex layout every build uses
     @Override
     protected VintageRenderSectionManager createRenderSectionManager(CommandList commandList) {
         int renderDistance = this.getEffectiveRenderDistance();
+        this.meshShading = null;
 
         if (shouldUseMeshTerrain()) {
             var config = MeshTerrainConfig.from(ImpetusVintage.options().meshTerrain, renderDistance);
+            boolean shaders = UmbraTerrainProgramOverride.areShadersActive();
+            UmbraMeshShading shading = shaders ? new UmbraMeshShading(Umbra.getCurrentPack(), config) : null;
 
             try {
-                return VintageRenderSectionManager.create(MeshChunkVertex.INSTANCE, this.world, renderDistance, commandList, config);
+                var manager = shaders
+                        ? VintageRenderSectionManager.create(UmbraMeshVertex.INSTANCE, this.world, renderDistance, commandList, config, shading)
+                        : VintageRenderSectionManager.create(MeshChunkVertex.INSTANCE, this.world, renderDistance, commandList, config);
+                this.meshShading = shading;
+                return manager;
             } catch (RuntimeException e) {
                 // A driver that advertises the extensions but rejects the programs gets the raster renderer instead of a crash
                 ImpetusVintage.logger().error("Mesh-shader terrain failed to start; using the standard renderer", e);
@@ -88,11 +103,46 @@ public class ImpetusWorldRenderer extends SimpleWorldRenderer<WorldClient, Vinta
         return VintageRenderSectionManager.create(chooseVertexType(), this.world, renderDistance, commandList, null);
     }
 
-    // Mesh shaders draw the terrain when the option is on, the GPU has NV_mesh_shader and friends, and no shader pack needs its own gbuffer programs
+    // A ported pack whose programs the mesh backend could not build goes back to OpenGL on the next frame
+    @Override
+    protected boolean needsRebuild() {
+        return this.meshShading != null && this.meshShading.hasFailed();
+    }
+
+    // F3: which backend draws the terrain first, and with Nvidium chosen but OpenGL drawing, why
+    @Override
+    public Collection<String> getDebugStrings() {
+        List<String> lines = new ArrayList<>();
+        VintageRenderSectionManager manager = this.getRenderSectionManager();
+        lines.add(terrainBackend(manager != null && manager.getMeshTerrain() != null));
+        lines.addAll(super.getDebugStrings());
+        return lines;
+    }
+
+    // The F3 line naming the terrain backend
+    static String terrainBackend(boolean meshTerrain) {
+        if (meshTerrain) {
+            return "Terrain: Nvidium" + (UmbraTerrainProgramOverride.areShadersActive() ? " (shader pack port)" : "");
+        }
+        if (ImpetusVintage.options().graphicsApi != ImpetusGameOptions.GraphicsApi.NVIDIUM) {
+            return "Terrain: OpenGL";
+        }
+        String reason;
+        if (!MeshShaderSupport.isSupported()) {
+            reason = MeshShaderSupport.getUnsupportedReason();
+        } else if (UmbraTerrainProgramOverride.areShadersActive()) {
+            reason = UmbraMeshShading.whyNot(Umbra.getCurrentPack());
+        } else {
+            reason = "";
+        }
+        return "Terrain: OpenGL, Nvidium off: " + (reason.isEmpty() ? "waiting for the renderer to reload" : reason);
+    }
+
+    // Nvidium draws the terrain when it is the chosen Graphics API and the GPU has NV_mesh_shader and friends; with a shader pack only when the pack is an Nvidium port that has not already failed to build, so an unported pack's terrain stays on OpenGL
     static boolean shouldUseMeshTerrain() {
-        return ImpetusVintage.options().meshTerrain.enabled
-                && !com.bdmajora.impetus.umbra.terrain.UmbraTerrainProgramOverride.areShadersActive()
-                && MeshShaderSupport.isSupported();
+        return ImpetusVintage.options().graphicsApi == ImpetusGameOptions.GraphicsApi.NVIDIUM
+                && MeshShaderSupport.isSupported()
+                && (!UmbraTerrainProgramOverride.areShadersActive() || UmbraMeshShading.canRun(Umbra.getCurrentPack()));
     }
 
     // performs a render pass for the given BlockRenderLayer, drawing every visible chunk for it

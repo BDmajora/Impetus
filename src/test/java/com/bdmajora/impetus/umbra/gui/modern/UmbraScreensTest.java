@@ -2,6 +2,8 @@ package com.bdmajora.impetus.umbra.gui.modern;
 
 import com.bdmajora.impetus.api.options.structure.Option;
 import com.bdmajora.impetus.api.options.structure.OptionPage;
+import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions;
+import com.bdmajora.impetus.engine.impl.render.mesh.MeshShaderSupport;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.gui.widgets.FlatButtonWidget;
 import com.bdmajora.impetus.engine.impl.util.Dim2i;
@@ -12,6 +14,9 @@ import com.bdmajora.impetus.umbra.pipeline.ColorSpaceConverter;
 import com.bdmajora.impetus.umbra.pipeline.UmbraPipeline;
 import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;
 import com.bdmajora.impetus.umbra.shaderpack.include.AbsolutePackPath;
+import com.bdmajora.impetus.umbra.shaderpack.loading.ProgramId;
+import com.bdmajora.impetus.umbra.terrain.UmbraMeshShading;
+import com.bdmajora.impetus.umbra.terrain.mesh.NvidiumPackPorter;
 import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
 import com.bdmajora.testing.OptionPages;
@@ -53,6 +58,7 @@ class UmbraScreensTest {
 
     private Minecraft client;
     private GameSettings settings;
+    private ImpetusGameOptions options;
     private MockedStatic<GL11> gl11;
     private MockedStatic<GL13> gl13;
 
@@ -81,7 +87,7 @@ class UmbraScreensTest {
         Mixins.set(client, "gameSettings", settings);
         client.displayWidth = 800;
         client.displayHeight = 600;
-        OptionsScreens.prepare(client, home);
+        options = OptionsScreens.prepare(client, home);
         when(client.getSoundHandler()).thenReturn(mock(SoundHandler.class));
         gl11 = Mockito.mockStatic(GL11.class);
         gl13 = Mockito.mockStatic(GL13.class);
@@ -107,7 +113,9 @@ class UmbraScreensTest {
                         "profile.HIGH=High",
                         "not a key",
                         "=no key"),
-                "lang/de_de.lang", "option.BLOOM=Leuchten\nvalue.BLOOM.true=Glühend"));
+                "lang/de_de.lang", "option.BLOOM=Leuchten\nvalue.BLOOM.true=Glühend",
+                "gbuffers_terrain.vsh", "#version 120\nvarying vec2 uv;\nvoid main() { gl_Position = ftransform(); uv = gl_MultiTexCoord0.xy; }",
+                "gbuffers_terrain.fsh", "#version 120\nvarying vec2 uv;\nuniform sampler2D texture;\nvoid main() { gl_FragData[0] = texture2D(texture, uv); }"));
         writePack("Bare", Map.of(
                 "shaders.properties", "profile.ONLY = QUALITY=2",
                 "final.fsh", DEMO_SOURCE));
@@ -125,6 +133,9 @@ class UmbraScreensTest {
         Mixins.set(Umbra.class, "pipelineNeedsInit", false);
         Mixins.set(Umbra.class, "renderingPipelineFailed", false);
         Mixins.set(Umbra.class, "resetShaderPackOptions", false);
+        Mixins.set(Umbra.class, "loadedForNvidium", false);
+        Mixins.set(Umbra.class, "nvidiumPortNote", "");
+        Statics.set(MeshShaderSupport.class, "supported", null);
         Statics.<Map<?, ?>>get(Umbra.class, "shaderPackOptionQueue").clear();
         ColorSpaceConverter.setColorSpace(ColorSpaceConverter.ColorSpace.SRGB);
         client.world = null;
@@ -219,6 +230,66 @@ class UmbraScreensTest {
         reread.load();
         assertEquals("Demo", reread.getShaderPackName());
         assertEquals(ColorSpaceConverter.ColorSpace.DCI_P3, ColorSpaceConverter.getColorSpace());
+    }
+
+    @Test
+    void underNvidiumThePackLoadsFromAPortMadeAndRefreshedOnItsOwn() throws IOException {
+        UmbraConfig config = new UmbraConfig(home.resolve("other"));
+        assertEquals("Pack", UmbraConfig.portName("Pack.Zip"));
+        assertEquals("Pack", UmbraConfig.portName("Pack"));
+        assertEquals(home.resolve("other/nvidium_shaderpacks/Pack"), config.portPath("Pack.zip"));
+
+        options.graphicsApi = ImpetusGameOptions.GraphicsApi.NVIDIUM;
+        Statics.set(MeshShaderSupport.class, "supported", true);
+        // Without a config, or without a pack, there is nothing to reload
+        assertFalse(Umbra.reloadIfTerrainBackendChanged());
+        Umbra.initialize(home);
+        assertFalse(Umbra.reloadIfTerrainBackendChanged());
+
+        // Selecting a pack writes its port and loads that, with the pack's own options
+        Files.writeString(home.resolve("shaderpacks/Demo.txt"), "QUALITY=3\n");
+        Umbra.setShaderpackAndReload("Demo");
+        Path port = home.resolve("nvidium_shaderpacks/Demo");
+        assertTrue(Files.isRegularFile(port.resolve("shaders/gbuffers_terrain.mesh")));
+        assertTrue(Files.isRegularFile(port.resolve(NvidiumPackPorter.MANIFEST)));
+        assertTrue(Umbra.getCurrentPack().getProgramSet().get(ProgramId.TerrainCutoutMip).orElseThrow().hasMeshStages());
+        assertTrue(UmbraMeshShading.canRun(Umbra.getCurrentPack()));
+        assertEquals("", Umbra.getNvidiumPortNote());
+        assertEquals("3", Umbra.getCurrentPack().getShaderPackOptions().getOptionValues().getStringValue("QUALITY").orElseThrow());
+        // Option changes go to the pack's file, which both copies share
+        Umbra.queueShaderPackOptions(Map.of("QUALITY", "1"));
+        assertTrue(Files.readString(home.resolve("shaderpacks/Demo.txt")).contains("QUALITY=1"));
+        assertFalse(Files.exists(home.resolve("nvidium_shaderpacks/Demo.txt")));
+        assertFalse(Umbra.reloadIfTerrainBackendChanged());
+
+        // Loading again reuses the port as it is; a change to the pack makes a fresh one
+        Files.writeString(port.resolve("marker.txt"), "x");
+        Umbra.loadCurrentShaderpack();
+        assertTrue(Files.exists(port.resolve("marker.txt")));
+        Files.writeString(home.resolve("shaderpacks/Demo/shaders/gbuffers_terrain.gsh"), "#version 150\nvoid main() {}");
+        Umbra.loadCurrentShaderpack();
+        assertFalse(Files.exists(port.resolve("marker.txt")));
+        // That pack's terrain cannot be carried, so it stays on OpenGL and says why
+        assertEquals("gbuffers_terrain: geometry or tessellation stage", Umbra.getNvidiumPortNote());
+        assertFalse(UmbraMeshShading.canRun(Umbra.getCurrentPack()));
+        assertEquals("gbuffers_terrain: geometry or tessellation stage", UmbraMeshShading.whyNot(Umbra.getCurrentPack()));
+
+        // A folder in the way that no port made is left alone, and the pack loads as itself
+        Files.writeString(Files.createDirectories(home.resolve("nvidium_shaderpacks/Bare")).resolve("mine.txt"), "keep");
+        Umbra.setShaderpackAndReload("Bare");
+        assertNotNull(Umbra.getCurrentPack());
+        assertTrue(Umbra.getNvidiumPortNote().startsWith("could not port the pack: Bare already exists"));
+        assertEquals("keep", Files.readString(home.resolve("nvidium_shaderpacks/Bare/mine.txt")));
+        // A pack that is gone has nothing to port and does not load
+        Umbra.setShaderpackAndReload("Gone");
+        assertNull(Umbra.getCurrentPack());
+
+        // Back on OpenGL the original loads again, once
+        Umbra.setShaderpackAndReload("Demo");
+        options.graphicsApi = ImpetusGameOptions.GraphicsApi.OPENGL;
+        assertTrue(Umbra.reloadIfTerrainBackendChanged());
+        assertFalse(Umbra.getCurrentPack().getProgramSet().get(ProgramId.TerrainCutoutMip).orElseThrow().hasMeshStages());
+        assertFalse(Umbra.reloadIfTerrainBackendChanged());
     }
 
     @Test

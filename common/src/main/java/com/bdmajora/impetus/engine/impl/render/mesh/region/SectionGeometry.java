@@ -18,7 +18,7 @@ public record SectionGeometry(
         short[] quadsPerFacing,
         // Quad index within the section's own geometry where the first facing's quads start; the packer puts the translucent quads before it, so it doubles as their count
         short baseQuad,
-        // Section-relative bounding box in 1/16-block units, each component 0..15
+        // Section-relative bounding box in whole blocks, each component 0..15
         int minX, int minY, int minZ,
         int sizeX, int sizeY, int sizeZ
 ) {
@@ -27,7 +27,7 @@ public record SectionGeometry(
         this.geometry.free();
     }
 
-    // Reshapes one pass's build output; null when the pass produced nothing, which signals dropping the section rather than uploading an empty one
+    // Reshapes one pass's build output in MeshChunkVertex layout; null when the pass produced nothing, which signals dropping the section rather than uploading an empty one
     public static SectionGeometry from(BuiltSectionMeshParts mesh) {
         NativeBuffer vertices = mesh.vertexBuffer();
 
@@ -57,29 +57,29 @@ public record SectionGeometry(
             return null;
         }
 
-        BoundingBox box = computeBounds(vertices, firstVertex, total);
+        BoundingBox box = computeBounds(vertices, firstVertex, total, MeshChunkVertex.STRIDE);
 
         return new SectionGeometry(total, vertices, quadsPerFacing, (short) (firstVertex >> 2),
                 box.minX, box.minY, box.minZ, box.sizeX, box.sizeY, box.sizeZ);
     }
 
-    // Wraps already-packed geometry (every quad from the buffer's start) and measures its bounds
-    public static SectionGeometry bounded(int quadCount, NativeBuffer geometry, short[] quadsPerFacing, short baseQuad) {
-        BoundingBox box = computeBounds(geometry, 0, quadCount);
+    // Wraps already-packed geometry (every quad from the buffer's start, stride bytes per vertex) and measures its bounds
+    public static SectionGeometry bounded(int quadCount, NativeBuffer geometry, short[] quadsPerFacing, short baseQuad, int stride) {
+        BoundingBox box = computeBounds(geometry, 0, quadCount, stride);
 
         return new SectionGeometry(quadCount, geometry, quadsPerFacing, baseQuad,
                 box.minX, box.minY, box.minZ, box.sizeX, box.sizeY, box.sizeZ);
     }
 
     // Snaps the geometry to a 16x16x16 grid of 1-block cells (the occlusion box granularity); a tight box is what lets a section behind a wall fail the depth test
-    private static BoundingBox computeBounds(NativeBuffer vertices, int firstVertex, int quadCount) {
-        long ptr = MemoryUtil.memAddress(vertices.getDirectBuffer()) + (long) firstVertex * MeshChunkVertex.STRIDE;
-        long end = ptr + (long) quadCount * 4L * MeshChunkVertex.STRIDE;
+    private static BoundingBox computeBounds(NativeBuffer vertices, int firstVertex, int quadCount, int stride) {
+        long ptr = MemoryUtil.memAddress(vertices.getDirectBuffer()) + (long) firstVertex * stride;
+        long end = ptr + (long) quadCount * 4L * stride;
 
         int minX = 16, minY = 16, minZ = 16;
         int maxX = -1, maxY = -1, maxZ = -1;
 
-        for (; ptr < end; ptr += MeshChunkVertex.STRIDE) {
+        for (; ptr < end; ptr += stride) {
             int x = MeshChunkVertex.decodeBlockCoord(MeshChunkVertex.readPackedX(ptr));
             int y = MeshChunkVertex.decodeBlockCoord(MeshChunkVertex.readPackedY(ptr));
             int z = MeshChunkVertex.decodeBlockCoord(MeshChunkVertex.readPackedZ(ptr));

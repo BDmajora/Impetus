@@ -7,7 +7,7 @@ import com.bdmajora.impetus.engine.impl.render.chunk.compile.buffers.BakedChunkM
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.buffers.ChunkModelBuilder;
 import com.bdmajora.impetus.engine.impl.render.chunk.data.BuiltRenderSectionData;
 import com.bdmajora.impetus.engine.impl.render.chunk.data.BuiltSectionMeshParts;
-import com.bdmajora.impetus.engine.impl.render.chunk.sorting.TranslucentQuadAnalyzer;
+import com.bdmajora.impetus.engine.impl.render.chunk.sorting.SortState;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.builder.ChunkMeshBufferBuilder;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexEncoder;
@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class ChunkBuildBuffersTest {
     public static final RenderPassConfiguration<String> CONFIG = Passes.CONFIG;
+    private static final int STRIDE = Passes.SOLID.vertexType().getVertexFormat().getStride();
 
     // A unit quad at height y, in canonical top-face order
     public static ChunkVertexEncoder.Vertex[] quad(float y) {
@@ -58,7 +59,7 @@ public class ChunkBuildBuffersTest {
         assertNull(solidMesh.sortState());
         assertEquals(2, solidMesh.ranges().size());
         assertEquals(4, solidMesh.ranges().get(ModelQuadFacing.NEG_Y).vertexStart());
-        assertEquals(8 * 20, solidMesh.vertexBuffer().getLength());
+        assertEquals(8 * STRIDE, solidMesh.vertexBuffer().getLength());
         solidMesh.free();
 
         ChunkModelBuilder translucent = buffers.get(Passes.TRANSLUCENT);
@@ -66,11 +67,11 @@ public class ChunkBuildBuffersTest {
         assertSame(sortedBuffer, translucent.getVertexBuffer(ModelQuadFacing.UNASSIGNED));
         sortedBuffer.push(quad(0), Passes.TRANSLUCENT_MATERIAL);
         sortedBuffer.push(quad(4), Passes.TRANSLUCENT_MATERIAL);
-        assertEquals(TranslucentQuadAnalyzer.Level.STATIC, sortedBuffer.getSortState().level());
+        assertInstanceOf(SortState.Static.class, sortedBuffer.getSortState());
         BuiltSectionMeshParts translucentMesh = buffers.createMesh(Passes.TRANSLUCENT, 0, 0, 0);
         assertNotNull(translucentMesh.indexBuffer());
         assertEquals(12 * 4, translucentMesh.indexBuffer().getLength());
-        assertEquals(TranslucentQuadAnalyzer.Level.STATIC, translucentMesh.sortState().level());
+        assertInstanceOf(SortState.Static.class, translucentMesh.sortState());
         assertEquals(1, translucentMesh.ranges().size());
         var grouped = BuiltSectionMeshParts.groupFromBuildBuffers(buffers, 0, 0, 0);
         assertEquals(2, grouped.size());
@@ -89,7 +90,7 @@ public class ChunkBuildBuffersTest {
 
     @Test
     void meshBufferBuilderGrowsAndSlices() {
-        ChunkMeshBufferBuilder builder = new ChunkMeshBufferBuilder(Passes.SOLID.vertexType().createEncoder(), 20, 64, true);
+        ChunkMeshBufferBuilder builder = new ChunkMeshBufferBuilder(Passes.SOLID.vertexType().createEncoder(), STRIDE, 64, true);
         assertTrue(builder.isEmpty());
         assertThrows(IllegalStateException.class, builder::slice);
         builder.start(1);
@@ -97,19 +98,19 @@ public class ChunkBuildBuffersTest {
             builder.push(quad(i), Passes.SOLID_MATERIAL);
         }
         assertEquals(40, builder.count());
-        assertEquals(800, builder.slice().remaining());
+        assertEquals(40 * STRIDE, builder.slice().remaining());
         assertNotNull(builder.getSortState());
         builder.resetSortState();
-        assertSame(TranslucentQuadAnalyzer.SortState.NONE, builder.getSortState());
+        assertSame(SortState.NONE, builder.getSortState());
         builder.destroy();
         builder.destroy();
-        ChunkMeshBufferBuilder plain = new ChunkMeshBufferBuilder(Passes.SOLID.vertexType().createEncoder(), 20, 64, false);
+        ChunkMeshBufferBuilder plain = new ChunkMeshBufferBuilder(Passes.SOLID.vertexType().createEncoder(), STRIDE, 64, false);
         plain.start(0);
         assertNull(plain.getSortState());
         plain.resetSortState();
         plain.destroy();
 
-        BakedChunkModelBuilder baked = new BakedChunkModelBuilder(Passes.SOLID.vertexType().createEncoder(), 20, Passes.SOLID);
+        BakedChunkModelBuilder baked = new BakedChunkModelBuilder(Passes.SOLID.vertexType().createEncoder(), STRIDE, Passes.SOLID);
         assertThrows(NullPointerException.class, () -> baked.getVertexBuffer(ModelQuadFacing.POS_X));
         BuiltRenderSectionData data = new BuiltRenderSectionData();
         baked.begin(data, 0);

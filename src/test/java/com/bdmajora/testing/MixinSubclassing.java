@@ -56,6 +56,16 @@ final class MixinSubclassing implements ClassFileTransformer {
     // can mock their statics without the class failing to initialise
     private static final Set<String> NATIVE_INITIALISERS = Set.of("org/lwjgl/opengl/Display");
 
+    // Mod classes whose static final state tests swap with Statics.set; left final, the JIT folds the value into
+    // whatever compiled first and a later swap goes unseen, which failed tests depending on run order
+    private static final Set<String> SWAPPED_STATICS = Set.of(
+            "com/bdmajora/impetus/ImpetusVintage",
+            "com/bdmajora/fulgor/lighting/DynamicLightsBridge",
+            "com/bdmajora/equilibrium/mixin/EquilibriumMixinPlugin",
+            "com/bdmajora/impetus/impl/compat/fluidlogged/FluidloggedCompat",
+            "com/bdmajora/impetus/impl/compat/littletiles/LittleTilesCompat",
+            "com/bdmajora/impetus/engine/impl/compat/environment/OsKind");
+
     MixinSubclassing() {
         for (Path root : classRoots()) {
             scan(root);
@@ -239,7 +249,7 @@ final class MixinSubclassing implements ClassFileTransformer {
             boolean modClass = name.startsWith("com/bdmajora/") && !name.startsWith("com/bdmajora/testing/")
                     && !name.contains("/mixin");
             // A class reached only through static accessors still needs those members opened
-            boolean opens = targets.contains(name) || openMembers.containsKey(name);
+            boolean opens = targets.contains(name) || openMembers.containsKey(name) || SWAPPED_STATICS.contains(name);
             if (needConstructor.contains(name) || extraConstructors.containsKey(name)) {
                 byte[] withConstructors = addConstructor(bytes, needConstructor.contains(name),
                         extraConstructors.getOrDefault(name, Set.of()), targets.contains(name));

@@ -14,6 +14,8 @@ taskNV out Task {
     // xyz: section origin relative to the camera's section; w: first quad, as raw bits
     vec4 originAndBase;
     uint quadCount;
+    // How far the section has faded in
+    float fade;
 #ifdef SORT_QUADS
     // 0 or 1, alternating per frame so the in-place pair swaps cover both pairings over two frames
     uint jiggle;
@@ -40,6 +42,7 @@ void main() {
 
     ivec4 header = sectionData[sectionId].header;
     uint base = uint(header.w);
+    fade = sectionFade(sectionId);
 
     originAndBase.xyz = vec3((unpackSectionChunk(header) - cameraChunk.xyz) << 4);
     // The translucent quads sit in front of the opaque groups, and the header's last count says how many

@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.engine.impl.render.mesh;
 
+import com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions;
 import com.bdmajora.impetus.engine.impl.compat.environment.OsKind;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions.MeshStatistics;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions.MeshTranslucencySorting;
@@ -8,6 +9,8 @@ import com.bdmajora.impetus.engine.impl.render.chunk.ChunkRenderMatrices;
 import com.bdmajora.impetus.engine.impl.render.mesh.region.MeshStoresTest;
 import com.bdmajora.impetus.engine.impl.render.mesh.region.SectionGeometry;
 import com.bdmajora.impetus.engine.impl.render.viewport.Viewport;
+import com.bdmajora.testing.Passes;
+import com.bdmajora.testing.RecordingShading;
 import com.bdmajora.testing.Sections;
 import com.bdmajora.testing.Statics;
 import com.bdmajora.testing.TestGl;
@@ -41,6 +44,7 @@ class MeshRenderPipelineTest {
 
     @AfterEach
     void forget() {
+        ImpetusRuntimeOptions.chunkFadeInDuration = 0;
         Statics.set(MeshShaderSupport.class, "supported", null);
         Statics.set(OsKind.class, "CURRENT", OsKind.LINUX);
     }
@@ -99,6 +103,12 @@ class MeshRenderPipelineTest {
         pipeline.renderFrame(new Viewport(Sections.NOTHING, new Vector3d(8, 8, 8)), MATRICES, FOG, 8, 8, 8, 800, 600);
         Mockito.verify(TestGl.gl(), Mockito.atLeastOnce()).glClearNamedBufferSubDataZero(Mockito.anyInt(), Mockito.anyInt(), Mockito.anyLong(), Mockito.anyLong(), Mockito.anyInt(), Mockito.anyInt());
 
+        // Nvidium's own programs have no shadow pass to draw
+        Mockito.clearInvocations(TestGl.gl());
+        pipeline.renderShadow(Sections.viewport(8, 8, 8), MATRICES, MeshCamera.at(8, 8, 8), null, 1024, 1024);
+        pipeline.renderShadowTranslucent(null);
+        Mockito.verify(TestGl.gl(), Mockito.never()).glMultiDrawMeshTasksIndirectNV(Mockito.anyLong(), Mockito.anyInt(), Mockito.anyInt());
+
         pipeline.evictRegion(0);
         assertNotNull(pipeline.getVisibilityTracker());
         pipeline.delete();
@@ -108,6 +118,8 @@ class MeshRenderPipelineTest {
     void plainConfigurationsSkipTheOptionalPhases() {
         MeshRenderPipeline pipeline = pipeline(config(false, MeshTranslucencySorting.NONE, MeshStatistics.NONE, 0, 8));
         pipeline.getSections().upload(0, 0, 0, geometry());
+        // A chunk fade-in duration goes into the scene as its inverse, for the task stages to fade new sections by
+        ImpetusRuntimeOptions.chunkFadeInDuration = 250;
         pipeline.renderFrame(Sections.viewport(8, 8, 8), MATRICES, MeshFog.NONE, 8, 8, 8, 800, 600);
         pipeline.renderTranslucent();
         pipeline.endFrame();
@@ -159,9 +171,74 @@ class MeshRenderPipelineTest {
     }
 
     @Test
+    void anOutsideShadingDrawsEveryPhaseIncludingTheShadowMap() {
+        RecordingShading shading = new RecordingShading();
+        MeshRenderPipeline pipeline = new MeshRenderPipeline(config(true, MeshTranslucencySorting.QUADS, MeshStatistics.NONE, 0, 8),
+                64, 1 << 20, 1 << 16, 1 << 20, shading);
+        pipeline.getSections().upload(0, 0, 0, geometry());
+        MeshCamera camera = MeshCamera.of(MATRICES, 8, 8, 8);
+
+        // The shadow map comes first in a frame and draws every region its frustum reaches from CPU-written commands
+        pipeline.renderShadow(Sections.viewport(8, 8, 8), MATRICES, camera, Passes.SOLID, 1024, 1024);
+        pipeline.renderShadowTranslucent(Passes.TRANSLUCENT);
+        Mockito.verify(TestGl.gl(), Mockito.times(2)).glMultiDrawMeshTasksIndirectNV(0L, 1, 0);
+        assertEquals(List.of("opaque SHADOW", "finish", "translucent SHADOW", "finish"), shading.calls);
+
+        shading.calls.clear();
+        pipeline.renderFrame(Sections.viewport(8, 8, 8), MATRICES, FOG, camera, 800, 600, Passes.SOLID);
+        pipeline.renderTranslucent(Passes.TRANSLUCENT);
+        pipeline.endFrame();
+        assertEquals(List.of("opaque MAIN", "opaque TEMPORAL", "finish", "translucent MAIN", "finish"), shading.calls);
+        // Every phase leaves no program bound for the fixed-function draws that follow terrain
+        Mockito.verify(TestGl.gl(), Mockito.atLeast(4)).glUseProgram(0);
+
+        // Shading with nothing to draw with issues no draw at all, and no shadow programs means no shadow pass
+        Mockito.clearInvocations(TestGl.gl());
+        shading.bound = false;
+        pipeline.renderShadow(Sections.viewport(8, 8, 8), MATRICES, camera, Passes.SOLID, 1024, 1024);
+        pipeline.renderShadowTranslucent(Passes.TRANSLUCENT);
+        pipeline.renderFrame(Sections.viewport(8, 8, 8), MATRICES, FOG, camera, 800, 600, Passes.SOLID);
+        pipeline.renderTranslucent(Passes.TRANSLUCENT);
+        pipeline.endFrame();
+        Mockito.verify(TestGl.gl(), Mockito.never()).glMultiDrawMeshTasksIndirectNV(Mockito.anyLong(), Mockito.anyInt(), Mockito.anyInt());
+        shading.shadows = false;
+        shading.calls.clear();
+        pipeline.renderShadow(Sections.viewport(8, 8, 8), MATRICES, camera, Passes.SOLID, 1024, 1024);
+        pipeline.renderShadowTranslucent(Passes.TRANSLUCENT);
+        assertTrue(shading.calls.isEmpty());
+
+        pipeline.delete();
+        assertEquals(List.of("delete"), shading.calls);
+    }
+
+    @Test
+    void theShadowMapSkipsWhatItsFrustumMisses() {
+        RecordingShading shading = new RecordingShading();
+        MeshRenderPipeline pipeline = new MeshRenderPipeline(config(false, MeshTranslucencySorting.NONE, MeshStatistics.NONE, 0, 8),
+                64, 1 << 20, 1 << 16, 1 << 20, shading);
+        MeshCamera camera = MeshCamera.at(8, 8, 8);
+        // Nothing stored, then nothing inside the frustum
+        pipeline.renderShadow(Sections.viewport(8, 8, 8), MATRICES, camera, Passes.SOLID, 512, 512);
+        pipeline.getSections().upload(0, 0, 0, geometry());
+        pipeline.renderShadow(new Viewport(Sections.NOTHING, new Vector3d(8, 8, 8)), MATRICES, camera, Passes.SOLID, 512, 512);
+        pipeline.renderShadowTranslucent(Passes.TRANSLUCENT);
+        assertTrue(shading.calls.isEmpty());
+        pipeline.delete();
+    }
+
+    @Test
+    void anOutsideShadingIsFreedWhenThePipelineCannotStart() {
+        RecordingShading shading = new RecordingShading();
+        Mockito.when(TestGl.gl().glGetProgrami(Mockito.anyInt(), Mockito.eq(0x8B82))).thenReturn(0);
+        assertThrows(RuntimeException.class, () -> new MeshRenderPipeline(config(false, MeshTranslucencySorting.NONE, MeshStatistics.NONE, 0, 8),
+                64, 1 << 20, 1 << 16, 1 << 20, shading));
+        assertEquals(List.of("delete"), shading.calls);
+    }
+
+    @Test
     void sceneBlockMatchesTheShaderLayout() {
-        // 112 bytes of matrix and vectors, ten pointers, then 31 bytes of scalars, rounded to 16
-        assertEquals(224, MeshRenderPipeline.SCENE_BYTES);
+        // 128 bytes of matrix and vectors, eleven pointers, then 39 bytes of scalars, rounded to 16
+        assertEquals(256, MeshRenderPipeline.SCENE_BYTES);
         assertEquals(16, MeshRenderPipeline.align(16, 16));
         assertEquals(32, MeshRenderPipeline.align(17, 16));
     }

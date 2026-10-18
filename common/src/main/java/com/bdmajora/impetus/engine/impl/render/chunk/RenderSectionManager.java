@@ -34,6 +34,7 @@ import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 import com.bdmajora.impetus.engine.impl.render.mesh.MeshFog;
 import com.bdmajora.impetus.engine.impl.render.mesh.MeshTerrainConfig;
 import com.bdmajora.impetus.engine.impl.render.mesh.MeshTerrainRenderer;
+import com.bdmajora.impetus.engine.impl.render.mesh.MeshTerrainShading;
 import com.bdmajora.impetus.engine.impl.render.viewport.CameraTransform;
 import com.bdmajora.impetus.engine.impl.common.util.MathUtil;
 import com.bdmajora.impetus.engine.impl.render.viewport.Viewport;
@@ -48,6 +49,7 @@ import com.bdmajora.impetus.engine.impl.util.suppliers.ExpiringSupplier;
 import org.jetbrains.annotations.MustBeInvokedByOverriders;
 import org.jetbrains.annotations.Nullable;
 import org.joml.*;
+import org.lwjgl.opengl.GL11;
 
 import java.lang.Math;
 import java.util.*;
@@ -57,6 +59,8 @@ import java.util.concurrent.locks.LockSupport;
 import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
+
+import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 public abstract class RenderSectionManager {
     /**
@@ -144,6 +148,8 @@ public abstract class RenderSectionManager {
 
     // The frame's main-pass viewport, which the mesh backend culls regions against on the GPU
     private @Nullable Viewport frameViewport;
+    // The shadow pass's frustum, which the mesh backend picks shadow-casting regions with
+    private @Nullable Viewport shadowViewport;
 
     public RenderSectionManager(RenderPassConfiguration<?> configuration, Supplier<ChunkBuildContext> contextSupplier,
                                 BiFunction<RenderDevice, RenderPassConfiguration<?>, ChunkRenderer> chunkRenderer,
@@ -157,7 +163,17 @@ public abstract class RenderSectionManager {
                                 BiFunction<RenderDevice, RenderPassConfiguration<?>, ChunkRenderer> chunkRenderer,
                                 int renderDistance, CommandList commandList, int minSection, int maxSection,
                                 int requestedThreads, boolean hasShadowPass, @Nullable MeshTerrainConfig meshTerrain) {
-        this.meshTerrain = meshTerrain != null ? new MeshTerrainRenderer(meshTerrain, (maxSection - minSection + 3) / 4) : null;
+        this(configuration, contextSupplier, chunkRenderer, renderDistance, commandList, minSection, maxSection,
+                requestedThreads, hasShadowPass, meshTerrain, null);
+    }
+
+    // A mesh config switches the mesh-shader backend on; mesh shading is an Nvidium-ported shader pack's programs, which the backend then owns, or null for Nvidium's own
+    public RenderSectionManager(RenderPassConfiguration<?> configuration, Supplier<ChunkBuildContext> contextSupplier,
+                                BiFunction<RenderDevice, RenderPassConfiguration<?>, ChunkRenderer> chunkRenderer,
+                                int renderDistance, CommandList commandList, int minSection, int maxSection,
+                                int requestedThreads, boolean hasShadowPass, @Nullable MeshTerrainConfig meshTerrain,
+                                @Nullable MeshTerrainShading meshShading) {
+        this.meshTerrain = meshTerrain != null ? new MeshTerrainRenderer(meshTerrain, (maxSection - minSection + 3) / 4, meshShading) : null;
         this.chunkRenderer = chunkRenderer.apply(RenderDevice.INSTANCE, configuration);
 
         this.renderPassConfiguration = configuration;
@@ -251,6 +267,7 @@ public abstract class RenderSectionManager {
 
         this.updateCameraPosition(playerViewport);
         this.shadowPassRanThisFrame = true;
+        this.shadowViewport = shadowViewport;
 
         // One stamp for both searches; they write separate visit-state arrays, so sharing it is safe
         int searchFrame = ++this.searchFrame;
@@ -548,14 +565,28 @@ public abstract class RenderSectionManager {
         commandList.flush();
     }
 
-    // The mesh backend draws every resident section at once: opaque from the solid pass, translucent from the sorted one; the pass's own GL state (blending) still applies
+    // The mesh backend draws every resident section at once: opaque from the solid pass, translucent from the sorted one, the shadow map from the same passes while the shadow pass drives them; the pass's own GL state (atlas filtering, blending) still applies
     private void renderMeshLayer(ChunkRenderMatrices matrices, TerrainRenderPass pass, CameraTransform camera) {
+        boolean opaque = pass == this.renderPassConfiguration.defaultSolidMaterial().pass;
+
+        if (!pass.isSorted() && !opaque) {
+            return;
+        }
+
         pass.startDrawing();
 
-        if (pass.isSorted()) {
-            this.meshTerrain.renderTranslucent();
-        } else if (pass == this.renderPassConfiguration.defaultSolidMaterial().pass && this.frameViewport != null) {
-            this.meshTerrain.renderOpaque(this.frameViewport, matrices, MeshFog.from(this.getFogService()),
+        if (this.isInShadowPass()) {
+            if (pass.isSorted()) {
+                this.meshTerrain.renderShadowTranslucent(pass);
+            } else if (this.shadowViewport != null) {
+                int[] viewport = new int[4];
+                LWJGL.glGetIntegerv(GL11.GL_VIEWPORT, viewport);
+                this.meshTerrain.renderShadow(this.shadowViewport, matrices, pass, camera.x, camera.y, camera.z, viewport[2], viewport[3]);
+            }
+        } else if (pass.isSorted()) {
+            this.meshTerrain.renderTranslucent(pass);
+        } else if (this.frameViewport != null) {
+            this.meshTerrain.renderOpaque(this.frameViewport, matrices, MeshFog.from(this.getFogService()), pass,
                     camera.x, camera.y, camera.z, this.getFramebufferWidth(), this.getFramebufferHeight());
         }
 

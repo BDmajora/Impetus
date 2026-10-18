@@ -35,6 +35,7 @@ public final class ExtrasConfig {
     private static final String CAT_ENTITY_MODELS = "entity_models";
     private static final String CAT_LEAVES = "leaves";
     private static final String CAT_LOADING = "loading";
+    private static final String CAT_ZOOM = "zoom";
 
     public final AnimationSettings animation = new AnimationSettings();
     public final ParticleSettings particle = new ParticleSettings();
@@ -54,6 +55,7 @@ public final class ExtrasConfig {
     public final EntityModelSettings entityModels = new EntityModelSettings();
     public final LeafSettings leaves = new LeafSettings();
     public final LoadingSettings loading = new LoadingSettings();
+    public final ZoomSettings zoom = new ZoomSettings();
 
     private final List<ConfigProperty> booleans = Arrays.asList(
             // --- Animations -------------------------------------------------------------------
@@ -288,7 +290,14 @@ public final class ExtrasConfig {
             ConfigProperty.bool(CAT_LOADING, "asyncScreenshots", true, "Encode and write screenshots on a background thread",
                     v -> loading.asyncScreenshots = v, () -> loading.asyncScreenshots),
             ConfigProperty.bool(CAT_LOADING, "driverAtlasLimit", true, "Ask the driver for its maximum texture size instead of probing proxy uploads from 16384 down",
-                    v -> loading.driverAtlasLimit = v, () -> loading.driverAtlasLimit)
+                    v -> loading.driverAtlasLimit = v, () -> loading.driverAtlasLimit),
+            // --- Zoom -------------------------------------------------------------------------
+            ConfigProperty.bool(CAT_ZOOM, "enabled", true, "Zoom while the zoom key (C by default) is held",
+                    v -> zoom.enabled = v, () -> zoom.enabled),
+            ConfigProperty.bool(CAT_ZOOM, "smoothCamera", true, "Turn the cinematic camera on while zoomed",
+                    v -> zoom.smoothCamera = v, () -> zoom.smoothCamera),
+            ConfigProperty.bool(CAT_ZOOM, "hideHand", true, "Hide the first-person hand and held items while zoomed",
+                    v -> zoom.hideHand = v, () -> zoom.hideHand)
     );
 
     private final List<ConfigProperty> integers = Arrays.asList(
@@ -366,7 +375,10 @@ public final class ExtrasConfig {
                     v -> hud.cacheFps = v, () -> hud.cacheFps),
             ConfigProperty.integer(CAT_LEAVES, "cullingDepth", LeafSettings.DEPTH_DEFAULT, LeafSettings.DEPTH_MIN, LeafSettings.DEPTH_MAX,
                     "Depth mode: how many solid blocks must lie behind a leaf face before it is dropped",
-                    v -> leaves.cullingDepth = v, () -> leaves.cullingDepth)
+                    v -> leaves.cullingDepth = v, () -> leaves.cullingDepth),
+            ConfigProperty.integer(CAT_ZOOM, "level", ZoomSettings.LEVEL_DEFAULT, ZoomSettings.LEVEL_MIN, ZoomSettings.LEVEL_MAX,
+                    "Percentage of the normal view width kept while zoomed (23 = Logical Zoom's 4.35x)",
+                    v -> zoom.level = v, () -> zoom.level)
     );
 
     private final List<ConfigProperty> enums = Arrays.asList(
@@ -926,5 +938,20 @@ ParticleClassRegistry registry = ParticleClassRegistry.getInstance();
         public boolean releaseScreenshotBuffers = true;
         public boolean asyncScreenshots = true;
         public boolean driverAtlasLimit = true;
+    }
+
+    // Hold-to-zoom (see client.zoom.LogicalZoom), after Logical Zoom; every default is that mod's fixed behaviour
+    public static final class ZoomSettings {
+        // level is in hundredths of the view width
+        public static final int LEVEL_SCALE = 100;
+        public static final int LEVEL_MIN = 5;
+        // Logical Zoom's 0.23
+        public static final int LEVEL_DEFAULT = 23;
+        public static final int LEVEL_MAX = 90;
+
+        public boolean enabled = true;
+        public int level = LEVEL_DEFAULT;
+        public boolean smoothCamera = true;
+        public boolean hideHand = true;
     }
 }

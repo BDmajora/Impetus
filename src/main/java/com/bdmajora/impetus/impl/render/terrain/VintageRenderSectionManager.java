@@ -21,6 +21,7 @@ import com.bdmajora.impetus.engine.impl.render.chunk.shader.ChunkShaderTextureSl
 import com.bdmajora.impetus.engine.impl.render.chunk.sprite.GenericSectionSpriteTicker;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexType;
 import com.bdmajora.impetus.engine.impl.render.mesh.MeshTerrainConfig;
+import com.bdmajora.impetus.engine.impl.render.mesh.MeshTerrainShading;
 import com.bdmajora.impetus.engine.impl.render.viewport.Viewport;
 import com.bdmajora.impetus.engine.impl.util.position.SectionPos;
 import org.jetbrains.annotations.Nullable;
@@ -41,9 +42,10 @@ public class VintageRenderSectionManager extends RenderSectionManager {
     @Getter
     private final ClonedChunkSectionCache sectionCache;
 
+    // A mesh config switches the mesh-shader backend on; a shader pack's mesh shading rides along with it, and the backend owns it from here
     public VintageRenderSectionManager(RenderPassConfiguration<?> configuration, WorldClient world, int renderDistance, CommandList commandList, int minSection, int maxSection,
-                                       @Nullable MeshTerrainConfig meshTerrain) {
-        super(configuration, () -> new VintageChunkBuildContext(world, configuration), ChunkRenderer::new, renderDistance, commandList, minSection, maxSection, ImpetusVintage.options().performance.chunkBuilderThreads, true, meshTerrain);
+                                       @Nullable MeshTerrainConfig meshTerrain, @Nullable MeshTerrainShading meshShading) {
+        super(configuration, () -> new VintageChunkBuildContext(world, configuration), ChunkRenderer::new, renderDistance, commandList, minSection, maxSection, ImpetusVintage.options().performance.chunkBuilderThreads, true, meshTerrain, meshShading);
         this.world = world;
         this.sectionCache = new ClonedChunkSectionCache(world);
     }
@@ -57,7 +59,14 @@ public class VintageRenderSectionManager extends RenderSectionManager {
     // Factory, since the base class needs the vertex type before construction; a mesh config switches the mesh-shader backend on
     public static VintageRenderSectionManager create(ChunkVertexType vertexType, WorldClient world, int renderDistance, CommandList commandList,
                                                      @Nullable MeshTerrainConfig meshTerrain) {
-        return new VintageRenderSectionManager(VintageRenderPassConfigurationBuilder.build(vertexType), world, renderDistance, commandList, 0, 16, meshTerrain);
+        return create(vertexType, world, renderDistance, commandList, meshTerrain, null);
+    }
+
+    // The same with a shader pack's programs translated for the mesh backend
+    public static VintageRenderSectionManager create(ChunkVertexType vertexType, WorldClient world, int renderDistance, CommandList commandList,
+                                                     @Nullable MeshTerrainConfig meshTerrain, @Nullable MeshTerrainShading meshShading) {
+        return new VintageRenderSectionManager(VintageRenderPassConfigurationBuilder.build(vertexType), world, renderDistance, commandList, 0, 16,
+                meshTerrain, meshShading);
     }
 
     // The window's framebuffer, which the mesh backend culls sub-pixel triangles against

@@ -7,9 +7,7 @@ import com.bdmajora.impetus.engine.impl.gl.device.GLRenderDevice;
 import com.bdmajora.impetus.engine.impl.gl.device.RenderDevice;
 import com.bdmajora.impetus.engine.impl.gl.functions.BufferCopyFunctions;
 import com.bdmajora.impetus.engine.impl.gl.functions.BufferMapRangeFunctions;
-import com.bdmajora.impetus.engine.impl.gl.functions.BufferStorageFunctions;
 import com.bdmajora.impetus.engine.impl.gl.functions.DeviceFunctions;
-import com.bdmajora.impetus.engine.impl.gl.functions.MultidrawFunctions;
 import com.bdmajora.testing.TestGl;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -96,14 +94,18 @@ class StagingBuffersTest {
     @Test
     void supportRequiresStorageCopyAndMapRange() {
         RenderDevice device = Mockito.mock(RenderDevice.class);
-        Mockito.when(device.getDeviceFunctions()).thenReturn(new DeviceFunctions(BufferStorageFunctions.CORE, MultidrawFunctions.CORE, BufferCopyFunctions.CORE, BufferMapRangeFunctions.CORE));
+        Mockito.when(device.getDeviceFunctions()).thenReturn(new DeviceFunctions(BufferCopyFunctions.CORE, BufferMapRangeFunctions.CORE));
         assertTrue(MappedStagingBuffer.isSupported(device));
-        Mockito.when(device.getDeviceFunctions()).thenReturn(new DeviceFunctions(BufferStorageFunctions.NONE, MultidrawFunctions.CORE, BufferCopyFunctions.CORE, BufferMapRangeFunctions.CORE));
+        Mockito.when(device.getDeviceFunctions()).thenReturn(new DeviceFunctions(BufferCopyFunctions.PIXEL_PACK, BufferMapRangeFunctions.CORE));
         assertFalse(MappedStagingBuffer.isSupported(device));
-        Mockito.when(device.getDeviceFunctions()).thenReturn(new DeviceFunctions(BufferStorageFunctions.CORE, MultidrawFunctions.CORE, BufferCopyFunctions.PIXEL_PACK, BufferMapRangeFunctions.CORE));
+        Mockito.when(device.getDeviceFunctions()).thenReturn(new DeviceFunctions(BufferCopyFunctions.CORE, BufferMapRangeFunctions.MAP_FULL_AND_SLICE));
         assertFalse(MappedStagingBuffer.isSupported(device));
-        Mockito.when(device.getDeviceFunctions()).thenReturn(new DeviceFunctions(BufferStorageFunctions.CORE, MultidrawFunctions.CORE, BufferCopyFunctions.CORE, BufferMapRangeFunctions.MAP_FULL_AND_SLICE));
+        // Buffer storage is a version or extension check now, not a function table entry
+        Mockito.when(TestGl.gl().isOpenGLVersionSupported(4, 4)).thenReturn(false);
+        Mockito.when(TestGl.gl().isExtensionSupported(Mockito.any())).thenReturn(false);
+        Mockito.when(device.getDeviceFunctions()).thenReturn(new DeviceFunctions(BufferCopyFunctions.CORE, BufferMapRangeFunctions.CORE));
         assertFalse(MappedStagingBuffer.isSupported(device));
+        Mockito.when(TestGl.gl().isOpenGLVersionSupported(4, 4)).thenReturn(true);
         new MappedStagingBuffer(commands).delete(commands);
     }
 }

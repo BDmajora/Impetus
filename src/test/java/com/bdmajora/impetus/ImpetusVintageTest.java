@@ -10,12 +10,12 @@ import com.bdmajora.dynamiclights.DynamicLights;
 import com.bdmajora.equilibrium.gui.EquilibriumStatsCommand;
 import com.bdmajora.extras.Extras;
 import com.bdmajora.extras.client.budget.RenderBudgetKeys;
+import com.bdmajora.extras.client.zoom.LogicalZoom;
 import com.bdmajora.fulgor.Fulgor;
 import com.bdmajora.fulgor.FulgorConfig;
 import com.bdmajora.fulgor.gui.FulgorStatsCommand;
 import com.bdmajora.impetus.engine.impl.compat.checks.StartupChecks;
 import com.bdmajora.impetus.engine.impl.compat.environment.GlContextInfo;
-import com.bdmajora.impetus.engine.impl.gl.device.GLRenderDevice;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions;
 import com.bdmajora.impetus.engine.impl.notification.ImpetusNotifications;
 import com.bdmajora.impetus.impl.command.TogglePassCommand;
@@ -34,7 +34,6 @@ import com.bdmajora.testing.Statics;
 import net.irisshaders.iris.api.v0.IrisApi;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiScreen;
-import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.resources.IResourcePack;
 import net.minecraft.client.resources.ResourcePackRepository;
 import net.minecraft.client.settings.GameSettings;
@@ -56,7 +55,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.lwjgl.opengl.GL15;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
@@ -71,7 +69,6 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -128,8 +125,6 @@ class ImpetusVintageTest {
         ClientCommandHandler previousCommands = ClientCommandHandler.instance;
         ClientCommandHandler commands = mock(ClientCommandHandler.class);
         Statics.set(ClientCommandHandler.class, "instance", commands);
-        Runnable previousResetter = GLRenderDevice.VANILLA_STATE_RESETTER;
-        boolean arbVbo = Statics.get(OpenGlHelper.class, "arbVbo");
         if (Launch.blackboard == null) {
             Launch.blackboard = new HashMap<>();
         }
@@ -142,13 +137,13 @@ class ImpetusVintageTest {
              MockedStatic<StartupChecks> checks = Mockito.mockStatic(StartupChecks.class);
              MockedStatic<GlContextInfo> glInfo = Mockito.mockStatic(GlContextInfo.class);
              MockedStatic<RenderBudgetKeys> keys = Mockito.mockStatic(RenderBudgetKeys.class);
+             MockedStatic<LogicalZoom> zoom = Mockito.mockStatic(LogicalZoom.class);
              MockedStatic<DhCompat> dh = Mockito.mockStatic(DhCompat.class);
              MockedStatic<Umbra> umbra = Mockito.mockStatic(Umbra.class);
              MockedStatic<ResourcePackScanner> scanner = Mockito.mockStatic(ResourcePackScanner.class);
              MockedStatic<ClassLoaderCleaner> cleaner = Mockito.mockStatic(ClassLoaderCleaner.class);
              MockedStatic<Coarctatio> coarctatioHooks = Mockito.mockStatic(Coarctatio.class);
-             MockedStatic<ImpetusToastRenderer> toasts = Mockito.mockStatic(ImpetusToastRenderer.class);
-             MockedStatic<GL15> gl15 = Mockito.mockStatic(GL15.class)) {
+             MockedStatic<ImpetusToastRenderer> toasts = Mockito.mockStatic(ImpetusToastRenderer.class)) {
             ImpetusVintage mod = new ImpetusVintage();
             // Construction: event handlers, the other modules' early hooks and the startup checks
             mod.onConstruct(mock(FMLConstructionEvent.class));
@@ -162,10 +157,6 @@ class ImpetusVintageTest {
             lights.verify(DynamicLights::initialize);
             checks.verify(StartupChecks::installCrashDialog);
             checks.verify(() -> StartupChecks.runAsync(any()));
-            // Vanilla's buffer state is restored by unbinding the array buffer
-            Statics.set(OpenGlHelper.class, "arbVbo", false);
-            GLRenderDevice.VANILLA_STATE_RESETTER.run();
-            gl15.verify(() -> GL15.glBindBuffer(anyInt(), Mockito.eq(0)));
             coarctatio.dynamicModels = false;
             mod.onConstruct(mock(FMLConstructionEvent.class));
             ctm.verify(CtmModelWrapping::register, times(1));
@@ -179,6 +170,7 @@ class ImpetusVintageTest {
             verify(commands).registerCommand(any(EquilibriumStatsCommand.class));
             lights.verify(DynamicLights::onClientInit);
             keys.verify(RenderBudgetKeys::register);
+            zoom.verify(LogicalZoom::register);
             dh.verify(DhCompat::run);
             umbra.verify(() -> Umbra.initialize(home));
             scanner.verify(() -> ResourcePackScanner.scanIfChanged(client));
@@ -248,8 +240,6 @@ class ImpetusVintageTest {
         } finally {
             Statics.set(MinecraftForge.class, "EVENT_BUS", previousBus);
             Statics.set(ClientCommandHandler.class, "instance", previousCommands);
-            GLRenderDevice.VANILLA_STATE_RESETTER = previousResetter;
-            Statics.set(OpenGlHelper.class, "arbVbo", arbVbo);
             Launch.blackboard.put("fml.deobfuscatedEnvironment", deobfuscated);
         }
     }

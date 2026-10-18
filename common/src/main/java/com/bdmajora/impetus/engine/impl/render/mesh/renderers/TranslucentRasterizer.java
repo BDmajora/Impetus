@@ -23,6 +23,11 @@ public class TranslucentRasterizer {
         TerrainRasterizer.drawIndirect(regionCount, commandBufferAddress);
     }
 
+    // glUseProgram, for a caller drawing its command list itself
+    public void bind() {
+        this.program.bind();
+    }
+
     // Frees the program
     public void delete() {
         this.program.delete();

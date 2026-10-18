@@ -18,6 +18,7 @@ import com.bdmajora.impetus.api.options.structure.*;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 public class CommonOptionPages {
     // Translucency sorting options
@@ -43,6 +44,23 @@ public class CommonOptionPages {
                         .setBinding((opts, value) -> opts.quality.chunkFadeInDuration = value, opts -> opts.quality.chunkFadeInDuration)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .build())
+                .build();
+    }
+
+    // The General page's Graphics API cycler; built once per screen and handed to the Nvidium page too, so its settings follow the pending choice before Apply
+    public static OptionImpl<ImpetusGameOptions, ImpetusGameOptions.GraphicsApi> graphicsApi(ImpetusGameOptions gameOpts) {
+        return OptionImpl.createBuilder(ImpetusGameOptions.GraphicsApi.class, gameOpts)
+                .setId(StandardOptions.Option.GRAPHICS_API.cast())
+                .setName(TextComponent.translatable("options.graphicsApi"))
+                .setTooltip(TextComponent.translatable("impetus.options.graphics_api.tooltip"))
+                .setControl(o -> new CyclingControl<>(o, ImpetusGameOptions.GraphicsApi.class))
+                .setImpact(OptionImpact.HIGH)
+                // Live, so a backend that failed to start (markBroken) greys the switch out on the next screen
+                .setEnabledPredicate(MeshShaderSupport::isSupported)
+                // A GPU without mesh shaders reads OpenGL whatever the file says, and the saved choice survives for when the config moves back
+                .setBinding((opts, value) -> opts.graphicsApi = value,
+                        opts -> MeshShaderSupport.isSupported() ? opts.graphicsApi : ImpetusGameOptions.GraphicsApi.OPENGL)
+                .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                 .build();
     }
 
@@ -276,36 +294,27 @@ public class CommonOptionPages {
                         .build())
                 .build());
 
-        groups.add(meshTerrainGroup(gameOpts));
-
         return new OptionPage(StandardOptions.Pages.PERFORMANCE, TextComponent.translatable("impetus.options.pages.performance"), List.copyOf(groups));
     }
 
-    // The NV_mesh_shader backend; everything greys out on hardware without it
-    public static OptionGroup meshTerrainGroup(ImpetusGameOptions gameOpts) {
-        boolean supported = MeshShaderSupport.isSupported();
+    // Nvidium's settings on a page of their own, next to Performance in the sidebar
+    public static OptionPage nvidium(ImpetusGameOptions gameOpts, Option<ImpetusGameOptions.GraphicsApi> graphicsApi) {
+        return new OptionPage(StandardOptions.Pages.NVIDIUM, TextComponent.translatable("impetus.options.pages.nvidium"), List.of(meshTerrainGroup(gameOpts, graphicsApi)));
+    }
 
-        var master = OptionImpl.createBuilder(boolean.class, gameOpts)
-                .setId(StandardOptions.Option.MESH_TERRAIN.cast())
-                .setName(TextComponent.translatable("impetus.options.mesh_terrain.enabled.name"))
-                .setTooltip(TextComponent.translatable("impetus.options.mesh_terrain.enabled.tooltip"))
-                .setControl(TickBoxControl::new)
-                .setImpact(OptionImpact.HIGH)
-                .setEnabled(supported)
-                .setBinding((opts, value) -> opts.meshTerrain.enabled = value, opts -> opts.meshTerrain.enabled)
-                .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
-                .build();
+    // Nvidium's tuning; greyed out unless the Graphics API switch (pending value included) is on Nvidium
+    public static OptionGroup meshTerrainGroup(ImpetusGameOptions gameOpts, Option<ImpetusGameOptions.GraphicsApi> graphicsApi) {
+        BooleanSupplier nvidium = () -> graphicsApi.isAvailable() && graphicsApi.getValue() == ImpetusGameOptions.GraphicsApi.NVIDIUM;
 
         return OptionGroup.createBuilder()
                 .setId(StandardOptions.Group.MESH_TERRAIN)
-                .add(master)
                 .add(OptionImpl.createBuilder(boolean.class, gameOpts)
                         .setId(StandardOptions.Option.MESH_TEMPORAL_COHERENCE.cast())
                         .setName(TextComponent.translatable("impetus.options.mesh_terrain.temporal.name"))
                         .setTooltip(TextComponent.translatable("impetus.options.mesh_terrain.temporal.tooltip"))
                         .setControl(TickBoxControl::new)
                         .setImpact(OptionImpact.LOW)
-                        .setEnabled(supported)
+                        .setEnabledPredicate(nvidium)
                         .setBinding((opts, value) -> opts.meshTerrain.temporalCoherence = value, opts -> opts.meshTerrain.temporalCoherence)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .build())
@@ -315,7 +324,7 @@ public class CommonOptionPages {
                         .setTooltip(TextComponent.translatable("impetus.options.mesh_terrain.sorting.tooltip"))
                         .setControl(o -> new CyclingControl<>(o, ImpetusGameOptions.MeshTranslucencySorting.class))
                         .setImpact(OptionImpact.MEDIUM)
-                        .setEnabled(supported)
+                        .setEnabledPredicate(nvidium)
                         .setBinding((opts, value) -> opts.meshTerrain.translucencySorting = value, opts -> opts.meshTerrain.translucencySorting)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .build())
@@ -325,7 +334,7 @@ public class CommonOptionPages {
                         .setTooltip(TextComponent.translatable("impetus.options.mesh_terrain.automatic_memory.tooltip"))
                         .setControl(TickBoxControl::new)
                         .setImpact(OptionImpact.VARIES)
-                        .setEnabled(supported)
+                        .setEnabledPredicate(nvidium)
                         .setBinding((opts, value) -> opts.meshTerrain.automaticMemory = value, opts -> opts.meshTerrain.automaticMemory)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .build())
@@ -335,7 +344,7 @@ public class CommonOptionPages {
                         .setTooltip(TextComponent.translatable("impetus.options.mesh_terrain.max_memory.tooltip"))
                         .setControl(o -> new SliderControl(o, 512, 16384, 512, ControlValueFormatter.translateVariable("impetus.options.mesh_terrain.max_memory.value")))
                         .setImpact(OptionImpact.VARIES)
-                        .setEnabled(supported)
+                        .setEnabledPredicate(nvidium)
                         .setBinding((opts, value) -> opts.meshTerrain.maxGeometryMemory = value, opts -> opts.meshTerrain.maxGeometryMemory)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .build())
@@ -345,7 +354,7 @@ public class CommonOptionPages {
                         .setTooltip(TextComponent.translatable("impetus.options.mesh_terrain.keep_distance.tooltip"))
                         .setControl(o -> new SliderControl(o, 0, MeshTerrainConfig.MAX_KEEP_DISTANCE, 16, CommonOptionPages::formatKeepDistance))
                         .setImpact(OptionImpact.VARIES)
-                        .setEnabled(supported)
+                        .setEnabledPredicate(nvidium)
                         .setBinding((opts, value) -> opts.meshTerrain.regionKeepDistance = value, opts -> opts.meshTerrain.regionKeepDistance)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .build())
@@ -355,7 +364,7 @@ public class CommonOptionPages {
                         .setTooltip(TextComponent.translatable("impetus.options.mesh_terrain.statistics.tooltip"))
                         .setControl(o -> new CyclingControl<>(o, ImpetusGameOptions.MeshStatistics.class))
                         .setImpact(OptionImpact.LOW)
-                        .setEnabled(supported)
+                        .setEnabledPredicate(nvidium)
                         .setBinding((opts, value) -> opts.meshTerrain.statistics = value, opts -> opts.meshTerrain.statistics)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .build())

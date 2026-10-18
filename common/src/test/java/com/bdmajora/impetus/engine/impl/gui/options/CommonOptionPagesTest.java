@@ -1,11 +1,16 @@
 package com.bdmajora.impetus.engine.impl.gui.options;
 
 import com.bdmajora.impetus.api.options.structure.Option;
+import com.bdmajora.impetus.api.options.structure.OptionFlag;
 import com.bdmajora.impetus.api.options.structure.OptionGroup;
+import com.bdmajora.impetus.api.options.structure.OptionImpl;
 import com.bdmajora.impetus.api.options.structure.OptionPage;
+import com.bdmajora.impetus.api.options.structure.StandardOptions;
 import com.bdmajora.impetus.engine.impl.common.util.NativeBuffer;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions;
 import com.bdmajora.impetus.engine.impl.render.chunk.region.RenderRegionManager;
+import com.bdmajora.impetus.engine.impl.render.mesh.MeshShaderSupport;
+import com.bdmajora.testing.Statics;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -57,9 +62,48 @@ class CommonOptionPagesTest {
         assertTrue(NativeBuffer.ENABLE_MEMORY_TRACING);
         assertFalse(RenderRegionManager.USE_ADVANCED_STAGING_BUFFERS);
         assertTrue(options.advanced.disableIncompatibleModWarnings);
-        assertFalse(options.meshTerrain.enabled);
+        // Nvidium's settings live on their own page now, not at the bottom of Performance
+        assertTrue(performance.getGroups().stream().noneMatch(group -> group.getId() == StandardOptions.Group.MESH_TERRAIN));
+
+        OptionPage nvidium = CommonOptionPages.nvidium(options, CommonOptionPages.graphicsApi(options));
+        assertEquals("impetus:nvidium", nvidium.getId().toString());
+        assertEquals("impetus.options.pages.nvidium", nvidium.getName().toString());
+        assertEquals(6, nvidium.getOptions().size());
+        nvidium.getOptions().forEach(CommonOptionPagesTest::exercise);
         assertEquals(1, options.meshTerrain.regionKeepDistance);
         new CommonOptionPages();
+    }
+
+    @Test
+    void theNvidiumGroupFollowsThePendingGraphicsApi() {
+        ImpetusGameOptions options = new ImpetusGameOptions();
+        Statics.set(MeshShaderSupport.class, "supported", true);
+        try {
+            OptionImpl<ImpetusGameOptions, ImpetusGameOptions.GraphicsApi> api = CommonOptionPages.graphicsApi(options);
+            OptionGroup mesh = CommonOptionPages.meshTerrainGroup(options, api);
+            assertEquals(6, mesh.getOptions().size());
+            assertTrue(api.isAvailable());
+            assertTrue(api.getFlags().contains(OptionFlag.REQUIRES_RENDERER_RELOAD));
+            assertEquals(ImpetusGameOptions.GraphicsApi.OPENGL, api.getValue());
+            assertTrue(mesh.getOptions().stream().noneMatch(Option::isAvailable));
+
+            // The pending choice lights the group up before Apply
+            api.setValue(ImpetusGameOptions.GraphicsApi.NVIDIUM);
+            assertTrue(mesh.getOptions().stream().allMatch(Option::isAvailable));
+            assertEquals(ImpetusGameOptions.GraphicsApi.OPENGL, options.graphicsApi);
+            api.reset();
+            exercise(api);
+            assertEquals(ImpetusGameOptions.GraphicsApi.NVIDIUM, options.graphicsApi);
+
+            // A backend that failed to start greys both out and reads OpenGL, but the saved choice stays for when it works again
+            MeshShaderSupport.markBroken("test");
+            assertFalse(api.isAvailable());
+            assertEquals(ImpetusGameOptions.GraphicsApi.OPENGL, api.getValue());
+            assertTrue(mesh.getOptions().stream().noneMatch(Option::isAvailable));
+            assertEquals(ImpetusGameOptions.GraphicsApi.NVIDIUM, options.graphicsApi);
+        } finally {
+            Statics.set(MeshShaderSupport.class, "supported", null);
+        }
     }
 
     @Test

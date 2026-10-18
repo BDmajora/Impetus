@@ -1,25 +1,27 @@
 package com.bdmajora.impetus.engine.impl.render.mesh;
 
+import com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions;
 import com.bdmajora.impetus.engine.impl.gl.shader.ShaderConstants;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions.MeshStatistics;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions.MeshTranslucencySorting;
 import com.bdmajora.impetus.engine.impl.render.chunk.ChunkRenderMatrices;
-import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.impl.MeshChunkVertex;
+import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 import com.bdmajora.impetus.engine.impl.render.mesh.gl.BindlessBuffer;
 import com.bdmajora.impetus.engine.impl.render.mesh.region.MeshRegionStore;
 import com.bdmajora.impetus.engine.impl.render.mesh.region.MeshSectionStore;
 import com.bdmajora.impetus.engine.impl.render.mesh.region.RegionVisibilityTracker;
+import com.bdmajora.impetus.engine.impl.render.mesh.renderers.NvidiumShading;
 import com.bdmajora.impetus.engine.impl.render.mesh.renderers.RegionRasterizer;
 import com.bdmajora.impetus.engine.impl.render.mesh.renderers.SectionRasterizer;
 import com.bdmajora.impetus.engine.impl.render.mesh.renderers.SectionSorter;
 import com.bdmajora.impetus.engine.impl.render.mesh.renderers.TerrainRasterizer;
-import com.bdmajora.impetus.engine.impl.render.mesh.renderers.TranslucentRasterizer;
 import com.bdmajora.impetus.engine.impl.render.mesh.util.DownloadStream;
 import com.bdmajora.impetus.engine.impl.render.mesh.util.QuadArena;
 import com.bdmajora.impetus.engine.impl.render.mesh.util.UploadStream;
 import com.bdmajora.impetus.engine.impl.render.viewport.Viewport;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntArrays;
+import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL42;
@@ -42,10 +44,12 @@ public class MeshRenderPipeline {
             16 * 4          // mat4 MVP
                     + 16    // ivec4 cameraChunk
                     + 16    // vec4 subChunkOffset
+                    + 16    // vec4 renderOffset
                     + 16    // vec4 fogColour
-                    + 10 * 8 // ten 64-bit device pointers
+                    + 11 * 8 // eleven 64-bit device pointers
                     + 8     // vec2 screenSize
                     + 4 * 5 // fog start, end, density, mode, shape
+                    + 4 * 2 // uint timeMs, float chunkFadeInv
                     + 2     // uint16 regionCount
                     + 1,    // uint8 frameId
             16);
@@ -67,12 +71,13 @@ public class MeshRenderPipeline {
     private final BindlessBuffer translucentCommands;
     private final BindlessBuffer sortingRegions;
     private final BindlessBuffer statistics;
+    // The shadow pass's own scene block and the per-region commands the CPU writes for it, since the GPU occlusion phases only know the player's view
+    private final BindlessBuffer shadowScene;
+    private final BindlessBuffer shadowCommands;
 
     private final RegionRasterizer regionRasterizer;
     private final SectionRasterizer sectionRasterizer;
-    private final TerrainRasterizer terrainRasterizer;
-    private final TerrainRasterizer temporalRasterizer;
-    private final TranslucentRasterizer translucentRasterizer;
+    private final MeshTerrainShading shading;
     private final SectionSorter sectionSorter;
 
     private final RegionVisibilityTracker visibilityTracker;
@@ -84,38 +89,49 @@ public class MeshRenderPipeline {
 
     // Sort keys (distance << 16) | regionId, so one sort gives front-to-back order
     private final IntArrayList visibleRegions = new IntArrayList();
+    // Region ids the shadow frustum touched this frame
+    private final IntArrayList shadowRegions = new IntArrayList();
 
     private final Matrix4f mvp = new Matrix4f();
 
     private int previousRegionCount;
     private int translucentRegionCount;
+    private int shadowRegionCount;
     private int frameId;
+
+    // What the frame's opaque and shadow draws were bound with, reused by the translucent draws that follow them
+    private @Nullable ChunkRenderMatrices frameMatrices;
+    private @Nullable ChunkRenderMatrices shadowMatrices;
 
     // Last values the GPU counters reported; frustum is counted on the CPU
     private int frustumCount, regionCount, sectionCount, quadCount;
 
     public MeshRenderPipeline(MeshTerrainConfig config, int maxRegions, long uploadBufferSize, long downloadBufferSize, long geometryBudget) {
+        this(config, maxRegions, uploadBufferSize, downloadBufferSize, geometryBudget, null);
+    }
+
+    // A null shading builds Nvidium's own programs; a shader pack hands in its translated ones, which the pipeline then owns
+    public MeshRenderPipeline(MeshTerrainConfig config, int maxRegions, long uploadBufferSize, long downloadBufferSize, long geometryBudget,
+                              @Nullable MeshTerrainShading shading) {
         this.config = config;
         this.maxRegions = maxRegions;
 
         // Programs first: a driver rejecting one throws before any buffer exists, and the ones already built are freed
         List<Runnable> built = new ArrayList<>();
+        if (shading != null) {
+            built.add(shading::delete);
+        }
         try {
             ShaderConstants constants = config.shaderConstants().build();
             this.regionRasterizer = new RegionRasterizer(constants);
             built.add(this.regionRasterizer::delete);
             this.sectionRasterizer = new SectionRasterizer(constants);
             built.add(this.sectionRasterizer::delete);
-            this.terrainRasterizer = new TerrainRasterizer("mesh/terrain", constants);
-            built.add(this.terrainRasterizer::delete);
-            this.temporalRasterizer = config.temporalCoherence()
-                    ? new TerrainRasterizer("mesh/terrain_temporal", config.shaderConstants().add("TEMPORAL").build())
-                    : null;
-            if (this.temporalRasterizer != null) {
-                built.add(this.temporalRasterizer::delete);
+            this.shading = shading != null ? shading : new NvidiumShading(constants,
+                    config.temporalCoherence() ? config.shaderConstants().add("TEMPORAL").build() : null);
+            if (shading == null) {
+                built.add(this.shading::delete);
             }
-            this.translucentRasterizer = new TranslucentRasterizer(constants);
-            built.add(this.translucentRasterizer::delete);
             this.sectionSorter = config.sorting() != MeshTranslucencySorting.NONE ? new SectionSorter(constants) : null;
         } catch (RuntimeException e) {
             built.forEach(Runnable::run);
@@ -126,7 +142,7 @@ public class MeshRenderPipeline {
         this.downloadStream = new DownloadStream(downloadBufferSize);
 
         MeshRegionStore regions = new MeshRegionStore(maxRegions, this.uploadStream);
-        QuadArena arena = new QuadArena(geometryBudget, MeshChunkVertex.STRIDE);
+        QuadArena arena = new QuadArena(geometryBudget, this.shading.vertexStride());
         this.sections = new MeshSectionStore(regions, arena, this.uploadStream);
 
         // The visible region id list sits right after the scene struct in the same allocation, reached by pointer arithmetic off the block's address
@@ -137,6 +153,8 @@ public class MeshRenderPipeline {
         this.translucentCommands = new BindlessBuffer(maxRegions * 8L);
         this.sortingRegions = new BindlessBuffer(maxRegions * 2L);
         this.statistics = new BindlessBuffer(STATISTICS_BYTES);
+        this.shadowScene = new BindlessBuffer(SCENE_BYTES);
+        this.shadowCommands = new BindlessBuffer(maxRegions * 8L);
 
         this.regionVisibility.clear();
         this.sectionVisibility.clear();
@@ -167,23 +185,25 @@ public class MeshRenderPipeline {
         return this.visibilityTracker;
     }
 
-    // Draws the opaque terrain from last frame's commands, then computes this frame's visibility, commands and translucent order; camera is the exact world position
+    // Draws the opaque terrain from last frame's commands, then computes this frame's visibility, commands and translucent order; the camera is the exact world position the matrices are relative to
     public void renderFrame(Viewport viewport, ChunkRenderMatrices matrices, MeshFog fog,
                             double cameraX, double cameraY, double cameraZ,
                             int screenWidth, int screenHeight) {
+        this.renderFrame(viewport, matrices, fog, MeshCamera.of(matrices, cameraX, cameraY, cameraZ), screenWidth, screenHeight, null);
+    }
+
+    // The same with the eye already resolved, and the pass whose state a shader pack's programs apply
+    public void renderFrame(Viewport viewport, ChunkRenderMatrices matrices, MeshFog fog, MeshCamera camera,
+                            int screenWidth, int screenHeight, @Nullable TerrainRenderPass pass) {
         MeshRegionStore regions = this.sections.getRegions();
         this.translucentRegionCount = 0;
+        this.frameMatrices = matrices;
 
         if (regions.getRegionCount() == 0) {
             return;
         }
 
-        int cameraSectionX = (int) Math.floor(cameraX) >> 4;
-        int cameraSectionY = (int) Math.floor(cameraY) >> 4;
-        int cameraSectionZ = (int) Math.floor(cameraZ) >> 4;
-
-        int visibleCount = collectVisibleRegions(regions, viewport, cameraX, cameraY, cameraZ,
-                cameraSectionX, cameraSectionY, cameraSectionZ);
+        int visibleCount = collectVisibleRegions(regions, viewport, camera);
 
         if (visibleCount == 0) {
             // Nothing drew commands this frame, so there are none to replay next frame either
@@ -191,8 +211,7 @@ public class MeshRenderPipeline {
             return;
         }
 
-        writeSceneUniform(matrices, fog, cameraX, cameraY, cameraZ,
-                cameraSectionX, cameraSectionY, cameraSectionZ, screenWidth, screenHeight, visibleCount);
+        writeSceneUniform(this.sceneUniform, matrices, fog, camera, screenWidth, screenHeight, visibleCount);
 
         // Header uploads first, so a region they reset to the identity draw order is sorted this same frame
         this.sections.commit();
@@ -201,17 +220,19 @@ public class MeshRenderPipeline {
         // Everything the shaders read has to be resident before the first draw
         this.uploadStream.commit();
 
-        bindScene();
+        // A pack's state (its gbuffer above all) goes up before any unified-memory client state is live, since applying it may blit, and stays while the occlusion boxes test against that same depth
+        boolean shaded = this.shading.bindOpaque(MeshDrawPhase.MAIN, pass, matrices);
+
+        bindScene(this.sceneUniform);
+        LWJGL.glEnable(GL11.GL_DEPTH_TEST);
 
         // The terrain draw, from last frame's commands
-        if (this.previousRegionCount != 0) {
-            LWJGL.glEnable(GL11.GL_DEPTH_TEST);
-            this.terrainRasterizer.raster(this.previousRegionCount, this.terrainCommands.getDeviceAddress());
+        if (shaded && this.previousRegionCount != 0) {
+            TerrainRasterizer.drawIndirect(this.previousRegionCount, this.terrainCommands.getDeviceAddress());
             LWJGL.glMemoryBarrier(GL42.GL_FRAMEBUFFER_BARRIER_BIT);
         }
 
         // Visibility for the next frame; depth writes stay off because the representative fragment test needs that and occlusion boxes must not pollute the terrain's depth
-        LWJGL.glEnable(GL11.GL_DEPTH_TEST);
         LWJGL.glDepthFunc(GL11.GL_LEQUAL);
         LWJGL.glDepthMask(false);
         LWJGL.glColorMask(false, false, false, false);
@@ -235,8 +256,8 @@ public class MeshRenderPipeline {
         // The commands just written are next frame's terrain draw; drawing the newly visible ones now hides the one-frame lag while turning
         LWJGL.glMemoryBarrier(GL42.GL_COMMAND_BARRIER_BIT);
 
-        if (this.temporalRasterizer != null) {
-            this.temporalRasterizer.raster(visibleCount, this.terrainCommands.getDeviceAddress());
+        if (shaded && this.config.temporalCoherence() && this.shading.bindOpaque(MeshDrawPhase.TEMPORAL, pass, matrices)) {
+            TerrainRasterizer.drawIndirect(visibleCount, this.terrainCommands.getDeviceAddress());
         }
 
         if (sortCount != 0) {
@@ -248,18 +269,25 @@ public class MeshRenderPipeline {
         this.translucentRegionCount = visibleCount;
 
         unbindScene();
-        LWJGL.glDepthFunc(GL11.GL_LEQUAL);
-        LWJGL.glDisable(GL11.GL_DEPTH_TEST);
+        this.shading.finish();
     }
 
     // Draws this frame's translucent sections farthest region first, under the blend state the caller set up
     public void renderTranslucent() {
+        this.renderTranslucent(null);
+    }
+
+    // The same, for a pass whose state a shader pack's water program applies
+    public void renderTranslucent(@Nullable TerrainRenderPass pass) {
         if (this.translucentRegionCount != 0) {
-            bindScene();
+            boolean shaded = this.shading.bindTranslucent(MeshDrawPhase.MAIN, pass, this.frameMatrices);
+            bindScene(this.sceneUniform);
             LWJGL.glEnable(GL11.GL_DEPTH_TEST);
-            this.translucentRasterizer.raster(this.translucentRegionCount, this.translucentCommands.getDeviceAddress());
-            LWJGL.glDisable(GL11.GL_DEPTH_TEST);
+            if (shaded) {
+                TerrainRasterizer.drawIndirect(this.translucentRegionCount, this.translucentCommands.getDeviceAddress());
+            }
             unbindScene();
+            this.shading.finish();
 
             if (this.config.statistics().includes(MeshStatistics.REGIONS)) {
                 this.downloadStream.download(this.statistics, 0L, STATISTICS_BYTES, this::readStatistics);
@@ -267,6 +295,56 @@ public class MeshRenderPipeline {
                 MemoryUtil.memSet(this.uploadStream.upload(this.statistics, 0L, STATISTICS_BYTES), 0, STATISTICS_BYTES);
             }
         }
+    }
+
+    // The shadow map's opaque terrain: every region in the shadow frustum, its sections frustum-tested on the GPU and never occlusion-culled, since the boxes only know the player's depth; nothing when the shading has no shadow programs
+    public void renderShadow(Viewport viewport, ChunkRenderMatrices matrices, MeshCamera camera, @Nullable TerrainRenderPass pass,
+                             int width, int height) {
+        MeshRegionStore regions = this.sections.getRegions();
+        this.shadowRegionCount = 0;
+        this.shadowMatrices = matrices;
+
+        if (!this.shading.hasShadowPrograms() || regions.getRegionCount() == 0) {
+            return;
+        }
+
+        // Headers first: a region allocated since the last frame has to exist on the GPU before its commands do
+        this.sections.commit();
+        int count = writeShadowCommands(regions, viewport);
+
+        if (count == 0) {
+            return;
+        }
+
+        writeSceneUniform(this.shadowScene, matrices, MeshFog.NONE, camera, width, height, count);
+        this.uploadStream.commit();
+
+        boolean shaded = this.shading.bindOpaque(MeshDrawPhase.SHADOW, pass, matrices);
+        bindScene(this.shadowScene);
+        LWJGL.glEnable(GL11.GL_DEPTH_TEST);
+        if (shaded) {
+            TerrainRasterizer.drawIndirect(count, this.shadowCommands.getDeviceAddress());
+        }
+        unbindScene();
+        this.shading.finish();
+
+        this.shadowRegionCount = count;
+    }
+
+    // The shadow map's translucent terrain over the same regions, after the caller copied the opaque depth aside
+    public void renderShadowTranslucent(@Nullable TerrainRenderPass pass) {
+        if (this.shadowRegionCount == 0) {
+            return;
+        }
+
+        boolean shaded = this.shading.bindTranslucent(MeshDrawPhase.SHADOW, pass, this.shadowMatrices);
+        bindScene(this.shadowScene);
+        LWJGL.glEnable(GL11.GL_DEPTH_TEST);
+        if (shaded) {
+            TerrainRasterizer.drawIndirect(this.shadowRegionCount, this.shadowCommands.getDeviceAddress());
+        }
+        unbindScene();
+        this.shading.finish();
     }
 
     // Retires the frame: pending uploads go out and are fenced, and finished readbacks reach their callbacks
@@ -308,11 +386,7 @@ public class MeshRenderPipeline {
     public void delete() {
         this.regionRasterizer.delete();
         this.sectionRasterizer.delete();
-        this.terrainRasterizer.delete();
-        if (this.temporalRasterizer != null) {
-            this.temporalRasterizer.delete();
-        }
-        this.translucentRasterizer.delete();
+        this.shading.delete();
         if (this.sectionSorter != null) {
             this.sectionSorter.delete();
         }
@@ -324,6 +398,8 @@ public class MeshRenderPipeline {
         this.translucentCommands.delete();
         this.sortingRegions.delete();
         this.statistics.delete();
+        this.shadowScene.delete();
+        this.shadowCommands.delete();
 
         this.sections.getArena().delete();
         this.sections.getRegions().delete();
@@ -332,8 +408,10 @@ public class MeshRenderPipeline {
     }
 
     // Frustum-culls regions, evicts the ones past the keep distance, sorts front-to-back and writes the id list the shaders index by workgroup
-    private int collectVisibleRegions(MeshRegionStore regions, Viewport viewport, double cameraX, double cameraY, double cameraZ,
-                                      int cameraSectionX, int cameraSectionY, int cameraSectionZ) {
+    private int collectVisibleRegions(MeshRegionStore regions, Viewport viewport, MeshCamera camera) {
+        int cameraSectionX = camera.sectionX();
+        int cameraSectionY = camera.sectionY();
+        int cameraSectionZ = camera.sectionZ();
         this.visibleRegions.clear();
         boolean evictByDistance = this.config.keepsBeyondRenderDistance() && !this.config.keepsEverything();
 
@@ -354,7 +432,7 @@ public class MeshRenderPipeline {
                 this.visibleRegions.add((distance << 16) | regionId);
                 this.regionsInFrustum.set(regionId);
 
-                if (regions.isRegionInCameraAxis(regionId, cameraX, cameraY, cameraZ)) {
+                if (regions.isRegionInCameraAxis(regionId, camera.eyeX(), camera.eyeY(), camera.eyeZ())) {
                     this.regionsToSort.set(regionId);
                 }
             } else if (this.regionsInFrustum.get(regionId)) {
@@ -416,20 +494,46 @@ public class MeshRenderPipeline {
     }
 
     // Address-based binding stays live across program changes, unlike a bound UBO, so it is set once per phase group
-    private void bindScene() {
+    private static void bindScene(BindlessBuffer scene) {
         LWJGL.glEnableClientState(NVUniformBufferUnifiedMemory.GL_UNIFORM_BUFFER_UNIFIED_NV);
         LWJGL.glEnableClientState(NVVertexBufferUnifiedMemory.GL_VERTEX_ATTRIB_ARRAY_UNIFIED_NV);
         LWJGL.glEnableClientState(NVVertexBufferUnifiedMemory.GL_ELEMENT_ARRAY_UNIFIED_NV);
         LWJGL.glEnableClientState(MeshShaderSupport.GL_DRAW_INDIRECT_UNIFIED_NV);
-        LWJGL.glBufferAddressRangeNV(NVUniformBufferUnifiedMemory.GL_UNIFORM_BUFFER_ADDRESS_NV, 0, this.sceneUniform.getDeviceAddress(), SCENE_BYTES);
+        LWJGL.glBufferAddressRangeNV(NVUniformBufferUnifiedMemory.GL_UNIFORM_BUFFER_ADDRESS_NV, 0, scene.getDeviceAddress(), SCENE_BYTES);
     }
 
-    // Turns the unified-memory client states back off so vanilla's own draws are unaffected
-    private void unbindScene() {
+    // Turns the unified-memory client states back off and unbinds the last program, so vanilla's fixed-function draws after terrain are unaffected
+    private static void unbindScene() {
         LWJGL.glDisableClientState(NVUniformBufferUnifiedMemory.GL_UNIFORM_BUFFER_UNIFIED_NV);
         LWJGL.glDisableClientState(NVVertexBufferUnifiedMemory.GL_VERTEX_ATTRIB_ARRAY_UNIFIED_NV);
         LWJGL.glDisableClientState(NVVertexBufferUnifiedMemory.GL_ELEMENT_ARRAY_UNIFIED_NV);
         LWJGL.glDisableClientState(MeshShaderSupport.GL_DRAW_INDIRECT_UNIFIED_NV);
+        LWJGL.glUseProgram(0);
+    }
+
+    // One indirect command per region the shadow frustum touches, covering every live section slot; returns how many
+    private int writeShadowCommands(MeshRegionStore regions, Viewport viewport) {
+        this.shadowRegions.clear();
+
+        for (int regionId = 0; regionId < regions.getMaxRegionIndex(); regionId++) {
+            if (regions.regionExists(regionId) && regions.isRegionVisible(viewport, regionId)) {
+                this.shadowRegions.add(regionId);
+            }
+        }
+
+        int count = this.shadowRegions.size();
+
+        if (count != 0) {
+            long ptr = this.uploadStream.upload(this.shadowCommands, 0L, count * 8L);
+
+            for (int index = 0; index < count; index++) {
+                int regionId = this.shadowRegions.getInt(index);
+                MemoryUtil.memPutInt(ptr + index * 8L, regions.getSectionCount(regionId));
+                MemoryUtil.memPutInt(ptr + index * 8L + 4, regionId << 8);
+            }
+        }
+
+        return count;
     }
 
     // Unpacks the GPU counters a download delivered
@@ -439,33 +543,34 @@ public class MeshRenderPipeline {
         this.quadCount = MemoryUtil.memGetInt(address + 8);
     }
 
-    private void writeSceneUniform(ChunkRenderMatrices matrices, MeshFog fog, double cameraX, double cameraY, double cameraZ,
-                                   int cameraSectionX, int cameraSectionY, int cameraSectionZ,
+    // Fills a scene block, scene.glsl's layout field for field
+    private void writeSceneUniform(BindlessBuffer target, ChunkRenderMatrices matrices, MeshFog fog, MeshCamera camera,
                                    int screenWidth, int screenHeight, int visibleCount) {
-        // Geometry is section-relative, so the matrix carries the camera's in-section offset and the shader adds only a small section delta, which keeps big numbers out of the shader
-        float deltaX = (float) -(cameraX - (cameraSectionX << 4));
-        float deltaY = (float) -(cameraY - (cameraSectionY << 4));
-        float deltaZ = (float) -(cameraZ - (cameraSectionZ << 4));
+        int sectionX = camera.sectionX();
+        int sectionY = camera.sectionY();
+        int sectionZ = camera.sectionZ();
 
-        long ptr = this.uploadStream.upload(this.sceneUniform, 0, SCENE_BYTES);
+        // Geometry is relative to the eye's section, so the matrix carries that section's offset from the model-view origin and the shader only adds small section deltas, which keeps big numbers out of it
+        float renderX = (float) ((sectionX << 4) - camera.renderX());
+        float renderY = (float) ((sectionY << 4) - camera.renderY());
+        float renderZ = (float) ((sectionZ << 4) - camera.renderZ());
+
+        long ptr = this.uploadStream.upload(target, 0, SCENE_BYTES);
 
         this.mvp.set(matrices.projection())
                 .mul(matrices.modelView())
-                .translate(deltaX, deltaY, deltaZ)
+                .translate(renderX, renderY, renderZ)
                 .getToAddress(ptr);
         ptr += 16 * 4;
 
-        MemoryUtil.memPutInt(ptr, cameraSectionX);
-        MemoryUtil.memPutInt(ptr + 4, cameraSectionY);
-        MemoryUtil.memPutInt(ptr + 8, cameraSectionZ);
+        MemoryUtil.memPutInt(ptr, sectionX);
+        MemoryUtil.memPutInt(ptr + 4, sectionY);
+        MemoryUtil.memPutInt(ptr + 8, sectionZ);
         MemoryUtil.memPutInt(ptr + 12, 0);
         ptr += 16;
 
-        MemoryUtil.memPutFloat(ptr, deltaX);
-        MemoryUtil.memPutFloat(ptr + 4, deltaY);
-        MemoryUtil.memPutFloat(ptr + 8, deltaZ);
-        MemoryUtil.memPutFloat(ptr + 12, 0.0f);
-        ptr += 16;
+        ptr = putVector(ptr, (float) ((sectionX << 4) - camera.eyeX()), (float) ((sectionY << 4) - camera.eyeY()), (float) ((sectionZ << 4) - camera.eyeZ()));
+        ptr = putVector(ptr, renderX, renderY, renderZ);
 
         float[] colour = fog.colour();
         for (int i = 0; i < 4; i++) {
@@ -486,6 +591,7 @@ public class MeshRenderPipeline {
         ptr = putPointer(ptr, this.sortingRegions.getDeviceAddress());
         ptr = putPointer(ptr, this.sections.getArena().getBuffer().getDeviceAddress());
         ptr = putPointer(ptr, this.statistics.getDeviceAddress());
+        ptr = putPointer(ptr, regions.getSectionTimeBufferAddress());
 
         // Half-extents, because the mesh shader maps clip space to pixels with one multiply per vertex
         MemoryUtil.memPutFloat(ptr, screenWidth / 2.0f);
@@ -499,8 +605,23 @@ public class MeshRenderPipeline {
         MemoryUtil.memPutInt(ptr + 16, fog.shape());
         ptr += 20;
 
+        int fadeMs = ImpetusRuntimeOptions.chunkFadeInDuration;
+        MemoryUtil.memPutInt(ptr, regions.currentTimeMs());
+        MemoryUtil.memPutFloat(ptr + 4, fadeMs > 0 ? 1.0f / fadeMs : 0.0f);
+        ptr += 8;
+
+        // Only the main frame advances the frame id, whose parity alternates the translucent pair swaps; the shadow scene would otherwise pin it
         MemoryUtil.memPutShort(ptr, (short) visibleCount);
-        MemoryUtil.memPutByte(ptr + 2, (byte) (this.frameId++));
+        MemoryUtil.memPutByte(ptr + 2, (byte) (target == this.sceneUniform ? this.frameId++ : this.frameId));
+    }
+
+    // Writes an xyz vec4 with w zero and advances
+    private static long putVector(long ptr, float x, float y, float z) {
+        MemoryUtil.memPutFloat(ptr, x);
+        MemoryUtil.memPutFloat(ptr + 4, y);
+        MemoryUtil.memPutFloat(ptr + 8, z);
+        MemoryUtil.memPutFloat(ptr + 12, 0.0f);
+        return ptr + 16;
     }
 
     // Writes a 64-bit address and advances

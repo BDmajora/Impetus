@@ -100,6 +100,7 @@ public class ImpetusVintage {
 
         // Key bindings must exist before the controls screen enumerates them
         com.bdmajora.extras.client.budget.RenderBudgetKeys.register();
+        com.bdmajora.extras.client.zoom.LogicalZoom.register();
 
         ClientCommandHandler.instance.registerCommand(new CoarctatioStatsCommand());
         ClientCommandHandler.instance.registerCommand(new FulgorStatsCommand());

@@ -4,7 +4,6 @@ import com.bdmajora.impetus.engine.api.util.ColorABGR;
 import com.bdmajora.impetus.engine.impl.gl.attribute.GlVertexAttributeFormat;
 import com.bdmajora.impetus.engine.impl.gl.attribute.GlVertexFormat;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexEncoder;
-import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexType;
 
 import java.util.Map;
 
@@ -12,7 +11,7 @@ import com.bdmajora.impetus.engine.impl.common.util.MathUtil;
 import org.lwjgl.system.MemoryUtil;
 
 // 16-byte terrain vertex read by the mesh shader as one uvec4: shade folded into 24-bit colour on the CPU, light in two bytes; the GlVertexFormat exists only because ChunkVertexType demands one
-public class MeshChunkVertex implements ChunkVertexType {
+public class MeshChunkVertex implements MeshVertexLayout {
     public static final int STRIDE = 16;
 
     // One uvec4 attribute; an attribute-less format is rejected by the builder, which used to make this class unloadable
@@ -79,7 +78,7 @@ public class MeshChunkVertex implements ChunkVertexType {
     // Tells the shader the mesh layout is in use
     @Override
     public Map<String, String> getDefines() {
-        var map = ChunkVertexType.super.getDefines();
+        var map = MeshVertexLayout.super.getDefines();
         map.put("USE_VERTEX_COMPRESSION", "");
         map.put("TEXTURE_MAX_SCALE", String.valueOf(TEXTURE_MAX_VALUE));
         return map;
@@ -112,8 +111,8 @@ public class MeshChunkVertex implements ChunkVertexType {
         return (packed / MODEL_SCALE_INV) - MODEL_ORIGIN;
     }
 
-    // Float to packed integer
-    private static int encodePosition(float value) {
+    // Float to packed integer, shared by every MeshVertexLayout since they keep this position encoding
+    public static int encodePosition(float value) {
         return ((int) ((MODEL_ORIGIN + value) * MODEL_SCALE_INV)) & 0xFFFF;
     }
 

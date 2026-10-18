@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.engine.impl.render.chunk;
 
+import com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions;
 import com.bdmajora.impetus.engine.impl.common.util.NativeBuffer;
 import com.bdmajora.impetus.engine.impl.gl.arena.PendingUpload;
 import com.bdmajora.impetus.engine.impl.gl.device.CommandList;
@@ -7,9 +8,7 @@ import com.bdmajora.impetus.engine.impl.gl.device.GLRenderDevice;
 import com.bdmajora.impetus.engine.impl.gl.util.VertexRange;
 import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFacing;
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.ChunkBuildBuffersTest;
-import com.bdmajora.impetus.engine.impl.render.chunk.lists.VisibleChunkCollector;
 import com.bdmajora.impetus.engine.impl.render.chunk.lists.SortedRenderLists;
-import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.OcclusionNode;
 import com.bdmajora.impetus.engine.impl.render.chunk.region.RenderRegionManager;
 import com.bdmajora.impetus.engine.impl.render.chunk.shader.ChunkShaderInterface;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
@@ -17,6 +16,7 @@ import com.bdmajora.impetus.engine.impl.render.viewport.CameraTransform;
 import com.bdmajora.testing.Devices;
 import com.bdmajora.testing.Passes;
 import com.bdmajora.testing.Sections;
+import com.bdmajora.testing.TestFogService;
 import com.bdmajora.testing.TestGl;
 import org.joml.Matrix4f;
 import org.junit.jupiter.api.AfterEach;
@@ -40,8 +40,10 @@ class DefaultChunkRendererTest {
     void activate() {
         device = Devices.active();
         commands = device.createCommandList();
-        regions = new RenderRegionManager(commands);
+        regions = new RenderRegionManager(commands, ChunkBuildBuffersTest.CONFIG);
         Mockito.when(TestGl.gl().glGetUniformLocation(Mockito.anyInt(), Mockito.any())).thenReturn(1);
+        // These tests count client-array multi-draws; another test applying the default config would switch them to indirect
+        ImpetusRuntimeOptions.multiDrawIndirect = false;
     }
 
     @AfterEach
@@ -53,7 +55,7 @@ class DefaultChunkRendererTest {
     // A section with real geometry in the given pass, so the region has storage and a slice mask
     private RenderSection built(int x, int z, TerrainRenderPass pass, boolean indexed) {
         RenderSection section = Sections.section(regions, x, 0, z);
-        var resources = section.getRegion().createResources(pass.vertexType().getVertexFormat(), commands);
+        var resources = section.getRegion().createResources(commands);
         PendingUpload vertices = PendingUpload.of(new NativeBuffer(4 * pass.vertexType().getVertexFormat().getStride()));
         resources.getGeometryArena().upload(commands, new ArrayList<>(List.of(vertices)));
         PendingUpload indices = null;
@@ -61,17 +63,14 @@ class DefaultChunkRendererTest {
             indices = PendingUpload.of(new NativeBuffer(24));
             resources.getOrCreateIndexArena(commands).upload(commands, new ArrayList<>(List.of(indices)));
         }
-        section.getRegion().createStorage(pass).setMeshes(section.getSectionIndex(), vertices.getResult(), indices == null ? null : indices.getResult(),
+        section.getRegion().createStorage(pass, ChunkBuildBuffersTest.CONFIG).setMeshes(section.getSectionIndex(), vertices.getResult(), indices == null ? null : indices.getResult(),
                 Map.of(ModelQuadFacing.POS_Y, new VertexRange(0, 4)));
         return section;
     }
 
+    // Searched from above the world, which seeds every loaded section on the top layer whether or not they touch
     private SortedRenderLists lists(RenderSection... sections) {
-        VisibleChunkCollector collector = new VisibleChunkCollector(1, regions.getRegionIdsLength(), 8);
-        for (RenderSection section : sections) {
-            collector.visit(new OcclusionNode(section), true);
-        }
-        return collector.createRenderLists();
+        return Sections.renderLists(regions, Sections.viewport(8, 24, 8), sections);
     }
 
     private static final class Renderer extends DefaultChunkRenderer {
@@ -79,7 +78,7 @@ class DefaultChunkRendererTest {
         boolean cull = true;
 
         Renderer(GLRenderDevice device) {
-            super(device, ChunkBuildBuffersTest.CONFIG);
+            super(device, ChunkBuildBuffersTest.CONFIG, new TestFogService());
         }
 
         // The base default is culling on; the flag only turns it off

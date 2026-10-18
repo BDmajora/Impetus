@@ -3,6 +3,7 @@ package com.bdmajora.impetus.engine.impl.render.chunk.compile.executor;
 import com.bdmajora.impetus.engine.impl.render.chunk.RenderSection;
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.ChunkBuildBuffersTest;
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.ChunkBuildContext;
+import com.bdmajora.impetus.engine.impl.render.chunk.compile.ChunkBuildOutput;
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.ChunkSortOutput;
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.ChunkTaskOutput;
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.tasks.ChunkBuilderTask;
@@ -69,73 +70,37 @@ class ExecutorTest {
     }
 
     @Test
-    void queueOrdersImportantJobsFirstAndStopsOnShutdown() throws InterruptedException {
-        ChunkJobQueue queue = new ChunkJobQueue();
-        assertTrue(queue.isRunning());
-        assertTrue(queue.isEmpty());
-        assertNull(queue.pollJob());
-        ChunkJob normal = new ChunkJobTyped<>(task("ok"), r -> {});
-        ChunkJob urgent = new ChunkJobTyped<>(task("ok"), r -> {});
-        queue.add(normal, false);
-        queue.add(urgent, true);
-        assertEquals(2, queue.size());
-        assertSame(urgent, queue.waitForNextJob());
-        assertFalse(queue.checkAndClearWorkerBlocked());
-        assertFalse(queue.stealJob(urgent));
-        assertTrue(queue.stealJob(normal));
-        assertEquals(0, queue.size());
-        queue.add(normal, false);
-        assertSame(normal, queue.pollJob());
-        Thread waiter = new Thread(() -> {
-            try {
-                queue.waitForNextJob();
-            } catch (InterruptedException ignored) {
-            }
-        });
-        waiter.start();
-        Thread.sleep(50);
-        assertTrue(queue.checkAndClearWorkerBlocked());
-        queue.add(normal, false);
-        waiter.join(1000);
-        assertFalse(waiter.isAlive());
-        queue.add(normal, false);
-        assertEquals(List.of(normal), new ArrayList<>(queue.shutdown()));
-        assertFalse(queue.isRunning());
-        assertNull(queue.pollJob());
-        assertNull(queue.waitForNextJob());
-        assertThrows(IllegalStateException.class, () -> queue.add(normal, false));
-        ChunkJobQueue empty = new ChunkJobQueue();
-        assertFalse(empty.stealJob(normal));
-    }
-
-    @Test
     void builderWithoutWorkersRunsJobsOnTick() {
         ChunkBuilder builder = new ChunkBuilder(ChunkBuilder.ManagedBlocker.NONE, ExecutorTest::context, -1);
         assertEquals(0, builder.getTotalThreadCount());
+        // With no workers the in-flight target is the floor of one worker's worth
         assertEquals(2, builder.getTargetQueueSize());
         assertEquals(2, builder.getSchedulingBudget());
+        assertEquals(8, builder.getSortSchedulingBudget());
         List<ChunkJobResult<ChunkSortOutput>> results = new ArrayList<>();
-        var job = builder.scheduleTask(task("ok"), true, results::add);
-        builder.scheduleTask(task("ok"), false, results::add);
+        var job = builder.scheduleTask(task("ok"), true, 50, results::add);
+        builder.scheduleTask(task("ok"), false, 10, results::add);
         assertEquals(2, builder.getScheduledJobCount());
         assertFalse(builder.isBuildQueueEmpty());
         assertEquals(0, builder.getSchedulingBudget());
+        // Sorts are never starved completely, even with the mesh budget spent
+        assertEquals(4, builder.getSortSchedulingBudget());
         builder.tryStealTask(job);
         assertEquals(1, results.size());
         builder.tryStealTask(job);
         builder.tick();
         assertEquals(2, results.size());
         assertTrue(builder.isBuildQueueEmpty());
-        builder.tickSchedulingBudget();
-        builder.setDispatchBudgetLimited(true);
-        builder.tickSchedulingBudget();
+        ChunkJobMetricsTracker metrics = new ChunkJobMetricsTracker();
+        builder.tickSchedulingBudget(metrics);
+        builder.tickSchedulingBudget(metrics);
         assertEquals(2, builder.getTargetQueueSize());
         assertEquals(0, builder.getBusyThreadCount());
-        assertThrows(NullPointerException.class, () -> builder.scheduleTask(null, false, r -> {}));
+        assertThrows(NullPointerException.class, () -> builder.scheduleTask(null, false, 0, r -> {}));
         builder.managedBlock(() -> true);
         builder.shutdown();
         assertThrows(IllegalStateException.class, builder::shutdown);
-        assertThrows(IllegalStateException.class, () -> builder.scheduleTask(task("ok"), false, r -> {}));
+        assertThrows(IllegalStateException.class, () -> builder.scheduleTask(task("ok"), false, 0, r -> {}));
         assertTrue(ChunkBuilder.getMaxThreadCount() >= 1);
         ChunkBuilder heuristic = new ChunkBuilder(ChunkBuilder.ManagedBlocker.NONE, ExecutorTest::context, 0);
         assertTrue(heuristic.getTotalThreadCount() >= 1);
@@ -151,7 +116,7 @@ class ExecutorTest {
         };
         ChunkBuilder builder = new ChunkBuilder(blocker, ExecutorTest::context, 2);
         assertEquals(2, builder.getTotalThreadCount());
-        assertEquals(64, builder.getTargetQueueSize());
+        assertEquals(4, builder.getTargetQueueSize());
         CountDownLatch latch = new CountDownLatch(3);
         AtomicReference<ChunkBuildContext> workerContext = new AtomicReference<>();
         ChunkJobCollector collector = new ChunkJobCollector(4, result -> latch.countDown());
@@ -164,12 +129,12 @@ class ExecutorTest {
                     return new ChunkSortOutput(SECTION, 1, new Reference2ReferenceOpenHashMap<>());
                 }
             };
-            collector.addSubmittedJob(builder.scheduleTask(task, i == 0, collector::onJobFinished));
+            collector.addSubmittedJob(builder.scheduleTask(task, i == 0, i, collector::onJobFinished));
         }
         collector.awaitCompletion(builder);
         assertTrue(latch.await(5, TimeUnit.SECONDS));
         assertNotNull(workerContext.get());
-        assertFalse(collector.canOffer() && collector.canOffer() == false);
+        assertTrue(collector.canOffer());
         new ChunkJobCollector(1, r -> {}).awaitCompletion(builder);
         // A slow job forces the collector to wait through the managed blocker
         ChunkJobCollector slowCollector = new ChunkJobCollector(1, r -> {});
@@ -183,19 +148,17 @@ class ExecutorTest {
                 return new ChunkSortOutput(SECTION, 1, new Reference2ReferenceOpenHashMap<>());
             }
         };
-        var slowJob = builder.scheduleTask(slow, false, slowCollector::onJobFinished);
+        var slowJob = builder.scheduleTask(slow, false, 0, slowCollector::onJobFinished);
         Thread.sleep(50);
         slowCollector.addSubmittedJob(slowJob);
         slowCollector.awaitCompletion(builder);
         Thread.sleep(50);
-        builder.setDispatchBudgetLimited(true);
-        builder.tickSchedulingBudget();
-        assertTrue(builder.getTargetQueueSize() >= 64);
+        builder.tickSchedulingBudget(new ChunkJobMetricsTracker());
+        assertEquals(4, builder.getTargetQueueSize());
+        // Whatever is still queued at shutdown is cancelled rather than run
         for (int i = 0; i < 200; i++) {
-            builder.scheduleTask(task("ok"), false, r -> {});
+            builder.scheduleTask(task("ok"), false, i, r -> {});
         }
-        builder.setDispatchBudgetLimited(false);
-        builder.tickSchedulingBudget();
         builder.tick();
         builder.shutdown();
         assertEquals(0, builder.getTotalThreadCount());
@@ -205,11 +168,13 @@ class ExecutorTest {
     }
 
     @Test
-    void metricsTrackerSummarisesObservations() throws InterruptedException {
+    void metricsTrackerSummarisesObservations() {
         ChunkJobMetricsTracker tracker = new ChunkJobMetricsTracker();
         ChunkTaskOutput output = new ChunkSortOutput(SECTION, 1, new Reference2ReferenceOpenHashMap<>());
+        // A synthesised result (no task ran) carries no timing
         tracker.collectMetrics(new ChunkJobResult.Success<>(output, -1));
         assertTrue(tracker.getMetrics().isEmpty());
+        assertEquals(99, tracker.getAverageExecutionNanos(ChunkSortOutput.class, 99));
         tracker.collectMetrics(new ChunkJobResult.Success<>(output, 10));
         tracker.collectMetrics(new ChunkJobResult.Success<>(output, 30));
         ChunkJobMetricsTracker.MetricsData data = tracker.getMetrics().get(ChunkSortOutput.class);
@@ -219,19 +184,35 @@ class ExecutorTest {
         assertEquals(10, stats.min());
         assertEquals("avg = 20, max = 30, min = 10", stats.toString());
         assertEquals("avg = 20ns, max = 30ns, min = 10ns", stats.toString(v -> v + "ns"));
+        // The moving average starts at the first sample and moves a twentieth of the way to each later one
+        assertEquals(11, tracker.getAverageExecutionNanos(ChunkSortOutput.class, 99), 1e-9);
+        assertEquals(99, tracker.getAverageExecutionNanos(ChunkBuildOutput.class, 99));
         assertEquals(0, data.getObservationsInLastTimeInterval());
         tracker.tick();
-        var flip = ChunkJobMetricsTracker.class.getDeclaredFields();
         com.bdmajora.testing.Statics.set(ChunkJobMetricsTracker.class, "OBSERVATION_COUNT_TIME", 0L);
-        tracker.tick();
+        try {
+            tracker.tick();
+        } finally {
+            com.bdmajora.testing.Statics.set(ChunkJobMetricsTracker.class, "OBSERVATION_COUNT_TIME", TimeUnit.SECONDS.toNanos(1));
+        }
         assertEquals(2, data.getObservationsInLastTimeInterval());
-        com.bdmajora.testing.Statics.set(ChunkJobMetricsTracker.class, "OBSERVATION_COUNT_TIME", TimeUnit.SECONDS.toNanos(1));
-        assertEquals(0, new ChunkJobMetricsTracker.MetricsData().getStats().max());
+        ChunkJobMetricsTracker.MetricsData fresh = new ChunkJobMetricsTracker.MetricsData();
+        assertEquals(0, fresh.getStats().max());
+        assertEquals(5, fresh.getAverageNanos(5));
         ChunkJobMetricsTracker.MetricsData ring = new ChunkJobMetricsTracker.MetricsData();
         for (int i = 0; i < 10005; i++) {
             ring.collect(i);
         }
         assertEquals(10004, ring.getStats().max());
-        assertTrue(flip.length > 0);
+        assertEquals(5, ring.getStats().min());
+    }
+
+    @Test
+    void failuresRethrowWhatTheJobThrew() {
+        IllegalStateException crash = new IllegalStateException("crash");
+        assertSame(crash, assertThrows(IllegalStateException.class, () -> new ChunkJobResult.Failure<>(crash).abort()));
+        Exception checked = new java.io.IOException("io");
+        assertSame(checked, assertThrows(RuntimeException.class, () -> new ChunkJobResult.Failure<>(checked).abort()).getCause());
+        assertThrows(NullPointerException.class, () -> new ChunkJobResult.Failure<>(null));
     }
 }

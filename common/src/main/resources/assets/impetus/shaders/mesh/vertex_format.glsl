@@ -13,18 +13,18 @@
 #define COLOR_SCALE   (1.0 / 255.0)
 
 vec3 decodeVertexPosition(Vertex v) {
-    uvec3 packed = uvec3(
+    uvec3 bits = uvec3(
         (v.x >>  0) & 0xFFFFu,
         (v.x >> 16) & 0xFFFFu,
         (v.y >>  0) & 0xFFFFu
     );
 
-    return (vec3(packed) * MODEL_SCALE) - MODEL_ORIGIN;
+    return (vec3(bits) * MODEL_SCALE) - MODEL_ORIGIN;
 }
 
 vec3 decodeVertexColour(Vertex v) {
-    uvec3 packed = (uvec3(v.z) >> uvec3(0, 8, 16)) & uvec3(0xFFu);
-    return vec3(packed) * COLOR_SCALE;
+    uvec3 bits = (uvec3(v.z) >> uvec3(0, 8, 16)) & uvec3(0xFFu);
+    return vec3(bits) * COLOR_SCALE;
 }
 
 vec2 decodeVertexUV(Vertex v) {
@@ -38,14 +38,13 @@ vec2 decodeLightUV(Vertex v) {
     return vec2(light) / 256.0;
 }
 
-// Material bits, matching the raster backend's Material.bits():
-//   [0..1] alpha cutoff selector (AlphaCutoffParameter: 0, 0.1, 0.5, 1.0), [2] mipmapped
+// Material bits as MaterialParameters packs them: [0] mipmapped, [1..2] alpha cutoff selector (AlphaCutoffParameter: 0, 0.1, 0.5, 1.0)
 bool hasMipmapping(Vertex v) {
-    return ((v.y >> 16) & 4u) != 0u;
+    return ((v.y >> 16) & 1u) != 0u;
 }
 
 uint rawAlphaCutoff(Vertex v) {
-    return uint((v.y >> 16) & 3u);
+    return uint((v.y >> 17) & 3u);
 }
 
 float alphaCutoffValue(uint selector) {

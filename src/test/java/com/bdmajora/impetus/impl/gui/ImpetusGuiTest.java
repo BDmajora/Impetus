@@ -9,6 +9,7 @@ import com.bdmajora.impetus.api.options.structure.OptionImpl;
 import com.bdmajora.impetus.api.options.structure.OptionPage;
 import com.bdmajora.impetus.api.options.structure.OptionStorage;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions;
+import com.bdmajora.impetus.engine.impl.gui.options.CommonOptionPages;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusVideoOptionsController;
 import com.bdmajora.impetus.engine.impl.gui.framework.InteractionContext;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
@@ -186,10 +187,17 @@ class ImpetusGuiTest {
         Statics.set(FluidloggedCompat.class, "IS_LOADED", true);
         try {
             display.when(Display::getAvailableDisplayModes).thenReturn(modes());
-            OptionPage general = ImpetusGameOptionPages.general();
+            var graphicsApi = CommonOptionPages.graphicsApi(ImpetusGameOptionPages.getSodiumOpts().getData());
+            OptionPage general = ImpetusGameOptionPages.general(graphicsApi);
             OptionPage quality = ImpetusGameOptionPages.quality();
-            // Fluidlogged API adds the inferred fluidlogging cycler to the quality page
-            assertEquals(29, OptionPages.exercise(List.of(general, quality)));
+            OptionPage fluidlogging = ImpetusGameOptionPages.fluidlogging();
+            // The General page carries the screen's Graphics API option itself, so the Nvidium page sees the same pending value
+            assertSame(graphicsApi, general.getOptions().get(10));
+            // The fluidlogging guess has a page of its own rather than sitting among Quality's fluid options
+            assertEquals("impetus:fluidlogging", fluidlogging.getId().toString());
+            assertEquals(1, fluidlogging.getOptions().size());
+            assertEquals(28, OptionPages.exercise(List.of(general, quality)));
+            assertEquals(1, OptionPages.exercise(List.of(fluidlogging)));
             // Whichever client was current when the pages first loaded is the one they stay bound to
             ImpetusGameOptions sodium = ImpetusGameOptionPages.getSodiumOpts().getData();
             GameSettings vanilla = ImpetusGameOptionPages.getVanillaOpts().getData();
@@ -219,8 +227,10 @@ class ImpetusGuiTest {
             assertEquals(ImpetusGameOptions.FullscreenMode.BORDERLESS, sodium.fullscreenMode);
             set(general, 5, 1);
             assertEquals(1, sodium.fullscreenResolution);
-            set(general, 6, true);
+            // VSync is the Extras cycler, which keeps vanilla's flag in step
+            set(general, 6, com.bdmajora.extras.ExtrasConfig.VerticalSync.ON);
             display.verify(() -> Display.setVSyncEnabled(true));
+            assertTrue(net.minecraft.client.Minecraft.getMinecraft().gameSettings.enableVsync);
 
             // Improved transparency needs per-face translucency sorting
             sodium.performance.useTranslucentFaceSorting = false;

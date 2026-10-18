@@ -54,11 +54,14 @@ ivec3 unpackSectionChunk(ivec4 header) {
 }
 
 layout(std140, binding = 0) uniform SceneData {
-    // Projection * modelview, translated by the camera's offset inside its own section
+    // Projection * modelview, translated so geometry relative to the camera's section lands where the model-view expects it
     mat4 MVP;
+    // The section the eye is in
     ivec4 cameraChunk;
-    // Camera offset within its section, negated
+    // The eye's offset inside its section, negated
     vec4 subChunkOffset;
+    // The camera section's origin relative to the model-view's own origin (the render entity's feet on 1.12.2), what a pack program's gl_Vertex is measured from
+    vec4 renderOffset;
     vec4 fogColour;
 
     // This frame's visible region ids, stored right after this block in the same allocation
@@ -75,6 +78,8 @@ layout(std140, binding = 0) uniform SceneData {
     TERRAIN_ACCESS Vertex *terrainData;
     // Regions, sections, quads; only touched when a STATISTICS_* define is set
     uint32_t *statisticsBuffer;
+    // When each section was placed, in timeMs's clock, indexed like sectionData; what the chunk fade-in counts from
+    readonly restrict uint32_t *sectionLoadTimes;
 
     // Half the framebuffer size, so clip space maps to pixels with one multiply
     vec2 screenSize;
@@ -87,9 +92,18 @@ layout(std140, binding = 0) uniform SceneData {
     // Values of include/fog.glsl's FOG_SHAPE_* constants
     int fogShape;
 
+    // Milliseconds on the section store's clock, and one over the chunk fade-in duration (0 when sections appear at once)
+    uint32_t timeMs;
+    float chunkFadeInv;
+
     uint16_t regionCount;
     uint8_t frameId;
 };
+
+// How far a section has faded in, 0 to 1; terrain mixes towards the fog colour by what is left, as the raster path does
+float sectionFade(uint sectionId) {
+    return chunkFadeInv <= 0.0 ? 1.0 : clamp(float(timeMs - sectionLoadTimes[sectionId]) * chunkFadeInv, 0.0, 1.0);
+}
 
 // How much fog covers a point at a camera-relative position; viewDepth is clip w, the planar shape's distance
 float computeFog(vec3 relative, float viewDepth) {

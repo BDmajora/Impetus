@@ -56,6 +56,28 @@ class FrameworkTest {
         assertEquals(3, InteractionContext.SpecialKey.values().length);
     }
 
+    // A container over fixed children that remembers the child capturing the mouse
+    private static InteractableContainer container(Interactable... children) {
+        return new InteractableContainer() {
+            private Interactable captured;
+
+            @Override
+            public Stream<? extends Interactable> interactableChildren() {
+                return Stream.of(children);
+            }
+
+            @Override
+            public Interactable getCapturedChild() {
+                return captured;
+            }
+
+            @Override
+            public void setCapturedChild(Interactable child) {
+                captured = child;
+            }
+        };
+    }
+
     @Test
     void containersForwardToTheFirstChildThatHandles() {
         Interactable miss = Mockito.mock(Interactable.class);
@@ -66,17 +88,26 @@ class FrameworkTest {
         Mockito.when(hit.mouseDragged(Mockito.any(), Mockito.anyDouble(), Mockito.anyDouble(), Mockito.anyInt(), Mockito.anyDouble(), Mockito.anyDouble())).thenReturn(true);
         Mockito.when(hit.mouseScrolled(Mockito.any(), Mockito.anyDouble(), Mockito.anyDouble(), Mockito.anyDouble(), Mockito.anyDouble())).thenReturn(true);
         Mockito.when(hit.keyTyped(Mockito.anyChar(), Mockito.anyInt())).thenReturn(true);
-        InteractableContainer container = () -> Stream.of(miss, hit);
+        InteractableContainer container = container(miss, hit);
         FakeInteractionContext ctx = new FakeInteractionContext();
         assertTrue(container.isMouseOver(1, 1));
         assertTrue(container.mouseClicked(ctx, 1, 1, 0));
+        // The child that took the click keeps the drag even once the cursor leaves it
+        assertSame(hit, container.getCapturedChild());
+        Mockito.when(hit.isMouseOver(Mockito.anyDouble(), Mockito.anyDouble())).thenReturn(false);
+        assertTrue(container.mouseDragged(ctx, 50, 50, 0, 0, 0));
         assertTrue(container.mouseReleased(ctx, 1, 1, 0));
+        assertNull(container.getCapturedChild());
+        assertFalse(container.mouseDragged(ctx, 50, 50, 0, 0, 0));
+        Mockito.when(hit.isMouseOver(Mockito.anyDouble(), Mockito.anyDouble())).thenReturn(true);
         assertTrue(container.mouseDragged(ctx, 1, 1, 0, 0, 0));
+        assertTrue(container.mouseReleased(ctx, 1, 1, 0));
         assertTrue(container.mouseScrolled(ctx, 1, 1, 0, 1));
         assertTrue(container.keyTyped('a', 1));
-        InteractableContainer empty = Stream::empty;
+        InteractableContainer empty = container();
         assertFalse(empty.isMouseOver(1, 1));
         assertFalse(empty.mouseClicked(ctx, 1, 1, 0));
+        assertFalse(empty.mouseReleased(ctx, 1, 1, 0));
         assertFalse(empty.mouseDragged(ctx, 1, 1, 0, 0, 0));
         assertFalse(empty.mouseScrolled(ctx, 1, 1, 0, 0));
         Mockito.verify(miss).mouseClicked(ctx, 1, 1, 0);

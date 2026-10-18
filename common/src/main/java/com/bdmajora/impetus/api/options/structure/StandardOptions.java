@@ -20,12 +20,15 @@ public final class StandardOptions {
         public static final OptionIdentifier<Void> FILTERING = OptionIdentifier.create(IMPETUS_MOD_ID, "filtering");
         public static final OptionIdentifier<Void> FLUIDS = OptionIdentifier.create(IMPETUS_MOD_ID, "fluids");
         public static final OptionIdentifier<Void> MESH_TERRAIN = OptionIdentifier.create(IMPETUS_MOD_ID, "mesh_terrain");
+        public static final OptionIdentifier<Void> FLUIDLOGGING = OptionIdentifier.create(IMPETUS_MOD_ID, "fluidlogging");
     }
 
     public static class Pages {
         public static final OptionIdentifier<Void> GENERAL = OptionIdentifier.create(IMPETUS_MOD_ID, "general");
         public static final OptionIdentifier<Void> QUALITY = OptionIdentifier.create(IMPETUS_MOD_ID, "quality");
         public static final OptionIdentifier<Void> PERFORMANCE = OptionIdentifier.create(IMPETUS_MOD_ID, "performance");
+        public static final OptionIdentifier<Void> NVIDIUM = OptionIdentifier.create(IMPETUS_MOD_ID, "nvidium");
+        public static final OptionIdentifier<Void> FLUIDLOGGING = OptionIdentifier.create(IMPETUS_MOD_ID, "fluidlogging");
         public static final OptionIdentifier<Void> ADVANCED = OptionIdentifier.create(IMPETUS_MOD_ID, "advanced");
         public static final OptionIdentifier<Void> SHADERS = OptionIdentifier.create(IMPETUS_MOD_ID, "shaders");
     }
@@ -90,7 +93,6 @@ public final class StandardOptions {
         public static final OptionIdentifier<Void> MEMORY_TRACING = OptionIdentifier.create(IMPETUS_MOD_ID, "memory_tracing");
         public static final OptionIdentifier<Void> SHOW_TOASTS = OptionIdentifier.create(IMPETUS_MOD_ID, "show_toasts");
         public static final OptionIdentifier<Void> INCOMPATIBLE_PACK_WARNINGS = OptionIdentifier.create(IMPETUS_MOD_ID, "incompatible_pack_warnings");
-        public static final OptionIdentifier<Void> MESH_TERRAIN = OptionIdentifier.create(IMPETUS_MOD_ID, "mesh_terrain");
         public static final OptionIdentifier<Void> MESH_TEMPORAL_COHERENCE = OptionIdentifier.create(IMPETUS_MOD_ID, "mesh_temporal_coherence");
         public static final OptionIdentifier<Void> MESH_TRANSLUCENCY_SORTING = OptionIdentifier.create(IMPETUS_MOD_ID, "mesh_translucency_sorting");
         public static final OptionIdentifier<Void> MESH_AUTOMATIC_MEMORY = OptionIdentifier.create(IMPETUS_MOD_ID, "mesh_automatic_memory");

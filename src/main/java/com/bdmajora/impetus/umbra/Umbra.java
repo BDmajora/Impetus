@@ -2,6 +2,9 @@ package com.bdmajora.impetus.umbra;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import com.bdmajora.impetus.ImpetusVintage;
+import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions;
+import com.bdmajora.impetus.engine.impl.render.mesh.MeshShaderSupport;
 import com.bdmajora.impetus.umbra.config.UmbraConfig;
 import com.bdmajora.impetus.umbra.pipeline.UmbraPipeline;
 import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;
@@ -9,6 +12,7 @@ import com.bdmajora.impetus.umbra.shaderpack.ShaderPack;
 import com.bdmajora.impetus.umbra.shaderpack.ShaderPackLoader;
 import com.bdmajora.impetus.umbra.shaderpack.loading.ProgramId;
 import com.bdmajora.impetus.umbra.shaderpack.option.values.MutableOptionValues;
+import com.bdmajora.impetus.umbra.terrain.mesh.NvidiumPackPorter;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -20,6 +24,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import java.util.function.BooleanSupplier;
 
 // Entry point and state holder for the shader layer: the parsed ShaderPack, compiled UmbraPipeline and per-frame UmbraRenderingPipeline, each with its own lifetime; nothing here throws, every failure leaves shaders off
 public final class Umbra {
@@ -42,6 +47,14 @@ public final class Umbra {
     private static UmbraRenderingPipeline renderingPipeline;
     // Latched when construction failed for the current pack, so the attempt is not repeated and re-logged every frame
     private static boolean renderingPipelineFailed;
+
+    // Whether Nvidium is the Graphics API on a GPU that can run it, under which a pack loads from its Nvidium port; read live so switching the API can reload the pack
+    private static BooleanSupplier nvidiumTerrain = () -> ImpetusVintage.options().graphicsApi == ImpetusGameOptions.GraphicsApi.NVIDIUM
+            && MeshShaderSupport.isSupported();
+    // Whether the current pack was loaded for Nvidium, so an API switch that needs the other copy is noticed
+    private static boolean loadedForNvidium;
+    // Why the current pack's terrain cannot be drawn by Nvidium as far as porting goes (a failed port, or the programs it kept on OpenGL); empty when nothing was lost
+    private static String nvidiumPortNote = "";
 
     // The dimension last reported by onWorldChanged, so a pack loaded mid-game starts on the right program set
     private static int dimensionId;
@@ -84,9 +97,11 @@ public final class Umbra {
             return;
         }
 
-        Path packPath = config.getSelectedPackPath();
+        // Under Nvidium the pack loads from its port, made or refreshed here as needed; the options stay in the original's file either way, so both copies share them
         String name = config.getShaderPackName();
         Path configTxt = config.getShaderpacksDirectory().resolve(name + ".txt");
+        loadedForNvidium = nvidiumTerrain.getAsBoolean();
+        Path packPath = loadedForNvidium ? nvidiumPort(config.getSelectedPackPath()) : config.getSelectedPackPath();
 
         // Load the persisted changed option values, layer the queued in-game changes on top, then apply.
         Map<String, String> changedConfigs = readConfigProperties(configTxt);
@@ -310,6 +325,44 @@ public final class Umbra {
     // Every pack found under shaderpacks/, for the selection screen
     public static List<String> listAvailablePacks() {
         return config == null ? java.util.Collections.emptyList() : config.listShaderpacks();
+    }
+
+    // The selected pack's Nvidium port in nvidium_shaderpacks/, written the first time the pack loads under Nvidium and again whenever the pack or the port format has changed since; the original when it is not there to port or porting fails, which leaves its terrain on OpenGL
+    private static Path nvidiumPort(Path original) {
+        nvidiumPortNote = "";
+        if (!Files.exists(original)) {
+            return original;
+        }
+        Path target = config.portPath(config.getShaderPackName());
+        try {
+            Files.createDirectories(target.getParent());
+            long start = System.nanoTime();
+            NvidiumPackPorter.Result result = NvidiumPackPorter.ensure(original, target);
+            if (!result.reused()) {
+                LOGGER.info("[Umbra] Ported {} for Nvidium in {} ms: {} program(s){}", config.getShaderPackName(), (System.nanoTime() - start) / 1_000_000L,
+                        result.ported().size(), result.skipped().isEmpty() ? "" : ", kept on OpenGL: " + String.join("; ", result.skipped()));
+            }
+            nvidiumPortNote = String.join("; ", result.skipped());
+            return target;
+        } catch (IOException | RuntimeException e) {
+            nvidiumPortNote = "could not port the pack: " + e.getMessage();
+            LOGGER.warn("[Umbra] Could not port {} for Nvidium; its terrain stays on OpenGL", config.getShaderPackName(), e);
+            return original;
+        }
+    }
+
+    // What porting the current pack for Nvidium lost, for the F3 overlay: why the port failed, or the programs it kept on OpenGL and why; empty when nothing was
+    public static String getNvidiumPortNote() {
+        return nvidiumPortNote;
+    }
+
+    // Reloads the pack when the Graphics API now wants the other copy of it (the port or the original); true when it did, so the caller rebuilds the renderers
+    public static synchronized boolean reloadIfTerrainBackendChanged() {
+        if (config == null || !config.isShaderPackEnabled() || loadedForNvidium == nvidiumTerrain.getAsBoolean()) {
+            return false;
+        }
+        loadCurrentShaderpack();
+        return true;
     }
 
     // Selects a pack by name (or NO_PACK to disable), persists to optionsshaders.txt and re-parses; does NO GL work so it is safe from the GUI thread, and updatePipeline rebuilds next frame

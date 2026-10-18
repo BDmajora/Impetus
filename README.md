@@ -43,13 +43,13 @@ Impetus ships as a single jar containing several subsystems, each with its own m
 
 | Module | Purpose |
 | :----- | :------ |
-| `impetus` | The core rendering engine and chunk pipeline, with GL 4.3 multi-draw indirect terrain and, on NVIDIA Turing and newer, a mesh-shader terrain backend after Nvidium |
+| `impetus` | The core rendering engine and chunk pipeline, with GL 4.3 multi-draw indirect terrain and, on NVIDIA Turing and newer, a mesh-shader terrain backend after Nvidium, picked with the Graphics API option (OpenGL or Nvidium), which also runs shader packs: a pack loaded under Nvidium is ported automatically into `nvidium_shaderpacks/` with mesh-shader terrain, water and shadow programs, and re-ported whenever the pack changes |
 | `umbra` | The bundled shader pipeline, descended from Iris / Oculus |
 | `fulgor` | Lighting engine, superseding Phosphor and Alfheim: a deferred Phosphor-style engine with parallel light passes in the manner of ScalableLux, and a Starlight-style asynchronous engine after Pulsar that lights chunks on worker threads and persists their light |
 | `coarctatio` | Memory and allocation reductions across vanilla systems, including FerriteCore's block-state and model deduplication techniques, lazy item capabilities, resource lookup caches, a between-launch mod scan cache, parallel texture decoding and model reading, a primitive ore dictionary, compacted remapper caches and opt-in on-demand model loading with a pack-scan atlas |
 | `equilibrium` | Chunk and world access caching, world generation fast paths, and the server-side tick optimizations: advancement triggers, crafting and furnace caches, ghost-chunk guards, spawn preload skipping and the opt-in tick budget |
 | `dynamiclights` | Dynamic light sources for held and dropped items |
-| `extras` | Optional feature toggles: the Render Budget and GPU Booster pair for weaker machines, parallel server ticking, parallel particles, baked block entities, ray-cast occlusion culling, HUD caching, text batching, network flush consolidation, wire limits and thread scheduling |
+| `extras` | Optional feature toggles: the Render Budget and GPU Booster pair for weaker machines, parallel server ticking, parallel particles, baked block entities, ray-cast occlusion culling, HUD caching, text batching, network flush consolidation, wire limits, thread scheduling and a hold-to-zoom key |
 | `linuxextras` | Linux desktop fixes: on a Wayland session the window runs natively instead of through XWayland, goes fullscreen on the primary monitor (KDE's display order, or outputs named in `impetus-linuxextras.cfg`) rather than the leftmost one, gets its icon through `xdg-toplevel-icon-v1`, and opens links and folders with `xdg-open` instead of offering only Copy to Clipboard |
 
 Impetus suppresses the mixin configurations of superseded lighting mods (Phosphor, Alfheim) when it detects
@@ -165,6 +165,7 @@ independent, original implementations.
 * **fxmorin**, for More Culling (LGPL-3), the model for item frame LOD and leaf face culling, and **isXander** for Cull Less Leaves (MIT)
 * **jaredlll08**, for Clumps (MIT), the model for experience orb merging
 * **decce6** for Gnetum and **Moulberry** for HUDCaching, the family the HUD cache belongs to
+* **LogicalGeekBoy** and the Logical Zoom contributors, for Logical Zoom (MIT), ported as the Extras page's Zoom group with its defaults
 * **Asek3**, for developing Rubidium, the original port of Sodium 0.5 to Forge
 * **CelestialAbyss**, for developing the Embeddium logo, and **input-Here** for visual touchups
 * **Ven ([@basdxz](https://github.com/basdxz))**, for help with translucency sorting, suggesting the general approach for async occlusion culling, and other suggestions during development

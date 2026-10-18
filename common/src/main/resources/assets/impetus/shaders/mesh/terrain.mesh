@@ -7,8 +7,9 @@
 
 #import <impetus:mesh/scene.glsl>
 #import <impetus:mesh/vertex_format.glsl>
+#import <impetus:mesh/cull.glsl>
 
-// Quads to triangles, one thread per quad and sixteen per meshlet; sub-pixel triangles are dropped and a subgroup prefix sum places the survivors without atomics
+// Quads to triangles, one thread per quad and sixteen per meshlet; triangles off screen or between pixel centres are dropped and a subgroup prefix sum places the survivors without atomics
 layout(local_size_x = 16) in;
 layout(triangles, max_vertices = 64, max_primitives = 32) out;
 
@@ -26,32 +27,20 @@ taskNV in Task {
     uvec4 rangeEndB;
     uvec4 rangeStartA;
     uvec4 rangeStartB;
+    float fade;
 };
 
-// This thread's quad in the arena, walking the ranges the task shader kept; uniform across the workgroup in practice
-uint resolveQuad() {
-    uint index = gl_GlobalInvocationID.x;
+#import <impetus:mesh/quad_ranges.glsl>
 
-    if (index < rangeEndA.x) { return rangeStartA.x + index + baseOffset; }
-    if (index < rangeEndA.y) { return rangeStartA.y + (index - rangeEndA.x) + baseOffset; }
-    if (index < rangeEndA.z) { return rangeStartA.z + (index - rangeEndA.y) + baseOffset; }
-    if (index < rangeEndA.w) { return rangeStartA.w + (index - rangeEndA.z) + baseOffset; }
-    if (index < rangeEndB.x) { return rangeStartB.x + (index - rangeEndA.w) + baseOffset; }
-    if (index < rangeEndB.y) { return rangeStartB.y + (index - rangeEndB.x) + baseOffset; }
-    if (index < rangeEndB.z) { return rangeStartB.z + (index - rangeEndB.y) + baseOffset; }
-    if (index < rangeEndB.w) { return rangeStartB.w + (index - rangeEndB.z) + baseOffset; }
-
-    return uint(-1);
-}
-
-// Camera-relative position: the MVP already carries the in-section offset, so it is added back only for fog distance
+// Position relative to the camera's section, which the MVP maps to clip space
 vec3 relativePosition(Vertex v) {
     return decodeVertexPosition(v) + origin;
 }
 
 void emit(uint slot, Vertex v, vec4 clip) {
     gl_MeshVerticesNV[slot].gl_Position = clip;
-    OUT[slot].fogAmount = computeFog(relativePosition(v) + subChunkOffset.xyz, clip.w);
+    // A section still fading in shows that much more of the fog colour
+    OUT[slot].fogAmount = 1.0 - fade * (1.0 - computeFog(relativePosition(v) + subChunkOffset.xyz, clip.w));
 }
 
 void main() {
@@ -59,7 +48,7 @@ void main() {
         gl_PrimitiveCountNV = 0;
     }
 
-    uint quad = resolveQuad();
+    uint quad = resolveQuad(gl_GlobalInvocationID.x);
 
     if (quad == uint(-1)) {
         return;
@@ -76,23 +65,8 @@ void main() {
     vec4 p2 = MVP * vec4(relativePosition(v2), 1.0);
     vec4 p3 = MVP * vec4(relativePosition(v3), 1.0);
 
-    bool drawT0;
-    bool drawT1;
-
-    {
-        // A triangle whose screen bounds round to one pixel in either axis covers no pixel centre, so it is dropped here instead of by the rasterizer
-        vec2 shared0 = ((p0.xy / p0.w) + 1.0) * screenSize;
-        vec2 shared2 = ((p2.xy / p2.w) + 1.0) * screenSize;
-
-        vec2 sharedMin = min(shared0, shared2);
-        vec2 sharedMax = max(shared0, shared2);
-
-        vec2 point = ((p1.xy / p1.w) + 1.0) * screenSize;
-        drawT0 = all(notEqual(round(min(sharedMin, point)), round(max(sharedMax, point))));
-
-        point = ((p3.xy / p3.w) + 1.0) * screenSize;
-        drawT1 = all(notEqual(round(min(sharedMin, point)), round(max(sharedMax, point))));
-    }
+    bool drawT0 = umbra_triangleVisible(p0, p1, p2, screenSize);
+    bool drawT1 = umbra_triangleVisible(p2, p3, p0, screenSize);
 
     if (!(drawT0 || drawT1)) {
         return;

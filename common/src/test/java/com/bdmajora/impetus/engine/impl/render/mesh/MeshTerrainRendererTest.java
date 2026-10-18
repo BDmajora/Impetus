@@ -12,6 +12,8 @@ import com.bdmajora.impetus.engine.impl.render.chunk.shader.ChunkFogMode;
 import com.bdmajora.impetus.engine.impl.render.mesh.region.MeshStoresTest;
 import com.bdmajora.impetus.engine.impl.render.mesh.region.SectionGeometry;
 import com.bdmajora.impetus.lwjgl.GLExtension;
+import com.bdmajora.testing.Passes;
+import com.bdmajora.testing.RecordingShading;
 import com.bdmajora.testing.Sections;
 import com.bdmajora.testing.Statics;
 import com.bdmajora.testing.TestFogService;
@@ -87,6 +89,23 @@ class MeshTerrainRendererTest {
         assertEquals(0, renderer.getPipeline().getSections().getRegions().getRegionCount());
         renderer.delete();
         assertFalse(MeshTerrainRenderer.isActive());
+    }
+
+    @Test
+    void shaderPackShadingRidesThroughToThePipeline() {
+        RecordingShading shading = new RecordingShading();
+        MeshTerrainRenderer renderer = new MeshTerrainRenderer(manual(4096, 0, 8), 4, shading);
+        renderer.upload(0, 0, 0, geometry());
+
+        // The shadow pass draws first and leaves the frame open for the terrain that follows
+        renderer.renderShadow(Sections.viewport(8, 8, 8), MATRICES, Passes.SOLID, 8, 8, 8, 2048, 2048);
+        renderer.renderShadowTranslucent(Passes.TRANSLUCENT);
+        renderer.renderOpaque(Sections.viewport(8, 8, 8), MATRICES, MeshFog.NONE, Passes.SOLID, 8, 8, 8, 640, 480);
+        renderer.renderTranslucent(Passes.TRANSLUCENT);
+        assertEquals(List.of("opaque SHADOW", "finish", "translucent SHADOW", "finish", "opaque MAIN", "finish", "translucent MAIN", "finish"),
+                shading.calls);
+        renderer.delete();
+        assertEquals("delete", shading.calls.getLast());
     }
 
     @Test
@@ -187,7 +206,7 @@ class MeshTerrainRendererTest {
         Statics.set(OsKind.class, "CURRENT", OsKind.WINDOWS);
         var automatic = new MeshTerrainConfig(false, MeshTranslucencySorting.NONE, MeshStatistics.NONE, true, 2048, 0, 8);
         AtomicLong clock = new AtomicLong();
-        MeshTerrainRenderer renderer = new MeshTerrainRenderer(automatic, 4, clock::get);
+        MeshTerrainRenderer renderer = new MeshTerrainRenderer(automatic, 4, null, clock::get);
         assertEquals(7168L << 20, renderer.getBudgetBytes());
 
         Mockito.when(TestGl.gl().glGetInteger(MeshTerrainRenderer.GPU_MEMORY_AVAILABLE_NVX)).thenReturn(4 * 1024 * 1024);

@@ -25,24 +25,29 @@ class ChunkShadersTest {
         return GlProgram.builder("test").link(ctx -> ctx);
     }
 
+    private static final ChunkShaderEnvironment ENVIRONMENT = new ChunkShaderEnvironment(new TestFogService());
+
     @Test
     void fogModesMapFromGlAndUploadTheirUniforms() {
         assertEquals(ChunkFogMode.NONE, ChunkFogMode.fromGLMode(0));
-        assertEquals(ChunkFogMode.EXP2, ChunkFogMode.fromGLMode(0x800));
+        assertEquals(ChunkFogMode.EXP, ChunkFogMode.fromGLMode(0x800));
         assertEquals(ChunkFogMode.EXP2, ChunkFogMode.fromGLMode(0x801));
         assertEquals(ChunkFogMode.SMOOTH, ChunkFogMode.fromGLMode(0x2601));
         assertThrows(UnsupportedOperationException.class, () -> ChunkFogMode.fromGLMode(99));
         assertEquals(List.of("USE_FOG", "USE_FOG_EXP2"), ChunkFogMode.EXP2.getDefines());
+        assertEquals(List.of("USE_FOG", "USE_FOG_EXP"), ChunkFogMode.EXP.getDefines());
         ShaderBindingContext context = context();
-        ChunkFogMode.NONE.create(context).setup();
-        ChunkFogMode.EXP2.create(context).setup();
+        // Each component reads the fog of the renderer that built it
+        ChunkFogMode.NONE.create(context, ENVIRONMENT).setup();
+        ChunkFogMode.EXP.create(context, ENVIRONMENT).setup();
         Mockito.verify(TestGl.gl()).glUniform1f(1, TestFogService.density);
-        ChunkFogMode.SMOOTH.create(context).setup();
+        ChunkFogMode.EXP2.create(context, ENVIRONMENT).setup();
+        Mockito.verify(TestGl.gl(), Mockito.times(2)).glUniform1f(1, TestFogService.density);
+        ChunkFogMode.SMOOTH.create(context, ENVIRONMENT).setup();
         Mockito.verify(TestGl.gl()).glUniform1i(1, TestFogService.shape);
         Mockito.verify(TestGl.gl()).glUniform1f(1, TestFogService.end);
-        assertSame(TestFogService.mode, ChunkShaderFogComponent.FOG_SERVICE.getFogMode());
-        assertEquals(1f, ChunkShaderFogComponent.FOG_SERVICE.getFogCutoff());
-        ChunkShaderComponent.Factory<ChunkShaderFogComponent> bare = ctx -> new ChunkShaderFogComponent.None(ctx);
+        assertSame(ENVIRONMENT.fogService(), ENVIRONMENT.fogService());
+        ChunkShaderComponent.Factory<ChunkShaderFogComponent> bare = ChunkShaderFogComponent.None::new;
         assertTrue(bare.getDefines().isEmpty());
     }
 
@@ -67,7 +72,7 @@ class ChunkShadersTest {
     @Test
     void defaultInterfaceUploadsMatricesOffsetsTexturesAndAges() {
         ShaderBindingContext context = context();
-        DefaultChunkShaderInterface shader = new DefaultChunkShaderInterface(context, new ChunkShaderOptions(List.of(ChunkFogMode.EXP2), Passes.CUTOUT));
+        DefaultChunkShaderInterface shader = new DefaultChunkShaderInterface(context, new ChunkShaderOptions(List.of(ChunkFogMode.EXP2), Passes.CUTOUT), ENVIRONMENT);
         shader.setupState(Passes.CUTOUT);
         assertEquals(GlPrimitiveType.TRIANGLES, shader.getPrimitiveType());
         shader.setProjectionMatrix(new Matrix4f());
@@ -85,7 +90,7 @@ class ChunkShadersTest {
         TerrainRenderPass unlit = TerrainRenderPass.builder().name("unlit").pipelineState(TerrainRenderPass.PipelineState.DEFAULT)
                 .hasNoLightmap(true).vertexType(ChunkMeshFormats.COMPACT).primitiveType(QuadPrimitiveType.DIRECT).build();
         Mockito.when(TestGl.gl().glGetUniformLocation(Mockito.anyInt(), Mockito.eq("impetus_ChunkAges"))).thenReturn(-1);
-        DefaultChunkShaderInterface plain = new DefaultChunkShaderInterface(context, new ChunkShaderOptions(List.of(), unlit));
+        DefaultChunkShaderInterface plain = new DefaultChunkShaderInterface(context, new ChunkShaderOptions(List.of(), unlit), ENVIRONMENT);
         plain.setTextureSlot(ChunkShaderTextureSlot.LIGHT, 5);
         plain.setSectionAges(1, new long[]{0});
         Mockito.verify(TestGl.gl(), Mockito.never()).glUniform1i(1, 5);

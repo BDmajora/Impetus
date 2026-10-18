@@ -585,8 +585,9 @@ class UmbraRenderingPipelineTest {
             Viewport view = UmbraShadowRenderer.playerViewport(new Vector3d(100.5, 64, 100.5));
             assertEquals(6, view.getChunkCoord().x());
             assertEquals(4, view.getChunkCoord().y());
-            assertTrue(view.isBoxVisible(100, 64, 100, 101, 65, 101));
-            assertFalse(view.isBoxVisible(110, 64, 100, 111, 65, 101));
+            // Doubles pick the min/max overload; six ints would bind to the origin-and-half-size one
+            assertTrue(view.isBoxVisible(100.0, 64.0, 100.0, 101.0, 65.0, 101.0));
+            assertFalse(view.isBoxVisible(110.0, 64.0, 100.0, 111.0, 65.0, 101.0));
         } finally {
             modelView.put(0, saved);
         }

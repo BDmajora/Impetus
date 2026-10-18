@@ -1,0 +1,71 @@
+#version 460
+#extension GL_ARB_shading_language_include : enable
+#extension GL_NV_mesh_shader : require
+#extension GL_NV_gpu_shader5 : require
+
+#import <impetus:mesh/scene.glsl>
+#import <impetus:mesh/pack/box.glsl>
+
+// Opaque terrain for an Nvidium-ported shader pack's programs: one workgroup per section, enough meshlets of UMBRA_MESH_QUADS quads to cover the facing groups it keeps; one program serves the main, temporal and shadow draws, told apart by a uniform
+layout(local_size_x = 1) in;
+
+// 0 the main draw of last frame's visible sections, 1 the temporal draw of what turned visible this frame, 2 the shadow map
+uniform int umbra_TaskMode;
+// Whether facing groups the eye cannot see may be skipped; off where the pack draws the layer's back faces, and never used for the shadow map
+uniform bool umbra_CullFacing;
+
+taskNV out UmbraTask {
+    vec3 origin;
+    uint baseOffset;
+    uint quadCount;
+    uvec4 rangeEndA;
+    uvec4 rangeEndB;
+    uvec4 rangeStartA;
+    uvec4 rangeStartB;
+    // Milliseconds since the section was placed, for the pack's mc_chunkFade
+    float ageMs;
+};
+
+#import <impetus:mesh/task_ranges.glsl>
+
+// Visible last frame, turned visible this frame, or, for the shadow map, a live section inside the shadow frustum
+bool shouldDraw(uint sectionId, ivec4 header, ivec3 chunk) {
+    uint8_t history = sectionVisibility[sectionId];
+
+    if (umbra_TaskMode == 0) {
+        return (history & uint8_t(1)) != uint8_t(0);
+    }
+    if (umbra_TaskMode == 1) {
+        return (history & uint8_t(3)) == uint8_t(1);
+    }
+    return !sectionEmpty(header) && (header.y & (1 << 17)) == 0 && umbra_sectionInFrustum(header, chunk);
+}
+
+void main() {
+    uint sectionId = gl_WorkGroupID.x;
+    ivec4 header = sectionData[sectionId].header;
+    ivec3 chunk = unpackSectionChunk(header) - cameraChunk.xyz;
+
+    if (!shouldDraw(sectionId, header, chunk)) {
+        gl_TaskCountNV = 0;
+        return;
+    }
+
+    origin = vec3(chunk << 4);
+    baseOffset = uint(header.w);
+    ageMs = float(timeMs - sectionLoadTimes[sectionId]);
+
+    selectRanges(header, chunk, uvec4(sectionData[sectionId].renderRanges), umbra_CullFacing && umbra_TaskMode != 2);
+    gl_TaskCountNV = (quadCount + UMBRA_MESH_QUADS - 1u) / UMBRA_MESH_QUADS;
+
+#if defined(STATISTICS_SECTIONS)
+    if (umbra_TaskMode == 0) {
+        atomicAdd(statisticsBuffer + 1, 1u);
+    }
+#endif
+#if defined(STATISTICS_QUADS)
+    if (umbra_TaskMode == 0) {
+        atomicAdd(statisticsBuffer + 2, quadCount);
+    }
+#endif
+}

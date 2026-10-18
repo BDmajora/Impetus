@@ -11,24 +11,36 @@ import java.util.Locale;
 import java.util.Properties;
 import java.util.stream.Stream;
 
-// Backed by OptiFine-style optionsshaders.txt plus shaderpacks/; the game directory is injected rather than read from Minecraft so this stays Minecraft-free and testable
+// Backed by OptiFine-style optionsshaders.txt plus shaderpacks/, with the Nvidium ports Umbra makes kept in nvidium_shaderpacks/; the game directory is injected rather than read from Minecraft so this stays Minecraft-free and testable
 public final class UmbraConfig {
     // OptiFine's sentinel value for "shaders disabled"; empty name also means this
     public static final String NO_PACK = "(internal)";
 
     private final Path shaderpacksDirectory;
+    private final Path nvidiumShaderpacksDirectory;
     private final Path propertiesFile;
 
     private String shaderPackName = NO_PACK;
 
     public UmbraConfig(Path gameDirectory) {
         this.shaderpacksDirectory = gameDirectory.resolve("shaderpacks");
+        this.nvidiumShaderpacksDirectory = gameDirectory.resolve("nvidium_shaderpacks");
         this.propertiesFile = gameDirectory.resolve("optionsshaders.txt");
     }
 
     // The shaderpacks folder under the game directory, created on first access
     public Path getShaderpacksDirectory() {
         return this.shaderpacksDirectory;
+    }
+
+    // The folder name a pack's port takes: the pack's own name without .zip, since a port is always a folder
+    public static String portName(String packName) {
+        return packName.toLowerCase(Locale.ROOT).endsWith(".zip") ? packName.substring(0, packName.length() - 4) : packName;
+    }
+
+    // Where a pack's Nvidium port goes, a complete pack folder in nvidium_shaderpacks/
+    public Path portPath(String packName) {
+        return this.nvidiumShaderpacksDirectory.resolve(portName(packName));
     }
 
     // Returns the currently selected pack name (file or folder name under shaderpacks/)

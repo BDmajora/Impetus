@@ -1,6 +1,7 @@
 package com.bdmajora.impetus.engine.impl.render.mesh;
 
 import com.bdmajora.impetus.engine.impl.render.chunk.ChunkRenderMatrices;
+import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 import com.bdmajora.impetus.engine.impl.render.mesh.region.MeshRegionStore;
 import com.bdmajora.impetus.engine.impl.render.mesh.region.SectionGeometry;
 import com.bdmajora.impetus.engine.impl.render.mesh.util.QuadArena;
@@ -8,6 +9,7 @@ import com.bdmajora.impetus.engine.impl.render.viewport.Viewport;
 import com.bdmajora.impetus.lwjgl.GLExtension;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.function.LongSupplier;
@@ -57,10 +59,15 @@ public class MeshTerrainRenderer {
     private int cameraSectionX, cameraSectionY, cameraSectionZ;
 
     public MeshTerrainRenderer(MeshTerrainConfig config, int verticalRegions) {
-        this(config, verticalRegions, System::nanoTime);
+        this(config, verticalRegions, null, System::nanoTime);
     }
 
-    MeshTerrainRenderer(MeshTerrainConfig config, int verticalRegions, LongSupplier clock) {
+    // An Nvidium-ported shader pack's programs, or null for Nvidium's own; the renderer owns them from here on
+    public MeshTerrainRenderer(MeshTerrainConfig config, int verticalRegions, @Nullable MeshTerrainShading shading) {
+        this(config, verticalRegions, shading, System::nanoTime);
+    }
+
+    MeshTerrainRenderer(MeshTerrainConfig config, int verticalRegions, @Nullable MeshTerrainShading shading, LongSupplier clock) {
         this.config = config;
         this.clock = clock;
         this.sparse = MeshShaderSupport.supportsSparseGeometry();
@@ -68,11 +75,11 @@ public class MeshTerrainRenderer {
         this.lastBudgetRefresh = clock.getAsLong();
 
         int maxRegions = computeMaxRegions(config, verticalRegions);
-        this.pipeline = new MeshRenderPipeline(config, maxRegions, UPLOAD_BUFFER_BYTES, DOWNLOAD_BUFFER_BYTES, this.budgetBytes);
+        this.pipeline = new MeshRenderPipeline(config, maxRegions, UPLOAD_BUFFER_BYTES, DOWNLOAD_BUFFER_BYTES, this.budgetBytes, shading);
 
         activeConfig = config;
-        LOGGER.info("Mesh-shader terrain on: {} MB {} geometry budget, {} regions", this.budgetBytes >> 20,
-                this.sparse ? "sparse" : "dense", maxRegions);
+        LOGGER.info("Mesh-shader terrain on: {} MB {} geometry budget, {} regions{}", this.budgetBytes >> 20,
+                this.sparse ? "sparse" : "dense", maxRegions, shading != null ? ", shader pack programs" : "");
     }
 
     // Whether a mesh backend is live, so build workers pack their output for it
@@ -125,15 +132,22 @@ public class MeshTerrainRenderer {
     // The whole opaque frame; later opaque passes of the same frame have nothing left to draw
     public void renderOpaque(Viewport viewport, ChunkRenderMatrices matrices, MeshFog fog,
                              double cameraX, double cameraY, double cameraZ, int screenWidth, int screenHeight) {
+        this.renderOpaque(viewport, matrices, fog, null, cameraX, cameraY, cameraZ, screenWidth, screenHeight);
+    }
+
+    // The same for a pass whose state shader pack programs apply; the camera is the origin the model-view is relative to, and the eye is recovered from the matrix
+    public void renderOpaque(Viewport viewport, ChunkRenderMatrices matrices, MeshFog fog, @Nullable TerrainRenderPass pass,
+                             double cameraX, double cameraY, double cameraZ, int screenWidth, int screenHeight) {
         if (this.frameOpen) {
             this.pipeline.endFrame();
         }
 
-        this.cameraSectionX = (int) Math.floor(cameraX) >> 4;
-        this.cameraSectionY = (int) Math.floor(cameraY) >> 4;
-        this.cameraSectionZ = (int) Math.floor(cameraZ) >> 4;
+        MeshCamera camera = MeshCamera.of(matrices, cameraX, cameraY, cameraZ);
+        this.cameraSectionX = camera.sectionX();
+        this.cameraSectionY = camera.sectionY();
+        this.cameraSectionZ = camera.sectionZ();
 
-        this.pipeline.renderFrame(viewport, matrices, fog, cameraX, cameraY, cameraZ, screenWidth, screenHeight);
+        this.pipeline.renderFrame(viewport, matrices, fog, camera, screenWidth, screenHeight, pass);
         this.frameOpen = true;
 
         enforceBudget();
@@ -142,9 +156,25 @@ public class MeshTerrainRenderer {
 
     // Translucent terrain, then the frame's readbacks and uploads are retired
     public void renderTranslucent() {
-        this.pipeline.renderTranslucent();
+        this.renderTranslucent(null);
+    }
+
+    // The same for a pass whose state shader pack programs apply
+    public void renderTranslucent(@Nullable TerrainRenderPass pass) {
+        this.pipeline.renderTranslucent(pass);
         this.pipeline.endFrame();
         this.frameOpen = false;
+    }
+
+    // The shadow map's opaque terrain from the light's frustum; the shadow pass precedes the frame's terrain and its uploads retire with that frame
+    public void renderShadow(Viewport viewport, ChunkRenderMatrices matrices, @Nullable TerrainRenderPass pass,
+                             double cameraX, double cameraY, double cameraZ, int width, int height) {
+        this.pipeline.renderShadow(viewport, matrices, MeshCamera.at(cameraX, cameraY, cameraZ), pass, width, height);
+    }
+
+    // The shadow map's translucent terrain over the regions the opaque shadow draw chose
+    public void renderShadowTranslucent(@Nullable TerrainRenderPass pass) {
+        this.pipeline.renderShadowTranslucent(pass);
     }
 
     // F3 lines

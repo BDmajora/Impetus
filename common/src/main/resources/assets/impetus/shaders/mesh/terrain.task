@@ -21,64 +21,11 @@ taskNV out Task {
     uvec4 rangeEndB;
     uvec4 rangeStartA;
     uvec4 rangeStartB;
+    // How far the section has faded in
+    float fade;
 };
 
-void appendRange(inout uint slot, inout uint runningIndex, uint offset, uint count) {
-    uint id = slot++;
-
-    if (id < 4u) {
-        rangeEndA[id] = runningIndex + count;
-        rangeStartA[id] = offset;
-    } else {
-        rangeEndB[id - 4u] = runningIndex + count;
-        rangeStartB[id - 4u] = offset;
-    }
-
-    runningIndex += count;
-}
-
-// The ranges are counts accumulated here into offsets, so a section can hold more quads than a 16-bit offset reaches
-void selectRanges(ivec3 relativeChunk, uvec4 ranges) {
-    uint slot = 0u;
-    uint runningIndex = 0u;
-
-    rangeEndA = uvec4(0);
-    rangeEndB = uvec4(0);
-
-    // The opaque groups start after the translucent quads
-    uint cursor = (ranges.w >> 16) & 0xFFFFu;
-
-    // A section level with the camera on an axis keeps both of its faces on that axis, hence <= and >=
-    uint count = ranges.x & 0xFFFFu;
-    if (relativeChunk.x <= 0 && count > 0u) { appendRange(slot, runningIndex, cursor, count); }
-    cursor += count;
-
-    count = (ranges.x >> 16) & 0xFFFFu;
-    if (relativeChunk.y <= 0 && count > 0u) { appendRange(slot, runningIndex, cursor, count); }
-    cursor += count;
-
-    count = ranges.y & 0xFFFFu;
-    if (relativeChunk.z <= 0 && count > 0u) { appendRange(slot, runningIndex, cursor, count); }
-    cursor += count;
-
-    count = (ranges.y >> 16) & 0xFFFFu;
-    if (relativeChunk.x >= 0 && count > 0u) { appendRange(slot, runningIndex, cursor, count); }
-    cursor += count;
-
-    count = ranges.z & 0xFFFFu;
-    if (relativeChunk.y >= 0 && count > 0u) { appendRange(slot, runningIndex, cursor, count); }
-    cursor += count;
-
-    count = (ranges.z >> 16) & 0xFFFFu;
-    if (relativeChunk.z >= 0 && count > 0u) { appendRange(slot, runningIndex, cursor, count); }
-    cursor += count;
-
-    // Unassigned quads have no single facing, so they always draw
-    appendRange(slot, runningIndex, cursor, ranges.w & 0xFFFFu);
-
-    quadCount = runningIndex;
-    gl_TaskCountNV = (runningIndex + MESH_WORKLOAD - 1u) / MESH_WORKLOAD;
-}
+#import <impetus:mesh/task_ranges.glsl>
 
 // The main pass draws whatever was visible last frame; the temporal pass draws only what turned visible this frame (history bits 01)
 bool shouldDraw(uint sectionId) {
@@ -103,8 +50,10 @@ void main() {
 
     origin = vec3(chunk << 4);
     baseOffset = uint(header.w);
+    fade = sectionFade(sectionId);
 
-    selectRanges(chunk, uvec4(sectionData[sectionId].renderRanges));
+    selectRanges(header, chunk, uvec4(sectionData[sectionId].renderRanges), true);
+    gl_TaskCountNV = (quadCount + MESH_WORKLOAD - 1u) / MESH_WORKLOAD;
 
     // The temporal pass redraws sections the main pass already counted
 #if defined(STATISTICS_SECTIONS) && !defined(TEMPORAL)

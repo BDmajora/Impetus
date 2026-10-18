@@ -151,8 +151,17 @@ class ControlsTest {
         assertEquals(0, option.getValue());
         assertTrue(element.mouseDragged(ctx, 150, 10, 0, 0, 0));
         assertEquals(6, option.getValue());
+        // A click beside the track does not grab it, so no drag after it moves the value
         assertTrue(element.mouseClicked(ctx, 5, 10, 0));
         assertFalse(element.mouseDragged(ctx, 5, 10, 0, 0, 0));
+        assertFalse(element.mouseDragged(ctx, 120, 10, 0, 0, 0));
+        assertEquals(6, option.getValue());
+        // A held slider keeps following the cursor once it leaves the track, clamped to the ends
+        assertTrue(element.mouseClicked(ctx, 150, 10, 0));
+        assertTrue(element.mouseDragged(ctx, 500, 10, 0, 0, 0));
+        assertEquals(10, option.getValue());
+        FakeDrawContext held = new FakeDrawContext();
+        element.render(held, 500, 500, 0f);
         assertTrue(element.mouseDragged(ctx, 150, 10, 0, 0, 0));
         assertEquals(6, option.getValue());
         assertFalse(element.mouseClicked(ctx, 5, 10, 1));

@@ -124,7 +124,9 @@
     "network.NetHandlerPlayClientRetireMixin",
     "loading.ScreenShotHelperMixin",
     "atlas.MinecraftTextureSizeMixin",
-    "atlas.SplashProgressTextureSizeMixin"
+    "atlas.SplashProgressTextureSizeMixin",
+    "zoom.EntityRendererZoomMixin",
+    "zoom.ItemRendererZoomMixin"
   ],
   "injectors": {
     "defaultRequire": 1

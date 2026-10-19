@@ -1,6 +1,7 @@
 package com.bdmajora.impetus.impl.gui.overlay;
 
 import com.bdmajora.impetus.ImpetusVintage;
+import com.bdmajora.impetus.engine.impl.gui.theme.DefaultColors;
 import com.bdmajora.impetus.engine.impl.notification.ImpetusNotification;
 import com.bdmajora.impetus.engine.impl.notification.ImpetusNotifications;
 import net.minecraft.client.Minecraft;
@@ -56,7 +57,7 @@ public final class ImpetusToastRenderer {
     // Bar colour per severity
     private static int accentColor(ImpetusNotification.Level level) {
         return switch (level) {
-            case INFO -> 0xFF00CBCB;
+            case INFO -> DefaultColors.ELEMENT_ACTIVATED;
             case WARNING -> 0xFFFFB86C;
             case ERROR -> 0xFFFF5555;
         };

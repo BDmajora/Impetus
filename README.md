@@ -129,6 +129,25 @@ uniforms are live, the `DISTANT_HORIZONS` and `DH_BLOCK_*` defines are set, and 
 1.12.2 Cleanroom branch registers an Impetus accessor); without it DH renders its LODs with its own shaders
 in front of the pack.
 
+## For mod developers
+
+### Accent colour in the video settings screen
+
+Mods that add option pages to the Impetus video settings screen get an accent colour for their tab and
+controls. It is picked from a fixed palette unless the mod registers its own:
+
+```java
+ConfigThemeRegistry.register(ConfigTheme.builder("mymod").accentColor(0x3FA7FF).build());
+```
+
+Both classes are in `com.bdmajora.impetus.api.config.theme`. Register during client setup. The screen reads tab
+colours when it opens, so a theme registered while it is open only fully applies the next time. Notes:
+
+- The mod id must match the one your option pages use. Ids are matched ignoring case and surrounding
+  whitespace.
+- The colour is ARGB. A plain `0xRRGGBB` value (alpha 0) is treated as fully opaque.
+- Registering again for the same mod replaces the earlier theme.
+
 ## License
 
 Impetus is licensed under the [GNU Lesser General Public License version 3](LICENSE), as it only uses code

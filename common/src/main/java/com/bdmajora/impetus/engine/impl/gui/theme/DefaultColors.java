@@ -1,10 +1,12 @@
 package com.bdmajora.impetus.engine.impl.gui.theme;
 
+import com.bdmajora.impetus.api.config.theme.ConfigTheme;
 import com.bdmajora.impetus.api.config.theme.ConfigThemeRegistry;
 
 public class DefaultColors {
-    public static final int ELEMENT_ACTIVATED = 0xFF00CBCB;
-    public static final int ELEMENT_ACTIVATED_DIM = 0xB000CBCB;
+    // The API default, so an unthemed mod and the core screens share one teal
+    public static final int ELEMENT_ACTIVATED = ConfigTheme.DEFAULT_ACCENT_COLOR;
+    public static final int ELEMENT_ACTIVATED_DIM = 0xB0000000 | (ELEMENT_ACTIVATED & 0x00FFFFFF);
     public static final int TEXT_DISABLED = 0xFF9A9A9A;
     public static final int BACKGROUND_DEFAULT = 0x90000000;
     public static final int BACKGROUND_HOVERED = 0xE0202020;
@@ -31,23 +33,26 @@ public class DefaultColors {
 
     // Per-mod colour from a fixed table, hashed for unknown mods
     public static int getModAccentColor(String modId) {
-        if (modId == null || modId.isEmpty()) {
+        // Blank as well as empty, matching the ids ConfigTheme refuses
+        if (modId == null || modId.isBlank()) {
             return ELEMENT_ACTIVATED;
         }
 
-        var registered = ConfigThemeRegistry.getAccentColor(modId);
+        // Same spelling the registry keys on, so "Umbra" gets Umbra's accent; no allocation when the id is already canonical
+        String id = ConfigTheme.canonicalModId(modId);
+        var registered = ConfigThemeRegistry.getAccentColor(id);
         if (registered.isPresent()) {
             return registered.getAsInt();
         }
 
-        return switch (modId) {
+        return switch (id) {
             case "minecraft", "impetus", "sodium" -> ELEMENT_ACTIVATED;
             case "extras" -> EXTRAS_ACCENT;
             case "coarctatio" -> COARCTATIO_ACCENT;
             case "fulgor" -> FULGOR_ACCENT;
             case "equilibrium" -> EQUILIBRIUM_ACCENT;
             case "umbra" -> UMBRA_ACCENT;
-            default -> MOD_ACCENT_PALETTE[Math.floorMod(modId.hashCode(), MOD_ACCENT_PALETTE.length)];
+            default -> MOD_ACCENT_PALETTE[Math.floorMod(id.hashCode(), MOD_ACCENT_PALETTE.length)];
         };
     }
 }

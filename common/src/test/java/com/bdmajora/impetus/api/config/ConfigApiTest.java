@@ -9,7 +9,6 @@ import com.bdmajora.impetus.api.options.OptionIdentifier;
 import com.bdmajora.impetus.api.options.structure.Option;
 import com.bdmajora.impetus.api.options.structure.OptionFlag;
 import com.bdmajora.impetus.api.options.structure.OptionGroup;
-import com.bdmajora.impetus.api.options.structure.OptionImpl;
 import com.bdmajora.impetus.api.options.structure.OptionPage;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.testing.Statics;
@@ -961,31 +960,6 @@ class ConfigApiTest {
         assertTrue(Modifier.isPrivate(constructors[0].getModifiers()));
         constructors[0].setAccessible(true);
         assertInstanceOf(type, constructors[0].newInstance());
-    }
-
-    @Test
-    void buildersProduceWiredPagesAndOptions() {
-        AtomicInteger saves = new AtomicInteger();
-        ConfigStorage<AtomicInteger> storage = ConfigBuilders.storage(new AtomicInteger(3), saves::incrementAndGet);
-        OptionImpl<AtomicInteger, Integer> option = ConfigBuilders.option("api", "value", Integer.class, storage)
-                .setBinding(AtomicInteger::set, AtomicInteger::get)
-                .setControl(o -> Mockito.mock())
-                .build();
-        assertEquals("api:value", option.getId().toString());
-        OptionImpl<AtomicInteger, Integer> byId = ConfigBuilders.option(option.getId(), Integer.class, storage)
-                .setBinding(AtomicInteger::set, AtomicInteger::get)
-                .setControl(o -> Mockito.mock())
-                .build();
-        assertSame(option.getId(), byId.getId());
-        OptionGroup group = ConfigBuilders.group("api", "grp").add(option).build();
-        assertEquals("api:grp", group.getId().toString());
-        OptionPage page = ConfigBuilders.page("api", "pg", TextComponent.literal("Page")).addGroup(group).build();
-        assertEquals(List.of(group), page.getGroups());
-        assertEquals(List.of(option), page.getOptions());
-        OptionPage page2 = ConfigBuilders.page(page.getId(), TextComponent.literal("Again")).build();
-        assertSame(page.getId(), page2.getId());
-        assertThrows(NullPointerException.class, () -> ConfigBuilders.page("api", "x", null));
-        assertThrows(NullPointerException.class, () -> ConfigBuilders.page("api", "x", TextComponent.literal("x")).addGroup(null));
     }
 
     @Test

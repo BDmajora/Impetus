@@ -31,6 +31,7 @@ public final class LightUtil {
     }
 
     // Skips the position-aware overload when LightInfoBlock knows the block does not override it, avoiding two megamorphic virtual calls Forge's default just forwards back to the state
+    @SuppressWarnings("deprecation")
     public static int getLightValue(IBlockState state, IBlockAccess world, BlockPos pos, Chunk chunk) {
         if (Fulgor.hasDynamicLights() && DynamicLightsBridge.isAvailable()) {
             return DynamicLightsBridge.getLightValue(state, world, pos);
@@ -49,6 +50,7 @@ public final class LightUtil {
     }
 
     // Same fast-path trade as getLightValue but hotter: opacity is asked once per position plus once per each of six neighbours
+    @SuppressWarnings("deprecation")
     public static int getLightOpacity(IBlockState state, IBlockAccess world, BlockPos pos, Chunk chunk) {
         if (Fulgor.hasFluidloggedApi()) {
             return FluidLightCompat.getLightOpacity(state, world, pos, chunk);

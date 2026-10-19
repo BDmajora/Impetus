@@ -42,7 +42,10 @@ public final class CtmModelWrapping {
         this.handler = metadataHandler.getField("INSTANCE").get(null);
         Field wrapped = metadataHandler.getDeclaredField("wrappedModels");
         wrapped.setAccessible(true);
-        this.wrappedModels = (Object2BooleanMap<ResourceLocation>) wrapped.get(this.handler);
+        // CTM declares the field as Object2BooleanMap<ResourceLocation>; reflection only hands it back raw
+        @SuppressWarnings("unchecked")
+        Object2BooleanMap<ResourceLocation> wrappedModels = (Object2BooleanMap<ResourceLocation>) wrapped.get(this.handler);
+        this.wrappedModels = wrappedModels;
         Method wrapMethod = metadataHandler.getDeclaredMethod("wrap", IModel.class, IBakedModel.class);
         wrapMethod.setAccessible(true);
         this.wrap = lookup.unreflect(wrapMethod);
@@ -131,6 +134,7 @@ public final class CtmModelWrapping {
                 }
                 if (this.multipartModel.isInstance(model)) {
                     // A multipart model reports no textures or dependencies of its own; its parts do
+                    @SuppressWarnings("unchecked")
                     Map<?, IModel> parts = (Map<?, IModel>) this.partModels.get(model);
                     textures.clear();
                     for (IModel part : parts.values()) {

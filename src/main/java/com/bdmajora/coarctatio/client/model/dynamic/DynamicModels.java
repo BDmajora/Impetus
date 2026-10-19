@@ -48,6 +48,8 @@ public final class DynamicModels {
     private static final Set<String> DEFERRED_LISTENER_CLASSES = Collections.singleton("slimeknights.tconstruct.library.client.CustomTextureCreator");
     // "assets/ns/models/item/x.tmat.json" to "ns:item/x.tmat", the form the vanilla loader takes
     private static final Pattern MODEL_PATH = Pattern.compile("^/?assets/(.+?(?=/))/(?:.+?(?=/))/(.*)\\.(?:[A-Za-z]*)$");
+    // Forge deprecates the plain listener for its selective one, but registerReloadListener still takes this type
+    @SuppressWarnings("deprecation")
     private static final List<IResourceManagerReloadListener> DEFERRED = new ArrayList<>();
 
     private static UnbakedModelProvider unbaked;
@@ -69,12 +71,20 @@ public final class DynamicModels {
     }
 
     // True for the one listener class deferred; the caller cancels its registration
+    @SuppressWarnings("deprecation")
     public static boolean deferListener(IResourceManagerReloadListener listener) {
         if (!DEFERRED_LISTENER_CLASSES.contains(listener.getClass().getName())) {
             return false;
         }
         DEFERRED.add(listener);
         return true;
+    }
+
+    @SuppressWarnings("deprecation")
+    private static void runDeferredListeners(IResourceManager resourceManager) {
+        for (IResourceManagerReloadListener listener : DEFERRED) {
+            listener.onResourceManagerReload(resourceManager);
+        }
     }
 
     // ModelManager.onResourceManagerReload, dynamic edition
@@ -91,9 +101,7 @@ public final class DynamicModels {
         try {
             ItemModelPrebake.stopAndJoin();
             TconTextureExistence.clear();
-            for (IResourceManagerReloadListener listener : DEFERRED) {
-                listener.onResourceManagerReload(resourceManager);
-            }
+            runDeferredListeners(resourceManager);
             loader = new ModelLoader(resourceManager, atlas, shapes);
             bar = ProgressManager.push("Setting up dynamic models", 5);
             bar.step("Model locations");

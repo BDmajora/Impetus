@@ -14,7 +14,7 @@ import java.io.FileNotFoundException;
 // Both "not found" throws in the per-domain manager, and the leak tracker that captures a stack trace for every stream it opens
 @Mixin(FallbackResourceManager.class)
 public abstract class FallbackResourceManagerMixin {
-    @Redirect(method = {"getResource", "getAllResources"}, at = @At(value = "NEW", target = "(Ljava/lang/String;)Ljava/io/FileNotFoundException;"))
+    @Redirect(method = {"getResource", "getAllResources"}, at = @At(value = "NEW", target = "(Ljava/lang/String;)Ljava/io/FileNotFoundException;", remap = false))
     private FileNotFoundException coarctatio$stackless(String message) {
         return new StacklessFileNotFoundException(message);
     }

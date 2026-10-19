@@ -150,6 +150,7 @@ class DynamicModelsTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     void aReloadInstallsTheProvidersAndLoadsOnlyWhatMustBeThereUpFront() throws Exception {
         CustomTextureCreator creator = new CustomTextureCreator();
         assertTrue(DynamicModels.deferListener(creator));

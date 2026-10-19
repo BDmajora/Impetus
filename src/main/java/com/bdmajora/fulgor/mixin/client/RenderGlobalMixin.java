@@ -36,7 +36,7 @@ public abstract class RenderGlobalMixin implements LightUpdateProcessor {
 
     // Disables vanilla's updateClouds drain by claiming its light-update set is always empty (ordinal 0; the second isEmpty() is the pending-rebuild check and is left alone)
     @Redirect(method = "updateClouds",
-            at = @At(value = "INVOKE", target = "Ljava/util/Set;isEmpty()Z", ordinal = 0))
+            at = @At(value = "INVOKE", target = "Ljava/util/Set;isEmpty()Z", ordinal = 0, remap = false))
     private boolean fulgor$disableVanillaDrain(Set<?> lightUpdates) {
         return true;
     }

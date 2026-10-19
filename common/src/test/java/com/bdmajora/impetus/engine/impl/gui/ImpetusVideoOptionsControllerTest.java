@@ -101,6 +101,7 @@ class ImpetusVideoOptionsControllerTest {
         // Selecting a sidebar tab (General sits at y 92..110 in the 202-wide gutter) resets the page scroll
         assertTrue(controller.getFrame().mouseClicked(new FakeInteractionContext(), 210, 100, 0));
 
+        @SuppressWarnings("unchecked")
         OptionImpl<Holder, Boolean> fog = (OptionImpl<Holder, Boolean>) general.getOptions().get(0);
         fog.setValue(true);
         controller.render(draw, 0, 0, 0f);

@@ -38,7 +38,7 @@ public abstract class TextureMapWeakSpriteMixin implements WeakSpriteTextureMap 
         DynamicModels.registerDiscoveredSprites((TextureMap) (Object) this);
     }
 
-    @Inject(method = "registerSprite", at = @At(value = "INVOKE", target = "Ljava/util/Map;get(Ljava/lang/Object;)Ljava/lang/Object;"))
+    @Inject(method = "registerSprite", at = @At(value = "INVOKE", target = "Ljava/util/Map;get(Ljava/lang/Object;)Ljava/lang/Object;", remap = false))
     private void coarctatio$replaceWeak(ResourceLocation location, CallbackInfoReturnable<TextureAtlasSprite> cir) {
         this.coarctatio$forgetWeak(location.toString());
     }

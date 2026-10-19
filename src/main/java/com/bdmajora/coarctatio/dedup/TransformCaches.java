@@ -57,7 +57,8 @@ public final class TransformCaches {
     private TransformCaches() {
     }
 
-    // ItemTransformVec3f does define hashCode, so this only has to add null tolerance
+    // ItemTransformVec3f does define hashCode, so this only has to add null tolerance. Forge deprecates the type for TRSRTransformation, but vanilla's ItemCameraTransforms is built from it
+    @SuppressWarnings("deprecation")
     private static int vectorHash(ItemTransformVec3f vector) {
         return vector == null ? 0 : vector.hashCode();
     }

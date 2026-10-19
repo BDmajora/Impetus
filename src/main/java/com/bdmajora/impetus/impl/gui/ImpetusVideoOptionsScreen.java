@@ -32,8 +32,9 @@ public class ImpetusVideoOptionsScreen extends GuiScreen {
         super();
         this.prevScreen = prevScreen;
         this.controller = new ImpetusVideoOptionsController(() -> this.mc.displayGuiScreen(this.prevScreen), createPages(this), this.drawContext) {
-            // Reloads the renderer, textures or world as the changed options demand
+            // Reloads the renderer, textures or world as the changed options demand. Cleanroom deprecates refreshResources without a replacement, and an asset-flagged option needs the full reload
             @Override
+            @SuppressWarnings("deprecation")
             protected void applyFlagSideEffects(Set<OptionFlag> flags) {
                 super.applyFlagSideEffects(flags);
 

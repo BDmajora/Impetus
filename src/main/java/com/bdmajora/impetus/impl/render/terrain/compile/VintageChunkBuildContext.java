@@ -184,7 +184,9 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         int numQuads = source.limit() / (vsize * 4);
         long ptr = MemoryUtil.memAddress(source);
         var quad = ChunkVertexEncoder.Vertex.uninitializedQuad();
-        var animatedSpritesList = ((MinecraftBuiltRenderSectionData<TextureAtlasSprite, TileEntity>)buffers.getSectionContextBundle()).animatedSprites;
+        @SuppressWarnings("unchecked")
+        var bundle = (MinecraftBuiltRenderSectionData<TextureAtlasSprite, TileEntity>) buffers.getSectionContextBundle();
+        var animatedSpritesList = bundle.animatedSprites;
         // Walk the per-block attribution runs in lockstep with the quads (see recordVanillaBlockAttribution).
         int runCursor = 0;
         int runId = 0;

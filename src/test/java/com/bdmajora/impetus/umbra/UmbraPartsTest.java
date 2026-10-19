@@ -114,6 +114,7 @@ class UmbraPartsTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     void theTerrainVertexCarriesTheOptiFineExtras() {
         assertSame(UmbraChunkVertexType.VERTEX_FORMAT, UmbraChunkVertexType.INSTANCE.getVertexFormat());
         ChunkVertexEncoder.Vertex vertex = new ChunkVertexEncoder.Vertex();

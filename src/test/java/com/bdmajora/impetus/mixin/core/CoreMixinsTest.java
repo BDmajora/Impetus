@@ -31,6 +31,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.FloatBuffer;
 import java.security.CodeSource;
@@ -158,6 +159,7 @@ class CoreMixinsTest {
 
     @Test
     void entityListsIterateWithoutAnIterator() {
+        @SuppressWarnings("unchecked")
         ClassInheritanceMultiMapMixin<String> map = Mixins.instance(ClassInheritanceMultiMapMixin.class);
         Mixins.set(map, "values", new ArrayList<>(List.of("zombie", "creeper")));
         List<String> seen = new ArrayList<>();
@@ -245,8 +247,8 @@ class CoreMixinsTest {
             @Override
             public URL getResource(String resource) {
                 try {
-                    return new URL(main, resource);
-                } catch (MalformedURLException e) {
+                    return main.toURI().resolve(resource).toURL();
+                } catch (MalformedURLException | URISyntaxException e) {
                     throw new AssertionError(e);
                 }
             }

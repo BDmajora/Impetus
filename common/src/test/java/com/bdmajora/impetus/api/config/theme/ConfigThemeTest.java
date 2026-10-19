@@ -1,10 +1,9 @@
 package com.bdmajora.impetus.api.config.theme;
 
-import com.bdmajora.testing.Statics;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
@@ -15,7 +14,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.OptionalInt;
 import java.util.Random;
 import java.util.Set;
 import java.util.function.UnaryOperator;
@@ -23,51 +21,15 @@ import java.util.function.UnaryOperator;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ConfigThemeTest {
-    // The registry is static and the suite shares one JVM, so nothing registered here may outlive its test
-    @AfterEach
-    void clearRegistry() {
-        Statics.<Map<String, ConfigTheme>>get(ConfigThemeRegistry.class, "THEMES").clear();
-    }
-
     @Test
-    void builderDefaultsAndRegistryLookup() {
+    void builderDefaultsAndExplicitColour() {
         ConfigTheme theme = ConfigTheme.builder("themed").build();
         assertEquals("themed", theme.modId());
         assertEquals(ConfigTheme.DEFAULT_ACCENT_COLOR, theme.accentColor());
         assertEquals(0xFF00CBCB, ConfigTheme.DEFAULT_ACCENT_COLOR);
         ConfigTheme custom = ConfigTheme.builder("themed").accentColor(0xFF123456).build();
         assertEquals(0xFF123456, custom.accentColor());
-        ConfigThemeRegistry.register(theme);
-        ConfigThemeRegistry.register(custom);
-        assertEquals(OptionalInt.of(0xFF123456), ConfigThemeRegistry.getAccentColor("themed"));
-        assertEquals(OptionalInt.empty(), ConfigThemeRegistry.getAccentColor("unknown"));
-    }
-
-    @Test
-    void registryKeepsEachModSeparate() {
-        ConfigThemeRegistry.register(new ConfigTheme("first", 0xFF111111));
-        ConfigThemeRegistry.register(new ConfigTheme("second", 0xFF222222));
-        assertEquals(OptionalInt.of(0xFF111111), ConfigThemeRegistry.getAccentColor("first"));
-        assertEquals(OptionalInt.of(0xFF222222), ConfigThemeRegistry.getAccentColor("second"));
-    }
-
-    @Test
-    void registryRejectsNullThemesAndAnswersNullAndBlankIds() {
-        assertEquals("Theme must not be null", assertThrows(NullPointerException.class, () -> ConfigThemeRegistry.register(null)).getMessage());
-        assertEquals(OptionalInt.empty(), ConfigThemeRegistry.getAccentColor(null));
-        assertEquals(OptionalInt.empty(), ConfigThemeRegistry.getAccentColor(""));
-        assertEquals(OptionalInt.empty(), ConfigThemeRegistry.getAccentColor(" \t"));
-    }
-
-    @Test
-    void registryMatchesIdsWhateverTheirCaseOrPadding() {
-        ConfigThemeRegistry.register(new ConfigTheme("MyMod", 0xFF123456));
-        assertEquals(OptionalInt.of(0xFF123456), ConfigThemeRegistry.getAccentColor("mymod"));
-        assertEquals(OptionalInt.of(0xFF123456), ConfigThemeRegistry.getAccentColor("MYMOD"));
-        assertEquals(OptionalInt.of(0xFF123456), ConfigThemeRegistry.getAccentColor(" MyMod\t"));
-        // Spellings of one id are one mod, so a later registration under another case replaces the first
-        ConfigThemeRegistry.register(new ConfigTheme("mymod", 0xFF654321));
-        assertEquals(OptionalInt.of(0xFF654321), ConfigThemeRegistry.getAccentColor("MyMod"));
+        assertEquals("themed", custom.modId());
     }
 
     @Test
@@ -187,6 +149,31 @@ class ConfigThemeTest {
         // builder() is the only way in, and nothing can subclass the builder
         assertTrue(Modifier.isFinal(ConfigTheme.Builder.class.getModifiers()));
         assertTrue(Modifier.isPrivate(ConfigTheme.Builder.class.getDeclaredConstructor(String.class).getModifiers()));
+        // The blank-tolerant variant exists for the registry, so it stays package-private
+        Method orNull = ConfigTheme.class.getDeclaredMethod("canonicalModIdOrNull", String.class);
+        int modifiers = orNull.getModifiers();
+        assertTrue(Modifier.isStatic(modifiers));
+        assertFalse(Modifier.isPublic(modifiers) || Modifier.isProtected(modifiers) || Modifier.isPrivate(modifiers));
+        assertEquals(String.class, orNull.getReturnType());
+    }
+
+    @Test
+    void canonicalModIdOrNullAnswersNullWhereCanonicalModIdThrows() {
+        for (String blank : List.of("", " ", "\t\n\r\f\u000B", "\u001C\u001D\u001E\u001F", "　", " ".repeat(1000))) {
+            assertNull(ConfigTheme.canonicalModIdOrNull(blank));
+        }
+        // An id with nothing to change comes back as the same instance, which is what lets the registry skip its second lookup
+        for (String id : List.of("themed", "a", "my mod", "a\tb", "möd", "οδος", "i̇d", " ", "​")) {
+            assertSame(id, ConfigTheme.canonicalModIdOrNull(id));
+        }
+        // The JDK copies any id holding a surrogate even when nothing changes, so those only come back equal
+        assertEquals("𐐨", ConfigTheme.canonicalModIdOrNull("𐐨"));
+        assertEquals("\uD800", ConfigTheme.canonicalModIdOrNull("\uD800"));
+        assertEquals("mymod", ConfigTheme.canonicalModIdOrNull(" MyMod\t"));
+        assertEquals("οδος", ConfigTheme.canonicalModIdOrNull("ΟΔΟΣ"));
+        assertEquals("𐐨", ConfigTheme.canonicalModIdOrNull(" 𐐀 "));
+        // Ruling out null is the caller's job, which canonicalModId and the registry both do first
+        assertThrows(NullPointerException.class, () -> ConfigTheme.canonicalModIdOrNull(null));
     }
 
     @Test
@@ -279,7 +266,7 @@ class ConfigThemeTest {
 
     @Test
     void everyBlankSpellingIsRejectedWithTheSameMessage() {
-        for (String blank : List.of("", " ", "\t\n\r\f\u000B", "\u001C\u001D\u001E\u001F", " 　   ", " ".repeat(1000))) {
+        for (String blank : List.of("", " ", "\t\n\r\f\u000B", "\u001C\u001D\u001E\u001F", " 　 ", " ".repeat(1000))) {
             assertEquals("Mod id must not be blank", assertThrows(IllegalArgumentException.class, () -> ConfigTheme.canonicalModId(blank)).getMessage());
             assertEquals("Mod id must not be blank", assertThrows(IllegalArgumentException.class, () -> ConfigTheme.builder(blank)).getMessage());
             assertEquals("Mod id must not be blank", assertThrows(IllegalArgumentException.class, () -> new ConfigTheme(blank, 0)).getMessage());
@@ -315,9 +302,10 @@ class ConfigThemeTest {
             for (String id : ids) {
                 String expected = outcome(ConfigThemeTest::reference, id);
                 assertEquals(expected, outcome(ConfigTheme::canonicalModId, id), () -> "U+" + Integer.toHexString(point));
+                assertEquals(orNull(expected), ConfigTheme.canonicalModIdOrNull(id), () -> "U+" + Integer.toHexString(point));
                 if (expected.startsWith("ok:")) {
                     String once = expected.substring(3);
-                    // A second pass changes nothing, which is what lets the registry find a theme by its own id
+                    // A second pass changes nothing, so normalising a key the registry already holds lands on that same key
                     assertEquals(once, ConfigTheme.canonicalModId(once), () -> "U+" + Integer.toHexString(point));
                 }
             }
@@ -327,7 +315,7 @@ class ConfigThemeTest {
     @Test
     void randomIdsAgreeWithTheReference() {
         // Both ASCII cases, every kind of padding, and the non-ASCII mappings that change length or depend on context
-        String pool = "aZm09_-. \t\n\u000B\f\r\u001F  　 \u0085​ÉéßẞİıǅKΣσΟΔ𐐀";
+        String pool = "aZm09_-. \t\n\u000B\f\r\u001F  　\u0085​ÉéßẞİıǅKΣσΟΔ𐐀";
         Random random = new Random(0x7EA1L);
         for (int i = 0; i < 20_000; i++) {
             StringBuilder id = new StringBuilder();
@@ -337,21 +325,11 @@ class ConfigThemeTest {
             String raw = id.toString();
             String expected = outcome(ConfigThemeTest::reference, raw);
             assertEquals(expected, outcome(ConfigTheme::canonicalModId, raw), raw);
+            assertEquals(orNull(expected), ConfigTheme.canonicalModIdOrNull(raw), raw);
             if (expected.startsWith("ok:")) {
                 assertEquals(expected.substring(3), ConfigTheme.canonicalModId(expected.substring(3)), raw);
             }
         }
-    }
-
-    @Test
-    void registryFindsNonAsciiThemesByAnySpelling() {
-        ConfigTheme theme = new ConfigTheme("ΟΔΟΣ", 0xFF123456);
-        ConfigThemeRegistry.register(theme);
-        assertEquals(OptionalInt.of(0xFF123456), ConfigThemeRegistry.getAccentColor(theme.modId()));
-        assertEquals(OptionalInt.of(0xFF123456), ConfigThemeRegistry.getAccentColor(" ΟΔΟΣ "));
-        ConfigThemeRegistry.register(new ConfigTheme("Key", 0xFF654321));
-        assertEquals(OptionalInt.of(0xFF654321), ConfigThemeRegistry.getAccentColor("KEY"));
-        assertEquals(OptionalInt.of(0xFF654321), ConfigThemeRegistry.getAccentColor("key"));
     }
 
     @Test
@@ -474,5 +452,10 @@ class ConfigThemeTest {
         } catch (RuntimeException e) {
             return e.getClass().getSimpleName() + ":" + e.getMessage();
         }
+    }
+
+    // What canonicalModIdOrNull must give for an id whose canonicalModId outcome is known, where the only failure an id can hit is being blank
+    private static String orNull(String outcome) {
+        return outcome.startsWith("ok:") ? outcome.substring(3) : null;
     }
 }

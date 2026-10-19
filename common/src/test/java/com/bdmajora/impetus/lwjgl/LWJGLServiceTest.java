@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.lwjgl;
 
+import com.bdmajora.testing.Statics;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,7 +36,6 @@ import org.lwjgl.system.FunctionProvider;
 import org.lwjgl.system.JNI;
 import org.lwjgl.system.MemoryUtil;
 import org.mockito.MockedStatic;
-import sun.misc.Unsafe;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -67,9 +67,7 @@ class LWJGLServiceTest {
     // GLCapabilities' constructor resolves function pointers, so one is allocated bare and its final flags written reflectively
     private static GLCapabilities capabilities(boolean value) {
         try {
-            Field theUnsafe = Unsafe.class.getDeclaredField("theUnsafe");
-            theUnsafe.setAccessible(true);
-            GLCapabilities caps = (GLCapabilities) ((Unsafe) theUnsafe.get(null)).allocateInstance(GLCapabilities.class);
+            GLCapabilities caps = Statics.allocate(GLCapabilities.class);
             for (Field field : GLCapabilities.class.getFields()) {
                 if (field.getType() == boolean.class && !Modifier.isStatic(field.getModifiers())) {
                     field.setAccessible(true);

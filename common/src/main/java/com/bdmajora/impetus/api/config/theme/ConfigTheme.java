@@ -31,6 +31,16 @@ public record ConfigTheme(String modId, int accentColor) {
     public static String canonicalModId(String modId) {
         // Throws straight away if the id is null, before any characters are read
         Objects.requireNonNull(modId, "Mod id must not be null");
+        String canonical = canonicalModIdOrNull(modId);
+        // Null comes back only when every character was whitespace or the id was empty
+        if (canonical == null) {
+            throw new IllegalArgumentException("Mod id must not be blank");
+        }
+        return canonical;
+    }
+
+    // Same rules as canonicalModId but answers null for a blank id, so the registry's lookup needs neither isBlank() nor an exception
+    static String canonicalModIdOrNull(String modId) {
         // Walks in from both ends past the same whitespace isBlank() and strip() look for, so the id is scanned once
         // start and end mark the part of the id that is kept, beginning as the whole string
         int start = 0;
@@ -41,7 +51,7 @@ public record ConfigTheme(String modId, int accentColor) {
         }
         // If start reached the end, every character was whitespace or the id was empty
         if (start == end) {
-            throw new IllegalArgumentException("Mod id must not be blank");
+            return null;
         }
         // Moves end back past any trailing whitespace, with no bounds check needed since a non-whitespace character is known to exist
         while (Character.isWhitespace(modId.charAt(end - 1))) {

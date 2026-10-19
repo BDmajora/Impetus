@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 // loadWorld forces a full garbage collection on every world load and unload, which on a large heap is a multi-second stop-the-world pause the JVM would otherwise never need (VanillaFix, later Chibi's removeExcessiveGCCalls)
 @Mixin(Minecraft.class)
 public abstract class MinecraftLoadWorldGcMixin {
-    @WrapWithCondition(method = "loadWorld(Lnet/minecraft/client/multiplayer/WorldClient;Ljava/lang/String;)V", at = @At(value = "INVOKE", target = "Ljava/lang/System;gc()V"))
+    @WrapWithCondition(method = "loadWorld(Lnet/minecraft/client/multiplayer/WorldClient;Ljava/lang/String;)V", at = @At(value = "INVOKE", target = "Ljava/lang/System;gc()V", remap = false))
     private boolean impetus$skipForcedGc() {
         return !Extras.options().loading.skipWorldLoadGc;
     }

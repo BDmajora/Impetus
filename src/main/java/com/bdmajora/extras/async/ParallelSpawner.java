@@ -156,9 +156,10 @@ public final class ParallelSpawner {
 
                 living.setLocationAndAngles(fx, y, fz, rand.nextFloat() * 360.0F, 0.0F);
 
-                Event.Result canSpawn = ForgeEventFactory.canEntitySpawn(living, world, fx, y, fz, false);
+                // A null spawner is what the deprecated isSpawner = false overloads passed on
+                Event.Result canSpawn = ForgeEventFactory.canEntitySpawn(living, world, fx, y, fz, null);
                 if (canSpawn == Event.Result.ALLOW || (canSpawn == Event.Result.DEFAULT && living.getCanSpawnHere() && living.isNotColliding())) {
-                    if (!ForgeEventFactory.doSpecialSpawn(living, world, fx, y, fz)) {
+                    if (!ForgeEventFactory.doSpecialSpawn(living, world, fx, y, fz, null)) {
                         livingData = living.onInitialSpawn(world.getDifficultyForLocation(new BlockPos(living)), livingData);
                     }
 

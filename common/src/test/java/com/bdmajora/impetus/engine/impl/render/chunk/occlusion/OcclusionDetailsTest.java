@@ -82,6 +82,7 @@ class OcclusionDetailsTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     void frustumClassificationDistinguishesContainedIntersectingAndRejectedBounds() {
         SimpleFrustum frustum = new SimpleFrustum(new FrustumIntersection(new Matrix4f()));
         assertEquals(Frustum.FULLY_INSIDE, frustum.intersectAab(-0.5f, -0.5f, -0.5f, 0.5f, 0.5f, 0.5f));

@@ -446,7 +446,7 @@ class DynamicLightsCoreTest {
 
     @Test
     void itemLightSourcesComeFromJsonOrTheBlockTheyPlace() {
-        JsonObject json = new JsonParser().parse(
+        JsonObject json = JsonParser.parseString(
                 "{\"item\":\"minecraft:torch\",\"luminance\":14,\"water_sensitive\":true}").getAsJsonObject();
         ResourceLocation id = new ResourceLocation("impetus", "dynamiclights/item/torch");
         Optional<ItemLightSource> parsed = ItemLightSource.fromJson(id, json);
@@ -464,11 +464,9 @@ class DynamicLightsCoreTest {
         DynamicLights.options().waterSensitiveCheck = true;
 
         // "block" mirrors the block the item places, and a named block mirrors that one
-        ItemLightSource fromBlock = ItemLightSource.fromJson(id, new JsonParser()
-                .parse("{\"item\":\"minecraft:glowstone\",\"luminance\":\"block\"}").getAsJsonObject()).orElseThrow();
+        ItemLightSource fromBlock = ItemLightSource.fromJson(id, JsonParser.parseString("{\"item\":\"minecraft:glowstone\",\"luminance\":\"block\"}").getAsJsonObject()).orElseThrow();
         assertEquals(15, fromBlock.getLuminance(new ItemStack(Blocks.GLOWSTONE)));
-        ItemLightSource named = ItemLightSource.fromJson(id, new JsonParser()
-                .parse("{\"item\":\"minecraft:stick\",\"luminance\":\"minecraft:glowstone\"}").getAsJsonObject()).orElseThrow();
+        ItemLightSource named = ItemLightSource.fromJson(id, JsonParser.parseString("{\"item\":\"minecraft:stick\",\"luminance\":\"minecraft:glowstone\"}").getAsJsonObject()).orElseThrow();
         assertEquals(15, named.getLuminance(new ItemStack(Items.STICK)));
         // A stack's BlockStateTag picks the state whose light value is read
         ItemStack torchStack = new ItemStack(Blocks.REDSTONE_TORCH);
@@ -481,15 +479,11 @@ class DynamicLightsCoreTest {
                 Blocks.REDSTONE_TORCH.getDefaultState()));
 
         // Malformed definitions are rejected rather than thrown
-        assertFalse(ItemLightSource.fromJson(id, new JsonParser().parse("{}").getAsJsonObject()).isPresent());
-        assertFalse(ItemLightSource.fromJson(id, new JsonParser()
-                .parse("{\"item\":\"nope:nothing\",\"luminance\":3}").getAsJsonObject()).isPresent());
-        assertFalse(ItemLightSource.fromJson(id, new JsonParser()
-                .parse("{\"item\":\"minecraft:stick\",\"luminance\":\"block\"}").getAsJsonObject()).isPresent());
-        assertFalse(ItemLightSource.fromJson(id, new JsonParser()
-                .parse("{\"item\":\"minecraft:stick\",\"luminance\":\"not:ablock\"}").getAsJsonObject()).isPresent());
-        assertFalse(ItemLightSource.fromJson(id, new JsonParser()
-                .parse("{\"item\":\"minecraft:stick\",\"luminance\":true}").getAsJsonObject()).isPresent());
+        assertFalse(ItemLightSource.fromJson(id, JsonParser.parseString("{}").getAsJsonObject()).isPresent());
+        assertFalse(ItemLightSource.fromJson(id, JsonParser.parseString("{\"item\":\"nope:nothing\",\"luminance\":3}").getAsJsonObject()).isPresent());
+        assertFalse(ItemLightSource.fromJson(id, JsonParser.parseString("{\"item\":\"minecraft:stick\",\"luminance\":\"block\"}").getAsJsonObject()).isPresent());
+        assertFalse(ItemLightSource.fromJson(id, JsonParser.parseString("{\"item\":\"minecraft:stick\",\"luminance\":\"not:ablock\"}").getAsJsonObject()).isPresent());
+        assertFalse(ItemLightSource.fromJson(id, JsonParser.parseString("{\"item\":\"minecraft:stick\",\"luminance\":true}").getAsJsonObject()).isPresent());
 
         // The registry: code registrations win over pack ones and are not replaced
         assertEquals(0, ItemLightSources.getLuminance(ItemStack.EMPTY, false));
@@ -594,7 +588,7 @@ class DynamicLightsCoreTest {
         instance.onClientTick(end);
         Mockito.verify((DynamicLightSource) lit).impetus$dynamicLightTick();
         // A list that shrinks underneath the walk stops it rather than throwing
-        List<TileEntity> shrinking = mock(List.class);
+        List<TileEntity> shrinking = mock();
         when(shrinking.size()).thenReturn(4);
         when(shrinking.get(0)).thenThrow(new IndexOutOfBoundsException());
         Mixins.set(world, "loadedTileEntityList", shrinking);

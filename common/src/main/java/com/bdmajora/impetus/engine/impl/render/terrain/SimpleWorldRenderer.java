@@ -115,7 +115,7 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
      */
     public void setupTerrain(Viewport viewport,
                              CameraState cameraState,
-                             @Deprecated(forRemoval = true) int frame,
+                             int frame,
                              boolean spectator,
                              boolean updateChunksImmediately) {
         NativeBuffer.reclaim(false);
@@ -164,7 +164,7 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
     public void setupShadowTerrain(Viewport playerViewport,
                                    Viewport shadowViewport,
                                    CameraState cameraState,
-                                   @Deprecated(forRemoval = true) int frame,
+                                   int frame,
                                    boolean spectator) {
         NativeBuffer.reclaim(false);
 

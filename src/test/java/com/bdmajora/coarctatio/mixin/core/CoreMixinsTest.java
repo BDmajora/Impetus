@@ -31,6 +31,7 @@ class CoreMixinsTest {
     @Test
     void aRegistryIsBackedByACompactMap() {
         // Mockito cannot instrument this target, so the mixin gets a plain generated subclass
+        @SuppressWarnings("unchecked")
         RegistrySimpleMixin<String, String> registry = Mixins.concrete(RegistrySimpleMixin.class);
         CallbackInfoReturnable<Map<String, String>> cir = Mixins.cir();
         Mixins.call(registry, "coarctatio$compactBackingMap", cir);
@@ -49,6 +50,7 @@ class CoreMixinsTest {
 
     @Test
     void aSectionsEntityLookupIsCopiedIntoReferenceKeyedCollections() {
+        @SuppressWarnings("unchecked")
         ClassInheritanceMultiMapMixin<Object> lookup = Mixins.concrete(ClassInheritanceMultiMapMixin.class);
         Map<Class<?>, List<Object>> map = new HashMap<>();
         map.put(String.class, new ArrayList<>(List.of("a")));

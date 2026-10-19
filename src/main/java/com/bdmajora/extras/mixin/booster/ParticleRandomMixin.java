@@ -13,7 +13,7 @@ import java.util.Random;
 public class ParticleRandomMixin {
     @Redirect(
             method = "<init>(Lnet/minecraft/world/World;DDD)V",
-            at = @At(value = "NEW", target = "java/util/Random")
+            at = @At(value = "NEW", target = "java/util/Random", remap = false)
     )
     private Random impetus$sharedRandom() {
         return FastRandom.enabled ? FastRandom.particles() : new Random();

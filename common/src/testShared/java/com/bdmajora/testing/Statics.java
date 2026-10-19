@@ -1,33 +1,43 @@
 package com.bdmajora.testing;
 
-import sun.misc.Unsafe;
-
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.InvocationTargetException;
 
 // Reflection helpers for the static state production code caches at class-init (final fields included) and for private static helpers
 public final class Statics {
-    static final Unsafe UNSAFE = unsafe();
+    // sun.misc.Unsafe is the only way to write a static final; it is reached by name, since naming the type in source draws javac's proprietary-API and removal warnings
+    private static final MethodHandle ALLOCATE_INSTANCE, STATIC_FIELD_BASE, STATIC_FIELD_OFFSET, PUT_BOOLEAN, PUT_INT, PUT_LONG, PUT_OBJECT;
 
-    private Statics() {}
-
-    private static Unsafe unsafe() {
+    static {
         try {
-            Field theUnsafe = Unsafe.class.getDeclaredField("theUnsafe");
+            Class<?> type = Class.forName("sun.misc.Unsafe");
+            Field theUnsafe = type.getDeclaredField("theUnsafe");
             theUnsafe.setAccessible(true);
-            return (Unsafe) theUnsafe.get(null);
+            Object unsafe = theUnsafe.get(null);
+            MethodHandles.Lookup lookup = MethodHandles.publicLookup();
+            ALLOCATE_INSTANCE = lookup.findVirtual(type, "allocateInstance", MethodType.methodType(Object.class, Class.class)).bindTo(unsafe);
+            STATIC_FIELD_BASE = lookup.findVirtual(type, "staticFieldBase", MethodType.methodType(Object.class, Field.class)).bindTo(unsafe);
+            STATIC_FIELD_OFFSET = lookup.findVirtual(type, "staticFieldOffset", MethodType.methodType(long.class, Field.class)).bindTo(unsafe);
+            PUT_BOOLEAN = lookup.findVirtual(type, "putBoolean", MethodType.methodType(void.class, Object.class, long.class, boolean.class)).bindTo(unsafe);
+            PUT_INT = lookup.findVirtual(type, "putInt", MethodType.methodType(void.class, Object.class, long.class, int.class)).bindTo(unsafe);
+            PUT_LONG = lookup.findVirtual(type, "putLong", MethodType.methodType(void.class, Object.class, long.class, long.class)).bindTo(unsafe);
+            PUT_OBJECT = lookup.findVirtual(type, "putObject", MethodType.methodType(void.class, Object.class, long.class, Object.class)).bindTo(unsafe);
         } catch (ReflectiveOperationException e) {
-            throw new AssertionError(e);
+            throw new ExceptionInInitializerError(e);
         }
     }
 
+    private Statics() {}
+
     // A bare instance, no constructor run, for classes whose constructors need a running game
-    @SuppressWarnings("unchecked")
     public static <T> T allocate(Class<T> type) {
         try {
-            return (T) UNSAFE.allocateInstance(type);
-        } catch (InstantiationException e) {
+            return type.cast(ALLOCATE_INSTANCE.invoke(type));
+        } catch (Throwable e) {
             throw new AssertionError(e);
         }
     }
@@ -37,19 +47,18 @@ public final class Statics {
         try {
             Field field = owner.getDeclaredField(name);
             field.setAccessible(true);
-            Unsafe unsafe = UNSAFE;
-            Object base = unsafe.staticFieldBase(field);
-            long offset = unsafe.staticFieldOffset(field);
+            Object base = STATIC_FIELD_BASE.invoke(field);
+            long offset = (long) STATIC_FIELD_OFFSET.invoke(field);
             if (field.getType() == boolean.class) {
-                unsafe.putBoolean(base, offset, (Boolean) value);
+                PUT_BOOLEAN.invoke(base, offset, (boolean) (Boolean) value);
             } else if (field.getType() == int.class) {
-                unsafe.putInt(base, offset, (Integer) value);
+                PUT_INT.invoke(base, offset, (int) (Integer) value);
             } else if (field.getType() == long.class) {
-                unsafe.putLong(base, offset, (Long) value);
+                PUT_LONG.invoke(base, offset, (long) (Long) value);
             } else {
-                unsafe.putObject(base, offset, value);
+                PUT_OBJECT.invoke(base, offset, value);
             }
-        } catch (NoSuchFieldException e) {
+        } catch (Throwable e) {
             throw new AssertionError(e);
         }
     }

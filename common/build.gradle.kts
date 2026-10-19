@@ -87,7 +87,9 @@ tasks.withType<Test>().configureEach {
     workingDir = layout.buildDirectory.dir("test-work").get().asFile
     doFirst { workingDir.mkdirs() }
     // Mockito's inline mock maker self-attaches a ByteBuddy agent; JDK 25 also wants native and Unsafe access granted up front
+    // Mockito's agent appends to the boot class path, which turns class-data sharing off with a VM warning; -Xshare:off skips both
     jvmArgs(
+        "-Xshare:off",
         "-XX:+EnableDynamicAgentLoading",
         "--enable-native-access=ALL-UNNAMED",
         "--sun-misc-unsafe-memory-access=allow",

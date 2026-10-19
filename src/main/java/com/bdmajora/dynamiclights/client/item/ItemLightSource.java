@@ -150,6 +150,8 @@ public abstract class ItemLightSource {
         }
 
         // Light value of state with any BlockStateTag on the stack applied first, since that tag is how a stack carries a non-default state (lit vs unlit redstone torch)
+        // An item has no world position, so the state's own light value is the one to ask
+        @SuppressWarnings("deprecation")
         public static int getLuminance(ItemStack stack, IBlockState state) {
             NBTTagCompound nbt = stack.getTagCompound();
 

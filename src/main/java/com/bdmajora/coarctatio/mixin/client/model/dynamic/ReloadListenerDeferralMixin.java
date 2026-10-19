@@ -12,6 +12,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(SimpleReloadableResourceManager.class)
 public abstract class ReloadListenerDeferralMixin {
     @Inject(method = "registerReloadListener", at = @At("HEAD"), cancellable = true)
+    @SuppressWarnings("deprecation")
     private void coarctatio$deferListener(IResourceManagerReloadListener listener, CallbackInfo ci) {
         if (DynamicModels.deferListener(listener)) {
             ci.cancel();

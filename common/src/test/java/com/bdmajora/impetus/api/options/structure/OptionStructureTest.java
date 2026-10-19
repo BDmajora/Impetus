@@ -83,7 +83,7 @@ class OptionStructureTest {
                 .setBinding(new com.bdmajora.impetus.api.options.binding.GenericBinding<>(AtomicInteger::set, AtomicInteger::get))
                 .setEnabledPredicate(() -> true).setEnabled(true).build();
         assertTrue(enabled.isAvailable());
-        Option<Integer> bare = Mockito.mock(Option.class, Mockito.CALLS_REAL_METHODS);
+        Option<Integer> bare = Mockito.mock(Mockito.CALLS_REAL_METHODS);
         assertNull(bare.getId());
     }
 

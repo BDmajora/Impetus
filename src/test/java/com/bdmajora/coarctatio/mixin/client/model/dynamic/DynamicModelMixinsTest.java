@@ -237,6 +237,7 @@ class DynamicModelMixinsTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     void onlyTheTextureCreatorIsKeptAsideFromTheReloadOrder() {
         ReloadListenerDeferralMixin resources = Mixins.concrete(ReloadListenerDeferralMixin.class);
         CallbackInfo ordinary = Mixins.ci();

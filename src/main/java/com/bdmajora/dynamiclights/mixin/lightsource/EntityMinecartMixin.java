@@ -37,6 +37,8 @@ public abstract class EntityMinecartMixin extends Entity implements DynamicLight
     }
 
     @Override
+    // The displayed block rides the cart, so it has no world position to ask the position-aware overload with
+    @SuppressWarnings("deprecation")
     public void impetus$dynamicLightTick() {
         Entity self = (Entity) (Object) this;
 

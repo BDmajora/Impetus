@@ -195,6 +195,7 @@ class DeduplicationTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     void cameraTransformsAreComparedByTheirEightVectors() {
         TransformCaches.open();
         // Vanilla's ItemTransformVec3f hashes its Vector3f fields, which compare by value but hash by identity, so two
@@ -221,6 +222,7 @@ class DeduplicationTest {
         assertNotNull(Mixins.construct(TransformCaches.class));
     }
 
+    @SuppressWarnings("deprecation")
     private static ItemTransformVec3f vector(float scale) {
         return new ItemTransformVec3f(
                 new org.lwjgl.util.vector.Vector3f(0f, 0f, 0f),
@@ -228,6 +230,7 @@ class DeduplicationTest {
                 new org.lwjgl.util.vector.Vector3f(scale, scale, scale));
     }
 
+    @SuppressWarnings("deprecation")
     private static ItemCameraTransforms transforms(ItemTransformVec3f vector) {
         return new ItemCameraTransforms(vector, vector, vector, vector, vector, vector, vector, vector);
     }

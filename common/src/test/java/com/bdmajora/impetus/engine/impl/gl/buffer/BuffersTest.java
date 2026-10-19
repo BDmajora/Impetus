@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class BuffersTest {
     @Test
+    @SuppressWarnings("deprecation")
     void mutableAndImmutableBuffersTrackTheirState() {
         GlMutableBuffer mutable = new GlMutableBuffer();
         assertTrue(mutable.handle() > 0);

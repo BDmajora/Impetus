@@ -81,7 +81,9 @@ class EntityMixinTest {
         Entity passenger = mock(Entity.class);
         Mockito.doReturn(List.of(passenger)).when(entity).getPassengers();
         ShadowStubs.on(entity, "getRecursivePassengersByType", args -> {
-            ((Set<Entity>) args[1]).add(passenger);
+            @SuppressWarnings("unchecked")
+            Set<Entity> into = (Set<Entity>) args[1];
+            into.add(passenger);
             return null;
         });
         assertEquals(List.of(passenger), new ArrayList<>(entity.getRecursivePassengers()));

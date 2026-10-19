@@ -108,7 +108,7 @@ class StateMixinsTest {
         Mockito.doReturn(mapper).when((MappedStateOwner) extended).coarctatio$mapper(any());
 
         ImmutableMap<IProperty<?>, Comparable<?>> values = ImmutableMap.of(BlockFence.NORTH, Boolean.FALSE);
-        IUnlistedProperty<String> unlisted = Mockito.mock(IUnlistedProperty.class);
+        IUnlistedProperty<String> unlisted = Mockito.mock();
 
         // Nothing unlisted means Forge delegates upward, which the base mixin already handles
         CallbackInfoReturnable<BlockStateContainer.StateImplementation> plain = Mixins.cir();

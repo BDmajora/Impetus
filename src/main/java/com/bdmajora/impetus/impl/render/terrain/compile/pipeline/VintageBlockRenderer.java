@@ -201,8 +201,10 @@ public class VintageBlockRenderer {
             TextureAtlasSprite sprite = (TextureAtlasSprite)quadView.impetus$getSprite();
 
             if (sprite.hasAnimationMetadata() && buffer.getSectionContextBundle() instanceof MinecraftBuiltRenderSectionData<?,?> mcData) {
-                //noinspection unchecked
-                ((Collection<TextureAtlasSprite>)mcData.animatedSprites).add(sprite);
+                // Vintage sections are always built over TextureAtlasSprite
+                @SuppressWarnings("unchecked")
+                Collection<TextureAtlasSprite> animated = (Collection<TextureAtlasSprite>) mcData.animatedSprites;
+                animated.add(sprite);
             }
         }
     }

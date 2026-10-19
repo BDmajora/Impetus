@@ -1183,7 +1183,8 @@ public final class CommonUniforms {
         return heldLightColor(offhandItem());
     }
 
-    // Light level of a block item, or the pack's per-item override
+    // Light level of a block item, or the pack's per-item override; a held item has no world position, so the default state's own value
+    @SuppressWarnings("deprecation")
     private static int blockLightValue(ItemStack stack) {
         if (stack.isEmpty()) {
             return 0;

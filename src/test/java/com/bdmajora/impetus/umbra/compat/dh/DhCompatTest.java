@@ -17,7 +17,6 @@ import com.bdmajora.testing.Mixins;
 import com.bdmajora.testing.Statics;
 import com.bdmajora.testing.TestGl;
 import com.seibel.distanthorizons.api.DhApi;
-import com.seibel.distanthorizons.api.enums.rendering.EDhApiFogDrawMode;
 import com.seibel.distanthorizons.api.enums.rendering.EDhApiRenderPass;
 import com.seibel.distanthorizons.api.interfaces.config.IDhApiConfig;
 import com.seibel.distanthorizons.api.interfaces.override.rendering.IDhApiFramebuffer;
@@ -25,6 +24,7 @@ import com.seibel.distanthorizons.api.interfaces.override.rendering.IDhApiGeneri
 import com.seibel.distanthorizons.api.interfaces.override.rendering.IDhApiShadowCullingFrustum;
 import com.seibel.distanthorizons.api.interfaces.render.IDhApiRenderProxy;
 import com.seibel.distanthorizons.api.interfaces.render.IDhApiRenderableBoxGroup;
+import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiAfterColorDepthTextureCreatedEvent;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiAfterDhInitEvent;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBeforeApplyShaderRenderEvent;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBeforeBufferRenderEvent;
@@ -37,10 +37,10 @@ import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBeforeR
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBeforeRenderPassEvent;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBeforeRenderSetupEvent;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBeforeTextureClearEvent;
-import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiColorDepthTextureCreatedEvent;
 import com.seibel.distanthorizons.api.methods.events.sharedParameterObjects.DhApiCancelableEventParam;
 import com.seibel.distanthorizons.api.methods.events.sharedParameterObjects.DhApiEventParam;
 import com.seibel.distanthorizons.api.methods.events.sharedParameterObjects.DhApiRenderParam;
+import com.seibel.distanthorizons.api.methods.events.sharedParameterObjects.DhApiTextureCreatedParam;
 import com.seibel.distanthorizons.api.objects.DhApiResult;
 import com.seibel.distanthorizons.api.objects.math.DhApiMat4f;
 import com.seibel.distanthorizons.api.objects.math.DhApiVec3d;
@@ -594,7 +594,7 @@ class DhCompatTest {
         DhApiBeforeTextureClearEvent clear = handler(DhApiBeforeTextureClearEvent.class, 1);
         DhApiBeforeGenericRenderSetupEvent genericSetup = handler(DhApiBeforeGenericRenderSetupEvent.class, 0);
         DhApiBeforeGenericObjectRenderEvent genericObject = handler(DhApiBeforeGenericObjectRenderEvent.class, 0);
-        DhApiColorDepthTextureCreatedEvent resize = handler(DhApiColorDepthTextureCreatedEvent.class, 0);
+        DhApiAfterColorDepthTextureCreatedEvent resize = handler(DhApiAfterColorDepthTextureCreatedEvent.class, 0);
         DhApiBeforeDeferredRenderEvent deferredCancel = handler(DhApiBeforeDeferredRenderEvent.class, 0);
         DhApiBeforeRenderCleanupEvent cleanup = handler(DhApiBeforeRenderCleanupEvent.class, 0);
         DhApiBeforeBufferRenderEvent bufferRender = handler(DhApiBeforeBufferRenderEvent.class, 0);
@@ -608,7 +608,7 @@ class DhCompatTest {
         shadowCancel.beforeRender(frame);
         assertFalse(frame.isEventCanceled());
         verify(renderProxy).setDeferTransparentRendering(false);
-        verify(configs.graphics().fog().drawMode()).clearValue();
+        verify(configs.graphics().fog().enableDhFog()).clearValue();
         DhApiCancelableEventParam<DhApiRenderParam> ownClear = pass(EDhApiRenderPass.OPAQUE);
         clear.beforeClear(ownClear);
         assertFalse(ownClear.isEventCanceled());
@@ -649,7 +649,7 @@ class DhCompatTest {
         when(pipeline.getDhCompat()).thenReturn(compat);
 
         // DH's texture size and depth id reach the LOD framebuffers before its clear
-        resize.onResize(new DhApiEventParam<>(new DhApiColorDepthTextureCreatedEvent.EventParam(0, 0, 640, 480)));
+        resize.onResize(new DhApiEventParam<>(new DhApiTextureCreatedParam(0, 0, 640, 480)));
         reconnect.beforeClear(pass(EDhApiRenderPass.OPAQUE));
         assertEquals(55, internal.getStoredDepthTex());
         when(renderProxy.getDhDepthTextureId()).thenReturn(DhApiResult.createFail("not yet"));
@@ -662,7 +662,7 @@ class DhCompatTest {
         shadowCancel.beforeRender(packFrame);
         assertFalse(packFrame.isEventCanceled());
         verify(renderProxy).setDeferTransparentRendering(true);
-        verify(configs.graphics().fog().drawMode()).setValue(EDhApiFogDrawMode.FOG_DISABLED);
+        verify(configs.graphics().fog().enableDhFog()).setValue(false);
 
         // The camera pass: the LOD gbuffer and dh_generic become DH's overrides, rebinding without a clash
         setup.beforeSetup(pass(EDhApiRenderPass.OPAQUE));

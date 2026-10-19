@@ -467,6 +467,7 @@ class ImpetusGuiTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     void theVideoOptionsScreenHostsEveryModulesPages() throws IOException {
         GuiScreen parent = mock(GuiScreen.class);
         ImpetusVideoOptionsScreen screen = new ImpetusVideoOptionsScreen(parent);

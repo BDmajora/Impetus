@@ -6,8 +6,6 @@ import com.bdmajora.testing.Statics;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.Map;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
@@ -15,7 +13,7 @@ class DefaultColorsTest {
     // Registered themes are global, so they are dropped after every test that adds one
     @AfterEach
     void clearRegistry() {
-        Statics.<Map<String, ConfigTheme>>get(ConfigThemeRegistry.class, "THEMES").clear();
+        Statics.set(ConfigThemeRegistry.class, "table", Statics.get(ConfigThemeRegistry.class, "EMPTY"));
     }
 
     @Test

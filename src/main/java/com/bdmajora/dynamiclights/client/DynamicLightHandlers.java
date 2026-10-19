@@ -30,7 +30,8 @@ public final class DynamicLightHandlers {
     private DynamicLightHandlers() {
     }
 
-    // Vanilla light sources that aren't simply "an entity holding a bright item"
+    // Vanilla light sources that aren't simply "an entity holding a bright item". The enderman's carried block has no world position, so it asks the state's own light value
+    @SuppressWarnings("deprecation")
     public static void registerDefaultHandlers() {
         registerEntityHandler(EntityBlaze.class, DynamicLightHandler.makeHandler(blaze -> 10, blaze -> true));
         registerEntityHandler(EntityCreeper.class, DynamicLightHandler.makeCreeperEntityHandler(null));

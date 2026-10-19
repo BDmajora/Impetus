@@ -15,7 +15,7 @@ import java.util.List;
 // The unknown-domain throws, and the reload that bumps the lookup caches' generation before any pack is asked anything
 @Mixin(SimpleReloadableResourceManager.class)
 public abstract class SimpleReloadableResourceManagerMixin {
-    @Redirect(method = {"getResource", "getAllResources"}, at = @At(value = "NEW", target = "(Ljava/lang/String;)Ljava/io/FileNotFoundException;"))
+    @Redirect(method = {"getResource", "getAllResources"}, at = @At(value = "NEW", target = "(Ljava/lang/String;)Ljava/io/FileNotFoundException;", remap = false))
     private FileNotFoundException coarctatio$stackless(String message) {
         return new StacklessFileNotFoundException(message);
     }

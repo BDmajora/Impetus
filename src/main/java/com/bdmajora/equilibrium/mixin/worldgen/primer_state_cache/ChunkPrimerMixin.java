@@ -38,6 +38,8 @@ public abstract class ChunkPrimerMixin {
      * @reason one-entry decode cache on the primer's hot read path
      */
     @Overwrite
+    // Forge deprecates BLOCK_STATE_IDS for its registry, but it is the table vanilla's primer encodes with
+    @SuppressWarnings("deprecation")
     public IBlockState getBlockState(int x, int y, int z) {
         char id = this.data[x << 12 | z << 8 | y];
         if (id == this.equilibrium$lastGetId && this.equilibrium$lastGetState != null) {
@@ -58,6 +60,7 @@ public abstract class ChunkPrimerMixin {
      * @reason one-entry encode cache on the primer's hot write path
      */
     @Overwrite
+    @SuppressWarnings("deprecation")
     public void setBlockState(int x, int y, int z, IBlockState state) {
         char id;
         if (state == this.equilibrium$lastSetState) {

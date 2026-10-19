@@ -5,7 +5,6 @@
 
 package com.bdmajora.impetus.engine.impl.render.chunk.occlusion.geometry;
 
-import it.unimi.dsi.fastutil.ints.AbstractIntComparator;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntArrays;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
@@ -49,14 +48,11 @@ public class Area {
             AREA_INDEX_TO_KEY[i++] = k;
         }
 
-        IntArrays.quickSort(AREA_INDEX_TO_KEY, new AbstractIntComparator() {
-            @Override
-            public int compare(int a, int b) {
-                final int result = Integer.compare(Area.size(b), Area.size(a));
+        IntArrays.quickSort(AREA_INDEX_TO_KEY, (a, b) -> {
+            final int result = Integer.compare(Area.size(b), Area.size(a));
 
-                // within same area size, prefer more compact rectangles
-                return result == 0 ? Integer.compare(Area.edgeCount(a), Area.edgeCount(b)) : result;
-            }
+            // within same area size, prefer more compact rectangles
+            return result == 0 ? Integer.compare(Area.edgeCount(a), Area.edgeCount(b)) : result;
         });
 
         for (int j = 0; j < AREA_COUNT; j++) {

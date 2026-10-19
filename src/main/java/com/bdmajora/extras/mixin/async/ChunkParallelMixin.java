@@ -71,7 +71,7 @@ public abstract class ChunkParallelMixin {
         this.impetus$lockSections();
     }
 
-    @WrapOperation(method = {"setBlockState", "setLightFor"}, at = @At(value = "NEW", target = "(IZ)Lnet/minecraft/world/chunk/storage/ExtendedBlockStorage;"))
+    @WrapOperation(method = {"setBlockState", "setLightFor"}, at = @At(value = "NEW", target = "(IZ)Lnet/minecraft/world/chunk/storage/ExtendedBlockStorage;", remap = false))
     private ExtendedBlockStorage impetus$lockNewSection(int y, boolean storeSkylight, Operation<ExtendedBlockStorage> original) {
         ExtendedBlockStorage section = original.call(y, storeSkylight);
         if (this.impetus$parallel) {

@@ -43,6 +43,7 @@ class FulgorOptionPagesTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void thePageMirrorsEverySwitchInTheConfig() throws Exception {
         OptionPage page = FulgorOptionPages.lighting();
         assertEquals("lighting", page.getId().getPath());

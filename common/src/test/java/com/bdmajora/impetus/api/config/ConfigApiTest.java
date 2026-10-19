@@ -4,7 +4,6 @@ import com.bdmajora.impetus.api.OptionGUIConstructionEvent;
 import com.bdmajora.impetus.api.OptionGroupConstructionEvent;
 import com.bdmajora.impetus.api.OptionPageConstructionEvent;
 import com.bdmajora.impetus.api.options.OptionIdentifier;
-import com.bdmajora.impetus.api.options.control.Control;
 import com.bdmajora.impetus.api.options.structure.Option;
 import com.bdmajora.impetus.api.options.structure.OptionFlag;
 import com.bdmajora.impetus.api.options.structure.OptionGroup;
@@ -70,12 +69,12 @@ class ConfigApiTest {
         ConfigStorage<AtomicInteger> storage = ConfigBuilders.storage(new AtomicInteger(3), saves::incrementAndGet);
         OptionImpl<AtomicInteger, Integer> option = ConfigBuilders.option("api", "value", Integer.class, storage)
                 .setBinding(AtomicInteger::set, AtomicInteger::get)
-                .setControl(o -> Mockito.mock(Control.class))
+                .setControl(o -> Mockito.mock())
                 .build();
         assertEquals("api:value", option.getId().toString());
         OptionImpl<AtomicInteger, Integer> byId = ConfigBuilders.option(option.getId(), Integer.class, storage)
                 .setBinding(AtomicInteger::set, AtomicInteger::get)
-                .setControl(o -> Mockito.mock(Control.class))
+                .setControl(o -> Mockito.mock())
                 .build();
         assertSame(option.getId(), byId.getId());
         OptionGroup group = ConfigBuilders.group("api", "grp").add(option).build();

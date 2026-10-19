@@ -205,6 +205,7 @@ class TerrainMeshingTest {
         Mc.forge();
         EMITTING = new Block(Material.ROCK) {
             @Override
+            @SuppressWarnings("deprecation")
             public EnumBlockRenderType getRenderType(IBlockState state) {
                 return EnumBlockRenderType.INVISIBLE;
             }
@@ -464,8 +465,8 @@ class TerrainMeshingTest {
             });
 
             Statics.set(TileEntityRendererDispatcher.class, "instance", blockEntities);
-            TileEntitySpecialRenderer<TileEntity> culled = mock(TileEntitySpecialRenderer.class);
-            TileEntitySpecialRenderer<TileEntity> global = mock(TileEntitySpecialRenderer.class);
+            TileEntitySpecialRenderer<TileEntity> culled = mock();
+            TileEntitySpecialRenderer<TileEntity> global = mock();
             when(global.isGlobalRenderer(any())).thenReturn(true);
             doReturn(culled).when(blockEntities).getRenderer(chestEntity);
             doReturn(global).when(blockEntities).getRenderer(beaconEntity);

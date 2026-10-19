@@ -31,7 +31,7 @@ public abstract class MinecraftScheduledTasksMixin {
         ScheduledTaskDrain.drain(this.scheduledTasks, LOGGER);
     }
 
-    @ModifyExpressionValue(method = "runGameLoop()V", at = @At(value = "INVOKE", target = "Ljava/util/Queue;isEmpty()Z"))
+    @ModifyExpressionValue(method = "runGameLoop()V", at = @At(value = "INVOKE", target = "Ljava/util/Queue;isEmpty()Z", remap = false))
     private boolean impetus$skipLockedDrain(boolean empty) {
         return true;
     }

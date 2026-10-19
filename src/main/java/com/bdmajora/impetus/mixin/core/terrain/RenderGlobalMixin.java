@@ -216,7 +216,7 @@ public abstract class RenderGlobalMixin implements SimpleWorldRenderer.Provider<
     }
 
     // Vanilla's chunk task set is always empty since Impetus schedules its own
-    @Redirect(method = "updateClouds", at = @At(value = "INVOKE", target = "Ljava/util/Set;isEmpty()Z", ordinal = 1))
+    @Redirect(method = "updateClouds", at = @At(value = "INVOKE", target = "Ljava/util/Set;isEmpty()Z", ordinal = 1, remap = false))
     private boolean alwaysHaveNoTasks(Set instance) {
         return true;
     }

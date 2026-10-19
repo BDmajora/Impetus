@@ -89,6 +89,7 @@ class EventMixinsTest {
     @Test
     void aRecycledCapabilityEventSwapsItsObjectAndDropsTheProvidersFromLastTime() {
         // Mockito cannot instrument the spliced event class, so the mixin gets a plain generated subclass instead
+        @SuppressWarnings("unchecked")
         AttachCapabilitiesEventMixin<TileEntity> event = Mixins.concrete(AttachCapabilitiesEventMixin.class);
         Map<net.minecraft.util.ResourceLocation, net.minecraftforge.common.capabilities.ICapabilityProvider> caps =
                 new java.util.HashMap<>();

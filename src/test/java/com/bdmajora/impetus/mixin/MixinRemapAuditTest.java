@@ -36,6 +36,7 @@ class MixinRemapAuditTest {
     private static final String OVERWRITE = "Lorg/spongepowered/asm/mixin/Overwrite;";
     private static final String SHADOW = "Lorg/spongepowered/asm/mixin/Shadow;";
     private static final String INVOKER = "Lorg/spongepowered/asm/mixin/gen/Invoker;";
+    private static final String AT = "Lorg/spongepowered/asm/mixin/injection/At;";
 
     // Methods Forge patches into Minecraft classes: no SRG name exists for them, so an unremapped selector is the right one
     private static final Set<String> FORGE_ADDED = Set.of("net/minecraft/block/state/BlockStateContainer.createState");
@@ -108,6 +109,117 @@ class MixinRemapAuditTest {
         assertEquals(new Selector("init", null), parse("init*"));
         assertEquals("", parse("<init>").name());
         assertNull(parse("decode").desc());
+    }
+
+    // remapShadowJar rewrites every remapped @At target and prints a TinyRemapper warning for each it cannot: a JDK owner (the JDK is not on its classpath),
+    // a bare NEW class name it cannot parse, or a descriptor-only NEW target, which maps to itself since 1.12 MCP and SRG share class names and so reads as failed.
+    // None of those has anything to remap, so each must say remap = false to keep the build quiet
+    @Test
+    void remappedAtTargetsAreOnesTheBuildCanRemap() throws Exception {
+        Path classes = Path.of(NetworkLimits.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+        List<String> offenders = new ArrayList<>();
+        int[] remapped = {0};
+        try (Stream<Path> files = Files.walk(classes)) {
+            for (Path file : (Iterable<Path>) files.filter(path -> path.toString().endsWith(".class"))::iterator) {
+                ClassNode node = read(Files.readAllBytes(file));
+                AnnotationNode mixin = annotation(node.visibleAnnotations, node.invisibleAnnotations, MIXIN);
+                if (mixin == null) {
+                    continue;
+                }
+                boolean classRemap = !Boolean.FALSE.equals(value(mixin, "remap"));
+                for (MethodNode method : node.methods) {
+                    for (AnnotationNode member : annotations(method.visibleAnnotations, method.invisibleAnnotations)) {
+                        unmappableTargets(member, classRemap, node.name + "." + method.name, offenders, remapped);
+                    }
+                }
+            }
+        }
+        // The walk reached the nested @At rather than stopping at the injectors
+        assertTrue(remapped[0] > 50, "only " + remapped[0] + " remapped @At targets under " + classes);
+        assertEquals(List.of(), offenders);
+    }
+
+    @Test
+    void theAtAuditFollowsRemapDownToEachTarget() {
+        // The forms the build warned on
+        assertTrue(unmappable("Ljava/util/Queue;isEmpty()Z"));
+        assertTrue(unmappable("java/util/Random"));
+        assertTrue(unmappable("(IZ)Lnet/minecraft/world/chunk/storage/ExtendedBlockStorage;"));
+        // A Minecraft owner resolves, JDK types in its descriptor included; so does a class-only target
+        assertFalse(unmappable("Lnet/minecraft/client/Minecraft;scheduledTasks:Ljava/util/Queue;"));
+        assertFalse(unmappable("Lnet/minecraft/world/WorldProvider;getCloudHeight()F"));
+        assertFalse(unmappable("Lnet/minecraft/world/ChunkCache;"));
+
+        // A JDK target under an injector inherits remap from the class, and the @At's own remap = false wins over both
+        List<String> offenders = new ArrayList<>();
+        int[] remapped = {0};
+        unmappableTargets(injector(at("Ljava/lang/Thread;yield()V", null)), true, "remapped", offenders, remapped);
+        unmappableTargets(injector(at("Ljava/lang/Thread;yield()V", null)), false, "class off", offenders, remapped);
+        unmappableTargets(injector(at("Ljava/lang/Thread;yield()V", false)), true, "at off", offenders, remapped);
+        unmappableTargets(injector(at("Lnet/minecraft/world/WorldProvider;getCloudHeight()F", null)), true, "minecraft", offenders, remapped);
+        assertEquals(List.of("remapped -> Ljava/lang/Thread;yield()V"), offenders);
+        assertEquals(2, remapped[0]);
+
+        // A slice's bounds are reached through the injector too
+        AnnotationNode slice = new AnnotationNode("Lorg/spongepowered/asm/mixin/injection/Slice;");
+        slice.visit("from", at("java/util/Random", null));
+        AnnotationNode sliced = injector(at("Lnet/minecraft/world/WorldProvider;getCloudHeight()F", null));
+        sliced.visit("slice", slice);
+        offenders.clear();
+        unmappableTargets(sliced, true, "slice", offenders, remapped);
+        assertEquals(List.of("slice -> java/util/Random"), offenders);
+    }
+
+    // Carries remap down from the class through the injector and any @Slice to each @At, the way the build inherits it
+    private static void unmappableTargets(AnnotationNode annotation, boolean inherited, String where, List<String> offenders, int[] remapped) {
+        boolean remap = value(annotation, "remap") instanceof Boolean explicit ? explicit : inherited;
+        if (remap && AT.equals(annotation.desc) && value(annotation, "target") instanceof String target) {
+            remapped[0]++;
+            if (unmappable(target)) {
+                offenders.add(where + " -> " + target);
+            }
+        }
+        if (annotation.values == null) {
+            return;
+        }
+        for (int i = 1; i < annotation.values.size(); i += 2) {
+            Object nested = annotation.values.get(i);
+            List<?> all = nested instanceof List<?> list ? list : List.of(nested);
+            for (Object element : all) {
+                if (element instanceof AnnotationNode child) {
+                    unmappableTargets(child, remap, where, offenders, remapped);
+                }
+            }
+        }
+    }
+
+    // A descriptor-only target, a JDK owner, or a bare class name; "owner.name" dotted targets parse
+    static boolean unmappable(String target) {
+        if (target.startsWith("(")) {
+            return true;
+        }
+        if (target.startsWith("L")) {
+            String owner = target.substring(1, Math.max(1, target.indexOf(';')));
+            return owner.startsWith("java/") || owner.startsWith("javax/") || owner.startsWith("jdk/") || owner.startsWith("sun/");
+        }
+        return target.indexOf('.') < 0;
+    }
+
+    private static AnnotationNode at(String target, Boolean remap) {
+        AnnotationNode at = new AnnotationNode(AT);
+        at.visit("value", "INVOKE");
+        at.visit("target", target);
+        if (remap != null) {
+            at.visit("remap", remap);
+        }
+        return at;
+    }
+
+    private static AnnotationNode injector(AnnotationNode at) {
+        AnnotationNode redirect = new AnnotationNode("Lorg/spongepowered/asm/mixin/injection/Redirect;");
+        redirect.visit("method", List.of("runGameLoop"));
+        redirect.visit("at", at);
+        return redirect;
     }
 
     private boolean namesMinecraft(String target, Selector selector) {

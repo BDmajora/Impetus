@@ -38,6 +38,7 @@ class LightInfoAndFacesTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     void packedInfoCarriesOpacityEmissionAndFaces() {
         int glowstone = LightInfo.of(Blocks.GLOWSTONE.getDefaultState());
         assertEquals(15, LightInfo.emission(glowstone));
@@ -136,6 +137,7 @@ class LightInfoAndFacesTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     void aBlockMayAnswerPerFaceOcclusionItself() {
         SidedBlock block = new SidedBlock();
         IBlockState state = mock(IBlockState.class);

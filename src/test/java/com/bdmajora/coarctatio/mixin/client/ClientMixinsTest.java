@@ -44,6 +44,7 @@ class ClientMixinsTest {
     @Test
     void theCreativeSearchIndexIsBuiltOnTheFirstSearch() {
         // Mockito cannot instrument SearchTree, so the mixin gets a generated subclass whose shadow is a no-op
+        @SuppressWarnings("unchecked")
         SearchTreeMixin<String> tree = Mixins.concrete(SearchTreeMixin.class);
         // A re-parented mixin's field initialisers do not apply, so the starting state is set here
         Mixins.set(tree, "coarctatio$stale", true);

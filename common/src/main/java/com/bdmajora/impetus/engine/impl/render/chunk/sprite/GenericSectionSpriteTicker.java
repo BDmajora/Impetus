@@ -80,8 +80,10 @@ public class GenericSectionSpriteTicker<T> implements SectionTicker {
             var regionSprites = cached.sprites;
             //noinspection ForLoopReplaceableByForEach
             for (int j = 0; j < regionSprites.length; j++) {
-                //noinspection unchecked
-                spriteSet.add((T) regionSprites[j]);
+                // Sections only ever record the sprite type this ticker was built for
+                @SuppressWarnings("unchecked")
+                T sprite = (T) regionSprites[j];
+                spriteSet.add(sprite);
             }
         }
 

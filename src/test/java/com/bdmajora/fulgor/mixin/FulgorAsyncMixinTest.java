@@ -269,6 +269,7 @@ class FulgorAsyncMixinTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     void everyBlockStateMemoisesItsLightInfo() {
         BlockStateMixin state = Mixins.instance(BlockStateMixin.class);
         // The mixin is the state, so the info is computed from what it reports about itself

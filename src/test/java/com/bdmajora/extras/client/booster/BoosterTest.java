@@ -156,7 +156,9 @@ class BoosterTest {
         ByteBuffer mapped = ByteBuffer.allocateDirect(4 * REGION_SIZE);
         gl(GL30.class).when(() -> GL30.glMapBufferRange(anyInt(), anyLong(), anyLong(), anyInt(), any())).thenReturn(mapped);
         long fence = 0x1234L;
-        gl(GL32.class).when(() -> fenceSync(anyInt(), anyInt())).thenReturn(fence);
+        // An answer, not thenReturn: reflection may resolve either glFenceSync for the recorded call (which one depends on what mocked GL32 earlier in the JVM), and thenReturn
+        // checks the value against that method's return type; stubs match on name and parameters, so the long call gets the fence either way
+        gl(GL32.class).when(() -> fenceSync(anyInt(), anyInt())).thenAnswer(invocation -> fence);
         assertTrue(StreamingUploader.draw(quad()));
         assertTrue((boolean) Mixins.<Boolean>get(StreamingUploader.class, "persistent"));
         assertTrue(mapped.getFloat(0) == 0.0F);

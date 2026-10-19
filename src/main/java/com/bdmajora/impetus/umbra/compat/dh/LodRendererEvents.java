@@ -7,11 +7,11 @@ import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;
 import com.bdmajora.impetus.umbra.pipeline.UmbraShadowRenderer;
 import com.bdmajora.impetus.umbra.uniforms.CapturedRenderingState;
 import com.seibel.distanthorizons.api.DhApi;
-import com.seibel.distanthorizons.api.enums.rendering.EDhApiFogDrawMode;
 import com.seibel.distanthorizons.api.enums.rendering.EDhApiRenderPass;
 import com.seibel.distanthorizons.api.interfaces.override.rendering.IDhApiFramebuffer;
 import com.seibel.distanthorizons.api.interfaces.override.rendering.IDhApiGenericObjectShaderProgram;
 import com.seibel.distanthorizons.api.interfaces.override.rendering.IDhApiShadowCullingFrustum;
+import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiAfterColorDepthTextureCreatedEvent;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiAfterDhInitEvent;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBeforeApplyShaderRenderEvent;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBeforeBufferRenderEvent;
@@ -23,10 +23,10 @@ import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBeforeR
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBeforeRenderPassEvent;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBeforeRenderSetupEvent;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBeforeTextureClearEvent;
-import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiColorDepthTextureCreatedEvent;
 import com.seibel.distanthorizons.api.methods.events.sharedParameterObjects.DhApiCancelableEventParam;
 import com.seibel.distanthorizons.api.methods.events.sharedParameterObjects.DhApiEventParam;
 import com.seibel.distanthorizons.api.methods.events.sharedParameterObjects.DhApiRenderParam;
+import com.seibel.distanthorizons.api.methods.events.sharedParameterObjects.DhApiTextureCreatedParam;
 import com.seibel.distanthorizons.api.objects.DhApiResult;
 import com.seibel.distanthorizons.api.objects.math.DhApiMat4f;
 import com.seibel.distanthorizons.api.objects.math.DhApiVec3f;
@@ -104,9 +104,9 @@ public final class LodRendererEvents {
                 boolean override = shadersActive() && getInstance().shouldOverride();
                 DhApi.Delayed.renderProxy.setDeferTransparentRendering(override);
                 if (override) {
-                    DhApi.Delayed.configs.graphics().fog().drawMode().setValue(EDhApiFogDrawMode.FOG_DISABLED);
+                    DhApi.Delayed.configs.graphics().fog().enableDhFog().setValue(false);
                 } else {
-                    DhApi.Delayed.configs.graphics().fog().drawMode().clearValue();
+                    DhApi.Delayed.configs.graphics().fog().enableDhFog().clearValue();
                 }
             }
         });
@@ -150,9 +150,10 @@ public final class LodRendererEvents {
     }
 
     private static void setupCreateDepthTextureEvent() {
-        DhApi.events.bind(DhApiColorDepthTextureCreatedEvent.class, new DhApiColorDepthTextureCreatedEvent() {
+        // Fired once DH's textures exist, with the sizes the deprecated DhApiColorDepthTextureCreatedEvent carries; they are only read at render time
+        DhApi.events.bind(DhApiAfterColorDepthTextureCreatedEvent.class, new DhApiAfterColorDepthTextureCreatedEvent() {
             @Override
-            public void onResize(DhApiEventParam<DhApiColorDepthTextureCreatedEvent.EventParam> event) {
+            public void onResize(DhApiEventParam<DhApiTextureCreatedParam> event) {
                 textureWidth = event.value.newWidth;
                 textureHeight = event.value.newHeight;
             }
@@ -299,13 +300,13 @@ public final class LodRendererEvents {
                 // Config overrides while a pack shades LODs: no DH SSAO (the pack's own), no DH fog
                 if (instance.shouldOverride()) {
                     DhApi.Delayed.configs.graphics().ambientOcclusion().enabled().setValue(false);
-                    DhApi.Delayed.configs.graphics().fog().drawMode().setValue(EDhApiFogDrawMode.FOG_DISABLED);
+                    DhApi.Delayed.configs.graphics().fog().enableDhFog().setValue(false);
                     if (event.value.renderPass == EDhApiRenderPass.OPAQUE_AND_TRANSPARENT) {
                         LOGGER.error("[Umbra] Unexpected: DH ran its combined opaque + translucent pass with shaders on");
                     }
                 } else {
                     DhApi.Delayed.configs.graphics().ambientOcclusion().enabled().clearValue();
-                    DhApi.Delayed.configs.graphics().fog().drawMode().clearValue();
+                    DhApi.Delayed.configs.graphics().fog().enableDhFog().clearValue();
                 }
 
                 if (event.value.renderPass == EDhApiRenderPass.OPAQUE) {

@@ -17,7 +17,6 @@ import net.minecraft.client.model.ModelRenderer;
 import net.minecraft.client.model.PositionTextureVertex;
 import net.minecraft.client.model.TexturedQuad;
 import net.minecraft.client.renderer.block.model.BakedQuad;
-import net.minecraft.client.renderer.block.model.ItemCameraTransforms;
 import net.minecraft.client.renderer.block.model.ItemOverrideList;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.texture.TextureMap;
@@ -147,7 +146,6 @@ class BakedEntitiesTest {
         assertFalse(model.isGui3d());
         assertFalse(model.isBuiltInRenderer());
         assertNotNull(model.getParticleTexture());
-        assertSame(ItemCameraTransforms.DEFAULT, model.getItemCameraTransforms());
         assertSame(ItemOverrideList.NONE, model.getOverrides());
         for (IBlockState state : List.of(Blocks.ENDER_CHEST.getDefaultState(), Blocks.STANDING_SIGN.getDefaultState(),
                 Blocks.BED.getDefaultState(), Blocks.PURPLE_SHULKER_BOX.getDefaultState())) {

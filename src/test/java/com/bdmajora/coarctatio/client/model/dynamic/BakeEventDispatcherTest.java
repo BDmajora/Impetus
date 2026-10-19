@@ -156,7 +156,7 @@ class BakeEventDispatcherTest {
         ListenerList list = new ModelBakeEvent(null, null, null).getListenerList();
         listeners.forEach(listener -> list.register(bus, EventPriority.NORMAL, listener));
         try {
-            BakeEventDispatcher.post(mock(ModelManager.class), mock(IRegistry.class), Mc.mock(ModelLoader.class));
+            BakeEventDispatcher.post(mock(ModelManager.class), mock(), Mc.mock(ModelLoader.class));
         } finally {
             listeners.forEach(listener -> ListenerList.unregisterAll(bus, listener));
         }

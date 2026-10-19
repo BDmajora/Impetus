@@ -70,6 +70,7 @@ class ChunkShadersTest {
     }
 
     @Test
+    @SuppressWarnings("deprecation")
     void defaultInterfaceUploadsMatricesOffsetsTexturesAndAges() {
         ShaderBindingContext context = context();
         DefaultChunkShaderInterface shader = new DefaultChunkShaderInterface(context, new ChunkShaderOptions(List.of(ChunkFogMode.EXP2), Passes.CUTOUT), ENVIRONMENT);

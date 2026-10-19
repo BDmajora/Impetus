@@ -351,11 +351,13 @@ class ConfigBuildersTest {
         assertSame(data, storage.getData());
         storage.save();
         assertEquals(1, runs.get());
-        // A Runnable has nowhere to take flags, so every form of save runs it once, null flags included
+        // A Runnable has nowhere to take flags, so every form of save runs it once
         storage.save(Set.of(OptionFlag.REQUIRES_GAME_RESTART));
         storage.save(Set.of());
-        storage.save(null);
-        assertEquals(4, runs.get());
+        assertEquals(3, runs.get());
+        // Null flags are still a caller bug, so they are refused before the action runs
+        npe("Flags must not be null", () -> storage.save(null));
+        assertEquals(3, runs.get());
         // The data is held, not copied, so options read later changes
         data.add("later");
         assertEquals(List.of("later"), storage.getData());
@@ -367,7 +369,7 @@ class ConfigBuildersTest {
     void storageChecksTheDataThenTheAction() {
         npe("Config data must not be null", () -> ConfigBuilders.storage(null, () -> { }));
         npe("Save action must not be null", () -> ConfigBuilders.storage("data", null));
-        // The leftmost bad argument is the one reported, where ConfigStorage.of alone would name the action first
+        // The leftmost bad argument is the one reported
         npe("Config data must not be null", () -> ConfigBuilders.storage(null, null));
     }
 

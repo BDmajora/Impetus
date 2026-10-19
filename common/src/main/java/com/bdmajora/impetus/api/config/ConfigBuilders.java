@@ -64,8 +64,7 @@ public final class ConfigBuilders {
 
     // Returns storage that wraps the data object and runs saveAction when changes are saved
     public static <T> ConfigStorage<T> storage(T data, Runnable saveAction) {
-        Objects.requireNonNull(data, "Config data must not be null");
-        Objects.requireNonNull(saveAction, "Save action must not be null");
+        // ConfigStorage.of checks the data then the action
         return ConfigStorage.of(data, saveAction);
     }
 

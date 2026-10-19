@@ -1,6 +1,7 @@
 package com.bdmajora.impetus.api.config;
 
 import com.bdmajora.impetus.api.OptionPageConstructionEvent;
+import com.bdmajora.impetus.api.eventbus.BusListeners;
 import com.bdmajora.impetus.api.eventbus.EventHandlerRegistrar;
 import com.bdmajora.impetus.api.options.OptionIdentifier;
 import com.bdmajora.impetus.api.options.structure.Option;
@@ -296,19 +297,7 @@ class ConfigPageBuilderTest {
         try {
             body.execute();
         } finally {
-            handlers().remove(handler);
-        }
-    }
-
-    // The bus has no way to unsubscribe, so handlers come off its list directly
-    @SuppressWarnings("unchecked")
-    private static List<EventHandlerRegistrar.Handler<OptionPageConstructionEvent>> handlers() {
-        try {
-            Field field = EventHandlerRegistrar.class.getDeclaredField("handlerList");
-            field.setAccessible(true);
-            return (List<EventHandlerRegistrar.Handler<OptionPageConstructionEvent>>) field.get(OptionPageConstructionEvent.BUS);
-        } catch (ReflectiveOperationException e) {
-            throw new AssertionError(e);
+            BusListeners.remove(OptionPageConstructionEvent.BUS, handler);
         }
     }
 

@@ -3,8 +3,8 @@ package com.bdmajora.impetus.api.config;
 import com.bdmajora.impetus.api.OptionGUIConstructionEvent;
 import com.bdmajora.impetus.api.OptionGroupConstructionEvent;
 import com.bdmajora.impetus.api.OptionPageConstructionEvent;
+import com.bdmajora.impetus.api.eventbus.BusListeners;
 import com.bdmajora.impetus.api.eventbus.EventHandlerRegistrar;
-import com.bdmajora.impetus.api.eventbus.ImpetusEvent;
 import com.bdmajora.impetus.api.options.OptionIdentifier;
 import com.bdmajora.impetus.api.options.structure.Option;
 import com.bdmajora.impetus.api.options.structure.OptionFlag;
@@ -683,7 +683,7 @@ class ConfigApiTest {
         int[] before = new int[buses.size()];
         for (int i = 0; i < buses.size(); i++) {
             assertEquals(1, ownListeners(buses.get(i)), "bus " + i);
-            before[i] = handlers(buses.get(i)).size();
+            before[i] = BusListeners.of(buses.get(i)).size();
         }
         for (int i = 0; i < 1_000; i++) {
             ConfigApi.registerPage(ConfigApiTest::page);
@@ -693,7 +693,7 @@ class ConfigApiTest {
         // Registering grows the registry only; the buses, and what every post walks, stay the same length
         for (int i = 0; i < buses.size(); i++) {
             assertEquals(1, ownListeners(buses.get(i)), "bus " + i);
-            assertEquals(before[i], handlers(buses.get(i)).size(), "bus " + i);
+            assertEquals(before[i], BusListeners.of(buses.get(i)).size(), "bus " + i);
         }
         assertEquals(1_000, size(pages()));
         assertEquals(Set.of(PAGE_A, PAGE_B), keys("GROUPS"));
@@ -740,9 +740,9 @@ class ConfigApiTest {
             assertEquals(List.of(directGroup), groupsOf(PAGE_B));
         } finally {
             // The bus has no way to unsubscribe, so the handlers come off its list directly
-            handlers(OptionGUIConstructionEvent.BUS).remove(pageHandler);
-            handlers(OptionPageConstructionEvent.BUS).remove(groupHandler);
-            handlers(OptionGroupConstructionEvent.BUS).remove(optionHandler);
+            BusListeners.remove(OptionGUIConstructionEvent.BUS, pageHandler);
+            BusListeners.remove(OptionPageConstructionEvent.BUS, groupHandler);
+            BusListeners.remove(OptionGroupConstructionEvent.BUS, optionHandler);
         }
     }
 
@@ -1100,21 +1100,10 @@ class ConfigApiTest {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private static <E extends ImpetusEvent> List<EventHandlerRegistrar.Handler<E>> handlers(EventHandlerRegistrar<E> bus) {
-        try {
-            Field field = EventHandlerRegistrar.class.getDeclaredField("handlerList");
-            field.setAccessible(true);
-            return (List<EventHandlerRegistrar.Handler<E>>) field.get(bus);
-        } catch (ReflectiveOperationException e) {
-            throw new AssertionError(e);
-        }
-    }
-
     // ConfigApi's dispatchers are method references, so they show up as its own lambda classes
     private static long ownListeners(EventHandlerRegistrar<?> bus) {
         String prefix = ConfigApi.class.getName() + "$$Lambda";
-        return handlers(bus).stream().filter(handler -> handler.getClass().getName().startsWith(prefix)).count();
+        return BusListeners.of(bus).stream().filter(handler -> handler.getClass().getName().startsWith(prefix)).count();
     }
 
     private static <T> T join(Future<T> task) throws Exception {

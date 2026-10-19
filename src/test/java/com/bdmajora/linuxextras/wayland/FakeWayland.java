@@ -36,7 +36,7 @@ final class FakeWayland implements AutoCloseable {
     final Arena arena = Arena.ofShared();
     private final Linker linker = Linker.nativeLinker();
     private final Map<String, MemorySegment> symbols = new HashMap<>();
-    // The wl_display GLFW would hand out
+    // The temporary wl_display used for the output-order query
     final MemorySegment display;
     // Interface name to registry name, in announcement order
     final Map<String, Integer> globals = new LinkedHashMap<>();
@@ -53,6 +53,7 @@ final class FakeWayland implements AutoCloseable {
     byte[] pool;
     // Whatever went wrong inside an upcall, where a thrown exception would abort the JVM
     Throwable failure;
+    boolean connected, disconnected;
 
     private final MemorySegment displayInterface;
     private final Map<Long, String> interfaces = new HashMap<>();
@@ -67,6 +68,8 @@ final class FakeWayland implements AutoCloseable {
         this.symbols.put("wl_shm_pool_interface", describe("wl_shm_pool", "niiiiu", "", "i"));
         this.symbols.put("wl_buffer_interface", describe("wl_buffer", ""));
         this.display = this.arena.allocate(8L, 8L);
+        stub("wl_display_connect", "connect", FunctionDescriptor.of(ADDRESS, ADDRESS));
+        stub("wl_display_disconnect", "disconnect", FunctionDescriptor.ofVoid(ADDRESS));
         stub("wl_display_create_queue", "createQueue", FunctionDescriptor.of(ADDRESS, ADDRESS));
         stub("wl_event_queue_destroy", "destroyQueue", FunctionDescriptor.ofVoid(ADDRESS));
         stub("wl_proxy_create_wrapper", "createWrapper", FunctionDescriptor.of(ADDRESS, ADDRESS));
@@ -77,6 +80,15 @@ final class FakeWayland implements AutoCloseable {
         stub("wl_proxy_get_version", "version", FunctionDescriptor.of(JAVA_INT, ADDRESS));
         stub("wl_proxy_destroy", "destroyProxy", FunctionDescriptor.ofVoid(ADDRESS));
         stub("wl_display_roundtrip_queue", "roundtrip", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS));
+    }
+
+    private MemorySegment connect(MemorySegment name) {
+        connected = true;
+        return display;
+    }
+
+    private void disconnect(MemorySegment display) {
+        disconnected = true;
     }
 
     // The library WaylandClient.LIBRARY hands out, without the named symbols

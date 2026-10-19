@@ -5,6 +5,7 @@ import com.bdmajora.linuxextras.LinuxExtras;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.Linker;
 import java.lang.invoke.MethodHandles;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -12,7 +13,7 @@ import java.util.List;
 
 import static java.lang.foreign.ValueLayout.ADDRESS;
 
-// KDE's kde-output-order-v1, the desktop's outputs from the primary down (the order KWin also gives XWayland); GLFW's Wayland backend has no primary monitor and reports whichever output was announced first, and no other compositor offers this
+// KDE's kde-output-order-v1, the desktop's outputs from the primary down; SDL does not query this protocol
 public final class WaylandOutputOrder {
     private static final String INTERFACE = "kde_output_order_v1";
     private static final int DESTROY = 0;
@@ -23,6 +24,30 @@ public final class WaylandOutputOrder {
     private List<String> outputs = List.of();
 
     private WaylandOutputOrder() {
+    }
+
+    // A temporary connection lets the query finish before SDL initializes its display list
+    public static List<String> outputNames() {
+        try (Arena arena = Arena.ofConfined()) {
+            var library = WaylandClient.LIBRARY.get().apply(arena);
+            var linker = Linker.nativeLinker();
+            var connect = linker.downcallHandle(library.find("wl_display_connect").orElseThrow(), FunctionDescriptor.of(ADDRESS, ADDRESS));
+            var disconnect = linker.downcallHandle(library.find("wl_display_disconnect").orElseThrow(), FunctionDescriptor.ofVoid(ADDRESS));
+            // A name avoids consuming an inherited WAYLAND_SOCKET that SDL may need later
+            String name = System.getenv("WAYLAND_DISPLAY");
+            MemorySegment display = (MemorySegment) connect.invoke(arena.allocateFrom(name == null || name.isBlank() ? "wayland-0" : name));
+            if (display.address() == 0L) {
+                return List.of();
+            }
+            try {
+                return new WaylandOutputOrder().query(new WaylandClient(arena, display.address()));
+            } finally {
+                disconnect.invoke(display);
+            }
+        } catch (Throwable t) {
+            LinuxExtras.LOGGER.warn("Could not read the Wayland output order", t);
+            return List.of();
+        }
     }
 
     // Output names as wl_output reports them, primary first; empty when the compositor lacks the protocol or the query fails

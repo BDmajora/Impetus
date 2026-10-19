@@ -803,18 +803,6 @@ impetus.options.extras.threads.chunk_builder_priority.tooltip=Java scheduling pr
 impetus.options.extras.threads.remove_yield.name=Remove Render Yield
 impetus.options.extras.threads.remove_yield.tooltip=Skips the Thread.yield() the render loop makes once per frame. Yielding offers the core to any other runnable thread, which on a loaded machine hands it to a worker and delays the next frame; StutterFix reports steadier frame times without it. Off by default since some drivers and mods rely on the pause.
 
-impetus.quick_setup.title=Impetus Quick Setup
-impetus.quick_setup.body=Impetus can trade a little distant detail for frame time on weaker machines. Pick a preset to turn on the Render Budget and GPU Booster together, or leave both off. Everything here can be changed later under Video Settings > Extras, or by pressing F9 in game. This screen only appears once.
-impetus.quick_setup.balanced=Balanced
-impetus.quick_setup.balanced.help=Recommended: skips distant mobs and thins cosmetic particles only while frames run over 60 FPS's budget.
-impetus.quick_setup.performance=Performance
-impetus.quick_setup.performance.help=For weak machines: always skips distant mobs and keeps particles at 45%%, aiming past 70 FPS.
-impetus.quick_setup.quality=Quality
-impetus.quick_setup.quality.help=Gentle: only steps in below 45 FPS and never drops below 85%% of particles or 128 blocks of mobs.
-impetus.quick_setup.settings=Open Settings
-impetus.quick_setup.settings.help=Opens the Extras page to set everything by hand.
-impetus.quick_setup.skip=Not Now
-impetus.quick_setup.skip.help=Leaves both features off; they stay available under Extras.
 
 impetus.key.category=Impetus
 impetus.key.budget_overlay=Toggle Budget Overlay

@@ -103,6 +103,26 @@ class SimpleWorldRendererTest {
     }
 
     @Test
+    void shadowSetupUsesTheShadowViewportAndTracksTheManagersPass() {
+        Renderer renderer = new Renderer();
+        World world = new World();
+        load(world, 0, 0);
+        renderer.setWorld(world);
+        try {
+            Viewport player = Sections.viewport(8, 8, 8);
+            Viewport shadow = Sections.viewport(8, 16, 8);
+            renderer.setupTerrain(player, camera(8, 8, 8), 1, false, true);
+            assertFalse(renderer.isInShadowPass());
+            renderer.getRenderSectionManager().shadowPass = true;
+            assertTrue(renderer.isInShadowPass());
+            renderer.setupShadowTerrain(player, shadow, camera(8, 8, 8), 2, false);
+            assertSame(shadow, renderer.getLastViewport());
+        } finally {
+            renderer.setWorld(null);
+        }
+    }
+
+    @Test
     void drivesTheSectionManagerFrameByFrame() {
         Renderer renderer = new Renderer();
         World world = new World();

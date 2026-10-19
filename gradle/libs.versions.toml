@@ -4,12 +4,15 @@
 [versions]
 java = "25"
 minecraft = "1.12.2"
-cleanroom = "0.6.13-alpha"
+cleanroom = "0.7.9-alpha"
+# Unimined still needs the last published userdev; runtime APIs come from the 0.7.9 universal jar
+cleanroom-dev = "0.6.13-alpha"
 mcp-channel = "stable"
 mcp-mappings = "39-1.12"
 
-lwjgl = "3.4.1"
+lwjgl = "3.4.3"
 lwjglx = "1.0.0"
+lwjgly = "2.1.0"
 
 joml = "1.10.9"
 fastutil = "8.5.18"
@@ -32,7 +35,10 @@ lwjgl-bom = { module = "org.lwjgl:lwjgl-bom", version.ref = "lwjgl" }
 lwjgl-core = { module = "org.lwjgl:lwjgl" }
 lwjgl-opengl = { module = "org.lwjgl:lwjgl-opengl" }
 lwjgl-glfw = { module = "org.lwjgl:lwjgl-glfw" }
+lwjgl-sdl = { module = "org.lwjgl:lwjgl-sdl" }
 lwjglx = { module = "com.cleanroommc:lwjglx", version.ref = "lwjglx" }
+lwjgly = { module = "com.cleanroommc:lwjgly", version.ref = "lwjgly" }
+cleanroom-runtime = { module = "com.cleanroommc:cleanroom", version.ref = "cleanroom" }
 
 joml = { module = "org.joml:joml", version.ref = "joml" }
 fastutil = { module = "it.unimi.dsi:fastutil", version.ref = "fastutil" }

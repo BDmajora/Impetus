@@ -1,97 +1,104 @@
 package com.bdmajora.impetus.impl.platform;
 
-import com.bdmajora.testing.Mixins;
+import com.cleanroommc.client.sdl.SDL;
+import com.cleanroommc.client.sdl.Window;
+import com.cleanroommc.client.sdl.video.Display;
+import com.cleanroommc.client.sdl.video.DisplayMode;
 import org.junit.jupiter.api.Test;
-import org.lwjgl.glfw.GLFW;
-import org.lwjgl.opengl.Display;
-import org.lwjgl.opengl.DisplayMode;
+import org.lwjgl.sdl.SDLVideo;
+import org.lwjgl.sdl.SDL_DisplayMode;
 import org.mockito.MockedStatic;
-import org.mockito.Mockito;
+
+import java.nio.IntBuffer;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 class GameWindowTest {
-    private static final long WINDOW = 0xCAFEL;
-
     @Test
-    void queriesReadGlfwAgainstCleanroomsWindow() {
-        Display.window = WINDOW;
-        try (MockedStatic<GLFW> glfw = Mockito.mockStatic(GLFW.class)) {
-            assertEquals(WINDOW, GameWindow.handle());
-            // Visible and not iconified is neither minimised nor, without focus, focused
-            glfw.when(() -> GLFW.glfwGetWindowAttrib(WINDOW, GLFW.GLFW_VISIBLE)).thenReturn(GLFW.GLFW_TRUE);
-            assertFalse(GameWindow.isMinimized());
+    void queriesReadTheSdlWindowAndStaySafeBeforeCreation() {
+        Window window = mock(Window.class);
+        try (MockedStatic<SDL> sdl = mockStatic(SDL.class); MockedStatic<SDLVideo> video = mockStatic(SDLVideo.class)) {
+            assertEquals(0, GameWindow.handle());
             assertFalse(GameWindow.isFocused());
-            glfw.when(() -> GLFW.glfwGetWindowAttrib(WINDOW, GLFW.GLFW_ICONIFIED)).thenReturn(GLFW.GLFW_TRUE);
-            assertTrue(GameWindow.isMinimized());
-            // A window never shown counts as minimised too
-            glfw.when(() -> GLFW.glfwGetWindowAttrib(WINDOW, GLFW.GLFW_ICONIFIED)).thenReturn(GLFW.GLFW_FALSE);
-            glfw.when(() -> GLFW.glfwGetWindowAttrib(WINDOW, GLFW.GLFW_VISIBLE)).thenReturn(GLFW.GLFW_FALSE);
-            assertTrue(GameWindow.isMinimized());
-            glfw.when(() -> GLFW.glfwGetWindowAttrib(WINDOW, GLFW.GLFW_FOCUSED)).thenReturn(GLFW.GLFW_TRUE);
+            assertFalse(GameWindow.isMinimized());
+            assertFalse(GameWindow.isContextCurrent());
+            assertFalse(GameWindow.isBorderless());
+            assertFalse(GameWindow.isFullscreen());
+            assertEquals(0, GameWindow.fullscreenModes().length);
+            assertNull(GameWindow.desktopMode());
+            assertFalse(GameWindow.supportsAdaptiveSync());
+            GameWindow.setVsync(true);
+            GameWindow.setBorderless(true);
+            sdl.when(SDL::window).thenReturn(window);
+            when(window.handle()).thenReturn(42L);
+            assertEquals(42L, GameWindow.handle());
+            when(window.focused()).thenReturn(true);
             assertTrue(GameWindow.isFocused());
-            // The context counts as current only when it is this window's
-            glfw.when(GLFW::glfwGetCurrentContext).thenReturn(7L);
-            assertFalse(GameWindow.isContextCurrent());
-            glfw.when(GLFW::glfwGetCurrentContext).thenReturn(WINDOW);
+            when(window.minimized()).thenReturn(true);
+            assertTrue(GameWindow.isMinimized());
+            when(window.minimized()).thenReturn(false);
+            when(window.hidden()).thenReturn(true);
+            assertTrue(GameWindow.isMinimized());
+            video.when(SDLVideo::SDL_GL_GetCurrentWindow).thenReturn(42L);
             assertTrue(GameWindow.isContextCurrent());
-
-            GameWindow.setSwapInterval(-1);
-            glfw.verify(() -> GLFW.glfwSwapInterval(-1));
-            glfw.when(() -> GLFW.glfwExtensionSupported("GLX_EXT_swap_control_tear")).thenReturn(true);
-            assertTrue(GameWindow.platformExtensionSupported("GLX_EXT_swap_control_tear"));
-            assertFalse(GameWindow.platformExtensionSupported("WGL_EXT_swap_control_tear"));
-
-            // Before Cleanroom creates the window there is no handle, and every query says no without asking GLFW
-            Display.created = false;
-            assertEquals(0L, GameWindow.handle());
-            assertFalse(GameWindow.isMinimized());
-            assertFalse(GameWindow.isFocused());
-            assertFalse(GameWindow.isContextCurrent());
+            video.when(() -> SDLVideo.SDL_GL_SetSwapInterval(-1)).thenReturn(true);
+            assertTrue(GameWindow.setSwapInterval(-1));
+            GameWindow.setVsync(true);
+            verify(window).vsync(true);
+            GameWindow.setBorderless(true);
+            verify(window).fullscreenMode(null);
+            GameWindow.setBorderless(false);
+            verify(window).fullscreen(false);
         }
     }
 
     @Test
-    void stateChangesGoThroughDisplaySoItsBookkeepingHolds() {
-        GameWindow.setVsync(true);
-        assertTrue(Display.vsync);
-        DisplayMode big = new DisplayMode(2560, 1440);
-        Display.availableDisplayModes = new DisplayMode[] {big};
-        assertArrayEquals(new DisplayMode[] {big}, GameWindow.fullscreenModes());
-        assertFalse(GameWindow.isFullscreen());
-        assertSame(Display.desktopDisplayMode, GameWindow.desktopMode());
-        // Borderless is Display's, and only answers yes once the window exists
-        GameWindow.setBorderless(true);
-        assertTrue(GameWindow.isBorderless());
-        Display.created = false;
-        assertFalse(GameWindow.isBorderless());
-        Display.reset();
-        assertNotNull(Mixins.construct(GameWindow.class));
+    void adaptiveProbeRestoresTheActualIntervalWithoutChangingTheSetting() {
+        Window window = mock(Window.class);
+        when(window.handle()).thenReturn(42L);
+        try (MockedStatic<SDL> sdl = mockStatic(SDL.class); MockedStatic<SDLVideo> video = mockStatic(SDLVideo.class)) {
+            sdl.when(SDL::window).thenReturn(window);
+            video.when(SDLVideo::SDL_GL_GetCurrentWindow).thenReturn(42L);
+            assertFalse(GameWindow.supportsAdaptiveSync());
+            video.when(() -> SDLVideo.SDL_GL_GetSwapInterval(any(IntBuffer.class))).thenAnswer(inv -> {
+                inv.<IntBuffer>getArgument(0).put(0, 0);
+                return true;
+            });
+            video.when(() -> SDLVideo.SDL_GL_SetSwapInterval(-1)).thenReturn(true);
+            assertTrue(GameWindow.supportsAdaptiveSync());
+            video.verify(() -> SDLVideo.SDL_GL_SetSwapInterval(0));
+            video.when(() -> SDLVideo.SDL_GL_SetSwapInterval(-1)).thenReturn(false);
+            assertFalse(GameWindow.supportsAdaptiveSync());
+        }
     }
 
     @Test
-    void fullscreenModesSwitchTheMonitorTheWindowOwns() {
-        Display.reset();
-        Display.window = WINDOW;
-        DisplayMode mode = new DisplayMode(1280, 720);
-        try (MockedStatic<GLFW> glfw = Mockito.mockStatic(GLFW.class)) {
-            // A windowed (or borderless) window owns no monitor, so there is nothing to switch
+    void fullscreenUsesModesFromTheCurrentDisplayAndDistinguishesDesktopFullscreen() {
+        Window window = mock(Window.class);
+        Display display = mock(Display.class);
+        DisplayMode mode = new DisplayMode(7, 0, 1920, 1080, 1, 144);
+        when(window.handle()).thenReturn(42L);
+        when(window.display()).thenReturn(display);
+        when(display.modes()).thenReturn(List.of(mode));
+        when(display.desktopMode()).thenReturn(mode);
+        try (MockedStatic<SDL> sdl = mockStatic(SDL.class); MockedStatic<SDLVideo> video = mockStatic(SDLVideo.class)) {
+            sdl.when(SDL::window).thenReturn(window);
+            assertArrayEquals(new DisplayMode[] {mode}, GameWindow.fullscreenModes());
+            assertSame(mode, GameWindow.desktopMode());
             assertFalse(GameWindow.setFullscreenMode(mode));
-            glfw.when(() -> GLFW.glfwGetWindowMonitor(WINDOW)).thenReturn(5L);
-            // A mode without a refresh rate lets GLFW pick one
-            assertTrue(GameWindow.setFullscreenMode(mode));
-            glfw.verify(() -> GLFW.glfwSetWindowMonitor(WINDOW, 5L, 0, 0, 1280, 720, GLFW.GLFW_DONT_CARE));
-            DisplayMode fast = Mockito.mock(DisplayMode.class);
-            Mockito.when(fast.getWidth()).thenReturn(1920);
-            Mockito.when(fast.getHeight()).thenReturn(1080);
-            Mockito.when(fast.getFrequency()).thenReturn(144);
-            assertTrue(GameWindow.setFullscreenMode(fast));
-            glfw.verify(() -> GLFW.glfwSetWindowMonitor(WINDOW, 5L, 0, 0, 1920, 1080, 144));
-            // No window at all
-            Display.created = false;
+            when(window.fullscreen()).thenReturn(true);
+            assertTrue(GameWindow.isFullscreen());
+            assertTrue(GameWindow.isBorderless());
             assertFalse(GameWindow.setFullscreenMode(mode));
-        } finally {
-            Display.reset();
+            video.when(() -> SDLVideo.SDL_GetWindowFullscreenMode(42L)).thenReturn(mock(SDL_DisplayMode.class));
+            assertFalse(GameWindow.isBorderless());
+            assertTrue(GameWindow.setFullscreenMode(new DisplayMode(1, 0, 1920, 1080, 1, 144)));
+            verify(window).fullscreenMode(mode);
+            assertFalse(GameWindow.setFullscreenMode(new DisplayMode(1, 0, 640, 480, 1, 60)));
+            when(window.borderless()).thenReturn(true);
+            assertTrue(GameWindow.isBorderless());
         }
     }
 }

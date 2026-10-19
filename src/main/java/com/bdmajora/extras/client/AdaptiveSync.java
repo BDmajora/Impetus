@@ -5,7 +5,7 @@ import com.bdmajora.extras.ExtrasConfig;
 import com.bdmajora.impetus.impl.platform.GameWindow;
 import net.minecraft.client.Minecraft;
 
-// Adaptive VSync (swap interval -1 honours VSync above the refresh rate, disengages below), set straight through GLFW on Cleanroom's window
+// Adaptive VSync through SDL: synchronized above the refresh rate, immediate below it
 public final class AdaptiveSync {
     private static Boolean supported;
 
@@ -19,10 +19,12 @@ public final class AdaptiveSync {
             return cached;
         }
 
+        if (!GameWindow.isContextCurrent()) {
+            return false;
+        }
         boolean result = false;
         try {
-            result = GameWindow.platformExtensionSupported("GLX_EXT_swap_control_tear")
-                    || GameWindow.platformExtensionSupported("WGL_EXT_swap_control_tear");
+            result = GameWindow.supportsAdaptiveSync();
         } catch (Throwable t) {
             Extras.LOGGER.warn("Could not determine adaptive VSync support; assuming unsupported", t);
         }
@@ -73,11 +75,14 @@ public final class AdaptiveSync {
     // Sets the interval on the current context; a failure is logged and adaptive sync switched off
     private static void setSwapInterval(int interval) {
         try {
-            GameWindow.setSwapInterval(interval);
+            if (!GameWindow.setSwapInterval(interval)) {
+                throw new IllegalStateException("SDL refused the swap interval");
+            }
         } catch (Throwable t) {
             Extras.LOGGER.warn("Could not set the swap interval; disabling adaptive VSync", t);
             supported = false;
             Extras.options().extra.useAdaptiveSync = false;
+            GameWindow.setVsync(Minecraft.getMinecraft().gameSettings.enableVsync);
         }
     }
 }

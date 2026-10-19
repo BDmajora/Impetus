@@ -4,14 +4,10 @@ import com.bdmajora.linuxextras.wayland.FakeWayland.Request;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.lwjgl.glfw.GLFWNativeWayland;
-import org.mockito.MockedStatic;
-import org.mockito.Mockito;
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
-import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
@@ -44,6 +40,30 @@ class WaylandProtocolTest {
 
     private List<String> outputNames() {
         return WaylandOutputOrder.outputNames(this.wayland.display.address());
+    }
+
+    @Test
+    void proxiesWithoutADestructorAreFreedDirectly() throws Throwable {
+        wayland.globals.put("wl_shm", 3);
+        try (Arena arena = Arena.ofConfined()) {
+            WaylandClient client = new WaylandClient(arena, wayland.display.address());
+            try {
+                assertEquals(3, client.globals("wl_shm")[0]);
+                MemorySegment proxy = client.bind(3, client.dataSymbol("wl_shm_interface"), 1);
+                client.destroyProxy(proxy);
+            } finally {
+                client.close();
+            }
+        }
+    }
+
+    @Test
+    void thePreSdlQueryOwnsAndClosesItsConnection() {
+        wayland.globals.put("kde_output_order_v1", 7);
+        wayland.outputOrder = List.of("DP-2", "DP-1");
+        assertEquals(List.of("DP-2", "DP-1"), WaylandOutputOrder.outputNames());
+        assertTrue(wayland.connected);
+        assertTrue(wayland.disconnected);
     }
 
     @Test
@@ -109,127 +129,4 @@ class WaylandProtocolTest {
         }
     }
 
-    // An xdg_toplevel proxy as libwayland lays one out: a pointer to its wl_interface, whose first field points to the name
-    private static MemorySegment toplevel(Arena arena) {
-        MemorySegment wlInterface = arena.allocate(WaylandClient.WL_INTERFACE);
-        wlInterface.set(ADDRESS, 0L, arena.allocateFrom("xdg_toplevel"));
-        MemorySegment proxy = arena.allocate(16L, 8L);
-        proxy.set(ADDRESS, 0L, wlInterface);
-        return proxy;
-    }
-
-    // Square RGBA images of one repeated pixel
-    private static ByteBuffer icon(int size, int red, int green, int blue, int alpha) {
-        ByteBuffer pixels = ByteBuffer.allocate(size * size * 4);
-        for (int i = 0; i < size * size; i++) {
-            pixels.put((byte) red).put((byte) green).put((byte) blue).put((byte) alpha);
-        }
-        return pixels.flip();
-    }
-
-    private void setIcon(MemorySegment window, MemorySegment surface, ByteBuffer... icons) {
-        try (MockedStatic<GLFWNativeWayland> glfw = Mockito.mockStatic(GLFWNativeWayland.class)) {
-            glfw.when(() -> GLFWNativeWayland.glfwGetWaylandWindow(window.address())).thenReturn(surface.address());
-            glfw.when(GLFWNativeWayland::glfwGetWaylandDisplay).thenReturn(this.wayland.display.address());
-            WaylandWindowIcon.setIcon(window.address(), icons);
-        }
-    }
-
-    @Test
-    void theIconGoesToTheToplevelGlfwKeepsNearItsSurface() {
-        this.wayland.globals.put("wl_shm", 3);
-        this.wayland.globals.put("xdg_toplevel_icon_manager_v1", 9);
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment surface = arena.allocate(8L, 8L);
-            MemorySegment toplevel = toplevel(arena);
-            // GLFW's window data: the wl_surface, then a few fields on, the toplevel
-            MemorySegment window = arena.allocate(16384L + 1024L, 8L);
-            window.set(JAVA_LONG, 256L, surface.address());
-            window.set(JAVA_LONG, 256L + 40L, toplevel.address());
-
-            setIcon(window, surface, icon(2, 255, 0, 0, 128), icon(1, 10, 20, 30, 255));
-            assertEquals(List.of("wl_display.1->wl_registry",
-                    "wl_registry.0->xdg_toplevel_icon_manager_v1", "wl_registry.0->wl_shm",
-                    "wl_shm.0->wl_shm_pool", "wl_shm_pool.0->wl_buffer", "wl_shm_pool.0->wl_buffer",
-                    "xdg_toplevel_icon_manager_v1.1->xdg_toplevel_icon_v1",
-                    "xdg_toplevel_icon_v1.2", "xdg_toplevel_icon_v1.2",
-                    "xdg_toplevel_icon_manager_v1.2", "xdg_toplevel_icon_v1.0",
-                    "wl_buffer.0", "wl_buffer.0", "wl_shm_pool.1", "xdg_toplevel_icon_manager_v1.0"), this.wayland.summary());
-
-            List<Request> requests = this.wayland.requests;
-            assertEquals(List.of(9, "xdg_toplevel_icon_manager_v1", 1, 0L), requests.get(1).arguments());
-            // One pool for both, each buffer at its offset with its size, stride and ARGB8888
-            assertEquals(20, requests.get(3).arguments().get(2));
-            assertEquals(List.of(0L, 0, 2, 2, 8, 0), requests.get(4).arguments());
-            assertEquals(List.of(0L, 16, 1, 1, 4, 0), requests.get(5).arguments());
-            assertEquals(1, requests.get(7).arguments().get(1));
-            assertEquals(toplevel.address(), requests.get(9).arguments().get(0));
-            // Premultiplied, little-endian ARGB: half-transparent red, then an opaque pixel with its channels swapped round
-            byte[] expected = new byte[20];
-            for (int i = 0; i < 16; i += 4) {
-                expected[i + 2] = (byte) 128;
-                expected[i + 3] = (byte) 128;
-            }
-            expected[16] = 30;
-            expected[17] = 20;
-            expected[18] = 10;
-            expected[19] = (byte) 255;
-            assertArrayEquals(expected, this.wayland.pool);
-        }
-    }
-
-    @Test
-    void underLibdecorTheToplevelSitsBehindTheFrame() {
-        this.wayland.globals.put("wl_shm", 3);
-        this.wayland.globals.put("xdg_toplevel_icon_manager_v1", 9);
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment surface = arena.allocate(8L, 8L);
-            MemorySegment toplevel = toplevel(arena);
-            // The frame's first field points at libdecor's private data, which holds the surface and the toplevel
-            MemorySegment frameData = arena.allocate(512L, 8L);
-            frameData.set(JAVA_LONG, 64L, surface.address());
-            frameData.set(JAVA_LONG, 96L, toplevel.address());
-            MemorySegment frame = arena.allocate(16L, 8L);
-            frame.set(JAVA_LONG, 0L, frameData.address());
-            MemorySegment window = arena.allocate(16384L + 1024L, 8L);
-            window.set(JAVA_LONG, 128L, surface.address());
-            // A misaligned value near the surface is no proxy
-            window.set(JAVA_LONG, 136L, 3L);
-            window.set(JAVA_LONG, 144L, frame.address());
-
-            setIcon(window, surface, icon(1, 0, 0, 0, 0));
-            Request setIcon = this.wayland.requests.stream()
-                    .filter(r -> "xdg_toplevel_icon_manager_v1".equals(r.target()) && r.opcode() == 2).findFirst().orElseThrow();
-            assertEquals(toplevel.address(), setIcon.arguments().get(0));
-        }
-    }
-
-    @Test
-    void withoutAToplevelOrTheProtocolTheIconIsLeftAlone() {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment surface = arena.allocate(8L, 8L);
-            MemorySegment toplevel = toplevel(arena);
-            MemorySegment window = arena.allocate(16384L + 1024L, 8L);
-            // No surface in the window data: nothing is sent at all
-            setIcon(window, surface, icon(1, 0, 0, 0, 0));
-            assertEquals(List.of(), this.wayland.requests);
-
-            window.set(JAVA_LONG, 64L, surface.address());
-            window.set(JAVA_LONG, 72L, toplevel.address());
-            // A compositor without the icon protocol, then one without shared memory
-            this.wayland.globals.put("wl_shm", 3);
-            setIcon(window, surface, icon(1, 0, 0, 0, 0));
-            this.wayland.globals.clear();
-            this.wayland.globals.put("xdg_toplevel_icon_manager_v1", 9);
-            setIcon(window, surface, icon(1, 0, 0, 0, 0));
-            assertEquals(List.of("wl_display.1->wl_registry", "wl_display.1->wl_registry"), this.wayland.summary());
-
-            // A connection lost after the icon went out still frees everything
-            this.wayland.globals.put("wl_shm", 3);
-            this.wayland.requests.clear();
-            this.wayland.failingRoundtrip = 4;
-            setIcon(window, surface, icon(1, 0, 0, 0, 0));
-            assertTrue(this.wayland.summary().contains("xdg_toplevel_icon_manager_v1.2"));
-        }
-    }
 }

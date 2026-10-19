@@ -49,9 +49,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
-import org.lwjgl.glfw.GLFW;
-import org.lwjgl.opengl.Display;
-import org.lwjgl.opengl.DisplayMode;
+import com.bdmajora.impetus.impl.platform.GameWindow;
+import com.cleanroommc.client.sdl.video.DisplayMode;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 import org.mockito.MockedStatic;
@@ -59,7 +58,6 @@ import org.mockito.Mockito;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;
-import java.lang.reflect.Constructor;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -93,7 +91,7 @@ class ImpetusGuiTest {
 
     private MockedStatic<GL11> gl11;
     private MockedStatic<GL13> gl13;
-    private MockedStatic<Display> display;
+    private MockedStatic<GameWindow> display;
     private MockedStatic<Mouse> mouse;
     private MockedStatic<Keyboard> keyboard;
 
@@ -141,11 +139,11 @@ class ImpetusGuiTest {
     void mockNatives() {
         gl11 = Mockito.mockStatic(GL11.class);
         gl13 = Mockito.mockStatic(GL13.class);
-        display = Mockito.mockStatic(Display.class);
+        display = Mockito.mockStatic(GameWindow.class);
         mouse = Mockito.mockStatic(Mouse.class);
         keyboard = Mockito.mockStatic(Keyboard.class);
         Statics.set(FullscreenResolutions.class, "modes", null);
-        display.when(Display::getAvailableDisplayModes).thenReturn(new DisplayMode[0]);
+        display.when(GameWindow::fullscreenModes).thenReturn(new DisplayMode[0]);
         // The client, font and texture manager are shared by every test here
         Mockito.clearInvocations(client, client.fontRenderer, client.getTextureManager());
     }
@@ -163,15 +161,11 @@ class ImpetusGuiTest {
         Mixins.set(Loader.instance(), "namedMods", new HashMap<>());
     }
 
-    private static DisplayMode[] modes() throws ReflectiveOperationException {
-        // The package-private constructor is the one LWJGL uses for modes the monitor reports, which are fullscreen capable
-        Constructor<DisplayMode> reported = DisplayMode.class.getDeclaredConstructor(int.class, int.class, int.class, int.class);
-        reported.setAccessible(true);
+    private static DisplayMode[] modes() {
         return new DisplayMode[] {
-                reported.newInstance(1280, 720, 32, 60),
-                reported.newInstance(1920, 1080, 32, 60),
-                reported.newInstance(1920, 1080, 32, 144),
-                new DisplayMode(800, 600)};
+                new DisplayMode(1, 0, 1280, 720, 1, 60),
+                new DisplayMode(1, 0, 1920, 1080, 1, 60),
+                new DisplayMode(1, 0, 1920, 1080, 1, 144)};
     }
 
     @SuppressWarnings("unchecked")
@@ -186,7 +180,7 @@ class ImpetusGuiTest {
         boolean fluidlogged = Statics.get(FluidloggedCompat.class, "IS_LOADED");
         Statics.set(FluidloggedCompat.class, "IS_LOADED", true);
         try {
-            display.when(Display::getAvailableDisplayModes).thenReturn(modes());
+            display.when(GameWindow::fullscreenModes).thenReturn(modes());
             var graphicsApi = CommonOptionPages.graphicsApi(ImpetusGameOptionPages.getSodiumOpts().getData());
             OptionPage general = ImpetusGameOptionPages.general(graphicsApi);
             OptionPage quality = ImpetusGameOptionPages.quality();
@@ -216,20 +210,23 @@ class ImpetusGuiTest {
             set(general, 4, ImpetusGameOptions.FullscreenMode.EXCLUSIVE);
             verify(client).toggleFullscreen();
             assertEquals(ImpetusGameOptions.FullscreenMode.OFF, sodium.fullscreenMode);
-            // Borderless from exclusive leaves exclusive first, then has Display make the undecorated window
-            display.when(Display::isCreated).thenReturn(true);
-            display.when(Display::getWindow).thenReturn(1L);
-            display.when(Display::isBorderless).thenReturn(false, true);
+            // Borderless from exclusive leaves exclusive first, then asks SDL for desktop fullscreen
+            var borderless = new java.util.concurrent.atomic.AtomicBoolean();
+            display.when(GameWindow::isBorderless).thenAnswer(inv -> borderless.get());
+            display.when(() -> GameWindow.setBorderless(true)).thenAnswer(inv -> {
+                borderless.set(true);
+                return null;
+            });
             when(client.isFullScreen()).thenReturn(true, false);
             set(general, 4, ImpetusGameOptions.FullscreenMode.BORDERLESS);
             verify(client, times(2)).toggleFullscreen();
-            display.verify(() -> Display.setBorderless(true));
+            display.verify(() -> GameWindow.setBorderless(true));
             assertEquals(ImpetusGameOptions.FullscreenMode.BORDERLESS, sodium.fullscreenMode);
             set(general, 5, 1);
             assertEquals(1, sodium.fullscreenResolution);
             // VSync is the Extras cycler, which keeps vanilla's flag in step
             set(general, 6, com.bdmajora.extras.ExtrasConfig.VerticalSync.ON);
-            display.verify(() -> Display.setVSyncEnabled(true));
+            display.verify(() -> GameWindow.setVsync(true));
             assertTrue(net.minecraft.client.Minecraft.getMinecraft().gameSettings.enableVsync);
 
             // Improved transparency needs per-face translucency sorting
@@ -252,37 +249,31 @@ class ImpetusGuiTest {
 
     @Test
     void fullscreenResolutionsAreTheMonitorsDistinctModes() throws Exception {
-        display.when(Display::getAvailableDisplayModes).thenReturn(modes());
-        // Current, then the two distinct fullscreen sizes, largest first; the windowed-only mode is left out
+        display.when(GameWindow::fullscreenModes).thenReturn(modes());
+        // Current, then the two distinct fullscreen sizes, largest first; SDL exposes only fullscreen modes
         assertEquals(3, FullscreenResolutions.count());
         assertEquals("1920x1080", FullscreenResolutions.label(1));
         assertEquals("1280x720", FullscreenResolutions.label(2));
         assertEquals("impetus.options.fullscreen_resolution.current", FullscreenResolutions.label(0));
         assertEquals("impetus.options.fullscreen_resolution.current", FullscreenResolutions.label(3));
-        // A mode is only switched to while the window owns a monitor; "Current" is the desktop's mode, and vanilla is told the new size
-        display.when(Display::isCreated).thenReturn(true);
-        display.when(Display::getWindow).thenReturn(1L);
-        display.when(Display::getDesktopDisplayMode).thenReturn(new DisplayMode(2560, 1440));
-        try (MockedStatic<GLFW> glfw = Mockito.mockStatic(GLFW.class)) {
-            FullscreenResolutions.apply(1);
-            glfw.verify(() -> GLFW.glfwSetWindowMonitor(anyLong(), anyLong(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt()), never());
-            glfw.when(() -> GLFW.glfwGetWindowMonitor(1L)).thenReturn(5L);
-            FullscreenResolutions.apply(2);
-            glfw.verify(() -> GLFW.glfwSetWindowMonitor(1L, 5L, 0, 0, 1280, 720, 60));
-            verify(client).resize(1280, 720);
-            FullscreenResolutions.apply(0);
-            verify(client).resize(2560, 1440);
-            // No desktop mode known, and a refusal, both leave the window alone without taking the game down
-            display.when(Display::getDesktopDisplayMode).thenReturn(null);
-            FullscreenResolutions.apply(0);
-            glfw.when(() -> GLFW.glfwSetWindowMonitor(anyLong(), anyLong(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt())).thenThrow(new IllegalStateException("refused"));
-            FullscreenResolutions.apply(1);
-        }
+        DisplayMode desktop = new DisplayMode(1, 0, 2560, 1440, 1, 60);
+        display.when(GameWindow::desktopMode).thenReturn(desktop);
+        FullscreenResolutions.apply(1);
+        verify(client, never()).resize(anyInt(), anyInt());
+        display.when(() -> GameWindow.setFullscreenMode(any(DisplayMode.class))).thenReturn(true);
+        FullscreenResolutions.apply(2);
+        verify(client).resize(1280, 720);
+        FullscreenResolutions.apply(0);
+        verify(client).resize(2560, 1440);
+        display.when(GameWindow::desktopMode).thenReturn(null);
+        FullscreenResolutions.apply(0);
+        display.when(() -> GameWindow.setFullscreenMode(any(DisplayMode.class))).thenThrow(new IllegalStateException("refused"));
+        FullscreenResolutions.apply(1);
         assertNotNull(Mixins.construct(FullscreenResolutions.class));
 
-        // A monitor GLFW cannot list (headless, or no window yet) offers only the current resolution
+        // A monitor SDL cannot list (headless, or no window yet) offers only the current resolution
         Statics.set(FullscreenResolutions.class, "modes", null);
-        display.when(Display::getAvailableDisplayModes).thenThrow(new IllegalStateException("no monitor"));
+        display.when(GameWindow::fullscreenModes).thenThrow(new IllegalStateException("no monitor"));
         assertEquals(1, FullscreenResolutions.count());
     }
 

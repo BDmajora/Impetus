@@ -100,17 +100,22 @@ class ExtrasClientTest {
     void adaptiveSyncIsReassertedOnlyWhenOnAndGivenUpOnFailure() {
         Object supported = Mixins.get(AdaptiveSync.class, "supported");
         try (MockedStatic<GameWindow> window = Mockito.mockStatic(GameWindow.class)) {
-            // Support is the tear-control extension on either platform, resolved once
+            // Support is an SDL swap-interval probe, cached only once a context is current
+            window.when(GameWindow::isContextCurrent).thenReturn(false);
             Mixins.set(AdaptiveSync.class, "supported", null);
-            window.when(() -> GameWindow.platformExtensionSupported("WGL_EXT_swap_control_tear")).thenReturn(true);
+            assertFalse(AdaptiveSync.isSupported());
+            assertNull(Mixins.get(AdaptiveSync.class, "supported"));
+            window.when(GameWindow::isContextCurrent).thenReturn(true);
+            window.when(() -> GameWindow.setSwapInterval(-1)).thenReturn(true);
+            window.when(GameWindow::supportsAdaptiveSync).thenReturn(true);
             assertTrue(AdaptiveSync.isSupported());
-            window.when(() -> GameWindow.platformExtensionSupported("WGL_EXT_swap_control_tear")).thenReturn(false);
+            window.when(GameWindow::supportsAdaptiveSync).thenReturn(false);
             assertTrue(AdaptiveSync.isSupported());
             Mixins.set(AdaptiveSync.class, "supported", null);
             assertFalse(AdaptiveSync.isSupported());
             // A query that throws (no context yet) reads as unsupported
             Mixins.set(AdaptiveSync.class, "supported", null);
-            window.when(() -> GameWindow.platformExtensionSupported("GLX_EXT_swap_control_tear")).thenThrow(new IllegalStateException("no context"));
+            window.when(GameWindow::supportsAdaptiveSync).thenThrow(new IllegalStateException("no context"));
             assertFalse(AdaptiveSync.isSupported());
 
             // Off, nothing is re-asserted; on and supported, the adaptive interval is set

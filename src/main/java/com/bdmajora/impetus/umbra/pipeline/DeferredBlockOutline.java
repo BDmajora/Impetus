@@ -90,7 +90,7 @@ public final class DeferredBlockOutline {
         GlStateManager.multMatrix(MODELVIEW);
         MODELVIEW.rewind();
 
-        // finishWorldRendering leaves depth off for the fullscreen passes; the box is depth-tested against the world so far edges stay hidden, and writes no depth itself (drawSelectionBox sets depthMask(false))
+        // The box tests against world depth without writing it (drawSelectionBox sets depthMask(false)).
         GlStateManager.enableDepth();
 
         replaying = true;
@@ -104,9 +104,9 @@ public final class DeferredBlockOutline {
             GlStateManager.matrixMode(GL11.GL_MODELVIEW);
             GlStateManager.popMatrix();
 
-            // Hand the composite chain's state back exactly as finishWorldRendering left it.
-            GlStateManager.disableDepth();
-            GlStateManager.depthMask(false);
+            // Match finishWorldRendering's vanilla handoff so inventory models can hide their rear faces.
+            GlStateManager.enableDepth();
+            GlStateManager.depthMask(true);
             GlStateManager.disableBlend();
         }
     }

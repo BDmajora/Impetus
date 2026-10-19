@@ -23,6 +23,19 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ShadersTest {
     @Test
+    void vertexFormatsBindConsecutiveAttributeLocationsBeforeLinking() {
+        var format = com.bdmajora.impetus.engine.impl.gl.attribute.GlVertexFormat.builder(16)
+                .addElement("position", 0, com.bdmajora.impetus.engine.impl.gl.attribute.GlVertexAttributeFormat.FLOAT, 3, false, false)
+                .addElement("color", 12, com.bdmajora.impetus.engine.impl.gl.attribute.GlVertexAttributeFormat.UNSIGNED_BYTE, 4, true, false)
+                .build();
+        Mockito.when(TestGl.gl().glGetProgrami(Mockito.anyInt(), Mockito.eq(0x8B82))).thenReturn(1);
+        var program = GlProgram.builder("attributes").bindAttributes(format, 3).link(ctx -> null);
+        Mockito.verify(TestGl.gl()).glBindAttribLocation(program.handle(), 3, "position");
+        Mockito.verify(TestGl.gl()).glBindAttribLocation(program.handle(), 4, "color");
+        program.delete();
+    }
+
+    @Test
     void shadersCompileAndReportFailures() {
         GlShader shader = new GlShader(ShaderType.VERTEX, "test.vsh", "void main() {}");
         assertEquals("test.vsh", shader.getName());

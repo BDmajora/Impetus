@@ -101,6 +101,22 @@ class LWJGLServiceTest {
     }
 
     @Test
+    void instancingAndDebugWrappersForwardEveryArgument() {
+        LWJGLService service = LWJGLService.create();
+        try (MockedStatic<GL33C> gl33 = mockStatic(GL33C.class);
+             MockedStatic<GL43C> gl43 = mockStatic(GL43C.class)) {
+            service.glVertexAttribDivisor(7, 2);
+            gl33.verify(() -> GL33C.glVertexAttribDivisor(7, 2));
+            service.glObjectLabel(1, 2, "program");
+            gl43.verify(() -> GL43C.glObjectLabel(1, 2, "program"));
+            service.glPushDebugGroup(3, 4, "pass");
+            gl43.verify(() -> GL43C.glPushDebugGroup(3, 4, "pass"));
+            service.glPopDebugGroup();
+            gl43.verify(GL43C::glPopDebugGroup);
+        }
+    }
+
+    @Test
     void createResolvesEntryPointsFromTheCapabilities() throws Exception {
         LWJGLService core = LWJGLService.create();
         assertEquals("CORE", name(core.vaoMode()));

@@ -7,12 +7,12 @@ import xml.etree.ElementTree as ET
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODULES = [("impetus", ROOT), ("common", os.path.join(ROOT, "common"))]
-COUNTERS = ["CLASS", "METHOD", "LINE", "BRANCH"]
+COUNTERS = ["CLASS", "METHOD"]
 
 
 def junit_results(module_dir):
     cases = []
-    for path in sorted(glob.glob(os.path.join(module_dir, "build", "test-results", "*", "*.xml"))):
+    for path in sorted(glob.glob(os.path.join(module_dir, "build", "test-results", "test", "*.xml"))):
         for case in ET.parse(path).getroot().iter("testcase"):
             status = "pass"
             detail = ""

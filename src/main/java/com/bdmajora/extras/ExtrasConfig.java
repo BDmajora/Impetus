@@ -212,8 +212,6 @@ public final class ExtrasConfig {
                     v -> renderBudget.itemFrames = v, () -> renderBudget.itemFrames),
             ConfigProperty.bool(CAT_RENDER_BUDGET, "overlay", false, "Show the budget, frame pressure and skipped counts on the HUD",
                     v -> renderBudget.overlay = v, () -> renderBudget.overlay),
-            ConfigProperty.bool(CAT_RENDER_BUDGET, "quickSetupShown", false, "Whether the one-time quick setup screen has been shown on a world join",
-                    v -> renderBudget.quickSetupShown = v, () -> renderBudget.quickSetupShown),
             // --- GPU booster ------------------------------------------------------------------
             ConfigProperty.bool(CAT_GPU_BOOSTER, "enabled", false, "Master switch for the GPU Booster set: fast random, fast math, streamed vertex uploads and the vertex format cache",
                     v -> gpuBooster.enabled = v, () -> gpuBooster.enabled),
@@ -812,7 +810,6 @@ ParticleClassRegistry registry = ParticleClassRegistry.getInstance();
         public int blockEntityDistance = BLOCK_ENTITY_DISTANCE_DEFAULT;
         public boolean itemFrames = true;
         public boolean overlay = false;
-        public boolean quickSetupShown = false;
     }
 
     // GPU Booster (see client.booster): the parts of Mr.Toad's GPUBooster that still have something to do on 1.12.2, since this renderer already owns buffer storage and vanilla's framebuffer already uses a depth renderbuffer; off by default like the render budget

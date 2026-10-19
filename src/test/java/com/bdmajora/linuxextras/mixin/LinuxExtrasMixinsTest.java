@@ -3,24 +3,16 @@ package com.bdmajora.linuxextras.mixin;
 import com.bdmajora.impetus.engine.impl.compat.environment.OsKind;
 import com.bdmajora.linuxextras.LinuxExtras;
 import com.bdmajora.linuxextras.desktop.XdgOpen;
-import com.bdmajora.linuxextras.wayland.WaylandWindow;
 import com.bdmajora.testing.Mixins;
 import com.bdmajora.testing.Statics;
-import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
-import net.minecraft.client.Minecraft;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.lwjgl.glfw.GLFWVidMode;
-import org.lwjgl.opengl.Display;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.io.File;
 import java.net.URI;
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -49,70 +41,10 @@ class LinuxExtrasMixinsTest {
     }
 
     @Test
-    void theWaylandSwitchGoesBackEvenWhenTheWindowFails() {
-        @SuppressWarnings("unchecked")
-        Operation<Void> original = Mockito.mock(Operation.class);
-        MinecraftWindowMixin mixin = Mixins.instance(MinecraftWindowMixin.class);
-        Display.window = WINDOW;
-        try (MockedStatic<LinuxExtras> linux = Mockito.mockStatic(LinuxExtras.class);
-             MockedStatic<WaylandWindow> window = Mockito.mockStatic(WaylandWindow.class)) {
-            Mixins.call(mixin, "linuxextras$createDisplay", original);
-            verify(original).call();
-            linux.verify(LinuxExtras::onWindowCreated);
-            window.verify(() -> WaylandWindow.onWindowCreated(WINDOW));
-
-            // A window that never came up gets no window fixes
-            when(original.call()).thenThrow(new IllegalStateException("Failed to create Display window."));
-            assertThrows(IllegalStateException.class, () -> Mixins.call(mixin, "linuxextras$createDisplay", original));
-            linux.verify(LinuxExtras::onWindowCreated, times(2));
-            window.verify(() -> WaylandWindow.onWindowCreated(anyLong()), times(1));
-        }
-    }
-
-    @Test
-    void fullscreenMovedOffCleanroomsOutputResizesTheGame() {
-        @SuppressWarnings("unchecked")
-        Operation<Void> original = Mockito.mock(Operation.class);
-        MinecraftWindowMixin mixin = Mixins.instance(MinecraftWindowMixin.class);
-        Minecraft client = (Minecraft) (Object) mixin;
-        Mockito.doNothing().when(client).resize(anyInt(), anyInt());
-        GLFWVidMode mode = Mockito.mock(GLFWVidMode.class);
-        when(mode.width()).thenReturn(2560);
-        when(mode.height()).thenReturn(1440);
-        Display.window = WINDOW;
-        try (MockedStatic<WaylandWindow> window = Mockito.mockStatic(WaylandWindow.class)) {
-            // Leaving fullscreen is Cleanroom's alone, and so is a fullscreen already where it belongs
-            Mixins.call(mixin, "linuxextras$fullscreenOnPrimary", false, original);
-            verify(original).call(false);
-            window.verify(() -> WaylandWindow.moveToFullscreenMonitor(anyLong()), never());
-            Mixins.call(mixin, "linuxextras$fullscreenOnPrimary", true, original);
-            verify(original).call(true);
-            verify(client, never()).resize(anyInt(), anyInt());
-
-            window.when(() -> WaylandWindow.moveToFullscreenMonitor(WINDOW)).thenReturn(mode);
-            Mixins.call(mixin, "linuxextras$fullscreenOnPrimary", true, original);
-            verify(client).resize(2560, 1440);
-        }
-    }
-
-    @Test
-    void waylandTakesTheIconsOverFromCleanroom() {
-        // Each call's arguments, since Mockito unpacks an array passed through varargs
-        List<Object[]> calls = new ArrayList<>();
-        Operation<Integer> original = args -> {
-            calls.add(args);
-            return 0;
-        };
-        MinecraftWindowMixin mixin = Mixins.instance(MinecraftWindowMixin.class);
-        ByteBuffer[] icons = {ByteBuffer.allocate(4)};
-        try (MockedStatic<WaylandWindow> window = Mockito.mockStatic(WaylandWindow.class)) {
-            assertEquals(0, (int) Mixins.call(mixin, "linuxextras$waylandIcon", icons, original));
-            assertEquals(1, calls.size());
-            assertSame(icons, calls.get(0)[0]);
-
-            window.when(() -> WaylandWindow.takeIcon(icons)).thenReturn(true);
-            assertEquals(0, (int) Mixins.call(mixin, "linuxextras$waylandIcon", icons, original));
-            assertEquals(1, calls.size());
+    void theDisplayPriorityIsSetBeforeSdlVideoStarts() {
+        try (MockedStatic<LinuxExtras> linux = Mockito.mockStatic(LinuxExtras.class)) {
+            Mixins.call(Mixins.instance(MinecraftWindowMixin.class), "linuxextras$prepareWindow", Mixins.ci());
+            linux.verify(LinuxExtras::prepareWindow);
         }
     }
 

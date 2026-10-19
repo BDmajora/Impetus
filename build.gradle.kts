@@ -34,13 +34,11 @@ configurations.testImplementation { extendsFrom(modCompileOnly) }
 val engine = configurations.create("engine") { isTransitive = false }
 // Cleanroom's LWJGL2 bridge, for the few vanilla signatures that still carry LWJGL2 types (see lwjglInterop)
 val lwjglx = configurations.create("lwjglx") { isTransitive = false }
+val cleanroomApi = configurations.create("cleanroomApi") { isTransitive = false }
 
-// Only the LWJGL2 types vanilla still exposes (input events, key codes, util.vector) and Display, which owns
-// Cleanroom's GLFW window, are visible at compile time; the rest of the bridge would shadow LWJGL3's own
-// org.lwjgl.opengl classes, which are the API Impetus uses (impl.platform.GameWindow is the only Display user)
+// Only vanilla's legacy input/vector signatures are exposed; the bridge's GL classes would shadow LWJGL3
 val lwjglInteropTypes = listOf(
-    "org/lwjgl/input/**", "org/lwjgl/util/vector/**", "org/lwjgl/LWJGLException.class",
-    "org/lwjgl/opengl/Display*.class"
+    "org/lwjgl/input/**", "org/lwjgl/util/vector/**", "org/lwjgl/LWJGLException.class"
 )
 val lwjglInterop = tasks.register<Jar>("lwjglInterop") {
     archiveFileName = "lwjglx-interop.jar"
@@ -50,6 +48,14 @@ val lwjglInterop = tasks.register<Jar>("lwjglInterop") {
     from({ lwjglx.map { zipTree(it) } }) {
         include(lwjglInteropTypes)
     }
+}
+
+// 0.7.x does not publish Unimined's userdev artifact. Use its real SDL APIs alongside the older MCP workspace
+val cleanroomInterop = tasks.register<Jar>("cleanroomInterop") {
+    archiveFileName = "cleanroom-sdl-api.jar"
+    destinationDirectory = layout.buildDirectory.dir("cleanroom-api")
+    from({ cleanroomApi.map { zipTree(it) } }) { include("com/cleanroommc/client/sdl/**") }
+    from({ lwjglx.map { zipTree(it) } }) { include("com/cleanroommc/lwjgly/**") }
 }
 
 repositories {
@@ -72,7 +78,7 @@ unimined.minecraft {
     }
 
     cleanroom {
-        loader(libs.versions.cleanroom.get())
+        loader(libs.versions.cleanroom.dev.get())
         accessTransformer(file("src/main/resources/META-INF/impetus_at.cfg"))
     }
 
@@ -106,8 +112,33 @@ dependencies {
     testCompileOnly(libs.lombok)
     testAnnotationProcessor(libs.lombok)
 
-    lwjglx(libs.lwjglx)
+    lwjglx(libs.lwjgly)
+    cleanroomApi(variantOf(libs.cleanroom.runtime) { classifier("universal") })
     compileOnly(files(lwjglInterop))
+    compileOnly(files(cleanroomInterop))
+    compileOnly(enforcedPlatform(libs.lwjgl.bom))
+    runtimeOnly(enforcedPlatform(libs.lwjgl.bom))
+    compileOnly(libs.lwjgl.core)
+    compileOnly(libs.lwjgl.opengl)
+    compileOnly(libs.lwjgl.sdl)
+    testImplementation(enforcedPlatform(libs.lwjgl.bom))
+    testImplementation(libs.lwjgl.core)
+    testImplementation(libs.lwjgl.opengl)
+    testImplementation(libs.lwjgl.sdl)
+    testImplementation(files(cleanroomInterop))
+    testRuntimeOnly("org.slf4j:slf4j-api:2.0.17")
+    val lwjglNatives = run {
+        val os = System.getProperty("os.name").lowercase()
+        val arm = System.getProperty("os.arch") in listOf("aarch64", "arm64")
+        when {
+            os.contains("mac") || os.contains("darwin") -> if (arm) "natives-macos-arm64" else "natives-macos"
+            os.contains("win") -> if (arm) "natives-windows-arm64" else "natives-windows"
+            else -> if (arm) "natives-linux-arm64" else "natives-linux"
+        }
+    }
+    testRuntimeOnly("org.lwjgl:lwjgl:${libs.versions.lwjgl.get()}:$lwjglNatives")
+    testRuntimeOnly("org.lwjgl:lwjgl-opengl:${libs.versions.lwjgl.get()}:$lwjglNatives")
+    testRuntimeOnly("org.lwjgl:lwjgl-sdl:${libs.versions.lwjgl.get()}:$lwjglNatives")
 
     "modRuntimeOnly"("curse.maven:ae2-223794:2747063")
     modCompileOnly("maven.modrinth:fluidlogged-api:3.0.6")
@@ -132,10 +163,16 @@ tasks.withType<JavaCompile>().configureEach {
     options.compilerArgs.addAll(listOf("-Xlint:-options", "-parameters"))
 }
 
-// Tests run against LWJGL3 with Cleanroom's lwjglx bridge merged in and the GL natives stubbed (gradle/test-lwjgl.gradle.kts)
-val mainRuntime = sourceSets.main.get().runtimeClasspath
-extra["testLwjgl.lwjgl3"] = mainRuntime.filter { it.name.matches(Regex("lwjgl(-[a-z]+)?-3[0-9.]+\\.jar")) }
-extra["testLwjgl.bridge"] = mainRuntime.filter { it.name.startsWith("lwjglxx-") }
+// Unimined injects the old workspace's LWJGL jars as files, which bypass BOM version selection
+fun oldLwjgl(file: File) = file.name.matches(Regex("lwjgl(-[a-z]+)?-3[0-9.]+(-[^.]+)?\\.jar")) &&
+    !file.name.contains("-${libs.versions.lwjgl.get()}")
+sourceSets.main { compileClasspath = compileClasspath.filter { !oldLwjgl(it) } }
+val mainRuntime = sourceSets.main.get().runtimeClasspath.filter {
+    (!oldLwjgl(it) || it.name.startsWith("lwjgl-glfw-")) && !it.name.startsWith("lwjglxx-")
+}
+// The older MCP workspace still calls legacy GL aliases, so tests merge its bridge into matching LWJGL3
+extra["testLwjgl.lwjgl3"] = configurations.testRuntimeClasspath.get().filter { it.name.matches(Regex("lwjgl(-[a-z]+)?-3[0-9.]+\\.jar")) }
+extra["testLwjgl.bridge"] = sourceSets.main.get().runtimeClasspath.filter { it.name.startsWith("lwjglxx-") }
 apply(from = rootProject.file("gradle/test-lwjgl.gradle.kts"))
 val prepareTestLwjgl = tasks.named("prepareTestLwjgl")
 

@@ -178,10 +178,10 @@ public class Matrix4L {
 		final long t_a13 = y << shift;
 		final long t_a23 = z << shift;
 
-		final long i = a00 * t_a03 + a01 * t_a13 + a02 * t_a23 + a03;
-		final long m = a10 * t_a03 + a11 * t_a13 + a12 * t_a23 + a13;
-		final long q = a20 * t_a03 + a21 * t_a13 + a22 * t_a23 + a23;
-		final long u = a30 * t_a03 + a31 * t_a13 + a32 * t_a23 + a33;
+		final long i = a00 * t_a03 + a01 * t_a13 + a02 * t_a23;
+		final long m = a10 * t_a03 + a11 * t_a13 + a12 * t_a23;
+		final long q = a20 * t_a03 + a21 * t_a13 + a22 * t_a23;
+		final long u = a30 * t_a03 + a31 * t_a13 + a32 * t_a23;
 
 		a03 += ((i + MATRIX_PRECISION_HALF) >> MATRIX_PRECISION_BITS);
 		a13 += ((m + MATRIX_PRECISION_HALF) >> MATRIX_PRECISION_BITS);

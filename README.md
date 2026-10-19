@@ -23,8 +23,9 @@ To use Impetus today, build it from source using the instructions below.
 
 ### Installation
 
-Impetus targets **Minecraft 1.12.2** on **[Cleanroom](https://github.com/CleanroomMC/Cleanroom)** (developed
-against 0.6.13-alpha) running on **Java 25** with LWJGL 3. Drop the jar into your `mods` folder.
+Impetus targets **Minecraft 1.12.2** on **[Cleanroom](https://github.com/CleanroomMC/Cleanroom)**
+**0.7.9-alpha**, running on **Java 25** with LWJGL 3.4.3 and SDL3. This build no longer supports 0.6.x.
+Drop the jar into your `mods` folder.
 
 Cleanroom ships Mixin (CleanMix) and MixinExtras itself, so Impetus bundles neither. It also ships its Kirino
 render engine switched on; Impetus turns Kirino off at startup, since both would otherwise do terrain work
@@ -50,7 +51,7 @@ Impetus ships as a single jar containing several subsystems, each with its own m
 | `equilibrium` | Chunk and world access caching, world generation fast paths, and the server-side tick optimizations: advancement triggers, crafting and furnace caches, ghost-chunk guards, spawn preload skipping and the opt-in tick budget |
 | `dynamiclights` | Dynamic light sources for held and dropped items |
 | `extras` | Optional feature toggles: the Render Budget and GPU Booster pair for weaker machines, parallel server ticking, parallel particles, baked block entities, ray-cast occlusion culling, HUD caching, text batching, network flush consolidation, wire limits, thread scheduling and a hold-to-zoom key |
-| `linuxextras` | Linux desktop fixes: on a Wayland session the window runs natively instead of through XWayland, goes fullscreen on the primary monitor (KDE's display order, or outputs named in `impetus-linuxextras.cfg`) rather than the leftmost one, gets its icon through `xdg-toplevel-icon-v1`, and opens links and folders with `xdg-open` instead of offering only Copy to Clipboard |
+| `linuxextras` | Linux desktop fixes: starts the SDL window on the primary monitor (KDE's display order, or outputs named in `impetus-linuxextras.cfg`) and opens links and folders with `xdg-open`. Cleanroom/SDL now handle native Wayland selection and window icons |
 
 Impetus suppresses the mixin configurations of superseded lighting mods (Phosphor, Alfheim) when it detects
 them, since running two lighting engines at once corrupts world lighting. Remove those mods rather than
@@ -90,10 +91,18 @@ version-dependent entry points once per context and is what the unit tests mock;
 allocations use LWJGL's own `MemoryUtil` and `MemoryStack`, which on Java 25 run on the Foreign Function & Memory
 API.
 
-Vanilla code on Cleanroom still links against LWJGL 2 names, which Cleanroom provides by merging its lwjglx
-bridge into LWJGL 3 at class load. Impetus only touches that bridge where vanilla's own signatures demand it
-(input events, key codes, `util.vector`) and for `Display`, which owns the GLFW window; everything else is
-plain LWJGL 3 and GLFW.
+Vanilla code on Cleanroom still links against LWJGL 2 names, provided by the lwjgly bridge. Impetus uses
+those names only where vanilla signatures require them (input events, key codes and `util.vector`). Window
+controls go through Cleanroom's SDL window API, and rendering uses LWJGL 3 OpenGL.
+
+Cleanroom 0.7.9 does not publish the userdev artifact Unimined needs. The build therefore keeps the 0.6.13
+MCP workspace for Minecraft/Forge symbols, while compiling window code against a narrow API slice of the
+real 0.7.9 universal jar, lwjgly 2.1.0 and LWJGL 3.4.3. These dependencies are supplied by Cleanroom at runtime
+and are not bundled into Impetus. Unimined's development launch configurations still use the older workspace;
+verify the packaged mod in a Cleanroom 0.7.9 instance.
+
+The old Linux Extras `forceWayland` and `waylandWindowIcon` switches are obsolete because SDL handles both.
+`waylandFullscreenMonitor`, `waylandMonitors` and `xdgOpen` retain their existing meanings.
 
 ### Project layout
 

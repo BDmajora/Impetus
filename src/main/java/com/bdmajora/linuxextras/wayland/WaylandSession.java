@@ -7,7 +7,7 @@ import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Map;
 
-// Whether the game can open a Wayland window: Cleanroom only reads its Wayland switch on a session that calls itself Wayland, and GLFW fails to start at all when the compositor's socket is out of reach (a sandbox without it, say)
+// Whether a Wayland compositor is reachable for the primary-monitor query
 public final class WaylandSession {
     private WaylandSession() {
     }

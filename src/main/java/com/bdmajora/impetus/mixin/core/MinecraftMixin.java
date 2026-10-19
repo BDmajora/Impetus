@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import com.bdmajora.impetus.ImpetusVintage;
 
-// Patches Minecraft's frame loop: CPU render-ahead throttling and inactivity FPS caps (Cleanroom creates the window through GLFW, so the LWJGL2 fullscreen-create retry this once carried has nothing left to catch)
+// Patches Minecraft's frame loop: CPU render-ahead throttling and inactivity FPS caps
 @Mixin(Minecraft.class)
 public class MinecraftMixin {
     @Unique

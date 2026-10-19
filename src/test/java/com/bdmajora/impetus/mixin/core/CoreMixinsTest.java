@@ -14,6 +14,7 @@ import com.bdmajora.testing.Mixins;
 import com.bdmajora.testing.Statics;
 import com.bdmajora.testing.TestGl;
 import net.minecraft.client.renderer.ActiveRenderInfo;
+import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.util.EnumFacing;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -39,6 +40,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -130,6 +132,28 @@ class CoreMixinsTest {
             Mixins.call(callable, "checkContext", lost);
             assertEquals("No context available", lost.getReturnValue());
         }
+    }
+
+    @Test
+    void theInventoryModelDrawsUnderVanillasDepthStateWhateverTheCacheBelieves() {
+        assertNotNull(Mixins.instance(GuiInventoryDepthMixin.class));
+        List<String> calls = new ArrayList<>();
+        try (MockedStatic<GlStateManager> gl = Mockito.mockStatic(GlStateManager.class)) {
+            gl.when(GlStateManager::disableDepth).thenAnswer(call -> record(calls, "disableDepth"));
+            gl.when(GlStateManager::enableDepth).thenAnswer(call -> record(calls, "enableDepth"));
+            gl.when(() -> GlStateManager.depthMask(anyBoolean())).thenAnswer(call -> record(calls, "depthMask " + call.getArgument(0)));
+            gl.when(() -> GlStateManager.depthFunc(anyInt())).thenAnswer(call -> record(calls, "depthFunc " + call.getArgument(0)));
+            Mixins.call(GuiInventoryDepthMixin.class, "impetus$restoreDepthState", 51, 75, 30, 0.0F, 0.0F, null, Mixins.ci());
+        }
+        // Every final value is vanilla's, each reached from the opposite one so a stale cache cannot swallow it
+        assertEquals(List.of("disableDepth", "enableDepth", "depthMask false", "depthMask true",
+                "depthFunc " + GL11.GL_ALWAYS, "depthFunc " + GL11.GL_LEQUAL), calls);
+        verify(TestGl.gl()).glDepthRange(0.0, 1.0);
+    }
+
+    private static Object record(List<String> calls, String call) {
+        calls.add(call);
+        return null;
     }
 
     @Test

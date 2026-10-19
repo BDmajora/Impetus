@@ -3,7 +3,7 @@ package com.bdmajora.impetus.impl.gui;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.I18n;
 import com.bdmajora.impetus.impl.platform.GameWindow;
-import org.lwjgl.opengl.DisplayMode;
+import com.cleanroommc.client.sdl.video.DisplayMode;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -27,16 +27,13 @@ public final class FullscreenResolutions {
                 DisplayMode[] available = GameWindow.fullscreenModes();
                 // Highest resolution / refresh first.
                 Arrays.sort(available, (a, b) -> {
-                    int byArea = Integer.compare(b.getWidth() * b.getHeight(), a.getWidth() * a.getHeight());
-                    return byArea != 0 ? byArea : Integer.compare(b.getFrequency(), a.getFrequency());
+                    int byArea = Long.compare((long) b.width() * b.height(), (long) a.width() * a.height());
+                    return byArea != 0 ? byArea : Float.compare(b.refreshRate(), a.refreshRate());
                 });
 
                 for (DisplayMode mode : available) {
-                    if (!mode.isFullscreenCapable()) {
-                        continue;
-                    }
                     // Collapse duplicate resolutions that differ only by bit depth/refresh.
-                    if (seen.add(mode.getWidth() + "x" + mode.getHeight())) {
+                    if (seen.add(mode.width() + "x" + mode.height())) {
                         list.add(mode);
                     }
                 }
@@ -62,7 +59,7 @@ public final class FullscreenResolutions {
         }
 
         DisplayMode mode = modes().get(index - 1);
-        return mode.getWidth() + "x" + mode.getHeight();
+        return mode.width() + "x" + mode.height();
     }
 
     // Switches an exclusive-fullscreen window to the chosen mode, "Current" being the desktop's; a windowed or borderless window just keeps the choice for its next exclusive switch
@@ -71,7 +68,7 @@ public final class FullscreenResolutions {
             DisplayMode mode = index > 0 && index <= modes().size() ? modes().get(index - 1) : GameWindow.desktopMode();
             // Vanilla only follows window resizes while windowed, so the new fullscreen size is handed to it here, as Cleanroom does on entering fullscreen
             if (mode != null && GameWindow.setFullscreenMode(mode)) {
-                Minecraft.getMinecraft().resize(mode.getWidth(), mode.getHeight());
+                Minecraft.getMinecraft().resize(mode.width(), mode.height());
             }
         } catch (Throwable t) {
             // Never let a resolution change take the game down.

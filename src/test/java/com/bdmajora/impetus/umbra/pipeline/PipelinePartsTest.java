@@ -17,6 +17,7 @@ import com.bdmajora.impetus.lwjgl.GLExtension;
 import com.bdmajora.testing.TestGl;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.EntityRenderer;
+import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.RenderGlobal;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.client.renderer.texture.ITextureObject;
@@ -48,6 +49,7 @@ import java.util.OptionalInt;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyFloat;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -321,6 +323,50 @@ class PipelinePartsTest {
         DeferredBlockOutline.drawIfPending();
         verify(renderGlobal, times(2)).drawSelectionBox(player, hit, 0, 0.5F);
         assertNotNull(Mixins.construct(DeferredBlockOutline.class));
+    }
+
+    @Test
+    void blockOutlineRestoresDepthForTheInventoryPlayerEvenWhenDrawingFails() {
+        EntityPlayer player = mock(EntityPlayer.class);
+        RayTraceResult hit = new RayTraceResult(Vec3d.ZERO, net.minecraft.util.EnumFacing.UP, net.minecraft.util.math.BlockPos.ORIGIN);
+        for (boolean fail : new boolean[] {false, true}) {
+            // finishWorldRendering hands vanilla a depth-tested, writable framebuffer.
+            boolean[] depth = {true, true};
+            RenderGlobal renderGlobal = mock(RenderGlobal.class);
+            client.renderGlobal = renderGlobal;
+            IllegalStateException failure = new IllegalStateException("outline failed");
+            try (MockedStatic<GlStateManager> state = Mockito.mockStatic(GlStateManager.class)) {
+                state.when(GlStateManager::enableDepth).thenAnswer(invocation -> depth[0] = true);
+                state.when(GlStateManager::disableDepth).thenAnswer(invocation -> depth[0] = false);
+                state.when(() -> GlStateManager.depthMask(anyBoolean()))
+                        .thenAnswer(invocation -> depth[1] = invocation.getArgument(0));
+                Mockito.doAnswer(invocation -> {
+                    assertTrue(DeferredBlockOutline.isReplaying());
+                    assertTrue(depth[0], "The outline must test against the world depth");
+                    GlStateManager.depthMask(false);
+                    if (fail) {
+                        throw failure;
+                    }
+                    GlStateManager.depthMask(true);
+                    return null;
+                }).when(renderGlobal).drawSelectionBox(player, hit, 0, 0.5F);
+
+                DeferredBlockOutline.capture(player, hit, 0.5F);
+                if (fail) {
+                    assertSame(failure, assertThrows(IllegalStateException.class, DeferredBlockOutline::drawIfPending));
+                } else {
+                    DeferredBlockOutline.drawIfPending();
+                }
+
+                assertTrue(depth[0], "The following inventory player needs depth testing");
+                assertTrue(depth[1], "Without depth writes rear model faces cover the front faces");
+                assertFalse(DeferredBlockOutline.isReplaying());
+                state.verify(GlStateManager::pushMatrix, times(2));
+                state.verify(GlStateManager::popMatrix, times(2));
+                DeferredBlockOutline.drawIfPending();
+                verify(renderGlobal).drawSelectionBox(player, hit, 0, 0.5F);
+            }
+        }
     }
 
     private static CustomImageDefinition image(String name, String value) {

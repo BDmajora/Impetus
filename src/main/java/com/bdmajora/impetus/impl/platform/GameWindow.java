@@ -1,88 +1,113 @@
 package com.bdmajora.impetus.impl.platform;
 
-import org.lwjgl.glfw.GLFW;
-import org.lwjgl.opengl.Display;
-import org.lwjgl.opengl.DisplayMode;
+import com.cleanroommc.client.sdl.SDL;
+import com.cleanroommc.client.sdl.Window;
+import com.cleanroommc.client.sdl.video.DisplayMode;
+import org.lwjgl.sdl.SDLVideo;
+import org.lwjgl.system.MemoryStack;
 
-// The game window, as one seam: Cleanroom's LWJGL2 bridge (Display) owns the GLFW window and its fullscreen/vsync bookkeeping, so state changes go through it, and every query reads GLFW directly
+// Cleanroom owns the SDL window and its state; all renderer window operations go through this seam
 public final class GameWindow {
-
     private GameWindow() {
     }
 
-    // The GLFW handle Cleanroom created; 0 before the window exists
     public static long handle() {
-        return Display.isCreated() ? Display.getWindow() : 0L;
+        Window window = SDL.window();
+        return window == null ? 0L : window.handle();
     }
 
-    // Iconified, or never shown; a frame there is pure waste
     public static boolean isMinimized() {
-        long window = handle();
-        return window != 0L && (GLFW.glfwGetWindowAttrib(window, GLFW.GLFW_ICONIFIED) == GLFW.GLFW_TRUE
-                || GLFW.glfwGetWindowAttrib(window, GLFW.GLFW_VISIBLE) == GLFW.GLFW_FALSE);
+        Window window = SDL.window();
+        return window != null && (window.minimized() || window.hidden());
     }
 
-    // Holds input focus
     public static boolean isFocused() {
-        long window = handle();
-        return window != 0L && GLFW.glfwGetWindowAttrib(window, GLFW.GLFW_FOCUSED) == GLFW.GLFW_TRUE;
+        Window window = SDL.window();
+        return window != null && window.focused();
     }
 
-    // Whether the window's GL context is current on the calling thread
     public static boolean isContextCurrent() {
         long window = handle();
-        return window != 0L && GLFW.glfwGetCurrentContext() == window;
+        return window != 0L && SDLVideo.SDL_GL_GetCurrentWindow() == window;
     }
 
-    // Vanilla's vsync switch, routed through Display so its own record of the setting stays true
     public static void setVsync(boolean enabled) {
-        Display.setVSyncEnabled(enabled);
+        Window window = SDL.window();
+        if (window != null) {
+            window.vsync(enabled);
+        }
     }
 
-    // Raw swap interval for the current context, e.g. -1 for adaptive sync; Display has no notion of that mode
-    public static void setSwapInterval(int interval) {
-        GLFW.glfwSwapInterval(interval);
+    public static boolean setSwapInterval(int interval) {
+        return isContextCurrent() && SDLVideo.SDL_GL_SetSwapInterval(interval);
     }
 
-    // WGL/GLX extension query against the current context
-    public static boolean platformExtensionSupported(String extension) {
-        return GLFW.glfwExtensionSupported(extension);
+    // SDL reports adaptive support by accepting -1; put the previous interval back after the probe
+    public static boolean supportsAdaptiveSync() {
+        if (!isContextCurrent()) {
+            return false;
+        }
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            var interval = stack.mallocInt(1);
+            if (!SDLVideo.SDL_GL_GetSwapInterval(interval)) {
+                return false;
+            }
+            boolean supported = SDLVideo.SDL_GL_SetSwapInterval(-1);
+            SDLVideo.SDL_GL_SetSwapInterval(interval.get(0));
+            return supported;
+        }
     }
 
-    // Every video mode of the monitor the window would go fullscreen on
     public static DisplayMode[] fullscreenModes() {
-        return Display.getAvailableDisplayModes();
+        Window window = SDL.window();
+        var display = window == null ? null : window.display();
+        return display == null ? new DisplayMode[0] : display.modes().toArray(DisplayMode[]::new);
     }
 
     public static boolean isFullscreen() {
-        return Display.isFullscreen();
+        Window window = SDL.window();
+        return window != null && window.fullscreen();
     }
 
-    // Switches the monitor an exclusive-fullscreen window owns to this mode; Cleanroom's Display.setDisplayModeAndFullscreen is an unimplemented stub, so this is GLFW's own monitor switch. False when the window is not exclusive fullscreen
+    // Resolve on the current display, since a saved resolution may have come from another monitor
     public static boolean setFullscreenMode(DisplayMode mode) {
-        long window = handle();
-        long monitor = window == 0L ? 0L : GLFW.glfwGetWindowMonitor(window);
-        if (monitor == 0L) {
+        Window window = SDL.window();
+        if (mode == null || window == null || !window.fullscreen() || isBorderless()) {
             return false;
         }
-
-        int refresh = mode.getFrequency() > 0 ? mode.getFrequency() : GLFW.GLFW_DONT_CARE;
-        GLFW.glfwSetWindowMonitor(window, monitor, 0, 0, mode.getWidth(), mode.getHeight(), refresh);
-        return true;
+        var display = window.display();
+        if (display != null) {
+            for (DisplayMode available : display.modes()) {
+                if (available.matches(mode.width(), mode.height(), mode.refreshRate())) {
+                    window.fullscreenMode(available);
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
-    // The monitor's mode when the game started, which is what Cleanroom enters fullscreen at
     public static DisplayMode desktopMode() {
-        return Display.getDesktopDisplayMode();
+        Window window = SDL.window();
+        var display = window == null ? null : window.display();
+        return display == null ? null : display.desktopMode();
     }
 
-    // An undecorated window exactly covering its monitor at the desktop mode, which Cleanroom's Display can make and LWJGL2's could not
+    // SDL desktop fullscreen has no exclusive mode; coverDisplay is Cleanroom's Windows compatibility path
     public static boolean isBorderless() {
-        return handle() != 0L && Display.isBorderless();
+        Window window = SDL.window();
+        return window != null && window.fullscreen()
+                && (window.borderless() || SDLVideo.SDL_GetWindowFullscreenMode(window.handle()) == null);
     }
 
-    // Through Display, which keeps the windowed bounds to return to
     public static void setBorderless(boolean borderless) {
-        Display.setBorderless(borderless);
+        Window window = SDL.window();
+        if (window != null) {
+            if (borderless) {
+                window.fullscreenMode(null);
+            } else {
+                window.fullscreen(false);
+            }
+        }
     }
 }

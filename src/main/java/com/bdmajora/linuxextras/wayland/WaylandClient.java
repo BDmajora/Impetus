@@ -17,7 +17,7 @@ import static java.lang.foreign.MemoryLayout.PathElement.groupElement;
 import static java.lang.foreign.ValueLayout.ADDRESS;
 import static java.lang.foreign.ValueLayout.JAVA_INT;
 
-// libwayland-client over FFM on GLFW's own connection, with a private event queue so GLFW's dispatch never sees these objects and nothing here dispatches GLFW's events; requests go out the way wayland-scanner's generated wrappers send them
+// libwayland-client over FFM, with a private event queue; requests follow wayland-scanner's wire format
 final class WaylandClient {
     static final int MARSHAL_FLAG_DESTROY = 1;
     private static final int DISPLAY_GET_REGISTRY = 1;

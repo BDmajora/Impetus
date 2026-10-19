@@ -83,12 +83,13 @@ class CoreTest {
     @Test
     void theLoadingPluginRegistersFromItsConstructorAndDhFromInjectData() {
         try (MockedStatic<ImpetusMixinRegistrar> registrar = Mockito.mockStatic(ImpetusMixinRegistrar.class);
+             MockedStatic<TransformerChain> chain = Mockito.mockStatic(TransformerChain.class);
              MockedStatic<LinuxExtras> linux = Mockito.mockStatic(LinuxExtras.class)) {
             ImpetusLoadingPlugin plugin = new ImpetusLoadingPlugin();
+            chain.verify(TransformerChain::makeConcurrent);
             registrar.verify(ImpetusMixinRegistrar::hijackSupersededLighting);
             registrar.verify(ImpetusMixinRegistrar::queueImpetusConfigs);
-            // The window system is settled before anything can start GLFW
-            linux.verify(LinuxExtras::chooseWindowSystem);
+            linux.verifyNoInteractions();
             registrar.verify(ImpetusMixinRegistrar::restoreDistantHorizonsDepthTexture, never());
             plugin.injectData(Map.of());
             registrar.verify(ImpetusMixinRegistrar::restoreDistantHorizonsDepthTexture);

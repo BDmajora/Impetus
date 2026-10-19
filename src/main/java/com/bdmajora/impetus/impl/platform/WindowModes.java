@@ -7,7 +7,7 @@ import com.bdmajora.impetus.impl.gui.FullscreenResolutions;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.common.ForgeEarlyConfig;
 
-// Impetus's three window modes on Cleanroom's window: exclusive is vanilla's own fullscreen, at the chosen resolution, and borderless is lwjglx's monitor-sized undecorated window, which LWJGL2's Display could not make
+// Impetus's three window modes on Cleanroom's SDL window
 public final class WindowModes {
     private static boolean restored;
 
@@ -16,15 +16,21 @@ public final class WindowModes {
 
     // The mode the window is in right now
     public static FullscreenMode current(Minecraft client) {
+        if (GameWindow.isBorderless()) {
+            return FullscreenMode.BORDERLESS;
+        }
         if (client.isFullScreen()) {
             return FullscreenMode.EXCLUSIVE;
         }
-        return GameWindow.isBorderless() ? FullscreenMode.BORDERLESS : FullscreenMode.OFF;
+        return FullscreenMode.OFF;
     }
 
     // Moves the window out of whichever mode it is in and into the requested one; answers where it ended up, OFF when the window refused
     public static FullscreenMode apply(Minecraft client, FullscreenMode target) {
-        if (target != FullscreenMode.BORDERLESS && GameWindow.isBorderless()) {
+        // Cleanroom's borderless override also sets vanilla's fullscreen flag; leave through vanilla to clear it
+        if (GameWindow.isBorderless() && client.isFullScreen()) {
+            toggleExclusive(client);
+        } else if (target != FullscreenMode.BORDERLESS && GameWindow.isBorderless()) {
             GameWindow.setBorderless(false);
         }
         if (client.isFullScreen() != (target == FullscreenMode.EXCLUSIVE)) {
@@ -40,7 +46,11 @@ public final class WindowModes {
     public static void toggle(Minecraft client, Runnable vanilla) {
         ImpetusGameOptions options = ImpetusVintage.options();
         if (GameWindow.isBorderless() && !ForgeEarlyConfig.WINDOW_BORDERLESS_REPLACES_FULLSCREEN) {
-            GameWindow.setBorderless(false);
+            if (client.isFullScreen()) {
+                vanilla.run();
+            } else {
+                GameWindow.setBorderless(false);
+            }
         } else {
             vanilla.run();
             if (client.isFullScreen() && options.fullscreenResolution > 0) {

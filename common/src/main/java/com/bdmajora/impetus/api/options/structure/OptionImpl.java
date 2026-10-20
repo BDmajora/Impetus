@@ -117,10 +117,11 @@ public class OptionImpl<S, T> implements Option<T> {
         return this.enabled.getAsBoolean();
     }
 
-    // Pending differs from stored
+    // Pending differs from stored, which may be null (an enum name Gson could not read) while the pending value never is
     @Override
     public boolean hasChanged() {
-        return this.modifiedValue != null && !this.binding.getValue(this.storage.getData()).equals(this.modifiedValue);
+        T pending = this.modifiedValue;
+        return pending != null && !pending.equals(this.binding.getValue(this.storage.getData()));
     }
 
     // Writes pending into storage

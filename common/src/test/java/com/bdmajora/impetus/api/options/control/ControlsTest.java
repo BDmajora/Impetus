@@ -3,6 +3,8 @@ package com.bdmajora.impetus.api.options.control;
 import com.bdmajora.impetus.api.options.OptionIdentifier;
 import com.bdmajora.impetus.api.options.structure.Option;
 import com.bdmajora.impetus.api.options.structure.OptionImpact;
+import com.bdmajora.impetus.api.options.structure.OptionImpl;
+import com.bdmajora.impetus.api.options.structure.OptionStorage;
 import com.bdmajora.impetus.engine.impl.gui.framework.InteractionContext;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.gui.options.TextProvider;
@@ -133,6 +135,106 @@ class ControlsTest {
         assertThrows(IllegalArgumentException.class, () -> new CyclingControl<>(option, Mode.values(), new TextComponent[1]));
         Option<Object> objects = option(new Object(), true, false);
         assertThrows(IllegalArgumentException.class, () -> new CyclingControl<>(objects, Object.class, new Object[]{new Object()}));
+    }
+
+    @Test
+    void cyclingControlReadsTheOptionOncePerRenderAndClickWhereverTheValueSits() {
+        // The old loop read the option once per allowed value, so the last value or a missing one cost a full pass
+        for (Mode initial : new Mode[]{Mode.A, Mode.C, null}) {
+            Option<Mode> option = option(initial, true, false);
+            CyclingControl<Mode> control = new CyclingControl<>(option, Mode.class);
+            Mockito.when(option.getControl()).thenReturn(control);
+            ControlElement<Mode> element = control.createElement(DIM);
+            Mockito.clearInvocations(option);
+            element.render(new FakeDrawContext(), 5, 5, 0f);
+            Mockito.verify(option, Mockito.times(1)).getValue();
+            assertTrue(element.mouseClicked(new FakeInteractionContext(), 5, 5, 0));
+            Mockito.verify(option, Mockito.times(2)).getValue();
+        }
+    }
+
+    @Test
+    void cyclingControlShowsAMissingValueAsTheFirstEntryAndStepsOnFromIt() {
+        for (boolean reverse : new boolean[]{false, true}) {
+            Option<Mode> option = option(null, true, false);
+            CyclingControl<Mode> control = new CyclingControl<>(option, Mode.class);
+            Mockito.when(option.getControl()).thenReturn(control);
+            ControlElement<Mode> element = control.createElement(DIM);
+            FakeDrawContext draw = new FakeDrawContext();
+            element.render(draw, 5, 5, 0f);
+            assertTrue(draw.strings.contains("A"));
+            FakeInteractionContext ctx = new FakeInteractionContext();
+            if (reverse) {
+                ctx.held.add(InteractionContext.SpecialKey.SHIFT);
+            }
+            assertTrue(element.mouseClicked(ctx, 5, 5, 0));
+            assertEquals(reverse ? Mode.C : Mode.B, option.getValue());
+        }
+        // A value outside a partial universe is treated the same way
+        Option<Mode> outside = option(Mode.A, true, false);
+        CyclingControl<Mode> partial = new CyclingControl<>(outside, Mode.class, new Mode[]{Mode.B, Mode.C});
+        Mockito.when(outside.getControl()).thenReturn(partial);
+        assertTrue(partial.createElement(DIM).mouseClicked(new FakeInteractionContext(), 5, 5, 0));
+        assertEquals(Mode.C, outside.getValue());
+    }
+
+    private record Size(int blocks) { }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void cyclingControlMatchesValuesByEqualityNotIdentity() {
+        Size[] sizes = {new Size(8), new Size(16), new Size(32)};
+        TextComponent[] names = {TextComponent.literal("8"), TextComponent.literal("16"), TextComponent.literal("32")};
+        // Every read builds a fresh value, as an int field read through Integer does above 127
+        int[] stored = {16};
+        Option<Size> option = Mockito.mock(Option.class);
+        Mockito.when(option.getValue()).thenAnswer(inv -> new Size(stored[0]));
+        Mockito.doAnswer(inv -> stored[0] = inv.<Size>getArgument(0).blocks()).when(option).setValue(Mockito.any());
+        Mockito.when(option.isAvailable()).thenReturn(true);
+        Mockito.when(option.getName()).thenReturn(TextComponent.literal("Name"));
+        CyclingControl<Size> control = new CyclingControl<>(option, sizes, names);
+        Mockito.when(option.getControl()).thenReturn(control);
+        ControlElement<Size> element = control.createElement(DIM);
+        FakeDrawContext draw = new FakeDrawContext();
+        element.render(draw, 5, 5, 0f);
+        assertTrue(draw.strings.contains("16"));
+        assertFalse(draw.strings.contains("8"));
+        FakeInteractionContext ctx = new FakeInteractionContext();
+        assertTrue(element.mouseClicked(ctx, 5, 5, 0));
+        assertEquals(32, stored[0]);
+        assertTrue(element.mouseClicked(ctx, 5, 5, 0));
+        assertEquals(8, stored[0]);
+        ctx.held.add(InteractionContext.SpecialKey.SHIFT);
+        assertTrue(element.mouseClicked(ctx, 5, 5, 0));
+        assertEquals(32, stored[0]);
+    }
+
+    @Test
+    void aNullStoredEnumStaysUsableThroughTheRealOptionUntilACycleWritesItBack() {
+        // Gson leaves an enum field null when the saved name is no longer a constant
+        Mode[] field = {null};
+        OptionStorage<Mode[]> storage = () -> field;
+        OptionImpl<Mode[], Mode> option = OptionImpl.createBuilder(Mode.class, storage)
+                .setName(TextComponent.literal("Name"))
+                .setTooltip(TextComponent.literal("Tip"))
+                .setBinding((f, v) -> f[0] = v, f -> f[0])
+                .setControl(o -> new CyclingControl<>(o, Mode.class))
+                .build();
+        ControlElement<Mode> element = option.getControl().createElement(DIM);
+        FakeDrawContext draw = new FakeDrawContext();
+        element.render(draw, 5, 5, 0f);
+        assertTrue(draw.strings.contains("A"));
+        assertTrue(draw.strings.contains("Name"));
+        assertTrue(element.mouseClicked(new FakeInteractionContext(), 5, 5, 0));
+        assertEquals(Mode.B, option.getValue());
+        // The next frame asks hasChanged while the stored value is still null
+        FakeDrawContext next = new FakeDrawContext();
+        element.render(next, 5, 5, 0f);
+        assertTrue(next.strings.contains("Name *"));
+        assertTrue(next.strings.contains("B"));
+        option.applyChanges();
+        assertEquals(Mode.B, field[0]);
+        assertFalse(option.hasChanged());
     }
 
     @Test

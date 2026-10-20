@@ -10,6 +10,7 @@ import org.mockito.Mockito;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -55,6 +56,40 @@ class OptionStructureTest {
         assertTrue(option.isAvailable());
         assertEquals("t.options.opt.name", option.getName().toString());
         assertEquals("t.options.opt.tooltip", option.getTooltip().toString());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void hasChangedComparesThePendingValueAgainstANullStoredOne() {
+        AtomicReference<String> data = new AtomicReference<>();
+        AtomicInteger reads = new AtomicInteger();
+        OptionStorage<AtomicReference<String>> storage = () -> data;
+        OptionImpl<AtomicReference<String>, String> option = OptionImpl.createBuilder(String.class, storage)
+                .setName(TextComponent.literal("n"))
+                .setTooltip(TextComponent.literal("t"))
+                .setBinding(AtomicReference::set, ref -> {
+                    reads.incrementAndGet();
+                    return ref.get();
+                })
+                .setControl(o -> Mockito.mock(Control.class))
+                .build();
+        // Nothing pending reads nothing, which keeps the per-frame check free
+        assertFalse(option.hasChanged());
+        assertEquals(0, reads.get());
+        option.setValue("set");
+        assertTrue(option.hasChanged());
+        assertEquals(1, reads.get());
+        option.applyChanges();
+        assertEquals("set", data.get());
+        assertFalse(option.hasChanged());
+        // Equal but not the same instance is not a change
+        option.setValue(new String("set"));
+        assertFalse(option.hasChanged());
+        // The stored value going back to null makes the pending one a change again
+        data.set(null);
+        assertTrue(option.hasChanged());
+        option.reset();
+        assertFalse(option.hasChanged());
     }
 
     @Test

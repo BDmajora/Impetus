@@ -7,6 +7,8 @@ import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.gui.options.TextProvider;
 import com.bdmajora.impetus.engine.impl.util.Dim2i;
 
+import java.util.Objects;
+
 public class CyclingControl<T> implements Control<T> {
     private final Option<T> option;
     private final T[] allowedValues;
@@ -87,10 +89,13 @@ public class CyclingControl<T> implements Control<T> {
             this.names = names;
         }
 
-        // Index of the current value in the universe
+        // Index of the current value in the universe, or 0 when it is null or not allowed
         private int getCurrentIndex() {
-            for (int i = 0; i < allowedValues.length; i++) {
-                if (allowedValues[i] == option.getValue()) {
+            // Read once, so the getter runs once per call instead of once per allowed value
+            T current = this.option.getValue();
+            for (int i = 0; i < this.allowedValues.length; i++) {
+                // Equality, not identity, so boxed values outside the Integer cache still match
+                if (Objects.equals(this.allowedValues[i], current)) {
                     return i;
                 }
             }

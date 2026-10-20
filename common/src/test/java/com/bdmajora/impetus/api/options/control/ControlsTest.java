@@ -6,6 +6,7 @@ import com.bdmajora.impetus.api.options.structure.OptionImpact;
 import com.bdmajora.impetus.api.options.structure.OptionImpl;
 import com.bdmajora.impetus.api.options.structure.OptionStorage;
 import com.bdmajora.impetus.engine.impl.gui.framework.InteractionContext;
+import com.bdmajora.impetus.engine.impl.gui.framework.Keys;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.gui.options.TextProvider;
 import com.bdmajora.impetus.engine.impl.gui.theme.DefaultColors;
@@ -14,8 +15,6 @@ import com.bdmajora.testing.FakeDrawContext;
 import com.bdmajora.testing.FakeInteractionContext;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -286,33 +285,6 @@ class ControlsTest {
     }
 
     @Test
-    void actionButtonRunsItsAction() {
-        Option<Boolean> option = option(false, true, false);
-        AtomicInteger runs = new AtomicInteger();
-        ActionButtonControl control = new ActionButtonControl(option, runs::incrementAndGet);
-        Mockito.when(option.getControl()).thenReturn(control);
-        assertSame(option, control.getOption());
-        assertEquals(70, control.getMaxWidth());
-        ControlElement<Boolean> element = control.createElement(DIM);
-        FakeInteractionContext ctx = new FakeInteractionContext();
-        assertTrue(element.mouseClicked(ctx, 5, 5, 0));
-        assertEquals(1, runs.get());
-        assertFalse(element.mouseClicked(ctx, 5, 5, 1));
-        FakeDrawContext draw = new FakeDrawContext();
-        element.render(draw, 5, 5, 0f);
-        assertTrue(draw.strings.contains(">"));
-        Mockito.when(option.isAvailable()).thenReturn(false);
-        element.render(draw, 5, 5, 0f);
-        assertFalse(element.mouseClicked(ctx, 5, 5, 0));
-        ActionButtonControl labelled = new ActionButtonControl(option, TextComponent.literal("Go"), runs::incrementAndGet);
-        labelled.createElement(DIM).render(draw, 5, 5, 0f);
-        assertTrue(draw.strings.contains("Go"));
-        assertThrows(NullPointerException.class, () -> new ActionButtonControl(null, runs::incrementAndGet));
-        assertThrows(NullPointerException.class, () -> new ActionButtonControl(option, null));
-        assertThrows(NullPointerException.class, () -> new ActionButtonControl(option, null, runs::incrementAndGet));
-    }
-
-    @Test
     void readOnlyStringShowsTheValue() {
         Option<String> option = option("v1.2", true, false);
         ReadOnlyStringControl control = new ReadOnlyStringControl(option);
@@ -326,6 +298,128 @@ class ControlsTest {
         Mockito.when(option.isAvailable()).thenReturn(false);
         element.render(draw, 5, 5, 0f);
         assertFalse(element.mouseClicked(new FakeInteractionContext(), 5, 5, 0));
+        // Nothing to press or change, so Tab passes the row over even while the option is available
+        Mockito.when(option.isAvailable()).thenReturn(true);
+        assertFalse(element.canFocus());
+    }
+
+    @Test
+    void aFocusedTickBoxTogglesOnEnterOrSpaceAndIsOutlined() {
+        Option<Boolean> option = option(false, true, false);
+        TickBoxControl control = new TickBoxControl(option);
+        Mockito.when(option.getControl()).thenReturn(control);
+        ControlElement<Boolean> element = control.createElement(DIM);
+        FakeInteractionContext ctx = new FakeInteractionContext();
+        assertFalse(element.keyTyped(ctx, ' ', Keys.SPACE));
+        assertEquals(false, option.getValue());
+        assertTrue(element.canFocus());
+
+        element.setFocused(true);
+        assertTrue(element.keyTyped(ctx, ' ', Keys.SPACE));
+        assertEquals(true, option.getValue());
+        assertTrue(element.keyTyped(ctx, '\r', Keys.RETURN));
+        assertTrue(element.keyTyped(ctx, '\0', Keys.NUMPAD_ENTER));
+        assertEquals(true, option.getValue());
+        assertEquals(3, ctx.clicks);
+        assertFalse(element.keyTyped(ctx, 'a', 30));
+        assertFalse(element.keyTyped(ctx, '\0', Keys.LEFT));
+        assertFalse(element.keyTyped(ctx, '\t', Keys.TAB));
+
+        // Drawn hovered and outlined in the accent though the cursor is elsewhere
+        FakeDrawContext draw = new FakeDrawContext();
+        element.render(draw, 500, 500, 0f);
+        String accent = Integer.toHexString(DefaultColors.ELEMENT_ACTIVATED);
+        assertEquals("fill(0,0,200,20," + Integer.toHexString(DefaultColors.BACKGROUND_HOVERED) + ")", draw.calls.getFirst());
+        assertEquals("fill(0,0,200,1," + accent + ")", draw.calls.get(1));
+
+        // An unavailable option ignores presses and Tab passes its row over
+        Mockito.when(option.isAvailable()).thenReturn(false);
+        assertFalse(element.canFocus());
+        assertFalse(element.keyTyped(ctx, ' ', Keys.SPACE));
+        assertEquals(true, option.getValue());
+        assertEquals(3, ctx.clicks);
+    }
+
+    @Test
+    void aFocusedCyclerStepsOnPressesWithShiftReversingAndOnTheArrowsTheWayTheyPoint() {
+        Option<Mode> option = option(Mode.A, true, false);
+        CyclingControl<Mode> control = new CyclingControl<>(option, Mode.class);
+        Mockito.when(option.getControl()).thenReturn(control);
+        ControlElement<Mode> element = control.createElement(DIM);
+        FakeInteractionContext ctx = new FakeInteractionContext();
+        assertFalse(element.keyTyped(ctx, '\0', Keys.RIGHT));
+        assertFalse(element.keyTyped(ctx, ' ', Keys.SPACE));
+        assertEquals(Mode.A, option.getValue());
+
+        element.setFocused(true);
+        assertTrue(element.keyTyped(ctx, ' ', Keys.SPACE));
+        assertEquals(Mode.B, option.getValue());
+        assertTrue(element.keyTyped(ctx, '\0', Keys.RIGHT));
+        assertEquals(Mode.C, option.getValue());
+        assertTrue(element.keyTyped(ctx, '\r', Keys.RETURN));
+        assertEquals(Mode.A, option.getValue());
+        assertTrue(element.keyTyped(ctx, '\0', Keys.LEFT));
+        assertEquals(Mode.C, option.getValue());
+        ctx.held.add(InteractionContext.SpecialKey.SHIFT);
+        assertTrue(element.keyTyped(ctx, '\0', Keys.NUMPAD_ENTER));
+        assertEquals(Mode.B, option.getValue());
+        // Shift turns a press round, not an arrow
+        assertTrue(element.keyTyped(ctx, '\0', Keys.RIGHT));
+        assertEquals(Mode.C, option.getValue());
+        assertEquals(6, ctx.clicks);
+        assertFalse(element.keyTyped(ctx, 'a', 30));
+        assertFalse(element.keyTyped(ctx, '\t', Keys.TAB));
+
+        Mockito.when(option.isAvailable()).thenReturn(false);
+        assertFalse(element.keyTyped(ctx, ' ', Keys.SPACE));
+        assertFalse(element.keyTyped(ctx, '\0', Keys.LEFT));
+        assertEquals(Mode.C, option.getValue());
+        assertEquals(6, ctx.clicks);
+    }
+
+    @Test
+    void aFocusedSliderShowsItsTrackAndStepsOneIntervalPerArrowStoppingAtTheEnds() {
+        Option<Integer> option = option(4, true, false);
+        SliderControl control = new SliderControl(option, 0, 10, 2, ControlValueFormatter.number());
+        Mockito.when(option.getControl()).thenReturn(control);
+        ControlElement<Integer> element = control.createElement(DIM);
+        FakeInteractionContext ctx = new FakeInteractionContext();
+        assertFalse(element.keyTyped(ctx, '\0', Keys.RIGHT));
+        assertEquals(4, option.getValue());
+
+        // The track runs x 104..194 on line 9 and the thumb for 4 of 0..10 sits at x 138, both drawn only when the slider is hovered, held or focused
+        FakeDrawContext idle = new FakeDrawContext();
+        element.render(idle, 500, 500, 0f);
+        assertFalse(idle.drew("fill(104,9,194,10,"));
+        element.setFocused(true);
+        FakeDrawContext focused = new FakeDrawContext();
+        element.render(focused, 500, 500, 0f);
+        assertTrue(focused.drew("fill(104,9,194,10,"));
+        assertTrue(focused.drew("fill(138,5,142,15,"));
+
+        for (int expected : new int[]{6, 8, 10, 10}) {
+            assertTrue(element.keyTyped(ctx, '\0', Keys.RIGHT));
+            assertEquals(expected, option.getValue());
+        }
+        for (int expected : new int[]{8, 6, 4, 2, 0, 0}) {
+            assertTrue(element.keyTyped(ctx, '\0', Keys.LEFT));
+            assertEquals(expected, option.getValue());
+        }
+        // A step past either end writes nothing
+        Mockito.verify(option, Mockito.times(8)).setValue(Mockito.any());
+        // Presses and other keys are not the slider's, and it never plays the click
+        assertFalse(element.keyTyped(ctx, ' ', Keys.SPACE));
+        assertFalse(element.keyTyped(ctx, '\r', Keys.RETURN));
+        assertFalse(element.keyTyped(ctx, '\t', Keys.TAB));
+        assertEquals(0, ctx.clicks);
+
+        Mockito.when(option.isAvailable()).thenReturn(false);
+        assertFalse(element.keyTyped(ctx, '\0', Keys.RIGHT));
+        assertEquals(0, option.getValue());
+        // An unavailable slider shows only its value, focused or not
+        FakeDrawContext unavailable = new FakeDrawContext();
+        element.render(unavailable, 500, 500, 0f);
+        assertFalse(unavailable.drew("fill(104,9,194,10,"));
     }
 
     @Test

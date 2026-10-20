@@ -1,7 +1,9 @@
 package com.bdmajora.impetus.engine.impl.gui.widgets;
 
 import com.bdmajora.impetus.engine.impl.gui.framework.DrawContext;
+import com.bdmajora.impetus.engine.impl.gui.framework.Focusable;
 import com.bdmajora.impetus.engine.impl.gui.framework.InteractionContext;
+import com.bdmajora.impetus.engine.impl.gui.framework.Keys;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.util.Dim2i;
 import com.bdmajora.impetus.engine.impl.gui.theme.DefaultColors;
@@ -9,7 +11,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
 
-public class FlatButtonWidget extends AbstractWidget {
+public class FlatButtonWidget extends AbstractWidget implements Focusable {
     protected final Dim2i dim;
     private final Runnable action;
 
@@ -19,6 +21,7 @@ public class FlatButtonWidget extends AbstractWidget {
     private boolean enabled = true;
     private boolean visible = true;
     private boolean leftAligned;
+    private boolean focused;
 
     private TextComponent label;
 
@@ -38,14 +41,14 @@ public class FlatButtonWidget extends AbstractWidget {
         return this.dim.containsCursor(mouseX, mouseY);
     }
 
-    // Background by state, then the label centred or left-aligned
+    // Background by state, then the label centred or left-aligned; focus looks hovered and adds an accent outline
     @Override
     public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
         if (!this.visible) {
             return;
         }
 
-        boolean hovered = this.isHovered(mouseX, mouseY);
+        boolean hovered = this.focused || this.isHovered(mouseX, mouseY);
 
         int backgroundColor = this.enabled ? (hovered ? this.style.bgHovered : this.style.bgDefault) : this.style.bgDisabled;
         int textColor = this.enabled ? (this.selected ? this.style.textSelected : this.style.textDefault) : this.style.textDisabled;
@@ -63,6 +66,10 @@ public class FlatButtonWidget extends AbstractWidget {
 
         if (this.enabled && this.selected) {
             drawContext.fill(this.dim.x(), this.leftAligned ? this.dim.y() : (this.dim.getLimitY() - 1), this.leftAligned ? (this.dim.x() + 1) : this.dim.getLimitX(), this.dim.getLimitY(), this.style.accentColor);
+        }
+
+        if (this.focused) {
+            drawContext.drawBorder(this.dim.x(), this.dim.y(), this.dim.getLimitX(), this.dim.getLimitY(), this.style.accentColor);
         }
     }
 
@@ -91,6 +98,18 @@ public class FlatButtonWidget extends AbstractWidget {
         }
 
         if (button == 0 && this.dim.containsCursor(mouseX, mouseY)) {
+            doAction(context);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    // Enter, keypad Enter or Space presses the button while it has focus and is shown and enabled, as a click would need
+    @Override
+    public boolean keyTyped(InteractionContext context, char typedChar, int keyCode) {
+        if (this.focused && this.canFocus() && Keys.isPress(typedChar, keyCode)) {
             doAction(context);
 
             return true;
@@ -129,6 +148,30 @@ public class FlatButtonWidget extends AbstractWidget {
     @Override
     public boolean isMouseOver(double mouseX, double mouseY) {
         return this.dim.containsCursor(mouseX, mouseY);
+    }
+
+    // Tab skips a hidden or greyed-out button
+    @Override
+    public boolean canFocus() {
+        return this.enabled && this.visible;
+    }
+
+    // Whether Enter and Space go here
+    @Override
+    public boolean isFocused() {
+        return this.focused;
+    }
+
+    // Set by the container when Tab or a click moves focus
+    @Override
+    public void setFocused(boolean focused) {
+        this.focused = focused;
+    }
+
+    // Bounds
+    @Override
+    public Dim2i getDimensions() {
+        return this.dim;
     }
 
     public static class Style {

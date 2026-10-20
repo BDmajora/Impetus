@@ -136,8 +136,8 @@ public class ImpetusVideoOptionsScreen extends GuiScreen {
     // Forwards keys; Escape is handled by the parent
     @Override
     protected void keyTyped(char typedChar, int keyCode) throws IOException {
-        // Give the framework (e.g. the search bar) first refusal; fall back to vanilla handling (ESC-to-close).
-        if (this.controller.getFrame().keyTyped(typedChar, keyCode)) {
+        // Give the framework (the focused control, then the rest, then Tab to move focus) first refusal; fall back to vanilla handling (ESC-to-close).
+        if (this.controller.getFrame().dispatchKeyTyped(VintageInteractionContext.INSTANCE, typedChar, keyCode)) {
             return;
         }
 

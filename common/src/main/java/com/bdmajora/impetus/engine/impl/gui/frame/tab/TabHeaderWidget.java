@@ -29,10 +29,10 @@ public class TabHeaderWidget extends FlatButtonWidget {
         this.collapsed = collapsed;
     }
 
-    // Icon, name, fold marker and a faint hover wash; no button background so the header reads as a heading rather than a row
+    // Icon, name, fold marker and a faint hover wash; no button background so the header reads as a heading rather than a row. Focus washes it too and outlines it in the mod's accent
     @Override
     public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
-        if (this.isHovered(mouseX, mouseY)) {
+        if (this.isFocused() || this.isHovered(mouseX, mouseY)) {
             drawContext.fill(this.dim.x(), this.dim.y(), this.dim.getLimitX(), this.dim.getLimitY(), HOVER_COLOR);
         }
 
@@ -52,5 +52,9 @@ public class TabHeaderWidget extends FlatButtonWidget {
         String marker = this.collapsed ? "+" : "-";
         int markerX = this.dim.getLimitX() - MARKER_PADDING - drawContext.getStringWidth(marker);
         drawContext.drawString(marker, markerX, textY, accentColor);
+
+        if (this.isFocused()) {
+            drawContext.drawBorder(this.dim.x(), this.dim.y(), this.dim.getLimitX(), this.dim.getLimitY(), accentColor);
+        }
     }
 }

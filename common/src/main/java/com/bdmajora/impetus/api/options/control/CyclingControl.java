@@ -3,6 +3,7 @@ package com.bdmajora.impetus.api.options.control;
 import com.bdmajora.impetus.api.options.structure.Option;
 import com.bdmajora.impetus.engine.impl.gui.framework.DrawContext;
 import com.bdmajora.impetus.engine.impl.gui.framework.InteractionContext;
+import com.bdmajora.impetus.engine.impl.gui.framework.Keys;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.gui.options.TextProvider;
 import com.bdmajora.impetus.engine.impl.util.Dim2i;
@@ -130,6 +131,28 @@ public class CyclingControl<T> implements Control<T> {
             }
 
             return false;
+        }
+
+        // While focused: Enter, keypad Enter or Space steps like a click (Shift backwards), and the arrows step the way they point
+        @Override
+        public boolean keyTyped(InteractionContext context, char typedChar, int keyCode) {
+            if (!this.isFocused() || !this.option.isAvailable()) {
+                return false;
+            }
+
+            boolean reverse;
+            if (Keys.isPress(typedChar, keyCode)) {
+                reverse = context.isSpecialKeyDown(InteractionContext.SpecialKey.SHIFT);
+            } else if (keyCode == Keys.LEFT || keyCode == Keys.RIGHT) {
+                reverse = keyCode == Keys.LEFT;
+            } else {
+                return false;
+            }
+
+            cycleControl(reverse);
+            context.playClickSound();
+
+            return true;
         }
 
         // Steps with wrap-around

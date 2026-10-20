@@ -24,7 +24,7 @@ public interface Interactable {
     }
 
     // typedChar is '\0' when none; keyCode is vanilla's (lwjglx, LWJGL2 numbering) - match typedChar when possible
-    default boolean keyTyped(char typedChar, int keyCode) {
+    default boolean keyTyped(InteractionContext context, char typedChar, int keyCode) {
         return false;
     }
 }

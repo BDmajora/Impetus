@@ -2,6 +2,7 @@ package com.bdmajora.impetus.api.options.control;
 
 import com.bdmajora.impetus.api.options.structure.Option;
 import com.bdmajora.impetus.engine.impl.gui.framework.DrawContext;
+import com.bdmajora.impetus.engine.impl.gui.framework.Focusable;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextFormattingStyle;
 import com.bdmajora.impetus.engine.impl.gui.theme.DefaultColors;
@@ -11,25 +12,27 @@ import com.bdmajora.impetus.engine.impl.util.Dim2i;
 
 import org.jetbrains.annotations.NotNull;
 
-public class ControlElement<T> extends AbstractWidget implements OptionControlElement<T> {
+public class ControlElement<T> extends AbstractWidget implements OptionControlElement<T>, Focusable {
     protected final Option<T> option;
 
     protected final Dim2i dim;
 
     private @NotNull FlatButtonWidget.Style style = FlatButtonWidget.Style.defaults();
 
+    private boolean focused;
+
     public ControlElement(Option<T> option, Dim2i dim) {
         this.option = option;
         this.dim = dim;
     }
 
-    // Background, hover highlight and the option name
+    // Background, hover highlight and the option name; focus looks hovered and adds an outline in the mod's accent
     @Override
     public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
         String name = drawContext.extractString(this.option.getName());
         TextComponent label;
 
-        boolean hovered = this.isMouseOver(mouseX, mouseY);
+        boolean hovered = this.focused || this.isMouseOver(mouseX, mouseY);
         int availableLabelWidth = Math.max(0, this.dim.width() - this.option.getControl().getMaxWidth() - 12);
 
         if (drawContext.getStringWidth(name) > availableLabelWidth) {
@@ -48,6 +51,9 @@ public class ControlElement<T> extends AbstractWidget implements OptionControlEl
         }
 
         drawContext.fill(this.dim.x(), this.dim.y(), this.dim.getLimitX(), this.dim.getLimitY(), hovered ? style.bgHovered : style.bgDefault);
+        if (this.focused) {
+            drawContext.drawBorder(this.dim.x(), this.dim.y(), this.dim.getLimitX(), this.dim.getLimitY(), this.getAccentColor(drawContext));
+        }
         drawContext.drawString(label, this.dim.x() + 6, this.dim.getCenterY() - 4, style.textDefault);
     }
 
@@ -81,5 +87,23 @@ public class ControlElement<T> extends AbstractWidget implements OptionControlEl
     @Override
     public boolean isMouseOver(double x, double y) {
         return this.dim.containsCursor(x, y);
+    }
+
+    // Tab passes over the rows of an unavailable option, as clicks do
+    @Override
+    public boolean canFocus() {
+        return this.option.isAvailable();
+    }
+
+    // Whether this row's keys go here
+    @Override
+    public boolean isFocused() {
+        return this.focused;
+    }
+
+    // Set by the container when Tab or a click moves focus
+    @Override
+    public void setFocused(boolean focused) {
+        this.focused = focused;
     }
 }

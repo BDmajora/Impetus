@@ -167,6 +167,33 @@ public class ScrollableFrame extends AbstractFrame {
         return this.dim.containsCursor(mouseX, mouseY);
     }
 
+    // A Tab step that lands in here scrolls the focused control into view
+    @Override
+    public boolean moveFocus(boolean forward) {
+        if (!super.moveFocus(forward)) {
+            return false;
+        }
+        // Only a frame that scrolls has a viewport; the step just landed, so a focused control exists
+        if (this.viewPortDimension != null) {
+            Dim2i bounds = this.getFocusedControl().getDimensions();
+            reveal(this.horizontalScrollBar, bounds.x(), bounds.getLimitX(), this.viewPortDimension.x(), this.viewPortDimension.getLimitX());
+            reveal(this.verticalScrollBar, bounds.y(), bounds.getLimitY(), this.viewPortDimension.y(), this.viewPortDimension.getLimitY());
+        }
+        return true;
+    }
+
+    // The least scroll along one axis that shows the span start..end inside the view, its start winning when it is longer than the view; content coordinates are unscrolled, so the offset is subtracted to place them
+    private static void reveal(ScrollBarComponent bar, int start, int end, int viewStart, int viewEnd) {
+        if (bar == null) {
+            return;
+        }
+        int offset = bar.getOffset();
+        int target = Math.min(Math.max(offset, end - viewEnd), start - viewStart);
+        if (target != offset) {
+            bar.setOffset(target);
+        }
+    }
+
     public static class Builder {
         private boolean renderOutline = false;
         private Dim2i dim = null;

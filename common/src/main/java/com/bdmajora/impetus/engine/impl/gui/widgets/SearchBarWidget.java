@@ -1,7 +1,9 @@
 package com.bdmajora.impetus.engine.impl.gui.widgets;
 
 import com.bdmajora.impetus.engine.impl.gui.framework.DrawContext;
+import com.bdmajora.impetus.engine.impl.gui.framework.Focusable;
 import com.bdmajora.impetus.engine.impl.gui.framework.InteractionContext;
+import com.bdmajora.impetus.engine.impl.gui.framework.Keys;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.gui.theme.DefaultColors;
 import com.bdmajora.impetus.engine.impl.util.Dim2i;
@@ -9,7 +11,7 @@ import com.bdmajora.impetus.engine.impl.util.Dim2i;
 import java.util.function.Consumer;
 
 // Text-input field for filtering the options list; matches key input on typedChar first, vanilla's key code as fallback
-public class SearchBarWidget extends AbstractWidget {
+public class SearchBarWidget extends AbstractWidget implements Focusable {
     private static final int TEXT_PADDING = 6;
 
     // Editing keys, by produced character and by the key code vanilla screens pass on (lwjglx keeps the LWJGL2 numbering)
@@ -70,10 +72,10 @@ public class SearchBarWidget extends AbstractWidget {
         return inside;
     }
 
-    // Edits the query when focused; backspace, escape and printable characters
+    // Edits the query when focused; backspace, escape and printable characters. Tab is left to the container, so it moves focus on to the results
     @Override
-    public boolean keyTyped(char typedChar, int keyCode) {
-        if (!this.focused) {
+    public boolean keyTyped(InteractionContext context, char typedChar, int keyCode) {
+        if (!this.focused || Keys.isTab(typedChar, keyCode)) {
             return false;
         }
 
@@ -104,8 +106,21 @@ public class SearchBarWidget extends AbstractWidget {
     }
 
     // Whether keystrokes go here
+    @Override
     public boolean isFocused() {
         return this.focused;
+    }
+
+    // Set by the container when Tab or a click moves focus
+    @Override
+    public void setFocused(boolean focused) {
+        this.focused = focused;
+    }
+
+    // Bounds
+    @Override
+    public Dim2i getDimensions() {
+        return this.dim;
     }
 
     // Current text

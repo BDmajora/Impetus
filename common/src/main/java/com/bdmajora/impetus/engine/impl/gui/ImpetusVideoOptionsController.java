@@ -206,7 +206,7 @@ public class ImpetusVideoOptionsController implements Renderable {
         return BasicFrame.createBuilder()
                 .setDimension(parentBasicFrameDim)
                 .shouldRenderOutline(false)
-                // First child so it sees key events before anything else.
+                // First child, so Tab reaches it before the sidebar and the rows
                 .addChild(dim -> this.searchBar)
                 .addChild(dim -> this.title)
                 .addChild(parentDim -> this.createTabFrame(tabFrameDim))

@@ -2,6 +2,7 @@ package com.bdmajora.impetus.engine.impl.gui.frame.tab;
 
 import com.bdmajora.impetus.engine.api.util.ColorARGB;
 import com.bdmajora.impetus.engine.impl.gui.framework.DrawContext;
+import com.bdmajora.impetus.engine.impl.gui.framework.Focusable;
 import com.bdmajora.impetus.engine.impl.gui.framework.InteractionContext;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.gui.widgets.AbstractWidget;
@@ -34,6 +35,7 @@ public class TabFrame extends AbstractFrame {
     private Tab<?> selectedTab;
     private AbstractFrame selectedFrame;
     private ScrollableFrame sidebarFrame;
+    private TabSidebarFrame sidebar;
 
     public TabFrame(DrawContext drawContext, Dim2i dim, boolean renderOutline, Map<String, List<Tab<?>>> tabs, Runnable onSetTab, AtomicReference<TextComponent> tabSectionSelectedTab, AtomicReference<Integer> tabSectionScrollBarOffset) {
         super(dim, renderOutline);
@@ -198,15 +200,22 @@ public class TabFrame extends AbstractFrame {
             }
         }
 
+        // A sidebar entry pressed from the keyboard rebuilds the sidebar under it; a fold or a tab switch only changes rows below that entry, so the new one at its place takes the focus back
+        int focusedEntry = this.sidebar != null ? this.sidebar.interactableChildren().toList().indexOf(this.sidebar.getFocusedChild()) : -1;
+
         // The sidebar scrolls only when the folded layout is taller than the frame
         int contentHeight = this.sidebarContentHeight();
         Dim2i sidebarInner = contentHeight > this.tabSection.height() ? this.tabSection.withHeight(contentHeight) : this.tabSection;
 
+        this.sidebar = new TabSidebarFrame(sidebarInner);
         this.sidebarFrame = ScrollableFrame.createBuilder()
                 .setDimension(this.tabSection)
-                .setFrame(new TabSidebarFrame(sidebarInner))
+                .setFrame(this.sidebar)
                 .setVerticalScrollBarOffset(this.tabSectionScrollBarOffset)
                 .build();
+        if (focusedEntry >= 0 && this.sidebar.interactableChildren().toList().get(focusedEntry) instanceof Focusable entry) {
+            entry.setFocused(true);
+        }
 
         this.children.add(this.sidebarFrame);
 

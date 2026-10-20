@@ -14,6 +14,7 @@ import com.bdmajora.impetus.engine.impl.gui.ImpetusVideoOptionsController;
 import com.bdmajora.impetus.engine.impl.gui.framework.InteractionContext;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextFormattingStyle;
+import com.bdmajora.impetus.engine.impl.gui.widgets.SearchBarWidget;
 import com.bdmajora.impetus.engine.impl.notification.ImpetusNotifications;
 import com.bdmajora.impetus.impl.compat.fluidlogged.FluidloggedCompat;
 import com.bdmajora.impetus.impl.gui.overlay.ImpetusToastRenderer;
@@ -527,6 +528,9 @@ class ImpetusGuiTest {
         screen.initGui();
 
         ImpetusVideoOptionsController controller = Mixins.get(screen, "controller");
+        // Tab nobody takes moves the focus to the first control, the search bar, with Shift read through the vintage context
+        screen.keyTyped('\t', Keyboard.KEY_TAB);
+        assertInstanceOf(SearchBarWidget.class, controller.getFrame().getFocusedControl());
         Mixins.<Runnable>get(controller, "onClose").run();
         verify(client).displayGuiScreen(parent);
 

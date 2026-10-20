@@ -15,6 +15,7 @@ import com.bdmajora.testing.FakeInteractionContext;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -173,5 +174,99 @@ class FramesTest {
         // The button that took the click is handed the release, wherever the cursor ends up
         assertTrue(none.mouseReleased(ctx, 5, 5, 0));
         assertFalse(none.mouseReleased(ctx, 5, 5, 0));
+    }
+
+    private static FlatButtonWidget button(Dim2i dim) {
+        return new FlatButtonWidget(dim, TextComponent.literal("b"), () -> {});
+    }
+
+    @Test
+    void aTabStepIntoAScrollingFrameScrollsTheLeastThatShowsTheFocusedControl() {
+        AtomicReference<Integer> vertical = new AtomicReference<>(0);
+        // A 400 tall frame seen through a 100 tall view; the third button is taller than the view and the hidden one is never focused
+        FlatButtonWidget top = button(new Dim2i(0, 0, 80, 20));
+        FlatButtonWidget middle = button(new Dim2i(0, 150, 80, 20));
+        FlatButtonWidget tall = button(new Dim2i(0, 200, 80, 150));
+        FlatButtonWidget hidden = button(new Dim2i(0, 360, 80, 20));
+        hidden.setVisible(false);
+        FlatButtonWidget bottom = button(new Dim2i(0, 380, 80, 20));
+        BasicFrame content = BasicFrame.createBuilder().setDimension(new Dim2i(0, 0, 100, 400))
+                .addChild(d -> top).addChild(d -> middle).addChild(d -> tall).addChild(d -> hidden).addChild(d -> bottom).build();
+        ScrollableFrame frame = ScrollableFrame.createBuilder().setDimension(new Dim2i(0, 0, 100, 100)).setFrame(content).setVerticalScrollBarOffset(vertical).build();
+
+        // Already in view; brought up from below by its bottom edge; the tall one by its top edge; the last one by the bottom, at the end of the range
+        List<FlatButtonWidget> order = List.of(top, middle, tall, bottom);
+        int[] offsets = {0, 70, 200, 300};
+        for (int i = 0; i < order.size(); i++) {
+            assertTrue(frame.moveFocus(true));
+            assertSame(order.get(i), frame.getFocusedControl());
+            assertEquals(offsets[i], vertical.get());
+        }
+        assertFalse(frame.moveFocus(true));
+        assertEquals(300, vertical.get());
+        // Backwards each comes down by its top edge, and one already in view leaves the scroll alone
+        assertTrue(frame.moveFocus(false));
+        assertEquals(300, vertical.get());
+        int[] back = {200, 150, 0};
+        for (int i = 0; i < back.length; i++) {
+            assertTrue(frame.moveFocus(false));
+            assertSame(order.get(2 - i), frame.getFocusedControl());
+            assertEquals(back[i], vertical.get());
+        }
+        // Off the start nothing is focused, the next step comes back in at the top, and the frame draws the content shifted by the offset it scrolled to
+        assertFalse(frame.moveFocus(false));
+        assertNull(frame.getFocusedControl());
+        assertTrue(frame.moveFocus(true));
+        assertTrue(frame.moveFocus(true));
+        assertEquals(70, vertical.get());
+        FakeDrawContext draw = new FakeDrawContext();
+        frame.render(draw, 500, 500, 0f);
+        assertTrue(draw.drew("translate(0.0,-70.0,0.0)"));
+
+        // Sideways the same, on the horizontal bar
+        AtomicReference<Integer> horizontal = new AtomicReference<>(0);
+        FlatButtonWidget left = button(new Dim2i(0, 0, 40, 20));
+        FlatButtonWidget right = button(new Dim2i(300, 0, 40, 20));
+        BasicFrame wide = BasicFrame.createBuilder().setDimension(new Dim2i(0, 0, 400, 100)).addChild(d -> left).addChild(d -> right).build();
+        ScrollableFrame sideways = ScrollableFrame.createBuilder().setDimension(new Dim2i(0, 0, 100, 100)).setFrame(wide).setHorizontalScrollBarOffset(horizontal).build();
+        assertTrue(sideways.moveFocus(true));
+        assertEquals(0, horizontal.get());
+        assertTrue(sideways.moveFocus(true));
+        assertEquals(240, horizontal.get());
+        assertTrue(sideways.moveFocus(false));
+        assertEquals(0, horizontal.get());
+
+        // A frame that fits has nothing to scroll, and one with nothing focusable is passed through
+        FlatButtonWidget only = button(new Dim2i(0, 0, 40, 20));
+        ScrollableFrame still = new ScrollableFrame(new Dim2i(0, 0, 100, 100), BasicFrame.createBuilder().setDimension(new Dim2i(0, 0, 50, 50)).addChild(d -> only).build(), false, new AtomicReference<>(0), new AtomicReference<>(0));
+        assertTrue(still.moveFocus(true));
+        assertTrue(only.isFocused());
+        assertFalse(still.moveFocus(true));
+        assertFalse(only.isFocused());
+        AtomicReference<Integer> unmoved = new AtomicReference<>(0);
+        ScrollableFrame empty = ScrollableFrame.createBuilder().setDimension(new Dim2i(0, 0, 100, 100)).setFrame(BasicFrame.createBuilder().setDimension(new Dim2i(0, 0, 100, 400)).addChild(d -> hidden).build()).setVerticalScrollBarOffset(unmoved).build();
+        assertFalse(empty.moveFocus(true));
+        assertFalse(empty.moveFocus(false));
+        assertEquals(0, unmoved.get());
+    }
+
+    @Test
+    void anOptionPageIsWalkedRowByRowAndSkipsUnavailableOnes() {
+        OptionPage page = page("impetus", true);
+        Option<?> beta = page.getOptions().stream().filter(o -> o.getName().toString().equals("beta")).findFirst().orElseThrow();
+        Mockito.when(beta.isAvailable()).thenReturn(false);
+        OptionPageFrame frame = OptionPageFrame.createBuilder().setDimension(new Dim2i(0, 0, 200, 300)).setOptionPage(page).build();
+        List<String> names = new ArrayList<>();
+        while (frame.moveFocus(true)) {
+            names.add(((ControlElement<?>) frame.getFocusedControl()).getOption().getName().toString());
+        }
+        assertEquals(List.of("alpha", "gamma"), names);
+        // The focused row is drawn outlined in its mod's accent over the hovered background
+        assertTrue(frame.moveFocus(true));
+        FakeDrawContext draw = new FakeDrawContext();
+        frame.render(draw, 500, 500, 0f);
+        ControlElement<?> alpha = frame.controlElements.getFirst();
+        Dim2i row = alpha.getDimensions();
+        assertTrue(draw.drew("fill(" + row.x() + "," + row.y() + "," + row.getLimitX() + "," + (row.y() + 1) + "," + Integer.toHexString(draw.getModAccentColor("impetus")) + ")"));
     }
 }

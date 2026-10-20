@@ -4,6 +4,7 @@ import com.bdmajora.impetus.engine.api.util.ColorARGB;
 import com.bdmajora.impetus.api.options.structure.Option;
 import com.bdmajora.impetus.engine.impl.gui.framework.DrawContext;
 import com.bdmajora.impetus.engine.impl.gui.framework.InteractionContext;
+import com.bdmajora.impetus.engine.impl.gui.framework.Keys;
 import com.bdmajora.impetus.engine.impl.util.Dim2i;
 
 public class SliderControl implements Control<Integer> {
@@ -80,12 +81,12 @@ public class SliderControl implements Control<Integer> {
             this.sliderHeld = false;
         }
 
-        // Track, thumb and formatted value; a value-only label when not hovered
+        // Track, thumb and formatted value; a value-only label when neither hovered nor focused
         @Override
         public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
             super.render(drawContext, mouseX, mouseY, delta);
 
-            if (this.option.isAvailable() && (this.sliderHeld || this.isMouseOver(mouseX, mouseY))) {
+            if (this.option.isAvailable() && (this.sliderHeld || this.isFocused() || this.isMouseOver(mouseX, mouseY))) {
                 this.renderSlider(drawContext);
             } else {
                 this.renderStandaloneValue(drawContext);
@@ -182,6 +183,19 @@ public class SliderControl implements Control<Integer> {
             if (!this.option.getValue().equals(value)) {
                 this.option.setValue(value);
             }
+        }
+
+        // The arrows move a focused slider one interval the way they point, stopping at either end
+        @Override
+        public boolean keyTyped(InteractionContext context, char typedChar, int keyCode) {
+            if (!this.isFocused() || (keyCode != Keys.LEFT && keyCode != Keys.RIGHT) || !this.option.isAvailable()) {
+                return false;
+            }
+
+            int step = keyCode == Keys.LEFT ? -this.interval : this.interval;
+            this.setValue(this.getThumbPositionForValue(this.option.getValue() + step));
+
+            return true;
         }
 
         // Follows the cursor while dragging

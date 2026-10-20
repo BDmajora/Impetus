@@ -35,6 +35,12 @@ public class ReadOnlyStringControl implements Control<String> {
             super(option, dim);
         }
 
+        // Nothing to press or change, so Tab never stops here
+        @Override
+        public boolean canFocus() {
+            return false;
+        }
+
         // Just the value
         @Override
         public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {

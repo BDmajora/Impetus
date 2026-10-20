@@ -3,6 +3,7 @@ package com.bdmajora.impetus.api.options.control;
 import com.bdmajora.impetus.api.options.structure.Option;
 import com.bdmajora.impetus.engine.impl.gui.framework.DrawContext;
 import com.bdmajora.impetus.engine.impl.gui.framework.InteractionContext;
+import com.bdmajora.impetus.engine.impl.gui.framework.Keys;
 import com.bdmajora.impetus.engine.impl.util.Dim2i;
 
 public class TickBoxControl implements Control<Boolean> {
@@ -71,6 +72,19 @@ public class TickBoxControl implements Control<Boolean> {
         @Override
         public boolean mouseClicked(InteractionContext context, double mouseX, double mouseY, int button) {
             if (this.option.isAvailable() && button == 0 && this.dim.containsCursor(mouseX, mouseY)) {
+                toggleControl();
+                context.playClickSound();
+
+                return true;
+            }
+
+            return false;
+        }
+
+        // Enter, keypad Enter or Space toggles while focused, as a click does
+        @Override
+        public boolean keyTyped(InteractionContext context, char typedChar, int keyCode) {
+            if (this.isFocused() && Keys.isPress(typedChar, keyCode) && this.option.isAvailable()) {
                 toggleControl();
                 context.playClickSound();
 

@@ -28,7 +28,8 @@ public final class Mc {
 
     // Same as mock but calls through to real methods, for partial stubbing of concrete game classes
     public static <T> T spy(Class<T> type, Class<?>... added) {
-        return Mockito.mock(type, Mockito.withSettings().extraInterfaces(added).defaultAnswer(Mockito.CALLS_REAL_METHODS));
+        return added.length == 0 ? Mockito.mock(type, Mockito.CALLS_REAL_METHODS)
+                : Mockito.mock(type, Mockito.withSettings().extraInterfaces(added).defaultAnswer(Mockito.CALLS_REAL_METHODS));
     }
 
     // Installs a mock client as Minecraft.getMinecraft(), which client code reaches for constantly

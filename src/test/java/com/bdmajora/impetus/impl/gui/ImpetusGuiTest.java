@@ -310,17 +310,51 @@ class ImpetusGuiTest {
     }
 
     @Test
+    void vanillaBindingsTakeOnlyOnOffOptions() {
+        assertEquals("Option must not be null", assertThrowsExactly(NullPointerException.class, () -> new VanillaBooleanOptionBinding(null)).getMessage());
+        for (GameSettings.Options option : GameSettings.Options.values()) {
+            if (option.isBoolean()) {
+                new VanillaBooleanOptionBinding(option);
+            } else {
+                // GRAPHICS and the other cycled or slider options would read false forever and step on each write
+                assertEquals("Not an on/off option: " + option,
+                        assertThrowsExactly(IllegalArgumentException.class, () -> new VanillaBooleanOptionBinding(option)).getMessage());
+            }
+        }
+    }
+
+    @Test
     void vanillaSettingsAreReadAndWrittenThroughTheirOwnMethods() {
-        GameSettings vanilla = mock(GameSettings.class);
-        VanillaBooleanOptionBinding binding = new VanillaBooleanOptionBinding(GameSettings.Options.ENABLE_VSYNC);
-        binding.setValue(vanilla, true);
-        binding.setValue(vanilla, false);
-        verify(vanilla).setOptionValue(GameSettings.Options.ENABLE_VSYNC, 1);
-        verify(vanilla).setOptionValue(GameSettings.Options.ENABLE_VSYNC, 0);
-        when(vanilla.getOptionOrdinalValue(GameSettings.Options.ENABLE_VSYNC)).thenReturn(true);
-        assertTrue(binding.getValue(vanilla));
+        // Vanilla's real setOptionValue and getOptionOrdinalValue; only the options.txt write is stubbed out
+        GameSettings real = Mc.spy(GameSettings.class);
+        Mockito.doNothing().when(real).saveOptions();
+        VanillaBooleanOptionBinding bobbing = new VanillaBooleanOptionBinding(GameSettings.Options.VIEW_BOBBING);
+        assertSame(Boolean.FALSE, bobbing.getValue(real));
+        bobbing.setValue(real, true);
+        assertTrue(real.viewBobbing);
+        assertSame(Boolean.TRUE, bobbing.getValue(real));
+        // Vanilla flips an on/off option whatever int it is given, so writing the stored value must not reach it,
+        // which also spares the options.txt rewrite
+        bobbing.setValue(real, true);
+        assertTrue(real.viewBobbing);
+        verify(real, times(1)).setOptionValue(GameSettings.Options.VIEW_BOBBING, 1);
+        verify(real, times(1)).saveOptions();
+        bobbing.setValue(real, false);
+        bobbing.setValue(real, false);
+        assertFalse(real.viewBobbing);
+        assertSame(Boolean.FALSE, bobbing.getValue(real));
+        verify(real, times(2)).setOptionValue(GameSettings.Options.VIEW_BOBBING, 1);
+        verify(real, times(2)).saveOptions();
+        // Each binding reads and writes only its own option
+        VanillaBooleanOptionBinding invert = new VanillaBooleanOptionBinding(GameSettings.Options.INVERT_MOUSE);
+        invert.setValue(real, true);
+        assertTrue(real.invertMouse);
+        assertTrue(invert.getValue(real));
+        assertFalse(bobbing.getValue(real));
+        verify(real, never()).setOptionValue(eq(GameSettings.Options.VIEW_BOBBING), eq(0));
 
         // The storage reads the live settings each time and saves options.txt
+        GameSettings vanilla = mock(GameSettings.class);
         MinecraftOptionsStorage storage = new MinecraftOptionsStorage();
         assertSame(settings, storage.getData());
         Mixins.set(client, "gameSettings", vanilla);

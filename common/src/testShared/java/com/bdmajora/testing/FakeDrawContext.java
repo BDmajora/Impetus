@@ -61,6 +61,16 @@ public class FakeDrawContext implements DrawContext {
     }
 
     @Override
+    public int matrixDepth() {
+        return matrixDepth;
+    }
+
+    @Override
+    public int scissorDepth() {
+        return scissorDepth;
+    }
+
+    @Override
     public int getStringWidth(TextComponent component) {
         return extractString(component).length() * 6;
     }

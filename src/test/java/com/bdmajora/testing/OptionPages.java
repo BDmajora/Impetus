@@ -6,11 +6,15 @@ import com.bdmajora.impetus.api.options.control.SliderControl;
 import com.bdmajora.impetus.api.options.structure.Option;
 import com.bdmajora.impetus.api.options.structure.OptionGroup;
 import com.bdmajora.impetus.api.options.structure.OptionPage;
+import com.bdmajora.impetus.engine.impl.util.Dim2i;
 
 import java.util.List;
 
 // Walks built option pages the way the options screen does: reads every label, asks every enable gate, formats every slider stop and writes every value back through its binding
 public final class OptionPages {
+    // A full-width options row
+    private static final Dim2i ROW = new Dim2i(0, 0, 200, 18);
+
     private OptionPages() {}
 
     // The number of options visited, so a test can tell a page list was not empty
@@ -36,6 +40,8 @@ public final class OptionPages {
         option.getFlags();
         option.isAvailable();
         Control<T> control = option.getControl();
+        // The strict checks, which the screen would turn into a placeholder row, so a mispaired option fails its page's test
+        Control.createElementFor(option, ROW);
         if (control instanceof SliderControl) {
             int min = Mixins.get(control, "min");
             int max = Mixins.get(control, "max");

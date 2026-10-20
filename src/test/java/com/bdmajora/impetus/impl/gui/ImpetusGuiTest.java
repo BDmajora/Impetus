@@ -429,6 +429,54 @@ class ImpetusGuiTest {
     }
 
     @Test
+    void theDrawContextCountsWhatIsPushedAndNestsScissorsInsideEachOther() {
+        VintageDrawContext draw = new VintageDrawContext();
+        settings.guiScale = 2;
+        draw.pushMatrix();
+        draw.pushMatrix();
+        assertEquals(2, draw.matrixDepth());
+        draw.popMatrix();
+        draw.popMatrix();
+        // An extra pop still reaches GL but never counts below zero
+        draw.popMatrix();
+        assertEquals(0, draw.matrixDepth());
+        gl11.verify(GL11::glPopMatrix, times(3));
+        // A box nested in another is clipped to it, and ending it puts the outer box back without turning clipping off
+        draw.enableScissor(10, 20, 29, 39);
+        gl11.verify(() -> GL11.glScissor(20, 400, 40, 40));
+        draw.enableScissor(0, 30, 49, 49);
+        gl11.verify(() -> GL11.glScissor(20, 400, 40, 20));
+        assertEquals(2, draw.scissorDepth());
+        draw.disableScissor();
+        gl11.verify(() -> GL11.glScissor(20, 400, 40, 40), times(2));
+        gl11.verify(() -> GL11.glDisable(GL11.GL_SCISSOR_TEST), never());
+        assertEquals(1, draw.scissorDepth());
+        // A box wholly outside the one around it clips everything
+        draw.enableScissor(100, 100, 109, 109);
+        gl11.verify(() -> GL11.glScissor(200, 400, 0, 0));
+        draw.disableScissor();
+        draw.disableScissor();
+        gl11.verify(() -> GL11.glDisable(GL11.GL_SCISSOR_TEST));
+        assertEquals(0, draw.scissorDepth());
+        // Deeper than the first stack holds and back out, then an extra disable stays at zero
+        for (int i = 0; i < 10; i++) {
+            draw.enableScissor(0, 0, 300 - i, 200);
+        }
+        assertEquals(10, draw.scissorDepth());
+        draw.unwindTo(0, 0);
+        assertEquals(0, draw.scissorDepth());
+        draw.disableScissor();
+        assertEquals(0, draw.scissorDepth());
+        // Unwinding pops through GL like any other pop
+        draw.pushMatrix();
+        draw.pushMatrix();
+        draw.pushMatrix();
+        draw.unwindTo(1, 0);
+        assertEquals(1, draw.matrixDepth());
+        gl11.verify(GL11::glPopMatrix, times(5));
+    }
+
+    @Test
     void modHeadingsAndLogosResolveOncePerMod() throws Exception {
         TextureManager textures = client.getTextureManager();
         when(textures.getDynamicTextureLocation(eq("modlogo"), any(DynamicTexture.class))).thenReturn(new ResourceLocation("dynamic/modlogo_1"));

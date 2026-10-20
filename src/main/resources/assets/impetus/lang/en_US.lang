@@ -134,6 +134,7 @@ impetus.options.buttons.undo=Undo
 impetus.options.buttons.apply=Apply
 impetus.options.buttons.donate=Support Sodium!
 impetus.options.buttons.open=Open
+impetus.options.control_failed=Error
 sodium.console.game_restart=The game must be restarted to apply one or more video settings!
 sodium.console.broken_nvidia_driver=Your NVIDIA graphics drivers are out of date!\n* This will cause severe performance issues and crashes when Impetus is installed.\n* Please update your graphics drivers to the latest version (version 536.23 or newer.)
 sodium.console.pojav_launcher=PojavLauncher is not supported when using Impetus.\n* You are very likely to run into extreme performance issues graphical bugs and crashes.\n* You will be on your own if you decide to continue -- we will not help you with any bugs or crashes!

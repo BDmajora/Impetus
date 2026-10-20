@@ -7,6 +7,7 @@ import com.bdmajora.impetus.api.options.OptionIdentifier;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import org.jetbrains.annotations.Nullable;
 
+import java.lang.invoke.MethodType;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
@@ -25,6 +26,8 @@ public class OptionImpl<S, T> implements Option<T> {
     private final EnumSet<OptionFlag> flags;
 
     private final OptionIdentifier<T> id;
+    // Boxed builder type, so it is the same class a control declares and the check against it is one comparison
+    private final Class<?> valueType;
     private final TextComponent name;
     private final TextComponent tooltip;
 
@@ -36,6 +39,7 @@ public class OptionImpl<S, T> implements Option<T> {
     private final BooleanSupplier enabled;
 
     private OptionImpl(OptionStorage<S> storage,
+                       Class<T> type,
                        OptionIdentifier<T> id,
                        TextComponent name,
                        TextComponent tooltip,
@@ -45,6 +49,8 @@ public class OptionImpl<S, T> implements Option<T> {
                        OptionImpact impact,
                        BooleanSupplier enabled) {
         this.id = id;
+        // Unknown without a type, which matches any control
+        this.valueType = type == null ? Object.class : MethodType.methodType(type).wrap().returnType();
         this.storage = storage;
         this.name = name;
         this.tooltip = tooltip;
@@ -61,6 +67,12 @@ public class OptionImpl<S, T> implements Option<T> {
     @Override
     public OptionIdentifier<T> getId() {
         return id;
+    }
+
+    // Class of the values the option holds, as its builder was told
+    @Override
+    public Class<?> getValueType() {
+        return this.valueType;
     }
 
     // Label
@@ -139,7 +151,7 @@ public class OptionImpl<S, T> implements Option<T> {
         return this.flags;
     }
 
-    public static <S, T> OptionImpl.Builder<S, T> createBuilder(@SuppressWarnings("unused") Class<T> type, OptionStorage<S> storage) {
+    public static <S, T> OptionImpl.Builder<S, T> createBuilder(Class<T> type, OptionStorage<S> storage) {
         return new Builder<>(storage, type);
     }
 
@@ -270,7 +282,7 @@ public class OptionImpl<S, T> implements Option<T> {
             Objects.requireNonNull(this.binding, "Option binding must be specified");
             Objects.requireNonNull(this.control, "Control must be specified");
 
-            return new OptionImpl<>(this.storage, this.id, this.name, this.tooltip, this.binding, this.control, this.flags, this.impact, this.enabled);
+            return new OptionImpl<>(this.storage, this.type, this.id, this.name, this.tooltip, this.binding, this.control, this.flags, this.impact, this.enabled);
         }
     }
 }

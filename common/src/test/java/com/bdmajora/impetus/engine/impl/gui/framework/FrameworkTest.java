@@ -382,4 +382,213 @@ class FrameworkTest {
         assertTrue(minimal.canFocus());
         assertFalse(minimal.keyTyped(new FakeInteractionContext(), ' ', Keys.SPACE));
     }
+
+    // A container over fixed children that recovers every failing child by recording it, as a frame would by swapping in a placeholder
+    private static InteractableContainer recovering(List<Interactable> recovered, Interactable... children) {
+        return new InteractableContainer() {
+            private Interactable captured;
+
+            @Override
+            public Stream<? extends Interactable> interactableChildren() {
+                return Stream.of(children);
+            }
+
+            @Override
+            public Interactable getCapturedChild() {
+                return captured;
+            }
+
+            @Override
+            public void setCapturedChild(Interactable child) {
+                captured = child;
+            }
+
+            @Override
+            public boolean recoverChild(Interactable child, Throwable failure) {
+                recovered.add(child);
+                return true;
+            }
+        };
+    }
+
+    // A focusable child whose every method throws the given failure
+    private static Focusable throwing(RuntimeException failure) {
+        return Mockito.mock(Focusable.class, invocation -> {
+            throw failure;
+        });
+    }
+
+    @Test
+    void aContainerThatCannotRecoverRethrowsEveryChildFailureUntouched() {
+        IllegalStateException failure = new IllegalStateException("child");
+        Focusable broken = throwing(failure);
+        InteractableContainer container = container(broken);
+        FakeInteractionContext ctx = new FakeInteractionContext();
+        assertFalse(container.recoverChild(broken, failure));
+        assertSame(failure, assertThrows(IllegalStateException.class, () -> container.isMouseOver(1, 1)));
+        assertSame(failure, assertThrows(IllegalStateException.class, () -> container.mouseClicked(ctx, 1, 1, 0)));
+        assertSame(failure, assertThrows(IllegalStateException.class, () -> container.mouseScrolled(ctx, 1, 1, 0, 1)));
+        assertSame(failure, assertThrows(IllegalStateException.class, () -> container.mouseDragged(ctx, 1, 1, 0, 0, 0)));
+        assertSame(failure, assertThrows(IllegalStateException.class, container::getFocusedChild));
+        assertSame(failure, assertThrows(IllegalStateException.class, container::clearFocus));
+        assertSame(failure, assertThrows(IllegalStateException.class, () -> container.moveFocus(true)));
+        assertSame(failure, assertThrows(IllegalStateException.class, () -> container.keyTyped(ctx, 'a', 30)));
+        // Through the captured child as well
+        container.setCapturedChild(broken);
+        assertSame(failure, assertThrows(IllegalStateException.class, () -> container.mouseDragged(ctx, 1, 1, 0, 0, 0)));
+        assertSame(failure, assertThrows(IllegalStateException.class, () -> container.mouseReleased(ctx, 1, 1, 0)));
+        // A plain child, not a focusable one, fails the same way
+        Interactable plain = Mockito.mock(Interactable.class, invocation -> {
+            throw failure;
+        });
+        assertSame(failure, assertThrows(IllegalStateException.class, () -> container(plain).mouseClicked(ctx, 1, 1, 0)));
+    }
+
+    @Test
+    void aRecoveredChildCountsAsHandlingAnEventButAnswersNoToEveryQuestion() {
+        IllegalStateException failure = new IllegalStateException("child");
+        List<Interactable> recovered = new ArrayList<>();
+        Focusable broken = throwing(failure);
+        Interactable after = Mockito.mock(Interactable.class);
+        InteractableContainer container = recovering(recovered, broken, after);
+        FakeInteractionContext ctx = new FakeInteractionContext();
+        // Events stop at the child that failed, so the one after never sees them
+        assertTrue(container.mouseClicked(ctx, 1, 1, 0));
+        assertNull(container.getCapturedChild());
+        assertTrue(container.mouseScrolled(ctx, 1, 1, 0, 1));
+        assertTrue(container.mouseDragged(ctx, 1, 1, 0, 0, 0));
+        assertTrue(container.mouseReleased(ctx, 1, 1, 0));
+        assertTrue(container.keyTyped(ctx, 'a', 30));
+        Mockito.verifyNoInteractions(after);
+        // Questions answer no, so the search goes on to the next child
+        assertFalse(container.isMouseOver(1, 1));
+        Mockito.verify(after).isMouseOver(1, 1);
+        assertNull(container.getFocusedChild());
+        container.clearFocus();
+        // Every failure went to the container, the broken child each time, the click's own focus clearing included
+        assertEquals(10, recovered.size());
+        assertTrue(recovered.stream().allMatch(child -> child == broken));
+    }
+
+    @Test
+    void aRecoveredCapturedChildStillEndsTheDragAndAFocusedOneStillTakesTheKey() {
+        IllegalStateException failure = new IllegalStateException("child");
+        List<Interactable> recovered = new ArrayList<>();
+        Focusable broken = throwing(failure);
+        InteractableContainer container = recovering(recovered, broken);
+        FakeInteractionContext ctx = new FakeInteractionContext();
+        container.setCapturedChild(broken);
+        assertTrue(container.mouseDragged(ctx, 50, 50, 0, 1, 1));
+        assertTrue(container.mouseReleased(ctx, 50, 50, 0));
+        assertNull(container.getCapturedChild());
+        assertEquals(List.of(broken, broken), recovered);
+        // A focused child that throws on a key takes the key, so a Tab it broke on never moves the focus
+        List<String> log = new ArrayList<>();
+        Leaf next = new Leaf("next", log, 20);
+        Focusable typed = Mockito.mock(Focusable.class);
+        Mockito.when(typed.isFocused()).thenReturn(true);
+        Mockito.when(typed.keyTyped(Mockito.any(), Mockito.anyChar(), Mockito.anyInt())).thenThrow(failure);
+        InteractableContainer keys = recovering(recovered, typed, next);
+        assertTrue(keys.dispatchKeyTyped(ctx, '\t', Keys.TAB));
+        assertFalse(next.focused);
+        assertEquals(List.of(), log);
+    }
+
+    @Test
+    void tabPassesOverAChildThatFailsAndLandsOnTheNextOneThatTakesFocus() {
+        IllegalStateException failure = new IllegalStateException("child");
+        List<Interactable> recovered = new ArrayList<>();
+        List<String> log = new ArrayList<>();
+        Focusable broken = throwing(failure);
+        Leaf next = new Leaf("next", log, 20);
+        InteractableContainer container = recovering(recovered, broken, next);
+        assertTrue(container.moveFocus(true));
+        assertTrue(next.focused);
+        assertSame(next, container.getFocusedChild());
+        // Backwards from the leaf, the broken child fails again and the step runs off the end
+        assertFalse(container.moveFocus(false));
+        assertFalse(next.focused);
+        // Asked whether it held focus and whether it could take it, on each of the two steps, and once in between
+        assertEquals(5, recovered.size());
+        assertTrue(recovered.stream().allMatch(child -> child == broken));
+    }
+
+    @Test
+    void aFocusedChildThatFailsToLetGoOfFocusStillLetsTabMoveOn() {
+        IllegalStateException failure = new IllegalStateException("child");
+        List<Interactable> recovered = new ArrayList<>();
+        List<String> log = new ArrayList<>();
+        Focusable stuck = Mockito.mock(Focusable.class);
+        Mockito.when(stuck.isFocused()).thenReturn(true);
+        Mockito.doThrow(failure).when(stuck).setFocused(false);
+        Leaf next = new Leaf("next", log, 20);
+        InteractableContainer container = recovering(recovered, stuck, next);
+        assertTrue(container.moveFocus(true));
+        assertTrue(next.focused);
+        assertEquals(List.of(stuck), recovered);
+        // Clearing the focus asks it again, and the leaf still lets go
+        container.clearFocus();
+        assertFalse(next.focused);
+        assertEquals(List.of(stuck, stuck), recovered);
+    }
+
+    @Test
+    void aContextThatDoesNotCountReportsNothingPushedAndIsNeverUnwound() {
+        DrawContext uncounted = Mockito.mock(DrawContext.class, Mockito.CALLS_REAL_METHODS);
+        uncounted.pushMatrix();
+        uncounted.enableScissor(0, 0, 10, 10);
+        assertEquals(0, uncounted.matrixDepth());
+        assertEquals(0, uncounted.scissorDepth());
+        uncounted.unwindTo(0, 0);
+        Mockito.verify(uncounted, Mockito.never()).popMatrix();
+        Mockito.verify(uncounted, Mockito.never()).disableScissor();
+    }
+
+    @Test
+    void unwindingPopsOnlyWhatWasPushedBeyondTheGivenDepthsTransformsFirst() {
+        FakeDrawContext draw = new FakeDrawContext();
+        draw.enableScissor(0, 0, 100, 100);
+        draw.pushMatrix();
+        // What a row pushed before failing
+        draw.pushMatrix();
+        draw.enableScissor(10, 10, 20, 20);
+        draw.pushMatrix();
+        assertEquals(3, draw.matrixDepth());
+        assertEquals(2, draw.scissorDepth());
+        draw.calls.clear();
+        draw.unwindTo(1, 1);
+        assertEquals(List.of("pop", "pop", "unscissor"), draw.calls);
+        assertEquals(1, draw.matrixDepth());
+        assertEquals(1, draw.scissorDepth());
+        // Nothing is popped below the given depths, or when already at or under them
+        draw.unwindTo(1, 1);
+        draw.unwindTo(5, 5);
+        assertEquals(List.of("pop", "pop", "unscissor"), draw.calls);
+        draw.unwindTo(0, 0);
+        assertEquals(0, draw.matrixDepth());
+        assertEquals(0, draw.scissorDepth());
+    }
+
+    @Test
+    void aContextWhosePopsDoNotLowerItsCountIsPoppedOnlyTheDifference() {
+        List<String> pops = new ArrayList<>();
+        FakeDrawContext stuck = new FakeDrawContext() {
+            @Override
+            public void popMatrix() {
+                pops.add("pop");
+            }
+
+            @Override
+            public void disableScissor() {
+                pops.add("unscissor");
+            }
+        };
+        for (int i = 0; i < 4; i++) {
+            stuck.pushMatrix();
+        }
+        stuck.enableScissor(0, 0, 1, 1);
+        stuck.unwindTo(1, 0);
+        assertEquals(List.of("pop", "pop", "pop", "unscissor"), pops);
+        assertEquals(4, stuck.matrixDepth());
+    }
 }

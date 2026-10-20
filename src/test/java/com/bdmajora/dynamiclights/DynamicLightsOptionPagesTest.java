@@ -7,6 +7,7 @@ import com.bdmajora.impetus.api.options.structure.OptionGroup;
 import com.bdmajora.impetus.api.options.structure.OptionPage;
 import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
+import com.bdmajora.testing.OptionPages;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,12 +33,10 @@ class DynamicLightsOptionPagesTest {
         Mixins.set(DynamicLights.class, "config", new DynamicLightsConfig());
     }
 
-    // Reads an option and writes the same value back, so both halves of its binding run
+    // Reads an option, writes the same value back and makes its row through the strict control checks
     @SuppressWarnings("unchecked")
     private static <T> void touch(Option<T> option) {
-        T value = option.getValue();
-        option.setValue(value);
-        option.applyChanges();
+        OptionPages.exercise(option);
     }
 
     @Test

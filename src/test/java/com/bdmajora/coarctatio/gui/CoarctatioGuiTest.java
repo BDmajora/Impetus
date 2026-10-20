@@ -7,6 +7,7 @@ import com.bdmajora.impetus.api.options.structure.OptionGroup;
 import com.bdmajora.impetus.api.options.structure.OptionPage;
 import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
+import com.bdmajora.testing.OptionPages;
 import com.bdmajora.testing.Statics;
 import net.minecraft.command.ICommandSender;
 import net.minecraft.launchwrapper.Launch;
@@ -41,11 +42,9 @@ class CoarctatioGuiTest {
         Mixins.set(CoarctatioConfig.class, "instance", null);
     }
 
-    // Reads an option and writes the same value back, so both halves of its binding run
+    // Reads an option, writes the same value back and makes its row through the strict control checks
     private static <T> void touch(Option<T> option) {
-        T value = option.getValue();
-        option.setValue(value);
-        option.applyChanges();
+        OptionPages.exercise(option);
     }
 
     @Test

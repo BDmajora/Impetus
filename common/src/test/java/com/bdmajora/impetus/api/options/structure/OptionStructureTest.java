@@ -174,4 +174,37 @@ class OptionStructureTest {
         assertEquals("impetus:general", StandardOptions.Pages.GENERAL.toString());
         assertEquals("minecraft:vsync", StandardOptions.Option.VSYNC.toString());
     }
+
+    // The value type an option reports when built for the given type
+    @SuppressWarnings("unchecked")
+    private static <T> Class<?> builtType(Class<T> type) {
+        AtomicReference<T> data = new AtomicReference<>();
+        OptionStorage<AtomicReference<T>> storage = () -> data;
+        return OptionImpl.createBuilder(type, storage)
+                .setName(TextComponent.literal("n"))
+                .setTooltip(TextComponent.literal("t"))
+                .setBinding(AtomicReference::set, AtomicReference::get)
+                .setControl(o -> Mockito.mock(Control.class))
+                .build()
+                .getValueType();
+    }
+
+    @Test
+    void anOptionKeepsTheBoxedTypeItsBuilderWasGiven() {
+        assertSame(Boolean.class, builtType(boolean.class));
+        assertSame(Integer.class, builtType(int.class));
+        assertSame(Long.class, builtType(long.class));
+        assertSame(Double.class, builtType(double.class));
+        assertSame(Boolean.class, builtType(Boolean.class));
+        assertSame(String.class, builtType(String.class));
+        assertSame(OptionImpact.class, builtType(OptionImpact.class));
+        // No type says nothing, which matches any control
+        assertSame(Object.class, builtType(null));
+        // Kept from the builder even without an id, where the id has no type to give
+        OptionImpl<AtomicInteger, Integer> unnamed = builder(storage(0)).setName(TextComponent.literal("n")).setTooltip(TextComponent.literal("t")).build();
+        assertSame(OptionIdentifier.EMPTY, unnamed.getId());
+        assertSame(Integer.class, unnamed.getValueType());
+        // The same class the built-in controls declare, so the check against them is one comparison
+        assertSame(new com.bdmajora.impetus.api.options.control.TickBoxControl(null).getValueType(), builtType(boolean.class));
+    }
 }

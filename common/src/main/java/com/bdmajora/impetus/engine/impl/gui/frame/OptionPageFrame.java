@@ -9,16 +9,25 @@ import com.bdmajora.impetus.api.options.control.ControlElement;
 import com.bdmajora.impetus.engine.impl.gui.framework.DrawContext;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextFormattingStyle;
+import com.bdmajora.impetus.engine.impl.notification.ImpetusNotifications;
 import com.bdmajora.impetus.engine.impl.util.Dim2i;
 import com.bdmajora.impetus.api.options.OptionIdentifier;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.function.Predicate;
 
 public class OptionPageFrame extends AbstractFrame {
+    private static final Logger LOGGER = LogManager.getLogger();
+    // Options whose tooltip threw, held weakly; their tooltip is not drawn again and the failure is reported once
+    private static final Set<Option<?>> BROKEN_TOOLTIPS = Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
     // Height of the page-title header band rendered above the option rows
     private static final int SECTION_HEADER_HEIGHT = 18;
     // Height of a group heading row, drawn above a named group's rows; unnamed groups keep only the padding
@@ -104,9 +113,8 @@ public class OptionPageFrame extends AbstractFrame {
 
             for (Option<?> option : visible) {
                 if (create) {
-                    Control<?> control = option.getControl();
                     Dim2i dim = new Dim2i(0, y, this.dim.width(), OPTION_ROW_HEIGHT).withParentOffset(this.dim);
-                    this.children.add(control.createElement(dim));
+                    this.children.add(Control.createElementOrPlaceholder(option, dim));
                 }
                 y += OPTION_ROW_HEIGHT;
             }
@@ -121,7 +129,8 @@ public class OptionPageFrame extends AbstractFrame {
         this.renderSectionHeader(drawContext);
         this.renderGroupHeadings(drawContext);
 
-        ControlElement<?> hoveredElement = this.getCapturedChild() == null && this.isMouseOver(mouseX, mouseY) ? this.findHoveredControl(mouseX, mouseY) : null;
+        // The rows are all this frame holds, so one pass over them both tests the frame and finds the row
+        ControlElement<?> hoveredElement = this.getCapturedChild() == null ? this.findHoveredControl(mouseX, mouseY) : null;
         super.render(drawContext, mouseX, mouseY, delta);
         if (hoveredElement != null && this.lastHoveredElement == hoveredElement) {
             if (this.lastTime == 0) {
@@ -134,11 +143,18 @@ public class OptionPageFrame extends AbstractFrame {
         }
     }
 
-    // The first control under the cursor, a plain loop since this runs every frame
+    // The first control under the cursor, a plain indexed loop since this runs every frame; a row that throws is replaced and passed over this frame
     private ControlElement<?> findHoveredControl(int mouseX, int mouseY) {
-        for (ControlElement<?> control : this.controlElements) {
-            if (control.isMouseOver(mouseX, mouseY)) {
-                return control;
+        for (int i = 0; i < this.controlElements.size(); i++) {
+            ControlElement<?> control = this.controlElements.get(i);
+            try {
+                if (control.isMouseOver(mouseX, mouseY)) {
+                    return control;
+                }
+            } catch (Throwable broken) {
+                if (!this.recoverChild(control, broken)) {
+                    throw broken;
+                }
             }
         }
         return null;
@@ -168,10 +184,34 @@ public class OptionPageFrame extends AbstractFrame {
         return "minecraft".equals(mod) ? "impetus" : mod;
     }
 
-    // Wrapped tooltip beside the control, flipped left when it would overflow
+    // The tooltip once the hover has lasted, unless the option's own code broke it before; a tooltip that throws is reported once and left off from then on
     private void renderOptionTooltip(DrawContext drawContext, ControlElement<?> element) {
         if (this.lastTime + 500 > System.currentTimeMillis()) return;
 
+        Option<?> option = element.getOption();
+        if (BROKEN_TOOLTIPS.contains(option)) {
+            return;
+        }
+        int matrices = drawContext.matrixDepth();
+        int scissors = drawContext.scissorDepth();
+        try {
+            this.drawOptionTooltip(drawContext, element);
+        } catch (VirtualMachineError fatal) {
+            throw fatal;
+        } catch (Throwable broken) {
+            // Anything the tooltip left pushed is taken off before the next frame draws
+            drawContext.unwindTo(matrices, scissors);
+            if (BROKEN_TOOLTIPS.add(option)) {
+                String name = String.valueOf(option != null ? option.getId() : null);
+                LOGGER.error("Tooltip of option {} failed and is no longer shown", name, broken);
+                // Shows only the first line of the failure message
+                ImpetusNotifications.error("Tooltip failed: " + name, String.valueOf(broken).lines().findFirst().orElse(""));
+            }
+        }
+    }
+
+    // Wrapped tooltip beside the control, flipped left when it would overflow
+    private void drawOptionTooltip(DrawContext drawContext, ControlElement<?> element) {
         Dim2i dim = element.getDimensions();
 
         int textPadding = 3;
@@ -214,17 +254,19 @@ public class OptionPageFrame extends AbstractFrame {
         }
 
         drawContext.pushMatrix();
+        // Popped however the drawing ends, so a failure inside never leaves the transform pushed
+        try {
+            drawContext.translate(0, 0, 90);
 
-        drawContext.translate(0, 0, 90);
+            drawContext.fill(boxX, boxY, boxX + boxWidth, boxY + boxHeight, 0xE0000000);
+            drawContext.drawBorder(boxX, boxY, boxX + boxWidth, boxY + boxHeight, drawContext.getModAccentColor(this.page.getId().getModId()));
 
-        drawContext.fill(boxX, boxY, boxX + boxWidth, boxY + boxHeight, 0xE0000000);
-        drawContext.drawBorder(boxX, boxY, boxX + boxWidth, boxY + boxHeight, drawContext.getModAccentColor(this.page.getId().getModId()));
-
-        for (int i = 0; i < tooltip.size(); i++) {
-            drawContext.drawString(tooltip.get(i), boxX + textPadding, boxY + textPadding + (i * 12), 0xFFFFFFFF, true);
+            for (int i = 0; i < tooltip.size(); i++) {
+                drawContext.drawString(tooltip.get(i), boxX + textPadding, boxY + textPadding + (i * 12), 0xFFFFFFFF, true);
+            }
+        } finally {
+            drawContext.popMatrix();
         }
-
-        drawContext.popMatrix();
     }
 
     public static class Builder {

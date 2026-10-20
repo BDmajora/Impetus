@@ -43,7 +43,7 @@ class CommonOptionPagesTest {
         assertTrue(option.hasChanged());
         option.applyChanges();
         assertEquals(next, option.getValue());
-        assertNotNull(option.getControl().createElement(new com.bdmajora.impetus.engine.impl.util.Dim2i(0, 0, 200, 18)));
+        assertNotNull(com.bdmajora.impetus.api.options.control.Control.createElementFor(option, new com.bdmajora.impetus.engine.impl.util.Dim2i(0, 0, 200, 18)));
     }
 
     @Test

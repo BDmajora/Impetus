@@ -25,6 +25,7 @@ import org.lwjgl.opengl.GL11;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -54,6 +55,12 @@ public class VintageDrawContext implements DrawContext {
         BUNDLED_LOGOS.put("fulgor", "impetus:textures/gui/fulgor.png");
         BUNDLED_LOGOS.put("umbra", "impetus:textures/gui/umbra.png");
     }
+
+    // Transforms pushed through this context and not yet popped
+    private int matrixDepth;
+    // Window-pixel scissor boxes as x, y, width, height, one per enabled scissor, so disabling one puts back the box it was nested in
+    private int[] scissors = new int[16];
+    private int scissorDepth;
 
     public VintageDrawContext() {
         this.componentCache = new HashMap<>();
@@ -155,10 +162,11 @@ public class VintageDrawContext implements DrawContext {
         GlStateManager.disableBlend();
     }
 
-    // GlStateManager
+    // GlStateManager, counted so a failed draw can be unwound
     @Override
     public void pushMatrix() {
         GlStateManager.pushMatrix();
+        this.matrixDepth++;
     }
 
     // GlStateManager
@@ -167,13 +175,16 @@ public class VintageDrawContext implements DrawContext {
         GlStateManager.translate(x, y, z);
     }
 
-    // GlStateManager
+    // GlStateManager; an extra pop goes to GL as before without counting below zero
     @Override
     public void popMatrix() {
         GlStateManager.popMatrix();
+        if (this.matrixDepth > 0) {
+            this.matrixDepth--;
+        }
     }
 
-    // Converts GUI coordinates to window pixels, flipping y since GL's origin is bottom-left
+    // Converts GUI coordinates to window pixels, flipping y since GL's origin is bottom-left, and clips a nested box to the one around it
     @Override
     public void enableScissor(int x, int y, int x2, int y2) {
         int width = x2 - x + 1;
@@ -181,14 +192,56 @@ public class VintageDrawContext implements DrawContext {
         var mc = Minecraft.getMinecraft();
         ScaledResolution scaledresolution = new ScaledResolution(mc);
         int scale = scaledresolution.getScaleFactor();
+        int boxX = x * scale;
+        int boxY = mc.displayHeight - (y + height) * scale;
+        int boxWidth = width * scale;
+        int boxHeight = height * scale;
+        if (this.scissorDepth > 0) {
+            int outer = (this.scissorDepth - 1) * 4;
+            int right = Math.min(boxX + boxWidth, this.scissors[outer] + this.scissors[outer + 2]);
+            int top = Math.min(boxY + boxHeight, this.scissors[outer + 1] + this.scissors[outer + 3]);
+            boxX = Math.max(boxX, this.scissors[outer]);
+            boxY = Math.max(boxY, this.scissors[outer + 1]);
+            // A box wholly outside the one around it clips everything
+            boxWidth = Math.max(0, right - boxX);
+            boxHeight = Math.max(0, top - boxY);
+        }
+        if ((this.scissorDepth + 1) * 4 > this.scissors.length) {
+            this.scissors = Arrays.copyOf(this.scissors, this.scissors.length * 2);
+        }
+        int slot = this.scissorDepth++ * 4;
+        this.scissors[slot] = boxX;
+        this.scissors[slot + 1] = boxY;
+        this.scissors[slot + 2] = boxWidth;
+        this.scissors[slot + 3] = boxHeight;
         GL11.glEnable(GL11.GL_SCISSOR_TEST);
-        GL11.glScissor(x * scale, mc.displayHeight - (y + height) * scale, width * scale, height * scale);
+        GL11.glScissor(boxX, boxY, boxWidth, boxHeight);
     }
 
-    // Ends the clip
+    // Ends the innermost clip, putting back the box it was nested in, or turning clipping off after the outermost
     @Override
     public void disableScissor() {
-        GL11.glDisable(GL11.GL_SCISSOR_TEST);
+        if (this.scissorDepth > 0) {
+            this.scissorDepth--;
+        }
+        if (this.scissorDepth == 0) {
+            GL11.glDisable(GL11.GL_SCISSOR_TEST);
+            return;
+        }
+        int outer = (this.scissorDepth - 1) * 4;
+        GL11.glScissor(this.scissors[outer], this.scissors[outer + 1], this.scissors[outer + 2], this.scissors[outer + 3]);
+    }
+
+    // Counted in pushMatrix and popMatrix
+    @Override
+    public int matrixDepth() {
+        return this.matrixDepth;
+    }
+
+    // Counted in enableScissor and disableScissor
+    @Override
+    public int scissorDepth() {
+        return this.scissorDepth;
     }
 
     // Font renderer width of the compiled component

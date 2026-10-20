@@ -9,6 +9,7 @@ import com.bdmajora.impetus.api.options.structure.OptionGroup;
 import com.bdmajora.impetus.api.options.structure.OptionImpact;
 import com.bdmajora.impetus.api.options.structure.OptionPage;
 import com.bdmajora.testing.Mixins;
+import com.bdmajora.testing.OptionPages;
 import net.minecraft.command.ICommandSender;
 import net.minecraft.util.text.ITextComponent;
 import org.junit.jupiter.api.AfterEach;
@@ -48,6 +49,7 @@ class EquilibriumGuiTest {
                 assertTrue(group.getId().getPath().startsWith("group."));
                 for (Option<?> option : group.getOptions()) {
                     toggles++;
+                    OptionPages.exercise(option);
                     assertTrue(option.getFlags().contains(OptionFlag.REQUIRES_GAME_RESTART));
                     if (option.getId().getPath().equals("world_raycast")) {
                         raycast = option;

@@ -31,6 +31,27 @@ public interface DrawContext extends FontMetricsProvider {
 
     void disableScissor();
 
+    // Transforms pushed and not yet popped; a context that does not count them reports none, so nothing is ever unwound on it
+    default int matrixDepth() {
+        return 0;
+    }
+
+    // Scissors enabled and not yet disabled, counted like the transforms
+    default int scissorDepth() {
+        return 0;
+    }
+
+    // Pops whatever was pushed beyond the given depths, so a draw that failed partway leaves no transform or clipping behind
+    default void unwindTo(int matrixDepth, int scissorDepth) {
+        // Counted once up front, so a context whose pops do not lower its count cannot loop
+        for (int i = this.matrixDepth() - matrixDepth; i > 0; i--) {
+            this.popMatrix();
+        }
+        for (int i = this.scissorDepth() - scissorDepth; i > 0; i--) {
+            this.disableScissor();
+        }
+    }
+
     // One-pixel outline from four fills
     default void drawBorder(int x1, int y1, int x2, int y2, int color) {
         fill(x1, y1, x2, y1 + 1, color);

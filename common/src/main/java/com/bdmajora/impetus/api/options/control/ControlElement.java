@@ -26,6 +26,9 @@ public class ControlElement<T> extends AbstractWidget implements OptionControlEl
 
     private boolean focused;
 
+    // Width of the control's column, measured on the first frame and kept since an element's bounds and control never change; -1 until then
+    private int columnWidth = -1;
+
     public ControlElement(Option<T> option, Dim2i dim) {
         this.option = option;
         this.dim = dim;
@@ -35,11 +38,16 @@ public class ControlElement<T> extends AbstractWidget implements OptionControlEl
     @Override
     public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
         boolean hovered = this.focused || this.isMouseOver(mouseX, mouseY);
-        boolean available = this.option.isAvailable();
+        boolean available = this.isOptionAvailable();
         boolean changed = available && this.option.hasChanged();
-        // The name starts 6 in and stops 6 short of the control's column
-        int availableLabelWidth = Math.max(0, this.dim.width() - this.option.getControl().getMaxWidth() - 12);
-        String name = fitName(drawContext, drawContext.extractString(this.option.getName()), changed ? CHANGED_MARKER : "", availableLabelWidth);
+        int column = this.columnWidth;
+        if (column < 0) {
+            // Never negative, so a bad override is measured once like any other
+            column = this.columnWidth = Math.max(0, this.measureColumnWidth(drawContext));
+        }
+        // The name starts 6 in and stops 6 short of the control's column; a negative width counts as none, so the subtraction cannot wrap
+        int availableLabelWidth = Math.max(0, Math.max(0, this.dim.width()) - column - 12);
+        String name = fitName(drawContext, drawContext.extractString(this.getDisplayName()), changed ? CHANGED_MARKER : "", availableLabelWidth);
 
         drawContext.fill(this.dim.x(), this.dim.y(), this.dim.getLimitX(), this.dim.getLimitY(), hovered ? style.bgHovered : style.bgDefault);
         if (this.focused) {
@@ -73,6 +81,21 @@ public class ControlElement<T> extends AbstractWidget implements OptionControlEl
         }
         // Drops the spaces the cut ends on, so the ellipsis follows the last word
         return drawContext.substrByWidth(name, nameRoom).stripTrailing() + ELLIPSIS + marker;
+    }
+
+    // The control's column held to the row, measured once per element
+    protected int measureColumnWidth(DrawContext drawContext) {
+        return Control.columnWidth(this.option.getControl(), drawContext, this.dim.width());
+    }
+
+    // Whether the option can be edited, read every frame so a master switch greys its children live
+    protected boolean isOptionAvailable() {
+        return this.option.isAvailable();
+    }
+
+    // The option's name, read every frame so a renamed option shows its new name
+    protected TextComponent getDisplayName() {
+        return this.option.getName();
     }
 
     // Bound option
@@ -110,7 +133,7 @@ public class ControlElement<T> extends AbstractWidget implements OptionControlEl
     // Tab passes over the rows of an unavailable option, as clicks do
     @Override
     public boolean canFocus() {
-        return this.option.isAvailable();
+        return this.isOptionAvailable();
     }
 
     // Whether this row's keys go here

@@ -3,6 +3,7 @@ package com.bdmajora.impetus.engine.impl.gui;
 import com.bdmajora.impetus.api.options.OptionIdentifier;
 import com.bdmajora.impetus.api.options.control.ControlElement;
 import com.bdmajora.impetus.api.options.control.TickBoxControl;
+import com.bdmajora.impetus.api.options.structure.Option;
 import com.bdmajora.impetus.api.options.structure.OptionFlag;
 import com.bdmajora.impetus.api.options.structure.OptionGroup;
 import com.bdmajora.impetus.api.options.structure.OptionImpl;
@@ -17,8 +18,13 @@ import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.gui.widgets.FlatButtonWidget;
 import com.bdmajora.impetus.engine.impl.gui.widgets.SearchBarWidget;
 import com.bdmajora.testing.FakeDrawContext;
+import com.bdmajora.impetus.engine.impl.notification.ImpetusNotification;
+import com.bdmajora.impetus.engine.impl.notification.ImpetusNotifications;
 import com.bdmajora.testing.FakeInteractionContext;
+import com.bdmajora.testing.Statics;
+import org.apache.logging.log4j.Logger;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,15 +33,19 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.same;
 
 class ImpetusVideoOptionsControllerTest {
     private static final class Holder {
         boolean flag;
     }
 
-    private static final class Storage implements OptionStorage<Holder> {
+    private static class Storage implements OptionStorage<Holder> {
         final Holder data = new Holder();
         Set<OptionFlag> savedFlags;
 
@@ -279,5 +289,267 @@ class ImpetusVideoOptionsControllerTest {
         } catch (ReflectiveOperationException e) {
             throw new AssertionError(e);
         }
+    }
+
+    private static final String BROKEN_LOG = "Option {} failed while {}";
+
+    // A mock option that behaves until the test makes one of its methods throw
+    @SuppressWarnings("unchecked")
+    private static Option<Boolean> mockOption(String name) {
+        Option<Boolean> option = Mockito.mock(Option.class);
+        Mockito.when(option.getName()).thenReturn(TextComponent.literal(name));
+        Mockito.when(option.getTooltip()).thenReturn(TextComponent.literal("about " + name));
+        Mockito.when(option.isAvailable()).thenReturn(true);
+        Mockito.when(option.getValue()).thenReturn(true);
+        Mockito.when(option.getFlags()).thenReturn(Set.of());
+        Mockito.when(option.getControl()).thenReturn(new TickBoxControl(option));
+        return option;
+    }
+
+    private static OptionPage pageOf(String mod, String name, Option<?>... options) {
+        OptionGroup.Builder group = OptionGroup.createBuilder().setId(OptionIdentifier.create(mod, name + "_g"));
+        for (Option<?> option : options) {
+            group.add(option);
+        }
+        return new OptionPage(OptionIdentifier.create(mod, name), TextComponent.literal(name), List.of(group.build()));
+    }
+
+    // How often the mock was asked the named method
+    private static long asked(Object mock, String method) {
+        return Mockito.mockingDetails(mock).getInvocations().stream().filter(i -> i.getMethod().getName().equals(method)).count();
+    }
+
+    private static List<String> toastTitles() {
+        return ImpetusNotifications.getVisible().stream().map(ImpetusNotification::title).toList();
+    }
+
+    // Swaps the static final loggers of the controller, for storages, and of the placeholder reporter, for options, for one mock while the body runs, with no toasts either side
+    private static void withLogger(Consumer<Logger> body) {
+        Class<?> reporter;
+        try {
+            reporter = Class.forName("com.bdmajora.impetus.api.options.control.PlaceholderControlElement");
+        } catch (ClassNotFoundException missing) {
+            throw new AssertionError(missing);
+        }
+        // Reading them first runs the class initialisers, which would otherwise overwrite the swap
+        Logger controllerLogger = Statics.get(ImpetusVideoOptionsController.class, "LOGGER");
+        Logger reporterLogger = Statics.get(reporter, "LOGGER");
+        Logger mock = Mockito.mock(Logger.class);
+        Statics.set(ImpetusVideoOptionsController.class, "LOGGER", mock);
+        Statics.set(reporter, "LOGGER", mock);
+        Statics.<List<?>>get(ImpetusNotifications.class, "NOTIFICATIONS").clear();
+        try {
+            body.accept(mock);
+        } finally {
+            Statics.set(ImpetusVideoOptionsController.class, "LOGGER", controllerLogger);
+            Statics.set(reporter, "LOGGER", reporterLogger);
+            Statics.<List<?>>get(ImpetusNotifications.class, "NOTIFICATIONS").clear();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <E extends Throwable> E sneak(Throwable failure) throws E {
+        throw (E) failure;
+    }
+
+    @Test
+    void anOptionThatThrowsWhenAskedForChangesIsLeftOutOfEveryLaterFrame() {
+        withLogger(logger -> {
+            Storage storage = new Storage();
+            Option<Boolean> broken = mockOption("Broken");
+            IllegalStateException failure = new IllegalStateException("changes");
+            Mockito.when(broken.hasChanged()).thenThrow(failure);
+            Mockito.when(broken.getId()).thenReturn(OptionIdentifier.create("broken_mod", "broken", Boolean.class));
+            OptionImpl<Holder, Boolean> fog = option(storage, "impetus", "Fog", "about fog");
+            FakeDrawContext draw = new FakeDrawContext();
+            ImpetusVideoOptionsController controller = new ImpetusVideoOptionsController(() -> { }, List.of(pageOf("impetus", "General", broken, fog)), draw);
+            controller.init(1000, 500);
+            controller.render(draw, 0, 0, 0f);
+            controller.render(draw, 0, 0, 0f);
+            Mockito.verify(logger).error(eq(BROKEN_LOG), eq("broken_mod:broken"), eq("checking for changes"), same(failure));
+            assertTrue(toastTitles().contains("Option failed: broken_mod:broken"));
+            // Dropped in the first frame and its row rebuilt as a placeholder before drawing, so the row never asked it
+            assertEquals(1, asked(broken, "hasChanged"));
+            assertTrue(draw.strings.contains("impetus.options.control_failed"), draw.strings::toString);
+            // Later frames never ask it again, and the healthy option still drives Apply
+            long calls = asked(broken, "hasChanged");
+            for (int frame = 0; frame < 5; frame++) {
+                controller.render(draw, 0, 0, 0f);
+            }
+            assertEquals(calls, asked(broken, "hasChanged"));
+            assertFalse(controller.isHasPendingChanges());
+            fog.setValue(true);
+            controller.render(draw, 0, 0, 0f);
+            assertTrue(controller.isHasPendingChanges());
+            Mockito.verify(logger, Mockito.times(1)).error(eq(BROKEN_LOG), any(), any(), any(Throwable.class));
+        });
+    }
+
+    @Test
+    void applyWritesEveryHealthyOptionAndSavesEveryStorageItCanWhateverFails() {
+        withLogger(logger -> {
+            Storage storage = new Storage();
+            IllegalStateException full = new IllegalStateException("disk full");
+            Storage failing = new Storage() {
+                @Override
+                public void save(Set<OptionFlag> flags) {
+                    throw full;
+                }
+            };
+            Option<Boolean> broken = mockOption("Broken");
+            IllegalStateException failure = new IllegalStateException("apply");
+            Mockito.when(broken.hasChanged()).thenReturn(true);
+            Mockito.doReturn(storage).when(broken).getStorage();
+            Mockito.doThrow(failure).when(broken).applyChanges();
+            OptionImpl<Holder, Boolean> fog = option(storage, "impetus", "Fog", "about fog");
+            OptionImpl<Holder, Boolean> clouds = option(failing, "impetus", "Clouds", "about clouds");
+            FakeDrawContext draw = new FakeDrawContext();
+            AtomicReference<Set<OptionFlag>> sideEffects = new AtomicReference<>();
+            ImpetusVideoOptionsController controller = new ImpetusVideoOptionsController(() -> { }, List.of(pageOf("impetus", "General", broken, fog, clouds)), draw) {
+                @Override
+                protected void applyFlagSideEffects(Set<OptionFlag> flags) {
+                    sideEffects.set(flags);
+                }
+            };
+            controller.init(1000, 500);
+            fog.setValue(true);
+            clouds.setValue(true);
+            controller.render(draw, 0, 0, 0f);
+            assertTrue(clickCentre(button(controller, "impetus.options.buttons.apply"), new FakeInteractionContext()));
+            // Both healthy options are written, the storage that can save does, and the side effects still run
+            assertTrue(storage.data.flag);
+            assertTrue(failing.data.flag);
+            assertEquals(Set.of(OptionFlag.REQUIRES_RENDERER_RELOAD), storage.savedFlags);
+            assertEquals(Set.of(OptionFlag.REQUIRES_RENDERER_RELOAD), sideEffects.get());
+            Mockito.verify(logger).error(eq(BROKEN_LOG), eq("Broken"), eq("applying"), same(failure));
+            Mockito.verify(logger).error(eq("Saving options to {} failed"), eq(failing.getClass().getName()), same(full));
+            assertTrue(toastTitles().containsAll(List.of("Option failed: Broken", "Saving options failed")), toastTitles()::toString);
+            // The broken option is out of every later scan, so nothing is pending once the rest applied, and its row is rebuilt as a placeholder that asks it nothing
+            long calls = asked(broken, "hasChanged");
+            draw.strings.clear();
+            controller.render(draw, 0, 0, 0f);
+            controller.render(draw, 0, 0, 0f);
+            assertEquals(calls, asked(broken, "hasChanged"));
+            assertFalse(controller.isHasPendingChanges());
+            assertTrue(draw.strings.contains("impetus.options.control_failed"), draw.strings::toString);
+        });
+    }
+
+    @Test
+    void anOptionWhoseFlagsOrStorageCannotBeReadIsLeftUnwritten() {
+        withLogger(logger -> {
+            Storage storage = new Storage();
+            Option<Boolean> flagless = mockOption("Flagless");
+            Mockito.when(flagless.hasChanged()).thenReturn(true);
+            Mockito.when(flagless.getFlags()).thenThrow(new IllegalStateException("flags"));
+            Option<Boolean> storeless = mockOption("Storeless");
+            Mockito.when(storeless.hasChanged()).thenReturn(true);
+            Mockito.when(storeless.getStorage()).thenThrow(new IllegalStateException("storage"));
+            FakeDrawContext draw = new FakeDrawContext();
+            ImpetusVideoOptionsController controller = new ImpetusVideoOptionsController(() -> { }, List.of(pageOf("impetus", "General", flagless, storeless, option(storage, "impetus", "Fog", "about fog"))), draw);
+            controller.init(1000, 500);
+            controller.render(draw, 0, 0, 0f);
+            assertTrue(clickCentre(button(controller, "impetus.options.buttons.apply"), new FakeInteractionContext()));
+            Mockito.verify(flagless, Mockito.never()).applyChanges();
+            Mockito.verify(storeless, Mockito.never()).applyChanges();
+            Mockito.verify(logger).error(eq(BROKEN_LOG), eq("Flagless"), eq("applying"), any(Throwable.class));
+            Mockito.verify(logger).error(eq(BROKEN_LOG), eq("Storeless"), eq("applying"), any(Throwable.class));
+        });
+    }
+
+    @Test
+    void undoResetsEveryHealthyOptionAndLeavesOutOneThatThrows() {
+        withLogger(logger -> {
+            Storage storage = new Storage();
+            Option<Boolean> broken = mockOption("Broken");
+            IllegalStateException failure = new IllegalStateException("reset");
+            Mockito.when(broken.hasChanged()).thenReturn(true);
+            Mockito.doThrow(failure).when(broken).reset();
+            OptionImpl<Holder, Boolean> fog = option(storage, "impetus", "Fog", "about fog");
+            FakeDrawContext draw = new FakeDrawContext();
+            ImpetusVideoOptionsController controller = new ImpetusVideoOptionsController(() -> { }, List.of(pageOf("impetus", "General", broken, fog)), draw);
+            controller.init(1000, 500);
+            fog.setValue(true);
+            controller.render(draw, 0, 0, 0f);
+            assertTrue(clickCentre(button(controller, "impetus.options.buttons.undo"), new FakeInteractionContext()));
+            assertFalse(fog.hasChanged());
+            Mockito.verify(logger).error(eq(BROKEN_LOG), eq("Broken"), eq("undoing changes"), same(failure));
+            // With the broken one out and the rest undone, nothing is pending
+            controller.render(draw, 0, 0, 0f);
+            assertFalse(controller.isHasPendingChanges());
+        });
+    }
+
+    @Test
+    void searchPassesOverAnOptionThatCannotBeReadAndReportsItOnce() {
+        withLogger(logger -> {
+            Storage storage = new Storage();
+            Option<Boolean> tipless = mockOption("Tipless");
+            IllegalStateException failure = new IllegalStateException("tooltip");
+            Mockito.when(tipless.getTooltip()).thenThrow(failure);
+            // One that cannot even be described is named by its class
+            Option<Boolean> unreadable = mockOption("Unused");
+            Mockito.when(unreadable.getName()).thenThrow(new IllegalStateException("name"));
+            Mockito.when(unreadable.getId()).thenThrow(new IllegalStateException("id"));
+            FakeDrawContext draw = new FakeDrawContext();
+            ImpetusVideoOptionsController controller = new ImpetusVideoOptionsController(() -> { },
+                    List.of(pageOf("impetus", "General", tipless, unreadable, option(storage, "impetus", "Fog", "about fog"))), draw);
+            controller.init(1000, 500);
+            FakeInteractionContext ctx = new FakeInteractionContext();
+            assertTrue(controller.getFrame().mouseClicked(ctx, 700, 45, 0));
+            for (char typed : "fog".toCharArray()) {
+                assertTrue(controller.getFrame().dispatchKeyTyped(ctx, typed, 0));
+            }
+            draw.strings.clear();
+            controller.render(draw, 0, 0, 0f);
+            assertTrue(draw.strings.contains("impetus.search_results"));
+            assertTrue(draw.strings.contains("Fog"), draw.strings::toString);
+            // Asked on every keystroke, reported only the first time
+            Mockito.verify(logger, Mockito.times(1)).error(eq(BROKEN_LOG), eq("Tipless"), eq("searching"), same(failure));
+            Mockito.verify(logger, Mockito.times(1)).error(eq(BROKEN_LOG), eq(unreadable.getClass().getName()), eq("searching"), any(Throwable.class));
+            // Dropped like any broken option, so it is never asked for changes again
+            long calls = asked(tipless, "hasChanged");
+            controller.render(draw, 0, 0, 0f);
+            controller.render(draw, 0, 0, 0f);
+            assertEquals(calls, asked(tipless, "hasChanged"));
+        });
+    }
+
+    @Test
+    void fatalErrorsFromAnOptionStillReachTheScreen() {
+        withLogger(logger -> {
+            Option<Boolean> fatal = mockOption("Fatal");
+            StackOverflowError overflow = new StackOverflowError();
+            Mockito.when(fatal.hasChanged()).thenThrow(overflow);
+            FakeDrawContext draw = new FakeDrawContext();
+            ImpetusVideoOptionsController controller = new ImpetusVideoOptionsController(() -> { }, List.of(pageOf("impetus", "General", fatal)), draw);
+            controller.init(1000, 500);
+            assertSame(overflow, assertThrows(StackOverflowError.class, () -> controller.render(draw, 0, 0, 0f)));
+            Mockito.verifyNoInteractions(logger);
+        });
+    }
+
+    @Test
+    void anInterruptionFromAnOptionIsReportedWithTheFlagRestored() {
+        withLogger(logger -> {
+            Storage storage = new Storage();
+            Option<Boolean> interrupted = mockOption("Interrupted");
+            InterruptedException stop = new InterruptedException("stop");
+            Mockito.when(interrupted.hasChanged()).thenReturn(true);
+            Mockito.doAnswer(invocation -> {
+                throw ImpetusVideoOptionsControllerTest.<RuntimeException>sneak(stop);
+            }).when(interrupted).reset();
+            FakeDrawContext draw = new FakeDrawContext();
+            ImpetusVideoOptionsController controller = new ImpetusVideoOptionsController(() -> { }, List.of(pageOf("impetus", "General", interrupted, option(storage, "impetus", "Fog", "about fog"))), draw);
+            controller.init(1000, 500);
+            controller.render(draw, 0, 0, 0f);
+            try {
+                assertTrue(clickCentre(button(controller, "impetus.options.buttons.undo"), new FakeInteractionContext()));
+                assertTrue(Thread.currentThread().isInterrupted());
+            } finally {
+                Thread.interrupted();
+            }
+            Mockito.verify(logger).error(eq(BROKEN_LOG), eq("Interrupted"), eq("undoing changes"), same(stop));
+        });
     }
 }

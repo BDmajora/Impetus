@@ -79,6 +79,12 @@ public class CyclingControl<T> implements Control<T> {
         return 70;
     }
 
+    // The values array's own element class, since the class leaves its type argument open
+    @Override
+    public Class<?> getValueType() {
+        return this.allowedValues.getClass().getComponentType();
+    }
+
     private static class CyclingControlElement<T> extends ControlElement<T> {
         private final T[] allowedValues;
         private final TextComponent[] names;

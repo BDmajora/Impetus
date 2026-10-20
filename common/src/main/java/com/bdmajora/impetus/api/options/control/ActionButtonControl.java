@@ -47,7 +47,8 @@ public class ActionButtonControl implements Control<Boolean> {
     // Creates a button with the given label and rejects any null argument
     public ActionButtonControl(Option<Boolean> option, TextComponent actionLabel, Runnable action) {
         this.option = Objects.requireNonNull(option, "Option must not be null");
-        this.actionLabel = Objects.requireNonNull(actionLabel, "Action label must not be null");
+        // Stores a copy of the label
+        this.actionLabel = FittedText.copied(Objects.requireNonNull(actionLabel, "Action label must not be null"));
         this.action = Objects.requireNonNull(action, "Action must not be null");
     }
 
@@ -77,12 +78,13 @@ public class ActionButtonControl implements Control<Boolean> {
         private final TextComponent disabledLabel;
         private final Runnable action;
 
-        // Last shortened label in both styles with the text and full width it was cut from
-        private String cutSource;
-        private int cutFullWidth;
-        private int cutWidth;
-        private TextComponent cutEnabled;
-        private TextComponent cutDisabled;
+        // Label as drawn in both styles or null when the ellipsis alone does not fit
+        private TextComponent shownEnabled;
+        private TextComponent shownDisabled;
+        // Width of the label as drawn
+        private int shownWidth;
+        // Text generation of the row the label was last fitted for
+        private long shownGeneration;
 
         // Draw context from the last frame used to convert the option name to text
         private DrawContext lastDrawContext;
@@ -101,23 +103,25 @@ public class ActionButtonControl implements Control<Boolean> {
         public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
             super.render(drawContext, mouseX, mouseY, delta);
             this.lastDrawContext = drawContext;
+            // Stops after the background on a row with no area or no room for a line of text
+            if (!this.hasArea() || !this.hasRoomForText()) {
+                return;
+            }
 
-            boolean enabled = this.option.isAvailable();
+            boolean enabled = this.isDrawnAvailable();
             int color = enabled ? this.getAccentColor(drawContext) : this.getDisabledControlColor();
             int limitX = this.dim.getLimitX();
             int textY = this.dim.getCenterY() - TEXT_RAISE;
 
-            // Limits the label to the button column within the row width
-            int maxWidth = Math.min(MAX_WIDTH, this.dim.width()) - LABEL_RIGHT_INSET;
-            TextComponent label = enabled ? this.enabledLabel : this.disabledLabel;
-            int width = drawContext.getStringWidth(label);
-            if (width > maxWidth) {
-                this.updateCut(drawContext, width, maxWidth);
-                label = enabled ? this.cutEnabled : this.cutDisabled;
-                width = this.cutWidth;
+            // Fits the label again when the text generation of the row changes
+            long generation = this.textGeneration();
+            if (generation != this.shownGeneration) {
+                // Limits the label to the button column within the row width
+                this.fitLabel(drawContext, generation, Math.min(MAX_WIDTH, this.dim.width()) - LABEL_RIGHT_INSET);
             }
+            TextComponent label = enabled ? this.shownEnabled : this.shownDisabled;
             if (label != null) {
-                drawContext.drawString(label, limitX - width - LABEL_RIGHT_INSET, textY, color);
+                drawContext.drawString(label, limitX - this.shownWidth - LABEL_RIGHT_INSET, textY, color);
             }
             // Leaves the arrow out of a row too narrow to hold it
             if (this.dim.width() >= ARROW_RIGHT_INSET) {
@@ -125,29 +129,36 @@ public class ActionButtonControl implements Control<Boolean> {
             }
         }
 
-        // Cuts the label again when its text or full width has changed and clears both cuts when the ellipsis alone does not fit
-        private void updateCut(DrawContext drawContext, int fullWidth, int maxWidth) {
-            String source = drawContext.extractString(this.actionLabel);
-            if (fullWidth == this.cutFullWidth && source.equals(this.cutSource)) {
-                return;
+        // Fits the label to the given width in both styles by keeping it whole or cutting it or leaving it out
+        private void fitLabel(DrawContext drawContext, long generation, int maxWidth) {
+            TextComponent enabled = this.enabledLabel;
+            TextComponent disabled = this.disabledLabel;
+            int width = drawContext.getStringWidth(enabled);
+            if (!FittedText.fits(width, maxWidth)) {
+                enabled = null;
+                disabled = null;
+                width = 0;
+                String source = drawContext.extractString(this.actionLabel);
+                // Cuts the text by whole characters to fit with the ellipsis
+                String text = FittedText.cut(drawContext, source != null ? source : "", ELLIPSIS, maxWidth);
+                if (!text.isEmpty()) {
+                    // Applies the label's own styles to the cut text
+                    TextComponent cut = FittedText.restyled(this.actionLabel, TextComponent.literal(text));
+                    TextComponent cutEnabled = cut.withStyle(TextFormattingStyle.UNDERLINE);
+                    int cutWidth = drawContext.getStringWidth(cutEnabled);
+                    // Keeps the styled cut only when it still fits
+                    if (FittedText.fits(cutWidth, maxWidth)) {
+                        enabled = cutEnabled;
+                        disabled = this.disabled(cut);
+                        width = cutWidth;
+                    }
+                }
             }
-            this.cutSource = source;
-            this.cutFullWidth = fullWidth;
-
-            int room = maxWidth - drawContext.getStringWidth(ELLIPSIS);
-            if (room < 0) {
-                this.cutEnabled = null;
-                this.cutDisabled = null;
-                this.cutWidth = 0;
-                return;
-            }
-            // Removes trailing spaces from the cut text before appending the ellipsis
-            String text = drawContext.substrByWidth(source, room).stripTrailing() + ELLIPSIS;
-            // Applies the label's own styles to the cut text
-            TextComponent cut = restyled(this.actionLabel, TextComponent.literal(text));
-            this.cutEnabled = cut.withStyle(TextFormattingStyle.UNDERLINE);
-            this.cutDisabled = this.disabled(cut);
-            this.cutWidth = drawContext.getStringWidth(this.cutEnabled);
+            // Stores the fitted label and the generation it was fitted for
+            this.shownEnabled = enabled;
+            this.shownDisabled = disabled;
+            this.shownWidth = width;
+            this.shownGeneration = generation;
         }
 
         // Returns the label underlined and greyed out with its own colours removed
@@ -170,7 +181,7 @@ public class ActionButtonControl implements Control<Boolean> {
         // Plays the click sound and runs the action when the option is available
         private boolean press(InteractionContext context) {
             // Returns false while the option is unavailable
-            if (!this.option.isAvailable()) {
+            if (!this.isOptionAvailable()) {
                 return false;
             }
 
@@ -199,14 +210,6 @@ public class ActionButtonControl implements Control<Boolean> {
             // Shows only the first line of the failure message
             ImpetusNotifications.error("Button failed: " + nameText, String.valueOf(thrown).lines().findFirst().orElse(""));
         }
-    }
-
-    // Wraps the text in each style layer of the label in the same order
-    private static TextComponent restyled(TextComponent label, TextComponent text) {
-        if (label instanceof TextComponent.Styled styled) {
-            return new TextComponent.Styled(restyled(styled.inner(), text), EnumSet.copyOf(styled.styles()));
-        }
-        return text;
     }
 
     // Removes colour styles from every layer of the label and from any translation arguments that are components

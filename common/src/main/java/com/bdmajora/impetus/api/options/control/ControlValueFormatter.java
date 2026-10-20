@@ -2,6 +2,8 @@ package com.bdmajora.impetus.api.options.control;
 
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 
+import java.util.Objects;
+
 public interface ControlValueFormatter {
     // Auto at zero, else the number
     static ControlValueFormatter guiScale() {
@@ -35,6 +37,7 @@ public interface ControlValueFormatter {
 
     // Lang key with the value as argument
     static ControlValueFormatter translateVariable(String key) {
+        Objects.requireNonNull(key, "Key must not be null");
         return (v) -> TextComponent.translatable(key, v);
     }
 
@@ -50,6 +53,8 @@ public interface ControlValueFormatter {
 
     // Disabled text at zero, else count with unit
     static ControlValueFormatter quantityOrDisabled(String name, String disableText) {
+        Objects.requireNonNull(name, "Unit must not be null");
+        Objects.requireNonNull(disableText, "Disabled text must not be null");
         return (v) -> TextComponent.literal(v == 0 ? disableText : v + " " + name);
     }
 

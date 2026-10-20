@@ -274,6 +274,13 @@ public class VintageDrawContext implements DrawContext {
         return font.FONT_HEIGHT;
     }
 
+    // Moves on when the translations reload, stamped with the time they did, or the font switches its unicode or bidi mode, so text the option rows keep is fitted again
+    @Override
+    @SuppressWarnings("deprecation")
+    public long textVersion() {
+        return net.minecraft.util.text.translation.I18n.getLastTranslationUpdateTimeInMilliseconds() << 2 | (font.getUnicodeFlag() ? 1 : 0) | (font.getBidiFlag() ? 2 : 0);
+    }
+
     // Sidebar heading for a group of pages; Impetus' subsystems are not registered Forge mods so their raw lowercase id is capitalised to match "Impetus", while a third-party mod's own display name wins
     @Override
     public TextComponent getFriendlyModName(String modId) {

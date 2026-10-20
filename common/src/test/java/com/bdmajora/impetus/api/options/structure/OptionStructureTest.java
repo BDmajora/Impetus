@@ -205,6 +205,8 @@ class OptionStructureTest {
         assertSame(OptionIdentifier.EMPTY, unnamed.getId());
         assertSame(Integer.class, unnamed.getValueType());
         // The same class the built-in controls declare, so the check against them is one comparison
-        assertSame(new com.bdmajora.impetus.api.options.control.TickBoxControl(null).getValueType(), builtType(boolean.class));
+        @SuppressWarnings("unchecked")
+        Option<Boolean> tick = Mockito.mock(Option.class);
+        assertSame(new com.bdmajora.impetus.api.options.control.TickBoxControl(tick).getValueType(), builtType(boolean.class));
     }
 }

@@ -41,8 +41,13 @@ final class PlaceholderControlElement<T> extends ControlElement<T> {
         TextComponent name = null;
         try {
             name = option.getName();
-        } catch (RuntimeException unreadable) {
-            // The description stands in below
+        } catch (VirtualMachineError fatal) {
+            throw fatal;
+        } catch (Throwable unreadable) {
+            // Restores the interrupt flag after an interruption, and the description stands in below
+            if (unreadable instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
         }
         return name != null ? name : TextComponent.literal(description);
     }
@@ -95,7 +100,11 @@ final class PlaceholderControlElement<T> extends ControlElement<T> {
     @Override
     public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
         super.render(drawContext, mouseX, mouseY, delta);
-        if (this.labelWidth + LABEL_RIGHT_INSET <= this.dim.width()) {
+        // Draws nothing more on a row with no area or no room for a line of text, as the base row did
+        if (!this.hasArea() || !this.hasRoomForText()) {
+            return;
+        }
+        if (FittedText.fits(this.labelWidth, this.dim.width() - LABEL_RIGHT_INSET)) {
             drawContext.drawString(LABEL, this.dim.getLimitX() - this.labelWidth - LABEL_RIGHT_INSET, this.dim.getCenterY() - 4, LABEL_COLOR);
         }
     }

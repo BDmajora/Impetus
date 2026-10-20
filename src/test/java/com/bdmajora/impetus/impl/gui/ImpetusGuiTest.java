@@ -334,8 +334,7 @@ class ImpetusGuiTest {
         bobbing.setValue(real, true);
         assertTrue(real.viewBobbing);
         assertSame(Boolean.TRUE, bobbing.getValue(real));
-        // Vanilla flips an on/off option whatever int it is given, so writing the stored value must not reach it,
-        // which also spares the options.txt rewrite
+        // Vanilla flips an on/off option whatever int it is given, so writing the stored value must not reach it, which also spares the options.txt rewrite
         bobbing.setValue(real, true);
         assertTrue(real.viewBobbing);
         verify(real, times(1)).setOptionValue(GameSettings.Options.VIEW_BOBBING, 1);
@@ -426,6 +425,37 @@ class ImpetusGuiTest {
         draw.blitWholeImage("impetus:textures/gui/impetus.png", 0, 0, 16, 16);
         draw.blitWholeImage("impetus:textures/gui/impetus.png", 0, 0, 16, 16);
         verify(client.getTextureManager(), times(2)).bindTexture(new ResourceLocation("impetus:textures/gui/impetus.png"));
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    void theDrawContextsTextVersionMovesWithTheTranslationsAndTheFontsModesAndOnlyWithThem() {
+        FontRenderer font = client.fontRenderer;
+        VintageDrawContext draw = new VintageDrawContext();
+        Object translations = Statics.get(net.minecraft.util.text.translation.I18n.class, "localizedName");
+        long stamp = Mixins.get(translations, "lastUpdateTimeInMilliseconds");
+        try {
+            long plain = draw.textVersion();
+            assertEquals(plain, draw.textVersion());
+            when(font.getUnicodeFlag()).thenReturn(true);
+            long unicode = draw.textVersion();
+            assertNotEquals(plain, unicode);
+            when(font.getBidiFlag()).thenReturn(true);
+            long both = draw.textVersion();
+            assertNotEquals(unicode, both);
+            when(font.getUnicodeFlag()).thenReturn(false);
+            assertNotEquals(both, draw.textVersion());
+            assertNotEquals(plain, draw.textVersion());
+            // A reload stamps the translations with the time it ran
+            when(font.getBidiFlag()).thenReturn(false);
+            Mixins.set(translations, "lastUpdateTimeInMilliseconds", stamp + 1000);
+            assertNotEquals(plain, draw.textVersion());
+            assertEquals(net.minecraft.util.text.translation.I18n.getLastTranslationUpdateTimeInMilliseconds() << 2, draw.textVersion());
+        } finally {
+            Mixins.set(translations, "lastUpdateTimeInMilliseconds", stamp);
+            when(font.getUnicodeFlag()).thenReturn(false);
+            when(font.getBidiFlag()).thenReturn(false);
+        }
     }
 
     @Test

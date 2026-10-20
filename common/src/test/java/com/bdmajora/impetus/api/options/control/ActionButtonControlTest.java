@@ -82,6 +82,12 @@ class ActionButtonControlTest {
             return super.substrByWidth(str, maxWidth);
         }
 
+        // Moves on whenever the test changes a translation or pins a width, as a language or font reload moves a real context's version on
+        @Override
+        public long textVersion() {
+            return 31L * this.translations.hashCode() + this.widths.hashCode();
+        }
+
         @Override
         public String extractString(TextComponent component) {
             if (component instanceof TextComponent.Translatable translatable && this.translations.containsKey(translatable.keys().getFirst())) {
@@ -567,12 +573,12 @@ class ActionButtonControlTest {
         element.render(draw, 0, 0, 0f);
         assertSame(enabled, draw.label().component());
         assertEquals(1, draw.cuts);
-        // Another context with the same text and widths reuses it too
+        // Another context is measured in its own fonts, so it cuts once for itself, here to the same label
         RecordingDraw next = new RecordingDraw();
         next.translations.put("impetus.test.long", "Configure shaders");
         element.render(next, 0, 0, 0f);
-        assertSame(enabled, next.label().component());
-        assertEquals(0, next.cuts);
+        assertEquals(enabled, next.label().component());
+        assertEquals(1, next.cuts);
 
         // A language change alters the text, even one that keeps the same full width (17 characters both)
         draw.translations.put("impetus.test.long", "Shader einrichten");

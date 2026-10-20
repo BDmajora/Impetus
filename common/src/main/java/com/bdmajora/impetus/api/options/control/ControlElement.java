@@ -7,142 +7,265 @@ import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextFormattingStyle;
 import com.bdmajora.impetus.engine.impl.gui.theme.DefaultColors;
 import com.bdmajora.impetus.engine.impl.gui.widgets.AbstractWidget;
-import com.bdmajora.impetus.engine.impl.gui.widgets.FlatButtonWidget;
 import com.bdmajora.impetus.engine.impl.util.Dim2i;
 
-import org.jetbrains.annotations.NotNull;
+import java.util.Objects;
 
+// Row on the options screen that draws an option's name and background and holds keyboard focus
 public class ControlElement<T> extends AbstractWidget implements OptionControlElement<T>, Focusable {
-    // Appended to a name cut to fit
-    private static final String ELLIPSIS = "...";
-    // Appended to the name of an option with a pending change
+    // Text appended to the name of an option with a pending change
     private static final String CHANGED_MARKER = " *";
+    // Text appended to a shortened name without and with the pending change marker
+    private static final String CUT_SUFFIX = "...";
+    private static final String CUT_CHANGED_SUFFIX = CUT_SUFFIX + CHANGED_MARKER;
+    // Gap between the row's left edge and the name
+    private static final int NAME_LEFT_MARGIN = 6;
+    // Gap between the end of the name and the control column
+    private static final int COLUMN_GAP = 6;
+    // Half the glyph height used to centre the name vertically on the row
+    private static final int TEXT_RAISE = 4;
+    // Colour the name is drawn in beneath its own style
+    private static final int TEXT_COLOR = 0xFFFFFFFF;
+    // Line height used when the font source reports none
+    private static final int DEFAULT_LINE_HEIGHT = 9;
+    // Largest distance from the origin allowed for any edge of a drawn row
+    private static final int COORDINATE_LIMIT = 1 << 30;
+
+    // Label states that each use a different style
+    private static final int STATE_NORMAL = 0;
+    private static final int STATE_CHANGED = 1;
+    private static final int STATE_DISABLED = 2;
 
     protected final Option<T> option;
 
     protected final Dim2i dim;
 
-    private @NotNull FlatButtonWidget.Style style = FlatButtonWidget.Style.defaults();
-
     private boolean focused;
 
-    // Width of the control's column, measured on the first frame and kept since an element's bounds and control never change; -1 until then
-    private int columnWidth = -1;
+    // Whether the row has an area within the drawable coordinates
+    private final boolean drawable;
 
+    // Width left for the name after the control column or minus one before the first frame
+    private int nameRoom = -1;
+
+    // Name and font source and text version and state of the last fit with a state of minus one before the first fit
+    private TextComponent labelName;
+    private DrawContext labelContext;
+    private long labelVersion;
+    private int labelState = -1;
+    // Counter that advances when the font source or its text version changes
+    private long textGeneration;
+    // Fitted and styled name or null when none of it fits
+    private TextComponent label;
+    // Width of the fitted name
+    private int labelWidth;
+    // Whether a line of text fits the row height in the last font source
+    private boolean textFits;
+
+    // Creates a row for the option at the given bounds and rejects a null option or bounds
     public ControlElement(Option<T> option, Dim2i dim) {
-        this.option = option;
-        this.dim = dim;
+        this.option = Objects.requireNonNull(option, "Option must not be null");
+        this.dim = Objects.requireNonNull(dim, "Dimensions must not be null");
+        this.drawable = isDrawable(dim);
     }
 
-    // Background, hover highlight and the option name; focus looks hovered and adds an outline in the mod's accent
+    // Returns true for bounds with positive width and height whose edges all lie within the coordinate limit
+    private static boolean isDrawable(Dim2i dim) {
+        int x = dim.x();
+        int y = dim.y();
+        int width = dim.width();
+        int height = dim.height();
+        return width > 0 && height > 0 && x >= -COORDINATE_LIMIT && y >= -COORDINATE_LIMIT && x <= COORDINATE_LIMIT - width && y <= COORDINATE_LIMIT - height;
+    }
+
+    // Draws the background and hover highlight and option name with an accent outline while focused
     @Override
     public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
+        // Draws nothing for a row with no area
+        if (!this.drawable) {
+            return;
+        }
         boolean hovered = this.focused || this.isMouseOver(mouseX, mouseY);
         boolean available = this.isOptionAvailable();
-        boolean changed = available && this.option.hasChanged();
-        int column = this.columnWidth;
-        if (column < 0) {
-            // Never negative, so a bad override is measured once like any other
-            column = this.columnWidth = Math.max(0, this.measureColumnWidth(drawContext));
+        int state = !available ? STATE_DISABLED : this.option.hasChanged() ? STATE_CHANGED : STATE_NORMAL;
+        TextComponent name = this.getDisplayName();
+        long version = drawContext.textVersion();
+        boolean fontsChanged = drawContext != this.labelContext || version != this.labelVersion;
+        // Fits the name again when its component or font source or text version or state has changed
+        if (fontsChanged || state != this.labelState || !sameName(name, this.labelName)) {
+            // Measures the column again when the same font source reports a new text version
+            if (drawContext == this.labelContext && version != this.labelVersion) {
+                this.nameRoom = -1;
+            }
+            TextComponent label = this.fitLabel(drawContext, name, state);
+            int labelWidth = label != null ? drawContext.getStringWidth(label) : 0;
+            // Drops a styled name that no longer fits
+            if (label != null && !FittedText.fits(labelWidth, this.nameRoom)) {
+                label = null;
+                labelWidth = 0;
+            }
+            boolean textFits = fontsChanged ? this.fitsTextLine(drawContext) : this.textFits;
+            // Stores the fitted label and the key it was fitted for
+            this.label = label;
+            this.labelWidth = labelWidth;
+            this.textFits = textFits;
+            this.labelName = name;
+            this.labelContext = drawContext;
+            this.labelVersion = version;
+            this.labelState = state;
+            if (fontsChanged) {
+                this.textGeneration++;
+            }
         }
-        // The name starts 6 in and stops 6 short of the control's column; a negative width counts as none, so the subtraction cannot wrap
-        int availableLabelWidth = Math.max(0, Math.max(0, this.dim.width()) - column - 12);
-        String name = fitName(drawContext, drawContext.extractString(this.getDisplayName()), changed ? CHANGED_MARKER : "", availableLabelWidth);
 
-        drawContext.fill(this.dim.x(), this.dim.y(), this.dim.getLimitX(), this.dim.getLimitY(), hovered ? style.bgHovered : style.bgDefault);
+        drawContext.fill(this.dim.x(), this.dim.y(), this.dim.getLimitX(), this.dim.getLimitY(), hovered ? DefaultColors.BACKGROUND_HOVERED : DefaultColors.BACKGROUND_DEFAULT);
         if (this.focused) {
             drawContext.drawBorder(this.dim.x(), this.dim.y(), this.dim.getLimitX(), this.dim.getLimitY(), this.getAccentColor(drawContext));
         }
-        if (name.isEmpty()) {
-            return;
+        if (this.label != null && this.textFits) {
+            drawContext.drawString(this.label, this.dim.x() + NAME_LEFT_MARGIN, this.dim.getCenterY() - TEXT_RAISE, TEXT_COLOR);
         }
-
-        TextComponent label;
-        if (!available) {
-            label = this.formatDisabledControlValue(TextComponent.literal(name));
-        } else if (changed) {
-            label = TextComponent.literal(name).withStyle(TextFormattingStyle.ITALIC);
-        } else {
-            label = TextComponent.literal(name).withStyle(TextFormattingStyle.WHITE);
-        }
-        drawContext.drawString(label, this.dim.x() + 6, this.dim.getCenterY() - 4, style.textDefault);
     }
 
-    // The name and marker whole when they fit, else the name cut with an ellipsis before the marker, else nothing,
-    // so neither the ellipsis nor the marker ever runs into the control's column
-    private static String fitName(DrawContext drawContext, String name, String marker, int room) {
-        String whole = name + marker;
-        if (drawContext.getStringWidth(whole) <= room) {
+    // Returns true when the row has width and height within the drawable coordinates
+    protected final boolean hasArea() {
+        return this.drawable;
+    }
+
+    // Returns the generation of the font source the name was last fitted in
+    protected final long textGeneration() {
+        return this.textGeneration;
+    }
+
+    // Returns true when a line of text fits the row height
+    protected final boolean hasRoomForText() {
+        return this.textFits;
+    }
+
+    // Returns whether a line of text raised above the row centre stays inside the row
+    private boolean fitsTextLine(DrawContext drawContext) {
+        int lineHeight = drawContext.lineHeight();
+        long top = this.dim.y() + (long) (this.dim.height() / 2) - TEXT_RAISE;
+        return top >= this.dim.y() && top + (lineHeight > 0 ? lineHeight : DEFAULT_LINE_HEIGHT) <= (long) this.dim.y() + this.dim.height();
+    }
+
+    // Returns whether the name was last drawn as available
+    protected final boolean isDrawnAvailable() {
+        return this.labelState != STATE_DISABLED;
+    }
+
+    // Returns the leftmost x for a control's own text after the drawn name and gap or the row's left edge when no name is drawn
+    protected final int getNameLimitX() {
+        return this.label != null && this.textFits ? this.dim.x() + NAME_LEFT_MARGIN + this.labelWidth + COLUMN_GAP : this.dim.x();
+    }
+
+    // Returns true for the same component or an equal one
+    private static boolean sameName(TextComponent name, TextComponent last) {
+        return name == last || name != null && name.equals(last);
+    }
+
+    // Returns the name fitted to the room and styled for the state or null when none of it fits
+    private TextComponent fitLabel(DrawContext drawContext, TextComponent name, int state) {
+        String text = fitName(drawContext, textOf(drawContext, name), state == STATE_CHANGED, this.nameRoom(drawContext));
+        if (text.isEmpty()) {
+            return null;
+        }
+        TextComponent literal = TextComponent.literal(text);
+        return switch (state) {
+            case STATE_DISABLED -> this.formatDisabledControlValue(literal);
+            case STATE_CHANGED -> literal.withStyle(TextFormattingStyle.ITALIC);
+            default -> literal.withStyle(TextFormattingStyle.WHITE);
+        };
+    }
+
+    // Returns the width left for the name and measures the column on the first call
+    private int nameRoom(DrawContext drawContext) {
+        int room = this.nameRoom;
+        if (room < 0) {
+            int rowWidth = Math.max(0, this.dim.width());
+            // Clamps the column between zero and the row width
+            int column = Math.clamp(this.measureColumnWidth(drawContext), 0, rowWidth);
+            room = this.nameRoom = Math.max(0, rowWidth - column - NAME_LEFT_MARGIN - COLUMN_GAP);
+        }
+        return room;
+    }
+
+    // Returns the name's text or an empty string when there is no name or no text for it
+    private static String textOf(DrawContext drawContext, TextComponent name) {
+        String text = name != null ? drawContext.extractString(name) : null;
+        return text != null ? text : "";
+    }
+
+    // Returns the full name and marker when they fit or the shortened name with an ellipsis and marker or an empty string
+    private static String fitName(DrawContext drawContext, String name, boolean changed, int room) {
+        String whole = changed ? name + CHANGED_MARKER : name;
+        if (FittedText.fits(drawContext.getStringWidth(whole), room)) {
             return whole;
         }
-        int nameRoom = room - drawContext.getStringWidth(ELLIPSIS + marker);
-        if (nameRoom < 0) {
-            return "";
-        }
-        // Drops the spaces the cut ends on, so the ellipsis follows the last word
-        return drawContext.substrByWidth(name, nameRoom).stripTrailing() + ELLIPSIS + marker;
+        // Keeps the marker after the ellipsis on a shortened name
+        return FittedText.cut(drawContext, name, changed ? CUT_CHANGED_SUFFIX : CUT_SUFFIX, room);
     }
 
-    // The control's column held to the row, measured once per element
+    // Returns the width of the control column limited to the row width
     protected int measureColumnWidth(DrawContext drawContext) {
         return Control.columnWidth(this.option.getControl(), drawContext, this.dim.width());
     }
 
-    // Whether the option can be edited, read every frame so a master switch greys its children live
+    // Returns whether the option can currently be edited
     protected boolean isOptionAvailable() {
         return this.option.isAvailable();
     }
 
-    // The option's name, read every frame so a renamed option shows its new name
+    // Returns the current name of the option
     protected TextComponent getDisplayName() {
         return this.option.getName();
     }
 
-    // Bound option
+    // Returns the option this row belongs to
     public Option<T> getOption() {
         return this.option;
     }
 
-    // Bounds
+    // Returns the bounds of the row
     public Dim2i getDimensions() {
         return this.dim;
     }
 
-    // Owning mod's colour
+    // Returns the accent colour of the mod that owns the option
     protected int getAccentColor(DrawContext drawContext) {
         var id = this.option.getId();
         return drawContext.getModAccentColor(id != null ? id.getModId() : null);
     }
 
-    // Greyed text colour
+    // Returns the text colour used for unavailable controls
     protected int getDisabledControlColor() {
         return DefaultColors.TEXT_DISABLED;
     }
 
-    // Strikes through or greys a value when unavailable
+    // Returns the value greyed and struck through
     protected TextComponent formatDisabledControlValue(TextComponent value) {
         return value.withStyle(TextFormattingStyle.GRAY, TextFormattingStyle.STRIKETHROUGH);
     }
 
-    // Bounds test
+    // Returns true when the point is inside the row
     @Override
     public boolean isMouseOver(double x, double y) {
         return this.dim.containsCursor(x, y);
     }
 
-    // Tab passes over the rows of an unavailable option, as clicks do
+    // Allows focus only while the row has an area and the option is available
     @Override
     public boolean canFocus() {
-        return this.isOptionAvailable();
+        return this.hasArea() && this.isOptionAvailable();
     }
 
-    // Whether this row's keys go here
+    // Returns true while the row has keyboard focus
     @Override
     public boolean isFocused() {
         return this.focused;
     }
 
-    // Set by the container when Tab or a click moves focus
+    // Sets whether the row has keyboard focus
     @Override
     public void setFocused(boolean focused) {
         this.focused = focused;

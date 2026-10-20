@@ -123,14 +123,17 @@ public interface Control<T> {
 
     // Returns the option's id or its name when it has no id for use in failure messages
     private static String describe(Option<?> option) {
-        if (option == null) {
-            return "null";
-        }
-        // Falls back to the class name when the id or name cannot be read
+        // Falls back to the class name when reading the id or name throws anything other than a virtual machine error
         try {
             OptionIdentifier<?> id = option.getId();
             return OptionIdentifier.isPresent(id) ? id.toString() : String.valueOf(option.getName());
-        } catch (RuntimeException unreadable) {
+        } catch (VirtualMachineError fatal) {
+            throw fatal;
+        } catch (Throwable unreadable) {
+            // Restores the interrupt flag after an interruption
+            if (unreadable instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             return option.getClass().getName();
         }
     }

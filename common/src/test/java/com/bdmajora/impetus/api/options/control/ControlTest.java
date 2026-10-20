@@ -344,7 +344,7 @@ class ControlTest {
 
     private static final class TickSubclass extends TickBoxControl {
         TickSubclass() {
-            super(null);
+            super(option("Tick"));
         }
     }
 
@@ -894,15 +894,15 @@ class ControlTest {
 
     @Test
     void theBuiltInControlsDeclareTheTypesTheyEdit() {
-        assertSame(Boolean.class, new TickBoxControl(null).getValueType());
-        assertSame(Integer.class, new SliderControl(null, 0, 1, 1, ControlValueFormatter.number()).getValueType());
-        assertSame(String.class, new ReadOnlyStringControl(null).getValueType());
+        assertSame(Boolean.class, new TickBoxControl(option("Tick")).getValueType());
+        assertSame(Integer.class, new SliderControl(option("Slide"), 0, 1, 1, ControlValueFormatter.number()).getValueType());
+        assertSame(String.class, new ReadOnlyStringControl(option("Text")).getValueType());
         assertSame(Boolean.class, new ActionButtonControl(option("Button"), () -> { }).getValueType());
         // The cycler leaves its argument open, so it reads the type off its values instead
         assertSame(Object.class, ControlValueTypes.declared(CyclingControl.class));
-        assertSame(Mode.class, new CyclingControl<>((Option<Mode>) null, Mode.class).getValueType());
-        assertSame(Mode.class, new CyclingControl<>((Option<Mode>) null, new Mode[]{Mode.B}, new TextComponent[]{TextComponent.literal("b")}).getValueType());
-        assertSame(Object.class, new CyclingControl<>((Option<Object>) null, new Object[]{"a"}, new TextComponent[]{TextComponent.literal("a")}).getValueType());
+        assertSame(Mode.class, new CyclingControl<>(ControlTest.<Mode>option("Cycle"), Mode.class).getValueType());
+        assertSame(Mode.class, new CyclingControl<>(ControlTest.<Mode>option("Cycle"), new Mode[]{Mode.B}, new TextComponent[]{TextComponent.literal("b")}).getValueType());
+        assertSame(Object.class, new CyclingControl<>(ControlTest.option("Cycle"), new Object[]{"a"}, new TextComponent[]{TextComponent.literal("a")}).getValueType());
     }
 
     @Test
@@ -1260,8 +1260,9 @@ class ControlTest {
         Probe<Boolean> probe = bound(option, 70);
         probe.factory = dim -> new ControlElement<>(other, dim);
         ise("Element of option Name edits a different option", () -> Control.createElementFor(option, DIM));
+        // A row with no option at all is refused by its own constructor before the check is reached
         probe.factory = dim -> new ControlElement<>(null, dim);
-        ise("Element of option Name edits a different option", () -> Control.createElementFor(option, DIM));
+        npe("Option must not be null", () -> Control.createElementFor(option, DIM));
     }
 
     @Test
@@ -2246,12 +2247,8 @@ class ControlTest {
     @Test
     void aPlaceholderForAnOptionThatCannotNameItselfShowsItsDescription() {
         withLogger(logger -> {
-            // No option at all
-            ControlElement<Boolean> orphan = Control.placeholderFor(new ControlElement<Boolean>(null, DIM), new IllegalStateException("orphan"));
-            Language draw = new Language("Open");
-            orphan.render(draw, 0, 0, 0f);
-            assertEquals(List.of("null", "Error"), draw.strings);
-            assertFalse(orphan.canFocus());
+            // A row with no option at all cannot be made, so there is never one to replace
+            npe("Option must not be null", () -> new ControlElement<Boolean>(null, DIM));
             // A name that throws, with the id standing in; a row wide enough for all 180 pixels of it
             Option<Boolean> nameless = option("Unused");
             when(nameless.getId()).thenReturn(OptionIdentifier.create(MOD, "nameless", Boolean.class));

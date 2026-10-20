@@ -5,11 +5,14 @@ import com.bdmajora.impetus.engine.impl.gui.framework.DrawContext;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.util.Dim2i;
 
+import java.util.Objects;
+
 public class ReadOnlyStringControl implements Control<String> {
     private final Option<String> option;
 
+    // Refuses a missing option here, so the option it is made in can stand a placeholder in its row
     public ReadOnlyStringControl(Option<String> option) {
-        this.option = option;
+        this.option = Objects.requireNonNull(option, "Option must not be null");
     }
 
     // Bound option
@@ -31,6 +34,12 @@ public class ReadOnlyStringControl implements Control<String> {
     }
 
     private static class Element extends ControlElement<String> {
+        // Gap between the value and the row's right edge
+        private static final int VALUE_RIGHT_INSET = 6;
+
+        // The value cut to the room beside the name
+        private final FittedText text = new FittedText();
+
         Element(Option<String> option, Dim2i dim) {
             super(option, dim);
         }
@@ -41,20 +50,29 @@ public class ReadOnlyStringControl implements Control<String> {
             return false;
         }
 
-        // Just the value
+        // Just the value, right-aligned and cut to the room the name leaves, and nothing for a missing value
         @Override
         public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
             super.render(drawContext, mouseX, mouseY, delta);
-
-            TextComponent label = TextComponent.literal(this.option.getValue());
-            boolean enabled = this.option.isAvailable();
-            if (!enabled) {
-                label = this.formatDisabledControlValue(label);
+            if (!this.hasArea() || !this.hasRoomForText()) {
+                return;
             }
 
-            int width = drawContext.getStringWidth(label);
-            drawContext.drawString(label, this.dim.getLimitX() - width - 6, this.dim.getCenterY() - 4,
-                    enabled ? 0xFFFFFFFF : this.getDisabledControlColor());
+            String value = this.option.getValue();
+            boolean enabled = this.isDrawnAvailable();
+            int right = this.dim.getLimitX() - VALUE_RIGHT_INSET;
+            int room = right - this.getNameLimitX();
+            // Fitted again only when the value, its state or the room changes
+            long generation = this.textGeneration();
+            if (!this.text.isFittedFor(generation, value, 0, !enabled, room)) {
+                TextComponent label = value != null ? TextComponent.literal(value) : null;
+                this.text.fit(drawContext, generation, value, 0, !enabled, room, label == null || enabled ? label : this.formatDisabledControlValue(label));
+            }
+
+            TextComponent label = this.text.text();
+            if (label != null) {
+                drawContext.drawString(label, right - this.text.width(), this.dim.getCenterY() - 4, enabled ? 0xFFFFFFFF : this.getDisabledControlColor());
+            }
         }
     }
 }

@@ -19,6 +19,11 @@ public interface DrawContext extends FontMetricsProvider {
 
     int drawString(TextComponent str, int x, int y, int color, boolean shadow);
 
+    // Changes whenever text may translate or measure differently than before, such as after a language reload, so text kept from earlier frames is fitted again; constant for a context whose fonts and translations never change
+    default long textVersion() {
+        return 0L;
+    }
+
     void blitWholeImage(@NotNull String icon, int x, int y, int width, int height);
 
     void pushMatrix();

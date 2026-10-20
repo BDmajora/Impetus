@@ -22,6 +22,8 @@ public class OptionImpl<S, T> implements Option<T> {
 
     private final OptionBinding<S, T> binding;
     private final Control<T> control;
+    // Why the control could not be made, or null when it was
+    private final Throwable controlFailure;
 
     private final EnumSet<OptionFlag> flags;
 
@@ -57,7 +59,22 @@ public class OptionImpl<S, T> implements Option<T> {
         this.binding = binding;
         this.impact = impact;
         this.flags = flags;
-        this.control = control.apply(this);
+        // A control that fails to be made is kept as its failure, so the page still opens and shows a placeholder in this row
+        Control<T> made = null;
+        Throwable failure = null;
+        try {
+            made = control.apply(this);
+        } catch (VirtualMachineError fatal) {
+            throw fatal;
+        } catch (Throwable broken) {
+            // Restores the interrupt flag after an interruption
+            if (broken instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            failure = broken;
+        }
+        this.control = made;
+        this.controlFailure = failure;
         this.enabled = enabled;
 
         this.reset();
@@ -93,9 +110,12 @@ public class OptionImpl<S, T> implements Option<T> {
         return this.impact;
     }
 
-    // The widget type
+    // The widget type, or the failure that kept it from being made, which the page turns into a placeholder row
     @Override
     public Control<T> getControl() {
+        if (this.controlFailure != null) {
+            throw new IllegalStateException("Control of option " + this.id + " could not be made", this.controlFailure);
+        }
         return this.control;
     }
 
@@ -261,8 +281,7 @@ public class OptionImpl<S, T> implements Option<T> {
         // Validates the required fields and finalises
         public OptionImpl<S, T> build() {
             if (this.id == null) {
-                // FIXME enforce IDs and make nullable
-                // EMPTY is typed Void but carries no value, so it stands in for any option type
+                // FIXME enforce IDs and make nullable; EMPTY is typed Void but carries no value, so it stands in for any option type
                 @SuppressWarnings("unchecked")
                 OptionIdentifier<T> empty = (OptionIdentifier<T>) OptionIdentifier.EMPTY;
                 this.id = empty;

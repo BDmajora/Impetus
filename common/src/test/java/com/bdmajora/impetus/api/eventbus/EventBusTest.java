@@ -70,10 +70,11 @@ class EventBusTest {
     }
 
     @Test
-    void anEventCanceledBeforeThePostIsReportedCanceledEvenWithNoListeners() {
+    void aCancellationMadeBeforeThePostIsClearedByIt() {
         Cancelable event = new Cancelable();
         event.setCanceled(true);
-        assertTrue(new EventHandlerRegistrar<Cancelable>().post(event));
+        assertFalse(new EventHandlerRegistrar<Cancelable>().post(event));
+        assertFalse(event.isCanceled());
     }
 
     @Test

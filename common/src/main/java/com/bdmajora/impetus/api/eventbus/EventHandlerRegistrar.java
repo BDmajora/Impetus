@@ -29,25 +29,34 @@ public class EventHandlerRegistrar<T extends ImpetusEvent> {
         }
     }
 
-    // Runs every listener with the event and returns true if the event is cancelable and was canceled
+    // Runs every listener with the event and returns true if the event is cancelable and was canceled by the end of the post
     public boolean post(T event) {
         Objects.requireNonNull(event, "Event must not be null");
         // Reads the listener array once for the whole post
         Handler<T>[] snapshot = handlers;
         Throwable failure = null;
-        for (Handler<T> handler : snapshot) {
-            try {
-                handler.acceptEvent(event);
-            } catch (VirtualMachineError fatal) {
-                // Rethrows a virtual machine error immediately with any earlier failure attached
-                if (failure != null) {
-                    fatal.addSuppressed(failure);
+        // Clears a cancellation from an earlier post when this is the outermost post of the event
+        if (event.postDepth++ == 0 && event.canceled) {
+            event.canceled = false;
+        }
+        try {
+            for (Handler<T> handler : snapshot) {
+                try {
+                    handler.acceptEvent(event);
+                } catch (VirtualMachineError fatal) {
+                    // Rethrows a virtual machine error immediately with any earlier failure attached
+                    if (failure != null) {
+                        fatal.addSuppressed(failure);
+                    }
+                    throw fatal;
+                } catch (Throwable thrown) {
+                    // Records the failure and continues with the next listener
+                    failure = merge(failure, thrown);
                 }
-                throw fatal;
-            } catch (Throwable thrown) {
-                // Records the failure and continues with the next listener
-                failure = merge(failure, thrown);
             }
+        } finally {
+            // Decrements the post depth even when a listener throws
+            event.postDepth--;
         }
         if (failure != null) {
             throw rethrow(failure);

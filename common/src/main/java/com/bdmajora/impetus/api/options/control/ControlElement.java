@@ -13,6 +13,11 @@ import com.bdmajora.impetus.engine.impl.util.Dim2i;
 import org.jetbrains.annotations.NotNull;
 
 public class ControlElement<T> extends AbstractWidget implements OptionControlElement<T>, Focusable {
+    // Appended to a name cut to fit
+    private static final String ELLIPSIS = "...";
+    // Appended to the name of an option with a pending change
+    private static final String CHANGED_MARKER = " *";
+
     protected final Option<T> option;
 
     protected final Dim2i dim;
@@ -29,32 +34,45 @@ public class ControlElement<T> extends AbstractWidget implements OptionControlEl
     // Background, hover highlight and the option name; focus looks hovered and adds an outline in the mod's accent
     @Override
     public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
-        String name = drawContext.extractString(this.option.getName());
-        TextComponent label;
-
         boolean hovered = this.focused || this.isMouseOver(mouseX, mouseY);
+        boolean available = this.option.isAvailable();
+        boolean changed = available && this.option.hasChanged();
+        // The name starts 6 in and stops 6 short of the control's column
         int availableLabelWidth = Math.max(0, this.dim.width() - this.option.getControl().getMaxWidth() - 12);
-
-        if (drawContext.getStringWidth(name) > availableLabelWidth) {
-            int ellipsisWidth = drawContext.getStringWidth("...");
-            name = drawContext.substrByWidth(name, Math.max(0, availableLabelWidth - ellipsisWidth)) + "...";
-        }
-
-        if (this.option.isAvailable()) {
-            if (this.option.hasChanged()) {
-                label = TextComponent.literal(name + " *").withStyle(TextFormattingStyle.ITALIC);
-            } else {
-                label = TextComponent.literal(name).withStyle(TextFormattingStyle.WHITE);
-            }
-        } else {
-            label = this.formatDisabledControlValue(TextComponent.literal(name));
-        }
+        String name = fitName(drawContext, drawContext.extractString(this.option.getName()), changed ? CHANGED_MARKER : "", availableLabelWidth);
 
         drawContext.fill(this.dim.x(), this.dim.y(), this.dim.getLimitX(), this.dim.getLimitY(), hovered ? style.bgHovered : style.bgDefault);
         if (this.focused) {
             drawContext.drawBorder(this.dim.x(), this.dim.y(), this.dim.getLimitX(), this.dim.getLimitY(), this.getAccentColor(drawContext));
         }
+        if (name.isEmpty()) {
+            return;
+        }
+
+        TextComponent label;
+        if (!available) {
+            label = this.formatDisabledControlValue(TextComponent.literal(name));
+        } else if (changed) {
+            label = TextComponent.literal(name).withStyle(TextFormattingStyle.ITALIC);
+        } else {
+            label = TextComponent.literal(name).withStyle(TextFormattingStyle.WHITE);
+        }
         drawContext.drawString(label, this.dim.x() + 6, this.dim.getCenterY() - 4, style.textDefault);
+    }
+
+    // The name and marker whole when they fit, else the name cut with an ellipsis before the marker, else nothing,
+    // so neither the ellipsis nor the marker ever runs into the control's column
+    private static String fitName(DrawContext drawContext, String name, String marker, int room) {
+        String whole = name + marker;
+        if (drawContext.getStringWidth(whole) <= room) {
+            return whole;
+        }
+        int nameRoom = room - drawContext.getStringWidth(ELLIPSIS + marker);
+        if (nameRoom < 0) {
+            return "";
+        }
+        // Drops the spaces the cut ends on, so the ellipsis follows the last word
+        return drawContext.substrByWidth(name, nameRoom).stripTrailing() + ELLIPSIS + marker;
     }
 
     // Bound option

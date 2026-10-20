@@ -6,10 +6,12 @@ import com.bdmajora.impetus.engine.impl.gui.framework.InteractionContext;
 import com.bdmajora.impetus.engine.impl.gui.framework.Keys;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextFormattingStyle;
+import com.bdmajora.impetus.engine.impl.notification.ImpetusNotifications;
 import com.bdmajora.impetus.engine.impl.util.Dim2i;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.EnumSet;
 import java.util.Objects;
 
 // Control that shows a labelled button and runs an action when clicked
@@ -24,12 +26,12 @@ public class ActionButtonControl implements Control<Boolean> {
     private static final int MAX_WIDTH = 70;
     // Distance from the right edge of the row to the right end of the label
     private static final int LABEL_RIGHT_INSET = 18;
-    // Distance from the right edge of the row to the left edge of the arrow
+    // Distance from the right edge of the row to the left edge of the arrow and the narrowest row width that shows the arrow
     private static final int ARROW_RIGHT_INSET = 10;
     // Half the glyph height used to centre text vertically on the row
     private static final int TEXT_RAISE = 4;
     // Text drawn to the right of the label
-    private static final String ARROW = ">";
+    private static final TextComponent ARROW = TextComponent.literal(">");
     // Text appended to a shortened label
     private static final String ELLIPSIS = "...";
 
@@ -75,12 +77,22 @@ public class ActionButtonControl implements Control<Boolean> {
         private final TextComponent disabledLabel;
         private final Runnable action;
 
+        // Last shortened label in both styles with the text and full width it was cut from
+        private String cutSource;
+        private int cutFullWidth;
+        private int cutWidth;
+        private TextComponent cutEnabled;
+        private TextComponent cutDisabled;
+
+        // Draw context from the last frame used to convert the option name to text
+        private DrawContext lastDrawContext;
+
         // Stores the label and action and builds both label styles
         Button(Option<Boolean> option, Dim2i dim, TextComponent actionLabel, Runnable action) {
             super(option, dim);
             this.actionLabel = actionLabel;
             this.enabledLabel = actionLabel.withStyle(TextFormattingStyle.UNDERLINE);
-            this.disabledLabel = this.formatDisabledControlValue(this.enabledLabel);
+            this.disabledLabel = this.disabled(actionLabel);
             this.action = action;
         }
 
@@ -88,6 +100,7 @@ public class ActionButtonControl implements Control<Boolean> {
         @Override
         public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
             super.render(drawContext, mouseX, mouseY, delta);
+            this.lastDrawContext = drawContext;
 
             boolean enabled = this.option.isAvailable();
             int color = enabled ? this.getAccentColor(drawContext) : this.getDisabledControlColor();
@@ -99,24 +112,47 @@ public class ActionButtonControl implements Control<Boolean> {
             TextComponent label = enabled ? this.enabledLabel : this.disabledLabel;
             int width = drawContext.getStringWidth(label);
             if (width > maxWidth) {
-                label = this.cutToFit(drawContext, maxWidth, enabled);
-                width = label != null ? drawContext.getStringWidth(label) : 0;
+                this.updateCut(drawContext, width, maxWidth);
+                label = enabled ? this.cutEnabled : this.cutDisabled;
+                width = this.cutWidth;
             }
             if (label != null) {
                 drawContext.drawString(label, limitX - width - LABEL_RIGHT_INSET, textY, color);
             }
-            drawContext.drawString(ARROW, limitX - ARROW_RIGHT_INSET, textY, color);
+            // Leaves the arrow out of a row too narrow to hold it
+            if (this.dim.width() >= ARROW_RIGHT_INSET) {
+                drawContext.drawString(ARROW, limitX - ARROW_RIGHT_INSET, textY, color);
+            }
         }
 
-        // Returns the label shortened to fit with an ellipsis or null when the ellipsis alone does not fit
-        private TextComponent cutToFit(DrawContext drawContext, int maxWidth, boolean enabled) {
+        // Cuts the label again when its text or full width has changed and clears both cuts when the ellipsis alone does not fit
+        private void updateCut(DrawContext drawContext, int fullWidth, int maxWidth) {
+            String source = drawContext.extractString(this.actionLabel);
+            if (fullWidth == this.cutFullWidth && source.equals(this.cutSource)) {
+                return;
+            }
+            this.cutSource = source;
+            this.cutFullWidth = fullWidth;
+
             int room = maxWidth - drawContext.getStringWidth(ELLIPSIS);
             if (room < 0) {
-                return null;
+                this.cutEnabled = null;
+                this.cutDisabled = null;
+                this.cutWidth = 0;
+                return;
             }
-            String text = drawContext.substrByWidth(drawContext.extractString(this.actionLabel), room);
-            TextComponent cut = TextComponent.literal(text + ELLIPSIS).withStyle(TextFormattingStyle.UNDERLINE);
-            return enabled ? cut : this.formatDisabledControlValue(cut);
+            // Removes trailing spaces from the cut text before appending the ellipsis
+            String text = drawContext.substrByWidth(source, room).stripTrailing() + ELLIPSIS;
+            // Applies the label's own styles to the cut text
+            TextComponent cut = restyled(this.actionLabel, TextComponent.literal(text));
+            this.cutEnabled = cut.withStyle(TextFormattingStyle.UNDERLINE);
+            this.cutDisabled = this.disabled(cut);
+            this.cutWidth = drawContext.getStringWidth(this.cutEnabled);
+        }
+
+        // Returns the label underlined and greyed out with its own colours removed
+        private TextComponent disabled(TextComponent label) {
+            return this.formatDisabledControlValue(withoutColours(label).withStyle(TextFormattingStyle.UNDERLINE));
         }
 
         // Presses the button on a left click inside it
@@ -145,14 +181,47 @@ public class ActionButtonControl implements Control<Boolean> {
             } catch (VirtualMachineError fatal) {
                 throw fatal;
             } catch (Throwable thrown) {
-                // Logs the failure and restores the interrupt flag after an interruption
+                // Restores the interrupt flag after an interruption
                 if (thrown instanceof InterruptedException) {
                     Thread.currentThread().interrupt();
                 }
-                LOGGER.error("Action button for option {} failed", this.option.getId(), thrown);
+                this.reportFailure(thrown);
             }
             // Reports the input as handled even when the action fails
             return true;
         }
+
+        // Logs the failure and shows it as an error toast
+        private void reportFailure(Throwable thrown) {
+            TextComponent name = this.option.getName();
+            String nameText = name != null && this.lastDrawContext != null ? this.lastDrawContext.extractString(name) : String.valueOf(name);
+            LOGGER.error("Action button {} ({}) failed", nameText, this.option.getId(), thrown);
+            // Shows only the first line of the failure message
+            ImpetusNotifications.error("Button failed: " + nameText, String.valueOf(thrown).lines().findFirst().orElse(""));
+        }
+    }
+
+    // Wraps the text in each style layer of the label in the same order
+    private static TextComponent restyled(TextComponent label, TextComponent text) {
+        if (label instanceof TextComponent.Styled styled) {
+            return new TextComponent.Styled(restyled(styled.inner(), text), EnumSet.copyOf(styled.styles()));
+        }
+        return text;
+    }
+
+    // Removes colour styles from every layer of the label and from any translation arguments that are components
+    private static TextComponent withoutColours(TextComponent label) {
+        if (label instanceof TextComponent.Styled styled) {
+            TextComponent inner = withoutColours(styled.inner());
+            EnumSet<TextFormattingStyle> styles = EnumSet.copyOf(styled.styles());
+            styles.removeIf(TextFormattingStyle::isColor);
+            // Drops a layer that held only colours
+            return styles.isEmpty() ? inner : new TextComponent.Styled(inner, styles);
+        }
+        if (label instanceof TextComponent.Translatable translatable && translatable.args().stream().anyMatch(TextComponent.class::isInstance)) {
+            return new TextComponent.Translatable(translatable.keys(),
+                    translatable.args().stream().map(arg -> arg instanceof TextComponent component ? withoutColours(component) : arg).toList());
+        }
+        return label;
     }
 }

@@ -10,6 +10,8 @@ import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextFormattingStyle;
 import com.bdmajora.impetus.engine.impl.gui.theme.DefaultColors;
 import com.bdmajora.impetus.engine.impl.gui.widgets.SearchBarWidget;
+import com.bdmajora.impetus.engine.impl.notification.ImpetusNotification;
+import com.bdmajora.impetus.engine.impl.notification.ImpetusNotifications;
 import com.bdmajora.impetus.engine.impl.util.Dim2i;
 import com.bdmajora.testing.FakeDrawContext;
 import com.bdmajora.testing.FakeInteractionContext;
@@ -22,6 +24,7 @@ import org.mockito.Mockito;
 import java.io.IOException;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
@@ -51,12 +54,15 @@ class ActionButtonControlTest {
     private static final String DEFAULT_KEY = "impetus.options.buttons.open";
     private static final String MOD = "action_button_test";
     private static final Runnable NOTHING = () -> { };
+    private static final String FAILURE_LOG = "Action button {} ({}) failed";
 
     // Records each string with the component it was drawn from; 6 pixels a character unless a width is pinned, and translation keys read from a table
     private static class RecordingDraw extends FakeDrawContext {
         final List<Text> texts = new ArrayList<>();
         final Map<String, Integer> widths = new HashMap<>();
         final Map<String, String> translations = new HashMap<>(Map.of(DEFAULT_KEY, "Open"));
+        // How many times a label was cut, which a kept cut does not repeat
+        int cuts;
 
         @Override
         public int drawString(TextComponent str, int x, int y, int color, boolean shadow) {
@@ -68,6 +74,12 @@ class ActionButtonControlTest {
         public int getStringWidth(TextComponent component) {
             Integer pinned = this.widths.get(extractString(component));
             return pinned != null ? pinned : super.getStringWidth(component);
+        }
+
+        @Override
+        public String substrByWidth(String str, int maxWidth) {
+            this.cuts++;
+            return super.substrByWidth(str, maxWidth);
         }
 
         @Override
@@ -93,6 +105,10 @@ class ActionButtonControlTest {
             Text last = this.texts.getLast();
             assertEquals(">", last.text());
             return last;
+        }
+
+        boolean drewNoArrow() {
+            return this.texts.stream().noneMatch(t -> t.text().equals(">"));
         }
 
         void clear() {
@@ -349,8 +365,8 @@ class ActionButtonControlTest {
         RecordingDraw draw = render(element);
         Text label = draw.label();
         assertEquals("Confi...", label.text());
-        // The cut keeps only the text, underlined
-        assertEquals(TextComponent.literal("Confi...").withStyle(TextFormattingStyle.UNDERLINE), label.component());
+        // The cut keeps the label's own italic, underlined like the whole label
+        assertEquals(TextComponent.literal("Confi...").withStyle(TextFormattingStyle.ITALIC, TextFormattingStyle.UNDERLINE), label.component());
         assertEquals(LIMIT_X - 48 - 18, label.x());
         // Clear of the column's left edge, and so of the option name ControlElement keeps out of it
         assertTrue(label.x() >= LIMIT_X - 70);
@@ -361,12 +377,12 @@ class ActionButtonControlTest {
         available.set(false);
         label = render(element).label();
         assertEquals("Confi...", label.text());
-        assertEquals(EnumSet.of(TextFormattingStyle.UNDERLINE, TextFormattingStyle.GRAY, TextFormattingStyle.STRIKETHROUGH), styles(label.component()));
+        assertEquals(EnumSet.of(TextFormattingStyle.ITALIC, TextFormattingStyle.UNDERLINE, TextFormattingStyle.GRAY, TextFormattingStyle.STRIKETHROUGH), styles(label.component()));
         assertEquals(DefaultColors.TEXT_DISABLED, label.color());
     }
 
     @Test
-    void aTranslatedLabelIsMeasuredAndCutEveryFrameSoALanguageChangeIsFollowed() {
+    void aTranslatedLabelIsCutAgainWhenTheLanguageChanges() {
         Option<Boolean> option = option(new AtomicBoolean(true));
         ControlElement<Boolean> element = element(option, TextComponent.translatable(DEFAULT_KEY), NOTHING, DIM);
         RecordingDraw draw = new RecordingDraw();
@@ -400,10 +416,18 @@ class ActionButtonControlTest {
         assertTrue(none.drewNoLabel());
         assertEquals(25, none.arrow().x());
         assertEquals(35 - 12 - 18, render(element(option, TextComponent.literal("Go"), NOTHING, new Dim2i(0, 0, 35, 20))).label().x());
-        // A zero-width row still draws the arrow and nothing else of the button
-        RecordingDraw empty = render(element(option, TextComponent.literal("Go"), NOTHING, new Dim2i(0, 0, 0, 20)));
-        assertTrue(empty.drewNoLabel());
-        assertEquals(-10, empty.arrow().x());
+        // Ten wide is the narrowest row the arrow fits in, drawn at its left edge with no room left for a label
+        RecordingDraw ten = render(element(option, TextComponent.literal("Go"), NOTHING, new Dim2i(0, 0, 10, 20)));
+        assertTrue(ten.drewNoLabel());
+        assertEquals(0, ten.arrow().x());
+        // Any narrower, zero wide or even negative, and the button draws nothing at all outside the row
+        for (int width : new int[]{9, 1, 0, -5}) {
+            RecordingDraw nothing = render(element(option, TextComponent.literal("Go"), NOTHING, new Dim2i(0, 0, width, 20)));
+            assertTrue(nothing.drewNoLabel(), () -> "width " + width);
+            assertTrue(nothing.drewNoArrow(), () -> "width " + width);
+            // Nor does ControlElement, which has no room for even the name's ellipsis
+            assertEquals(0, nothing.texts.size(), () -> "width " + width);
+        }
     }
 
     @Test
@@ -412,6 +436,181 @@ class ActionButtonControlTest {
         assertEquals("", draw.label().text());
         assertEquals(LIMIT_X - 18, draw.label().x());
         assertEquals(LIMIT_X - 10, draw.arrow().x());
+    }
+
+    @Test
+    void theArrowIsOneSharedComponentForEveryFrameAndButton() {
+        TextComponent shared = Statics.get(ActionButtonControl.class, "ARROW");
+        assertEquals(TextComponent.literal(">"), shared);
+        Option<Boolean> option = option(new AtomicBoolean(true));
+        ControlElement<Boolean> element = element(option, TextComponent.literal("Go"), NOTHING, DIM);
+        assertSame(shared, render(element).arrow().component());
+        assertSame(shared, render(element).arrow().component());
+        assertSame(shared, render(element(option, TextComponent.literal("Other"), NOTHING, DIM)).arrow().component());
+    }
+
+    @Test
+    void aColouredLabelKeepsItsColourWhileEnabledAndLosesItWhileUnavailableSoTheGreyShows() {
+        AtomicBoolean available = new AtomicBoolean(true);
+        TextComponent red = TextComponent.literal("Go").withStyle(TextFormattingStyle.RED, TextFormattingStyle.ITALIC);
+        ControlElement<Boolean> element = element(option(available), red, NOTHING, DIM);
+        assertEquals(TextComponent.literal("Go").withStyle(TextFormattingStyle.RED, TextFormattingStyle.ITALIC, TextFormattingStyle.UNDERLINE),
+                render(element).label().component());
+        available.set(false);
+        // Vanilla applies the set's colours in order, so a kept RED would land after GRAY and win
+        assertEquals(TextComponent.literal("Go").withStyle(TextFormattingStyle.ITALIC, TextFormattingStyle.UNDERLINE, TextFormattingStyle.GRAY, TextFormattingStyle.STRIKETHROUGH),
+                render(element).label().component());
+        // The caller's label is left as it was
+        assertEquals(EnumSet.of(TextFormattingStyle.RED, TextFormattingStyle.ITALIC), styles(red));
+    }
+
+    @Test
+    void layersThatHeldOnlyColoursAreDroppedFromTheDisabledLabel() {
+        AtomicBoolean available = new AtomicBoolean(false);
+        TextComponent.Styled colours = new TextComponent.Styled(
+                new TextComponent.Styled(TextComponent.literal("Go"), EnumSet.of(TextFormattingStyle.RED)), EnumSet.of(TextFormattingStyle.GOLD));
+        TextComponent label = render(element(option(available), colours, NOTHING, DIM)).label().component();
+        assertEquals(new TextComponent.Styled(TextComponent.literal("Go"),
+                EnumSet.of(TextFormattingStyle.UNDERLINE, TextFormattingStyle.GRAY, TextFormattingStyle.STRIKETHROUGH)), label);
+        available.set(true);
+        // Enabled, both layers stay, the outer one underlined
+        assertEquals(new TextComponent.Styled(new TextComponent.Styled(TextComponent.literal("Go"), EnumSet.of(TextFormattingStyle.RED)),
+                EnumSet.of(TextFormattingStyle.GOLD, TextFormattingStyle.UNDERLINE)), render(element(option(available), colours, NOTHING, DIM)).label().component());
+    }
+
+    @Test
+    void translationArgumentsThatAreComponentsLoseTheirColoursWhileUnavailable() {
+        AtomicBoolean available = new AtomicBoolean(false);
+        TextComponent argument = TextComponent.literal("x").withStyle(TextFormattingStyle.RED, TextFormattingStyle.ITALIC);
+        TextComponent label = TextComponent.translatable("impetus.test.with_argument", argument, 5, null);
+        ControlElement<Boolean> element = element(option(available), label, NOTHING, DIM);
+        RecordingDraw draw = new RecordingDraw();
+        draw.translations.put("impetus.test.with_argument", "Go");
+        element.render(draw, 0, 0, 0f);
+        TextComponent inner = ((TextComponent.Styled) draw.label().component()).inner();
+        // Plain arguments, nulls included, pass through untouched
+        assertEquals(new TextComponent.Translatable(List.of("impetus.test.with_argument"),
+                Arrays.asList(TextComponent.literal("x").withStyle(TextFormattingStyle.ITALIC), 5, null)), inner);
+        // While enabled the translation is the caller's own, arguments and all
+        available.set(true);
+        draw.clear();
+        element.render(draw, 0, 0, 0f);
+        assertSame(label, ((TextComponent.Styled) draw.label().component()).inner());
+        // A translation with no component arguments is kept as it is even while unavailable
+        available.set(false);
+        TextComponent plain = TextComponent.translatable(DEFAULT_KEY, 3);
+        RecordingDraw other = new RecordingDraw();
+        other.translations.put(DEFAULT_KEY, "Open");
+        element(option(available), plain, NOTHING, DIM).render(other, 0, 0, 0f);
+        assertSame(plain, ((TextComponent.Styled) other.label().component()).inner());
+    }
+
+    @Test
+    void aCutLabelKeepsItsColoursAndStylesWhileEnabledAndDropsOnlyTheColoursWhileUnavailable() {
+        AtomicBoolean available = new AtomicBoolean(true);
+        TextComponent label = TextComponent.literal("Configure shaders").withStyle(TextFormattingStyle.RED, TextFormattingStyle.ITALIC);
+        ControlElement<Boolean> element = element(option(available), label, NOTHING, DIM);
+        Text cut = render(element).label();
+        assertEquals(TextComponent.literal("Confi...").withStyle(TextFormattingStyle.RED, TextFormattingStyle.ITALIC, TextFormattingStyle.UNDERLINE), cut.component());
+        assertEquals(LIMIT_X - 48 - 18, cut.x());
+        available.set(false);
+        Text disabled = render(element).label();
+        assertEquals(TextComponent.literal("Confi...").withStyle(TextFormattingStyle.ITALIC, TextFormattingStyle.UNDERLINE, TextFormattingStyle.GRAY, TextFormattingStyle.STRIKETHROUGH),
+                disabled.component());
+        assertEquals(cut.x(), disabled.x());
+    }
+
+    @Test
+    void aCutKeepsEveryStyleLayerInOrderAndCopiesTheirSets() {
+        AtomicBoolean available = new AtomicBoolean(true);
+        EnumSet<TextFormattingStyle> innerStyles = EnumSet.of(TextFormattingStyle.RED);
+        TextComponent label = new TextComponent.Styled(new TextComponent.Styled(TextComponent.literal("Configure shaders"), innerStyles), EnumSet.of(TextFormattingStyle.ITALIC));
+        ControlElement<Boolean> element = element(option(available), label, NOTHING, DIM);
+        TextComponent cut = render(element).label().component();
+        assertEquals(new TextComponent.Styled(new TextComponent.Styled(TextComponent.literal("Confi..."), EnumSet.of(TextFormattingStyle.RED)),
+                EnumSet.of(TextFormattingStyle.ITALIC, TextFormattingStyle.UNDERLINE)), cut);
+        assertNotSame(innerStyles, ((TextComponent.Styled) ((TextComponent.Styled) cut).inner()).styles());
+        // The red-only inner layer goes while unavailable, the italic one stays
+        available.set(false);
+        assertEquals(new TextComponent.Styled(TextComponent.literal("Confi..."),
+                EnumSet.of(TextFormattingStyle.ITALIC, TextFormattingStyle.UNDERLINE, TextFormattingStyle.GRAY, TextFormattingStyle.STRIKETHROUGH)), render(element).label().component());
+        // Changing the caller's set afterwards does not reach the button's own copies
+        innerStyles.add(TextFormattingStyle.GOLD);
+        available.set(true);
+        assertEquals(EnumSet.of(TextFormattingStyle.RED), ((TextComponent.Styled) ((TextComponent.Styled) render(element).label().component()).inner()).styles());
+    }
+
+    @Test
+    void aCutIsKeptAcrossFramesAndRedoneOnlyWhenTheTextOrFullWidthChanges() {
+        AtomicBoolean available = new AtomicBoolean(true);
+        ControlElement<Boolean> element = element(option(available), TextComponent.translatable("impetus.test.long"), NOTHING, DIM);
+        RecordingDraw draw = new RecordingDraw();
+        draw.translations.put("impetus.test.long", "Configure shaders");
+        element.render(draw, 0, 0, 0f);
+        TextComponent enabled = draw.label().component();
+        assertEquals(1, draw.cuts);
+        for (int frame = 0; frame < 3; frame++) {
+            draw.clear();
+            element.render(draw, 0, 0, 0f);
+            assertSame(enabled, draw.label().component());
+        }
+        // The disabled look was cut at the same time
+        available.set(false);
+        draw.clear();
+        element.render(draw, 0, 0, 0f);
+        TextComponent disabled = draw.label().component();
+        draw.clear();
+        element.render(draw, 0, 0, 0f);
+        assertSame(disabled, draw.label().component());
+        available.set(true);
+        draw.clear();
+        element.render(draw, 0, 0, 0f);
+        assertSame(enabled, draw.label().component());
+        assertEquals(1, draw.cuts);
+        // Another context with the same text and widths reuses it too
+        RecordingDraw next = new RecordingDraw();
+        next.translations.put("impetus.test.long", "Configure shaders");
+        element.render(next, 0, 0, 0f);
+        assertSame(enabled, next.label().component());
+        assertEquals(0, next.cuts);
+
+        // A language change alters the text, even one that keeps the same full width (17 characters both)
+        draw.translations.put("impetus.test.long", "Shader einrichten");
+        draw.clear();
+        element.render(draw, 0, 0, 0f);
+        assertEquals("Shade...", draw.label().text());
+        assertEquals(2, draw.cuts);
+        TextComponent beforeFontChange = draw.label().component();
+        // A font change alters the full width while the text stays the same
+        draw.widths.put("Shader einrichten", 120);
+        draw.clear();
+        element.render(draw, 0, 0, 0f);
+        assertEquals(3, draw.cuts);
+        assertNotSame(beforeFontChange, draw.label().component());
+        assertEquals("Shade...", draw.label().text());
+        draw.clear();
+        element.render(draw, 0, 0, 0f);
+        assertEquals(3, draw.cuts);
+        // Back to a translation that fits, which needs no cut at all
+        draw.translations.put("impetus.test.long", "Open");
+        draw.clear();
+        element.render(draw, 0, 0, 0f);
+        assertEquals("Open", draw.label().text());
+        assertEquals(3, draw.cuts);
+    }
+
+    @Test
+    void aCutDropsTheSpacesItEndsOnSoTheEllipsisFollowsTheLastWord() {
+        Option<Boolean> option = option(new AtomicBoolean(true));
+        // Five characters fit: "Open " loses its space
+        Text word = render(element(option, TextComponent.literal("Open the pack list"), NOTHING, DIM)).label();
+        assertEquals("Open...", word.text());
+        assertEquals(LIMIT_X - 42 - 18, word.x());
+        assertEquals("Ab...", render(element(option, TextComponent.literal("Ab   cdefghijk"), NOTHING, DIM)).label().text());
+        // A label of nothing but spaces cuts to the bare ellipsis
+        assertEquals("...", render(element(option, TextComponent.literal(" ".repeat(12)), NOTHING, DIM)).label().text());
+        // Spaces inside the cut stay
+        assertEquals("A b c...", render(element(option, TextComponent.literal("A b c d e f g"), NOTHING, DIM)).label().text());
     }
 
     @Test
@@ -510,7 +709,7 @@ class ActionButtonControlTest {
             for (Throwable failure : failures) {
                 armed.set(failure);
                 assertTrue(element.mouseClicked(ctx, 110, 30, 0), failure::toString);
-                verify(logger).error(eq("Action button for option {} failed"), eq(id), same(failure));
+                verify(logger).error(eq(FAILURE_LOG), eq("Name"), eq(id), same(failure));
             }
             assertEquals(failures.size(), ctx.clicks);
             assertFalse(Thread.currentThread().isInterrupted());
@@ -523,14 +722,14 @@ class ActionButtonControlTest {
     }
 
     @Test
-    void aFailingActionOnAnOptionWithoutAnIdLogsANullId() {
+    void aFailingActionOnAnOptionWithoutAnIdLogsItsNameAndANullId() {
         withLogger(logger -> {
             IllegalStateException failure = new IllegalStateException("broken");
             ControlElement<Boolean> element = element(option(new AtomicBoolean(true)), TextComponent.literal("Go"), () -> {
                 throw failure;
             }, DIM);
             assertTrue(element.mouseClicked(new FakeInteractionContext(), 110, 30, 0));
-            verify(logger).error(eq("Action button for option {} failed"), isNull(), same(failure));
+            verify(logger).error(eq(FAILURE_LOG), eq("Name"), isNull(), same(failure));
         });
     }
 
@@ -548,7 +747,7 @@ class ActionButtonControlTest {
                 // Clears the flag so the rest of the suite runs uninterrupted
                 Thread.interrupted();
             }
-            verify(logger).error(eq("Action button for option {} failed"), any(), same(failure));
+            verify(logger).error(eq(FAILURE_LOG), any(), any(), same(failure));
         });
     }
 
@@ -567,6 +766,7 @@ class ActionButtonControlTest {
             // The sound had already played each time
             assertEquals(3, ctx.clicks);
             verifyNoInteractions(logger);
+            assertEquals(List.of(), toastTitles());
         });
     }
 
@@ -710,7 +910,65 @@ class ActionButtonControlTest {
             element.setFocused(true);
             assertTrue(element.keyTyped(ctx, '\0', 156));
             assertEquals(1, ctx.clicks);
-            verify(logger).error(eq("Action button for option {} failed"), eq(id), same(failure));
+            verify(logger).error(eq(FAILURE_LOG), eq("Name"), eq(id), same(failure));
+            assertEquals(List.of("Button failed: Name"), toastTitles());
+        });
+    }
+
+    @Test
+    void aFailingActionShowsAnErrorToastNamingTheOptionAsLastDrawn() {
+        withLogger(logger -> {
+            IllegalStateException failure = new IllegalStateException("broken");
+            Option<Boolean> option = option(new AtomicBoolean(true));
+            when(option.getName()).thenReturn(TextComponent.translatable("impetus.test.name"));
+            ControlElement<Boolean> element = element(option, TextComponent.literal("Go"), () -> {
+                throw failure;
+            }, DIM);
+            FakeInteractionContext ctx = new FakeInteractionContext();
+            // Before any frame there is no context to translate the name with, so its key stands in
+            assertTrue(element.mouseClicked(ctx, 110, 30, 0));
+            verify(logger).error(eq(FAILURE_LOG), eq("impetus.test.name"), isNull(), same(failure));
+            assertEquals(List.of("Button failed: impetus.test.name"), toastTitles());
+            clearToasts();
+
+            RecordingDraw draw = new RecordingDraw();
+            draw.translations.put("impetus.test.name", "Shader packs");
+            element.render(draw, 0, 0, 0f);
+            assertTrue(element.mouseClicked(ctx, 110, 30, 0));
+            verify(logger).error(eq(FAILURE_LOG), eq("Shader packs"), isNull(), same(failure));
+            List<ImpetusNotification> toasts = ImpetusNotifications.getVisible();
+            assertEquals(1, toasts.size());
+            assertEquals(ImpetusNotification.Level.ERROR, toasts.getFirst().level());
+            assertEquals("Button failed: Shader packs", toasts.getFirst().title());
+            assertEquals(List.of("java.lang.IllegalStateException: broken"), toasts.getFirst().lines());
+            // The same failure again refreshes that toast rather than stacking another
+            assertTrue(element.mouseClicked(ctx, 110, 30, 0));
+            assertEquals(1, ImpetusNotifications.getVisible().size());
+        });
+    }
+
+    @Test
+    void aToastShowsOnlyTheFirstLineOfTheFailureAndCopesWithoutAMessageOrName() {
+        withLogger(logger -> {
+            AtomicReference<Throwable> armed = new AtomicReference<>();
+            Option<Boolean> option = option(new AtomicBoolean(true));
+            ControlElement<Boolean> element = element(option, TextComponent.literal("Go"), () -> {
+                throw ActionButtonControlTest.<RuntimeException>sneak(armed.get());
+            }, DIM);
+            FakeInteractionContext ctx = new FakeInteractionContext();
+            armed.set(new IllegalStateException("first\nsecond\r\nthird"));
+            assertTrue(element.mouseClicked(ctx, 110, 30, 0));
+            assertEquals(List.of("java.lang.IllegalStateException: first"), ImpetusNotifications.getVisible().getLast().lines());
+            armed.set(new IllegalStateException());
+            assertTrue(element.mouseClicked(ctx, 110, 30, 0));
+            assertEquals(List.of("java.lang.IllegalStateException"), ImpetusNotifications.getVisible().getLast().lines());
+            // An option with no name, which a broken mod could hand over, still reports
+            when(option.getName()).thenReturn(null);
+            Throwable failure = new IllegalArgumentException("x");
+            armed.set(failure);
+            assertTrue(element.mouseClicked(ctx, 110, 30, 0));
+            verify(logger).error(eq(FAILURE_LOG), eq("null"), isNull(), same(failure));
+            assertEquals("Button failed: null", ImpetusNotifications.getVisible().getLast().title());
         });
     }
 
@@ -852,11 +1110,22 @@ class ActionButtonControlTest {
         Logger original = Statics.get(ActionButtonControl.class, "LOGGER");
         Logger mock = Mockito.mock(Logger.class);
         Statics.set(ActionButtonControl.class, "LOGGER", mock);
+        clearToasts();
         try {
             body.accept(mock);
         } finally {
             Statics.set(ActionButtonControl.class, "LOGGER", original);
+            clearToasts();
         }
+    }
+
+    // Titles of the error toasts this class raised, oldest first
+    private static List<String> toastTitles() {
+        return ImpetusNotifications.getVisible().stream().map(ImpetusNotification::title).filter(t -> t.startsWith("Button failed: ")).toList();
+    }
+
+    private static void clearToasts() {
+        Statics.<List<?>>get(ImpetusNotifications.class, "NOTIFICATIONS").clear();
     }
 
     @SuppressWarnings("unchecked")

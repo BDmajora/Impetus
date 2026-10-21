@@ -35,8 +35,12 @@ import java.util.stream.Collectors;
 // Implements the engine's abstract DrawContext on top of 1.12.2's GuiScreen/GlStateManager calls
 public class VintageDrawContext implements DrawContext {
     private final FontRenderer font = Minecraft.getMinecraft().fontRenderer;
-    // caches compiled ITextComponents since TextComponent objects are treated as immutable keys
-    private final Map<TextComponent, ITextComponent> componentCache;
+    // Most components kept before the cache starts over, so text that changes every frame cannot grow it without end
+    private static final int COMPONENT_CACHE_LIMIT = 1024;
+    // Finished vanilla text per component, since the same components are drawn every frame and TextComponent objects are treated as immutable keys
+    private final Map<TextComponent, Compiled> componentCache;
+    // Text version the cached text was made under
+    private long cacheVersion;
 
     // caches generated dynamic texture locations for mod logos, keyed by mod ID; a null value records "no logo" so the container and pack lookups do not repeat every frame
     private static final Map<String, String> MOD_LOGOS = new HashMap<>();
@@ -104,26 +108,42 @@ public class VintageDrawContext implements DrawContext {
         if (component instanceof TextComponent.Literal literal) {
             return new TextComponentString(literal.text());
         } else if (component instanceof TextComponent.Translatable translatable) {
+            // Each argument is converted afresh, since vanilla points a child's style at its parent and a shared child would take the last parent's style
             return new TextComponentTranslation(findKey(translatable.keys()), translatable.args().stream().map(a -> {
                 if (a instanceof TextComponent c) {
-                    return compile(c);
+                    return convertComponent(c);
                 } else {
                     return a;
                 }
             }).toArray());
         } else if (component instanceof TextComponent.Styled styled) {
-            var innerComponent = compile(styled.inner());
+            // Converted afresh for the same reason, so a plain and a greyed copy of the same text keep their own styles
+            var innerComponent = convertComponent(styled.inner());
             return applyStyles(innerComponent, styled.styles());
         } else {
             throw new IllegalArgumentException("Unexpected component class: " + component.getClass().getName());
         }
     }
 
-    // Converts and caches, since the same components are drawn every frame
-    private ITextComponent compile(TextComponent component) {
-        var compiled = this.componentCache.get(component);
+    // A component's vanilla text formatted with its style codes for drawing and plain for measuring
+    private record Compiled(String formatted, String plain) {
+    }
+
+    // Returns the component's finished text, made once and again only after the translations or fonts change
+    private Compiled compile(TextComponent component) {
+        long version = this.textVersion();
+        // Drops text made under other translations, along with the fallback key each translation picked
+        if (version != this.cacheVersion) {
+            this.componentCache.clear();
+            this.cacheVersion = version;
+        }
+        Compiled compiled = this.componentCache.get(component);
         if (compiled == null) {
-            compiled = this.convertComponent(component);
+            ITextComponent vanilla = this.convertComponent(component);
+            compiled = new Compiled(vanilla.getFormattedText(), vanilla.getUnformattedText());
+            if (this.componentCache.size() >= COMPONENT_CACHE_LIMIT) {
+                this.componentCache.clear();
+            }
             this.componentCache.put(component, compiled);
         }
         return compiled;
@@ -142,7 +162,7 @@ public class VintageDrawContext implements DrawContext {
         GlStateManager.tryBlendFuncSeparate(
                 GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA, GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ZERO
         );
-        int len = font.drawString(compile(str).getFormattedText(), x, y, color, shadow);
+        int len = font.drawString(compile(str).formatted(), x, y, color, shadow);
         GlStateManager.disableBlend();
         return len;
     }
@@ -247,7 +267,7 @@ public class VintageDrawContext implements DrawContext {
     // Font renderer width of the compiled component
     @Override
     public int getStringWidth(TextComponent component) {
-        return font.getStringWidth(compile(component).getUnformattedText());
+        return font.getStringWidth(compile(component).plain());
     }
 
     // Truncates to fit, for tooltips
@@ -259,13 +279,13 @@ public class VintageDrawContext implements DrawContext {
     // Word-wraps through the font renderer and converts each line back
     @Override
     public List<TextComponent> split(TextComponent component, int maxWidth) {
-        return font.listFormattedStringToWidth(compile(component).getFormattedText(), maxWidth).stream().map(TextComponent::literal).collect(Collectors.toList());
+        return font.listFormattedStringToWidth(compile(component).formatted(), maxWidth).stream().map(TextComponent::literal).collect(Collectors.toList());
     }
 
     // Plain text with formatting codes stripped
     @Override
     public String extractString(TextComponent component) {
-        return compile(component).getUnformattedText();
+        return compile(component).plain();
     }
 
     // Font renderer's line height

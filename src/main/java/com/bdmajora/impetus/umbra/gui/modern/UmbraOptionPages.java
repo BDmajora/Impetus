@@ -17,6 +17,7 @@ import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.umbra.Umbra;
 import com.bdmajora.impetus.umbra.shaderpack.ShaderPack;
 
+import java.lang.ref.WeakReference;
 import java.util.OptionalInt;
 
 // Builds Umbra's page in Impetus' video options
@@ -26,6 +27,8 @@ public final class UmbraOptionPages {
     // Every option reads and writes its subsystem directly, so the storage object holds no state and exists only because OptionImpl requires one; save() is deliberately unimplemented
     private static final UmbraMenuState STATE = new UmbraMenuState();
     private static final OptionStorage<UmbraMenuState> STORAGE = () -> STATE;
+    // Shadow distance label of the last pack it was made for, which starts empty so the first pack always makes one
+    private static ShadowDistanceLabel shadowDistance = new ShadowDistanceLabel(new WeakReference<>(null), "Default");
 
     private UmbraOptionPages() {
     }
@@ -106,8 +109,17 @@ public final class UmbraOptionPages {
             return "Default";
         }
 
-        OptionalInt distance = pack.getProperties().getShadowDistance();
-        return distance.isPresent() ? distance.getAsInt() + " blocks" : "Default";
+        // Made once per loaded pack, whose properties never change, so the row reads the same string every frame
+        ShadowDistanceLabel label = shadowDistance;
+        if (label.pack().get() != pack) {
+            OptionalInt distance = pack.getProperties().getShadowDistance();
+            label = shadowDistance = new ShadowDistanceLabel(new WeakReference<>(pack), distance.isPresent() ? distance.getAsInt() + " blocks" : "Default");
+        }
+        return label.text();
+    }
+
+    // A shadow distance label and the pack it was made for, held weakly so an unloaded pack is not kept alive by it
+    private record ShadowDistanceLabel(WeakReference<ShaderPack> pack, String text) {
     }
 
     private static class UmbraMenuState {

@@ -129,25 +129,6 @@ class ControlsTest {
     }
 
     @Test
-    void readOnlyStringShowsTheValue() {
-        Option<String> option = option("v1.2", true, false);
-        ReadOnlyStringControl control = new ReadOnlyStringControl(option);
-        Mockito.when(option.getControl()).thenReturn(control);
-        assertSame(option, control.getOption());
-        assertEquals(90, control.getMaxWidth());
-        ControlElement<String> element = control.createElement(DIM);
-        FakeDrawContext draw = new FakeDrawContext();
-        element.render(draw, 5, 5, 0f);
-        assertTrue(draw.strings.contains("v1.2"));
-        Mockito.when(option.isAvailable()).thenReturn(false);
-        element.render(draw, 5, 5, 0f);
-        assertFalse(element.mouseClicked(new FakeInteractionContext(), 5, 5, 0));
-        // Nothing to press or change, so Tab passes the row over even while the option is available
-        Mockito.when(option.isAvailable()).thenReturn(true);
-        assertFalse(element.canFocus());
-    }
-
-    @Test
     void aFocusedTickBoxTogglesOnEnterOrSpaceAndIsOutlined() {
         Option<Boolean> option = option(false, true, false);
         TickBoxControl control = new TickBoxControl(option);

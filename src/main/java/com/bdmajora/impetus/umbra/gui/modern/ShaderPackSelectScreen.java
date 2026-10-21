@@ -30,6 +30,8 @@ public class ShaderPackSelectScreen extends GuiScreen {
     private int page;
 
     private final List<AbstractWidget> widgets = new ArrayList<>();
+    // One context for the screen's lifetime, so its finished text survives between frames
+    private final DrawContext drawContext = new VintageDrawContext();
 
     public ShaderPackSelectScreen(GuiScreen parent) {
         this.parent = parent;
@@ -164,7 +166,7 @@ public class ShaderPackSelectScreen extends GuiScreen {
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         this.drawDefaultBackground();
-        DrawContext ctx = new VintageDrawContext();
+        DrawContext ctx = this.drawContext;
 
         this.drawCenteredString(this.fontRenderer, "Shader Packs", this.width / 2, 12, 0xFFFFFFFF);
         this.drawCenteredString(this.fontRenderer, "§7Select", this.width / 2, 24, 0xFFAAAAAA);

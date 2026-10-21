@@ -35,6 +35,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
+import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
@@ -47,6 +48,9 @@ import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyFloat;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -382,7 +386,16 @@ class UmbraScreensTest {
         Umbra.setShaderpackAndReload("Bare");
         assertEquals("Default", shadowDistance.getValue());
         Umbra.setShaderpackAndReload("Demo");
+        Object label = shadowDistance.getValue();
+        assertEquals("128 blocks", label);
+        // Made once per loaded pack, so every frame reads the same string and the row compares it by identity
+        assertSame(label, shadowDistance.getValue());
+        // Another pack and then the first again each get their own label
+        Umbra.setShaderpackAndReload("Bare");
+        assertEquals("Default", shadowDistance.getValue());
+        Umbra.setShaderpackAndReload("Demo");
         assertEquals("128 blocks", shadowDistance.getValue());
+        assertSame(shadowDistance.getValue(), shadowDistance.getValue());
         Runnable open = Mixins.get(page.getOptions().get(0).getControl(), "action");
         open.run();
         verify(client).displayGuiScreen(any(ShaderPackSelectScreen.class));
@@ -436,6 +449,31 @@ class UmbraScreensTest {
         screen.drawScreen(0, 0, 0.0F);
         Mixins.set(Umbra.class, "config", null);
         click(screen, "Open Shader Pack Folder...", 0);
+    }
+
+    // Every string the screen's widgets handed the font in one frame
+    private List<String> frameOf(GuiScreen screen) {
+        Mockito.clearInvocations(client.fontRenderer);
+        screen.drawScreen(0, 0, 0.0F);
+        ArgumentCaptor<String> drawn = ArgumentCaptor.forClass(String.class);
+        verify(client.fontRenderer, Mockito.atLeast(1)).drawString(drawn.capture(), anyFloat(), anyFloat(), anyInt(), anyBoolean());
+        return drawn.getAllValues();
+    }
+
+    @Test
+    void eachShaderScreenKeepsOneDrawContextSoItsTextIsMadeOnceRatherThanEveryFrame() {
+        Umbra.initialize(home);
+        Umbra.setShaderpackAndReload("Demo");
+        GuiScreen parent = mock(GuiScreen.class);
+        for (GuiScreen screen : List.of(new ShaderPackSelectScreen(parent), new ShaderPackConfigScreen(parent))) {
+            screen.setWorldAndResolution(client, 480, 300);
+            List<String> first = frameOf(screen);
+            List<String> second = frameOf(screen);
+            assertEquals(first, second);
+            for (int i = 0; i < first.size(); i++) {
+                assertSame(first.get(i), second.get(i), first.get(i));
+            }
+        }
     }
 
     @Test

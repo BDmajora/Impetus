@@ -54,6 +54,7 @@ import com.bdmajora.impetus.impl.platform.GameWindow;
 import com.cleanroommc.client.sdl.video.DisplayMode;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
+import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
@@ -464,6 +465,112 @@ class ImpetusGuiTest {
         draw.blitWholeImage("impetus:textures/gui/impetus.png", 0, 0, 16, 16);
         draw.blitWholeImage("impetus:textures/gui/impetus.png", 0, 0, 16, 16);
         verify(client.getTextureManager(), times(2)).bindTexture(new ResourceLocation("impetus:textures/gui/impetus.png"));
+    }
+
+    // Every string the context handed the font to draw since the font's calls were last cleared
+    private static List<String> drawnStrings(FontRenderer font) {
+        ArgumentCaptor<String> drawn = ArgumentCaptor.forClass(String.class);
+        verify(font, Mockito.atLeast(0)).drawString(drawn.capture(), anyFloat(), anyFloat(), anyInt(), anyBoolean());
+        return drawn.getAllValues();
+    }
+
+    @Test
+    void theDrawContextMakesEachComponentsTextOnceAndHandsTheFontTheSameStringEveryFrame() {
+        FontRenderer font = client.fontRenderer;
+        Mockito.clearInvocations(font);
+        VintageDrawContext draw = new VintageDrawContext();
+        TextComponent name = TextComponent.literal("Name").withStyle(TextFormattingStyle.WHITE);
+        for (int frame = 0; frame < 3; frame++) {
+            draw.drawString(name, 0, 0, 0xFFFFFFFF, false);
+            // An equal component made afresh each frame finds the same text
+            draw.drawString(TextComponent.literal("Name").withStyle(TextFormattingStyle.WHITE), 0, 0, 0xFFFFFFFF, false);
+        }
+        List<String> strings = drawnStrings(font);
+        assertEquals(6, strings.size());
+        assertEquals("\u00a7fName\u00a7r", strings.getFirst());
+        for (String string : strings) {
+            assertSame(strings.getFirst(), string);
+        }
+        // Measuring and extracting reuse the plain text the same way
+        assertSame(draw.extractString(name), draw.extractString(TextComponent.literal("Name").withStyle(TextFormattingStyle.WHITE)));
+        assertEquals(24, draw.getStringWidth(name));
+    }
+
+    @Test
+    void aTextDrawnGreyedKeepsItsGreyOutOfThePlainAndWhiteCopiesOfTheSameText() {
+        FontRenderer font = client.fontRenderer;
+        Mockito.clearInvocations(font);
+        VintageDrawContext draw = new VintageDrawContext();
+        TextComponent white = TextComponent.literal("Text").withStyle(TextFormattingStyle.WHITE);
+        TextComponent grey = TextComponent.literal("Text").withStyle(TextFormattingStyle.GRAY, TextFormattingStyle.STRIKETHROUGH);
+        // A row's value is drawn white, greyed while its option is unavailable, then white again, and a plain copy of it elsewhere
+        for (TextComponent text : List.of(white, grey, white, TextComponent.literal("Text"), grey)) {
+            draw.drawString(text, 0, 0, 0xFFFFFFFF, false);
+        }
+        assertEquals(List.of("\u00a7fText\u00a7r", "\u00a77\u00a7mText\u00a7r", "\u00a7fText\u00a7r", "Text\u00a7r", "\u00a77\u00a7mText\u00a7r"), drawnStrings(font));
+        // A translation's argument keeps its own style when the same text is also an argument of another
+        Map<String, String> server = Mixins.get(Statics.get(net.minecraft.util.text.translation.I18n.class, "localizedName"), "languageList");
+        String key = "impetus.test.argument";
+        server.put(key, "Value %s");
+        try {
+            Mockito.clearInvocations(font);
+            TextComponent argument = TextComponent.literal("arg");
+            TextComponent red = TextComponent.translatable(key, argument.withStyle(TextFormattingStyle.RED));
+            draw.drawString(red, 0, 0, 0xFFFFFFFF, false);
+            draw.drawString(TextComponent.translatable(key, argument), 0, 0, 0xFFFFFFFF, false);
+            draw.drawString(red, 0, 0, 0xFFFFFFFF, false);
+            List<String> strings = drawnStrings(font);
+            assertTrue(strings.get(0).contains("\u00a7carg"), strings::toString);
+            assertFalse(strings.get(1).contains("\u00a7c"), strings::toString);
+            assertEquals(strings.get(0), strings.get(2));
+        } finally {
+            server.remove(key);
+        }
+    }
+
+    @Test
+    void theDrawContextMakesItsTextAgainAfterTheTranslationsReloadAndNotBefore() {
+        Map<String, String> client = Mixins.get(Statics.get(net.minecraft.client.resources.I18n.class, "i18nLocale"), "properties");
+        Object translations = Statics.get(net.minecraft.util.text.translation.I18n.class, "localizedName");
+        Map<String, String> server = Mixins.get(translations, "languageList");
+        long stamp = Mixins.get(translations, "lastUpdateTimeInMilliseconds");
+        String key = "impetus.test.reload";
+        try {
+            for (Map<String, String> language : List.of(client, server)) {
+                language.put(key, "Plain");
+            }
+            VintageDrawContext draw = new VintageDrawContext();
+            TextComponent text = TextComponent.translatable(List.of(key + ".one", key));
+            assertEquals("Plain", draw.extractString(text));
+            for (Map<String, String> language : List.of(client, server)) {
+                language.put(key + ".one", "Singular");
+            }
+            // Until the translations reload the text made earlier stands
+            assertEquals("Plain", draw.extractString(text));
+            // A reload picks the fallback key again, which now finds the singular
+            Mixins.set(translations, "lastUpdateTimeInMilliseconds", stamp + 1000);
+            assertEquals("Singular", draw.extractString(text));
+            assertEquals(48, draw.getStringWidth(text));
+        } finally {
+            Mixins.set(translations, "lastUpdateTimeInMilliseconds", stamp);
+            for (Map<String, String> language : List.of(client, server)) {
+                language.remove(key);
+                language.remove(key + ".one");
+            }
+        }
+    }
+
+    @Test
+    void theDrawContextKeepsNoMoreThanItsLimitOfComponentsWhenTextChangesEveryFrame() {
+        VintageDrawContext draw = new VintageDrawContext();
+        int limit = Statics.<Integer>get(VintageDrawContext.class, "COMPONENT_CACHE_LIMIT");
+        Map<?, ?> cache = Mixins.get(draw, "componentCache");
+        for (int frame = 0; frame < limit * 3; frame++) {
+            assertEquals("value " + frame, draw.extractString(TextComponent.literal("value " + frame)));
+            assertTrue(cache.size() <= limit, () -> "cache holds " + cache.size());
+        }
+        // Text dropped when the cache started over is made again
+        assertEquals("value 0", draw.extractString(TextComponent.literal("value 0")));
     }
 
     @Test

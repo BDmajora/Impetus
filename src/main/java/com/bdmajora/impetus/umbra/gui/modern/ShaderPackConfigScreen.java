@@ -53,6 +53,8 @@ public class ShaderPackConfigScreen extends GuiScreen {
 
     private final List<AbstractWidget> widgets = new ArrayList<>();
     private final List<OptionButtonWidget> elements = new ArrayList<>();
+    // One context for the screen's lifetime, so its finished text survives between frames
+    private final DrawContext drawContext = new VintageDrawContext();
 
     public ShaderPackConfigScreen(GuiScreen parent) {
         this.parent = parent;
@@ -343,7 +345,7 @@ public class ShaderPackConfigScreen extends GuiScreen {
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         this.drawDefaultBackground();
-        DrawContext ctx = new VintageDrawContext();
+        DrawContext ctx = this.drawContext;
 
         ShaderPack pack = Umbra.getCurrentPack();
         String packName = pack != null ? Umbra.getSelectedPackName() : "Shader Options";

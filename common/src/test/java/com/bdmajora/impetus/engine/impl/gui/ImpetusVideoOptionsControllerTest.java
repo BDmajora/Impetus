@@ -352,6 +352,66 @@ class ImpetusVideoOptionsControllerTest {
         throw (E) failure;
     }
 
+    // A failure whose own text throws what it is given
+    private static final class Unprintable extends RuntimeException {
+        private final Throwable thrown;
+
+        Unprintable(Throwable thrown) {
+            this.thrown = thrown;
+        }
+
+        @Override
+        public String toString() {
+            throw ImpetusVideoOptionsControllerTest.<RuntimeException>sneak(this.thrown);
+        }
+    }
+
+    // The toast line raised when Apply saves to a storage that throws the given failure
+    private static String saveToastLine(Throwable failure) {
+        Storage failing = new Storage() {
+            @Override
+            public void save(Set<OptionFlag> flags) {
+                throw ImpetusVideoOptionsControllerTest.<RuntimeException>sneak(failure);
+            }
+        };
+        OptionImpl<Holder, Boolean> clouds = option(failing, "impetus", "Clouds", "about clouds");
+        FakeDrawContext draw = new FakeDrawContext();
+        ImpetusVideoOptionsController controller = new ImpetusVideoOptionsController(() -> { }, List.of(pageOf("impetus", "General", clouds)), draw);
+        controller.init(1000, 500);
+        clouds.setValue(true);
+        controller.render(draw, 0, 0, 0f);
+        assertTrue(clickCentre(button(controller, "impetus.options.buttons.apply"), new FakeInteractionContext()));
+        assertTrue(failing.data.flag);
+        return ImpetusNotifications.getVisible().stream().filter(t -> t.title().equals("Saving options failed")).toList().getLast().lines().getFirst();
+    }
+
+    @Test
+    void aSaveFailureIsShownByItsFirstLineCutToTheLimitOrByItsClassWhenItsTextThrows() {
+        withLogger(logger -> {
+            String prefix = "java.lang.IllegalStateException: ";
+            assertEquals(prefix + "first", saveToastLine(new IllegalStateException("first\nsecond")));
+            assertEquals(prefix + "first", saveToastLine(new IllegalStateException("first\r\nsecond")));
+            IllegalStateException huge = new IllegalStateException("x".repeat(100_000));
+            assertEquals((prefix + "x".repeat(256)).substring(0, 256), saveToastLine(huge));
+            // A surrogate pair across the limit is left out whole, and one ending at it stays
+            String across = "x".repeat(255 - prefix.length()) + "\uD83D\uDE00tail";
+            assertEquals(prefix + "x".repeat(255 - prefix.length()), saveToastLine(new IllegalStateException(across)));
+            String ending = "x".repeat(254 - prefix.length()) + "\uD83D\uDE00tail";
+            assertEquals(prefix + "x".repeat(254 - prefix.length()) + "\uD83D\uDE00", saveToastLine(new IllegalStateException(ending)));
+            // A failure whose own text throws is shown by its class
+            assertEquals(Unprintable.class.getName(), saveToastLine(new Unprintable(new IllegalStateException("text"))));
+            // The log keeps the whole failure
+            Mockito.verify(logger).error(eq("Saving options to {} failed"), any(String.class), same(huge));
+            // An interruption keeps its flag
+            try {
+                assertEquals("java.lang.InterruptedException: stop", saveToastLine(new InterruptedException("stop")));
+                assertTrue(Thread.currentThread().isInterrupted());
+            } finally {
+                Thread.interrupted();
+            }
+        });
+    }
+
     @Test
     void anOptionThatThrowsWhenAskedForChangesIsLeftOutOfEveryLaterFrame() {
         withLogger(logger -> {

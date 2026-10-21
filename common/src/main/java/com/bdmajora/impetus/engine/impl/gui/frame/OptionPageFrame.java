@@ -11,23 +11,22 @@ import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextFormattingStyle;
 import com.bdmajora.impetus.engine.impl.notification.ImpetusNotifications;
 import com.bdmajora.impetus.engine.impl.util.Dim2i;
+import com.bdmajora.impetus.engine.impl.util.FailureText;
+import com.bdmajora.impetus.engine.impl.util.collections.WeakIdentitySet;
 import com.bdmajora.impetus.api.options.OptionIdentifier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
-import java.util.WeakHashMap;
 import java.util.function.Predicate;
 
 public class OptionPageFrame extends AbstractFrame {
     private static final Logger LOGGER = LogManager.getLogger();
-    // Options whose tooltip threw, held weakly; their tooltip is not drawn again and the failure is reported once
-    private static final Set<Option<?>> BROKEN_TOOLTIPS = Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+    // Options whose tooltip threw, held weakly and by identity so their own equals and hashCode never run; their tooltip is not drawn again and the failure is reported once
+    private static final WeakIdentitySet<Option<?>> BROKEN_TOOLTIPS = new WeakIdentitySet<>();
     // Height of the page-title header band rendered above the option rows
     private static final int SECTION_HEADER_HEIGHT = 18;
     // Height of a group heading row, drawn above a named group's rows; unnamed groups keep only the padding
@@ -216,11 +215,21 @@ public class OptionPageFrame extends AbstractFrame {
             // Anything the tooltip left pushed is taken off before the next frame draws
             drawContext.unwindTo(matrices, scissors);
             if (BROKEN_TOOLTIPS.add(option)) {
-                String name = String.valueOf(option.getId());
+                String name = nameOf(option);
                 LOGGER.error("Tooltip of option {} failed and is no longer shown", name, broken);
-                // Shows only the first line of the failure message
-                ImpetusNotifications.error("Tooltip failed: " + name, String.valueOf(broken).lines().findFirst().orElse(""));
+                // The log keeps the whole failure, the toast only the first line of it and of the id
+                ImpetusNotifications.error("Tooltip failed: " + FailureText.firstLine(name), FailureText.of(broken));
             }
+        }
+    }
+
+    // The option's id as text, or its class name when its own code throws giving it
+    private static String nameOf(Option<?> option) {
+        try {
+            return String.valueOf(option.getId());
+        } catch (Throwable unreadable) {
+            FailureText.absorb(unreadable);
+            return option.getClass().getName();
         }
     }
 

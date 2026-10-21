@@ -5,107 +5,163 @@ import com.bdmajora.impetus.engine.impl.gui.framework.DrawContext;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.notification.ImpetusNotifications;
 import com.bdmajora.impetus.engine.impl.util.Dim2i;
+import com.bdmajora.impetus.engine.impl.util.FailureText;
+import com.bdmajora.impetus.engine.impl.util.collections.WeakIdentitySet;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.Collections;
-import java.util.Set;
-import java.util.WeakHashMap;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Objects;
 
-// Row standing in for an option whose control broke, with the name greyed out and an error label where the control would be
+// Row shown in place of an option whose control failed with the name greyed out and an error label in the control column
 final class PlaceholderControlElement<T> extends ControlElement<T> {
     private static final Logger LOGGER = LogManager.getLogger();
 
-    // Drawn in the control's column
+    // Error label drawn in the control column
     private static final TextComponent LABEL = TextComponent.translatable("impetus.options.control_failed");
-    // Minecraft's red
+    // Red colour of the error label
     private static final int LABEL_COLOR = 0xFFFF5555;
-    // Gap between the label and the row's right edge, as the built-in controls leave
+    // Gap between the label and the right edge of the row
     private static final int LABEL_RIGHT_INSET = 6;
-    // Options known to be broken, each reported once and shown as a placeholder from then on, held weakly so the options of a closed screen can be collected
-    private static final Set<Option<?>> BROKEN = Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+    // Half the glyph height used to centre the label vertically on the row
+    private static final int TEXT_RAISE = 4;
+    // Deepest name nesting copied before the description is used instead
+    private static final int MAX_NAME_DEPTH = 256;
+    // Options already reported as broken held weakly and compared by identity
+    private static final WeakIdentitySet<Option<?>> BROKEN = new WeakIdentitySet<>();
 
-    // The option's name, read once so drawing never calls into the broken option again
+    // Copy of the option name taken when the placeholder is created
     private final TextComponent name;
-    // Width of the label, measured with the column on the first frame
+    // Width of the label and the text generation it was measured in
     private int labelWidth;
+    private long labelGeneration;
+    // Label width measured for the column during the current frame and whether it was measured
+    private int columnLabelWidth;
+    private boolean columnMeasured;
 
-    // Shows the option's name, or the given description when the option cannot give one
+    // Creates a placeholder row showing the option name or the description when the name cannot be read
     PlaceholderControlElement(Option<T> option, Dim2i dim, String description) {
         super(option, dim);
+        Objects.requireNonNull(description, "Description must not be null");
         this.name = nameOf(option, description);
     }
 
-    // The option's own name, or the description when reading it fails or gives none
+    // Returns a copy of the option name or the description when reading or copying it fails
     private static TextComponent nameOf(Option<?> option, String description) {
         TextComponent name = null;
         try {
-            name = option.getName();
-        } catch (VirtualMachineError fatal) {
-            throw fatal;
+            name = snapshot(option.getName(), 0);
         } catch (Throwable unreadable) {
-            // Restores the interrupt flag after an interruption, and the description stands in below
-            if (unreadable instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
+            FailureText.absorb(unreadable);
         }
         return name != null ? name : TextComponent.literal(description);
     }
 
-    // Logs the failure and shows it as an error toast the first time an option fails, since every rebuild of the page fails it again
+    // Returns a copy built from literal and translated and styled parts or null for any other part or an empty key list or nesting past the limit
+    private static TextComponent snapshot(TextComponent component, int depth) {
+        if (depth > MAX_NAME_DEPTH) {
+            return null;
+        }
+        if (component instanceof TextComponent.Literal literal) {
+            return literal.text() != null ? literal : null;
+        }
+        if (component instanceof TextComponent.Styled styled) {
+            TextComponent inner = snapshot(styled.inner(), depth + 1);
+            return inner != null ? new TextComponent.Styled(inner, EnumSet.copyOf(styled.styles())) : null;
+        }
+        if (component instanceof TextComponent.Translatable translatable) {
+            List<String> keys = List.copyOf(translatable.keys());
+            if (keys.isEmpty()) {
+                return null;
+            }
+            Object[] args = translatable.args().toArray();
+            for (int i = 0; i < args.length; i++) {
+                // Converts each argument to text or to a copied component
+                Object arg = args[i] instanceof TextComponent part ? snapshot(part, depth + 1) : String.valueOf(args[i]);
+                if (arg == null) {
+                    return null;
+                }
+                args[i] = arg;
+            }
+            return new TextComponent.Translatable(keys, List.of(args));
+        }
+        return null;
+    }
+
+    // Logs the failure and shows an error toast the first time the option fails
     static void report(Option<?> option, String name, Throwable broken) {
-        if (!BROKEN.add(option)) {
-            return;
+        if (BROKEN.add(option)) {
+            LOGGER.error("Control of option {} failed, showing a placeholder row", name, broken);
+            toast(name, broken);
         }
-        LOGGER.error("Control of option {} failed, showing a placeholder row", name, broken);
-        // Shows only the first line of the failure message
-        ImpetusNotifications.error("Option failed: " + name, String.valueOf(broken).lines().findFirst().orElse(""));
     }
 
-    // Logs a failure in the option's own code away from its rows and shows it as a toast, the first time the option fails anywhere
+    // Logs a failure in the option's own code and shows an error toast the first time the option fails
     static void reportOption(Option<?> option, String name, String during, Throwable failure) {
-        if (!BROKEN.add(option)) {
-            return;
+        if (BROKEN.add(option)) {
+            LOGGER.error("Option {} failed while {}", name, during, failure);
+            toast(name, failure);
         }
-        LOGGER.error("Option {} failed while {}", name, during, failure);
-        // Shows only the first line of the failure message
-        ImpetusNotifications.error("Option failed: " + name, String.valueOf(failure).lines().findFirst().orElse(""));
     }
 
-    // Whether the option failed before, so a row made for it now is a placeholder without its control being asked again
+    // Returns true when the option has already been reported as broken
     static boolean isBroken(Option<?> option) {
         return BROKEN.contains(option);
     }
 
-    // Greyed out whatever the option says, which also keeps Tab from stopping here
+    // Shows an error toast with the option name and the first line of the failure
+    private static void toast(String name, Throwable failure) {
+        ImpetusNotifications.error("Option failed: " + FailureText.firstLine(String.valueOf(name)), FailureText.of(failure));
+    }
+
+    // Always reports the option as unavailable
     @Override
     protected boolean isOptionAvailable() {
         return false;
     }
 
-    // The name read when the placeholder was made
+    // Keeps the row from ever taking focus
+    @Override
+    public void setFocused(boolean focused) {
+        super.setFocused(false);
+    }
+
+    // Returns the copied option name
     @Override
     protected TextComponent getDisplayName() {
         return this.name;
     }
 
-    // Room for the label and its insets, held to the row, without asking the broken control
+    // Returns the label width plus both insets limited to the row width
     @Override
     protected int measureColumnWidth(DrawContext drawContext) {
-        this.labelWidth = drawContext.getStringWidth(LABEL);
-        return Math.clamp(this.labelWidth + 2L * LABEL_RIGHT_INSET, 0, Math.max(0, this.dim.width()));
+        int width = drawContext.getStringWidth(LABEL);
+        this.columnLabelWidth = width;
+        this.columnMeasured = true;
+        return Math.clamp(width + 2L * LABEL_RIGHT_INSET, 0, Math.max(0, this.dim.width()));
     }
 
-    // The greyed name, then the label right-aligned when the row can hold it
+    // Draws the greyed name and then the label aligned right when it clears the name
     @Override
     public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
+        // Clears the column measurement from any earlier frame
+        this.columnMeasured = false;
         super.render(drawContext, mouseX, mouseY, delta);
-        // Draws nothing more on a row with no area or no room for a line of text, as the base row did
+        // Stops after the base row on a row with no area or no room for a line of text
         if (!this.hasArea() || !this.hasRoomForText()) {
             return;
         }
-        if (FittedText.fits(this.labelWidth, this.dim.width() - LABEL_RIGHT_INSET)) {
-            drawContext.drawString(LABEL, this.dim.getLimitX() - this.labelWidth - LABEL_RIGHT_INSET, this.dim.getCenterY() - 4, LABEL_COLOR);
+        // Measures the label again when the text generation changes and reuses the column measurement from this frame
+        long generation = this.textGeneration();
+        if (generation != this.labelGeneration) {
+            this.labelWidth = this.columnMeasured ? this.columnLabelWidth : drawContext.getStringWidth(LABEL);
+            this.labelGeneration = generation;
+        }
+        // Computes the label position as a long and draws the label only when it clears the name
+        long labelX = (long) this.dim.getLimitX() - this.labelWidth - LABEL_RIGHT_INSET;
+        if (this.labelWidth >= 0 && labelX >= this.getNameLimitX()) {
+            drawContext.drawString(LABEL, (int) labelX, this.dim.getCenterY() - TEXT_RAISE, LABEL_COLOR);
         }
     }
 }

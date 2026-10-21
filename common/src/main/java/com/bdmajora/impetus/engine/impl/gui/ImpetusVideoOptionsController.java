@@ -18,6 +18,7 @@ import com.bdmajora.impetus.engine.impl.gui.widgets.FlatButtonWidget;
 import com.bdmajora.impetus.engine.impl.gui.widgets.SearchBarWidget;
 import com.bdmajora.impetus.engine.impl.notification.ImpetusNotifications;
 import com.bdmajora.impetus.engine.impl.util.Dim2i;
+import com.bdmajora.impetus.engine.impl.util.FailureText;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
@@ -230,12 +231,12 @@ public class ImpetusVideoOptionsController implements Renderable {
         this.rebuildPending = true;
     }
 
-    // Restores the interrupt flag after an interruption and returns the first line of the failure for a toast
+    // Restores the interrupt flag after an interruption and returns the first line of the failure for a toast, cut to its limit
     private static String noteFailure(Throwable failure) {
         if (failure instanceof InterruptedException) {
             Thread.currentThread().interrupt();
         }
-        return String.valueOf(failure).lines().findFirst().orElse("");
+        return FailureText.of(failure);
     }
 
     // Hides pages with no visible options

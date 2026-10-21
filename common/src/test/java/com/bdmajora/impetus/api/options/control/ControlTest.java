@@ -2,7 +2,9 @@ package com.bdmajora.impetus.api.options.control;
 
 import com.bdmajora.impetus.api.options.OptionIdentifier;
 import com.bdmajora.impetus.api.options.structure.Option;
+import com.bdmajora.impetus.api.options.structure.OptionFlag;
 import com.bdmajora.impetus.api.options.structure.OptionGroup;
+import com.bdmajora.impetus.api.options.structure.OptionImpact;
 import com.bdmajora.impetus.api.options.structure.OptionImpl;
 import com.bdmajora.impetus.api.options.structure.OptionPage;
 import com.bdmajora.impetus.api.options.structure.OptionStorage;
@@ -17,6 +19,7 @@ import com.bdmajora.impetus.engine.impl.gui.framework.TextFormattingStyle;
 import com.bdmajora.impetus.engine.impl.notification.ImpetusNotification;
 import com.bdmajora.impetus.engine.impl.notification.ImpetusNotifications;
 import com.bdmajora.impetus.engine.impl.gui.widgets.AbstractWidget;
+import com.bdmajora.impetus.engine.impl.gui.theme.DefaultColors;
 import com.bdmajora.impetus.engine.impl.util.Dim2i;
 import com.bdmajora.testing.FakeDrawContext;
 import com.bdmajora.testing.FakeInteractionContext;
@@ -24,6 +27,7 @@ import com.bdmajora.testing.Statics;
 import org.apache.logging.log4j.Logger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
+import org.junit.jupiter.api.function.ThrowingConsumer;
 import org.mockito.Mockito;
 
 import java.io.IOException;
@@ -35,6 +39,7 @@ import java.lang.reflect.TypeVariable;
 import java.lang.reflect.WildcardType;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -1446,14 +1451,15 @@ class ControlTest {
             assertTrue(row.isMouseOver(100, 25));
             assertFalse(row.mouseClicked(context, 100, 25, 0));
             row.setFocused(true);
+            assertFalse(row.isFocused());
             assertFalse(row.keyTyped(context, '\r', Keys.RETURN));
             assertFalse(row.keyTyped(context, ' ', Keys.SPACE));
             assertFalse(row.mouseDragged(context, 100, 25, 0, 1, 0));
             assertEquals(0, context.clicks);
-            // Hovered and focused it still draws, with the focus outline
+            // Hovered it still draws, with no focus outline since it refused the focus
             FakeDrawContext draw = new FakeDrawContext();
             row.render(draw, 100, 25, 0f);
-            assertTrue(draw.calls.size() > 4, draw.calls::toString);
+            assertEquals(List.of("fill(10,20,210,38," + Integer.toHexString(DefaultColors.BACKGROUND_HOVERED) + ")", "text(" + PLACEHOLDER_KEY + ",24,25,ffff5555,false)"), draw.calls);
         });
     }
 
@@ -1954,6 +1960,12 @@ class ControlTest {
             assertInstanceOf(PlaceholderControlElement.class, placeholder);
             IllegalStateException fonts = new IllegalStateException("fonts");
             FakeDrawContext failing = new FakeDrawContext() {
+                // The page's own short label, so it still clears the name and is drawn
+                @Override
+                public String extractString(TextComponent component) {
+                    return component.equals(TextComponent.translatable(PLACEHOLDER_KEY)) ? "Error" : super.extractString(component);
+                }
+
                 @Override
                 public int drawString(TextComponent str, int x, int y, int color, boolean shadow) {
                     if (str.equals(TextComponent.translatable(PLACEHOLDER_KEY))) {
@@ -2131,6 +2143,280 @@ class ControlTest {
             Statics.set(OptionPageFrame.class, "LOGGER", original);
             clearToasts();
         }
+    }
+
+    private static final String TOOLTIP_LOG = "Tooltip of option {} failed and is no longer shown";
+
+    // A real option rather than a mock, so its own equals and hashCode run, bound to a probe as OptionImpl binds its control
+    private static class Real implements Option<Boolean> {
+        private final String name;
+        private final Probe<Boolean> control = new Probe<>(this, 30);
+        // Thrown by the tooltip once set
+        Throwable tooltipFailure;
+        int tooltipReads;
+
+        Real(String name) {
+            this.name = name;
+        }
+
+        @Override
+        public OptionIdentifier<Boolean> getId() {
+            return OptionIdentifier.create(MOD, "real_" + this.name, Boolean.class);
+        }
+
+        @Override
+        public TextComponent getName() {
+            return TextComponent.literal(this.name);
+        }
+
+        @Override
+        public TextComponent getTooltip() {
+            this.tooltipReads++;
+            if (this.tooltipFailure != null) {
+                throw ControlTest.<RuntimeException>sneak(this.tooltipFailure);
+            }
+            return TextComponent.literal("tip of " + this.name);
+        }
+
+        @Override
+        public OptionImpact getImpact() {
+            return null;
+        }
+
+        @Override
+        public Control<Boolean> getControl() {
+            return this.control;
+        }
+
+        @Override
+        public Boolean getValue() {
+            return false;
+        }
+
+        @Override
+        public void setValue(Boolean value) {
+        }
+
+        @Override
+        public void reset() {
+        }
+
+        @Override
+        public OptionStorage<?> getStorage() {
+            return null;
+        }
+
+        @Override
+        public boolean isAvailable() {
+            return true;
+        }
+
+        @Override
+        public boolean hasChanged() {
+            return false;
+        }
+
+        @Override
+        public void applyChanges() {
+        }
+
+        @Override
+        public Collection<OptionFlag> getFlags() {
+            return List.of();
+        }
+    }
+
+    // Equal to every other one, as an option comparing by its settings would be
+    private static final class Twin extends Real {
+        Twin(String name) {
+            super(name);
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            return other instanceof Twin;
+        }
+
+        @Override
+        public int hashCode() {
+            return 1;
+        }
+    }
+
+    // An option whose own equality is broken
+    private static final class Hostile extends Real {
+        Hostile(String name) {
+            super(name);
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            throw new IllegalStateException("equals");
+        }
+
+        @Override
+        public int hashCode() {
+            throw new IllegalStateException("hashCode");
+        }
+    }
+
+    // A failure whose own text throws what it is given
+    private static final class Unprintable extends RuntimeException {
+        private final Throwable thrown;
+
+        Unprintable(Throwable thrown) {
+            this.thrown = thrown;
+        }
+
+        @Override
+        public String toString() {
+            throw ControlTest.<RuntimeException>sneak(this.thrown);
+        }
+    }
+
+    // Swaps the page frame's static final logger for a mock while the body runs, with no toasts either side
+    private static void withFrameLogger(ThrowingConsumer<Logger> body) throws Throwable {
+        // Reading it first runs the class initialiser, which would otherwise overwrite the swap
+        Logger original = Statics.get(OptionPageFrame.class, "LOGGER");
+        Logger mock = Mockito.mock(Logger.class);
+        Statics.set(OptionPageFrame.class, "LOGGER", mock);
+        clearToasts();
+        try {
+            body.accept(mock);
+        } finally {
+            Statics.set(OptionPageFrame.class, "LOGGER", original);
+            clearToasts();
+        }
+    }
+
+    // A page of the one mock option, bound to a probe, whose tooltip throws the given failure; its row sits at y 18
+    private static OptionPageFrame tooltipPage(Option<Boolean> option, Throwable failure) {
+        bound(option, 30);
+        when(option.getId()).thenReturn(OptionIdentifier.create(MOD, "tipped", Boolean.class));
+        when(option.getTooltip()).thenThrow(failure);
+        return new OptionPageFrame(new Dim2i(0, 0, 200, 300), false, page(option), o -> true);
+    }
+
+    // The tooltip toasts, oldest first
+    private static List<ImpetusNotification> tooltipToasts() {
+        return ImpetusNotifications.getVisible().stream().filter(t -> t.title().startsWith("Tooltip failed: ")).toList();
+    }
+
+    // The toast line raised when a fresh option's tooltip throws the given failure
+    private static String tooltipToastLine(Throwable failure) throws ReflectiveOperationException {
+        hoverPastTheDelay(tooltipPage(option("Lined"), failure), new FakeDrawContext(), 100, 27);
+        return tooltipToasts().getLast().lines().getFirst();
+    }
+
+    @Test
+    void aTooltipOfAnOptionWhoseOwnEqualityThrowsIsDrawnThenLeftOffOnceItFails() throws Throwable {
+        withFrameLogger(logger -> {
+            Hostile option = new Hostile("hostile");
+            OptionPageFrame frame = new OptionPageFrame(new Dim2i(0, 0, 200, 300), false, page(option), o -> true);
+            FakeDrawContext draw = new FakeDrawContext();
+            hoverPastTheDelay(frame, draw, 100, 27);
+            assertTrue(draw.strings.contains("tip of hostile"), draw.strings::toString);
+            IllegalStateException failure = new IllegalStateException("no tooltip");
+            option.tooltipFailure = failure;
+            hoverPastTheDelay(frame, draw, 100, 27);
+            hoverPastTheDelay(frame, draw, 100, 27);
+            // Asked once when drawn and once when it failed, then never again
+            assertEquals(2, option.tooltipReads);
+            verify(logger, times(1)).error(eq(TOOLTIP_LOG), eq(MOD + ":real_hostile"), same(failure));
+            assertEquals(1, tooltipToasts().size());
+            assertFalse(rows(frame).getFirst() instanceof PlaceholderControlElement<?>);
+        });
+    }
+
+    @Test
+    void aTooltipFailureMarksThatOptionAndNotOneEqualToIt() throws Throwable {
+        withFrameLogger(logger -> {
+            Twin first = new Twin("first");
+            Twin second = new Twin("second");
+            assertEquals(first, second);
+            IllegalStateException failure = new IllegalStateException("first");
+            first.tooltipFailure = failure;
+            OptionPageFrame frame = new OptionPageFrame(new Dim2i(0, 0, 200, 300), false, page(first, second), o -> true);
+            FakeDrawContext draw = new FakeDrawContext();
+            hoverPastTheDelay(frame, draw, 100, 27);
+            verify(logger).error(eq(TOOLTIP_LOG), eq(MOD + ":real_first"), same(failure));
+            // The equal option's tooltip is still drawn, and its own failure is its own report
+            hoverPastTheDelay(frame, draw, 100, 45);
+            assertTrue(draw.strings.contains("tip of second"), draw.strings::toString);
+            IllegalStateException own = new IllegalStateException("second");
+            second.tooltipFailure = own;
+            hoverPastTheDelay(frame, draw, 100, 45);
+            verify(logger).error(eq(TOOLTIP_LOG), eq(MOD + ":real_second"), same(own));
+            assertEquals(2, tooltipToasts().size());
+        });
+    }
+
+    @Test
+    void aTooltipFailureOfAnOptionWhoseIdThrowsIsReportedUnderItsClassName() throws Throwable {
+        withFrameLogger(logger -> {
+            // Each id throws only once the page is made, so the rows are working ones
+            Option<Boolean> option = option("Idless");
+            IllegalStateException failure = new IllegalStateException("no tooltip");
+            OptionPageFrame frame = tooltipPage(option, failure);
+            when(option.getId()).thenThrow(new IllegalStateException("no id"));
+            hoverPastTheDelay(frame, new FakeDrawContext(), 100, 27);
+            String name = option.getClass().getName();
+            verify(logger).error(eq(TOOLTIP_LOG), eq(name), same(failure));
+            assertEquals("Tooltip failed: " + name, tooltipToasts().getLast().title());
+            assertEquals(List.of("java.lang.IllegalStateException: no tooltip"), tooltipToasts().getLast().lines());
+            assertFalse(rows(frame).getFirst() instanceof PlaceholderControlElement<?>);
+            // An interruption keeps its flag
+            Option<Boolean> interrupted = option("Interrupted");
+            IllegalStateException stopped = new IllegalStateException("stopped");
+            OptionPageFrame second = tooltipPage(interrupted, stopped);
+            when(interrupted.getId()).thenAnswer(invocation -> {
+                throw ControlTest.<RuntimeException>sneak(new InterruptedException("id"));
+            });
+            try {
+                hoverPastTheDelay(second, new FakeDrawContext(), 100, 27);
+                assertTrue(Thread.currentThread().isInterrupted());
+            } finally {
+                Thread.interrupted();
+            }
+            verify(logger).error(eq(TOOLTIP_LOG), eq(interrupted.getClass().getName()), same(stopped));
+            // A virtual machine error is not held, and the option was marked before its id was asked, so it is left off afterwards
+            Option<Boolean> overflowing = option("Overflowing");
+            OptionPageFrame third = tooltipPage(overflowing, new IllegalStateException("overflowing"));
+            StackOverflowError overflow = new StackOverflowError();
+            when(overflowing.getId()).thenThrow(overflow);
+            assertSame(overflow, assertThrows(StackOverflowError.class, () -> hoverPastTheDelay(third, new FakeDrawContext(), 100, 27)));
+            hoverPastTheDelay(third, new FakeDrawContext(), 100, 27);
+            verify(overflowing, times(1)).getTooltip();
+            assertEquals(2, tooltipToasts().size());
+        });
+    }
+
+    @Test
+    void aTooltipFailureIsShownByItsFirstLineCutToTheLimitOrByItsClassWhenItsTextThrows() throws Throwable {
+        withFrameLogger(logger -> {
+            String prefix = "java.lang.IllegalStateException: ";
+            assertEquals(prefix + "first", tooltipToastLine(new IllegalStateException("first\nsecond")));
+            assertEquals(prefix + "first", tooltipToastLine(new IllegalStateException("first\r\nsecond")));
+            IllegalStateException huge = new IllegalStateException("x".repeat(100_000));
+            assertEquals((prefix + "x".repeat(256)).substring(0, 256), tooltipToastLine(huge));
+            // A surrogate pair across the limit is left out whole, and one ending at it stays
+            String across = "x".repeat(255 - prefix.length()) + "😀tail";
+            assertEquals(prefix + "x".repeat(255 - prefix.length()), tooltipToastLine(new IllegalStateException(across)));
+            String ending = "x".repeat(254 - prefix.length()) + "😀tail";
+            assertEquals(prefix + "x".repeat(254 - prefix.length()) + "😀", tooltipToastLine(new IllegalStateException(ending)));
+            // A failure whose own text throws is shown by its class
+            assertEquals(Unprintable.class.getName(), tooltipToastLine(new Unprintable(new IllegalStateException("text"))));
+            // The id in the title is cut to the limit too
+            Option<Boolean> lengthy = option("Long");
+            OptionPageFrame frame = tooltipPage(lengthy, new IllegalStateException("long"));
+            OptionIdentifier<Boolean> id = OptionIdentifier.create(MOD, "p".repeat(1000), Boolean.class);
+            when(lengthy.getId()).thenReturn(id);
+            hoverPastTheDelay(frame, new FakeDrawContext(), 100, 27);
+            assertEquals("Tooltip failed: " + id.toString().substring(0, 256), tooltipToasts().getLast().title());
+            // The log keeps the whole failure and the whole id
+            verify(logger).error(eq(TOOLTIP_LOG), eq(MOD + ":tipped"), same(huge));
+            verify(logger).error(eq(TOOLTIP_LOG), eq(id.toString()), any(Throwable.class));
+        });
     }
 
     @Test

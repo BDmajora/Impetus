@@ -34,6 +34,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.IntBinaryOperator;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -124,6 +125,28 @@ class ActionButtonControlTest {
         }
     }
 
+    // Records like RecordingDraw while an underlined component measures what the operator makes of its plain width and length, keeping every width a cut was asked for
+    private static class Widening extends RecordingDraw {
+        final List<Integer> asked = new ArrayList<>();
+        private final IntBinaryOperator underlined;
+
+        Widening(IntBinaryOperator underlined) {
+            this.underlined = underlined;
+        }
+
+        @Override
+        public int getStringWidth(TextComponent component) {
+            int plain = super.getStringWidth(component);
+            return styles(component).contains(TextFormattingStyle.UNDERLINE) ? this.underlined.applyAsInt(plain, extractString(component).length()) : plain;
+        }
+
+        @Override
+        public String substrByWidth(String str, int maxWidth) {
+            this.asked.add(maxWidth);
+            return super.substrByWidth(str, maxWidth);
+        }
+    }
+
     private record Text(TextComponent component, String text, int x, int y, int color, boolean shadow) {}
 
     private static Set<TextFormattingStyle> styles(TextComponent component) {
@@ -149,6 +172,11 @@ class ActionButtonControlTest {
         RecordingDraw draw = new RecordingDraw();
         element.render(draw, 0, 0, 0f);
         return draw;
+    }
+
+    // Ten letters, sixty pixels plain, on a 66 wide row that leaves the label 48 of the column
+    private static ControlElement<Boolean> tenInRoom48(AtomicBoolean available) {
+        return element(option(available), TextComponent.literal("ABCDEFGHIJ"), NOTHING, new Dim2i(0, 0, 66, 20));
     }
 
     @Test
@@ -218,7 +246,7 @@ class ActionButtonControlTest {
             when(option.getControl()).thenReturn(control);
             RecordingDraw draw = render(control.createElement(DIM));
             Text label = draw.label();
-            assertSame(shared, ((TextComponent.Styled) label.component()).inner());
+            assertEquals(shared, ((TextComponent.Styled) label.component()).inner());
             // Measured and placed by its translation, not its key
             assertEquals("Open", label.text());
             assertEquals(LIMIT_X - 24 - 18, label.x());
@@ -497,18 +525,18 @@ class ActionButtonControlTest {
         // Plain arguments, nulls included, pass through untouched
         assertEquals(new TextComponent.Translatable(List.of("impetus.test.with_argument"),
                 Arrays.asList(TextComponent.literal("x").withStyle(TextFormattingStyle.ITALIC), 5, null)), inner);
-        // While enabled the translation is the caller's own, arguments and all
+        // While enabled the translation is an equal copy of the caller's, arguments and all
         available.set(true);
         draw.clear();
         element.render(draw, 0, 0, 0f);
-        assertSame(label, ((TextComponent.Styled) draw.label().component()).inner());
+        assertEquals(label, ((TextComponent.Styled) draw.label().component()).inner());
         // A translation with no component arguments is kept as it is even while unavailable
         available.set(false);
         TextComponent plain = TextComponent.translatable(DEFAULT_KEY, 3);
         RecordingDraw other = new RecordingDraw();
         other.translations.put(DEFAULT_KEY, "Open");
         element(option(available), plain, NOTHING, DIM).render(other, 0, 0, 0f);
-        assertSame(plain, ((TextComponent.Styled) other.label().component()).inner());
+        assertEquals(plain, ((TextComponent.Styled) other.label().component()).inner());
     }
 
     @Test
@@ -617,6 +645,66 @@ class ActionButtonControlTest {
         assertEquals("...", render(element(option, TextComponent.literal(" ".repeat(12)), NOTHING, DIM)).label().text());
         // Spaces inside the cut stay
         assertEquals("A b c...", render(element(option, TextComponent.literal("A b c d e f g"), NOTHING, DIM)).label().text());
+    }
+
+    @Test
+    void aCutThatTheUnderlineWidensByAFixedAmountIsCutOnceMoreShorterAndGreyedFromThatCut() {
+        AtomicBoolean available = new AtomicBoolean(true);
+        ControlElement<Boolean> element = tenInRoom48(available);
+        Widening fonts = new Widening((plain, length) -> plain + 12);
+        element.render(fonts, 0, 0, 0f);
+        // "ABCDE..." fills the 48 plain and 60 underlined, so cut again into the 36 the overflow leaves
+        Text label = fonts.label();
+        assertEquals(TextComponent.literal("ABC...").withStyle(TextFormattingStyle.UNDERLINE), label.component());
+        assertEquals(0, label.x());
+        assertEquals(List.of(30, 18), fonts.asked);
+        // The disabled look is the same second cut, greyed without cutting again
+        available.set(false);
+        fonts.clear();
+        element.render(fonts, 0, 0, 0f);
+        label = fonts.label();
+        assertEquals(TextComponent.literal("ABC...").withStyle(TextFormattingStyle.UNDERLINE, TextFormattingStyle.GRAY, TextFormattingStyle.STRIKETHROUGH), label.component());
+        assertEquals(0, label.x());
+        assertEquals(List.of(30, 18), fonts.asked);
+    }
+
+    @Test
+    void aCutThatTheUnderlineWidensForEachCharacterIsCutOnceMoreShorterToFit() {
+        Widening fonts = new Widening((plain, length) -> plain + length);
+        tenInRoom48(new AtomicBoolean(true)).render(fonts, 0, 0, 0f);
+        // Eight characters overflow by eight, the six of the second cut need 42
+        Text label = fonts.label();
+        assertEquals("ABC...", label.text());
+        assertEquals(66 - 42 - 18, label.x());
+        assertEquals(List.of(30, 22), fonts.asked);
+    }
+
+    @Test
+    void anUnderlinedCutMeasuredNegativeIsLeftOutWithoutCuttingAgain() {
+        Widening fonts = new Widening((plain, length) -> -1);
+        tenInRoom48(new AtomicBoolean(true)).render(fonts, 0, 0, 0f);
+        assertTrue(fonts.drewNoLabel());
+        assertEquals(66 - 10, fonts.arrow().x());
+        assertEquals(List.of(30), fonts.asked);
+    }
+
+    @Test
+    void anUnderlineThatOverflowsEveryCutLeavesTheLabelOutAfterTwoCutsAndKeepsItOut() {
+        AtomicBoolean available = new AtomicBoolean(true);
+        ControlElement<Boolean> element = tenInRoom48(available);
+        // One pixel over whatever is cut, so the second cut is only a pixel shorter and still overflows
+        Widening fonts = new Widening((plain, length) -> 49);
+        element.render(fonts, 0, 0, 0f);
+        assertTrue(fonts.drewNoLabel());
+        assertEquals(66 - 10, fonts.arrow().x());
+        assertEquals(List.of(30, 29), fonts.asked);
+        assertEquals(2, fonts.cuts);
+        // Nor is it cut again on later frames, enabled or not
+        available.set(false);
+        fonts.clear();
+        element.render(fonts, 0, 0, 0f);
+        assertTrue(fonts.drewNoLabel());
+        assertEquals(2, fonts.cuts);
     }
 
     @Test

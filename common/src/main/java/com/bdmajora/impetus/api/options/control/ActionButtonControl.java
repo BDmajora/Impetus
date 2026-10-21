@@ -1,3 +1,4 @@
+```java
 package com.bdmajora.impetus.api.options.control;
 
 import com.bdmajora.impetus.api.options.structure.Option;
@@ -32,8 +33,6 @@ public class ActionButtonControl implements Control<Boolean> {
     private static final int TEXT_RAISE = 4;
     // Text drawn to the right of the label
     private static final TextComponent ARROW = TextComponent.literal(">");
-    // Text appended to a shortened label
-    private static final String ELLIPSIS = "...";
 
     private final Option<Boolean> option;
     private final TextComponent actionLabel;
@@ -138,20 +137,13 @@ public class ActionButtonControl implements Control<Boolean> {
                 enabled = null;
                 disabled = null;
                 width = 0;
-                String source = drawContext.extractString(this.actionLabel);
-                // Cuts the text by whole characters to fit with the ellipsis
-                String text = FittedText.cut(drawContext, source != null ? source : "", ELLIPSIS, maxWidth);
-                if (!text.isEmpty()) {
-                    // Applies the label's own styles to the cut text
-                    TextComponent cut = FittedText.restyled(this.actionLabel, TextComponent.literal(text));
-                    TextComponent cutEnabled = cut.withStyle(TextFormattingStyle.UNDERLINE);
-                    int cutWidth = drawContext.getStringWidth(cutEnabled);
-                    // Keeps the styled cut only when it still fits
-                    if (FittedText.fits(cutWidth, maxWidth)) {
-                        enabled = cutEnabled;
-                        disabled = this.disabled(cut);
-                        width = cutWidth;
-                    }
+                // Cuts the text by whole characters to fit underlined with the ellipsis and shortens it again when the underline widens it past the width
+                FittedText.Cut cut = FittedText.cutToFit(drawContext, drawContext.extractString(this.actionLabel), this.enabledLabel, maxWidth);
+                if (cut != null) {
+                    enabled = cut.styled();
+                    // Greys out the same cut text in the label's own styles
+                    disabled = this.disabled(FittedText.restyled(this.actionLabel, TextComponent.literal(cut.text())));
+                    width = cut.width();
                 }
             }
             // Stores the fitted label and the generation it was fitted for
@@ -228,3 +220,4 @@ public class ActionButtonControl implements Control<Boolean> {
         return label;
     }
 }
+```

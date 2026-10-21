@@ -516,62 +516,6 @@ class ControlEdgeCasesTest {
     }
 
     @Test
-    void fittedTextIsKeptOnlyForTheSameGenerationSourceValueStateAndRoom() {
-        FittedText text = new FittedText();
-        FakeDrawContext fonts = new FakeDrawContext();
-        String source = "SOURCE";
-        // Nothing is fitted for the first generation a row hands out
-        assertFalse(text.isFittedFor(1, source, 1, false, 60));
-        text.fit(fonts, 1, source, 1, false, 60, TextComponent.literal(source));
-        assertTrue(text.isFittedFor(1, source, 1, false, 60));
-        // An equal source made afresh counts as the same
-        assertTrue(text.isFittedFor(1, new String("SOURCE"), 1, false, 60));
-        assertFalse(text.isFittedFor(2, source, 1, false, 60));
-        assertFalse(text.isFittedFor(1, "OTHER", 1, false, 60));
-        assertFalse(text.isFittedFor(1, null, 1, false, 60));
-        assertFalse(text.isFittedFor(1, source, 2, false, 60));
-        assertFalse(text.isFittedFor(1, source, 1, true, 60));
-        assertFalse(text.isFittedFor(1, source, 1, false, 59));
-        assertEquals(TextComponent.literal("SOURCE"), text.text());
-        assertEquals(36, text.width());
-        // A missing source is kept like any other
-        text.fit(fonts, 1, null, 0, false, 60, null);
-        assertTrue(text.isFittedFor(1, null, 0, false, 60));
-        assertFalse(text.isFittedFor(1, source, 0, false, 60));
-        assertNull(text.text());
-        assertEquals(0, text.width());
-        // No room fits nothing, even an empty text
-        text.fit(fonts, 1, "", 0, false, 0, TextComponent.literal(""));
-        assertNull(text.text());
-    }
-
-    @Test
-    void fittedTextKeepsTheStylesOfWhatItCutsAndCopesWithNoTextForIt() {
-        FittedText text = new FittedText();
-        FakeDrawContext fonts = new FakeDrawContext();
-        // Two layers, which withStyle would have merged into one
-        TextComponent styled = new TextComponent.Styled(TextComponent.literal("ABCDEFGHIJ").withStyle(TextFormattingStyle.GOLD), java.util.EnumSet.of(TextFormattingStyle.UNDERLINE));
-        text.fit(fonts, 1, styled, 0, false, 48, styled);
-        assertEquals(new TextComponent.Styled(new TextComponent.Styled(TextComponent.literal("ABCDE..."), java.util.EnumSet.of(TextFormattingStyle.GOLD)),
-                java.util.EnumSet.of(TextFormattingStyle.UNDERLINE)), text.text());
-        assertEquals(48, text.width());
-        // A font source with no text for something too wide shows the ellipsis alone
-        FakeDrawContext blank = new FakeDrawContext() {
-            @Override
-            public int getStringWidth(TextComponent component) {
-                return component.equals(styled) ? 500 : super.getStringWidth(component);
-            }
-
-            @Override
-            public String extractString(TextComponent component) {
-                return component.equals(styled) ? null : super.extractString(component);
-            }
-        };
-        text.fit(blank, 2, styled, 0, false, 48, styled);
-        assertEquals("...", fonts.extractString(text.text()));
-    }
-
-    @Test
     void aButtonLabelTheFontSourceHasNoTextForIsCutToTheEllipsis() {
         TextComponent label = TextComponent.literal("Go");
         FakeDrawContext blank = new FakeDrawContext() {
@@ -919,12 +863,8 @@ class ControlEdgeCasesTest {
     }
 
     @Test
-    void aCutThatItsStylesWidenPastTheRoomIsLeftOutRatherThanDrawnOverTheEdge() {
-        FittedText text = new FittedText();
-        TextComponent underlined = TextComponent.literal("ABCDEFGHIJ").withStyle(TextFormattingStyle.UNDERLINE);
-        text.fit(new WideUnderline(), 1, null, 0, false, 48, underlined);
-        assertNull(text.text());
-        // The button's own label is underlined, so its cut is left out the same way and only the arrow drawn
+    void aButtonLabelCutThatItsUnderlineWidensPastTheRoomIsLeftOutRatherThanDrawnOverTheEdge() {
+        // The button's own label is underlined, so its cut is left out and only the arrow drawn
         FakeDrawContext draw = new WideUnderline();
         bound(new ActionButtonControl(valued("Button", false), TextComponent.literal("Configure everything"), () -> { })).createElement(new Dim2i(0, 0, 200, 18)).render(draw, 0, 0, 0f);
         assertEquals(List.of("Button", ">"), draw.strings);

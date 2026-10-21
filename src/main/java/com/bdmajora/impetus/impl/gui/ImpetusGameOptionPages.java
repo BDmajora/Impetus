@@ -116,7 +116,8 @@ public class ImpetusGameOptionPages {
                         .setName(TextComponent.translatable("options.framerateLimit"))
                         .setTooltip(TextComponent.translatable("impetus.options.fps_limit.tooltip"))
                         .setControl(option -> new SliderControl(option, 10, 260, 10, ControlValueFormatter.fpsLimit()))
-                        .setBinding((opts, value) -> opts.limitFramerate = value, opts -> opts.limitFramerate)
+                        // Every limit the game does not apply reads as 260, so the thumb sits at the unlimited end and the arrows step down from it; untouched, the stored value is never rewritten
+                        .setBinding((opts, value) -> opts.limitFramerate = value, opts -> opts.limitFramerate <= 0 || opts.limitFramerate > 260 ? 260 : opts.limitFramerate)
                         .build())
                 .build());
 

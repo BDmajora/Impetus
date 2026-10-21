@@ -21,6 +21,9 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 
 public class CommonOptionPages {
+    // The keep distance in chunks, singular at one
+    private static final ControlValueFormatter KEEP_DISTANCE = ControlValueFormatter.translateQuantity("impetus.options.mesh_terrain.keep_distance.value");
+
     // Translucency sorting options
     public static OptionGroup sortingGroup(ImpetusGameOptions gameOpts) {
         return OptionGroup.createBuilder()
@@ -75,7 +78,7 @@ public class CommonOptionPages {
                         .setId(StandardOptions.Option.CHUNK_UPDATE_THREADS.cast())
                         .setName(TextComponent.translatable("impetus.options.chunk_update_threads.name"))
                         .setTooltip(TextComponent.translatable("impetus.options.chunk_update_threads.tooltip"))
-                        .setControl(o -> new SliderControl(o, 0, ChunkBuilder.getMaxThreadCount(), 1, ControlValueFormatter.quantityOrDisabled("Threads", "Default")))
+                        .setControl(o -> new SliderControl(o, 0, ChunkBuilder.getMaxThreadCount(), 1, ControlValueFormatter.translateQuantityOrDisabled("impetus.options.chunk_update_threads.value", "impetus.options.chunk_update_threads.default")))
                         .setImpact(OptionImpact.HIGH)
                         .setBinding((opts, value) -> opts.performance.chunkBuilderThreads = value, opts -> opts.performance.chunkBuilderThreads)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
@@ -264,7 +267,7 @@ public class CommonOptionPages {
                         .setId(StandardOptions.Option.CPU_FRAMES_AHEAD.cast())
                         .setName(TextComponent.translatable("impetus.options.cpu_render_ahead_limit.name"))
                         .setTooltip(TextComponent.translatable("impetus.options.cpu_render_ahead_limit.tooltip"))
-                        .setControl(opt -> new SliderControl(opt, 0, 9, 1, ControlValueFormatter.translateVariable("impetus.options.cpu_render_ahead_limit.value")))
+                        .setControl(opt -> new SliderControl(opt, 0, 9, 1, ControlValueFormatter.translateQuantity("impetus.options.cpu_render_ahead_limit.value")))
                         .setBinding((opts, value) -> opts.advanced.cpuRenderAheadLimit = value, opts -> opts.advanced.cpuRenderAheadLimit)
                         .build())
                 .add(OptionImpl.createBuilder(boolean.class, gameOpts)
@@ -379,6 +382,6 @@ public class CommonOptionPages {
         if (value >= MeshTerrainConfig.MAX_KEEP_DISTANCE) {
             return TextComponent.translatable("impetus.options.mesh_terrain.keep_distance.unlimited");
         }
-        return TextComponent.translatable("impetus.options.mesh_terrain.keep_distance.value", value);
+        return KEEP_DISTANCE.format(value);
     }
 }

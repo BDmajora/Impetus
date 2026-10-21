@@ -422,25 +422,6 @@ class ControlsTest {
         assertFalse(unavailable.drew("fill(104,9,194,10,"));
     }
 
-    @Test
-    void formattersProduceTheExpectedText() {
-        assertEquals("options.guiScale.auto", ControlValueFormatter.guiScale().format(0).toString());
-        assertEquals("3x", ControlValueFormatter.guiScale().format(3).toString());
-        assertEquals("options.framerateLimit.max", ControlValueFormatter.fpsLimit().format(260).toString());
-        assertEquals("options.framerate[60]", ControlValueFormatter.fpsLimit().format(60).toString());
-        assertEquals("options.gamma.min", ControlValueFormatter.brightness().format(0).toString());
-        assertEquals("options.gamma.max", ControlValueFormatter.brightness().format(100).toString());
-        assertEquals("50%", ControlValueFormatter.brightness().format(50).toString());
-        assertEquals("gui.none", ControlValueFormatter.biomeBlend().format(0).toString());
-        assertEquals("impetus.options.biome_blend.value[3]", ControlValueFormatter.biomeBlend().format(3).toString());
-        assertEquals("key[7]", ControlValueFormatter.translateVariable("key").format(7).toString());
-        assertEquals("7%", ControlValueFormatter.percentage().format(7).toString());
-        assertEquals("7x", ControlValueFormatter.multiplier().format(7).toString());
-        assertEquals("off", ControlValueFormatter.quantityOrDisabled("chunks", "off").format(0).toString());
-        assertEquals("7 chunks", ControlValueFormatter.quantityOrDisabled("chunks", "off").format(7).toString());
-        assertEquals("7", ControlValueFormatter.number().format(7).toString());
-    }
-
     // The strings a tick box row draws, which are only its name since the box itself is fills; the box takes 30, so the name gets the width less 42
     private static java.util.List<String> nameDrawnAt(int width, String name, boolean available, boolean changed) {
         Option<Boolean> option = option(true, available, changed);

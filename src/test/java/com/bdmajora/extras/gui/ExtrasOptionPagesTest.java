@@ -4,7 +4,10 @@ import com.bdmajora.extras.Extras;
 import com.bdmajora.extras.ExtrasConfig;
 import com.bdmajora.extras.client.particle.ParticleClassRegistry;
 import com.bdmajora.extras.mixin.particle.ParticleManagerAccessor;
+import com.bdmajora.impetus.api.options.control.ControlValueFormatter;
+import com.bdmajora.impetus.api.options.structure.Option;
 import com.bdmajora.impetus.api.options.structure.OptionPage;
+import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
 import com.bdmajora.testing.OptionPages;
@@ -88,5 +91,34 @@ class ExtrasOptionPagesTest {
         Mixins.<java.util.Map<?, ?>>get(ParticleClassRegistry.getInstance(), "discoveredClasses").clear();
         List<OptionPage> pages = ExtrasOptionPages.pages();
         assertTrue(pages.get(2).getGroups().isEmpty());
+    }
+
+    // The formatter of the slider whose id ends with the path
+    private static ControlValueFormatter formatterOf(List<OptionPage> pages, String path) {
+        for (OptionPage page : pages) {
+            for (Option<?> option : page.getOptions()) {
+                if (option.getId().toString().endsWith("/" + path)) {
+                    return Mixins.get(option.getControl(), "mode");
+                }
+            }
+        }
+        throw new AssertionError("no slider " + path);
+    }
+
+    @Test
+    void distanceSlidersShowTranslatedCountsSingularAtOneAndTheirOwnZeroLabel() {
+        Mixins.<java.util.Map<?, ?>>get(ParticleClassRegistry.getInstance(), "discoveredClasses").clear();
+        List<OptionPage> pages = ExtrasOptionPages.pages();
+        String fog = "impetus.options.extras.render.fog_distance.";
+        ControlValueFormatter fogDistance = formatterOf(pages, "render.fog_distance");
+        assertEquals(TextComponent.translatable(fog + "default"), fogDistance.format(0));
+        assertEquals(TextComponent.translatable(List.of(fog + "value.one", fog + "value"), 1), fogDistance.format(1));
+        assertEquals(TextComponent.translatable(fog + "value", 12), fogDistance.format(12));
+        String lod = "impetus.options.extras.render.item_frame_lod.";
+        ControlValueFormatter frameLod = formatterOf(pages, "render.item_frame_lod");
+        assertEquals(TextComponent.translatable(lod + "off"), frameLod.format(0));
+        // The slider steps by eight, but a config file can still hold a single block
+        assertEquals(TextComponent.translatable(List.of(lod + "value.one", lod + "value"), 1), frameLod.format(1));
+        assertEquals(TextComponent.translatable(lod + "value", 64), frameLod.format(64));
     }
 }

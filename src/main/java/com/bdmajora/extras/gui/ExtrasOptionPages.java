@@ -212,7 +212,7 @@ public final class ExtrasOptionPages {
                         (config, value) -> config.render.fogStart = value,
                         config -> config.render.fogStart, null, null, enabled))
                 .add(OPTIONS.slider("render.fog_distance", 0, 32, 1,
-                        ControlValueFormatter.quantityOrDisabled("chunks", "Default"),
+                        ControlValueFormatter.translateQuantityOrDisabled(LANG + "render.fog_distance.value", LANG + "render.fog_distance.default"),
                         (config, value) -> config.render.fogDistance = value,
                         config -> config.render.fogDistance, OptionImpact.MEDIUM, null, enabled))
                 .add(OPTIONS.cycling("render.fog_shape", ExtrasConfig.FogShape.class, ExtrasConfig.FogShape.values(),
@@ -263,7 +263,7 @@ public final class ExtrasOptionPages {
                 .setName(groupName("entities"))
                 .add(itemFrames)
                 .add(OPTIONS.slider("render.item_frame_lod", 0, 256, 8,
-                        ControlValueFormatter.quantityOrDisabled("blocks", "Off"),
+                        ControlValueFormatter.translateQuantityOrDisabled(LANG + "render.item_frame_lod.value", LANG + "render.item_frame_lod.off"),
                         (config, value) -> config.render.itemFrameLodDistance = value,
                         config -> config.render.itemFrameLodDistance, OptionImpact.LOW, null, itemFramesOn))
                 .add(OPTIONS.toggle("render.item_frame_name_tag", (config, value) -> config.render.itemFrameNameTag = value,

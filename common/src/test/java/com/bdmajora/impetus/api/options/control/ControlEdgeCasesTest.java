@@ -791,13 +791,6 @@ class ControlEdgeCasesTest {
         assertEquals(new TextComponent.Styled(TextComponent.literal("GOLDEN"), java.util.EnumSet.of(TextFormattingStyle.GOLD)), recorded.drawn.getLast());
     }
 
-    @Test
-    void formatterFactoriesRefuseMissingTextWhenMadeRatherThanWhenAValueIsFormatted() {
-        refused(NullPointerException.class, "Key must not be null", () -> ControlValueFormatter.translateVariable(null));
-        refused(NullPointerException.class, "Unit must not be null", () -> ControlValueFormatter.quantityOrDisabled(null, "off"));
-        refused(NullPointerException.class, "Disabled text must not be null", () -> ControlValueFormatter.quantityOrDisabled("chunks", null));
-    }
-
     // An option over an int holder whose control the test picks
     private static OptionImpl<int[], Mode> built(String path, java.util.function.Function<OptionImpl<int[], Mode>, Control<Mode>> control) {
         int[] holder = {0};

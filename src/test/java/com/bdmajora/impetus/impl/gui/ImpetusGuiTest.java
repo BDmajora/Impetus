@@ -249,6 +249,45 @@ class ImpetusGuiTest {
     }
 
     @Test
+    void theFrameRateSliderReadsEveryLimitTheGameDoesNotApplyAsUnlimited() {
+        OptionPage general = ImpetusGameOptionPages.general(CommonOptionPages.graphicsApi(ImpetusGameOptionPages.getSodiumOpts().getData()));
+        @SuppressWarnings("unchecked")
+        Option<Integer> fps = (Option<Integer>) general.getOptions().stream()
+                .filter(option -> option.getId().toString().equals(com.bdmajora.impetus.api.options.structure.StandardOptions.Option.MAX_FRAMERATE.toString()))
+                .findFirst().orElseThrow();
+        GameSettings vanilla = ImpetusGameOptionPages.getVanillaOpts().getData();
+        int saved = vanilla.limitFramerate;
+        try {
+            // Vanilla limits only below 260 and sync skips zero or less, so all of these sit at the unlimited end
+            for (int unlimited : new int[]{0, -1, 261, 300, Integer.MAX_VALUE, Integer.MIN_VALUE}) {
+                vanilla.limitFramerate = unlimited;
+                assertEquals(260, fps.getValue());
+                assertFalse(fps.hasChanged());
+                // Untouched, the stored value is left as it was
+                fps.applyChanges();
+                assertEquals(unlimited, vanilla.limitFramerate);
+                // Moving to the unlimited end is no change either
+                fps.setValue(260);
+                assertFalse(fps.hasChanged());
+                fps.reset();
+            }
+            for (int limited : new int[]{1, 10, 120, 259, 260}) {
+                vanilla.limitFramerate = limited;
+                assertEquals(limited, fps.getValue());
+            }
+            // A limit picked from unlimited is written as picked
+            vanilla.limitFramerate = 0;
+            fps.setValue(120);
+            assertTrue(fps.hasChanged());
+            fps.applyChanges();
+            assertEquals(120, vanilla.limitFramerate);
+        } finally {
+            fps.reset();
+            vanilla.limitFramerate = saved;
+        }
+    }
+
+    @Test
     void fullscreenResolutionsAreTheMonitorsDistinctModes() throws Exception {
         display.when(GameWindow::fullscreenModes).thenReturn(modes());
         // Current, then the two distinct fullscreen sizes, largest first; SDL exposes only fullscreen modes
@@ -425,6 +464,38 @@ class ImpetusGuiTest {
         draw.blitWholeImage("impetus:textures/gui/impetus.png", 0, 0, 16, 16);
         draw.blitWholeImage("impetus:textures/gui/impetus.png", 0, 0, 16, 16);
         verify(client.getTextureManager(), times(2)).bindTexture(new ResourceLocation("impetus:textures/gui/impetus.png"));
+    }
+
+    @Test
+    void aCountAtOneTakesItsSingularOnlyWhenTheLanguageHasOne() {
+        // The client's locale picks the key and the translation map fills it in, which the game keeps in step on every reload
+        Map<String, String> client = Mixins.get(Statics.get(net.minecraft.client.resources.I18n.class, "i18nLocale"), "properties");
+        Map<String, String> server = Mixins.get(Statics.get(net.minecraft.util.text.translation.I18n.class, "localizedName"), "languageList");
+        String key = "impetus.test.count";
+        try {
+            for (Map<String, String> language : List.of(client, server)) {
+                language.put(key, "%s blocks");
+                language.put(key + ".one", "%s block");
+                language.put(key + ".off", "Off");
+            }
+            ControlValueFormatter count = ControlValueFormatter.translateQuantity(key);
+            VintageDrawContext draw = new VintageDrawContext();
+            assertEquals("1 block", draw.extractString(count.format(1)));
+            assertEquals("-1 block", draw.extractString(count.format(-1)));
+            assertEquals("0 blocks", draw.extractString(count.format(0)));
+            assertEquals("2 blocks", draw.extractString(count.format(2)));
+            assertEquals("Off", draw.extractString(ControlValueFormatter.translateQuantityOrDisabled(key, key + ".off").format(0)));
+            // A language with only the plain form uses it at one as well, rather than showing the singular key
+            client.remove(key + ".one");
+            server.remove(key + ".one");
+            assertEquals("1 blocks", new VintageDrawContext().extractString(count.format(1)));
+        } finally {
+            for (Map<String, String> language : List.of(client, server)) {
+                language.remove(key);
+                language.remove(key + ".one");
+                language.remove(key + ".off");
+            }
+        }
     }
 
     @Test

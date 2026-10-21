@@ -42,14 +42,20 @@ public class MinecraftMixin {
 
         if (GameWindow.isMinimized()) {
             // Minimized window: both AFK and MINIMIZED modes clamp hard.
-            return Math.min(limit, 10);
+            return impetus$capped(limit, 10);
         }
 
         if (mode == ImpetusGameOptions.InactivityFpsLimit.AFK && !GameWindow.isFocused()) {
             // Unfocused window in AFK mode.
-            return Math.min(limit, 30);
+            return impetus$capped(limit, 30);
         }
 
         return limit;
+    }
+
+    // The lower of the limit and the cap, a limit of zero or less counting as none since sync skips it
+    @Unique
+    private static int impetus$capped(int limit, int cap) {
+        return limit > 0 ? Math.min(limit, cap) : cap;
     }
 }

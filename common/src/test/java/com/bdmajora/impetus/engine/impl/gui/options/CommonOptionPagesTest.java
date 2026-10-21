@@ -1,5 +1,7 @@
 package com.bdmajora.impetus.engine.impl.gui.options;
 
+import com.bdmajora.impetus.api.options.OptionIdentifier;
+import com.bdmajora.impetus.api.options.control.Control;
 import com.bdmajora.impetus.api.options.structure.Option;
 import com.bdmajora.impetus.api.options.structure.OptionFlag;
 import com.bdmajora.impetus.api.options.structure.OptionGroup;
@@ -9,10 +11,15 @@ import com.bdmajora.impetus.api.options.structure.StandardOptions;
 import com.bdmajora.impetus.engine.impl.common.util.NativeBuffer;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions;
 import com.bdmajora.impetus.engine.impl.render.chunk.region.RenderRegionManager;
+import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.render.mesh.MeshShaderSupport;
+import com.bdmajora.impetus.engine.impl.util.Dim2i;
+import com.bdmajora.testing.FakeDrawContext;
 import com.bdmajora.testing.Statics;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -109,7 +116,39 @@ class CommonOptionPagesTest {
     @Test
     void keepDistanceReadsAsRenderDistanceChunksOrUnlimited() {
         assertEquals("impetus.options.mesh_terrain.keep_distance.render_distance", CommonOptionPages.formatKeepDistance(0).toString());
-        assertTrue(CommonOptionPages.formatKeepDistance(64).toString().contains("keep_distance.value"));
+        assertEquals(TextComponent.translatable("impetus.options.mesh_terrain.keep_distance.value", 64), CommonOptionPages.formatKeepDistance(64));
         assertEquals("impetus.options.mesh_terrain.keep_distance.unlimited", CommonOptionPages.formatKeepDistance(256).toString());
+        // A config holding one chunk reads in the singular
+        assertEquals(TextComponent.translatable(List.of("impetus.options.mesh_terrain.keep_distance.value.one", "impetus.options.mesh_terrain.keep_distance.value"), 1),
+                CommonOptionPages.formatKeepDistance(1));
+        assertEquals(TextComponent.translatable("impetus.options.mesh_terrain.keep_distance.value", 2), CommonOptionPages.formatKeepDistance(2));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Option<Integer> option(OptionPage page, OptionIdentifier<?> id) {
+        return (Option<Integer>) page.getOptions().stream().filter(o -> o.getId().toString().equals(id.toString())).findFirst().orElseThrow();
+    }
+
+    // The value text an idle slider row shows with its option pending at the value, the fake font naming the first key with the arguments
+    private static String shown(Option<Integer> option, int value) {
+        option.setValue(value);
+        FakeDrawContext draw = new FakeDrawContext();
+        Control.createElementFor(option, new Dim2i(0, 0, 1000, 20)).render(draw, 5000, 5000, 0f);
+        option.reset();
+        return draw.strings.getLast();
+    }
+
+    @Test
+    void threadAndFrameCountsAreTranslatedAndSingularAtOne() {
+        OptionPage performance = CommonOptionPages.performance(new ImpetusGameOptions());
+        Option<Integer> threads = option(performance, StandardOptions.Option.CHUNK_UPDATE_THREADS);
+        assertEquals("impetus.options.chunk_update_threads.default", shown(threads, 0));
+        assertEquals("impetus.options.chunk_update_threads.value.one[1]", shown(threads, 1));
+        assertEquals("impetus.options.chunk_update_threads.value[2]", shown(threads, 2));
+        Option<Integer> ahead = option(performance, StandardOptions.Option.CPU_FRAMES_AHEAD);
+        // No frames ahead is a real setting rather than an off switch, so zero stays a count
+        assertEquals("impetus.options.cpu_render_ahead_limit.value[0]", shown(ahead, 0));
+        assertEquals("impetus.options.cpu_render_ahead_limit.value.one[1]", shown(ahead, 1));
+        assertEquals("impetus.options.cpu_render_ahead_limit.value[9]", shown(ahead, 9));
     }
 }

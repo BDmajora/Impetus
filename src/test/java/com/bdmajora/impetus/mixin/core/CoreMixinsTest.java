@@ -205,13 +205,23 @@ class CoreMixinsTest {
             ImpetusRuntimeOptions.inactivityFpsLimit = ImpetusGameOptions.InactivityFpsLimit.NO_LIMIT;
             window.when(GameWindow::isMinimized).thenReturn(true);
             assertEquals(144, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 144));
+            assertEquals(0, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 0));
             ImpetusRuntimeOptions.inactivityFpsLimit = ImpetusGameOptions.InactivityFpsLimit.AFK;
             assertEquals(10, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 144));
             assertEquals(5, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 5));
+            assertEquals(1, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 1));
+            // Sync skips a limit of zero or less, so the game runs unlimited there and the cap still applies
+            assertEquals(10, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 0));
+            assertEquals(10, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", -1));
+            assertEquals(10, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", Integer.MIN_VALUE));
             window.when(GameWindow::isMinimized).thenReturn(false);
             assertEquals(30, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 144));
+            assertEquals(30, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 0));
+            assertEquals(30, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", -7));
+            assertEquals(20, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 20));
             window.when(GameWindow::isFocused).thenReturn(true);
             assertEquals(144, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 144));
+            assertEquals(0, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 0));
             ImpetusRuntimeOptions.inactivityFpsLimit = ImpetusGameOptions.InactivityFpsLimit.MINIMIZED;
             window.when(GameWindow::isFocused).thenReturn(false);
             assertEquals(144, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 144));

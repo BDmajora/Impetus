@@ -12,7 +12,7 @@ public interface ControlValueFormatter {
         return (v) -> (v == 0) ? TextComponent.translatable("options.guiScale.auto") : TextComponent.literal(v + "x");
     }
 
-    // Shows the unlimited label for every limit the game does not apply, as vanilla limits only below 260 and loads options.txt unclamped and both LWJGL2's and lwjgly's sync skip zero or less, and the frame rate otherwise
+    // Shows the unlimited label for zero or less and for 260 or more and the frame rate otherwise
     static ControlValueFormatter fpsLimit() {
         return (v) -> (v >= 260 || v <= 0) ? TextComponent.translatable("options.framerateLimit.max") : TextComponent.translatable("options.framerate", v);
     }
@@ -44,10 +44,10 @@ public interface ControlValueFormatter {
         return (v) -> TextComponent.translatable(key, v);
     }
 
-    // Shows the translation for the key with the value as its argument, or the key's ".one" form at one and minus one, where English drops the plural, when that form is translated
+    // Shows the translation for the key with the value as its argument and the singular form of the key at one and minus one when it is translated
     static ControlValueFormatter translateQuantity(String key) {
         Objects.requireNonNull(key, "Key must not be null");
-        // Built once here; the draw context shows the first key in a list that has a translation, so a language without the ".one" form falls back to the plain one
+        // Key lists for singular and plural values with the plain key as the fallback
         List<String> one = List.of(key + ".one", key);
         List<String> other = List.of(key);
         return (v) -> TextComponent.translatable(v == 1 || v == -1 ? one : other, v);
@@ -57,7 +57,7 @@ public interface ControlValueFormatter {
     static ControlValueFormatter translateQuantityOrDisabled(String key, String disabledKey) {
         ControlValueFormatter quantity = translateQuantity(key);
         Objects.requireNonNull(disabledKey, "Disabled key must not be null");
-        // Built once here, so every zero shares one immutable label
+        // Shared label shown for every zero
         TextComponent disabled = TextComponent.translatable(disabledKey);
         return (v) -> v == 0 ? disabled : quantity.format(v);
     }
@@ -72,11 +72,11 @@ public interface ControlValueFormatter {
         return (v) -> TextComponent.literal(v + "x");
     }
 
-    // Shows the disabled text at zero and the value with its unit otherwise, as literal text that neither translates nor pluralises, so units that are words belong in translateQuantityOrDisabled
+    // Shows the disabled text at zero and the value with its unit otherwise as untranslated literal text
     static ControlValueFormatter quantityOrDisabled(String name, String disableText) {
         Objects.requireNonNull(name, "Unit must not be null");
         Objects.requireNonNull(disableText, "Disabled text must not be null");
-        // Built once here, a blank unit giving the value alone so no trailing space shifts the right-aligned text, and every zero sharing one immutable label
+        // Omits the space before a blank unit and shares one label for every zero
         String suffix = name.isBlank() ? "" : " " + name;
         TextComponent disabled = TextComponent.literal(disableText);
         return (v) -> v == 0 ? disabled : TextComponent.literal(v + suffix);

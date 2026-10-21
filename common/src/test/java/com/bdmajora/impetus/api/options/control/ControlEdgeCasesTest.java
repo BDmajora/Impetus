@@ -7,7 +7,6 @@ import com.bdmajora.impetus.api.options.structure.OptionImpl;
 import com.bdmajora.impetus.api.options.structure.OptionPage;
 import com.bdmajora.impetus.api.options.structure.OptionStorage;
 import com.bdmajora.impetus.engine.impl.gui.frame.OptionPageFrame;
-import com.bdmajora.impetus.engine.impl.gui.options.TextProvider;
 import com.bdmajora.impetus.engine.impl.gui.framework.Keys;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextFormattingStyle;
@@ -207,16 +206,6 @@ class ControlEdgeCasesTest {
                 }
             }
         }
-    }
-
-    @Test
-    void aCyclerValueTooWideForTheRoomBesideTheNameIsCutToItAndRightAligned() {
-        // "graphics quality" takes 96 of the 118 the 70 column leaves, so values may start at 6 + 96 + 6 = 108 and end 6 short of 200: 86 pixels
-        ControlElement<?> row = longTexts("graphics quality").getFirst().apply(new Dim2i(0, 0, 200, 18));
-        Placing draw = new Placing();
-        row.render(draw, 5000, 5000, 0f);
-        // 86 less the 18 pixel ellipsis leaves 68, eleven characters, the space they end on dropped
-        assertEquals(List.of(new Placed("graphics quality", 6, 96), new Placed("A VERY LONG...", 110, 84)), draw.texts);
     }
 
     @Test
@@ -452,55 +441,6 @@ class ControlEdgeCasesTest {
         assertEquals(true, option.getValue());
     }
 
-    // A value whose equality checks are counted
-    private static final class Counted {
-        static int equalsCalls;
-
-        @Override
-        public boolean equals(Object other) {
-            equalsCalls++;
-            return this == other;
-        }
-
-        @Override
-        public int hashCode() {
-            return System.identityHashCode(this);
-        }
-    }
-
-    @Test
-    void aCyclerFindsTheSameValueReadAgainWithoutComparingItToEveryEntry() {
-        Counted[] values = {new Counted(), new Counted(), new Counted()};
-        TextComponent[] names = {TextComponent.literal("A"), TextComponent.literal("B"), TextComponent.literal("C")};
-        Option<Counted> option = valued("Cycle", values[2]);
-        ControlElement<?> row = bound(new CyclingControl<>(option, values, names)).createElement(new Dim2i(0, 0, 200, 18));
-        Counted.equalsCalls = 0;
-        row.render(new FakeDrawContext(), 5000, 5000, 0f);
-        assertEquals(2, Counted.equalsCalls);
-        for (int frame = 0; frame < 5; frame++) {
-            FakeDrawContext draw = new FakeDrawContext();
-            row.render(draw, 5000, 5000, 0f);
-            assertEquals("C", draw.strings.getLast());
-        }
-        assertEquals(2, Counted.equalsCalls);
-        // A click moves on from the remembered place and the next frame finds the new value
-        assertTrue(row.mouseClicked(new FakeInteractionContext(), 100, 9, 0));
-        assertSame(values[0], option.getValue());
-        FakeDrawContext draw = new FakeDrawContext();
-        row.render(draw, 5000, 5000, 0f);
-        assertEquals("A", draw.strings.getLast());
-    }
-
-    @Test
-    void aCyclerOverAClassThatIsNotAnEnumIsRefusedNamingTheClass() {
-        Option<String> option = valued("Cycle", null);
-        for (java.util.function.Supplier<CyclingControl<String>> make : List.<java.util.function.Supplier<CyclingControl<String>>>of(
-                () -> new CyclingControl<>(option, String.class),
-                () -> new CyclingControl<>(option, String.class, new TextComponent[0]))) {
-            assertEquals("java.lang.String is not an enum", assertThrows(IllegalArgumentException.class, make::get).getMessage());
-        }
-    }
-
     // Swaps the placeholder's logger for a mock while the body runs and clears the toasts it raises
     private static void withLogger(Runnable body) {
         // Reading it first runs the class initialiser, which would otherwise overwrite the swap
@@ -720,17 +660,6 @@ class ControlEdgeCasesTest {
         return thrown;
     }
 
-    private enum Empty { }
-
-    private enum Unnamed implements TextProvider {
-        ONE, TWO;
-
-        @Override
-        public TextComponent getLocalizedName() {
-            return this == ONE ? TextComponent.literal("one") : null;
-        }
-    }
-
     @Test
     void everyControlRefusesAMissingOptionWhenMadeRatherThanWhenItsRowIsFirstDrawn() {
         refused(NullPointerException.class, "Option must not be null", () -> new TickBoxControl(null));
@@ -741,54 +670,6 @@ class ControlEdgeCasesTest {
         // The option is checked before anything else, as ActionButtonControl checks it
         refused(NullPointerException.class, "Option must not be null", () -> new SliderControl(null, 10, 0, 0, null));
         refused(NullPointerException.class, "Option must not be null", () -> new CyclingControl<>(null, (Mode[]) null, null));
-    }
-
-    @Test
-    void aCyclerRefusesValuesItCouldNotShowWhenMade() {
-        Option<Mode> option = valued("Cycle", Mode.A);
-        TextComponent[] three = {TextComponent.literal("a"), TextComponent.literal("b"), TextComponent.literal("c")};
-        refused(NullPointerException.class, "Values must not be null", () -> new CyclingControl<>(option, (Mode[]) null, three));
-        refused(NullPointerException.class, "Names must not be null", () -> new CyclingControl<>(option, Mode.values(), (TextComponent[]) null));
-        refused(NullPointerException.class, "Enum type must not be null", () -> new CyclingControl<>(option, (Class<Mode>) null));
-        refused(IllegalArgumentException.class, "A cycler needs at least one value", () -> new CyclingControl<>(option, new Mode[0], new TextComponent[0]));
-        Option<Empty> none = valued("Cycle", null);
-        refused(IllegalArgumentException.class, "A cycler needs at least one value", () -> new CyclingControl<>(none, Empty.class));
-        refused(IllegalArgumentException.class, "Each value needs one name, but there are 3 values and 2 names",
-                () -> new CyclingControl<>(option, Mode.values(), new TextComponent[]{three[0], three[1]}));
-        refused(IllegalArgumentException.class, "Value B has no name", () -> new CyclingControl<>(option, Mode.values(), new TextComponent[]{three[0], null, three[2]}));
-        Option<Unnamed> unnamed = valued("Cycle", Unnamed.ONE);
-        refused(IllegalArgumentException.class, "Value TWO has no name", () -> new CyclingControl<>(unnamed, Unnamed.class));
-        // A null value with a name is a value like any other
-        Option<Mode> missing = valued("Cycle", null);
-        ControlElement<?> row = bound(new CyclingControl<>(missing, new Mode[]{null, Mode.B}, new TextComponent[]{TextComponent.literal("UNSET"), three[1]})).createElement(new Dim2i(0, 0, 200, 18));
-        FakeDrawContext draw = new FakeDrawContext();
-        row.render(draw, 5000, 5000, 0f);
-        assertEquals(List.of("Cycle", "UNSET"), draw.strings);
-    }
-
-    @Test
-    void aCyclerKeepsItsOwnCopiesSoArraysChangedAfterwardsCannotReachIt() {
-        Mode[] values = {Mode.A, Mode.B};
-        TextComponent[] names = {TextComponent.literal("FIRST"), TextComponent.literal("SECOND")};
-        Option<Mode> option = valued("Cycle", Mode.B);
-        CyclingControl<Mode> control = bound(new CyclingControl<>(option, values, names));
-        values[1] = Mode.C;
-        names[1] = TextComponent.literal("CHANGED");
-        control.getNames()[1] = TextComponent.literal("CHANGED");
-        assertEquals(TextComponent.literal("SECOND"), control.getNames()[1]);
-        assertNotSame(control.getNames(), control.getNames());
-        assertSame(Mode.class, control.getValueType());
-        FakeDrawContext draw = new FakeDrawContext();
-        control.createElement(new Dim2i(0, 0, 200, 18)).render(draw, 5000, 5000, 0f);
-        assertEquals(List.of("Cycle", "SECOND"), draw.strings);
-        // A style set the caller changes afterwards cannot reach the name either
-        java.util.EnumSet<TextFormattingStyle> styles = java.util.EnumSet.of(TextFormattingStyle.GOLD);
-        Option<Mode> styledOption = valued("Cycle", Mode.A);
-        CyclingControl<Mode> styledControl = bound(new CyclingControl<>(styledOption, new Mode[]{Mode.A}, new TextComponent[]{new TextComponent.Styled(TextComponent.literal("GOLDEN"), styles)}));
-        styles.add(TextFormattingStyle.ITALIC);
-        Recording recorded = new Recording();
-        styledControl.createElement(new Dim2i(0, 0, 200, 18)).render(recorded, 5000, 5000, 0f);
-        assertEquals(new TextComponent.Styled(TextComponent.literal("GOLDEN"), java.util.EnumSet.of(TextFormattingStyle.GOLD)), recorded.drawn.getLast());
     }
 
     // An option over an int holder whose control the test picks

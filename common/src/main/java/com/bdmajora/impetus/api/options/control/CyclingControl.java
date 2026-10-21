@@ -10,144 +10,193 @@ import com.bdmajora.impetus.engine.impl.util.Dim2i;
 
 import java.util.Objects;
 
+// Control that steps an option through a fixed list of values on a click or key press
 public class CyclingControl<T> implements Control<T> {
+    private static final String OPTION_NULL = "Option must not be null";
+    private static final String ENUM_TYPE_NULL = "Enum type must not be null";
+    private static final String VALUES_NULL = "Values must not be null";
+    // Width of the value column at the right of the row
+    private static final int MAX_WIDTH = 70;
+
     private final Option<T> option;
     private final T[] allowedValues;
     private final TextComponent[] names;
+    // Type given for the values or the element class of the values array when none is given
+    private final Class<?> valueType;
 
+    // Cycles every constant of the enum named by the enum or by the constant names
     public CyclingControl(Option<T> option, Class<T> enumType) {
-        this(Objects.requireNonNull(option, "Option must not be null"), enumConstants(enumType), determineNames(enumConstants(enumType)));
+        Objects.requireNonNull(option, OPTION_NULL);
+        T[] constants = enumConstants(enumType);
+        this(option, constants, determineNames(constants), enumType, false);
     }
 
+    // Cycles every constant of the enum with one name per constant in enum order
     public CyclingControl(Option<T> option, Class<T> enumType, TextComponent[] names) {
-        this(Objects.requireNonNull(option, "Option must not be null"), enumConstants(enumType), names);
+        Objects.requireNonNull(option, OPTION_NULL);
+        this(option, enumConstants(enumType), names, enumType, false);
     }
 
+    // Cycles the given values of the enum named the same way as every constant of the enum
     public CyclingControl(Option<T> option, Class<T> enumType, T[] allowedValues) {
-        this(Objects.requireNonNull(option, "Option must not be null"), allowedValues, determineNames(Objects.requireNonNull(allowedValues, "Values must not be null")));
+        Objects.requireNonNull(option, OPTION_NULL);
+        Objects.requireNonNull(enumType, ENUM_TYPE_NULL);
+        T[] values = Objects.requireNonNull(allowedValues, VALUES_NULL).clone();
+        // Rejects any value that is not an instance of the enum type
+        for (T value : values) {
+            if (!enumType.isInstance(value)) {
+                throw new IllegalArgumentException("Value " + value + " is not a " + enumType.getName());
+            }
+        }
+        this(option, values, determineNames(values), enumType, true);
     }
 
-    // Checks everything a row will need once here, so a bad cycler fails where it is made and the option it is made in can stand a placeholder in its row
+    // Cycles the given values with one name each in the same order and allows a null value
     public CyclingControl(Option<T> option, T[] allowedValues, TextComponent[] names) {
-        this.option = Objects.requireNonNull(option, "Option must not be null");
-        Objects.requireNonNull(allowedValues, "Values must not be null");
+        Objects.requireNonNull(option, OPTION_NULL);
+        T[] values = Objects.requireNonNull(allowedValues, VALUES_NULL).clone();
+        this(option, values, names, values.getClass().getComponentType(), true);
+    }
+
+    // Stores the values and a copy of the names after checking that every value has exactly one name
+    private CyclingControl(Option<T> option, T[] values, TextComponent[] names, Class<?> valueType, boolean checkRepeats) {
         Objects.requireNonNull(names, "Names must not be null");
-        if (allowedValues.length == 0) {
+        if (values.length == 0) {
             throw new IllegalArgumentException("A cycler needs at least one value");
         }
-        if (allowedValues.length != names.length) {
-            throw new IllegalArgumentException("Each value needs one name, but there are " + allowedValues.length + " values and " + names.length + " names");
+        if (values.length != names.length) {
+            throw new IllegalArgumentException("Each value needs one name, but there are " + values.length + " values and " + names.length + " names");
         }
-        // Copied with every name's style sets, so arrays and sets the caller changes afterwards cannot reach the rows
-        this.allowedValues = allowedValues.clone();
-        this.names = new TextComponent[names.length];
+        // Copies every name with its styles
+        TextComponent[] copies = new TextComponent[names.length];
         for (int i = 0; i < names.length; i++) {
-            if (names[i] == null) {
-                throw new IllegalArgumentException("Value " + this.allowedValues[i] + " has no name");
+            TextComponent name = names[i];
+            if (name == null) {
+                throw new IllegalArgumentException("Value " + values[i] + " has no name");
             }
-            this.names[i] = FittedText.copied(names[i]);
+            copies[i] = FittedText.copied(name);
+            // Rejects a value listed more than once when repeats are checked
+            if (checkRepeats) {
+                for (int j = 0; j < i; j++) {
+                    if (Objects.equals(values[j], values[i])) {
+                        throw new IllegalArgumentException("Value " + values[i] + " is listed at both " + j + " and " + i);
+                    }
+                }
+            }
         }
+        this.option = option;
+        this.allowedValues = values;
+        this.names = copies;
+        this.valueType = valueType;
     }
 
-    // The enum's constants, refusing a class that is not an enum by name rather than failing on its missing constants
+    // Returns the enum constants in a new array and rejects a class that is not an enum
     private static <T> T[] enumConstants(Class<T> enumType) {
-        T[] constants = Objects.requireNonNull(enumType, "Enum type must not be null").getEnumConstants();
+        T[] constants = Objects.requireNonNull(enumType, ENUM_TYPE_NULL).getEnumConstants();
         if (constants == null) {
             throw new IllegalArgumentException(enumType.getName() + " is not an enum");
         }
         return constants;
     }
 
-    // Localised names when the enum provides them, else the constant names
-    private static TextComponent[] determineNames(Object[] universe) {
-        TextComponent[] names = new TextComponent[universe.length];
+    // Returns the localised names the values provide or the constant names
+    private static TextComponent[] determineNames(Object[] values) {
+        TextComponent[] names = new TextComponent[values.length];
         for (int i = 0; i < names.length; i++) {
-            TextComponent name;
-            Object value = universe[i];
-
-            if (value instanceof TextProvider) {
-                name = ((TextProvider) value).getLocalizedName();
-            } else if (value instanceof Enum<?> e) {
-                name = TextComponent.literal(e.name());
+            Object value = values[i];
+            if (value instanceof TextProvider provider) {
+                names[i] = provider.getLocalizedName();
+            } else if (value instanceof Enum<?> constant) {
+                names[i] = TextComponent.literal(constant.name());
             } else {
                 throw new IllegalArgumentException("Could not figure out name of object " + value);
             }
-
-            names[i] = name;
         }
         return names;
     }
 
-    // Display names per value, as a copy so the cycler's own cannot be changed
+    // Returns copies of the display names in value order
     public TextComponent[] getNames() {
-        return this.names.clone();
+        TextComponent[] copies = new TextComponent[this.names.length];
+        for (int i = 0; i < copies.length; i++) {
+            copies[i] = FittedText.copied(this.names[i]);
+        }
+        return copies;
     }
 
-    // Bound option
+    // Returns the option this control edits
     @Override
     public Option<T> getOption() {
         return this.option;
     }
 
-    // The cycler widget
+    // Creates the cycler element sharing the values and names of the control
     @Override
     public ControlElement<T> createElement(Dim2i dim) {
         return new CyclingControlElement<>(this.option, dim, this.allowedValues, this.names);
     }
 
-    // Widest name
+    // Returns the width of the value column
     @Override
     public int getMaxWidth() {
-        return 70;
+        return MAX_WIDTH;
     }
 
-    // The values array's own element class, since the class leaves its type argument open
+    // Returns the type given for the values or the element class of the values array
     @Override
     public Class<?> getValueType() {
-        return this.allowedValues.getClass().getComponentType();
+        return this.valueType;
     }
 
-    private static class CyclingControlElement<T> extends ControlElement<T> {
+    // Row that shows the name of the current value and steps through the values
+    private static final class CyclingControlElement<T> extends ControlElement<T> {
         // Gap between the value's name and the row's right edge
         private static final int VALUE_RIGHT_INSET = 6;
 
         private final T[] allowedValues;
         private final TextComponent[] names;
 
-        // The current value's name cut to the room beside the option's name
+        // Name of the current value cut to the room beside the option name
         private final FittedText text = new FittedText();
-        // Last value read and its index, or minus one before the first read, so the same value read again is found without a scan
+        // Last value read or written and its index or minus one before the first read
         private T lastValue;
         private int lastIndex = -1;
+        // Whether the last value is one of the allowed values
+        private boolean lastFound;
 
-        public CyclingControlElement(Option<T> option, Dim2i dim, T[] allowedValues, TextComponent[] names) {
+        // Stores the values and names shared with the control
+        CyclingControlElement(Option<T> option, Dim2i dim, T[] allowedValues, TextComponent[] names) {
             super(option, dim);
 
             this.allowedValues = allowedValues;
             this.names = names;
         }
 
-        // Index of the current value in the universe, or 0 when it is null or not allowed
+        // Returns the index of the current value or zero when it is not one of the values
         private int getCurrentIndex() {
-            // Read once, so the getter runs once per call instead of once per allowed value
+            // Reads the option value once
             T current = this.option.getValue();
-            if (this.lastIndex >= 0 && current == this.lastValue) {
-                return this.lastIndex;
+            int last = this.lastIndex;
+            // Returns the cached index when the value is the same object or equal to the last match
+            if (last >= 0 && (current == this.lastValue || Objects.equals(this.lastFound ? this.allowedValues[last] : this.lastValue, current))) {
+                this.lastValue = current;
+                return last;
             }
-            int index = 0;
+            int index = -1;
             for (int i = 0; i < this.allowedValues.length; i++) {
-                // Equality, not identity, so boxed values outside the Integer cache still match
+                // Matches values by equality
                 if (Objects.equals(this.allowedValues[i], current)) {
                     index = i;
                     break;
                 }
             }
             this.lastValue = current;
-            this.lastIndex = index;
-            return index;
+            this.lastFound = index >= 0;
+            this.lastIndex = Math.max(index, 0);
+            return this.lastIndex;
         }
 
-        // Label and current name, right-aligned and cut to the room the option's name leaves
+        // Draws the row and the current value name aligned right and cut to the room left by the option name
         @Override
         public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
             super.render(drawContext, mouseX, mouseY, delta);
@@ -159,7 +208,7 @@ public class CyclingControl<T> implements Control<T> {
             boolean enabled = this.isDrawnAvailable();
             int right = this.dim.getLimitX() - VALUE_RIGHT_INSET;
             int room = right - this.getNameLimitX();
-            // Fitted again only when the value, its state or the room changes, the names being fixed when the cycler was made
+            // Fits the name again when the value or state or room or text generation changes
             long generation = this.textGeneration();
             if (!this.text.isFittedFor(generation, null, index, !enabled, room)) {
                 TextComponent name = this.names[index];
@@ -172,11 +221,11 @@ public class CyclingControl<T> implements Control<T> {
             }
         }
 
-        // Left cycles forward, right backward
+        // Steps forward on a left click or backward with Shift held
         @Override
         public boolean mouseClicked(InteractionContext context, double mouseX, double mouseY, int button) {
-            if (button == 0 && this.dim.containsCursor(mouseX, mouseY) && this.isOptionAvailable()) {
-                cycleControl(context.isSpecialKeyDown(InteractionContext.SpecialKey.SHIFT));
+            if (button == 0 && this.hasArea() && this.dim.containsCursor(mouseX, mouseY) && this.isOptionAvailable()) {
+                this.cycleControl(context.isSpecialKeyDown(InteractionContext.SpecialKey.SHIFT));
                 context.playClickSound();
 
                 return true;
@@ -185,37 +234,39 @@ public class CyclingControl<T> implements Control<T> {
             return false;
         }
 
-        // While focused: Enter, keypad Enter or Space steps like a click (Shift backwards), and the arrows step the way they point
+        // Steps on Enter or Space with Shift for backward and on the arrow keys in their direction while focused
         @Override
         public boolean keyTyped(InteractionContext context, char typedChar, int keyCode) {
-            if (!this.isFocused() || !this.isOptionAvailable()) {
+            if (!this.isFocused() || !this.hasArea()) {
+                return false;
+            }
+            boolean press = Keys.isPress(typedChar, keyCode);
+            // Checks availability only for keys the cycler handles
+            if (!press && keyCode != Keys.LEFT && keyCode != Keys.RIGHT || !this.isOptionAvailable()) {
                 return false;
             }
 
-            boolean reverse;
-            if (Keys.isPress(typedChar, keyCode)) {
-                reverse = context.isSpecialKeyDown(InteractionContext.SpecialKey.SHIFT);
-            } else if (keyCode == Keys.LEFT || keyCode == Keys.RIGHT) {
-                reverse = keyCode == Keys.LEFT;
-            } else {
-                return false;
-            }
-
-            cycleControl(reverse);
+            this.cycleControl(press ? context.isSpecialKeyDown(InteractionContext.SpecialKey.SHIFT) : keyCode == Keys.LEFT);
             context.playClickSound();
 
             return true;
         }
 
-        // Steps with wrap-around
-        public void cycleControl(boolean reverse) {
-            int currentIndex = getCurrentIndex();
-            if (reverse) {
-                currentIndex = (currentIndex + this.allowedValues.length - 1) % this.allowedValues.length;
-            } else {
-                currentIndex = (currentIndex + 1) % this.allowedValues.length;
+        // Steps to the next or previous value and wraps around at either end
+        private void cycleControl(boolean reverse) {
+            int index = this.getCurrentIndex();
+            int last = this.allowedValues.length - 1;
+            int next = reverse ? (index == 0 ? last : index - 1) : (index == last ? 0 : index + 1);
+            // Skips the write when the only value is already held
+            if (next == index && this.lastFound) {
+                return;
             }
-            this.option.setValue(this.allowedValues[currentIndex]);
+            T value = this.allowedValues[next];
+            this.option.setValue(value);
+            // Caches the written value and its index
+            this.lastValue = value;
+            this.lastIndex = next;
+            this.lastFound = true;
         }
     }
 }

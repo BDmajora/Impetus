@@ -1,4 +1,3 @@
-```java
 package com.bdmajora.impetus.api.options.control;
 
 import com.bdmajora.impetus.api.options.structure.Option;
@@ -220,4 +219,3 @@ public class ActionButtonControl implements Control<Boolean> {
         return label;
     }
 }
-```

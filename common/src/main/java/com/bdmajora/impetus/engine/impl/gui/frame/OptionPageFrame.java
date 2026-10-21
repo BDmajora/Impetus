@@ -188,21 +188,35 @@ public class OptionPageFrame extends AbstractFrame {
     private void renderOptionTooltip(DrawContext drawContext, ControlElement<?> element) {
         if (this.lastTime + 500 > System.currentTimeMillis()) return;
 
-        Option<?> option = element.getOption();
+        // Read once, so the option checked is the one drawn and marked; a row whose getter throws is replaced like a row failing anywhere else
+        Option<?> option;
+        try {
+            option = element.getOption();
+        } catch (Throwable broken) {
+            if (!this.recoverChild(element, broken)) {
+                throw broken;
+            }
+            return;
+        }
+        // A row that reports no option is replaced too, as creating it would have been refused
+        if (option == null) {
+            this.recoverChild(element, new IllegalStateException("Element reports no option"));
+            return;
+        }
         if (BROKEN_TOOLTIPS.contains(option)) {
             return;
         }
         int matrices = drawContext.matrixDepth();
         int scissors = drawContext.scissorDepth();
         try {
-            this.drawOptionTooltip(drawContext, element);
+            this.drawOptionTooltip(drawContext, element.getDimensions(), option);
         } catch (VirtualMachineError fatal) {
             throw fatal;
         } catch (Throwable broken) {
             // Anything the tooltip left pushed is taken off before the next frame draws
             drawContext.unwindTo(matrices, scissors);
             if (BROKEN_TOOLTIPS.add(option)) {
-                String name = String.valueOf(option != null ? option.getId() : null);
+                String name = String.valueOf(option.getId());
                 LOGGER.error("Tooltip of option {} failed and is no longer shown", name, broken);
                 // Shows only the first line of the failure message
                 ImpetusNotifications.error("Tooltip failed: " + name, String.valueOf(broken).lines().findFirst().orElse(""));
@@ -211,9 +225,7 @@ public class OptionPageFrame extends AbstractFrame {
     }
 
     // Wrapped tooltip beside the control, flipped left when it would overflow
-    private void drawOptionTooltip(DrawContext drawContext, ControlElement<?> element) {
-        Dim2i dim = element.getDimensions();
-
+    private void drawOptionTooltip(DrawContext drawContext, Dim2i dim, Option<?> option) {
         int textPadding = 3;
         int boxPadding = 3;
 
@@ -223,7 +235,6 @@ public class OptionPageFrame extends AbstractFrame {
         int boxY = dim.getLimitY();
         int boxX = dim.x();
 
-        Option<?> option = element.getOption();
         var tooltip = new ArrayList<>(drawContext.split(option.getTooltip(), boxWidth - (textPadding * 2)));
 
         OptionImpact impact = option.getImpact();

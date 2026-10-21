@@ -222,6 +222,7 @@ public class ControlElement<T> extends AbstractWidget implements OptionControlEl
     }
 
     // Returns the option this row belongs to
+    @Override
     public Option<T> getOption() {
         return this.option;
     }

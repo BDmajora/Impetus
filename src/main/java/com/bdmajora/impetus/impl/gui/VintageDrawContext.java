@@ -4,9 +4,12 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.ScaledResolution;
+import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.client.renderer.texture.TextureUtil;
+import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.client.resources.IResourcePack;
 import net.minecraft.util.ResourceLocation;
@@ -153,6 +156,40 @@ public class VintageDrawContext implements DrawContext {
     @Override
     public void fill(int x1, int y1, int x2, int y2, int color) {
         Gui.drawRect(x1, y1, x2, y2, color);
+    }
+
+    // The four edges of the default outline in one draw with Gui.drawRect's state and colour, where four fills cost four draws and four rounds of state changes
+    @Override
+    public void drawBorder(int x1, int y1, int x2, int y2, int color) {
+        Tessellator tessellator = Tessellator.getInstance();
+        BufferBuilder buffer = tessellator.getBuffer();
+        GlStateManager.enableBlend();
+        GlStateManager.disableTexture2D();
+        GlStateManager.tryBlendFuncSeparate(
+                GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA, GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ZERO
+        );
+        GlStateManager.color((color >> 16 & 255) / 255.0F, (color >> 8 & 255) / 255.0F, (color & 255) / 255.0F, (color >>> 24) / 255.0F);
+        buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION);
+        // The same rectangles as the default, corners included, so a translucent outline blends exactly as before
+        quad(buffer, x1, y1, x2, y1 + 1);
+        quad(buffer, x1, y2 - 1, x2, y2);
+        quad(buffer, x1, y1, x1 + 1, y2);
+        quad(buffer, x2 - 1, y1, x2, y2);
+        tessellator.draw();
+        GlStateManager.enableTexture2D();
+        GlStateManager.disableBlend();
+    }
+
+    // One rectangle's corners in Gui.drawRect's order, which puts the larger x and y first
+    private static void quad(BufferBuilder buffer, int x1, int y1, int x2, int y2) {
+        int left = Math.max(x1, x2);
+        int right = Math.min(x1, x2);
+        int top = Math.max(y1, y2);
+        int bottom = Math.min(y1, y2);
+        buffer.pos(left, bottom, 0.0D).endVertex();
+        buffer.pos(right, bottom, 0.0D).endVertex();
+        buffer.pos(right, top, 0.0D).endVertex();
+        buffer.pos(left, top, 0.0D).endVertex();
     }
 
     // Through the font renderer, with or without shadow

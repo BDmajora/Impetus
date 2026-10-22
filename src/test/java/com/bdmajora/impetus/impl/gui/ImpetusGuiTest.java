@@ -30,6 +30,7 @@ import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.multiplayer.WorldClient;
+import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.RenderGlobal;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.client.renderer.texture.TextureManager;
@@ -60,6 +61,7 @@ import org.mockito.Mockito;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -465,6 +467,66 @@ class ImpetusGuiTest {
         draw.blitWholeImage("impetus:textures/gui/impetus.png", 0, 0, 16, 16);
         draw.blitWholeImage("impetus:textures/gui/impetus.png", 0, 0, 16, 16);
         verify(client.getTextureManager(), times(2)).bindTexture(new ResourceLocation("impetus:textures/gui/impetus.png"));
+    }
+
+    // A draw sent to GL: its mode, the vertices it read and the colour set before it
+    private record GlDraw(int mode, List<Float> vertices, List<Float> color) { }
+
+    @Test
+    void anOutlineIsOneDrawOfTheVerticesAndColourThatTheDefaultsFourFillsSend() {
+        VintageDrawContext draw = new VintageDrawContext();
+        List<GlDraw> draws = new ArrayList<>();
+        ByteBuffer[] pointer = new ByteBuffer[1];
+        List<Float> color = new ArrayList<>();
+        gl11.when(() -> GL11.glColor4f(anyFloat(), anyFloat(), anyFloat(), anyFloat())).thenAnswer(invocation -> {
+            color.clear();
+            for (int i = 0; i < 4; i++) {
+                color.add(invocation.<Float>getArgument(i));
+            }
+            return null;
+        });
+        gl11.when(() -> GL11.glVertexPointer(anyInt(), anyInt(), anyInt(), any(ByteBuffer.class))).thenAnswer(invocation -> pointer[0] = invocation.getArgument(3));
+        // Reads the three floats of each vertex from where the pointer was set, in the buffer's own byte order
+        gl11.when(() -> GL11.glDrawArrays(anyInt(), anyInt(), anyInt())).thenAnswer(invocation -> {
+            ByteBuffer source = pointer[0].duplicate().order(pointer[0].order());
+            int count = invocation.getArgument(2);
+            List<Float> vertices = new ArrayList<>();
+            for (int i = 0; i < count * 3; i++) {
+                vertices.add(source.getFloat(source.position() + i * Float.BYTES));
+            }
+            draws.add(new GlDraw(invocation.getArgument(0), vertices, List.copyOf(color)));
+            return null;
+        });
+        int[][] boxes = {{184, 4, 194, 14}, {0, 0, 200, 18}, {10, 20, 5, 8}, {-30, -40, -10, -2}, {3, 3, 3, 3}, {7, 1, 8, 2}};
+        int[] colors = {0xFFFFFFFF, 0x80FF4020, 0x00000000, 0xFF9A9A9A};
+        for (int[] box : boxes) {
+            for (int argb : colors) {
+                String context = java.util.Arrays.toString(box) + " " + Integer.toHexString(argb);
+                draws.clear();
+                GlStateManager.resetColor();
+                draw.drawBorder(box[0], box[1], box[2], box[3], argb);
+                assertEquals(1, draws.size(), context);
+                GlDraw batched = draws.getFirst();
+                draws.clear();
+                // The default's four edges, each its own fill
+                GlStateManager.resetColor();
+                draw.fill(box[0], box[1], box[2], box[1] + 1, argb);
+                draw.fill(box[0], box[3] - 1, box[2], box[3], argb);
+                draw.fill(box[0], box[1], box[0] + 1, box[3], argb);
+                draw.fill(box[2] - 1, box[1], box[2], box[3], argb);
+                assertEquals(4, draws.size(), context);
+                List<Float> separate = new ArrayList<>();
+                for (GlDraw one : draws) {
+                    assertEquals(GL11.GL_QUADS, one.mode(), context);
+                    assertEquals(batched.color(), one.color(), context);
+                    separate.addAll(one.vertices());
+                }
+                assertEquals(GL11.GL_QUADS, batched.mode(), context);
+                assertEquals(16 * 3, batched.vertices().size(), context);
+                assertEquals(separate, batched.vertices(), context);
+                assertEquals(List.of((argb >> 16 & 255) / 255.0F, (argb >> 8 & 255) / 255.0F, (argb & 255) / 255.0F, (argb >>> 24) / 255.0F), batched.color(), context);
+            }
+        }
     }
 
     // Every string the context handed the font to draw since the font's calls were last cleared

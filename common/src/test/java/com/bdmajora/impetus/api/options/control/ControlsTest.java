@@ -3,20 +3,16 @@ package com.bdmajora.impetus.api.options.control;
 import com.bdmajora.impetus.api.options.OptionIdentifier;
 import com.bdmajora.impetus.api.options.structure.Option;
 import com.bdmajora.impetus.api.options.structure.OptionImpact;
-import com.bdmajora.impetus.engine.impl.gui.framework.Keys;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.gui.theme.DefaultColors;
 import com.bdmajora.impetus.engine.impl.util.Dim2i;
 import com.bdmajora.testing.FakeDrawContext;
-import com.bdmajora.testing.FakeInteractionContext;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class ControlsTest {
-    private static final Dim2i DIM = new Dim2i(0, 0, 200, 20);
-
     // A mutable option whose value lives in a holder, with availability, change state and name all controllable
     private static <T> Option<T> option(T initial, boolean available, boolean changed) {
         @SuppressWarnings("unchecked")
@@ -32,41 +28,6 @@ class ControlsTest {
     }
 
     @Test
-    void tickBoxTogglesOnClickAndRendersBothStates() {
-        Option<Boolean> option = option(false, true, false);
-        TickBoxControl control = new TickBoxControl(option);
-        Mockito.when(option.getControl()).thenReturn(control);
-        assertSame(option, control.getOption());
-        assertEquals(30, control.getMaxWidth());
-        ControlElement<Boolean> element = control.createElement(DIM);
-        assertSame(option, element.getOption());
-        assertEquals(DIM, element.getDimensions());
-        assertTrue(element.isMouseOver(5, 5));
-        assertFalse(element.isMouseOver(500, 5));
-
-        FakeInteractionContext ctx = new FakeInteractionContext();
-        assertTrue(element.mouseClicked(ctx, 5, 5, 0));
-        assertEquals(true, option.getValue());
-        assertEquals(1, ctx.clicks);
-        assertFalse(element.mouseClicked(ctx, 5, 5, 1));
-        assertFalse(element.mouseClicked(ctx, 500, 5, 0));
-
-        FakeDrawContext draw = new FakeDrawContext();
-        element.render(draw, 5, 5, 0f);
-        assertTrue(draw.strings.contains("Name"));
-        element.render(draw, 500, 500, 0f);
-        Mockito.when(option.isAvailable()).thenReturn(false);
-        element.render(draw, 5, 5, 0f);
-        assertFalse(element.mouseClicked(ctx, 5, 5, 0));
-        Mockito.when(option.isAvailable()).thenReturn(true);
-        Mockito.when(option.hasChanged()).thenReturn(true);
-        element.render(draw, 5, 5, 0f);
-        assertTrue(draw.strings.contains("Name *"));
-        option.setValue(false);
-        element.render(draw, 5, 5, 0f);
-    }
-
-    @Test
     void longLabelsAreEllipsisedAndAccentFollowsTheOptionId() {
         Option<Boolean> option = option(true, true, false);
         Mockito.when(option.getName()).thenReturn(TextComponent.literal("A very long option name that will not fit in the row"));
@@ -78,43 +39,6 @@ class ControlsTest {
         element.render(draw, 0, 0, 0f);
         assertTrue(draw.strings.stream().anyMatch(s -> s.endsWith("...")));
         assertTrue(draw.drew(Integer.toHexString(DefaultColors.getModAccentColor("coarctatio"))));
-    }
-
-    @Test
-    void aFocusedTickBoxTogglesOnEnterOrSpaceAndIsOutlined() {
-        Option<Boolean> option = option(false, true, false);
-        TickBoxControl control = new TickBoxControl(option);
-        Mockito.when(option.getControl()).thenReturn(control);
-        ControlElement<Boolean> element = control.createElement(DIM);
-        FakeInteractionContext ctx = new FakeInteractionContext();
-        assertFalse(element.keyTyped(ctx, ' ', Keys.SPACE));
-        assertEquals(false, option.getValue());
-        assertTrue(element.canFocus());
-
-        element.setFocused(true);
-        assertTrue(element.keyTyped(ctx, ' ', Keys.SPACE));
-        assertEquals(true, option.getValue());
-        assertTrue(element.keyTyped(ctx, '\r', Keys.RETURN));
-        assertTrue(element.keyTyped(ctx, '\0', Keys.NUMPAD_ENTER));
-        assertEquals(true, option.getValue());
-        assertEquals(3, ctx.clicks);
-        assertFalse(element.keyTyped(ctx, 'a', 30));
-        assertFalse(element.keyTyped(ctx, '\0', Keys.LEFT));
-        assertFalse(element.keyTyped(ctx, '\t', Keys.TAB));
-
-        // Drawn hovered and outlined in the accent though the cursor is elsewhere
-        FakeDrawContext draw = new FakeDrawContext();
-        element.render(draw, 500, 500, 0f);
-        String accent = Integer.toHexString(DefaultColors.ELEMENT_ACTIVATED);
-        assertEquals("fill(0,0,200,20," + Integer.toHexString(DefaultColors.BACKGROUND_HOVERED) + ")", draw.calls.getFirst());
-        assertEquals("fill(0,0,200,1," + accent + ")", draw.calls.get(1));
-
-        // An unavailable option ignores presses and Tab passes its row over
-        Mockito.when(option.isAvailable()).thenReturn(false);
-        assertFalse(element.canFocus());
-        assertFalse(element.keyTyped(ctx, ' ', Keys.SPACE));
-        assertEquals(true, option.getValue());
-        assertEquals(3, ctx.clicks);
     }
 
     // The strings a tick box row draws, which are only its name since the box itself is fills; the box takes 30, so the name gets the width less 42

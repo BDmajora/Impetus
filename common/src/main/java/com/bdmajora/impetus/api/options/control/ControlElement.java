@@ -1,4 +1,3 @@
-```java
 package com.bdmajora.impetus.api.options.control;
 
 import com.bdmajora.impetus.api.config.theme.ConfigThemeRegistry;
@@ -294,4 +293,3 @@ public class ControlElement<T> extends AbstractWidget implements OptionControlEl
         this.focused = focused;
     }
 }
-```

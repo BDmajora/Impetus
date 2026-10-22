@@ -8,56 +8,68 @@ import com.bdmajora.impetus.engine.impl.util.Dim2i;
 
 import java.util.Objects;
 
+// Control that toggles a boolean option with a tick box
 public class TickBoxControl implements Control<Boolean> {
+    // Width of the control column
+    private static final int COLUMN_WIDTH = 30;
+
     private final Option<Boolean> option;
 
-    // Refuses a missing option here, so the option it is made in can stand a placeholder in its row
+    // Stores the option and rejects a null option
     public TickBoxControl(Option<Boolean> option) {
         this.option = Objects.requireNonNull(option, "Option must not be null");
     }
 
-    // The checkbox widget
+    // Creates the tick box element at the given bounds
     @Override
     public ControlElement<Boolean> createElement(Dim2i dim) {
         return new TickBoxControlElement(this.option, dim);
     }
 
-    // Fixed box width
+    // Returns the width of the control column
     @Override
     public int getMaxWidth() {
-        return 30;
+        return COLUMN_WIDTH;
     }
 
-    // Bound option
+    // Returns the option this control edits
     @Override
     public Option<Boolean> getOption() {
         return this.option;
     }
 
-    private static class TickBoxControlElement extends ControlElement<Boolean> {
-        private final Dim2i button;
-        // Whether the box lies wholly inside the row, which a row narrower than 16 or shorter than 10 does not hold
-        private final boolean buttonFits;
+    // Row that draws the tick box and toggles the option
+    private static final class TickBoxControlElement extends ControlElement<Boolean> {
+        // Side of the square box and its gap from the right edge of the row and the gap of the tick inside it
+        private static final int BOX_SIZE = 10;
+        private static final int BOX_RIGHT_INSET = 6;
+        private static final int TICK_INSET = 2;
+        // Outline colour of an empty box that can be edited
+        private static final int EMPTY_COLOR = 0xFFFFFFFF;
 
-        public TickBoxControlElement(Option<Boolean> option, Dim2i dim) {
+        // Whether the row has an area large enough to hold the whole box
+        private final boolean boxFits;
+
+        // Creates the row and checks whether the box fits inside it
+        TickBoxControlElement(Option<Boolean> option, Dim2i dim) {
             super(option, dim);
 
-            this.button = new Dim2i(dim.getLimitX() - 16, dim.getCenterY() - 5, 10, 10);
-            this.buttonFits = dim.canFitDimension(this.button);
+            // Requires room for the box and its inset in the width and the box side in the height
+            this.boxFits = this.hasArea() && dim.width() >= BOX_RIGHT_INSET + BOX_SIZE && dim.height() >= BOX_SIZE;
         }
 
-        // Box with a tick when set, left out of a row with no area or too small to hold it
+        // Draws the box with a tick when set and skips it on a row too small to hold it
         @Override
         public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
             super.render(drawContext, mouseX, mouseY, delta);
-            if (!this.hasArea() || !this.buttonFits) {
+            if (!this.boxFits) {
                 return;
             }
 
-            final int x = this.button.x();
-            final int y = this.button.y();
-            final int w = x + this.button.width();
-            final int h = y + this.button.height();
+            final int right = this.dim.getLimitX() - BOX_RIGHT_INSET;
+            final int x = right - BOX_SIZE;
+            final int y = this.dim.getCenterY() - BOX_SIZE / 2;
+            final int bottom = y + BOX_SIZE;
 
             final boolean enabled = this.isDrawnAvailable();
             final boolean ticked = this.isTicked();
@@ -65,23 +77,23 @@ public class TickBoxControl implements Control<Boolean> {
             final int color;
 
             if (enabled) {
-                color = ticked ? this.getAccentColor(drawContext) : 0xFFFFFFFF;
+                color = ticked ? this.getAccentColor(drawContext) : EMPTY_COLOR;
             } else {
                 color = this.getDisabledControlColor();
             }
 
             if (ticked) {
-                drawContext.fill(x + 2, y + 2, w - 2, h - 2, color);
+                drawContext.fill(x + TICK_INSET, y + TICK_INSET, right - TICK_INSET, bottom - TICK_INSET, color);
             }
 
-            drawContext.drawBorder(x, y, w, h, color);
+            drawContext.drawBorder(x, y, right, bottom, color);
         }
 
-        // Toggles on a left click inside a row that has an area
+        // Toggles the value on a left click inside a row that has an area
         @Override
         public boolean mouseClicked(InteractionContext context, double mouseX, double mouseY, int button) {
             if (button == 0 && this.hasArea() && this.dim.containsCursor(mouseX, mouseY) && this.isOptionAvailable()) {
-                toggleControl();
+                this.toggleControl();
                 context.playClickSound();
 
                 return true;
@@ -90,11 +102,11 @@ public class TickBoxControl implements Control<Boolean> {
             return false;
         }
 
-        // Enter, keypad Enter or Space toggles while focused on a row that has an area, as a click does
+        // Toggles the value on Enter or Space while focused on a row that has an area
         @Override
         public boolean keyTyped(InteractionContext context, char typedChar, int keyCode) {
             if (this.isFocused() && this.hasArea() && Keys.isPress(typedChar, keyCode) && this.isOptionAvailable()) {
-                toggleControl();
+                this.toggleControl();
                 context.playClickSound();
 
                 return true;
@@ -104,13 +116,13 @@ public class TickBoxControl implements Control<Boolean> {
         }
 
         // Flips the value
-        public void toggleControl() {
+        private void toggleControl() {
             this.option.setValue(!this.isTicked());
         }
 
-        // Whether the option holds true, a missing value counting as false so the box shows empty and a click sets it
+        // Returns true when the option holds true and false for a null value
         private boolean isTicked() {
-            // Read into a Boolean so a value of another type still fails here, where the frame turns the row into a placeholder
+            // Reads the value as a Boolean
             Boolean value = this.option.getValue();
             return value != null && value;
         }

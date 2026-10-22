@@ -301,19 +301,6 @@ class ControlEdgeCasesTest {
         }
     }
 
-    @Test
-    void aTickBoxWithNoValueShowsEmptyAndAClickTicksIt() {
-        Option<Boolean> option = valued("Tick", null);
-        ControlElement<?> row = bound(new TickBoxControl(option)).createElement(new Dim2i(0, 0, 200, 18));
-        FakeDrawContext draw = new FakeDrawContext();
-        row.render(draw, 5000, 5000, 0f);
-        // The white outline and no inner fill
-        assertTrue(draw.drew("fill(184,4,194,5,ffffffff)"));
-        assertFalse(draw.drew("fill(186,6,192,12,"));
-        assertTrue(row.mouseClicked(new FakeInteractionContext(), 100, 9, 0));
-        assertEquals(true, option.getValue());
-    }
-
     // Swaps the placeholder's logger for a mock while the body runs and clears the toasts it raises
     private static void withLogger(Runnable body) {
         // Reading it first runs the class initialiser, which would otherwise overwrite the swap

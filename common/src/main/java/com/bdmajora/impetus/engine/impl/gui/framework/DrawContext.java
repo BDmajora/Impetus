@@ -74,7 +74,7 @@ public interface DrawContext extends FontMetricsProvider {
         return TextComponent.literal(modId);
     }
 
-    // Defaults to the theme's per-mod colour
+    // Defaults to the theme's per-mod colour; rows cache it per context until a theme is registered, so it must depend only on the id and the registered themes
     default int getModAccentColor(String modId) {
         return DefaultColors.getModAccentColor(modId);
     }

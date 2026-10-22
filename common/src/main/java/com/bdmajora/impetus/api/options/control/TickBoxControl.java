@@ -77,10 +77,10 @@ public class TickBoxControl implements Control<Boolean> {
             drawContext.drawBorder(x, y, w, h, color);
         }
 
-        // Toggles on click
+        // Toggles on a left click inside a row that has an area
         @Override
         public boolean mouseClicked(InteractionContext context, double mouseX, double mouseY, int button) {
-            if (button == 0 && this.dim.containsCursor(mouseX, mouseY) && this.isOptionAvailable()) {
+            if (button == 0 && this.hasArea() && this.dim.containsCursor(mouseX, mouseY) && this.isOptionAvailable()) {
                 toggleControl();
                 context.playClickSound();
 
@@ -90,10 +90,10 @@ public class TickBoxControl implements Control<Boolean> {
             return false;
         }
 
-        // Enter, keypad Enter or Space toggles while focused, as a click does
+        // Enter, keypad Enter or Space toggles while focused on a row that has an area, as a click does
         @Override
         public boolean keyTyped(InteractionContext context, char typedChar, int keyCode) {
-            if (this.isFocused() && Keys.isPress(typedChar, keyCode) && this.isOptionAvailable()) {
+            if (this.isFocused() && this.hasArea() && Keys.isPress(typedChar, keyCode) && this.isOptionAvailable()) {
                 toggleControl();
                 context.playClickSound();
 

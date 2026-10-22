@@ -157,16 +157,16 @@ public class ActionButtonControl implements Control<Boolean> {
             return this.formatDisabledControlValue(withoutColours(label).withStyle(TextFormattingStyle.UNDERLINE));
         }
 
-        // Presses the button on a left click inside it
+        // Presses the button on a left click inside a row that has an area
         @Override
         public boolean mouseClicked(InteractionContext context, double mouseX, double mouseY, int button) {
-            return button == 0 && this.dim.containsCursor(mouseX, mouseY) && this.press(context);
+            return button == 0 && this.hasArea() && this.dim.containsCursor(mouseX, mouseY) && this.press(context);
         }
 
-        // Presses the button on Enter or Space while it has focus
+        // Presses the button on Enter or Space while it has focus on a row that has an area
         @Override
         public boolean keyTyped(InteractionContext context, char typedChar, int keyCode) {
-            return this.isFocused() && Keys.isPress(typedChar, keyCode) && this.press(context);
+            return this.isFocused() && this.hasArea() && Keys.isPress(typedChar, keyCode) && this.press(context);
         }
 
         // Plays the click sound and runs the action when the option is available

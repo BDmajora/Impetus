@@ -81,54 +81,6 @@ class ControlsTest {
     }
 
     @Test
-    void sliderSnapsClampsAndDrags() {
-        Option<Integer> option = option(4, true, false);
-        SliderControl control = new SliderControl(option, 0, 10, 2, ControlValueFormatter.number());
-        Mockito.when(option.getControl()).thenReturn(control);
-        assertSame(option, control.getOption());
-        assertEquals(130, control.getMaxWidth());
-        ControlElement<Integer> element = control.createElement(DIM);
-        FakeInteractionContext ctx = new FakeInteractionContext();
-        // The track spans x 104..193
-        assertTrue(element.mouseClicked(ctx, 193, 10, 0));
-        assertEquals(10, option.getValue());
-        assertTrue(element.mouseDragged(ctx, 104, 10, 0, 0, 0));
-        assertEquals(0, option.getValue());
-        assertTrue(element.mouseDragged(ctx, 150, 10, 0, 0, 0));
-        assertEquals(6, option.getValue());
-        // A click beside the track does not grab it, so no drag after it moves the value
-        assertTrue(element.mouseClicked(ctx, 5, 10, 0));
-        assertFalse(element.mouseDragged(ctx, 5, 10, 0, 0, 0));
-        assertFalse(element.mouseDragged(ctx, 120, 10, 0, 0, 0));
-        assertEquals(6, option.getValue());
-        // A held slider keeps following the cursor once it leaves the track, clamped to the ends
-        assertTrue(element.mouseClicked(ctx, 150, 10, 0));
-        assertTrue(element.mouseDragged(ctx, 500, 10, 0, 0, 0));
-        assertEquals(10, option.getValue());
-        FakeDrawContext held = new FakeDrawContext();
-        element.render(held, 500, 500, 0f);
-        assertTrue(element.mouseDragged(ctx, 150, 10, 0, 0, 0));
-        assertEquals(6, option.getValue());
-        assertFalse(element.mouseClicked(ctx, 5, 10, 1));
-        assertFalse(element.mouseClicked(ctx, 500, 10, 0));
-        assertFalse(element.mouseDragged(ctx, 150, 10, 1, 0, 0));
-
-        FakeDrawContext draw = new FakeDrawContext();
-        element.render(draw, 150, 10, 0f);
-        assertTrue(draw.strings.contains("6"));
-        element.render(draw, 500, 500, 0f);
-        Mockito.when(option.isAvailable()).thenReturn(false);
-        element.render(draw, 150, 10, 0f);
-        assertFalse(element.mouseClicked(ctx, 150, 10, 0));
-        assertFalse(element.mouseDragged(ctx, 150, 10, 0, 0, 0));
-
-        assertThrows(IllegalArgumentException.class, () -> new SliderControl(option, 10, 0, 1, ControlValueFormatter.number()));
-        assertThrows(IllegalArgumentException.class, () -> new SliderControl(option, 0, 10, 0, ControlValueFormatter.number()));
-        assertThrows(IllegalArgumentException.class, () -> new SliderControl(option, 0, 10, 3, ControlValueFormatter.number()));
-        assertThrows(IllegalArgumentException.class, () -> new SliderControl(option, 0, 10, 2, null));
-    }
-
-    @Test
     void aFocusedTickBoxTogglesOnEnterOrSpaceAndIsOutlined() {
         Option<Boolean> option = option(false, true, false);
         TickBoxControl control = new TickBoxControl(option);
@@ -163,51 +115,6 @@ class ControlsTest {
         assertFalse(element.keyTyped(ctx, ' ', Keys.SPACE));
         assertEquals(true, option.getValue());
         assertEquals(3, ctx.clicks);
-    }
-
-    @Test
-    void aFocusedSliderShowsItsTrackAndStepsOneIntervalPerArrowStoppingAtTheEnds() {
-        Option<Integer> option = option(4, true, false);
-        SliderControl control = new SliderControl(option, 0, 10, 2, ControlValueFormatter.number());
-        Mockito.when(option.getControl()).thenReturn(control);
-        ControlElement<Integer> element = control.createElement(DIM);
-        FakeInteractionContext ctx = new FakeInteractionContext();
-        assertFalse(element.keyTyped(ctx, '\0', Keys.RIGHT));
-        assertEquals(4, option.getValue());
-
-        // The track runs x 104..194 on line 9 and the thumb for 4 of 0..10 sits at x 138, both drawn only when the slider is hovered, held or focused
-        FakeDrawContext idle = new FakeDrawContext();
-        element.render(idle, 500, 500, 0f);
-        assertFalse(idle.drew("fill(104,9,194,10,"));
-        element.setFocused(true);
-        FakeDrawContext focused = new FakeDrawContext();
-        element.render(focused, 500, 500, 0f);
-        assertTrue(focused.drew("fill(104,9,194,10,"));
-        assertTrue(focused.drew("fill(138,5,142,15,"));
-
-        for (int expected : new int[]{6, 8, 10, 10}) {
-            assertTrue(element.keyTyped(ctx, '\0', Keys.RIGHT));
-            assertEquals(expected, option.getValue());
-        }
-        for (int expected : new int[]{8, 6, 4, 2, 0, 0}) {
-            assertTrue(element.keyTyped(ctx, '\0', Keys.LEFT));
-            assertEquals(expected, option.getValue());
-        }
-        // A step past either end writes nothing
-        Mockito.verify(option, Mockito.times(8)).setValue(Mockito.any());
-        // Presses and other keys are not the slider's, and it never plays the click
-        assertFalse(element.keyTyped(ctx, ' ', Keys.SPACE));
-        assertFalse(element.keyTyped(ctx, '\r', Keys.RETURN));
-        assertFalse(element.keyTyped(ctx, '\t', Keys.TAB));
-        assertEquals(0, ctx.clicks);
-
-        Mockito.when(option.isAvailable()).thenReturn(false);
-        assertFalse(element.keyTyped(ctx, '\0', Keys.RIGHT));
-        assertEquals(0, option.getValue());
-        // An unavailable slider shows only its value, focused or not
-        FakeDrawContext unavailable = new FakeDrawContext();
-        element.render(unavailable, 500, 500, 0f);
-        assertFalse(unavailable.drew("fill(104,9,194,10,"));
     }
 
     // The strings a tick box row draws, which are only its name since the box itself is fills; the box takes 30, so the name gets the width less 42

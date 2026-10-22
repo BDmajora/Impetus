@@ -14,6 +14,9 @@ public final class ConfigThemeRegistry {
     // Lock held by register() while the table is replaced
     private static final Object WRITE_LOCK = new Object();
 
+    // Number of registrations made so far
+    private static volatile int generation;
+
     // Prevents instantiation
     private ConfigThemeRegistry() {
     }
@@ -26,7 +29,14 @@ public final class ConfigThemeRegistry {
         synchronized (WRITE_LOCK) {
             // Replaces the table with a copy that includes the new theme
             table = with(table, theme.modId(), accent);
+            // Increments the registration count after the table is replaced
+            generation++;
         }
+    }
+
+    // Returns a number that changes whenever a theme is registered
+    public static int generation() {
+        return generation;
     }
 
     // Returns the mod's accent colour or an empty result when the mod has no registered theme

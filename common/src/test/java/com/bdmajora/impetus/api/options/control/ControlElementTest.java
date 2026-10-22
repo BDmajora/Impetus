@@ -1,5 +1,7 @@
 package com.bdmajora.impetus.api.options.control;
 
+import com.bdmajora.impetus.api.config.theme.ConfigTheme;
+import com.bdmajora.impetus.api.config.theme.ConfigThemeRegistry;
 import com.bdmajora.impetus.api.options.OptionIdentifier;
 import com.bdmajora.impetus.api.options.structure.Option;
 import com.bdmajora.impetus.engine.impl.gui.framework.DrawContext;
@@ -9,6 +11,7 @@ import com.bdmajora.impetus.engine.impl.gui.theme.DefaultColors;
 import com.bdmajora.impetus.engine.impl.util.Dim2i;
 import com.bdmajora.testing.FakeDrawContext;
 import com.bdmajora.testing.FakeInteractionContext;
+import com.bdmajora.testing.Statics;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -436,7 +439,7 @@ class ControlElementTest {
                     "fill(169,7,170,26,ff123456)", "text(Name,-24,12,ffffffff,false)"), focused.calls);
             assertEquals(List.of(MOD), focused.mods);
         }
-        // The accent is read every focused frame, so a theme registered while the screen is open shows at once
+        // Each frame's new font source looks the accent up afresh
         verify(option, times(3)).getId();
         row.setFocused(false);
         assertFalse(row.isFocused());
@@ -804,5 +807,80 @@ class ControlElementTest {
         row.render(other, 0, 0, 0f);
         assertEquals(List.of("Other"), other.strings);
         assertEquals(2, row.measures);
+    }
+
+    // A row recording what it reports as hovered once this class has drawn each frame
+    private static class Hovering extends Row {
+        final List<Boolean> hovered = new ArrayList<>();
+
+        Hovering(Option<Boolean> option, Dim2i dim) {
+            super(option, dim, 30);
+        }
+
+        @Override
+        public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
+            super.render(drawContext, mouseX, mouseY, delta);
+            this.hovered.add(this.isHovered());
+        }
+    }
+
+    @Test
+    void aRowReportsTheHoverItDrewThisFrameWithFocusCountingAsHoverAndARowWithNoAreaNeverHovered() {
+        Hovering row = new Hovering(option("Name"), new Dim2i(10, 20, 200, 18));
+        // Inside at the top left corner, outside at the bottom right edges, then focused with the cursor away and back
+        int[][] cursors = {{10, 20}, {209, 37}, {210, 30}, {100, 38}, {5000, 5000}};
+        for (int[] at : cursors) {
+            row.render(new FakeDrawContext(), at[0], at[1], 0f);
+        }
+        row.setFocused(true);
+        row.render(new FakeDrawContext(), 5000, 5000, 0f);
+        row.setFocused(false);
+        row.render(new FakeDrawContext(), 5000, 5000, 0f);
+        assertEquals(List.of(true, true, false, false, false, true, false), row.hovered);
+        for (Dim2i dim : new Dim2i[]{new Dim2i(0, 0, 0, 18), new Dim2i(0, 0, (1 << 30) + 1, 18)}) {
+            Hovering empty = new Hovering(option("Name"), dim);
+            empty.setFocused(true);
+            empty.render(new FakeDrawContext(), 1, 1, 0f);
+            assertEquals(List.of(false), empty.hovered, dim::toString);
+        }
+    }
+
+    @Test
+    void theAccentIsLookedUpOncePerFontSourceAndAgainOnlyOnceAThemeIsRegistered() {
+        Object table = Statics.get(ConfigThemeRegistry.class, "table");
+        try {
+            Option<Boolean> option = option("Name");
+            doReturn(OptionIdentifier.create(MOD, "row", Boolean.class)).when(option).getId();
+            Row row = new Row(option, new Dim2i(0, 0, 200, 18), 30);
+            row.setFocused(true);
+            FakeDrawContext themed = new FakeDrawContext();
+            String before = Integer.toHexString(DefaultColors.getModAccentColor(MOD));
+            for (int frame = 0; frame < 4; frame++) {
+                themed.calls.clear();
+                row.render(themed, 5000, 5000, 0f);
+                assertTrue(themed.drew("fill(0,0,200,1," + before + ")"), themed.calls::toString);
+            }
+            verify(option, times(1)).getId();
+            // A theme registered while the screen is open shows on the next frame, and is then kept
+            int generation = ConfigThemeRegistry.generation();
+            ConfigThemeRegistry.register(new ConfigTheme(MOD, 0xFF00FF00));
+            assertNotEquals(generation, ConfigThemeRegistry.generation());
+            for (int frame = 0; frame < 3; frame++) {
+                themed.calls.clear();
+                row.render(themed, 5000, 5000, 0f);
+                assertTrue(themed.drew("fill(0,0,200,1,ff00ff00)"), themed.calls::toString);
+            }
+            verify(option, times(2)).getId();
+            // Another font source asks for itself, and so does each row
+            Accented accented = new Accented();
+            row.render(accented, 5000, 5000, 0f);
+            row.render(accented, 5000, 5000, 0f);
+            Row other = new Row(option, new Dim2i(0, 30, 200, 18), 30);
+            other.setFocused(true);
+            other.render(accented, 5000, 5000, 0f);
+            assertEquals(List.of(MOD, MOD), accented.mods);
+        } finally {
+            Statics.set(ConfigThemeRegistry.class, "table", table);
+        }
     }
 }

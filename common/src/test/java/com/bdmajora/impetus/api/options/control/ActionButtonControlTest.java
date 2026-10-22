@@ -991,6 +991,48 @@ class ActionButtonControlTest {
     }
 
     @Test
+    void aRowWithNoAreaOrTooFarOutToBeDrawnTakesNoClickOrKeyEvenWithTheCursorOnItsLabelOrFocusForcedOnIt() {
+        for (Dim2i dim : new Dim2i[]{new Dim2i(0, 0, (1 << 30) + 1, 18), new Dim2i(Integer.MIN_VALUE, 0, Integer.MAX_VALUE, 18), new Dim2i(0, (1 << 30) - 10, 200, 18),
+                new Dim2i(0, 0, 0, 18), new Dim2i(0, 0, -200, 18), new Dim2i(0, 0, 200, 0), new Dim2i(0, 0, 200, -18)}) {
+            Option<Boolean> option = option(new AtomicBoolean(true));
+            AtomicInteger runs = new AtomicInteger();
+            ControlElement<Boolean> element = element(option, TextComponent.literal("Go"), runs::incrementAndGet, dim);
+            clearInvocations(option);
+            // Where the label would lie, 30 in from the right edge on the centre line, which the edges of a row too far out still hold
+            double x = (double) dim.x() + dim.width() - 30;
+            double y = dim.getCenterY();
+            assertEquals(dim.width() > 0 && dim.height() > 0, dim.containsCursor(x, y), dim::toString);
+            FakeInteractionContext ctx = new FakeInteractionContext();
+            assertFalse(element.mouseClicked(ctx, x, y, 0), dim::toString);
+            assertFalse(element.canFocus(), dim::toString);
+            element.setFocused(true);
+            for (Object[] key : PRESS_KEYS) {
+                assertFalse(element.keyTyped(ctx, (char) key[0], (int) key[1]), () -> dim + " " + key[0] + "/" + key[1]);
+            }
+            verify(option, never()).isAvailable();
+            verify(option, never()).getValue();
+            verify(option, never()).setValue(any());
+            assertEquals(0, runs.get(), dim::toString);
+            assertEquals(0, ctx.clicks, dim::toString);
+        }
+    }
+
+    @Test
+    void aRowReachingExactlyToTheCoordinateLimitIsStillPressedByAClickAndAKey() {
+        for (Dim2i dim : new Dim2i[]{new Dim2i(0, 0, 1 << 30, 18), new Dim2i(-(1 << 30), -(1 << 30), 200, 18), new Dim2i(0, (1 << 30) - 18, 200, 18)}) {
+            AtomicInteger runs = new AtomicInteger();
+            ControlElement<Boolean> element = element(option(new AtomicBoolean(true)), TextComponent.literal("Go"), runs::incrementAndGet, dim);
+            FakeInteractionContext ctx = new FakeInteractionContext();
+            assertTrue(element.mouseClicked(ctx, (double) dim.x() + dim.width() - 30, dim.getCenterY(), 0), dim::toString);
+            assertTrue(element.canFocus(), dim::toString);
+            element.setFocused(true);
+            assertTrue(element.keyTyped(ctx, ' ', 57), dim::toString);
+            assertEquals(2, runs.get(), dim::toString);
+            assertEquals(2, ctx.clicks, dim::toString);
+        }
+    }
+
+    @Test
     void anActionThatFailsWhenPressedFromTheKeyboardIsLoggedAndTheKeyClaimed() {
         withLogger(logger -> {
             IllegalStateException failure = new IllegalStateException("broken");

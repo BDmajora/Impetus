@@ -85,6 +85,22 @@ class ConfigThemeRegistryTest {
     }
 
     @Test
+    void theGenerationAdvancesOncePerRegistrationAndNeverOnALookupOrARefusedOne() {
+        int start = ConfigThemeRegistry.generation();
+        getAccentColor("mymod");
+        assertThrows(NullPointerException.class, () -> register(null));
+        assertEquals(start, ConfigThemeRegistry.generation());
+        // A new mod, the same theme again and a replacement each count, since any of them may change an answer
+        register(new ConfigTheme("mymod", 0xFF123456));
+        register(new ConfigTheme("mymod", 0xFF123456));
+        register(new ConfigTheme("MyMod", 0xFF654321));
+        assertEquals(start + 3, ConfigThemeRegistry.generation());
+        getAccentColor("mymod");
+        getAccentColor("other");
+        assertEquals(start + 3, ConfigThemeRegistry.generation());
+    }
+
+    @Test
     void registeringNullThrowsAndPublishesNothing() {
         register(new ConfigTheme("mymod", 0xFF123456));
         Object[] before = slots();
@@ -663,7 +679,11 @@ class ConfigThemeRegistryTest {
         Method lookupMethod = type.getMethod("getAccentColor", String.class);
         assertEquals(OptionalInt.class, lookupMethod.getReturnType());
         assertTrue(Modifier.isStatic(lookupMethod.getModifiers()));
-        assertEquals(Set.of("register", "getAccentColor"), Arrays.stream(type.getDeclaredMethods())
+        // Added for rows that cache an accent; an added method leaves mods compiled against the older shape linking as before
+        Method generationMethod = type.getMethod("generation");
+        assertEquals(int.class, generationMethod.getReturnType());
+        assertTrue(Modifier.isStatic(generationMethod.getModifiers()));
+        assertEquals(Set.of("register", "getAccentColor", "generation"), Arrays.stream(type.getDeclaredMethods())
                 .filter(method -> Modifier.isPublic(method.getModifiers())).map(Method::getName).collect(Collectors.toSet()));
         assertEquals(0, type.getFields().length);
         // The table is swapped rather than mutated, so it is volatile instead of final, and private so only register() swaps it
@@ -671,6 +691,10 @@ class ConfigThemeRegistryTest {
         assertTrue(Modifier.isPrivate(table) && Modifier.isStatic(table) && Modifier.isVolatile(table));
         assertFalse(Modifier.isFinal(table));
         assertEquals(Object[].class, type.getDeclaredField("table").getType());
+        // The count is read without the lock, so it is volatile too, and private so only register() advances it
+        int generation = type.getDeclaredField("generation").getModifiers();
+        assertTrue(Modifier.isPrivate(generation) && Modifier.isStatic(generation) && Modifier.isVolatile(generation));
+        assertEquals(int.class, type.getDeclaredField("generation").getType());
         for (String constant : List.of("EMPTY", "WRITE_LOCK")) {
             int modifiers = type.getDeclaredField(constant).getModifiers();
             assertTrue(Modifier.isPrivate(modifiers) && Modifier.isStatic(modifiers) && Modifier.isFinal(modifiers), constant);

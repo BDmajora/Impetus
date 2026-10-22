@@ -10,6 +10,7 @@ import com.bdmajora.impetus.engine.impl.util.Dim2i;
 
 import java.util.Objects;
 
+// Control that sets an integer option with a slider stepped by a fixed interval
 public class SliderControl implements Control<Integer> {
     private final Option<Integer> option;
 
@@ -17,184 +18,209 @@ public class SliderControl implements Control<Integer> {
 
     private final ControlValueFormatter mode;
 
-    // Argument validation with a message
-    private static void assertTrue(boolean condition, String msg) {
-        if (!condition) {
-            throw new IllegalArgumentException(msg);
-        }
-    }
+    // Span from the minimum to the maximum as a long and the index of the last stop
+    private final long range;
+    private final long lastStop;
 
-    // Checks the option first and then the range, so a bad slider fails where it is made and the option it is made in can stand a placeholder in its row
+    // Creates the slider and rejects null arguments and an invalid range or interval
     public SliderControl(Option<Integer> option, int min, int max, int interval, ControlValueFormatter mode) {
         Objects.requireNonNull(option, "Option must not be null");
-        assertTrue(max > min, "The maximum value must be greater than the minimum value");
-        assertTrue(interval > 0, "The slider interval must be greater than zero");
-        // Worked out in a long, as the span of the full int range wraps an int
-        assertTrue((((long) max - min) % interval) == 0, "The maximum value must be divisable by the interval");
-        assertTrue(mode != null, "The slider mode must not be null");
+        Objects.requireNonNull(mode, "Formatter must not be null");
+        // Rejects a maximum not above the minimum or an interval below one or a range that is not a whole number of intervals
+        if (max <= min) {
+            throw new IllegalArgumentException("Slider maximum " + max + " must be greater than its minimum " + min);
+        }
+        if (interval <= 0) {
+            throw new IllegalArgumentException("Slider interval " + interval + " must be greater than zero");
+        }
+        long range = (long) max - min;
+        if (range % interval != 0) {
+            throw new IllegalArgumentException("Slider range " + min + " to " + max + " is not a whole number of intervals of " + interval);
+        }
 
         this.option = option;
         this.min = min;
         this.max = max;
         this.interval = interval;
         this.mode = mode;
+        // Stores the range and the index of the last stop
+        this.range = range;
+        this.lastStop = range / interval;
     }
 
-    // The slider widget
+    // Creates the slider element at the given bounds
     @Override
     public ControlElement<Integer> createElement(Dim2i dim) {
-        return new Button(this.option, dim, this.min, this.max, this.interval, this.mode);
+        return new Button(this, dim);
     }
 
-    // Bound option
+    // Returns the option this control edits
     @Override
     public Option<Integer> getOption() {
         return this.option;
     }
 
-    // Widest the slider needs to be
+    // Returns the maximum width of the control in pixels
     @Override
     public int getMaxWidth() {
         return 130;
     }
 
-    private static class Button extends ControlElement<Integer> {
+    // Row that draws the slider or the formatted value and handles clicks and drags and arrow keys
+    private static final class Button extends ControlElement<Integer> {
+        // Half width of the thumb and height of the track
         private static final int THUMB_WIDTH = 2, TRACK_HEIGHT = 1;
-        // Widest and tallest the slider is drawn
+        // Largest width and the height of the slider
         private static final int SLIDER_WIDTH = 90;
         private static final int SLIDER_HEIGHT = 10;
-        // Gap between the slider and either edge of the row, and between the value and the slider
+        // Gap between the slider and the row edges and between the value and the slider
         private static final int SLIDER_INSET = 6;
 
-        private final Dim2i sliderBounds;
-        // Whether the slider lies wholly inside the row, which a row too narrow or too short for it does not hold
-        private final boolean sliderFits;
-        private final ControlValueFormatter formatter;
+        // Control that holds the range and stops and formatter
+        private final SliderControl control;
+        // Width of the track or zero when the slider does not fit inside a drawable row
+        private final int sliderWidth;
 
-        private final int min;
-        // Kept in a long, as the span of the full int range wraps an int
-        private final long range;
-        private final int interval;
-
+        // Whether a drag is in progress
         private boolean sliderHeld;
 
-        // The value beside the idle slider and beside the shown one, each cut to the room the name leaves
-        private final FittedText idleText = new FittedText();
-        private final FittedText shownText = new FittedText();
+        // Value text beside the idle slider and the shown slider created on first use
+        private FittedText idleText;
+        private FittedText shownText;
 
-        public Button(Option<Integer> option, Dim2i dim, int min, int max, int interval, ControlValueFormatter formatter) {
-            super(option, dim);
+        // Creates the row and works out the track width
+        Button(SliderControl control, Dim2i dim) {
+            super(control.option, dim);
 
-            this.min = min;
-            this.range = (long) max - min;
-            this.interval = interval;
-            this.formatter = formatter;
-
-            // Narrowed to keep the insets on both sides in a row narrower than the slider
-            int sliderWidth = (int) Math.clamp(dim.width() - 2L * SLIDER_INSET, 0, SLIDER_WIDTH);
-            this.sliderBounds = new Dim2i(dim.getLimitX() - SLIDER_INSET - sliderWidth, dim.getCenterY() - SLIDER_HEIGHT / 2, sliderWidth, SLIDER_HEIGHT);
-            this.sliderFits = sliderWidth > 0 && dim.canFitDimension(this.sliderBounds);
-            this.sliderHeld = false;
+            this.control = control;
+            // Narrows the track to keep the inset on both sides of a narrow row
+            int width = (int) Math.clamp(dim.width() - 2L * SLIDER_INSET, 0, SLIDER_WIDTH);
+            // Uses the track width only on a drawable row at least as tall as the slider
+            this.sliderWidth = this.hasArea() && dim.height() >= SLIDER_HEIGHT ? width : 0;
         }
 
-        // Track, thumb and formatted value; a value-only label when neither hovered, held nor focused, or when the slider does not fit the row
+        // Returns the left edge of the track
+        private int sliderX() {
+            return this.dim.getLimitX() - SLIDER_INSET - this.sliderWidth;
+        }
+
+        // Returns the top of the slider centred on the row
+        private int sliderY() {
+            return this.dim.getCenterY() - SLIDER_HEIGHT / 2;
+        }
+
+        // Draws the slider while hovered or held or focused and the value alone otherwise
         @Override
         public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
             super.render(drawContext, mouseX, mouseY, delta);
-            if (!this.hasArea()) {
-                return;
-            }
 
+            // Shows the slider only on an available row with a track
             boolean enabled = this.isDrawnAvailable();
-            int value = this.currentValue();
-            if (enabled && this.sliderFits && (this.sliderHeld || this.isFocused() || this.isMouseOver(mouseX, mouseY))) {
-                this.renderSlider(drawContext, value);
-            } else {
-                this.renderStandaloneValue(drawContext, value, enabled);
+            if (enabled && this.sliderWidth > 0 && (this.sliderHeld || this.isHovered())) {
+                this.renderSlider(drawContext, this.currentValue());
+            } else if (this.hasRoomForText()) {
+                // Draws the value alone when a line of text fits
+                this.renderStandaloneValue(drawContext, this.currentValue(), enabled);
             }
         }
 
-        // Just the formatted value, when the slider is idle
+        // Draws the formatted value aligned right while the slider is idle
         private void renderStandaloneValue(DrawContext drawContext, int value, boolean enabled) {
-            if (!this.hasRoomForText()) {
-                return;
+            FittedText text = this.idleText;
+            if (text == null) {
+                text = this.idleText = new FittedText();
             }
             int right = this.dim.getLimitX() - SLIDER_INSET;
             int room = right - this.getNameLimitX();
-            // Formatted and fitted again only when the value, its state or the room changes
+            // Formats and fits the value again when the value or state or room or text generation changes
             long generation = this.textGeneration();
-            if (!this.idleText.isFittedFor(generation, null, value, !enabled, room)) {
-                TextComponent label = this.formatter.format(value);
-                this.idleText.fit(drawContext, generation, null, value, !enabled, room, label == null || enabled ? label : this.formatDisabledControlValue(label));
+            if (!text.isFittedFor(generation, null, value, !enabled, room)) {
+                TextComponent label = this.control.mode.format(value);
+                text.fit(drawContext, generation, null, value, !enabled, room, label == null || enabled ? label : this.formatDisabledControlValue(label));
             }
 
-            TextComponent label = this.idleText.text();
+            TextComponent label = text.text();
             if (label != null) {
-                drawContext.drawString(label, right - this.idleText.width(), this.dim.getCenterY() - 4, enabled ? 0xFFFFFFFF : this.getDisabledControlColor());
+                drawContext.drawString(label, right - text.width(), this.dim.getCenterY() - 4, enabled ? 0xFFFFFFFF : this.getDisabledControlColor());
             }
         }
 
-        // Track, thumb and value while hovered, held or focused
+        // Draws the track and thumb and the value beside the slider
         private void renderSlider(DrawContext drawContext, int value) {
-            int sliderX = this.sliderBounds.x();
-            int sliderY = this.sliderBounds.y();
-            int sliderWidth = this.sliderBounds.width();
-            int sliderHeight = this.sliderBounds.height();
+            int sliderX = this.sliderX();
+            int sliderY = this.sliderY();
+            int sliderWidth = this.sliderWidth;
 
-            // The value's place along the track, held to the ends for a value outside the range
-            double thumbOffset = Math.clamp(((double) value - this.min) / this.range * sliderWidth, 0, sliderWidth);
+            // Converts the value clamped to the range into a whole pixel offset along the track
+            long offset = Math.clamp((long) value - this.control.min, 0, this.control.range);
+            int thumbOffset = (int) ((double) offset * sliderWidth / this.control.range);
 
-            int thumbX = (int) (sliderX + thumbOffset - THUMB_WIDTH);
-            int trackY = (int) (sliderY + (sliderHeight / 2f) - ((double) TRACK_HEIGHT / 2));
+            // Computes the thumb and track positions in whole pixels
+            int thumbX = sliderX + thumbOffset - THUMB_WIDTH;
+            int trackY = sliderY + (SLIDER_HEIGHT - TRACK_HEIGHT) / 2;
 
             int accentColor = this.getAccentColor(drawContext);
-            drawContext.fill(thumbX, sliderY, thumbX + (THUMB_WIDTH * 2), sliderY + sliderHeight, accentColor);
+            drawContext.fill(thumbX, sliderY, thumbX + (THUMB_WIDTH * 2), sliderY + SLIDER_HEIGHT, accentColor);
             drawContext.fill(sliderX, trackY, sliderX + sliderWidth, trackY + TRACK_HEIGHT, ColorARGB.withAlpha(accentColor, 0xB8));
             if (!this.hasRoomForText()) {
                 return;
             }
 
+            FittedText text = this.shownText;
+            if (text == null) {
+                text = this.shownText = new FittedText();
+            }
             int right = sliderX - SLIDER_INSET;
             int room = right - this.getNameLimitX();
-            // Formatted and fitted again only when the value or the room changes
+            // Formats and fits the value again when the value or room or text generation changes
             long generation = this.textGeneration();
-            if (!this.shownText.isFittedFor(generation, null, value, false, room)) {
-                this.shownText.fit(drawContext, generation, null, value, false, room, this.formatter.format(value));
+            if (!text.isFittedFor(generation, null, value, false, room)) {
+                text.fit(drawContext, generation, null, value, false, room, this.control.mode.format(value));
             }
 
-            TextComponent label = this.shownText.text();
+            TextComponent label = text.text();
             if (label != null) {
-                drawContext.drawString(label, right - this.shownText.width(), sliderY + (sliderHeight / 2) - 4, 0xFFFFFFFF);
+                drawContext.drawString(label, right - text.width(), this.dim.getCenterY() - 4, 0xFFFFFFFF);
             }
         }
 
-        // The option's value, or the minimum when it has none, as a cycler shows a missing value as its first
+        // Returns the option value or the minimum when it is null
         private int currentValue() {
-            Integer value = this.option.getValue();
-            return value != null ? value : this.min;
+            return this.valueOr(this.option.getValue());
         }
 
-        // Place along the track from 0 to 1 of a value, past either end for a value outside the range
-        private double positionOf(double value) {
-            return (value - this.min) / this.range;
+        // Returns the given value or the minimum when it is null
+        private int valueOr(Integer value) {
+            return value != null ? value : this.control.min;
         }
 
-        // Value nearest a place along the track from 0 to 1, snapped to the interval
-        private int valueAt(double position) {
-            // Counted in longs, as steps times the interval can pass an int over the full int range
-            long steps = Math.round(position * this.range / this.interval);
-            return (int) (this.min + steps * this.interval);
+        // Returns the value of the given stop clamped to the first and last stops
+        private int valueOfStop(long stop) {
+            SliderControl control = this.control;
+            return (int) (control.min + Math.clamp(stop, 0, control.lastStop) * control.interval);
         }
 
-        // Jumps to the click and starts a drag
+        // Writes the value unless the option already holds it
+        private void write(Integer current, int value) {
+            if (current == null || current != value) {
+                this.option.setValue(value);
+            }
+        }
+
+        // Moves the value to the clicked point on the track and starts a drag
         @Override
         public boolean mouseClicked(InteractionContext context, double mouseX, double mouseY, int button) {
             this.sliderHeld = false;
 
-            if (button == 0 && this.dim.containsCursor(mouseX, mouseY) && this.isOptionAvailable()) {
-                if (this.sliderFits && this.sliderBounds.containsCursor(mouseX, mouseY)) {
-                    this.setValueFromMouse(mouseX);
-                    this.sliderHeld = true;
+            if (button == 0 && this.hasArea() && this.dim.containsCursor(mouseX, mouseY) && this.isOptionAvailable()) {
+                if (this.sliderWidth > 0) {
+                    int sliderX = this.sliderX();
+                    int sliderY = this.sliderY();
+                    // Checks that the cursor is over the track columns and slider rows
+                    if (mouseX >= sliderX && mouseX < sliderX + this.sliderWidth && mouseY >= sliderY && mouseY < sliderY + SLIDER_HEIGHT) {
+                        this.setValueFromMouse(mouseX, sliderX);
+                        this.sliderHeld = true;
+                    }
                 }
 
                 return true;
@@ -203,38 +229,34 @@ public class SliderControl implements Control<Integer> {
             return false;
         }
 
-        // Track position to value, the start for a track too narrow to have a span
-        private void setValueFromMouse(double d) {
-            int span = this.sliderBounds.width() - 1;
-            this.setValue(span > 0 ? (d - this.sliderBounds.x()) / span : 0);
+        // Sets the value to the stop nearest the cursor with the first track pixel as the minimum and the last as the maximum
+        private void setValueFromMouse(double mouseX, int sliderX) {
+            int span = this.sliderWidth - 1;
+            double position = span > 0 ? (mouseX - sliderX) / span : 0;
+            // Rounds the clamped position to the nearest stop
+            long stop = Math.round(Math.clamp(position, 0.0, 1.0) * this.control.lastStop);
+            this.write(this.option.getValue(), this.valueOfStop(stop));
         }
 
-        // Snaps to the interval and clamps, writing only a value that differs
-        public void setValue(double d) {
-            // A place that is not a number rounds to the start
-            int value = this.valueAt(Math.clamp(d, 0.0, 1.0));
-
-            Integer current = this.option.getValue();
-            if (current == null || current != value) {
-                this.option.setValue(value);
-            }
-        }
-
-        // The arrows move a focused slider one interval the way they point, stopping at either end
+        // Moves a focused slider one stop left or right with the arrow keys and stops at either end
         @Override
         public boolean keyTyped(InteractionContext context, char typedChar, int keyCode) {
-            if (!this.isFocused() || (keyCode != Keys.LEFT && keyCode != Keys.RIGHT) || !this.isOptionAvailable()) {
+            if (!this.isFocused() || !this.hasArea() || (keyCode != Keys.LEFT && keyCode != Keys.RIGHT) || !this.isOptionAvailable()) {
                 return false;
             }
 
-            int step = keyCode == Keys.LEFT ? -this.interval : this.interval;
-            // Added in a long, so a value at either end of the int range cannot wrap round to the other
-            this.setValue(this.positionOf((long) this.currentValue() + step));
+            Integer current = this.option.getValue();
+            int interval = this.control.interval;
+            // Computes the offset from the minimum as a long
+            long offset = (long) this.valueOr(current) - this.control.min;
+            // Picks the next stop past the current value in the arrow direction
+            long stop = keyCode == Keys.RIGHT ? Math.floorDiv(offset, interval) + 1 : Math.ceilDiv(offset, interval) - 1;
+            this.write(current, this.valueOfStop(stop));
 
             return true;
         }
 
-        // Ends a drag on the left button's release, so the slider stops showing as held
+        // Ends a drag when the left button is released
         @Override
         public boolean mouseReleased(InteractionContext context, double mouseX, double mouseY, int button) {
             if (button == 0 && this.sliderHeld) {
@@ -245,11 +267,11 @@ public class SliderControl implements Control<Integer> {
             return false;
         }
 
-        // Follows the cursor while dragging
+        // Moves the value with the cursor while dragging
         @Override
         public boolean mouseDragged(InteractionContext context, double mouseX, double mouseY, int button, double deltaX, double deltaY) {
             if (button == 0 && this.sliderHeld && this.isOptionAvailable()) {
-                this.setValueFromMouse(mouseX);
+                this.setValueFromMouse(mouseX, this.sliderX());
                 return true;
             }
 

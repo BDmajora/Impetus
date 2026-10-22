@@ -1,5 +1,7 @@
+```java
 package com.bdmajora.impetus.api.options.control;
 
+import com.bdmajora.impetus.api.config.theme.ConfigThemeRegistry;
 import com.bdmajora.impetus.api.options.structure.Option;
 import com.bdmajora.impetus.engine.impl.gui.framework.DrawContext;
 import com.bdmajora.impetus.engine.impl.gui.framework.Focusable;
@@ -41,6 +43,8 @@ public class ControlElement<T> extends AbstractWidget implements OptionControlEl
     protected final Dim2i dim;
 
     private boolean focused;
+    // Whether the last frame drew the row as hovered or focused
+    private boolean hovered;
 
     // Whether the row has an area within the drawable coordinates
     private final boolean drawable;
@@ -61,6 +65,11 @@ public class ControlElement<T> extends AbstractWidget implements OptionControlEl
     private int labelWidth;
     // Whether a line of text fits the row height in the last font source
     private boolean textFits;
+
+    // Font source and theme generation of the last accent lookup and the accent found
+    private DrawContext accentContext;
+    private int accentGeneration;
+    private int accent;
 
     // Creates a row for the option at the given bounds and rejects a null option or bounds
     public ControlElement(Option<T> option, Dim2i dim) {
@@ -85,7 +94,8 @@ public class ControlElement<T> extends AbstractWidget implements OptionControlEl
         if (!this.drawable) {
             return;
         }
-        boolean hovered = this.focused || this.isMouseOver(mouseX, mouseY);
+        // Stores whether the row is hovered or focused for this frame
+        boolean hovered = this.hovered = this.focused || this.isMouseOver(mouseX, mouseY);
         boolean available = this.isOptionAvailable();
         int state = !available ? STATE_DISABLED : this.option.hasChanged() ? STATE_CHANGED : STATE_NORMAL;
         TextComponent name = this.getDisplayName();
@@ -130,6 +140,11 @@ public class ControlElement<T> extends AbstractWidget implements OptionControlEl
     // Returns true when the row has width and height within the drawable coordinates
     protected final boolean hasArea() {
         return this.drawable;
+    }
+
+    // Returns whether the current frame drew the row as hovered or focused
+    protected final boolean isHovered() {
+        return this.hovered;
     }
 
     // Returns the generation of the font source the name was last fitted in
@@ -232,10 +247,17 @@ public class ControlElement<T> extends AbstractWidget implements OptionControlEl
         return this.dim;
     }
 
-    // Returns the accent colour of the mod that owns the option
+    // Returns the accent colour of the mod that owns the option and looks it up again for a new font source or theme generation
     protected int getAccentColor(DrawContext drawContext) {
-        var id = this.option.getId();
-        return drawContext.getModAccentColor(id != null ? id.getModId() : null);
+        // Reads the theme generation before the lookup
+        int generation = ConfigThemeRegistry.generation();
+        if (drawContext != this.accentContext || generation != this.accentGeneration) {
+            var id = this.option.getId();
+            this.accent = drawContext.getModAccentColor(id != null ? id.getModId() : null);
+            this.accentGeneration = generation;
+            this.accentContext = drawContext;
+        }
+        return this.accent;
     }
 
     // Returns the text colour used for unavailable controls
@@ -272,3 +294,4 @@ public class ControlElement<T> extends AbstractWidget implements OptionControlEl
         this.focused = focused;
     }
 }
+```

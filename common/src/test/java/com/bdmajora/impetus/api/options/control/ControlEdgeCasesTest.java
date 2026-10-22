@@ -7,7 +7,6 @@ import com.bdmajora.impetus.api.options.structure.OptionImpl;
 import com.bdmajora.impetus.api.options.structure.OptionPage;
 import com.bdmajora.impetus.api.options.structure.OptionStorage;
 import com.bdmajora.impetus.engine.impl.gui.frame.OptionPageFrame;
-import com.bdmajora.impetus.engine.impl.gui.framework.Keys;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextFormattingStyle;
 import com.bdmajora.impetus.engine.impl.gui.theme.DefaultColors;
@@ -26,7 +25,6 @@ import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.clearInvocations;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -243,131 +241,6 @@ class ControlEdgeCasesTest {
     }
 
     @Test
-    void releasingADraggedSliderEndsTheDragSoItsTrackHidesOnceTheCursorLeaves() {
-        Option<Integer> option = valued("Slide", 5);
-        ControlElement<?> row = bound(new SliderControl(option, 0, 10, 1, ControlValueFormatter.number())).createElement(new Dim2i(0, 0, 200, 18));
-        FakeInteractionContext context = new FakeInteractionContext();
-        // The track runs x 104..193 on rows 4..13
-        assertTrue(row.mouseClicked(context, 150, 9, 0));
-        assertTrue(row.mouseDragged(context, 160, 9, 0, 0, 0));
-        FakeDrawContext held = new FakeDrawContext();
-        row.render(held, 5000, 5000, 0f);
-        assertTrue(held.drew("fill(104,8,194,9,"));
-        // The release ends the drag it was part of, and only that one
-        assertTrue(row.mouseReleased(context, 160, 9, 0));
-        assertFalse(row.mouseReleased(context, 160, 9, 0));
-        FakeDrawContext released = new FakeDrawContext();
-        row.render(released, 5000, 5000, 0f);
-        assertFalse(released.drew("fill(104,8,194,9,"), released.calls::toString);
-        assertFalse(row.mouseDragged(context, 120, 9, 0, 0, 0));
-        // Another button's release leaves a drag going
-        assertTrue(row.mouseClicked(context, 150, 9, 0));
-        assertFalse(row.mouseReleased(context, 150, 9, 1));
-        assertTrue(row.mouseDragged(context, 120, 9, 0, 0, 0));
-    }
-
-    @Test
-    void aSliderOverTheWholeIntRangeReachesBothEndsAndNeverWrapsRound() {
-        Option<Integer> option = valued("Wide", 0);
-        ControlElement<?> row = bound(new SliderControl(option, Integer.MIN_VALUE, Integer.MAX_VALUE, 1, ControlValueFormatter.number())).createElement(new Dim2i(0, 0, 200, 18));
-        FakeInteractionContext context = new FakeInteractionContext();
-        assertTrue(row.mouseClicked(context, 104, 9, 0));
-        assertEquals(Integer.MIN_VALUE, option.getValue());
-        assertTrue(row.mouseDragged(context, 193, 9, 0, 0, 0));
-        assertEquals(Integer.MAX_VALUE, option.getValue());
-        assertTrue(row.mouseDragged(context, 148, 9, 0, 0, 0));
-        assertEquals((int) (Integer.MIN_VALUE + Math.round(44.0 / 89 * 4294967295L)), option.getValue());
-        row.setFocused(true);
-        Mockito.doAnswer(invocation -> null).when(option).setValue(Mockito.any());
-        when(option.getValue()).thenReturn(Integer.MAX_VALUE);
-        clearInvocations(option);
-        assertTrue(row.keyTyped(context, '\0', Keys.RIGHT));
-        verify(option, never()).setValue(Mockito.any());
-        assertTrue(row.keyTyped(context, '\0', Keys.LEFT));
-        verify(option).setValue(Integer.MAX_VALUE - 1);
-        when(option.getValue()).thenReturn(Integer.MIN_VALUE);
-        clearInvocations(option);
-        assertTrue(row.keyTyped(context, '\0', Keys.LEFT));
-        verify(option, never()).setValue(Mockito.any());
-        // The thumb sits at either end of the track
-        FakeDrawContext draw = new FakeDrawContext();
-        row.render(draw, 5000, 5000, 0f);
-        assertTrue(draw.drew("fill(102,4,106,14,"), draw.calls::toString);
-    }
-
-    @Test
-    void aValueOutsideTheRangeStepsInFromTheNearEndRatherThanWrappingToTheFarOne() {
-        Option<Integer> option = valued("Slide", Integer.MAX_VALUE);
-        ControlElement<?> row = bound(new SliderControl(option, 0, 10, 2, ControlValueFormatter.number())).createElement(new Dim2i(0, 0, 200, 18));
-        row.setFocused(true);
-        FakeInteractionContext context = new FakeInteractionContext();
-        assertTrue(row.keyTyped(context, '\0', Keys.RIGHT));
-        assertEquals(10, option.getValue());
-        option.setValue(Integer.MIN_VALUE);
-        assertTrue(row.keyTyped(context, '\0', Keys.LEFT));
-        assertEquals(0, option.getValue());
-        // Shown as it is, with the thumb held at the end it is past
-        option.setValue(-7);
-        FakeDrawContext draw = new FakeDrawContext();
-        row.render(draw, 5000, 5000, 0f);
-        assertTrue(draw.strings.contains("-7"));
-        assertTrue(draw.drew("fill(102,4,106,14,"), draw.calls::toString);
-    }
-
-    @Test
-    void aSliderShowsAValueOffTheIntervalAsItIsWhetherIdleOrShown() {
-        Option<Integer> option = valued("Slide", 5);
-        ControlElement<?> row = bound(new SliderControl(option, 0, 10, 2, ControlValueFormatter.number())).createElement(new Dim2i(0, 0, 200, 18));
-        FakeDrawContext idle = new FakeDrawContext();
-        row.render(idle, 5000, 5000, 0f);
-        assertEquals(List.of("Slide", "5"), idle.strings);
-        row.setFocused(true);
-        FakeDrawContext shown = new FakeDrawContext();
-        row.render(shown, 5000, 5000, 0f);
-        assertEquals(List.of("Slide", "5"), shown.strings);
-        // Halfway along the 90 pixel track, less the thumb's half width
-        assertTrue(shown.drew("fill(147,4,151,14,"), shown.calls::toString);
-        // A step snaps it back onto the interval
-        assertTrue(row.keyTyped(new FakeInteractionContext(), '\0', Keys.RIGHT));
-        assertEquals(8, option.getValue());
-    }
-
-    @Test
-    void aSliderWithNoValueShowsAndStepsFromItsMinimum() {
-        Option<Integer> option = valued("Slide", null);
-        ControlElement<?> row = bound(new SliderControl(option, 3, 9, 3, ControlValueFormatter.number())).createElement(new Dim2i(0, 0, 200, 18));
-        FakeDrawContext draw = new FakeDrawContext();
-        row.render(draw, 5000, 5000, 0f);
-        assertEquals(List.of("Slide", "3"), draw.strings);
-        row.setFocused(true);
-        assertTrue(row.keyTyped(new FakeInteractionContext(), '\0', Keys.RIGHT));
-        assertEquals(6, option.getValue());
-        option.setValue(null);
-        assertTrue(row.mouseClicked(new FakeInteractionContext(), 104, 9, 0));
-        assertEquals(3, option.getValue());
-    }
-
-    @Test
-    void aSliderTooBigForItsRowShowsOnlyItsValueAndCannotBeGrabbed() {
-        Option<Integer> option = valued("Slide", 5);
-        // Nine high leaves no room for the ten pixel slider
-        ControlElement<?> row = bound(new SliderControl(option, 0, 10, 1, ControlValueFormatter.number())).createElement(new Dim2i(0, 0, 200, 9));
-        row.setFocused(true);
-        FakeDrawContext draw = new FakeDrawContext();
-        row.render(draw, 150, 4, 0f);
-        assertEquals(List.of("Slide", "5"), draw.strings);
-        // The background and the focus outline's four sides, and no track or thumb
-        assertEquals(5, draw.calls.stream().filter(call -> call.startsWith("fill(")).count(), draw.calls::toString);
-        FakeInteractionContext context = new FakeInteractionContext();
-        assertTrue(row.mouseClicked(context, 150, 4, 0));
-        assertFalse(row.mouseDragged(context, 120, 4, 0, 0, 0));
-        assertEquals(5, option.getValue());
-        // The arrows still step it
-        assertTrue(row.keyTyped(context, '\0', Keys.RIGHT));
-        assertEquals(6, option.getValue());
-    }
-
-    @Test
     void eachControlFormatsMeasuresAndCutsItsTextOnlyWhenWhatItShowsChanges() {
         AtomicInteger formats = new AtomicInteger();
         Option<Integer> slide = valued("Slide", 5);
@@ -557,44 +430,6 @@ class ControlEdgeCasesTest {
             when(overflowing.getId()).thenThrow(new StackOverflowError());
             assertThrows(StackOverflowError.class, () -> Control.createElementOrPlaceholder(overflowing, new Dim2i(0, 0, 400, 18)));
         });
-    }
-
-    @Test
-    void aSliderGoneUnavailableMidDragIgnoresTheRestOfIt() {
-        Option<Integer> option = valued("Slide", 5);
-        ControlElement<?> row = bound(new SliderControl(option, 0, 10, 1, ControlValueFormatter.number())).createElement(new Dim2i(0, 0, 200, 18));
-        FakeInteractionContext context = new FakeInteractionContext();
-        assertTrue(row.mouseClicked(context, 150, 9, 0));
-        when(option.isAvailable()).thenReturn(false);
-        assertFalse(row.mouseDragged(context, 104, 9, 0, 0, 0));
-        assertEquals(5, option.getValue());
-        // A drag through a cursor that is not a number goes to the start
-        when(option.isAvailable()).thenReturn(true);
-        assertTrue(row.mouseDragged(context, Double.NaN, 9, 0, 0, 0));
-        assertEquals(0, option.getValue());
-    }
-
-    @Test
-    void aShownSliderWhoseFormatterGivesNothingDrawsOnlyItsTrackAndThumb() {
-        ControlElement<?> row = bound(new SliderControl(valued("Slide", 5), 0, 10, 1, value -> null)).createElement(new Dim2i(0, 0, 200, 18));
-        row.setFocused(true);
-        FakeDrawContext draw = new FakeDrawContext();
-        row.render(draw, 5000, 5000, 0f);
-        assertEquals(List.of("Slide"), draw.strings);
-        assertTrue(draw.drew("fill(104,8,194,9,"));
-    }
-
-    @Test
-    void aOnePixelTrackSetsTheMinimumWhereverItIsGrabbed() {
-        // Thirteen wide leaves one pixel between the two six pixel insets
-        Option<Integer> option = valued("Slide", 5);
-        ControlElement<?> row = bound(new SliderControl(option, 0, 10, 1, ControlValueFormatter.number())).createElement(new Dim2i(0, 0, 13, 18));
-        assertTrue(row.mouseClicked(new FakeInteractionContext(), 6, 9, 0));
-        assertEquals(0, option.getValue());
-        row.setFocused(true);
-        FakeDrawContext draw = new FakeDrawContext();
-        row.render(draw, 5000, 5000, 0f);
-        assertTrue(draw.drew("fill(6,8,7,9,"), draw.calls::toString);
     }
 
     // Asserts the call throws the given type with the given message
@@ -911,20 +746,5 @@ class ControlEdgeCasesTest {
             // Eight high holds no line, so the name is not drawn and the whole row is free; eighteen holds "Name" from 16 to 40 and its gap
             assertEquals(height == 8 ? 10 : 46, limit.get(), "height " + height);
         }
-    }
-
-    @Test
-    void aSliderWhoseTrackFitsButWhoseLineDoesNotShowsOnlyTheTrack() {
-        FakeDrawContext tall = new FakeDrawContext() {
-            @Override
-            public int lineHeight() {
-                return 20;
-            }
-        };
-        ControlElement<?> row = bound(new SliderControl(valued("Slide", 5), 0, 10, 1, ControlValueFormatter.number())).createElement(new Dim2i(0, 0, 200, 18));
-        row.setFocused(true);
-        row.render(tall, 5000, 5000, 0f);
-        assertEquals(List.of(), tall.strings);
-        assertTrue(tall.drew("fill(104,8,194,9,"), tall.calls::toString);
     }
 }

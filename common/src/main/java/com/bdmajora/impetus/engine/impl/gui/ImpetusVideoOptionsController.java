@@ -158,8 +158,11 @@ public class ImpetusVideoOptionsController implements Renderable {
 
     // Writes each changed option, saves every storage, then runs flag side effects
     private void applyChanges() {
-        final HashSet<OptionStorage<?>> dirtyStorages = new HashSet<>();
+        // By identity, so each storage object is saved once and its own equals and hashCode are never asked
+        final Set<OptionStorage<?>> dirtyStorages = Collections.newSetFromMap(new IdentityHashMap<>());
         final EnumSet<OptionFlag> flags = EnumSet.noneOf(OptionFlag.class);
+        // One option's flags, copied out before it writes so that flags it cannot give leave nothing behind
+        final EnumSet<OptionFlag> optionFlags = EnumSet.noneOf(OptionFlag.class);
 
         // Over a copy, as an option that throws is dropped from the list as the loop goes
         for (Option<?> option : new ArrayList<>(this.allOptions)) {
@@ -170,10 +173,12 @@ public class ImpetusVideoOptionsController implements Renderable {
                 if (!option.hasChanged()) {
                     continue;
                 }
-                // Read before writing, so an option that fails here is left as it was
-                Collection<OptionFlag> optionFlags = option.getFlags();
-                OptionStorage<?> storage = option.getStorage();
+                // Read before writing, so an option that fails here or answers null is left as it was
+                optionFlags.clear();
+                optionFlags.addAll(Objects.requireNonNull(option.getFlags(), "Option has no flags"));
+                OptionStorage<?> storage = Objects.requireNonNull(option.getStorage(), "Option has no storage");
                 option.applyChanges();
+                // Neither can throw, so a written option always has its flags and storage counted
                 flags.addAll(optionFlags);
                 dirtyStorages.add(storage);
             } catch (VirtualMachineError fatal) {
@@ -183,9 +188,11 @@ public class ImpetusVideoOptionsController implements Renderable {
             }
         }
 
+        // Read-only, so a storage cannot change what the others and the side effects are given
+        Set<OptionFlag> applied = Collections.unmodifiableSet(flags);
         for (OptionStorage<?> storage : dirtyStorages) {
             try {
-                storage.save(flags);
+                storage.save(applied);
             } catch (VirtualMachineError fatal) {
                 throw fatal;
             } catch (Throwable broken) {
@@ -195,7 +202,7 @@ public class ImpetusVideoOptionsController implements Renderable {
             }
         }
 
-        applyFlagSideEffects(Collections.unmodifiableSet(flags));
+        applyFlagSideEffects(applied);
     }
 
     // Platform hook: reload renderer, textures or world as flagged

@@ -67,8 +67,49 @@ final class MixinSubclassing implements ClassFileTransformer {
             "com/bdmajora/impetus/engine/impl/compat/environment/OsKind");
 
     MixinSubclassing() {
-        for (Path root : classRoots()) {
+        Set<Path> roots = classRoots();
+        for (Path root : roots) {
             scan(root);
+        }
+        for (Path root : roots) {
+            findAccessorCallers(root);
+        }
+    }
+
+    // Plain mod classes that call a static accessor; prepare() loads them up front, since one first loaded while Mockito retransforms a class whose fields name it is handed to no transformer and keeps the placeholder call
+    private final Set<String> accessorCallers = new HashSet<>();
+
+    private void findAccessorCallers(Path root) {
+        if (statics.isEmpty()) {
+            return;
+        }
+        try (Stream<Path> files = Files.walk(root)) {
+            files.filter(path -> path.toString().endsWith(".class") && !path.toString().contains("mixin")
+                            && root.relativize(path).toString().startsWith("com/bdmajora/")
+                            && !root.relativize(path).toString().startsWith("com/bdmajora/testing/"))
+                    .forEach(path -> {
+                        try {
+                            ClassReader reader = new ClassReader(Files.readAllBytes(path));
+                            String name = reader.getClassName();
+                            reader.accept(new ClassVisitor(Opcodes.ASM9) {
+                                @Override
+                                public MethodVisitor visitMethod(int access, String method, String descriptor, String signature, String[] exceptions) {
+                                    return new MethodVisitor(Opcodes.ASM9) {
+                                        @Override
+                                        public void visitMethodInsn(int opcode, String owner, String called, String desc, boolean isInterface) {
+                                            if (opcode == Opcodes.INVOKESTATIC && statics.containsKey(owner + "." + called + desc)) {
+                                                accessorCallers.add(name);
+                                            }
+                                        }
+                                    };
+                                }
+                            }, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+                        } catch (IOException | RuntimeException ignored) {
+                            // A class file that cannot be read here is simply not preloaded
+                        }
+                    });
+        } catch (IOException ignored) {
+            // Nothing to scan
         }
     }
 
@@ -224,6 +265,7 @@ final class MixinSubclassing implements ClassFileTransformer {
         all.addAll(extraConstructors.keySet());
         // Mockito retransforming the outer class would otherwise load these from inside a transformer, unpublished
         all.addAll(PUBLISHED);
+        all.addAll(accessorCallers);
         for (String name : all) {
             try {
                 Class.forName(name.replace('/', '.'), false, MixinSubclassing.class.getClassLoader());

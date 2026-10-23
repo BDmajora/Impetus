@@ -12,6 +12,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
@@ -25,7 +26,8 @@ public class OptionImpl<S, T> implements Option<T> {
     // Why the control could not be made, or null when it was
     private final Throwable controlFailure;
 
-    private final EnumSet<OptionFlag> flags;
+    // Read-only, so neither a caller nor the builder that made the option changes them afterwards
+    private final Set<OptionFlag> flags;
 
     private final OptionIdentifier<T> id;
     // Boxed builder type, so it is the same class a control declares and the check against it is one comparison
@@ -58,7 +60,7 @@ public class OptionImpl<S, T> implements Option<T> {
         this.tooltip = tooltip;
         this.binding = binding;
         this.impact = impact;
-        this.flags = flags;
+        this.flags = Collections.unmodifiableSet(flags);
         // A control that fails to be made is kept as its failure, so the page still opens and shows a placeholder in this row
         Control<T> made = null;
         Throwable failure = null;
@@ -301,7 +303,8 @@ public class OptionImpl<S, T> implements Option<T> {
             Objects.requireNonNull(this.binding, "Option binding must be specified");
             Objects.requireNonNull(this.control, "Control must be specified");
 
-            return new OptionImpl<>(this.storage, this.type, this.id, this.name, this.tooltip, this.binding, this.control, this.flags, this.impact, this.enabled);
+            // A copy, as the builder may go on to add flags for another option
+            return new OptionImpl<>(this.storage, this.type, this.id, this.name, this.tooltip, this.binding, this.control, EnumSet.copyOf(this.flags), this.impact, this.enabled);
         }
     }
 }

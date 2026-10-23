@@ -517,6 +517,217 @@ class ImpetusVideoOptionsControllerTest {
         });
     }
 
+    // Applies through the button on a controller over one page of the given options, handing back the side effects it ran
+    private static Set<OptionFlag> applyAll(Option<?>... options) {
+        AtomicReference<Set<OptionFlag>> sideEffects = new AtomicReference<>();
+        FakeDrawContext draw = new FakeDrawContext();
+        ImpetusVideoOptionsController controller = new ImpetusVideoOptionsController(() -> { }, List.of(pageOf("impetus", "General", options)), draw) {
+            @Override
+            protected void applyFlagSideEffects(Set<OptionFlag> flags) {
+                sideEffects.set(flags);
+            }
+        };
+        controller.init(1000, 500);
+        controller.render(draw, 0, 0, 0f);
+        assertTrue(clickCentre(button(controller, "impetus.options.buttons.apply"), new FakeInteractionContext()));
+        return sideEffects.get();
+    }
+
+    // A storage that counts its saves
+    private static class Counting extends Storage {
+        int saves;
+
+        @Override
+        public void save(Set<OptionFlag> flags) {
+            this.saves++;
+            super.save(flags);
+        }
+    }
+
+    @Test
+    void anOptionWithNoStorageOrNoFlagsIsLeftUnwrittenAndTheRestStillApply() {
+        withLogger(logger -> {
+            Storage storage = new Storage();
+            // No storage at all, which used to be saved as null and fail out of the save loop's own report
+            Option<Boolean> storeless = mockOption("Storeless");
+            Mockito.when(storeless.hasChanged()).thenReturn(true);
+            Mockito.doReturn(null).when(storeless).getStorage();
+            Option<Boolean> flagless = mockOption("Flagless");
+            Mockito.when(flagless.hasChanged()).thenReturn(true);
+            Mockito.doReturn(storage).when(flagless).getStorage();
+            Mockito.when(flagless.getFlags()).thenReturn(null);
+            // Flags that fail partway through being read, after one has been seen
+            Option<Boolean> halfway = mockOption("Halfway");
+            Mockito.when(halfway.hasChanged()).thenReturn(true);
+            Mockito.doReturn(storage).when(halfway).getStorage();
+            Mockito.when(halfway.getFlags()).thenReturn(java.util.Arrays.asList(OptionFlag.REQUIRES_GAME_RESTART, null));
+            OptionImpl<Holder, Boolean> fog = option(storage, "impetus", "Fog", "about fog");
+            fog.setValue(true);
+            Set<OptionFlag> sideEffects = applyAll(storeless, flagless, halfway, fog);
+            // None of the three is written, and the flag seen before the failure reaches nothing
+            for (Option<Boolean> unwritten : List.of(storeless, flagless, halfway)) {
+                Mockito.verify(unwritten, Mockito.never()).applyChanges();
+            }
+            assertTrue(storage.data.flag);
+            assertEquals(Set.of(OptionFlag.REQUIRES_RENDERER_RELOAD), storage.savedFlags);
+            assertEquals(Set.of(OptionFlag.REQUIRES_RENDERER_RELOAD), sideEffects);
+            Mockito.verify(logger).error(eq(BROKEN_LOG), eq("Storeless"), eq("applying"), any(NullPointerException.class));
+            Mockito.verify(logger).error(eq(BROKEN_LOG), eq("Flagless"), eq("applying"), any(NullPointerException.class));
+            Mockito.verify(logger).error(eq(BROKEN_LOG), eq("Halfway"), eq("applying"), any(NullPointerException.class));
+            Mockito.verify(logger, Mockito.never()).error(eq("Saving options to {} failed"), any(Object.class), any(Throwable.class));
+        });
+    }
+
+    @Test
+    void flagsGivenAsAnyCollectionAreMergedAndRepeatsCountOnce() {
+        withLogger(logger -> {
+            Counting storage = new Counting();
+            Option<Boolean> listed = mockOption("Listed");
+            Mockito.when(listed.hasChanged()).thenReturn(true);
+            Mockito.doReturn(storage).when(listed).getStorage();
+            Mockito.when(listed.getFlags()).thenReturn(List.of(OptionFlag.REQUIRES_GAME_RESTART, OptionFlag.REQUIRES_GAME_RESTART, OptionFlag.REQUIRES_ASSET_RELOAD));
+            OptionImpl<Holder, Boolean> fog = option(storage, "impetus", "Fog", "about fog");
+            fog.setValue(true);
+            Set<OptionFlag> sideEffects = applyAll(listed, fog);
+            Mockito.verify(listed).applyChanges();
+            assertEquals(Set.of(OptionFlag.REQUIRES_GAME_RESTART, OptionFlag.REQUIRES_ASSET_RELOAD, OptionFlag.REQUIRES_RENDERER_RELOAD), sideEffects);
+            // Two options over one storage save it once
+            assertEquals(1, storage.saves);
+            Mockito.verifyNoInteractions(logger);
+        });
+    }
+
+    @Test
+    void everyStorageObjectIsSavedOnceWhateverItsOwnEqualityAnswers() {
+        withLogger(logger -> {
+            // Two storages that claim to equal every storage, and one whose equality throws
+            Counting first = new Counting() {
+                @Override
+                public boolean equals(Object other) {
+                    return true;
+                }
+
+                @Override
+                public int hashCode() {
+                    return 0;
+                }
+            };
+            Counting second = new Counting() {
+                @Override
+                public boolean equals(Object other) {
+                    return true;
+                }
+
+                @Override
+                public int hashCode() {
+                    return 0;
+                }
+            };
+            Counting hostile = new Counting() {
+                @Override
+                public boolean equals(Object other) {
+                    throw new IllegalStateException("equals");
+                }
+
+                @Override
+                public int hashCode() {
+                    throw new IllegalStateException("hashCode");
+                }
+            };
+            OptionImpl<Holder, Boolean> fog = option(first, "impetus", "Fog", "about fog");
+            OptionImpl<Holder, Boolean> mist = option(first, "impetus", "Mist", "about mist");
+            OptionImpl<Holder, Boolean> clouds = option(second, "impetus", "Clouds", "about clouds");
+            OptionImpl<Holder, Boolean> rain = option(hostile, "impetus", "Rain", "about rain");
+            for (OptionImpl<Holder, Boolean> changed : List.of(fog, mist, clouds, rain)) {
+                changed.setValue(true);
+            }
+            assertEquals(Set.of(OptionFlag.REQUIRES_RENDERER_RELOAD), applyAll(fog, mist, clouds, rain));
+            assertEquals(1, first.saves);
+            assertEquals(1, second.saves);
+            assertEquals(1, hostile.saves);
+            assertTrue(first.data.flag && second.data.flag && hostile.data.flag);
+            // Nothing failed, so nothing was dropped or reported
+            Mockito.verifyNoInteractions(logger);
+            assertFalse(rain.hasChanged());
+        });
+    }
+
+    @Test
+    void aStorageIsGivenTheFlagsReadOnlySoItCannotChangeWhatTheOthersAndTheSideEffectsAreGiven() {
+        withLogger(logger -> {
+            AtomicReference<Throwable> refused = new AtomicReference<>();
+            Storage clearing = new Storage() {
+                @Override
+                public void save(Set<OptionFlag> flags) {
+                    super.save(flags);
+                    try {
+                        flags.clear();
+                    } catch (UnsupportedOperationException readOnly) {
+                        refused.set(readOnly);
+                        throw readOnly;
+                    }
+                }
+            };
+            Storage storage = new Storage();
+            OptionImpl<Holder, Boolean> fog = option(clearing, "impetus", "Fog", "about fog");
+            OptionImpl<Holder, Boolean> clouds = option(storage, "impetus", "Clouds", "about clouds");
+            fog.setValue(true);
+            clouds.setValue(true);
+            Set<OptionFlag> sideEffects = applyAll(fog, clouds);
+            assertEquals(Set.of(OptionFlag.REQUIRES_RENDERER_RELOAD), sideEffects);
+            assertEquals(Set.of(OptionFlag.REQUIRES_RENDERER_RELOAD), storage.savedFlags);
+            assertEquals(Set.of(OptionFlag.REQUIRES_RENDERER_RELOAD), clearing.savedFlags);
+            // The storage that tried is reported like any storage that fails to save
+            assertNotNull(refused.get());
+            Mockito.verify(logger).error(eq("Saving options to {} failed"), eq(clearing.getClass().getName()), same(refused.get()));
+            // The side effects are read-only too
+            assertThrows(UnsupportedOperationException.class, () -> sideEffects.add(OptionFlag.REQUIRES_GAME_RESTART));
+        });
+    }
+
+    @Test
+    void anOptionListedTwiceThatFailsWhileApplyingIsAskedAndReportedOnce() {
+        withLogger(logger -> {
+            Storage storage = new Storage();
+            Option<Boolean> twice = mockOption("Twice");
+            Mockito.when(twice.hasChanged()).thenReturn(true);
+            IllegalStateException failure = new IllegalStateException("flags");
+            Mockito.when(twice.getFlags()).thenThrow(failure);
+            OptionImpl<Holder, Boolean> fog = option(storage, "impetus", "Fog", "about fog");
+            fog.setValue(true);
+            // As an option on two pages sits in the list twice
+            applyAll(twice, fog, twice);
+            assertEquals(1, asked(twice, "getFlags"));
+            Mockito.verify(logger, Mockito.times(1)).error(eq(BROKEN_LOG), eq("Twice"), eq("applying"), same(failure));
+            assertTrue(storage.data.flag);
+        });
+    }
+
+    @Test
+    void aFatalErrorWhileApplyingOrSavingStillReachesTheScreen() {
+        withLogger(logger -> {
+            Option<Boolean> fatal = mockOption("Fatal");
+            Mockito.when(fatal.hasChanged()).thenReturn(true);
+            Mockito.doReturn(new Storage()).when(fatal).getStorage();
+            StackOverflowError overflow = new StackOverflowError();
+            Mockito.doThrow(overflow).when(fatal).applyChanges();
+            assertSame(overflow, assertThrows(StackOverflowError.class, () -> applyAll(fatal)));
+            OutOfMemoryError full = new OutOfMemoryError("saving");
+            Storage failing = new Storage() {
+                @Override
+                public void save(Set<OptionFlag> flags) {
+                    throw full;
+                }
+            };
+            OptionImpl<Holder, Boolean> clouds = option(failing, "impetus", "Clouds", "about clouds");
+            clouds.setValue(true);
+            assertSame(full, assertThrows(OutOfMemoryError.class, () -> applyAll(clouds)));
+            // Written before the save failed, and nothing is reported on the way out
+            assertTrue(failing.data.flag);
+            Mockito.verifyNoInteractions(logger);
+        });
+    }
+
     @Test
     void undoResetsEveryHealthyOptionAndLeavesOutOneThatThrows() {
         withLogger(logger -> {

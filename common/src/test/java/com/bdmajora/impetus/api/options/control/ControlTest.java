@@ -777,26 +777,6 @@ class ControlTest {
     }
 
     @Test
-    void anOptionTakesItsValueTypeFromItsIdUnlessTheIdIsMissingOrUntyped() {
-        Option<Boolean> option = option("Name");
-        doCallRealMethod().when(option).getValueType();
-        assertSame(Object.class, option.getValueType());
-        when(option.getId()).thenAnswer(invocation -> OptionIdentifier.EMPTY);
-        assertSame(Object.class, option.getValueType());
-        when(option.getId()).thenReturn(OptionIdentifier.create(MOD, "typed_by_id", boolean.class));
-        assertSame(boolean.class, option.getValueType());
-        when(option.getId()).thenReturn(OptionIdentifier.create(MOD, "boxed_by_id", Boolean.class));
-        assertSame(Boolean.class, option.getValueType());
-        // Untyped ids, which pages and some options carry, say nothing about the value
-        when(option.getId()).thenAnswer(invocation -> OptionIdentifier.create(MOD, "untyped_id"));
-        assertSame(Object.class, option.getValueType());
-        when(option.getId()).thenAnswer(invocation -> OptionIdentifier.create(MOD, "void_typed_id", Void.class));
-        assertSame(Object.class, option.getValueType());
-        when(option.getId()).thenAnswer(invocation -> OptionIdentifier.create(MOD, "class_less_id", null));
-        assertSame(Object.class, option.getValueType());
-    }
-
-    @Test
     @SuppressWarnings({"unchecked", "rawtypes"})
     void aControlBuiltOverItsOwnOptionOfAnotherTypeIsCaughtBeforeItsFirstFrame() {
         AtomicInteger number = new AtomicInteger(7);
@@ -2117,7 +2097,8 @@ class ControlTest {
             hoverPastTheDelay(second, failing, 100, 27);
             assertEquals(0, failing.matrixDepth);
             assertTrue(failing.calls.contains("push") && failing.calls.contains("pop"), failing.calls::toString);
-            verify(logger).error(eq("Tooltip of option {} failed and is no longer shown"), eq("null"), same(fonts));
+            // Named by its name, as it has no id
+            verify(logger).error(eq("Tooltip of option {} failed and is no longer shown"), eq("Drawn"), same(fonts));
 
             // A clip the failing draw left on is taken off too, though the tooltip never enables one itself
             Option<Boolean> clipped = option("Clipped");
@@ -2388,6 +2369,78 @@ class ControlTest {
             hoverPastTheDelay(third, new FakeDrawContext(), 100, 27);
             verify(overflowing, times(1)).getTooltip();
             assertEquals(2, tooltipToasts().size());
+        });
+    }
+
+    // Heights of the tooltip boxes drawn, which are the only fills in that colour
+    private static List<Integer> tooltipBoxHeights(FakeDrawContext draw) {
+        return draw.calls.stream().filter(call -> call.startsWith("fill(") && call.endsWith(",e0000000)")).map(call -> {
+            String[] edges = call.substring("fill(".length(), call.length() - 1).split(",");
+            return Integer.parseInt(edges[3]) - Integer.parseInt(edges[1]);
+        }).toList();
+    }
+
+    @Test
+    void anOptionWithNoTooltipShowsOnlyItsImpactAndModLinesOrNoBoxAtAll() throws Throwable {
+        withFrameLogger(logger -> {
+            // No tooltip of its own, but an impact and another mod's id
+            Option<Boolean> impacted = option("Impacted");
+            bound(impacted, 30);
+            when(impacted.getImpact()).thenReturn(OptionImpact.HIGH);
+            when(impacted.getId()).thenReturn(OptionIdentifier.create("tooltip_less_mod", "impacted", Boolean.class));
+            OptionPageFrame frame = new OptionPageFrame(new Dim2i(0, 0, 200, 300), false, page(impacted), o -> true);
+            FakeDrawContext draw = new FakeDrawContext();
+            hoverPastTheDelay(frame, draw, 100, 27);
+            assertTrue(draw.strings.stream().anyMatch(s -> s.startsWith("impetus.options.performance_impact_string")), draw.strings::toString);
+            assertTrue(draw.strings.stream().anyMatch(s -> s.startsWith("impetus.options.added_by_mod_string")), draw.strings::toString);
+            // One box of two lines and the padding
+            assertEquals(List.of(2 * 12 + 3), tooltipBoxHeights(draw), draw.calls::toString);
+            // Having none is not a failure, so it is asked again and drawn again
+            draw.strings.clear();
+            hoverPastTheDelay(frame, draw, 100, 27);
+            assertTrue(draw.strings.stream().anyMatch(s -> s.startsWith("impetus.options.performance_impact_string")), draw.strings::toString);
+            // Nothing at all to say draws no box, where a box of padding alone used to be drawn
+            Option<Boolean> bare = option("Bare");
+            bound(bare, 30);
+            OptionPageFrame plain = new OptionPageFrame(new Dim2i(0, 0, 200, 300), false, page(bare), o -> true);
+            FakeDrawContext quiet = new FakeDrawContext();
+            hoverPastTheDelay(plain, quiet, 100, 27);
+            assertEquals(List.of(), tooltipBoxHeights(quiet), quiet.calls::toString);
+            assertFalse(quiet.drew("translate(0.0,0.0,90.0)"), quiet.calls::toString);
+            assertEquals(0, quiet.matrixDepth);
+            verify(bare, Mockito.atLeastOnce()).getTooltip();
+            assertEquals(0, tooltipToasts().size());
+            verifyNoInteractions(logger);
+        });
+    }
+
+    @Test
+    void aTooltipFailureOfAnOptionWithNoIdIsReportedUnderItsName() throws Throwable {
+        withFrameLogger(logger -> {
+            IllegalStateException failure = new IllegalStateException("no tooltip");
+            // No id at all, which used to be reported as null
+            Option<Boolean> idless = option("Idless");
+            bound(idless, 30);
+            when(idless.getTooltip()).thenThrow(failure);
+            hoverPastTheDelay(new OptionPageFrame(new Dim2i(0, 0, 200, 300), false, page(idless), o -> true), new FakeDrawContext(), 100, 27);
+            verify(logger).error(eq(TOOLTIP_LOG), eq("Idless"), same(failure));
+            assertEquals("Tooltip failed: Idless", tooltipToasts().getLast().title());
+            // The empty id an option built without one carries, which used to be reported as a lone colon
+            Option<Boolean> empty = option("Empty");
+            bound(empty, 30);
+            when(empty.getId()).thenAnswer(invocation -> OptionIdentifier.EMPTY);
+            when(empty.getTooltip()).thenThrow(failure);
+            hoverPastTheDelay(new OptionPageFrame(new Dim2i(0, 0, 200, 300), false, page(empty), o -> true), new FakeDrawContext(), 100, 27);
+            verify(logger).error(eq(TOOLTIP_LOG), eq("Empty"), same(failure));
+            assertEquals("Tooltip failed: Empty", tooltipToasts().getLast().title());
+            // A translated name is named by its key, as the rest of the failure reports name it
+            Option<Boolean> keyed = option("Unused");
+            bound(keyed, 30);
+            when(keyed.getName()).thenReturn(TextComponent.translatable(MOD + ".keyed"));
+            when(keyed.getTooltip()).thenThrow(failure);
+            hoverPastTheDelay(new OptionPageFrame(new Dim2i(0, 0, 200, 300), false, page(keyed), o -> true), new FakeDrawContext(), 100, 27);
+            assertEquals("Tooltip failed: " + MOD + ".keyed", tooltipToasts().getLast().title());
+            assertEquals(3, tooltipToasts().size());
         });
     }
 

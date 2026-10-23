@@ -1,6 +1,7 @@
 package com.bdmajora.impetus.umbra.shaderpack;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -23,6 +24,17 @@ public final class ConstDirectives {
     private final Map<String, String> vec4s = new HashMap<>();
 
     public ConstDirectives(String text) {
+        scan(text);
+    }
+
+    // Several texts in order, each scanned on its own so an unterminated construct in one cannot swallow the next; a later declaration still wins
+    public ConstDirectives(List<String> texts) {
+        for (String text : texts) {
+            scan(text);
+        }
+    }
+
+    private void scan(String text) {
         Matcher matcher = CONST.matcher(text);
         while (matcher.find()) {
             String name = matcher.group(2);

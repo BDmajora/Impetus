@@ -7,6 +7,8 @@ import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
+import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -118,8 +120,32 @@ class OptionStructureTest {
                 .setBinding(new com.bdmajora.impetus.api.options.binding.GenericBinding<>(AtomicInteger::set, AtomicInteger::get))
                 .setEnabledPredicate(() -> true).setEnabled(true).build();
         assertTrue(enabled.isAvailable());
-        Option<Integer> bare = Mockito.mock(Mockito.CALLS_REAL_METHODS);
-        assertNull(bare.getId());
+    }
+
+    @Test
+    void anOptionsFlagsAreReadOnlyAndKeptApartFromTheBuilderThatMadeIt() {
+        OptionImpl.Builder<AtomicInteger, Integer> builder = builder(storage(0)).setName(TextComponent.literal("n")).setTooltip(TextComponent.literal("t"))
+                .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD);
+        OptionImpl<AtomicInteger, Integer> first = builder.build();
+        Collection<OptionFlag> flags = first.getFlags();
+        assertThrows(UnsupportedOperationException.class, () -> flags.add(OptionFlag.REQUIRES_GAME_RESTART));
+        assertThrows(UnsupportedOperationException.class, () -> flags.remove(OptionFlag.REQUIRES_RENDERER_RELOAD));
+        assertThrows(UnsupportedOperationException.class, () -> flags.removeIf(flag -> true));
+        assertThrows(UnsupportedOperationException.class, flags::clear);
+        assertThrows(UnsupportedOperationException.class, () -> {
+            Iterator<OptionFlag> iterator = flags.iterator();
+            iterator.next();
+            iterator.remove();
+        });
+        assertEquals(Set.of(OptionFlag.REQUIRES_RENDERER_RELOAD), Set.copyOf(first.getFlags()));
+        // The builder going on to make another option leaves the first one as it was built
+        OptionImpl<AtomicInteger, Integer> second = builder.setFlags(OptionFlag.REQUIRES_GAME_RESTART).build();
+        assertEquals(Set.of(OptionFlag.REQUIRES_RENDERER_RELOAD), Set.copyOf(first.getFlags()));
+        assertEquals(Set.of(OptionFlag.REQUIRES_RENDERER_RELOAD, OptionFlag.REQUIRES_GAME_RESTART), Set.copyOf(second.getFlags()));
+        // The same collection on every call, so reading the flags allocates nothing
+        assertSame(first.getFlags(), first.getFlags());
+        // No flags is an empty collection, never null
+        assertTrue(builder(storage(0)).setName(TextComponent.literal("n")).setTooltip(TextComponent.literal("t")).build().getFlags().isEmpty());
     }
 
     @Test

@@ -1,5 +1,9 @@
 package com.bdmajora.impetus.umbra.compat.dh;
 
+import com.bdmajora.impetus.umbra.pipeline.rendering.GbufferTargets;
+import com.bdmajora.impetus.umbra.pipeline.rendering.GlState;
+import com.bdmajora.impetus.umbra.pipeline.rendering.SamplerAssignment;
+import com.bdmajora.impetus.umbra.pipeline.rendering.ShaderSourceFixes;
 import org.lwjgl.system.MemoryStack;
 import com.bdmajora.impetus.umbra.gl.blending.ProgramAlphaTest;
 import com.bdmajora.impetus.umbra.gl.blending.ProgramBlendState;
@@ -10,7 +14,6 @@ import com.bdmajora.impetus.umbra.gl.program.ProgramUniforms;
 import com.bdmajora.impetus.umbra.gl.shader.GlShader;
 import com.bdmajora.impetus.umbra.gl.shader.ShaderMacros;
 import com.bdmajora.impetus.umbra.gl.shader.ShaderType;
-import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;
 import com.bdmajora.impetus.umbra.shaderpack.ProgramSource;
 import com.bdmajora.impetus.umbra.shaderpack.ShaderPack;
 import com.bdmajora.impetus.umbra.shaderpack.texture.CustomTextureTransformer;
@@ -142,7 +145,7 @@ abstract class DhRenderProgram {
         fshSource = VanillaNameTransformer.transform(CustomTextureTransformer.transform(name, fshSource, TextureStage.GBUFFERS_AND_SHADOW));
 
         Map<String, String> macros = ShaderMacros.forProgram(pack.getEnvironmentDefines(), name);
-        int[] drawBuffers = UmbraRenderingPipeline.sanitizeDrawBuffers(name, DrawBuffers.parseActive(fshSource, macros));
+        int[] drawBuffers = GbufferTargets.sanitize(DrawBuffers.parseActive(fshSource, macros));
         // Iris injects no default alpha test into DH programs; only the pack's own alphaTest.<program> directive discards
         ProgramAlphaTest packAlphaTest = ProgramAlphaTest.from(pack.getProperties(), name);
         String alphaTestSnippet = packAlphaTest.hasDirectives()
@@ -159,11 +162,10 @@ abstract class DhRenderProgram {
     private static String transformStage(String name, String source, Map<String, String> macros, boolean modern,
                                          Function<String, String> bridge) {
         if (modern) {
-            return bridge.apply(UmbraRenderingPipeline.stabilizeShaderSource(name,
+            return bridge.apply(ShaderSourceFixes.stabilize(name,
                     ShaderMacros.injectDefines(source, macros)));
         }
-        return UmbraRenderingPipeline.foldUncompilableConditionals(name,
-                ShaderMacros.injectDefines(bridge.apply(source), macros));
+        return ShaderSourceFixes.foldUncompilableConditionals(ShaderMacros.injectDefines(bridge.apply(source), macros));
     }
 
     // Compiles and links a transformed stage under label (the GL object name): attributes binds the locations DH's VAO expects, whileBound runs sampler setup with the program bound; a compile failure propagates as a ShaderCompileException so the pack fails loudly rather than drawing with a half-built program
@@ -173,7 +175,7 @@ abstract class DhRenderProgram {
         try {
             vertex = new GlShader(ShaderType.VERTEX, label + ".vsh", stage.vsh);
             fragment = new GlShader(ShaderType.FRAGMENT, label + ".fsh", stage.fsh);
-            UmbraRenderingPipeline.drainGlError();
+            GlState.drainGlError();
             ProgramBuilder builder = ProgramBuilder.begin(label)
                     .attach(vertex)
                     .attach(fragment);
@@ -181,10 +183,10 @@ abstract class DhRenderProgram {
             GlProgram program = builder
                     .bindFragmentDataLocation(0, "iris_FragData")
                     .link();
-            UmbraRenderingPipeline.reportGlError(label + " link");
+            GlState.reportGlError(label + " link");
 
             program.bind();
-            UmbraRenderingPipeline.assignSamplerUnitsToBoundProgram(program.getGlId());
+            SamplerAssignment.assignToBoundProgram(program.getGlId());
             whileBound.accept(program);
             program.unbind();
             return program;
@@ -204,7 +206,7 @@ abstract class DhRenderProgram {
         CommonUniforms.addCommonUniforms(uniforms);
         MatrixUniforms.addMatrixUniforms(uniforms);
         ActiveCustomUniforms.assignTo(uniforms);
-        UmbraRenderingPipeline.reportGlError(label + " uniforms");
+        GlState.reportGlError(label + " uniforms");
         return uniforms.buildUniforms();
     }
 }

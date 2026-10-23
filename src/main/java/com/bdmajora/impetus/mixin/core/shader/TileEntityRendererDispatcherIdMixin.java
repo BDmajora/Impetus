@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.mixin.core.shader;
 
+import com.bdmajora.impetus.umbra.pipeline.rendering.GlState;
 import net.minecraft.client.renderer.tileentity.TileEntityRendererDispatcher;
 import net.minecraft.tileentity.TileEntity;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
@@ -10,7 +11,6 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import com.bdmajora.impetus.umbra.Umbra;
 import com.bdmajora.impetus.umbra.material.WorldRenderingSettings;
-import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;
 import com.bdmajora.impetus.umbra.uniforms.CapturedRenderingState;
 
 @Mixin(TileEntityRendererDispatcher.class)
@@ -28,7 +28,7 @@ public class TileEntityRendererDispatcherIdMixin {
         Umbra.refreshDynamicUniforms();
 
         // Same hazard as RenderItem, worse: ModelRenderer vertex data has no lightmap element and compiles into a display list that dereferences the bound arrays at COMPILE time, so one poisoned compile stays fullbright all session; resetting before every dispatch keeps the first compile clean
-        UmbraRenderingPipeline.resetVanillaVertexArrayState();
+        GlState.resetVanillaVertexArrayState();
     }
 
     @Inject(method = "render(Lnet/minecraft/tileentity/TileEntity;FI)V", at = @At("RETURN"))

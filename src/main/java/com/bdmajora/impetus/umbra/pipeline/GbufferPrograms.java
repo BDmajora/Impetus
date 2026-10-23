@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.umbra.pipeline;
 
+import com.bdmajora.impetus.umbra.pipeline.rendering.GbufferTargets;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import com.bdmajora.impetus.umbra.gl.program.DrawBuffers;
@@ -81,7 +82,7 @@ public class GbufferPrograms {
         }
 
         // The array itself, already sanitized at construction; for the per-object phase switch, which must not allocate, and the caller never writes to it
-        int[] drawBuffersReadOnly() {
+        public int[] drawBuffersReadOnly() {
             return this.drawBuffers;
         }
 
@@ -109,7 +110,7 @@ public class GbufferPrograms {
     private final java.util.Set<ProgramId> directPhases = java.util.EnumSet.noneOf(ProgramId.class);
 
     // samplerOverrides holds the gbuffers-stage custom-texture units as sampler name -> dedicated unit over the standard table, so `texture.gbuffers.gaux4` redirects one sampler while every other keeps its unit
-    GbufferPrograms(ShaderPack pack, Map<String, Integer> samplerUnits, Map<String, Integer> samplerOverrides) {
+    public GbufferPrograms(ShaderPack pack, Map<String, Integer> samplerUnits, Map<String, Integer> samplerOverrides) {
         Map<String, String> defines = pack.getEnvironmentDefines();
         // Fixed-function stages sample the bound atlas/lightmap on the vanilla units, plus OptiFine's aux slots.
         Map<String, Integer> gbufferSamplers = new HashMap<>(samplerUnits);
@@ -183,7 +184,7 @@ public class GbufferPrograms {
             CommonUniforms.addCommonUniforms(builder);
             MatrixUniforms.addMatrixUniforms(builder);
             com.bdmajora.impetus.umbra.uniforms.custom.ActiveCustomUniforms.assignTo(builder);
-            int[] drawBuffers = UmbraRenderingPipeline.sanitizeDrawBuffers(source.getName(), program.getDrawBuffers());
+            int[] drawBuffers = GbufferTargets.sanitize(program.getDrawBuffers());
             return new Entry(program, builder.buildUniforms(), drawBuffers, blendState, alphaTest, handLightmapLocation,
                     ShadowSamplerKinds.detect(glProgram.getGlId()));
         } catch (Exception e) {

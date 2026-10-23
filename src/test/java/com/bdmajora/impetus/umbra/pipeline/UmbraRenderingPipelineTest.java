@@ -10,6 +10,10 @@ import com.bdmajora.impetus.umbra.gl.framebuffer.UmbraFramebuffer;
 import com.bdmajora.impetus.umbra.gl.sampler.ShadowSamplerKinds;
 import com.bdmajora.impetus.umbra.gl.shader.ShaderMacros;
 import com.bdmajora.impetus.umbra.material.WorldRenderingSettings;
+import com.bdmajora.impetus.umbra.pipeline.rendering.GbufferTargets;
+import com.bdmajora.impetus.umbra.pipeline.rendering.GlState;
+import com.bdmajora.impetus.umbra.pipeline.rendering.SamplerAssignment;
+import com.bdmajora.impetus.umbra.pipeline.rendering.ShaderSourceFixes;
 import com.bdmajora.impetus.umbra.shaderpack.ShaderPack;
 import com.bdmajora.impetus.umbra.shaderpack.ShaderProperties;
 import com.bdmajora.impetus.umbra.shaderpack.include.AbsolutePackPath;
@@ -440,7 +444,7 @@ class UmbraRenderingPipelineTest {
         assertNotNull(shadow.getShadowProjection());
         pipeline.applyShadowSamplerKinds(null, true);
         pipeline.bindCustomImages();
-        UmbraRenderingPipeline.assignSamplerUnitsToBoundProgram(5);
+        SamplerAssignment.assignToBoundProgram(5);
         pipeline.destroy();
         pipeline.destroy();
         // After teardown the pipeline is inert
@@ -595,26 +599,26 @@ class UmbraRenderingPipelineTest {
 
     @Test
     void theShaderSourceHelpersFixWhatDriversReject() {
-        assertEquals("#if 0\n#endif", UmbraRenderingPipeline.foldUncompilableConditionals("x", "#if 1.5 > 2.0\n#endif"));
+        assertEquals("#if 0\n#endif", ShaderSourceFixes.foldUncompilableConditionals("#if 1.5 > 2.0\n#endif"));
         String modern = String.join("\n",
                 "#version 430",
                 "vec4 lightVolume;",
                 "vec4 a = texture2DGradARB(tex, uv, dx, dy) + texture2DLodARB(tex, uv, 0.0);");
-        String stabilized = UmbraRenderingPipeline.stabilizeShaderSource("x", modern);
+        String stabilized = ShaderSourceFixes.stabilize("x", modern);
         assertTrue(stabilized.contains("vec4 lightVolume = vec4(0.0);"), stabilized);
         assertTrue(stabilized.contains("textureGrad(tex, uv, dx, dy)"), stabilized);
         assertTrue(stabilized.contains("textureLod(tex, uv, 0.0)"), stabilized);
         // GLSL 120 keeps the ARB names, which only exist there
         String legacy = "#version 120\nvec4 a = texture2DLodARB(tex, uv, 0.0);";
-        assertEquals(legacy, UmbraRenderingPipeline.stabilizeShaderSource("x", legacy));
-        assertEquals("void main() {}", UmbraRenderingPipeline.stabilizeShaderSource("x", "void main() {}"));
-        assertArrayEquals(new int[] {0, 3}, UmbraRenderingPipeline.sanitizeDrawBuffers("x", new int[] {0, 3, 99}));
+        assertEquals(legacy, ShaderSourceFixes.stabilize("x", legacy));
+        assertEquals("void main() {}", ShaderSourceFixes.stabilize("x", "void main() {}"));
+        assertArrayEquals(new int[] {0, 3}, GbufferTargets.sanitize(new int[] {0, 3, 99}));
 
         when(TestGl.gl().glGetError()).thenReturn(0x502, 0x500, 0, 0x501, 0);
-        UmbraRenderingPipeline.drainGlError();
-        UmbraRenderingPipeline.reportGlError("here");
-        UmbraRenderingPipeline.reportGlError("there");
-        UmbraRenderingPipeline.resetVanillaVertexArrayState();
+        GlState.drainGlError();
+        GlState.reportGlError("here");
+        GlState.reportGlError("there");
+        GlState.resetVanillaVertexArrayState();
         verify(TestGl.gl()).glBindVertexArray(0);
         verify(TestGl.gl(), never()).glDispatchCompute(anyInt(), anyInt(), anyInt());
     }

@@ -1,8 +1,8 @@
 package com.bdmajora.impetus.umbra.gl.program;
 
+import com.bdmajora.impetus.umbra.pipeline.rendering.ShaderSourceFixes;
 import com.bdmajora.impetus.umbra.gl.shader.GlShader;
 import com.bdmajora.impetus.umbra.gl.shader.ShaderType;
-import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;
 import com.bdmajora.impetus.umbra.shaderpack.ProgramSource;
 import com.bdmajora.impetus.umbra.shaderpack.preprocessor.GlslPreprocessor;
 import com.bdmajora.impetus.umbra.shaderpack.texture.CustomTextureTransformer;
@@ -94,8 +94,8 @@ public final class ShaderProgramCompiler {
         fragmentSource = DrawBuffers.rewriteFragmentOutputs(fragmentSource, drawBuffers);
 
         return new PatchedSource(
-                UmbraRenderingPipeline.stabilizeShaderSource(name, applyDefines(vertexSource, defines)),
-                UmbraRenderingPipeline.stabilizeShaderSource(name, applyDefines(fragmentSource, defines)),
+                ShaderSourceFixes.stabilize(name, applyDefines(vertexSource, defines)),
+                ShaderSourceFixes.stabilize(name, applyDefines(fragmentSource, defines)),
                 finishStage(name, geometrySource, defines),
                 finishStage(name, tessControlSource, defines),
                 finishStage(name, tessEvalSource, defines),
@@ -109,7 +109,7 @@ public final class ShaderProgramCompiler {
 
     // Defines and source stabilisation for an optional stage
     private static String finishStage(String name, String stage, Map<String, String> defines) {
-        return stage == null ? null : UmbraRenderingPipeline.stabilizeShaderSource(name, applyDefines(stage, defines));
+        return stage == null ? null : ShaderSourceFixes.stabilize(name, applyDefines(stage, defines));
     }
 
     // Patches, compiles, binds attributes and links; throws on any failure

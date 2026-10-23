@@ -1,5 +1,9 @@
 package com.bdmajora.impetus.umbra.terrain;
 
+import com.bdmajora.impetus.umbra.pipeline.rendering.GbufferTargets;
+import com.bdmajora.impetus.umbra.pipeline.rendering.GlState;
+import com.bdmajora.impetus.umbra.pipeline.rendering.SamplerAssignment;
+import com.bdmajora.impetus.umbra.pipeline.rendering.ShaderSourceFixes;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import com.bdmajora.impetus.engine.impl.gl.shader.GlProgram;
@@ -13,7 +17,6 @@ import com.bdmajora.impetus.umbra.gl.blending.ProgramBlendState;
 import com.bdmajora.impetus.umbra.gl.program.DrawBuffers;
 import com.bdmajora.impetus.umbra.gl.program.ProgramUniforms;
 import com.bdmajora.impetus.umbra.gl.sampler.ShadowSamplerKinds;
-import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;
 import com.bdmajora.impetus.umbra.shaderpack.ProgramSource;
 import com.bdmajora.impetus.umbra.shaderpack.ShaderPack;
 import com.bdmajora.impetus.umbra.shaderpack.loading.ProgramId;
@@ -119,7 +122,7 @@ public final class UmbraTerrainProgramOverride {
             if (program == null) {
                 program = link(shaderName, vsh, fsh, Map.of(), options, prepared.drawBuffers(), prepared.blendState(), prepared.alphaTest(), false);
             }
-            UmbraRenderingPipeline.reportGlError("terrain '" + programId.getSourceName() + "' link");
+            GlState.reportGlError("terrain '" + programId.getSourceName() + "' link");
 
             configureUniforms(program, programId.getSourceName());
             return program;
@@ -146,10 +149,9 @@ public final class UmbraTerrainProgramOverride {
         boolean shadow = programId.getSourceName().startsWith("shadow");
         String vsh = modern
                 ? ImpetusTerrainTransformer.transformVertexShaderModern(
-                        UmbraRenderingPipeline.stabilizeShaderSource(programId.getSourceName(),
+                        ShaderSourceFixes.stabilize(programId.getSourceName(),
                                 com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.injectDefines(vshSource, macros)), shadow)
-                : UmbraRenderingPipeline.foldUncompilableConditionals(programId.getSourceName(),
-                        com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.injectDefines(
+                : ShaderSourceFixes.foldUncompilableConditionals(com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.injectDefines(
                                 ImpetusTerrainTransformer.transformVertexShader(vshSource, shadow), macros));
         return prepared(pack, programId, source, vsh, fshSource, modern, macros, false);
     }
@@ -168,7 +170,7 @@ public final class UmbraTerrainProgramOverride {
         String fshSource = customTextures(source, source.getMeshFragmentSource().get());
         boolean modern = ModernPackTransformer.isModernSource(fshSource);
         Map<String, String> macros = macros(pack, programId);
-        String vertex = UmbraRenderingPipeline.stabilizeShaderSource(programId.getSourceName(),
+        String vertex = ShaderSourceFixes.stabilize(programId.getSourceName(),
                 com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.injectDefines(mesh, macros));
         return prepared(pack, programId, source, vertex, fshSource, modern, macros, true);
     }
@@ -199,7 +201,7 @@ public final class UmbraTerrainProgramOverride {
     private static PreparedProgram prepared(ShaderPack pack, ProgramId programId, ProgramSource source, String vertex, String fshSource,
                                             boolean modern, Map<String, String> macros, boolean mesh) {
         String programName = programId.getSourceName();
-        int[] drawBuffers = UmbraRenderingPipeline.sanitizeDrawBuffers(programName, DrawBuffers.parseActive(fshSource, macros));
+        int[] drawBuffers = GbufferTargets.sanitize(DrawBuffers.parseActive(fshSource, macros));
         ProgramAlphaTest packAlphaTest = ProgramAlphaTest.from(pack.getProperties(), source.getName());
         String alphaTestSnippet;
         if (packAlphaTest.hasDirectives()) {
@@ -229,11 +231,10 @@ public final class UmbraTerrainProgramOverride {
             String name = this.id.getSourceName();
             String transformed = this.modern
                     ? ImpetusTerrainTransformer.transformFragmentShaderModern(
-                            UmbraRenderingPipeline.stabilizeShaderSource(name,
+                            ShaderSourceFixes.stabilize(name,
                                     com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.injectDefines(this.fragmentSource, this.macros)),
                             this.drawBuffers, alphaSnippet)
-                    : UmbraRenderingPipeline.foldUncompilableConditionals(name,
-                            com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.injectDefines(
+                    : ShaderSourceFixes.foldUncompilableConditionals(com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.injectDefines(
                                     ImpetusTerrainTransformer.transformFragmentShader(this.fragmentSource, this.drawBuffers,
                                             alphaSnippet), this.macros));
             return this.mesh ? com.bdmajora.impetus.umbra.terrain.mesh.MeshShaderTranslator.pinBridgeInputs(transformed) : transformed;
@@ -249,8 +250,8 @@ public final class UmbraTerrainProgramOverride {
     // The pack's OptiFine uniform set, sampler units and shadow sampler kinds onto a linked terrain program; the raster and mesh paths both need all of it (LIGHT round-trips positions through gbufferModelView(Inverse), and zeros collapse every vertex to the origin)
     static void configureUniforms(GlProgram<ChunkShaderInterface> program, String programName) {
         program.bind();
-        UmbraRenderingPipeline.assignSamplerUnitsToBoundProgram(program.handle());
-        UmbraRenderingPipeline.reportGlError("terrain '" + programName + "' sampler-units");
+        SamplerAssignment.assignToBoundProgram(program.handle());
+        GlState.reportGlError("terrain '" + programName + "' sampler-units");
         program.unbind();
         ProgramUniforms.Builder uniforms = ProgramUniforms.builder(programName, program.handle());
         CommonUniforms.addCommonUniforms(uniforms);
@@ -259,7 +260,7 @@ public final class UmbraTerrainProgramOverride {
         ((UmbraTerrainShaderInterface) program.getInterface()).setUniforms(uniforms.buildUniforms());
         // Read off the linked program like the uniforms: gbuffers_terrain/water may sample shadowtex0 as a plain sampler2D, and the bind path then needs the raw-depth sampler on that unit
         ((UmbraTerrainShaderInterface) program.getInterface()).setShadowSamplerKinds(ShadowSamplerKinds.detect(program.handle()));
-        UmbraRenderingPipeline.reportGlError("terrain '" + programName + "' uniforms");
+        GlState.reportGlError("terrain '" + programName + "' uniforms");
     }
 
     // The pack's geometry stage and its tessellation pair (both or neither), each through the same rewrites as the vertex stage and then the stage bridge
@@ -276,7 +277,7 @@ public final class UmbraTerrainProgramOverride {
             String rewritten = com.bdmajora.impetus.umbra.shaderpack.texture.CustomTextureTransformer.transform(
                     source.getName(), stage, com.bdmajora.impetus.umbra.shaderpack.texture.TextureStage.GBUFFERS_AND_SHADOW);
             rewritten = VanillaNameTransformer.transform(rewritten);
-            rewritten = UmbraRenderingPipeline.stabilizeShaderSource(source.getName(),
+            rewritten = ShaderSourceFixes.stabilize(source.getName(),
                     com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.injectDefines(rewritten, macros));
             return com.bdmajora.impetus.umbra.shaderpack.preprocessor.GlslPreprocessor.finalizeForDriver(name,
                     ImpetusTerrainTransformer.transformAuxiliaryStage(rewritten, type));
@@ -306,7 +307,7 @@ public final class UmbraTerrainProgramOverride {
             for (var attribute : options.pass().vertexType().getVertexFormat().getAttributes()) {
                 builder.bindAttribute(attribute.getName(), index++);
             }
-            UmbraRenderingPipeline.drainGlError();
+            GlState.drainGlError();
             return builder.link(context -> new UmbraTerrainShaderInterface(context, drawBuffers, blendState, alphaTest, tessellated));
         } finally {
             for (GlShader shader : shaders) {

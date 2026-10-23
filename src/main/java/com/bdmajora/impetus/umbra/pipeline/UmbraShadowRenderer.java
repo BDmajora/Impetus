@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.umbra.pipeline;
 
+import com.bdmajora.impetus.umbra.pipeline.rendering.GlState;
 import com.bdmajora.impetus.umbra.compat.dh.DhCompat;
 import com.bdmajora.impetus.umbra.gl.GlTextureUnits;
 import net.minecraft.client.Minecraft;
@@ -579,7 +580,7 @@ public class UmbraShadowRenderer {
             bindShadowGeometryProgram(this.entityShadowProgram);
 
             // Entities and TESRs draw fixed-function straight after shadow terrain rendered from its own VAO; hand the vertex pipeline back clean (see resetVanillaVertexArrayState), especially since the player model's display lists first compile here and bake the state for the session
-            UmbraRenderingPipeline.resetVanillaVertexArrayState();
+            GlState.resetVanillaVertexArrayState();
 
             if (this.content.shouldRenderEntities() || this.content.shouldRenderPlayer()) {
                 bindShadowGeometryProgram(this.entityShadowProgram);

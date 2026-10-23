@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.mixin.core.shader;
 
+import com.bdmajora.impetus.umbra.pipeline.rendering.GlState;
 import net.minecraft.client.renderer.RenderItem;
 import net.minecraft.client.renderer.block.model.IBakedModel;
 import net.minecraft.item.ItemStack;
@@ -11,7 +12,6 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import com.bdmajora.impetus.umbra.Umbra;
 import com.bdmajora.impetus.umbra.material.WorldRenderingSettings;
-import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;
 import com.bdmajora.impetus.umbra.uniforms.CapturedRenderingState;
 
 @Mixin(RenderItem.class)
@@ -30,7 +30,7 @@ public class RenderItemItemIdMixin {
         Umbra.refreshDynamicUniforms();
 
         // Item models use client arrays, which alias generic attribute slots 8..15; a generic array left enabled on slot 9 (gl_MultiTexCoord1, the lightmap) flattens it to one constant and items render fullbright, which is why custom item-frame scenery lights up while vanilla blocks beside it stay correct (see resetVanillaVertexArrayState)
-        UmbraRenderingPipeline.resetVanillaVertexArrayState();
+        GlState.resetVanillaVertexArrayState();
 
         // No phase is bound here, like OptiFine: an item model is always drawn inside an enclosing renderer whose program is already selected. Impetus does not yet select per object (block entities draw via gbuffers_entities); a per-object setPhase previously fired inside the shadow pass, now guarded, so it is safe to retry as its own change
     }

@@ -223,10 +223,11 @@ public class OptionPageFrame extends AbstractFrame {
         }
     }
 
-    // The option's id as text, or its class name when its own code throws giving it
+    // The option's id as text, its name when it has no id, or its class name when its own code throws giving either
     private static String nameOf(Option<?> option) {
         try {
-            return String.valueOf(option.getId());
+            OptionIdentifier<?> id = option.getId();
+            return OptionIdentifier.isPresent(id) ? id.toString() : String.valueOf(option.getName());
         } catch (Throwable unreadable) {
             FailureText.absorb(unreadable);
             return option.getClass().getName();
@@ -244,7 +245,12 @@ public class OptionPageFrame extends AbstractFrame {
         int boxY = dim.getLimitY();
         int boxX = dim.x();
 
-        var tooltip = new ArrayList<>(drawContext.split(option.getTooltip(), boxWidth - (textPadding * 2)));
+        // An option with no tooltip of its own still shows its impact and mod lines
+        List<TextComponent> tooltip = new ArrayList<>();
+        TextComponent text = option.getTooltip();
+        if (text != null) {
+            tooltip.addAll(drawContext.split(text, boxWidth - (textPadding * 2)));
+        }
 
         OptionImpact impact = option.getImpact();
 
@@ -258,6 +264,11 @@ public class OptionPageFrame extends AbstractFrame {
         if (OptionIdentifier.isPresent(page.getId()) && OptionIdentifier.isPresent(id) && !Objects.equals(normalizeModForTooltip(page.getId().getModId()), normalizeModForTooltip(id.getModId()))) {
             var addedByModString = TextComponent.translatable("impetus.options.added_by_mod_string", TextComponent.literal(id.getModId()).withStyle(TextFormattingStyle.WHITE)).withStyle(TextFormattingStyle.GRAY);
             tooltip.add(addedByModString);
+        }
+
+        // Nothing to show draws no box at all
+        if (tooltip.isEmpty()) {
+            return;
         }
 
         int boxHeight = (tooltip.size() * 12) + boxPadding;

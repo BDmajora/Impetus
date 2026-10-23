@@ -45,7 +45,7 @@ public class CustomTextureManager {
         // The colortex index this override shadows, or -1 for a non-colour sampler; needed for Iris's flip deactivation, so once a composite pass has written that buffer later passes read the chain's content rather than the stand-in
         public final int colorTarget;
 
-        Override(int unit, int colorTarget) {
+        public Override(int unit, int colorTarget) {
             this.unit = unit;
             this.colorTarget = colorTarget;
         }

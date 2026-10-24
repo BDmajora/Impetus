@@ -8,7 +8,7 @@ import com.bdmajora.impetus.api.options.OptionIdentifier;
 import java.util.List;
 import java.util.Objects;
 
-// Event posted while an option group is built so listeners can change or add to its options
+// Event posted while an option group is built that gives listeners the group id and its list of options
 public final class OptionGroupConstructionEvent extends ImpetusEvent {
     // Listeners for this event
     public static final EventHandlerRegistrar<OptionGroupConstructionEvent> BUS = new EventHandlerRegistrar<>();

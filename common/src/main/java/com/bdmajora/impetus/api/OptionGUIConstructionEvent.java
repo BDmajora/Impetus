@@ -5,24 +5,27 @@ import com.bdmajora.impetus.api.eventbus.ImpetusEvent;
 import com.bdmajora.impetus.api.eventbus.EventHandlerRegistrar;
 
 import java.util.List;
+import java.util.Objects;
 
-// Fired while building the main options GUI; full page list is passed in so listeners can insert their own page anywhere
-public class OptionGUIConstructionEvent extends ImpetusEvent {
+// Event posted while the options screen is built that gives listeners its list of pages
+public final class OptionGUIConstructionEvent extends ImpetusEvent {
+    // Listeners for this event
     public static final EventHandlerRegistrar<OptionGUIConstructionEvent> BUS = new EventHandlerRegistrar<>();
 
     private final List<OptionPage> pages;
 
+    // Stores the screen's page list and rejects it if null
     public OptionGUIConstructionEvent(List<OptionPage> pages) {
-        this.pages = pages;
+        this.pages = Objects.requireNonNull(pages, "Pages must not be null");
     }
 
-    // List is mutable, callers can insert pages directly
+    // Returns the screen's page list that listeners change directly
     public List<OptionPage> getPages() {
         return this.pages;
     }
-    
-    // Handlers add their own pages
+
+    // Adds a page to the end of the screen's page list and rejects a null page
     public void addPage(OptionPage page) {
-        this.pages.add(page);
+        this.pages.add(Objects.requireNonNull(page, "Page must not be null"));
     }
 }

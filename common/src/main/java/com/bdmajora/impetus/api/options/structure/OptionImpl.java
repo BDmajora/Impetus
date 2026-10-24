@@ -11,37 +11,44 @@ import java.lang.invoke.MethodType;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
-public class OptionImpl<S, T> implements Option<T> {
+// Option that reads and writes its value through a binding on a storage object
+public final class OptionImpl<S, T> implements Option<T> {
+    // Shared unmodifiable flag set for each combination of flags indexed by the ordinal bits
+    @SuppressWarnings("unchecked")
+    private static final Set<OptionFlag>[] SHARED_FLAGS = new Set[1 << OptionFlag.values().length];
 
     private final OptionStorage<S> storage;
 
     private final OptionBinding<S, T> binding;
     private final Control<T> control;
-    // Why the control could not be made, or null when it was
+    // Failure thrown while creating the control or null when it was created
     private final Throwable controlFailure;
 
-    // Read-only, so neither a caller nor the builder that made the option changes them afterwards
+    // Shared unmodifiable set of flags
     private final Set<OptionFlag> flags;
 
     private final OptionIdentifier<T> id;
-    // Boxed builder type, so it is the same class a control declares and the check against it is one comparison
+    // Boxed value type given to the builder
     private final Class<?> valueType;
     private final TextComponent name;
     private final TextComponent tooltip;
 
     private final OptionImpact impact;
 
-    // Null until the user changes the option; applyChanges() flushes it back into the binding and clears it
+    // Pending value or null when the option has not been changed
     private @Nullable T modifiedValue;
 
+    // Predicate that decides whether the option can be edited
     private final BooleanSupplier enabled;
 
+    // Stores the option parts and creates the control
     private OptionImpl(OptionStorage<S> storage,
                        Class<T> type,
                        OptionIdentifier<T> id,
@@ -49,19 +56,22 @@ public class OptionImpl<S, T> implements Option<T> {
                        TextComponent tooltip,
                        OptionBinding<S, T> binding,
                        Function<OptionImpl<S, T>, Control<T>> control,
-                       EnumSet<OptionFlag> flags,
+                       Set<OptionFlag> flags,
                        OptionImpact impact,
                        BooleanSupplier enabled) {
         this.id = id;
-        // Unknown without a type, which matches any control
-        this.valueType = type == null ? Object.class : MethodType.methodType(type).wrap().returnType();
+        // Uses Object for a missing or void type and the wrapper class for a primitive type
+        this.valueType = type == null || type == void.class || type == Void.class ? Object.class
+                : type.isPrimitive() ? MethodType.methodType(type).wrap().returnType() : type;
         this.storage = storage;
         this.name = name;
         this.tooltip = tooltip;
         this.binding = binding;
         this.impact = impact;
-        this.flags = Collections.unmodifiableSet(flags);
-        // A control that fails to be made is kept as its failure, so the page still opens and shows a placeholder in this row
+        this.flags = flags;
+        // Stores the enabled predicate before the control factory runs
+        this.enabled = enabled;
+        // Stores the failure when the control factory throws
         Control<T> made = null;
         Throwable failure = null;
         try {
@@ -77,57 +87,73 @@ public class OptionImpl<S, T> implements Option<T> {
         }
         this.control = made;
         this.controlFailure = failure;
-        this.enabled = enabled;
-
-        this.reset();
+        // Clears any value set while the control was created
+        this.modifiedValue = null;
     }
 
-    // Unique id, for lookup and events
+    // Returns the shared unmodifiable set holding exactly these flags
+    private static Set<OptionFlag> sharedFlags(EnumSet<OptionFlag> flags) {
+        int bits = 0;
+        for (OptionFlag flag : flags) {
+            bits |= 1 << flag.ordinal();
+        }
+        Set<OptionFlag> shared = SHARED_FLAGS[bits];
+        // Creates and stores the shared set on first use
+        if (shared == null) {
+            SHARED_FLAGS[bits] = shared = Collections.unmodifiableSet(EnumSet.copyOf(flags));
+        }
+        return shared;
+    }
+
+    // Returns the option id
     @Override
     public OptionIdentifier<T> getId() {
         return id;
     }
 
-    // Class of the values the option holds, as its builder was told
+    // Returns the boxed value type given to the builder
     @Override
     public Class<?> getValueType() {
         return this.valueType;
     }
 
-    // Label
+    // Returns the label of the row
     @Override
     public TextComponent getName() {
         return this.name;
     }
 
-    // Hover text
+    // Returns the hover text
     @Override
     public TextComponent getTooltip() {
         return this.tooltip;
     }
 
-    // Performance impact shown in the tooltip
+    // Returns the performance impact shown in the tooltip
     @Override
     public OptionImpact getImpact() {
         return this.impact;
     }
 
-    // The widget type, or the failure that kept it from being made, which the page turns into a placeholder row
+    // Returns the control or throws when it could not be created
     @Override
     public Control<T> getControl() {
         if (this.controlFailure != null) {
-            throw new IllegalStateException("Control of option " + this.id + " could not be made", this.controlFailure);
+            // Names the option by its id or by its label when it has no id
+            Object named = OptionIdentifier.isPresent(this.id) ? this.id : this.name;
+            throw new IllegalStateException("Control of option " + named + " could not be made", this.controlFailure);
         }
         return this.control;
     }
 
-    // Pending value, not yet applied
+    // Returns the pending value or the stored value when nothing is pending
     @Override
     public T getValue() {
-        return this.modifiedValue != null ? this.modifiedValue : this.binding.getValue(this.storage.getData());
+        T pending = this.modifiedValue;
+        return pending != null ? pending : this.binding.getValue(this.storage.getData());
     }
 
-    // Sets the pending value
+    // Sets the pending value and clears it when the value is null
     @Override
     public void setValue(T value) {
         this.modifiedValue = value;
@@ -139,44 +165,50 @@ public class OptionImpl<S, T> implements Option<T> {
         this.modifiedValue = null;
     }
 
-    // Where the value lives
+    // Returns the storage the value is written to
     @Override
     public OptionStorage<?> getStorage() {
         return this.storage;
     }
 
-    // From the enabled predicate; greyed out when false
+    // Returns the result of the enabled predicate
     @Override
     public boolean isAvailable() {
         return this.enabled.getAsBoolean();
     }
 
-    // Pending differs from stored, which may be null (an enum name Gson could not read) while the pending value never is
+    // Returns whether a pending value exists and differs from the stored value
     @Override
     public boolean hasChanged() {
         T pending = this.modifiedValue;
         return pending != null && !pending.equals(this.binding.getValue(this.storage.getData()));
     }
 
-    // Writes pending into storage
+    // Writes the pending value into the storage and keeps it pending when the write fails
     @Override
     public void applyChanges() {
-        if (this.modifiedValue != null) {
-            this.binding.setValue(this.storage.getData(), this.modifiedValue);
-            this.modifiedValue = null;
+        T pending = this.modifiedValue;
+        if (pending != null) {
+            this.binding.setValue(this.storage.getData(), pending);
+            // Clears the pending value only when it is still the value that was written
+            if (this.modifiedValue == pending) {
+                this.modifiedValue = null;
+            }
         }
     }
 
-    // What must happen after applying: reload renderer, textures and so on
+    // Returns the actions required after the change is applied
     @Override
     public Collection<OptionFlag> getFlags() {
         return this.flags;
     }
 
+    // Returns a builder for an option of the given type and storage and rejects a null storage
     public static <S, T> OptionImpl.Builder<S, T> createBuilder(Class<T> type, OptionStorage<S> storage) {
-        return new Builder<>(storage, type);
+        return new Builder<>(Objects.requireNonNull(storage, "Storage must not be null"), type);
     }
 
+    // Collects the parts of an option until build() is called
     public static class Builder<S, T> {
         private final OptionStorage<S> storage;
         private final Class<T> type;
@@ -187,16 +219,18 @@ public class OptionImpl<S, T> implements Option<T> {
         private Function<OptionImpl<S, T>, Control<T>> control;
         private OptionImpact impact;
         private final EnumSet<OptionFlag> flags = EnumSet.noneOf(OptionFlag.class);
+        // Predicates for an option that is always enabled or always disabled
         private static final BooleanSupplier ALWAYS_ENABLED = () -> true;
         private static final BooleanSupplier ALWAYS_DISABLED = () -> false;
         private BooleanSupplier enabled = ALWAYS_ENABLED;
 
+        // Stores the storage and value type
         private Builder(OptionStorage<S> storage, Class<T> type) {
             this.storage = storage;
             this.type = type;
         }
 
-        // Required
+        // Sets the option id and rejects a null id
         public Builder<S, T> setId(OptionIdentifier<T> id) {
             Objects.requireNonNull(id, "Id must not be null");
 
@@ -205,7 +239,7 @@ public class OptionImpl<S, T> implements Option<T> {
             return this;
         }
 
-        // Required
+        // Sets the label and rejects a null label
         public Builder<S, T> setName(TextComponent name) {
             Objects.requireNonNull(name, "Argument must not be null");
 
@@ -214,7 +248,7 @@ public class OptionImpl<S, T> implements Option<T> {
             return this;
         }
 
-        // Required
+        // Sets the hover text and rejects a null tooltip
         public Builder<S, T> setTooltip(TextComponent tooltip) {
             Objects.requireNonNull(tooltip, "Argument must not be null");
 
@@ -223,7 +257,7 @@ public class OptionImpl<S, T> implements Option<T> {
             return this;
         }
 
-        // Getter and setter over the storage object
+        // Sets the binding from a setter and getter on the storage object
         public Builder<S, T> setBinding(BiConsumer<S, T> setter, Function<S, T> getter) {
             Objects.requireNonNull(setter, "Setter must not be null");
             Objects.requireNonNull(getter, "Getter must not be null");
@@ -234,7 +268,7 @@ public class OptionImpl<S, T> implements Option<T> {
         }
 
 
-        // Binding object form
+        // Sets the binding and rejects a null binding
         public Builder<S, T> setBinding(OptionBinding<S, T> binding) {
             Objects.requireNonNull(binding, "Argument must not be null");
 
@@ -243,7 +277,7 @@ public class OptionImpl<S, T> implements Option<T> {
             return this;
         }
 
-        // Widget factory
+        // Sets the factory that creates the control for the option
         public Builder<S, T> setControl(Function<OptionImpl<S, T>, Control<T>> control) {
             Objects.requireNonNull(control, "Argument must not be null");
 
@@ -252,59 +286,63 @@ public class OptionImpl<S, T> implements Option<T> {
             return this;
         }
 
-        // Optional
+        // Sets the performance impact or clears it with null
         public Builder<S, T> setImpact(OptionImpact impact) {
             this.impact = impact;
 
             return this;
         }
 
-        // Evaluated every frame so a master switch greys its children live
+        // Sets the predicate that decides whether the option can be edited
         public Builder<S, T> setEnabledPredicate(BooleanSupplier value) {
-            this.enabled = value;
+            this.enabled = Objects.requireNonNull(value, "Enabled predicate must not be null");
 
             return this;
         }
 
-        // Constant form
+        // Makes the option always enabled or always disabled
         public Builder<S, T> setEnabled(boolean value) {
             setEnabledPredicate(value ? ALWAYS_ENABLED : ALWAYS_DISABLED);
 
             return this;
         }
 
-        // Post-apply side effects
+        // Adds the flags for the actions required after the change is applied and rejects any null flag
         public Builder<S, T> setFlags(OptionFlag... flags) {
-            Collections.addAll(this.flags, flags);
+            this.flags.addAll(List.of(flags));
 
             return this;
         }
 
-        // Validates the required fields and finalises
+        // Checks the required parts and creates the option with a name and tooltip derived from the id when not set
         public OptionImpl<S, T> build() {
-            if (this.id == null) {
-                // FIXME enforce IDs and make nullable; EMPTY is typed Void but carries no value, so it stands in for any option type
+            OptionIdentifier<T> id = this.id;
+            TextComponent name = this.name;
+            TextComponent tooltip = this.tooltip;
+            if (id == null) {
+                // FIXME enforce ids and stop using EMPTY as the id for any option type
                 @SuppressWarnings("unchecked")
                 OptionIdentifier<T> empty = (OptionIdentifier<T>) OptionIdentifier.EMPTY;
-                this.id = empty;
+                id = empty;
                 //Impetus.logger().warn("Id must be specified in option '{}', this might throw a exception on a future release", this.name.getString());
-            } else {
-                if (this.name == null) {
-                    this.name = TextComponent.translatable(this.id.getModId() + ".options." + this.id.getPath() + ".name");
+            } else if (name == null || tooltip == null) {
+                // Builds the translation key prefix from the mod id and path
+                String key = id.getModId() + ".options." + id.getPath();
+                if (name == null) {
+                    name = TextComponent.translatable(key + ".name");
                 }
-
-                if (this.tooltip == null) {
-                    this.tooltip = TextComponent.translatable(this.id.getModId() + ".options." + this.id.getPath() + ".tooltip");
+                if (tooltip == null) {
+                    tooltip = TextComponent.translatable(key + ".tooltip");
                 }
             }
 
-            Objects.requireNonNull(this.name, "Name must be specified or inferred from a specified ID");
-            Objects.requireNonNull(this.tooltip, "Tooltip must be specified or inferred from a specified ID");
+            Objects.requireNonNull(name, "Name must be specified or inferred from a specified ID");
+            Objects.requireNonNull(tooltip, "Tooltip must be specified or inferred from a specified ID");
             Objects.requireNonNull(this.binding, "Option binding must be specified");
             Objects.requireNonNull(this.control, "Control must be specified");
 
-            // A copy, as the builder may go on to add flags for another option
-            return new OptionImpl<>(this.storage, this.type, this.id, this.name, this.tooltip, this.binding, this.control, EnumSet.copyOf(this.flags), this.impact, this.enabled);
+            // Passes the shared flag set matching the builder flags
+            return new OptionImpl<>(this.storage, this.type, id, name, tooltip, this.binding, this.control, sharedFlags(this.flags), this.impact, this.enabled);
         }
     }
 }

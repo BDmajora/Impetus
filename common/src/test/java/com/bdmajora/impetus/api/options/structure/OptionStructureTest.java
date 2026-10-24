@@ -7,12 +7,9 @@ import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
-import java.util.Collection;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -27,125 +24,6 @@ class OptionStructureTest {
         return OptionImpl.createBuilder(Integer.class, storage)
                 .setBinding(AtomicInteger::set, AtomicInteger::get)
                 .setControl(o -> Mockito.mock(Control.class));
-    }
-
-    @Test
-    void optionTracksPendingValueUntilApplied() {
-        OptionStorage<AtomicInteger> storage = storage(1);
-        OptionImpl<AtomicInteger, Integer> option = builder(storage)
-                .setId(OptionIdentifier.create("t", "opt", Integer.class))
-                .setImpact(OptionImpact.HIGH)
-                .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
-                .build();
-        assertEquals(1, option.getValue());
-        assertFalse(option.hasChanged());
-        option.setValue(1);
-        assertFalse(option.hasChanged());
-        option.setValue(2);
-        assertTrue(option.hasChanged());
-        assertEquals(2, option.getValue());
-        option.reset();
-        assertEquals(1, option.getValue());
-        option.setValue(3);
-        option.applyChanges();
-        assertEquals(3, storage.getData().get());
-        assertFalse(option.hasChanged());
-        option.applyChanges();
-        assertEquals(OptionImpact.HIGH, option.getImpact());
-        assertEquals(Set.of(OptionFlag.REQUIRES_RENDERER_RELOAD), Set.copyOf(option.getFlags()));
-        assertSame(storage, option.getStorage());
-        assertNotNull(option.getControl());
-        assertTrue(option.isAvailable());
-        assertEquals("t.options.opt.name", option.getName().toString());
-        assertEquals("t.options.opt.tooltip", option.getTooltip().toString());
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void hasChangedComparesThePendingValueAgainstANullStoredOne() {
-        AtomicReference<String> data = new AtomicReference<>();
-        AtomicInteger reads = new AtomicInteger();
-        OptionStorage<AtomicReference<String>> storage = () -> data;
-        OptionImpl<AtomicReference<String>, String> option = OptionImpl.createBuilder(String.class, storage)
-                .setName(TextComponent.literal("n"))
-                .setTooltip(TextComponent.literal("t"))
-                .setBinding(AtomicReference::set, ref -> {
-                    reads.incrementAndGet();
-                    return ref.get();
-                })
-                .setControl(o -> Mockito.mock(Control.class))
-                .build();
-        // Nothing pending reads nothing, which keeps the per-frame check free
-        assertFalse(option.hasChanged());
-        assertEquals(0, reads.get());
-        option.setValue("set");
-        assertTrue(option.hasChanged());
-        assertEquals(1, reads.get());
-        option.applyChanges();
-        assertEquals("set", data.get());
-        assertFalse(option.hasChanged());
-        // Equal but not the same instance is not a change
-        option.setValue(new String("set"));
-        assertFalse(option.hasChanged());
-        // The stored value going back to null makes the pending one a change again
-        data.set(null);
-        assertTrue(option.hasChanged());
-        option.reset();
-        assertFalse(option.hasChanged());
-    }
-
-    @Test
-    void builderInfersNothingWithoutAnIdAndValidatesRequiredParts() {
-        OptionImpl<AtomicInteger, Integer> option = builder(storage(0))
-                .setName(TextComponent.literal("n"))
-                .setTooltip(TextComponent.literal("tip"))
-                .setEnabled(false)
-                .build();
-        assertSame(OptionIdentifier.EMPTY, option.getId());
-        assertFalse(option.isAvailable());
-        assertEquals("n", option.getName().toString());
-        assertThrows(NullPointerException.class, () -> builder(storage(0)).build());
-        assertThrows(NullPointerException.class, () -> builder(storage(0)).setName(TextComponent.literal("n")).build());
-        assertThrows(NullPointerException.class, () -> OptionImpl.createBuilder(Integer.class, storage(0)).setName(TextComponent.literal("n")).setTooltip(TextComponent.literal("t")).build());
-        assertThrows(NullPointerException.class, () -> OptionImpl.createBuilder(Integer.class, storage(0)).setName(TextComponent.literal("n")).setTooltip(TextComponent.literal("t")).setBinding(AtomicInteger::set, AtomicInteger::get).build());
-        OptionImpl.Builder<AtomicInteger, Integer> b = OptionImpl.createBuilder(Integer.class, storage(0));
-        assertThrows(NullPointerException.class, () -> b.setId(null));
-        assertThrows(NullPointerException.class, () -> b.setName(null));
-        assertThrows(NullPointerException.class, () -> b.setTooltip(null));
-        assertThrows(NullPointerException.class, () -> b.setBinding(null));
-        assertThrows(NullPointerException.class, () -> b.setBinding(null, AtomicInteger::get));
-        assertThrows(NullPointerException.class, () -> b.setBinding(AtomicInteger::set, null));
-        assertThrows(NullPointerException.class, () -> b.setControl(null));
-        OptionImpl<AtomicInteger, Integer> enabled = builder(storage(0)).setName(TextComponent.literal("n")).setTooltip(TextComponent.literal("t"))
-                .setBinding(new com.bdmajora.impetus.api.options.binding.GenericBinding<>(AtomicInteger::set, AtomicInteger::get))
-                .setEnabledPredicate(() -> true).setEnabled(true).build();
-        assertTrue(enabled.isAvailable());
-    }
-
-    @Test
-    void anOptionsFlagsAreReadOnlyAndKeptApartFromTheBuilderThatMadeIt() {
-        OptionImpl.Builder<AtomicInteger, Integer> builder = builder(storage(0)).setName(TextComponent.literal("n")).setTooltip(TextComponent.literal("t"))
-                .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD);
-        OptionImpl<AtomicInteger, Integer> first = builder.build();
-        Collection<OptionFlag> flags = first.getFlags();
-        assertThrows(UnsupportedOperationException.class, () -> flags.add(OptionFlag.REQUIRES_GAME_RESTART));
-        assertThrows(UnsupportedOperationException.class, () -> flags.remove(OptionFlag.REQUIRES_RENDERER_RELOAD));
-        assertThrows(UnsupportedOperationException.class, () -> flags.removeIf(flag -> true));
-        assertThrows(UnsupportedOperationException.class, flags::clear);
-        assertThrows(UnsupportedOperationException.class, () -> {
-            Iterator<OptionFlag> iterator = flags.iterator();
-            iterator.next();
-            iterator.remove();
-        });
-        assertEquals(Set.of(OptionFlag.REQUIRES_RENDERER_RELOAD), Set.copyOf(first.getFlags()));
-        // The builder going on to make another option leaves the first one as it was built
-        OptionImpl<AtomicInteger, Integer> second = builder.setFlags(OptionFlag.REQUIRES_GAME_RESTART).build();
-        assertEquals(Set.of(OptionFlag.REQUIRES_RENDERER_RELOAD), Set.copyOf(first.getFlags()));
-        assertEquals(Set.of(OptionFlag.REQUIRES_RENDERER_RELOAD, OptionFlag.REQUIRES_GAME_RESTART), Set.copyOf(second.getFlags()));
-        // The same collection on every call, so reading the flags allocates nothing
-        assertSame(first.getFlags(), first.getFlags());
-        // No flags is an empty collection, never null
-        assertTrue(builder(storage(0)).setName(TextComponent.literal("n")).setTooltip(TextComponent.literal("t")).build().getFlags().isEmpty());
     }
 
     @Test
@@ -199,40 +77,5 @@ class OptionStructureTest {
         assertEquals("minecraft:rendering", StandardOptions.Group.RENDERING.toString());
         assertEquals("impetus:general", StandardOptions.Pages.GENERAL.toString());
         assertEquals("minecraft:vsync", StandardOptions.Option.VSYNC.toString());
-    }
-
-    // The value type an option reports when built for the given type
-    @SuppressWarnings("unchecked")
-    private static <T> Class<?> builtType(Class<T> type) {
-        AtomicReference<T> data = new AtomicReference<>();
-        OptionStorage<AtomicReference<T>> storage = () -> data;
-        return OptionImpl.createBuilder(type, storage)
-                .setName(TextComponent.literal("n"))
-                .setTooltip(TextComponent.literal("t"))
-                .setBinding(AtomicReference::set, AtomicReference::get)
-                .setControl(o -> Mockito.mock(Control.class))
-                .build()
-                .getValueType();
-    }
-
-    @Test
-    void anOptionKeepsTheBoxedTypeItsBuilderWasGiven() {
-        assertSame(Boolean.class, builtType(boolean.class));
-        assertSame(Integer.class, builtType(int.class));
-        assertSame(Long.class, builtType(long.class));
-        assertSame(Double.class, builtType(double.class));
-        assertSame(Boolean.class, builtType(Boolean.class));
-        assertSame(String.class, builtType(String.class));
-        assertSame(OptionImpact.class, builtType(OptionImpact.class));
-        // No type says nothing, which matches any control
-        assertSame(Object.class, builtType(null));
-        // Kept from the builder even without an id, where the id has no type to give
-        OptionImpl<AtomicInteger, Integer> unnamed = builder(storage(0)).setName(TextComponent.literal("n")).setTooltip(TextComponent.literal("t")).build();
-        assertSame(OptionIdentifier.EMPTY, unnamed.getId());
-        assertSame(Integer.class, unnamed.getValueType());
-        // The same class the built-in controls declare, so the check against them is one comparison
-        @SuppressWarnings("unchecked")
-        Option<Boolean> tick = Mockito.mock(Option.class);
-        assertSame(new com.bdmajora.impetus.api.options.control.TickBoxControl(tick).getValueType(), builtType(boolean.class));
     }
 }

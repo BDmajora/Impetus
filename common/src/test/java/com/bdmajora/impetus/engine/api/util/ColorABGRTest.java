@@ -173,69 +173,22 @@ class ColorABGRTest {
         assertEquals(-1, ColorABGR.pack(1f, 1f, 1f));
         assertEquals(0, ColorABGR.pack(0f, 0f, 0f, 0f));
         assertEquals(-1, ColorABGR.pack(1f, 1f, 1f, 1f));
-        assertEquals(255, ColorU8.normalizedFloatToByte(1f));
-        assertEquals(0, ColorU8.normalizedFloatToByte(0f));
-        assertEquals(1f, ColorU8.byteToNormalizedFloat(255));
-        assertEquals(0f, ColorU8.byteToNormalizedFloat(0));
-    }
-
-    @Test
-    void floatConversionTruncatesInsideTheRange() {
-        // truncation, as vanilla's (int) (f * 255); pinned so a switch to rounding is a deliberate change
-        assertEquals(127, ColorU8.normalizedFloatToByte(0.5f));
-        assertEquals(254, ColorU8.normalizedFloatToByte(Math.nextDown(1f)));
-        assertEquals(0, ColorU8.normalizedFloatToByte(Float.MIN_VALUE));
-        assertEquals(0, ColorU8.normalizedFloatToByte(-0f));
-        assertEquals(0, ColorU8.normalizedFloatToByte(1 / 256f));
-        assertEquals(1, ColorU8.normalizedFloatToByte(1 / 255f));
         assertEquals(0x7F563412, ColorABGR.withAlpha(0x78563412, 0.5f));
-        // strided walk over every float bit pattern in 0..1
-        int one = Float.floatToRawIntBits(1f);
-        for (int bits = 0; bits <= one; bits += 997) {
-            float f = Float.intBitsToFloat(bits);
-            assertEquals((int) (f * 255f), ColorU8.normalizedFloatToByte(f), Float.toString(f));
-        }
     }
 
     @Test
-    void everyByteRoundTripsThroughItsNormalisedFloat() {
+    void everyByteRoundTripsThroughTheFloatForms() {
         for (int v = 0; v <= 255; v++) {
-            assertEquals(v, ColorU8.normalizedFloatToByte(ColorU8.byteToNormalizedFloat(v)), "via inverse " + v);
-            assertEquals(v, ColorU8.normalizedFloatToByte(v / 255f), "via division " + v);
             int w = 255 - v;
             assertEquals(ColorABGR.pack(v, w, v ^ 0x5A, (v * 7) & 0xFF),
                     ColorABGR.pack(v / 255f, w / 255f, (v ^ 0x5A) / 255f, ((v * 7) & 0xFF) / 255f));
             assertEquals(ColorABGR.pack(v, w, v ^ 0x5A, 255), ColorABGR.pack(v / 255f, w / 255f, (v ^ 0x5A) / 255f));
             assertEquals(ColorABGR.withAlpha(0x00123456, v), ColorABGR.withAlpha(0x00123456, v / 255f));
-            if (v > 0) {
-                assertTrue(ColorU8.byteToNormalizedFloat(v) > ColorU8.byteToNormalizedFloat(v - 1));
-            }
-        }
-    }
-
-    @Test
-    void outOfRangeFloatComponentsClampInsteadOfWrapping() {
-        // just past 1.0 wrapped to 0 (black / fully occluded), 1.5 to 126, -0.1 to 231
-        assertEquals(255, ColorU8.normalizedFloatToByte(256 / 255f));
-        assertEquals(255, ColorU8.normalizedFloatToByte(1.5f));
-        assertEquals(255, ColorU8.normalizedFloatToByte(2f));
-        assertEquals(255, ColorU8.normalizedFloatToByte(Float.MAX_VALUE));
-        assertEquals(0, ColorU8.normalizedFloatToByte(-0.1f));
-        assertEquals(0, ColorU8.normalizedFloatToByte(-1f));
-        assertEquals(0, ColorU8.normalizedFloatToByte(-Float.MAX_VALUE));
-        assertEquals(255, ColorU8.normalizedFloatToByte(Math.nextUp(1f)));
-        assertEquals(0, ColorU8.normalizedFloatToByte(-Float.MIN_VALUE));
-        for (float f = 1f; f <= 64f; f += 1 / 512f) {
-            assertEquals(255, ColorU8.normalizedFloatToByte(f), Float.toString(f));
-            assertEquals(0, ColorU8.normalizedFloatToByte(-f), Float.toString(-f));
         }
     }
 
     @Test
     void nonFiniteFloatComponentsSaturate() {
-        assertEquals(0, ColorU8.normalizedFloatToByte(Float.NaN));
-        assertEquals(255, ColorU8.normalizedFloatToByte(Float.POSITIVE_INFINITY));
-        assertEquals(0, ColorU8.normalizedFloatToByte(Float.NEGATIVE_INFINITY));
         assertEquals(0xFF000000, ColorABGR.pack(Float.NaN, Float.NaN, Float.NaN));
         assertEquals(0, ColorABGR.pack(Float.NaN, Float.NaN, Float.NaN, Float.NaN));
         assertEquals(-1, ColorABGR.pack(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY));
@@ -243,20 +196,6 @@ class ColorABGRTest {
         assertEquals(0x00563412, ColorABGR.withAlpha(0x78563412, Float.NaN));
         assertEquals(0xFF563412, ColorABGR.withAlpha(0x78563412, Float.POSITIVE_INFINITY));
         assertEquals(0x00563412, ColorABGR.withAlpha(0x78563412, Float.NEGATIVE_INFINITY));
-    }
-
-    @Test
-    void floatConversionStaysInRangeAndNeverDecreases() {
-        int previous = -1;
-        for (float f = -4f; f <= 4f; f += 1 / 4096f) {
-            int b = ColorU8.normalizedFloatToByte(f);
-            assertTrue(b >= 0 && b <= 255, Float.toString(f));
-            assertTrue(b >= previous, "dropped at " + f);
-            previous = b;
-        }
-        for (float f : EDGE_FLOATS) {
-            assertEquals(expectedByte(f), ColorU8.normalizedFloatToByte(f), Float.toString(f));
-        }
     }
 
     @Test

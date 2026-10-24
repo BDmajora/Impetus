@@ -170,7 +170,8 @@ class OptionTest {
         assertSame(Object.class, untyped.getValueType());
         assertSame(Object.class, valueTypeOf("void_typed", Void.class));
         assertSame(Object.class, valueTypeOf("void_primitive_typed", void.class));
-        assertSame(Object.class, valueTypeOf("class_less", null));
+        // An id with no class at all cannot be made, so only a missing id reaches the null branch
+        assertThrows(NullPointerException.class, () -> OptionIdentifier.create(MOD, "class_less", null));
     }
 
     @Test

@@ -569,8 +569,8 @@ class ConfigBuildersTest {
 
     // Every id interned so far in this JVM; tests that read it run on one thread
     private static int interned() {
-        Set<?> ids = Statics.get(OptionIdentifier.class, "IDENTIFIERS");
-        return ids.size();
+        Map<?, ? extends Map<?, ?>> mods = Statics.get(OptionIdentifier.class, "IDENTIFIERS");
+        return mods.values().stream().mapToInt(Map::size).sum();
     }
 
     // Type parameters, generic return type, name and generic parameters, as a mod's source sees the method

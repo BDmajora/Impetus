@@ -10,66 +10,70 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
 
+// Group of options shown together on a page with an optional heading
 public class OptionGroup {
+    // Id used by a group built without one
     public static final OptionIdentifier<Void> DEFAULT_ID = OptionIdentifier.create("impetus", "empty");
 
     private final List<Option<?>> options;
 
     public final OptionIdentifier<Void> id;
-    // Optional heading drawn above the group's rows; null keeps Sodium's bare padded block
+    // Heading drawn above the group rows or null for a group without a heading
     private final @Nullable TextComponent name;
 
+    // Stores the id and heading and options
     private OptionGroup(OptionIdentifier<Void> id, @Nullable TextComponent name, List<Option<?>> options) {
         this.id = id;
         this.name = name;
         this.options = options;
     }
 
-    // Group id
+    // Returns the group id
     public OptionIdentifier<Void> getId() {
         return id;
     }
 
-    // The heading, or null for an unnamed group
+    // Returns the heading or null for an unnamed group
     public @Nullable TextComponent getName() {
         return this.name;
     }
 
-    // Starts a builder
+    // Returns a new builder
     public static Builder createBuilder() {
         return new Builder();
     }
 
-    // In declaration order, listener additions last; unmodifiable and the same list on every call, which OptionPage reuses as is
+    // Returns the unmodifiable list of options in the order they were added
     public List<Option<?>> getOptions() {
         return this.options;
     }
 
+    // Collects the id and heading and options of a group until build() is called
     public static class Builder {
         private final List<Option<?>> options = new ArrayList<>();
-        // Never null, so an unset id stays the default and build has nothing to fill in
+        // Group id starting as the default id
         private OptionIdentifier<Void> id = OptionGroup.DEFAULT_ID;
         private @Nullable TextComponent name;
 
-        // Required
+        // Sets the group id and rejects a null id
         public Builder setId(OptionIdentifier<Void> id) {
             this.id = Objects.requireNonNull(id, "Group id must not be null");
             return this;
         }
 
-        // Optional heading; a page holding several groups reads far better with one over each
+        // Sets the heading drawn above the group or clears it with null
         public Builder setName(@Nullable TextComponent name) {
             this.name = name;
             return this;
         }
 
-        // Appends; a null is refused here, where the caller is, instead of failing the build after every listener ran
+        // Adds an option to the end of the group and rejects a null option
         public Builder add(Option<?> option) {
             this.options.add(Objects.requireNonNull(option, "Option must not be null"));
             return this;
         }
 
-        // Appends only when the condition holds, without building otherwise; a missing supplier fails either way, so it shows on every machine
+        // Adds the supplied option only when the condition holds and rejects a null supplier or result
         public Builder addConditionally(boolean shouldAdd, Supplier<Option<?>> option) {
             Objects.requireNonNull(option, "Option supplier must not be null");
             if (shouldAdd) {
@@ -82,19 +86,19 @@ public class OptionGroup {
             return this;
         }
 
-        // Fires the construction event so other mods can add options, then finalises
+        // Posts the construction event so listeners can add options and then creates the group
         public OptionGroup build() {
             // FIXME actually enforce IDs on groups
             OptionIdentifier<Void> id = this.id;
-            // Listeners edit a copy, so a reused builder never collects their additions twice and a failed build leaves it as it was
+            // Gives listeners a copy of the options to add to
             List<Option<?>> working = new ArrayList<>(this.options);
             OptionGroupConstructionEvent.BUS.post(new OptionGroupConstructionEvent(id, working));
             List<Option<?>> options;
             try {
-                // Also cuts the group loose from a listener that kept the working list
+                // Copies the result into an unmodifiable list
                 options = List.copyOf(working);
             } catch (NullPointerException e) {
-                // add refuses nulls, so only a listener can have put one there
+                // Reports a null option added by a listener
                 throw new NullPointerException("A listener added a null option to group " + id);
             }
             return new OptionGroup(id, this.name, options);

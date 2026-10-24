@@ -1,51 +1,56 @@
 package com.bdmajora.impetus.engine.api.util;
 
-public class ColorMixer {
-    private static final int CHANNEL_MASK = 0x00FF00FF;
+// Blends and multiplies packed colours two 8 bit channels at a time in any channel order
+public final class ColorMixer {
+    // Mask that keeps bytes 0 and 2 of a word
+    private static final int EVEN_LANES = 0x00FF00FF;
+    // Mask that keeps bytes 1 and 3 of a word
+    private static final int ODD_LANES = 0xFF00FF00;
+    // Half of one 8 bit step in each 16 bit lane used to round to nearest
+    private static final int LANE_HALF = 0x00800080;
+    // Keeps the alpha byte of a packed colour
+    private static final int ALPHA_MASK = 0xFF000000;
+    // Full blend weight of 1.0 in 8.8 fixed point
+    private static final int WEIGHT_ONE = 256;
 
-    // Mixes aColor towards bColor at ratio (0..1) with bitwise trickery instead of per-channel float math; channel order is preserved
+    // Prevents instantiation
+    private ColorMixer() {
+    }
+
+    // Blends aColor at ratio with bColor at one minus ratio per channel rounded to nearest and clamps ratio between 0 and 1
     public static int mix(int aColor, int bColor, float ratio) {
-        int aRatio = (int) (256 * ratio); // int(ratio)
-        int bRatio = 256 - aRatio; // int(1.0 - ratio)
-
-        // Mask and shift two components from each colour into a packed vector of 16-bit components with the high 8 bits zeroed
-        int a1 = (aColor >> 0) & CHANNEL_MASK;
-        int b1 = (bColor >> 0) & CHANNEL_MASK;
-        int a2 = (aColor >> 8) & CHANNEL_MASK;
-        int b2 = (bColor >> 8) & CHANNEL_MASK;
-
-        // Multiply the packed 16-bit components by each mix factor and add; cannot overflow since both are in 0..255
-
-        // Shift the high 8 bits of each 16-bit component down and mask, leaving a vector of packed 8-bit components with every other slot empty
-        int c1 = (((a1 * aRatio) + (b1 * bRatio) + 0x00800080) >> 8) & CHANNEL_MASK;
-        int c2 = (((a2 * aRatio) + (b2 * bRatio) + 0x00800080) >> 8) & CHANNEL_MASK;
-
-        // Join the color components into the original order
-        return ((c1 << 0) | (c2 << 8));
+        // Converts the ratio to a weight between 0 and 256 with NaN giving 0
+        int weight = Math.max(0, Math.min(Math.round(ratio * WEIGHT_ONE), WEIGHT_ONE));
+        int bEven = bColor & EVEN_LANES;
+        int bOdd = (bColor >>> 8) & EVEN_LANES;
+        // Computes b times 256 plus a minus b times the weight for each pair of lanes
+        int even = (bEven << 8) + ((aColor & EVEN_LANES) - bEven) * weight + LANE_HALF;
+        int odd = (bColor & ODD_LANES) + (((aColor >>> 8) & EVEN_LANES) - bOdd) * weight + LANE_HALF;
+        // Takes the high byte of each lane as the rounded result
+        return ((even >>> 8) & EVEN_LANES) | (odd & ODD_LANES);
     }
 
-    // Multiplies two packed 32-bit colours together; channel order does not matter and is preserved
+    // Multiplies two packed colours channel by channel as fractions of 255 rounded to nearest
     public static int mul(int a, int b) {
-        // Multiply each 8-bit component pair into a 16-bit intermediate, then shift the high half back down to 8 bits
-        int c0 = ((((a >>  0) & 0xFF) * ((b >>  0) & 0xFF)) + 0xFF) >> 8;
-        int c1 = ((((a >>  8) & 0xFF) * ((b >>  8) & 0xFF)) + 0xFF) >> 8;
-        int c2 = ((((a >> 16) & 0xFF) * ((b >> 16) & 0xFF)) + 0xFF) >> 8;
-        int c3 = ((((a >> 24) & 0xFF) * ((b >> 24) & 0xFF)) + 0xFF) >> 8;
-
-        // Pack the components
-        return (c0 <<  0) | (c1 <<  8) | (c2 << 16) | (c3 << 24);
+        int aOdd = a >>> 8;
+        // Computes the four channel products in two words with two products per word
+        int even = (a & 0xFF) * (b & 0xFF) + (a & 0x00FF0000) * ((b >>> 16) & 0xFF);
+        int odd = (aOdd & 0xFF) * ((b >>> 8) & 0xFF) + (aOdd & 0x00FF0000) * (b >>> 24);
+        return ((divide255(even) >>> 8) & EVEN_LANES) | (divide255(odd) & ODD_LANES);
     }
 
-    // Multiplies the RGB channels of packed colour a by the single 8-bit component b; alpha must be in the top 8 bits
+    // Multiplies the red and green and blue of a packed colour by a factor out of 255 rounded to nearest and keeps the alpha
     public static int mulSingleWithoutAlpha(int a, int b) {
-        b &= 0xFF; // Mask the component for safety
-        // Multiply each 8-bit component by b into a 16-bit intermediate, then shift the high half back down to 8 bits
-        int c0 = ((((a >>  0) & 0xFF) * b) + 0xFF) >> 8;
-        int c1 = ((((a >>  8) & 0xFF) * b) + 0xFF) >> 8;
-        int c2 = ((((a >> 16) & 0xFF) * b) + 0xFF) >> 8;
-        int c3 = (a >> 24) & 0xFF;
+        // Clamps the factor between 0 and 255
+        int factor = Math.max(0, Math.min(b, 255));
+        int even = (a & EVEN_LANES) * factor;
+        int green = ((a >>> 8) & 0xFF) * factor;
+        return (a & ALPHA_MASK) | ((divide255(even) >>> 8) & EVEN_LANES) | (divide255(green) & 0x0000FF00);
+    }
 
-        // Pack the components
-        return (c0 <<  0) | (c1 <<  8) | (c2 << 16) | (c3 << 24);
+    // Returns each 16 bit lane with its product divided by 255 and rounded in the high byte
+    private static int divide255(int products) {
+        int t = products + LANE_HALF;
+        return t + ((t >>> 8) & EVEN_LANES);
     }
 }

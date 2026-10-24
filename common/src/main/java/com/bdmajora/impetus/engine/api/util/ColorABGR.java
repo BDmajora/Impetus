@@ -1,36 +1,45 @@
 package com.bdmajora.impetus.engine.api.util;
 
-// Packs/unpacks ABGR integer colours (the layout OpenGL uses for colour vectors): alpha in bits 24-31, then blue, green, red in bits 0-7
-public class ColorABGR implements ColorU8 {
-    private static final int RED_COMPONENT_OFFSET = 0;
+// Packs and unpacks ABGR colours with alpha in the high byte and red in the low byte
+public final class ColorABGR implements ColorU8 {
+    // Bit offsets of the green and blue and alpha components
     private static final int GREEN_COMPONENT_OFFSET = 8;
     private static final int BLUE_COMPONENT_OFFSET = 16;
     private static final int ALPHA_COMPONENT_OFFSET = 24;
+    // Mask that keeps the red and green and blue bytes of a packed colour
+    private static final int RGB_MASK = ~(COMPONENT_MASK << ALPHA_COMPONENT_OFFSET);
 
-    // packs the colour components into ABGR format, with the alpha component fully opaque; 1.0f, not COMPONENT_MASK, since the float overload normalises its alpha too
-    public static int pack(float r, float g, float b) {
-        return pack(r, g, b, 1.0f);
+    // Prevents instantiation
+    private ColorABGR() {
     }
 
-    // packs the colour components into ABGR format
+    // Packs normalised red and green and blue components into an opaque ABGR colour
+    public static int pack(float r, float g, float b) {
+        return pack(ColorU8.normalizedFloatToByte(r),
+                ColorU8.normalizedFloatToByte(g),
+                ColorU8.normalizedFloatToByte(b),
+                COMPONENT_MASK);
+    }
+
+    // Packs the low byte of each component into an ABGR colour
     public static int pack(int r, int g, int b, int a) {
-        return ((a & COMPONENT_MASK) << ALPHA_COMPONENT_OFFSET) |
+        return (a << ALPHA_COMPONENT_OFFSET) |
                 ((b & COMPONENT_MASK) << BLUE_COMPONENT_OFFSET) |
                 ((g & COMPONENT_MASK) << GREEN_COMPONENT_OFFSET) |
-                ((r & COMPONENT_MASK) << RED_COMPONENT_OFFSET);
+                (r & COMPONENT_MASK);
     }
 
-    // packs an rgb triple and a floating point alpha into ABGR format
+    // Replaces the alpha of a packed colour with a normalised alpha clamped between 0 and 1
     public static int withAlpha(int rgb, float alpha) {
         return withAlpha(rgb, ColorU8.normalizedFloatToByte(alpha));
     }
 
-    // packs an rgb triple and an integer alpha into ABGR format
+    // Replaces the alpha of a packed colour with the low byte of the given alpha
     public static int withAlpha(int rgb, int alpha) {
-        return (alpha << ALPHA_COMPONENT_OFFSET) | (rgb & ~(COMPONENT_MASK << ALPHA_COMPONENT_OFFSET));
+        return (alpha << ALPHA_COMPONENT_OFFSET) | (rgb & RGB_MASK);
     }
 
-    // Converts normalised float components into a packed ABGR integer via pack(int, int, int, int)
+    // Packs normalised components clamped between 0 and 1 into an ABGR colour
     public static int pack(float r, float g, float b, float a) {
         return pack(ColorU8.normalizedFloatToByte(r),
                 ColorU8.normalizedFloatToByte(g),
@@ -38,23 +47,23 @@ public class ColorABGR implements ColorU8 {
                 ColorU8.normalizedFloatToByte(a));
     }
 
-    // the red component of a packed 32-bit ABGR colour, in 0..255
+    // Returns the red component of a packed ABGR colour between 0 and 255
     public static int unpackRed(int color) {
-        return (color >> RED_COMPONENT_OFFSET) & COMPONENT_MASK;
+        return color & COMPONENT_MASK;
     }
 
-    // the green component of a packed 32-bit ABGR colour, in 0..255
+    // Returns the green component of a packed ABGR colour between 0 and 255
     public static int unpackGreen(int color) {
         return (color >> GREEN_COMPONENT_OFFSET) & COMPONENT_MASK;
     }
 
-    // the blue component of a packed 32-bit ABGR colour, in 0..255
+    // Returns the blue component of a packed ABGR colour between 0 and 255
     public static int unpackBlue(int color) {
         return (color >> BLUE_COMPONENT_OFFSET) & COMPONENT_MASK;
     }
 
-    // the alpha component of a packed 32-bit ABGR colour, in 0..255
+    // Returns the alpha component of a packed ABGR colour between 0 and 255
     public static int unpackAlpha(int color) {
-        return (color >> ALPHA_COMPONENT_OFFSET) & COMPONENT_MASK;
+        return color >>> ALPHA_COMPONENT_OFFSET;
     }
 }

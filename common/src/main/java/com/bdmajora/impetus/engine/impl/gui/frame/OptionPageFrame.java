@@ -19,6 +19,7 @@ import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Predicate;
@@ -34,6 +35,10 @@ public class OptionPageFrame extends AbstractFrame {
     private static final int OPTION_ROW_HEIGHT = 18;
     private static final int GROUP_PADDING = 4;
     private static final int GROUP_HEADER_COLOR = 0xFFA8A8A8;
+    // The tooltip's impact line for each impact by ordinal, made once instead of every frame a tooltip shows
+    private static final TextComponent[] IMPACT_LINES = Arrays.stream(OptionImpact.values())
+            .map(impact -> TextComponent.translatable("impetus.options.performance_impact_string", impact.getLocalizedName()).withStyle(TextFormattingStyle.GRAY))
+            .toArray(TextComponent[]::new);
 
     protected final OptionPage page;
     private long lastTime = 0;
@@ -255,8 +260,7 @@ public class OptionPageFrame extends AbstractFrame {
         OptionImpact impact = option.getImpact();
 
         if (impact != null) {
-            var impactString = TextComponent.translatable("impetus.options.performance_impact_string", impact.getLocalizedName()).withStyle(TextFormattingStyle.GRAY);
-            tooltip.add(impactString);
+            tooltip.add(IMPACT_LINES[impact.ordinal()]);
         }
 
         var id = option.getId();

@@ -8,6 +8,7 @@ import com.bdmajora.impetus.api.options.structure.OptionGroup;
 import com.bdmajora.impetus.api.options.structure.OptionImpact;
 import com.bdmajora.impetus.api.options.structure.OptionPage;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
+import com.bdmajora.impetus.engine.impl.gui.framework.TextFormattingStyle;
 import com.bdmajora.impetus.engine.impl.gui.widgets.FlatButtonWidget;
 import com.bdmajora.impetus.engine.impl.util.Dim2i;
 import com.bdmajora.testing.FakeDrawContext;
@@ -125,6 +126,54 @@ class FramesTest {
         assertEquals(1, unfiltered.controlElements.size());
         assertThrows(NullPointerException.class, () -> OptionPageFrame.createBuilder().build());
         assertThrows(NullPointerException.class, () -> OptionPageFrame.createBuilder().setDimension(new Dim2i(0, 0, 1, 1)).build());
+    }
+
+    @Test
+    void theImpactLineIsOneComponentPerImpactThatFollowsTheOptionsImpact() throws ReflectiveOperationException {
+        Option<Boolean> option = option("rated", "impetus");
+        OptionPage page = new OptionPage(OptionIdentifier.create("impetus", "rated_page"), TextComponent.literal("P"), List.of(OptionGroup.createBuilder().add(option).build()));
+        OptionPageFrame frame = new OptionPageFrame(new Dim2i(0, 0, 200, 300), false, page, o -> true);
+        ControlElement<?> row = frame.controlElements.get(0);
+        int mx = row.getDimensions().getCenterX();
+        int my = row.getDimensions().getCenterY();
+        List<TextComponent> drawn = new ArrayList<>();
+        FakeDrawContext draw = new FakeDrawContext() {
+            @Override
+            public int drawString(TextComponent str, int x, int y, int color, boolean shadow) {
+                drawn.add(str);
+                return super.drawString(str, x, y, color, shadow);
+            }
+        };
+        frame.render(draw, mx, my, 0f);
+        frame.render(draw, mx, my, 0f);
+        var lastTime = OptionPageFrame.class.getDeclaredField("lastTime");
+        lastTime.setAccessible(true);
+        lastTime.setLong(frame, 1L);
+        List<TextComponent> lines = new ArrayList<>();
+        // The same row's impact changes between frames, and each frame shows the current one
+        for (OptionImpact impact : List.of(OptionImpact.HIGH, OptionImpact.LOW, OptionImpact.VARIES, OptionImpact.MEDIUM, OptionImpact.HIGH)) {
+            Mockito.when(option.getImpact()).thenReturn(impact);
+            for (int frameNo = 0; frameNo < 2; frameNo++) {
+                drawn.clear();
+                frame.render(draw, mx, my, 0f);
+                List<TextComponent> impactLines = drawn.stream().filter(c -> c.toString().startsWith("impetus.options.performance_impact_string")).toList();
+                assertEquals(1, impactLines.size(), impact.name());
+                TextComponent line = impactLines.getFirst();
+                assertEquals(TextComponent.translatable("impetus.options.performance_impact_string", impact.getLocalizedName()).withStyle(TextFormattingStyle.GRAY), line);
+                lines.add(line);
+            }
+        }
+        // Every frame of one impact draws the very same line, and the impacts never share one
+        assertSame(lines.get(0), lines.get(1));
+        assertSame(lines.get(0), lines.get(8));
+        assertSame(lines.get(0), lines.get(9));
+        assertEquals(OptionImpact.values().length, lines.stream().map(System::identityHashCode).distinct().count());
+        // A label someone changed after taking it from an impact never reaches the line
+        ((TextComponent.Styled) OptionImpact.MEDIUM.getLocalizedName()).styles().add(TextFormattingStyle.RED);
+        Mockito.when(option.getImpact()).thenReturn(OptionImpact.MEDIUM);
+        drawn.clear();
+        frame.render(draw, mx, my, 0f);
+        assertTrue(drawn.contains(TextComponent.translatable("impetus.options.performance_impact_string", OptionImpact.MEDIUM.getLocalizedName()).withStyle(TextFormattingStyle.GRAY)));
     }
 
     @Test

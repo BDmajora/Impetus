@@ -29,7 +29,6 @@ impetus.options.chunk_fade_in_duration.tooltip=Controls how long it takes for ne
 impetus.option_impact.low=Low
 impetus.option_impact.medium=Medium
 impetus.option_impact.high=High
-impetus.option_impact.extreme=Extreme
 impetus.option_impact.varies=Varies
 impetus.options.title=Impetus Settings
 impetus.options.pages.general=General

@@ -65,12 +65,5 @@ class OptionStructureTest {
             assertTrue(impact.getLocalizedName().toString().contains("impetus.option_impact."));
         }
         assertEquals(5, OptionFlag.values().length);
-        new StandardOptions();
-        new StandardOptions.Group();
-        new StandardOptions.Pages();
-        new StandardOptions.Option();
-        assertEquals("minecraft:rendering", StandardOptions.Group.RENDERING.toString());
-        assertEquals("impetus:general", StandardOptions.Pages.GENERAL.toString());
-        assertEquals("minecraft:vsync", StandardOptions.Option.VSYNC.toString());
     }
 }

@@ -5,9 +5,11 @@ import com.bdmajora.impetus.api.eventbus.BusListeners;
 import com.bdmajora.impetus.api.eventbus.EventHandlerRegistrar;
 import com.bdmajora.impetus.api.options.OptionIdentifier;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
+import com.bdmajora.testing.FreshClasses;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
@@ -128,6 +130,28 @@ class OptionGroupTest {
         // An id set later replaces the default on the next build
         OptionIdentifier<Void> later = id("later");
         assertSame(later, builder.setId(later).build().getId());
+    }
+
+    @Test
+    void aTypedEmptyIdAModMadeBeforeTheClassLoadedIsAdoptedInsteadOfFailingIt() throws Exception {
+        FreshClasses fresh = new FreshClasses(OptionIdentifier.class, OptionGroup.class);
+        Class<?> ids = fresh.load(OptionIdentifier.class);
+        Method getType = ids.getMethod("getType");
+        Object typed = ids.getMethod("create", String.class, String.class, Class.class).invoke(null, "impetus", "empty", Boolean.class);
+        Class<?> group = fresh.initialise(OptionGroup.class);
+        assertNotSame(OptionGroup.class, group);
+        assertSame(typed, group.getField("DEFAULT_ID").get(null));
+        assertSame(Boolean.class, getType.invoke(typed));
+        // With nobody first, the default is made untyped and is the pair every later create hands out
+        FreshClasses clean = new FreshClasses(OptionIdentifier.class, OptionGroup.class);
+        Object made = clean.initialise(OptionGroup.class).getField("DEFAULT_ID").get(null);
+        Class<?> cleanIds = clean.load(OptionIdentifier.class);
+        assertSame(void.class, cleanIds.getMethod("getType").invoke(made));
+        assertEquals("impetus:empty", made.toString());
+        assertSame(made, cleanIds.getMethod("create", String.class, String.class).invoke(null, "impetus", "empty"));
+        // A typed create after the class loaded is the mod's own error
+        InvocationTargetException late = assertThrows(InvocationTargetException.class, () -> cleanIds.getMethod("create", String.class, String.class, Class.class).invoke(null, "impetus", "empty", Boolean.class));
+        assertInstanceOf(IllegalArgumentException.class, late.getCause());
     }
 
     @Test

@@ -12,8 +12,8 @@ import java.util.function.Supplier;
 
 // Group of options shown together on a page with an optional heading
 public class OptionGroup {
-    // Id used by a group built without one
-    public static final OptionIdentifier<Void> DEFAULT_ID = OptionIdentifier.create("impetus", "empty");
+    // Id used by a group built without one; adopts an impetus:empty a mod typed first instead of failing this class's static init
+    public static final OptionIdentifier<Void> DEFAULT_ID = OptionIdentifier.intern("impetus", "empty").cast();
 
     private final List<Option<?>> options;
 

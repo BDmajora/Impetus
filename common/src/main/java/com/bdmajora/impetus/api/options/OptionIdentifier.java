@@ -53,6 +53,11 @@ public final class OptionIdentifier<T> {
         return oldIdentifier;
     }
 
+    // The interned id for the pair whatever type it was created with, or a new untyped one; unlike create it never refuses a pair
+    public static synchronized OptionIdentifier<?> intern(String modId, String path) {
+        return IDENTIFIERS.addOrGet(new OptionIdentifier<>(modId, path, void.class));
+    }
+
     // Non-null and not the empty placeholder
     public static boolean isPresent(@Nullable OptionIdentifier<?> id) {
         return id != null && id != EMPTY;
@@ -84,9 +89,9 @@ public final class OptionIdentifier<T> {
         return Objects.equals(modId, that.modId) && Objects.equals(path, that.path);
     }
 
-    // By mod and path
+    // By mod and path; the same value as Objects.hash(modId, path) without its varargs array per call
     @Override
     public int hashCode() {
-        return Objects.hash(modId, path);
+        return 31 * (31 + Objects.hashCode(this.modId)) + Objects.hashCode(this.path);
     }
 }

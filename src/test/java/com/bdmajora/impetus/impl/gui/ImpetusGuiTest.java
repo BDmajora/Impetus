@@ -18,6 +18,7 @@ import com.bdmajora.impetus.engine.impl.gui.widgets.SearchBarWidget;
 import com.bdmajora.impetus.engine.impl.notification.ImpetusNotifications;
 import com.bdmajora.impetus.impl.compat.fluidlogged.FluidloggedCompat;
 import com.bdmajora.impetus.impl.gui.overlay.ImpetusToastRenderer;
+import com.bdmajora.impetus.umbra.Umbra;
 import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
 import com.bdmajora.testing.OptionPages;
@@ -866,5 +867,54 @@ class ImpetusGuiTest {
         client.world = null;
         Statics.callInstance(controller, "applyFlagSideEffects", EnumSet.of(OptionFlag.REQUIRES_RENDERER_RELOAD));
         verify(renderGlobal, times(1)).loadRenderers();
+    }
+
+    @Test
+    void everyFlagReachesItsSideEffectWhenApplied() {
+        ImpetusVideoOptionsScreen screen = new ImpetusVideoOptionsScreen(mock(GuiScreen.class));
+        screen.setWorldAndResolution(client, 427, 240);
+        ImpetusVideoOptionsController controller = Mixins.get(screen, "controller");
+        RenderGlobal renderGlobal = mock(RenderGlobal.class);
+        client.renderGlobal = renderGlobal;
+        client.world = mock(WorldClient.class);
+        when(client.getTextureMapBlocks()).thenReturn(mock(TextureMap.class));
+        try (MockedStatic<Umbra> umbra = Mockito.mockStatic(Umbra.class)) {
+            // A pipeline change re-parses the pack, which picks the Nvidium port or the original itself, then rebuilds the renderers around it
+            Statics.callInstance(controller, "applyFlagSideEffects", EnumSet.of(OptionFlag.REQUIRES_SHADER_PIPELINE_RELOAD));
+            umbra.verify(Umbra::loadCurrentShaderpack);
+            umbra.verify(Umbra::reloadIfTerrainBackendChanged, never());
+            verify(renderGlobal).loadRenderers();
+
+            // With a renderer reload as well, the pack still loads once and the renderers rebuild once
+            Statics.callInstance(controller, "applyFlagSideEffects", EnumSet.of(OptionFlag.REQUIRES_SHADER_PIPELINE_RELOAD, OptionFlag.REQUIRES_RENDERER_RELOAD));
+            umbra.verify(Umbra::loadCurrentShaderpack, times(2));
+            umbra.verify(Umbra::reloadIfTerrainBackendChanged, never());
+            verify(renderGlobal, times(2)).loadRenderers();
+
+            // A rebuild covers a renderer update
+            Statics.callInstance(controller, "applyFlagSideEffects", EnumSet.of(OptionFlag.REQUIRES_SHADER_PIPELINE_RELOAD, OptionFlag.REQUIRES_RENDERER_UPDATE));
+            verify(renderGlobal, times(3)).loadRenderers();
+            verify(renderGlobal, never()).setDisplayListEntitiesDirty();
+
+            // A renderer reload alone only re-picks the pack's copy
+            Statics.callInstance(controller, "applyFlagSideEffects", EnumSet.of(OptionFlag.REQUIRES_RENDERER_RELOAD));
+            umbra.verify(Umbra::reloadIfTerrainBackendChanged);
+            umbra.verify(Umbra::loadCurrentShaderpack, times(3));
+            verify(renderGlobal, times(4)).loadRenderers();
+
+            // A restart change reloads nothing and says the game must restart
+            Statics.callInstance(controller, "applyFlagSideEffects", EnumSet.of(OptionFlag.REQUIRES_GAME_RESTART));
+            assertEquals(List.of("Restart required"), ImpetusNotifications.getVisible().stream().map(n -> n.title()).toList());
+            umbra.verify(Umbra::loadCurrentShaderpack, times(3));
+            umbra.verify(Umbra::reloadIfTerrainBackendChanged, times(1));
+            verify(renderGlobal, times(4)).loadRenderers();
+            verify(client, never()).refreshResources();
+
+            // Out of a world the pack still reloads, so the next world starts on it, and there are no renderers to rebuild
+            client.world = null;
+            Statics.callInstance(controller, "applyFlagSideEffects", EnumSet.of(OptionFlag.REQUIRES_SHADER_PIPELINE_RELOAD));
+            umbra.verify(Umbra::loadCurrentShaderpack, times(4));
+            verify(renderGlobal, times(4)).loadRenderers();
+        }
     }
 }

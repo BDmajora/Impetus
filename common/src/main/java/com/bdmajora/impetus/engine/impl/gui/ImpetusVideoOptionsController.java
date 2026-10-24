@@ -205,9 +205,12 @@ public class ImpetusVideoOptionsController implements Renderable {
         applyFlagSideEffects(applied);
     }
 
-    // Platform hook: reload renderer, textures or world as flagged
+    // Platform hook: reload renderer, textures or world as flagged; overrides call this first, which says when only a restart can apply a change
     protected void applyFlagSideEffects(Set<OptionFlag> flags) {
-
+        // The same title and line each time, so a later Apply refreshes this toast rather than stacking another
+        if (flags.contains(OptionFlag.REQUIRES_GAME_RESTART)) {
+            ImpetusNotifications.warn("Restart required", "The game must be restarted to apply one or more video settings.");
+        }
     }
 
     // Resets every option to its stored value

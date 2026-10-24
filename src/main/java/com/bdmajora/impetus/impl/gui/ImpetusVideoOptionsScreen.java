@@ -40,13 +40,17 @@ public class ImpetusVideoOptionsScreen extends GuiScreen {
 
                 Minecraft client = Minecraft.getMinecraft();
 
-                // A Graphics API switch can point the selected shader pack at its Nvidium port or back, which has to load before the renderers rebuild around it
-                if (flags.contains(OptionFlag.REQUIRES_RENDERER_RELOAD)) {
+                // The pack has to load before the renderers rebuild around it: a pipeline change re-parses it, which also picks its Nvidium port or the original, and otherwise a Graphics API switch can point it at the other copy
+                boolean pipeline = flags.contains(OptionFlag.REQUIRES_SHADER_PIPELINE_RELOAD);
+                boolean rebuild = pipeline || flags.contains(OptionFlag.REQUIRES_RENDERER_RELOAD);
+                if (pipeline) {
+                    com.bdmajora.impetus.umbra.Umbra.loadCurrentShaderpack();
+                } else if (rebuild) {
                     com.bdmajora.impetus.umbra.Umbra.reloadIfTerrainBackendChanged();
                 }
 
                 if (client.world != null) {
-                    if (flags.contains(OptionFlag.REQUIRES_RENDERER_RELOAD)) {
+                    if (rebuild) {
                         client.renderGlobal.loadRenderers();
                     } else if (flags.contains(OptionFlag.REQUIRES_RENDERER_UPDATE)) {
                         client.renderGlobal.setDisplayListEntitiesDirty();

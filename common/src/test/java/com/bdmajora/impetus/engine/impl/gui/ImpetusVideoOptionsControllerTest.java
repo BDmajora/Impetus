@@ -823,4 +823,52 @@ class ImpetusVideoOptionsControllerTest {
             Mockito.verify(logger).error(eq(BROKEN_LOG), eq("Interrupted"), eq("undoing changes"), same(stop));
         });
     }
+
+    @Test
+    void anApplyThatChangesARestartOptionWarnsOnceThatTheGameMustRestart() {
+        withLogger(logger -> {
+            Storage storage = new Storage();
+            Storage restartStorage = new Storage();
+            OptionImpl<Holder, Boolean> fog = option(storage, "impetus", "Fog", "about fog");
+            OptionImpl<Holder, Boolean> threads = OptionImpl.createBuilder(Boolean.class, restartStorage)
+                    .setId(OptionIdentifier.create("impetus", "Threads", Boolean.class))
+                    .setName(TextComponent.literal("Threads"))
+                    .setTooltip(TextComponent.literal("about threads"))
+                    .setControl(TickBoxControl::new)
+                    .setBinding((h, v) -> h.flag = v, h -> h.flag)
+                    .setFlags(OptionFlag.REQUIRES_GAME_RESTART)
+                    .build();
+            FakeDrawContext draw = new FakeDrawContext();
+            // No override, so the controller's own side effects run
+            ImpetusVideoOptionsController controller = new ImpetusVideoOptionsController(() -> { }, List.of(pageOf("impetus", "General", fog, threads)), draw);
+            controller.init(1000, 500);
+            FakeInteractionContext ctx = new FakeInteractionContext();
+
+            // A reload-only change is the platform's to act on, so the controller says nothing
+            fog.setValue(true);
+            controller.render(draw, 0, 0, 0f);
+            assertTrue(clickCentre(button(controller, "impetus.options.buttons.apply"), ctx));
+            assertEquals(Set.of(OptionFlag.REQUIRES_RENDERER_RELOAD), storage.savedFlags);
+            assertEquals(List.of(), toastTitles());
+
+            // Nothing can reload a restart change in place, so Apply has to say so
+            threads.setValue(true);
+            controller.render(draw, 0, 0, 0f);
+            assertTrue(clickCentre(button(controller, "impetus.options.buttons.apply"), ctx));
+            assertTrue(restartStorage.data.flag);
+            assertEquals(Set.of(OptionFlag.REQUIRES_GAME_RESTART), restartStorage.savedFlags);
+            List<ImpetusNotification> shown = ImpetusNotifications.getVisible();
+            assertEquals(1, shown.size());
+            assertEquals(ImpetusNotification.Level.WARNING, shown.getFirst().level());
+            assertEquals("Restart required", shown.getFirst().title());
+            assertEquals(List.of("The game must be restarted to apply one or more video settings."), shown.getFirst().lines());
+
+            // A second restart change refreshes that one warning rather than stacking another
+            threads.setValue(false);
+            controller.render(draw, 0, 0, 0f);
+            assertTrue(clickCentre(button(controller, "impetus.options.buttons.apply"), ctx));
+            assertEquals(List.of("Restart required"), toastTitles());
+            Mockito.verifyNoInteractions(logger);
+        });
+    }
 }

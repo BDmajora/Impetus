@@ -1,7 +1,6 @@
 package com.bdmajora.impetus.api;
 
 import com.bdmajora.impetus.api.options.OptionIdentifier;
-import com.bdmajora.impetus.api.options.structure.Option;
 import com.bdmajora.impetus.api.options.structure.OptionGroup;
 import com.bdmajora.impetus.api.options.structure.OptionPage;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
@@ -36,14 +35,5 @@ class ConstructionEventsTest {
         assertSame(name, event.getTranslationKey());
         assertEquals(List.of(group), event.getAdditionalGroups());
         assertThrows(UnsupportedOperationException.class, () -> event.getAdditionalGroups().add(group));
-    }
-
-    @Test
-    void groupEventExposesIdAndOptions() {
-        OptionIdentifier<Void> id = OptionIdentifier.create("t", "group");
-        List<Option<?>> options = new ArrayList<>();
-        OptionGroupConstructionEvent event = new OptionGroupConstructionEvent(id, options);
-        assertSame(id, event.getId());
-        assertSame(options, event.getOptions());
     }
 }

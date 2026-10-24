@@ -1,4 +1,3 @@
-```java
 package com.bdmajora.impetus.api.options;
 
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -114,4 +113,3 @@ public final class OptionIdentifier<T> {
         return 31 * (31 + this.modId.hashCode()) + this.path.hashCode();
     }
 }
-```

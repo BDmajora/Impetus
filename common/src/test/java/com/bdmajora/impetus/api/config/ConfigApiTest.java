@@ -556,10 +556,11 @@ class ConfigApiTest {
     }
 
     @Test
-    void aGroupEventWithoutAnIdGetsNoOptions() {
+    void aGroupEventWithoutAnIdCannotReachTheApi() {
         Option<?> own = option();
         ConfigApi.registerOption(GROUP_A, ConfigApiTest::option);
-        assertEquals(List.of(own), optionsOf(null, own));
+        // The event refuses a null id itself, so addOptions never looks one up
+        assertEquals("Group id must not be null", assertThrows(NullPointerException.class, () -> optionsOf(null, own)).getMessage());
         assertEquals(Set.of(GROUP_A), keys("OPTIONS"));
     }
 

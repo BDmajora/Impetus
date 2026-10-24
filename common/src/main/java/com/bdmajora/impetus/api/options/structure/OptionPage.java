@@ -42,14 +42,10 @@ public final class OptionPage {
             return own;
         }
         int ownCount = own.size();
-        // Copies both sets of groups into one array sized for all of them
+        // Copies both sets of groups into one array sized for all of them; the event already refused any null a listener added
         OptionGroup[] all = own.toArray(new OptionGroup[ownCount + extraCount]);
         for (int i = 0; i < extraCount; i++) {
-            OptionGroup group = extra.get(i);
-            if (group == null) {
-                throw new NullPointerException("A listener added a null group to page " + this.id);
-            }
-            all[ownCount + i] = group;
+            all[ownCount + i] = extra.get(i);
         }
         return List.of(all);
     }

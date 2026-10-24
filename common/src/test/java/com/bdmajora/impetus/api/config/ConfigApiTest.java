@@ -392,12 +392,10 @@ class ConfigApiTest {
     }
 
     @Test
-    void aPageEventWithoutAnIdGetsNoGroups() {
+    void aPageEventWithoutAnIdCannotReachTheApi() {
         ConfigApi.registerGroup(PAGE_A, ConfigApiTest::group);
-        // Called directly rather than posted, since a listener another test leaves on this bus dereferences the id
-        OptionPageConstructionEvent event = new OptionPageConstructionEvent(null, TextComponent.literal("none"));
-        Statics.call(ConfigApi.class, "addGroups", event);
-        assertEquals(List.of(), event.getAdditionalGroups());
+        // The event refuses a null id itself, so addGroups never looks one up
+        assertEquals("Page id must not be null", npe(() -> groupsOf(null)));
         assertEquals(Set.of(PAGE_A), keys("GROUPS"));
     }
 

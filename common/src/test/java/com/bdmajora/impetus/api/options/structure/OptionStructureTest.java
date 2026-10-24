@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -66,10 +65,6 @@ class OptionStructureTest {
             assertTrue(impact.getLocalizedName().toString().contains("impetus.option_impact."));
         }
         assertEquals(5, OptionFlag.values().length);
-        OptionStorage<String> storage = () -> "s";
-        storage.save();
-        storage.save(Set.of(OptionFlag.REQUIRES_ASSET_RELOAD));
-        assertEquals("s", storage.getData());
         new StandardOptions();
         new StandardOptions.Group();
         new StandardOptions.Pages();

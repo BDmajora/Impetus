@@ -1,140 +1,180 @@
 package com.bdmajora.impetus.engine.impl.biome;
 
 import it.unimi.dsi.fastutil.objects.Reference2ReferenceOpenHashMap;
-import com.bdmajora.impetus.engine.impl.common.util.MathUtil;
 import com.bdmajora.impetus.engine.impl.util.color.BoxBlur;
 import com.bdmajora.impetus.engine.impl.util.color.BoxBlur.ColorBuffer;
 import com.bdmajora.impetus.engine.impl.util.position.PositionalSupplier;
 import com.bdmajora.impetus.engine.impl.util.position.SectionPos;
 
+import java.util.Arrays;
+import java.util.Objects;
+
+// Caches biome colours for the region around a section with optional blending between neighbouring blocks
 public abstract class BiomeColorCache<BIOME, RESOLVER> {
+    // Extra blocks around the section and the largest blend radius
     private static final int NEIGHBOR_BLOCK_RADIUS = 2;
+    private static final int MAX_BLEND_RADIUS = 14;
+
+    // Source of the biome at each block
     private final PositionalSupplier<BIOME> biomeData;
 
+    // Slices for each resolver with one slice per layer
     private final Reference2ReferenceOpenHashMap<RESOLVER, Slice[]> slices;
+    // Resolver and slices of the most recent lookup
+    private RESOLVER lastResolver;
+    private Slice[] lastSlices;
+
+    // Counter that advances each time the region moves to a new section
     private long populateStamp;
 
+    // Radius of the blend in blocks
     private final int blendRadius;
 
+    // Scratch buffer for the blur or null when the radius is zero
     private final ColorBuffer tempColorBuffer;
 
-    private int minX, minY, minZ;
-    private int maxX, maxY, maxZ;
+    // Lowest block coordinates of the region as longs
+    private long minX, minY, minZ;
 
+    // Width of the region on X and Z and its height on Y
     private final int sizeXZ, sizeY;
 
+    // Creates a cache for the biome source and blend radius centred on section zero
     public BiomeColorCache(PositionalSupplier<BIOME> biomeData, int blendRadius) {
-        this.biomeData = biomeData;
-        this.blendRadius = Math.min(14, blendRadius);
+        this.biomeData = Objects.requireNonNull(biomeData, "biomeData");
+        // Clamps the blend radius between zero and the maximum
+        this.blendRadius = Math.clamp(blendRadius, 0, MAX_BLEND_RADIUS);
 
         this.sizeXZ = 16 + ((NEIGHBOR_BLOCK_RADIUS + this.blendRadius) * 2);
         this.sizeY = 16 + (NEIGHBOR_BLOCK_RADIUS * 2);
 
         this.slices = new Reference2ReferenceOpenHashMap<>();
-        this.populateStamp = 1;
 
-        this.tempColorBuffer = new ColorBuffer(sizeXZ, sizeXZ);
+        this.tempColorBuffer = this.blendRadius > 0 ? new ColorBuffer(this.sizeXZ, this.sizeXZ) : null;
+
+        // Centres the region on section zero
+        this.recentre(0, 0, 0);
     }
 
-    // Re-centres the cache on a new section, invalidating every slice
+    // Moves the region to the given section and marks every slice as stale
     public void update(SectionPos origin) {
-        this.minX = (origin.minX() - NEIGHBOR_BLOCK_RADIUS) - this.blendRadius;
-        this.minY = (origin.minY() - NEIGHBOR_BLOCK_RADIUS);
-        this.minZ = (origin.minZ() - NEIGHBOR_BLOCK_RADIUS) - this.blendRadius;
+        this.recentre(origin.minX(), origin.minY(), origin.minZ());
+    }
 
-        this.maxX = (origin.maxX() + NEIGHBOR_BLOCK_RADIUS) + this.blendRadius;
-        this.maxY = (origin.maxY() + NEIGHBOR_BLOCK_RADIUS);
-        this.maxZ = (origin.maxZ() + NEIGHBOR_BLOCK_RADIUS) + this.blendRadius;
+    // Sets the region corner from the section origin and advances the populate stamp
+    private void recentre(int originX, int originY, int originZ) {
+        this.minX = (long) originX - NEIGHBOR_BLOCK_RADIUS - this.blendRadius;
+        this.minY = (long) originY - NEIGHBOR_BLOCK_RADIUS;
+        this.minZ = (long) originZ - NEIGHBOR_BLOCK_RADIUS - this.blendRadius;
 
         this.populateStamp++;
     }
 
-    // Blended colour at a block, computing the slice on first touch
+    // Returns the colour at a block clamped into the region and resolves one cell when unblended or a whole layer when blended
     public int getColor(RESOLVER resolver, int blockX, int blockY, int blockZ) {
-        var relX = MathUtil.clamp(blockX, this.minX, this.maxX) - this.minX;
-        var relY = MathUtil.clamp(blockY, this.minY, this.maxY) - this.minY;
-        var relZ = MathUtil.clamp(blockZ, this.minZ, this.maxZ) - this.minZ;
+        int relX = Math.clamp(blockX - this.minX, 0, this.sizeXZ - 1);
+        int relY = Math.clamp(blockY - this.minY, 0, this.sizeY - 1);
+        int relZ = Math.clamp(blockZ - this.minZ, 0, this.sizeXZ - 1);
 
-        var sliceArray = this.slices.get(resolver);
+        var slice = this.sliceFor(resolver, relY);
 
-        if (sliceArray == null) {
-            sliceArray = this.initializeSlices();
-            this.slices.put(resolver, sliceArray);
+        if (this.blendRadius == 0) {
+            return this.cellColor(resolver, slice, relX, relY, relZ);
         }
 
-        var slice = sliceArray[relY];
-
-        if (slice.lastPopulateStamp < this.populateStamp) {
+        if (slice.lastPopulateStamp != this.populateStamp) {
             this.updateColorBuffers(relY, resolver, slice);
         }
 
-        var buffer = slice.getBuffer();
-
-        return buffer.get(relX, relZ);
+        return slice.buffer.get(relX, relZ);
     }
 
-    // One slice per y layer of the cached region
-    private Slice[] initializeSlices() {
-        var slice = new Slice[this.sizeY];
+    // Returns the slice for the resolver and layer and creates it on first use
+    private Slice sliceFor(RESOLVER resolver, int relY) {
+        var layers = this.lastSlices;
 
-        for (int y = 0; y < this.sizeY; y++) {
-            slice[y] = new Slice(this.sizeXZ);
+        if (layers == null || resolver != this.lastResolver) {
+            layers = this.slices.get(resolver);
+
+            if (layers == null) {
+                layers = new Slice[this.sizeY];
+                this.slices.put(resolver, layers);
+            }
+
+            this.lastResolver = resolver;
+            this.lastSlices = layers;
+        }
+
+        var slice = layers[relY];
+
+        if (slice == null) {
+            slice = layers[relY] = new Slice(this.sizeXZ, this.blendRadius == 0);
         }
 
         return slice;
     }
 
+    // Returns the colour of the biome at the given world position
     protected abstract int resolveColor(RESOLVER resolver, BIOME biome, int worldX, int worldY, int worldZ);
 
-    // Fills a slice: resolves every biome colour then box-blurs by the configured radius
+    // Resolves the colour at a position relative to the region
+    private int resolveAt(RESOLVER resolver, int relX, int relY, int relZ) {
+        int worldX = (int) (this.minX + relX);
+        int worldY = (int) (this.minY + relY);
+        int worldZ = (int) (this.minZ + relZ);
+
+        return this.resolveColor(resolver, this.biomeData.getAt(worldX, worldY, worldZ), worldX, worldY, worldZ);
+    }
+
+    // Returns the colour of one cell and resolves it only when it has not been resolved since the region last moved
+    private int cellColor(RESOLVER resolver, Slice slice, int relX, int relY, int relZ) {
+        var resolved = slice.resolved;
+
+        if (slice.lastPopulateStamp != this.populateStamp) {
+            Arrays.fill(resolved, 0L);
+            slice.lastPopulateStamp = this.populateStamp;
+        }
+
+        int index = ColorBuffer.getIndex(relX, relZ, this.sizeXZ);
+        long bit = 1L << index;
+
+        if ((resolved[index >>> 6] & bit) == 0) {
+            slice.buffer.set(relX, relZ, this.resolveAt(resolver, relX, relY, relZ));
+            // Marks the cell as resolved after its colour is stored
+            resolved[index >>> 6] |= bit;
+        }
+
+        return slice.buffer.get(relX, relZ);
+    }
+
+    // Resolves every colour in the layer and blurs the layer by the blend radius
     private void updateColorBuffers(int relY, RESOLVER resolver, Slice slice) {
-        int worldY = this.minY + relY;
+        var buffer = slice.buffer;
 
-        // A flag rather than a zero sentinel, since 0 is itself a legal (if unlikely) colour
-        int firstSeenColor = 0;
-        boolean seenColor = false;
-
-        boolean uniqueColor = true;
-
-        for (int worldZ = this.minZ; worldZ <= this.maxZ; worldZ++) {
-            for (int worldX = this.minX; worldX <= this.maxX; worldX++) {
-                BIOME biome = this.biomeData.getAt(worldX, worldY, worldZ);
-
-                int relativeX = worldX - this.minX;
-                int relativeZ = worldZ - this.minZ;
-
-                int color = this.resolveColor(resolver, biome, worldX, worldY, worldZ);
-
-                if (!seenColor) {
-                    firstSeenColor = color;
-                    seenColor = true;
-                } else if (firstSeenColor != color) {
-                    uniqueColor = false;
-                }
-
-                slice.buffer.set(relativeX, relativeZ, color);
+        for (int relZ = 0; relZ < this.sizeXZ; relZ++) {
+            for (int relX = 0; relX < this.sizeXZ; relX++) {
+                buffer.set(relX, relZ, this.resolveAt(resolver, relX, relY, relZ));
             }
         }
 
-        // Skip blurring if all the values are the same anyway
-        if (!uniqueColor && this.blendRadius > 0) {
-            BoxBlur.blur(slice.buffer, this.tempColorBuffer, this.blendRadius);
-        }
+        // Blurs the layer in place
+        BoxBlur.blur(buffer, this.tempColorBuffer, this.blendRadius);
 
         slice.lastPopulateStamp = this.populateStamp;
     }
 
-    private static class Slice {
+    // Colours of one layer for one resolver
+    private static final class Slice {
         private final ColorBuffer buffer;
+        // One bit per cell resolved since the region last moved or null for a blended slice
+        private final long[] resolved;
+        // Populate stamp the slice was last filled for
         private long lastPopulateStamp;
 
-        private Slice(int size) {
+        // Creates the colour buffer and the resolved bits for an unblended slice
+        private Slice(int size, boolean perCell) {
             this.buffer = new ColorBuffer(size, size);
-        }
-
-        // The scratch buffer the blur writes into
-        public ColorBuffer getBuffer() {
-            return this.buffer;
+            this.resolved = perCell ? new long[((size * size) + 63) >>> 6] : null;
         }
     }
 }

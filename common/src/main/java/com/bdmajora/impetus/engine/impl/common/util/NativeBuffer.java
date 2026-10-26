@@ -1,166 +1,223 @@
 package com.bdmajora.impetus.engine.impl.common.util;
 
-import it.unimi.dsi.fastutil.objects.Reference2ReferenceMap;
-import it.unimi.dsi.fastutil.objects.Reference2ReferenceMaps;
-import it.unimi.dsi.fastutil.objects.Reference2ReferenceOpenHashMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.lwjgl.system.MemoryUtil;
 
 import java.lang.ref.PhantomReference;
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Collectors;
-import org.lwjgl.system.MemoryUtil;
 
-
+// Block of native memory that is freed explicitly or reclaimed after its owner is collected
 public class NativeBuffer {
+    // Logger for allocation failures and reclaimed leaks
     private static final Logger LOGGER = LogManager.getLogger(NativeBuffer.class);
 
+    // Number of allocation attempts before an OutOfMemoryError
+    private static final int MAX_ALLOCATION_ATTEMPTS = 3;
+
+    // Queue that receives the tracker of each buffer whose owner was collected
     private static final ReferenceQueue<NativeBuffer> RECLAIM_QUEUE = new ReferenceQueue<>();
-    private static final Reference2ReferenceMap<Reference<NativeBuffer>, BufferReference> ACTIVE_BUFFERS =
-            Reference2ReferenceMaps.synchronize(new Reference2ReferenceOpenHashMap<>());
 
-    // Touched from every chunk worker as well as the render thread, so the counter is atomic
-    private static final AtomicLong ALLOCATED = new AtomicLong();
+    // Sentinel of the circular list of live trackers and lock for that list and the byte total
+    private static final BufferReference LIVE = new BufferReference();
 
-    private final BufferReference ref;
+    // Total capacity of all live buffers in bytes
+    private static volatile long allocatedBytes;
 
+    // Switch that records the allocation site of each new buffer
     public static boolean ENABLE_MEMORY_TRACING = false;
 
-    public NativeBuffer(int capacity) {
-        this.ref = allocate(capacity);
+    // Tracker that owns the native memory of this buffer
+    private final BufferReference ref;
 
-        ACTIVE_BUFFERS.put(new PhantomReference<>(this, RECLAIM_QUEUE), this.ref);
+    // Creates a buffer of the given capacity in bytes and rejects a negative capacity
+    public NativeBuffer(int capacity) {
+        if (capacity < 0) {
+            throw new IllegalArgumentException("Negative buffer capacity " + capacity);
+        }
+
+        Throwable allocationSite = ENABLE_MEMORY_TRACING ? new Throwable() : null;
+
+        this.ref = new BufferReference(this, allocate(capacity), capacity, allocationSite);
     }
 
-    // Allocates and copies src's remaining bytes
+    // Creates a buffer that holds the remaining bytes of the source and frees it again when the source cannot be read
     public static NativeBuffer copy(ByteBuffer src) {
-        NativeBuffer dst = new NativeBuffer(src.remaining());
-        MemoryUtil.memCopy(src, dst.getDirectBuffer());
+        int length = src.remaining();
+        NativeBuffer dst = new NativeBuffer(length);
+
+        try {
+            MemoryUtil.memByteBuffer(dst.ref.address, length).put(0, src, src.position(), length);
+        } catch (Throwable t) {
+            dst.free();
+            throw t;
+        }
+
         return dst;
     }
 
-    // The backing direct buffer; throws once freed
+    // Returns a new view of the whole buffer in native byte order and rejects a freed buffer
     public ByteBuffer getDirectBuffer() {
-        this.ref.checkFreed();
+        BufferReference ref = this.ref;
 
-        return MemoryUtil.memByteBuffer(this.ref.address, this.ref.length);
+        if (ref.freed) {
+            throw new IllegalStateException("Buffer has been deleted");
+        }
+
+        return MemoryUtil.memByteBuffer(ref.address, ref.length);
     }
 
-    // Releases immediately rather than waiting for the cleaner
+    // Frees the native memory and rejects a buffer that was already freed
     public void free() {
-        deallocate(this.ref);
+        if (!release(this.ref)) {
+            throw new IllegalStateException("Buffer has been deleted");
+        }
+
+        // Keeps this buffer reachable until its memory is released
+        Reference.reachabilityFence(this);
     }
 
-    // Capacity in bytes
+    // Returns the capacity in bytes
     public int getLength() {
         return this.ref.length;
     }
 
-    // Frees every buffer whose owner was collected; forceGc runs a GC first
+    // Frees every buffer whose owner was collected and forces a garbage collection first when forceGc is set
     public static void reclaim(boolean forceGc) {
         if (forceGc) {
             System.gc();
         }
 
-        Reference<? extends NativeBuffer> ref;
+        Reference<? extends NativeBuffer> polled;
 
-        while ((ref = RECLAIM_QUEUE.poll()) != null) {
-            BufferReference buf = ACTIVE_BUFFERS.remove(ref);
+        while ((polled = RECLAIM_QUEUE.poll()) != null) {
+            BufferReference ref = (BufferReference) polled;
 
-            if (buf.freed) {
+            if (!release(ref)) {
                 continue;
             }
 
-            deallocate(buf);
-
-            if (buf.allocationSite != null) {
+            if (ref.allocationSite != null) {
                 LOGGER.warn("Reclaimed {} bytes at address {} that were leaked from allocation site:\n{}",
-                        buf.length, buf.address,
-                        Arrays.stream(buf.allocationSite)
-                                .map(StackTraceElement::toString)
-                                .collect(Collectors.joining("\n")));
+                        ref.length, ref.address, describe(ref.allocationSite));
             } else {
                 LOGGER.warn("Reclaimed {} bytes at address {} that were leaked from an unknown location (logging is disabled)",
-                        buf.length, buf.address);
+                        ref.length, ref.address);
             }
         }
     }
 
-    // Live native bytes, for the debug screen
+    // Returns the total capacity of all live buffers in bytes
     public static long getTotalAllocated() {
-        return ALLOCATED.get();
+        return allocatedBytes;
     }
 
-    // Allocation site, kept only when leak tracking is on
-    private static StackTraceElement[] getStackTrace() {
-        return ENABLE_MEMORY_TRACING ? Thread.currentThread().getStackTrace() : null;
-    }
+    // Allocates at least one byte of native memory and forces a garbage collection after each failed attempt
+    private static long allocate(int bytes) {
+        long size = Math.max(bytes, 1);
 
-    private static final int MAX_ALLOCATION_ATTEMPTS = 3;
-
-    // Allocates off-heap and registers a phantom reference so a leak is still freed
-    private static BufferReference allocate(int bytes) {
-        long address = 0;
-        int attempts = 0;
-
-        while (++attempts <= MAX_ALLOCATION_ATTEMPTS) {
-            address = MemoryUtil.nmemAlloc(bytes);
+        for (int attempt = 1; attempt <= MAX_ALLOCATION_ATTEMPTS; attempt++) {
+            long address = MemoryUtil.nmemAlloc(size);
 
             if (address != MemoryUtil.NULL) {
-                break;
+                return address;
             }
 
             LOGGER.error("EMERGENCY: Tried to allocate {} bytes but the allocator reports failure", bytes);
-            LOGGER.error("EMERGENCY: ... Attempting to force a garbage collection cycle (attempt {}/{})", attempts, MAX_ALLOCATION_ATTEMPTS);
+            LOGGER.error("EMERGENCY: ... Attempting to force a garbage collection cycle (attempt {}/{})", attempt, MAX_ALLOCATION_ATTEMPTS);
 
-            // If memory allocation fails, force a garbage collection
             reclaim(true);
         }
 
-        if (address == MemoryUtil.NULL) {
-            throw new OutOfMemoryError("Couldn't allocate %s bytes after %s attempts".formatted(bytes, attempts));
-        }
-
-        StackTraceElement[] stackTrace = getStackTrace();
-
-        BufferReference ref = new BufferReference(address, bytes, stackTrace);
-        ALLOCATED.addAndGet(ref.length);
-
-        return ref;
+        throw new OutOfMemoryError("Couldn't allocate %s bytes after %s attempts".formatted(bytes, MAX_ALLOCATION_ATTEMPTS));
     }
 
-    // Frees once, tolerant of a double call
-    private static void deallocate(BufferReference ref) {
-        ref.checkFreed();
-        ref.freed = true;
+    // Releases the native memory of a tracker once and returns false when it was already released
+    private static boolean release(BufferReference ref) {
+        synchronized (LIVE) {
+            if (ref.freed) {
+                return false;
+            }
+
+            ref.freed = true;
+            ref.prev.next = ref.next;
+            ref.next.prev = ref.prev;
+            ref.prev = null;
+            ref.next = null;
+            allocatedBytes -= ref.length;
+        }
 
         MemoryUtil.nmemFree(ref.address);
 
-        ALLOCATED.addAndGet(-ref.length);
+        return true;
     }
 
-    private static class BufferReference {
-        public final long address;
-        public final int length;
+    // Joins the frames of an allocation site with line breaks
+    private static String describe(Throwable allocationSite) {
+        StackTraceElement[] frames = allocationSite.getStackTrace();
 
-        public final StackTraceElement[] allocationSite;
+        if (frames.length == 0) {
+            return "";
+        }
 
-        public boolean freed;
+        StringBuilder text = new StringBuilder().append(frames[0]);
 
-        private BufferReference(long address, int length, StackTraceElement[] allocationSite) {
+        for (int i = 1; i < frames.length; i++) {
+            text.append('\n').append(frames[i]);
+        }
+
+        return text.toString();
+    }
+
+    // Phantom reference that tracks the native memory of one buffer
+    private static final class BufferReference extends PhantomReference<NativeBuffer> {
+        // Start address of the native memory
+        private final long address;
+
+        // Capacity of the buffer in bytes
+        private final int length;
+
+        // Throwable created at the allocation site or null when tracing is off
+        private final Throwable allocationSite;
+
+        // Flag set once the native memory is released
+        private boolean freed;
+
+        // Previous tracker in the list of live trackers or null once released
+        private BufferReference prev;
+
+        // Next tracker in the list of live trackers or null once released
+        private BufferReference next;
+
+        // Creates the list sentinel
+        private BufferReference() {
+            super(null, null);
+
+            this.address = MemoryUtil.NULL;
+            this.length = 0;
+            this.allocationSite = null;
+            this.prev = this;
+            this.next = this;
+        }
+
+        // Creates a tracker for the owner and links it into the list of live trackers
+        private BufferReference(NativeBuffer owner, long address, int length, Throwable allocationSite) {
+            super(owner, RECLAIM_QUEUE);
+
             this.address = address;
             this.length = length;
             this.allocationSite = allocationSite;
-        }
 
-        // Throws on use after free
-        private void checkFreed() {
-            if (this.freed) {
-                throw new IllegalStateException("Buffer has been deleted");
+            synchronized (LIVE) {
+                BufferReference first = LIVE.next;
+
+                this.prev = LIVE;
+                this.next = first;
+                first.prev = this;
+                LIVE.next = this;
+                allocatedBytes += length;
             }
         }
     }

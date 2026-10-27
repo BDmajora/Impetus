@@ -98,6 +98,9 @@ public class MappedStagingBuffer implements StagingBuffer {
     // Issues every recorded copy and fences the region so it is not reused too early
     @Override
     public void flush(CommandList commandList) {
+        // Releases the scratch storage of copies that took the fallback path
+        this.fallbackStagingBuffer.flush(commandList);
+
         if (this.pendingCopies.isEmpty()) {
             return;
         }

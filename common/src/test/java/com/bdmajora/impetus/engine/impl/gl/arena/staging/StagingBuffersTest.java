@@ -12,6 +12,7 @@ import com.bdmajora.testing.TestGl;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 import java.nio.ByteBuffer;
@@ -89,6 +90,35 @@ class StagingBuffersTest {
         staging.delete(commands);
         MemoryUtil.memFree(twelve);
         MemoryUtil.memFree(big);
+    }
+
+    // Checks that flush releases the fallback scratch storage with and without ring copies in the batch
+    @Test
+    void mappedFlushReleasesTheFallbackScratch() {
+        MappedStagingBuffer staging = new MappedStagingBuffer(commands, 32);
+        GlMutableBuffer dst = commands.createMutableBuffer();
+        ByteBuffer big = MemoryUtil.memCalloc(64);
+        ByteBuffer small = MemoryUtil.memCalloc(8);
+        staging.enqueueCopy(commands, big, dst, 0);
+        ArgumentCaptor<GlMutableBuffer> used = ArgumentCaptor.forClass(GlMutableBuffer.class);
+        Mockito.verify(commands).uploadData(used.capture(), Mockito.same(big), Mockito.eq(GlBufferUsage.STREAM_COPY));
+        GlMutableBuffer scratch = used.getValue();
+        assertEquals(64L, scratch.getSize());
+        staging.flush(commands);
+        assertEquals(0L, scratch.getSize());
+        Mockito.verify(commands).allocateStorage(Mockito.same(scratch), Mockito.eq(0L), Mockito.eq(GlBufferUsage.STREAM_COPY));
+        staging.flush(commands);
+        Mockito.verify(commands).allocateStorage(Mockito.same(scratch), Mockito.eq(0L), Mockito.eq(GlBufferUsage.STREAM_COPY));
+        staging.enqueueCopy(commands, small, dst, 0);
+        staging.enqueueCopy(commands, big, dst, 8);
+        assertEquals(64L, scratch.getSize());
+        staging.flush(commands);
+        assertEquals(0L, scratch.getSize());
+        Mockito.verify(commands).copyBufferSubData(Mockito.any(), Mockito.eq(dst), Mockito.eq(0L), Mockito.eq(0L), Mockito.eq(8L));
+        Mockito.verify(commands, Mockito.times(2)).allocateStorage(Mockito.same(scratch), Mockito.eq(0L), Mockito.eq(GlBufferUsage.STREAM_COPY));
+        staging.delete(commands);
+        MemoryUtil.memFree(big);
+        MemoryUtil.memFree(small);
     }
 
     @Test

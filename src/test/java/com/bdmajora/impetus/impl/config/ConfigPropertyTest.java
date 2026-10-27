@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.impl.config;
 
+import net.minecraftforge.common.config.Configuration;
 import org.junit.jupiter.api.Test;
 
 import java.util.function.Consumer;
@@ -55,5 +56,24 @@ class ConfigPropertyTest {
         assertEquals(new ConfigProperty.EnumProperty<>("render", "shape", shapes, Shape.SQUARE, "A shape", setShape, getShape), shape);
         assertEquals(new ConfigProperty.EnumProperty<>("render", "shape", shapes, Shape.SQUARE, "A shape", setShape, getShape).hashCode(), shape.hashCode());
         assertTrue(shape.toString().contains("shape"));
+    }
+
+    // Checks that an integer entry loads clamped to its range and saves its field
+    @Test
+    void anIntegerEntryLoadsClampedAndSavesItsField() {
+        Configuration config = new Configuration();
+        int[] field = {0};
+        ConfigProperty count = ConfigProperty.integer("limits", "count", 3, 1, 9, "A count", v -> field[0] = v, () -> field[0]);
+        count.load(config);
+        assertEquals(3, field[0]);
+        config.get("limits", "count", 3).set(42);
+        count.load(config);
+        assertEquals(9, field[0]);
+        config.get("limits", "count", 3).set(-42);
+        count.load(config);
+        assertEquals(1, field[0]);
+        field[0] = 5;
+        count.save(config);
+        assertEquals("5", config.getCategory("limits").get("count").getString());
     }
 }

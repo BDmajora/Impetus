@@ -198,11 +198,3 @@ independent, original implementations.
 * **CelestialAbyss**, for developing the Embeddium logo, and **input-Here** for visual touchups
 * **Ven ([@basdxz](https://github.com/basdxz))**, for help with translucency sorting, suggesting the general approach for async occlusion culling, and other suggestions during development
 * **XFactHD**, **Pepper**, and anyone else omitted here, for valuable code insights
-
-[![YourKit logo](https://www.yourkit.com/images/yklogo.png)](https://www.yourkit.com/)
-
-YourKit supports open source projects with innovative and intelligent tools
-for monitoring and profiling Java and .NET applications.
-YourKit is the creator of <a href="https://www.yourkit.com/java/profiler/">YourKit Java Profiler</a>,
-<a href="https://www.yourkit.com/.net/profiler/">YourKit .NET Profiler</a>,
-and <a href="https://www.yourkit.com/youmonitor/">YourKit YouMonitor</a>.

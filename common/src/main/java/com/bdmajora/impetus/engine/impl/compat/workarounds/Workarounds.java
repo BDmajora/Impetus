@@ -7,56 +7,69 @@ import com.bdmajora.impetus.engine.impl.compat.probe.GraphicsVendor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Set;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 
-// Registry of driver/environment issues on this machine, decided once the context exists; what has to act before the driver loads is decided in ContextCreationHints, from the same rules
+// Registry of the driver and environment issues found on this machine once the GL context exists
 public final class Workarounds {
+    // Logger of the issues found at startup
     private static final Logger LOGGER = LogManager.getLogger("Impetus-Workarounds");
+    // Empty set of issues stored whenever no issue is active
+    private static final EnumSet<Issue> NONE = EnumSet.noneOf(Issue.class);
+    // Set of the active issues that stays unchanged once stored
+    private static final AtomicReference<EnumSet<Issue>> ACTIVE = new AtomicReference<>(NONE);
 
-    private static final AtomicReference<Set<Issue>> ACTIVE = new AtomicReference<>(Collections.emptySet());
-
+    // Prevents instantiation
     private Workarounds() {
     }
 
+    // Driver or environment issue with a known mitigation or diagnostic
     public enum Issue {
-        // NVIDIA "Threaded Optimization" corrupts state when a second thread issues GL commands; switched off at context creation by ContextCreationHints, recorded here so logs show the driver needed it
+        // Threaded optimization of the NVIDIA driver under Windows
         NVIDIA_THREADED_OPTIMIZATIONS,
-        // KHR_no_error contexts crash or misrender on older Intel Windows drivers; ContextCreationHints already declined one before the window existed
+        // No error context that is unsafe on a legacy Intel driver under Windows
         NO_ERROR_CONTEXT_UNSAFE,
-        // A frame-hooking overlay (e.g. RivaTuner Statistics Server) was detected; a common source of unexplainable crashes with modified renderers
+        // Overlay such as RivaTuner Statistics Server that hooks the frame path
         FRAME_HOOK_OVERLAY_PRESENT
     }
 
-    // Decides which workarounds apply to this driver and OS, once at startup
+    // Replaces the active issues with those that apply to the context and adapters under the current operating system
     public static void init(GlContextInfo context, List<GraphicsAdapterInfo> adapters) {
-        var issues = EnumSet.noneOf(Issue.class);
-        var os = OsKind.current();
-        var vendor = GraphicsVendor.fromContext(context);
+        // Rejects a null context or adapter list
+        Objects.requireNonNull(context, "Context must not be null");
+        Objects.requireNonNull(adapters, "Adapters must not be null");
 
-        if (vendor == GraphicsVendor.NVIDIA && os == OsKind.WINDOWS) {
-            issues.add(Issue.NVIDIA_THREADED_OPTIMIZATIONS);
+        var issues = NONE;
+
+        // Classifies the vendor under Windows only and picks the issue of an NVIDIA context or of an Intel context with a legacy adapter
+        if (OsKind.current() == OsKind.WINDOWS) {
+            var vendor = GraphicsVendor.fromContext(context);
+
+            if (vendor == GraphicsVendor.NVIDIA) {
+                issues = EnumSet.of(Issue.NVIDIA_THREADED_OPTIMIZATIONS);
+            } else if (vendor == GraphicsVendor.INTEL && hasLegacyIntelAdapter(adapters)) {
+                issues = EnumSet.of(Issue.NO_ERROR_CONTEXT_UNSAFE);
+            }
         }
 
-        if (isIntelLegacyWindowsDriver(vendor, os, adapters)) {
-            issues.add(Issue.NO_ERROR_CONTEXT_UNSAFE);
-        }
+        ACTIVE.set(issues);
 
-        ACTIVE.set(Collections.unmodifiableSet(issues));
-
-        if (!issues.isEmpty()) {
+        if (issues != NONE) {
             LOGGER.warn("Detected environment issues, mitigations/diagnostics enabled: {}", issues);
         }
     }
 
-    // marks an issue discovered after init() completed, e.g. by the asynchronous overlay scan
+    // Adds the issue to the active issues and leaves them unchanged when the issue is already active
     public static void markActive(Issue issue) {
-        Set<Issue> current;
-        Set<Issue> updated;
+        // Rejects a null issue
+        Objects.requireNonNull(issue, "Issue must not be null");
 
+        EnumSet<Issue> current;
+        EnumSet<Issue> updated;
+
+        // Stores a copy with the issue added and retries when another update replaced the active issues first
         do {
             current = ACTIVE.get();
 
@@ -64,29 +77,32 @@ public final class Workarounds {
                 return;
             }
 
-            updated = EnumSet.noneOf(Issue.class);
-            updated.addAll(current);
+            updated = current.clone();
             updated.add(issue);
-        } while (!ACTIVE.compareAndSet(current, Collections.unmodifiableSet(updated)));
+        } while (!ACTIVE.compareAndSet(current, updated));
     }
 
-    // Whether a workaround is on
+    // Returns true when the issue is active and false for a null issue
     public static boolean isActive(Issue issue) {
         return ACTIVE.get().contains(issue);
     }
 
-    // Intel Gen7 and older on Windows, whose driver breaks with certain buffer usage
-    private static boolean isIntelLegacyWindowsDriver(GraphicsVendor vendor, OsKind os, List<GraphicsAdapterInfo> adapters) {
-        return vendor == GraphicsVendor.INTEL && hasLegacyIntelWindowsAdapter(os, adapters);
+    // Returns true under Windows when the adapter list is empty or holds an Intel adapter with a legacy driver
+    static boolean hasLegacyIntelWindowsAdapter(OsKind os, List<GraphicsAdapterInfo> adapters) {
+        // Rejects a null operating system or adapter list
+        Objects.requireNonNull(os, "Operating system must not be null");
+        Objects.requireNonNull(adapters, "Adapters must not be null");
+
+        return os == OsKind.WINDOWS && hasLegacyIntelAdapter(adapters);
     }
 
-    // The adapter half of that rule, answerable before any context exists; on a hybrid laptop the context may land on the other GPU, which only makes this cautious
-    static boolean hasLegacyIntelWindowsAdapter(OsKind os, List<GraphicsAdapterInfo> adapters) {
-        if (os != OsKind.WINDOWS) {
-            return false;
+    // Returns true when the adapter list is empty or an Intel adapter reports a driver version with major part 9 or 10
+    private static boolean hasLegacyIntelAdapter(List<GraphicsAdapterInfo> adapters) {
+        // Treats an empty adapter list as a legacy adapter
+        if (adapters.isEmpty()) {
+            return true;
         }
 
-        // Intel's legacy pre-DCH (Gen7-era) Windows drivers report versions 10.18.x.x or lower and misbehave with no-error contexts
         for (var adapter : adapters) {
             if (adapter.vendor() != GraphicsVendor.INTEL) {
                 continue;
@@ -94,12 +110,12 @@ public final class Workarounds {
 
             var version = adapter.driverVersion();
 
+            // Matches a version that starts with 9 or 10 and a dot and skips a null version
             if (version != null && (version.startsWith("9.") || version.startsWith("10."))) {
                 return true;
             }
         }
 
-        // Without OS driver info, err on the safe side: no-error contexts gain little and a driver crash is far worse
-        return adapters.isEmpty();
+        return false;
     }
 }

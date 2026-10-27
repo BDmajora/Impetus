@@ -2,6 +2,7 @@ package com.bdmajora.impetus.impl.platform;
 
 import com.bdmajora.impetus.engine.impl.compat.environment.GlContextInfo;
 import com.bdmajora.impetus.engine.impl.compat.environment.OsKind;
+import com.bdmajora.impetus.engine.impl.compat.probe.GraphicsAdapterInfo;
 import com.bdmajora.impetus.engine.impl.compat.probe.GraphicsAdapterProbe;
 import com.bdmajora.impetus.engine.impl.compat.workarounds.ContextCreationHints;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions;
@@ -11,6 +12,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.sdl.SDLVideo;
 
+import java.util.AbstractList;
+import java.util.List;
 import java.util.function.Supplier;
 
 // The SDL builder creates the context during Minecraft.init, before vanilla's createDisplay adopts it
@@ -56,6 +59,33 @@ public final class ContextCreation {
             return false;
         }
         return ContextCreationHints.allowsNoErrorContext(option, ForgeEarlyConfig.OPENGL_DEBUG_CONTEXT, OsKind.current(),
-                System.getenv("XDG_SESSION_TYPE"), GraphicsAdapterProbe.adapters(ADAPTER_WAIT_MILLIS));
+                System.getenv("XDG_SESSION_TYPE"), new ProbedAdapters());
+    }
+
+    // Adapter list that waits on the shared probe the first time it is read
+    private static final class ProbedAdapters extends AbstractList<GraphicsAdapterInfo> {
+        // Adapters of the probe or null before the first read
+        private List<GraphicsAdapterInfo> adapters;
+
+        // Returns the probed adapters and waits on the probe on the first call
+        private List<GraphicsAdapterInfo> adapters() {
+            if (adapters == null) {
+                adapters = GraphicsAdapterProbe.adapters(ADAPTER_WAIT_MILLIS);
+            }
+
+            return adapters;
+        }
+
+        // Returns the adapter at the index
+        @Override
+        public GraphicsAdapterInfo get(int index) {
+            return adapters().get(index);
+        }
+
+        // Returns the number of adapters
+        @Override
+        public int size() {
+            return adapters().size();
+        }
     }
 }

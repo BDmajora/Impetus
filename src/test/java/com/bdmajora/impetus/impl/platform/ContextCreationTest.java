@@ -23,12 +23,17 @@ import org.mockito.Mockito;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class ContextCreationTest {
     private static final List<GraphicsAdapterInfo> NVIDIA = List.of(new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, "RTX", "32.0.15"));
+    // Intel adapter on a current driver
+    private static final GraphicsAdapterInfo MODERN_INTEL = new GraphicsAdapterInfo(GraphicsVendor.INTEL, "Arc", "31.0.101.5186");
+    // Intel adapter on a legacy driver
+    private static final GraphicsAdapterInfo LEGACY_INTEL = new GraphicsAdapterInfo(GraphicsVendor.INTEL, "HD Graphics 4000", "10.18.10.4");
     private final OsKind realOs = OsKind.current();
     private final boolean realDebug = ForgeEarlyConfig.OPENGL_DEBUG_CONTEXT;
     private AtomicReference<CompletableFuture<List<GraphicsAdapterInfo>>> shared;
@@ -126,6 +131,79 @@ class ContextCreationTest {
         assertEquals(List.of(0), attempts);
     }
 
+    // Replaces the shared probe with one that records each wait and answers with the adapters
+    private Probe install(List<GraphicsAdapterInfo> adapters) {
+        Probe probe = new Probe(adapters);
+        shared.set(probe);
+        return probe;
+    }
+
+    // Checks that the option or a debug context decides without waiting on the probe
+    @Test
+    void theOptionAndADebugContextDecideWithoutWaitingOnTheProbe() throws Exception {
+        Probe probe = install(NVIDIA);
+
+        setOption(false);
+        assertFalse(ContextCreation.requestsNoError());
+        setOption(true);
+        ForgeEarlyConfig.OPENGL_DEBUG_CONTEXT = true;
+        assertFalse(ContextCreation.requestsNoError());
+
+        assertEquals(List.of(), probe.waits);
+    }
+
+    // Checks that every system other than Windows decides without waiting on the probe
+    @Test
+    void systemsOtherThanWindowsDecideWithoutWaitingOnTheProbe() {
+        Probe probe = install(List.of(LEGACY_INTEL));
+        boolean wayland = "wayland".equalsIgnoreCase(System.getenv("XDG_SESSION_TYPE"));
+
+        for (OsKind os : new OsKind[]{OsKind.LINUX, OsKind.MACOS, OsKind.UNKNOWN}) {
+            Statics.set(OsKind.class, "detected", os);
+            assertEquals(os != OsKind.LINUX || !wayland, ContextCreation.requestsNoError(), os.name());
+        }
+
+        assertEquals(List.of(), probe.waits);
+    }
+
+    // Checks that Windows waits on the probe once with the adapter timeout however often the adapters are read
+    @Test
+    void windowsWaitsOnTheProbeOnceWithTheAdapterTimeout() {
+        Probe probe = install(List.of(NVIDIA.get(0), MODERN_INTEL, NVIDIA.get(0)));
+
+        assertTrue(ContextCreation.requestsNoError());
+        assertEquals(List.of(ContextCreation.ADAPTER_WAIT_MILLIS), probe.waits);
+    }
+
+    // Checks that Windows answers from the probed adapters
+    @Test
+    void windowsAnswersFromTheProbedAdapters() {
+        Probe legacy = install(List.of(MODERN_INTEL, LEGACY_INTEL));
+        assertFalse(ContextCreation.requestsNoError());
+        assertEquals(List.of(ContextCreation.ADAPTER_WAIT_MILLIS), legacy.waits);
+
+        Probe none = install(List.of());
+        assertFalse(ContextCreation.requestsNoError());
+        assertEquals(List.of(ContextCreation.ADAPTER_WAIT_MILLIS), none.waits);
+
+        Probe modern = install(List.of(MODERN_INTEL));
+        assertTrue(ContextCreation.requestsNoError());
+        assertEquals(List.of(ContextCreation.ADAPTER_WAIT_MILLIS), modern.waits);
+    }
+
+    // Checks that options that fail to load refuse the context without waiting on the probe
+    @Test
+    void optionsThatFailToLoadRefuseWithoutWaitingOnTheProbe() {
+        Probe probe = install(NVIDIA);
+
+        try (MockedStatic<ImpetusGameOptions> options = Mockito.mockStatic(ImpetusGameOptions.class)) {
+            options.when(ImpetusGameOptions::load).thenThrow(new IllegalStateException("Unreadable options"));
+            assertFalse(ContextCreation.requestsNoError());
+        }
+
+        assertEquals(List.of(), probe.waits);
+    }
+
     @Test
     void nvidiaMitigationsFollowCreationAndTheMixinWrapsTheSdlBuilder() {
         Mockito.doReturn("NVIDIA Corporation").when(TestGl.gl()).glGetString(0x1F00);
@@ -138,5 +216,25 @@ class ContextCreationTest {
             return window;
         };
         assertSame(window, Mixins.call(Mixins.instance(ContextCreationMixin.class), "impetus$createWindow", builder, original));
+    }
+
+    // Shared probe that records each wait and answers at once with its adapters
+    private static final class Probe extends CompletableFuture<List<GraphicsAdapterInfo>> {
+        // Adapters every wait returns
+        private final List<GraphicsAdapterInfo> adapters;
+        // Timeouts in milliseconds of the waits so far
+        private final List<Long> waits = new ArrayList<>();
+
+        // Creates a probe that answers with the adapters
+        Probe(List<GraphicsAdapterInfo> adapters) {
+            this.adapters = adapters;
+        }
+
+        // Records the timeout and returns the adapters
+        @Override
+        public List<GraphicsAdapterInfo> get(long timeout, TimeUnit unit) {
+            waits.add(unit.toMillis(timeout));
+            return adapters;
+        }
     }
 }

@@ -94,7 +94,7 @@ public final class Workarounds {
 
             var version = adapter.driverVersion();
 
-            if (version.startsWith("9.") || version.startsWith("10.")) {
+            if (version != null && (version.startsWith("9.") || version.startsWith("10."))) {
                 return true;
             }
         }

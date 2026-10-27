@@ -61,10 +61,6 @@ public class GlVertexAttribute {
 
         int unit = format.size();
 
-        if (unit <= 0) {
-            return new IllegalArgumentException("Format size must be positive");
-        }
-
         if (count < 1 | count > 4) {
             return new IllegalArgumentException("Count must be between 1 and 4");
         }

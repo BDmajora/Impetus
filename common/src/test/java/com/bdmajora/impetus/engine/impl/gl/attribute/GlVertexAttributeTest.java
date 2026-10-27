@@ -32,8 +32,6 @@ class GlVertexAttributeTest {
     private static final String FORMAT_NULL = "Format must not be null";
     // Message of a null name
     private static final String NAME_NULL = "Name must not be null";
-    // Message of a format whose component size is zero or negative
-    private static final String UNIT_BAD = "Format size must be positive";
     // Message of a count outside the range between 1 and 4
     private static final String COUNT_BAD = "Count must be between 1 and 4";
     // Message of a negative pointer
@@ -257,14 +255,6 @@ class GlVertexAttributeTest {
         expect(IllegalArgumentException.class, STRIDE_MISALIGNED + 3, () -> attribute(three, 1, 3, 4));
     }
 
-    // Rejects a format whose component size is zero or negative in both constructors
-    @ParameterizedTest
-    @ValueSource(ints = {Integer.MIN_VALUE, -4, -1, 0})
-    void rejectsAFormatWithoutAPositiveComponentSize(int size) {
-        expect(IllegalArgumentException.class, UNIT_BAD, () -> attribute(unit(size), 1, 0, 0));
-        expect(IllegalArgumentException.class, UNIT_BAD, () -> sized(unit(size), 4, 1, 0, 0));
-    }
-
     // Rejects a derived size above the int range
     @ParameterizedTest
     @CsvSource({"2147483647, 2", "2147483647, 4", "1073741824, 2", "536870912, 4", "715827883, 3"})
@@ -326,8 +316,7 @@ class GlVertexAttributeTest {
     void reportsTheFirstRefusedArgument() {
         expect(NullPointerException.class, FORMAT_NULL, () -> new GlVertexAttribute(null, null, 0, false, -1, -1, false));
         expect(NullPointerException.class, FORMAT_NULL, () -> new GlVertexAttribute(null, 0, 0, null, false, -1, -1, false));
-        expect(NullPointerException.class, NAME_NULL, () -> new GlVertexAttribute(unit(0), null, 0, false, -1, -1, false));
-        expect(IllegalArgumentException.class, UNIT_BAD, () -> new GlVertexAttribute(unit(0), "a", 0, false, -1, -1, false));
+        expect(NullPointerException.class, NAME_NULL, () -> new GlVertexAttribute(unit(1), null, 0, false, -1, -1, false));
         expect(IllegalArgumentException.class, COUNT_BAD, () -> new GlVertexAttribute(unit(Integer.MAX_VALUE), "a", Integer.MAX_VALUE, false, -1, -1, false));
         expect(IllegalArgumentException.class, POINTER_NEGATIVE, () -> attribute(GlVertexAttributeFormat.FLOAT, 1, -1, -1));
         expect(IllegalArgumentException.class, STRIDE_NEGATIVE, () -> attribute(GlVertexAttributeFormat.FLOAT, 1, 1, -1));

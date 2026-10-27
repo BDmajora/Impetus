@@ -38,8 +38,6 @@ class GlVertexAttributeBindingTest {
     private static final String FORMAT_NULL = "Format must not be null";
     // Message of a null name
     private static final String NAME_NULL = "Name must not be null";
-    // Message of a format whose component size is zero or negative
-    private static final String UNIT_BAD = "Format size must be positive";
     // Message of a count outside the range between 1 and 4
     private static final String COUNT_BAD = "Count must be between 1 and 4";
     // Message of a negative pointer
@@ -151,11 +149,6 @@ class GlVertexAttributeBindingTest {
         return new GlVertexAttribute(GlVertexAttributeFormat.UNSIGNED_SHORT, "uv", 2, true, 6, 18, true);
     }
 
-    // Creates a format of the byte type with the given component size
-    private static GlVertexAttributeFormat unit(int size) {
-        return new GlVertexAttributeFormat(GlVertexAttributeFormat.BYTE.typeId(), size);
-    }
-
     // Creates a format of a float position and a byte color and an integer light value
     private static GlVertexFormat threeAttributes() {
         return GlVertexFormat.builder(20)
@@ -209,9 +202,6 @@ class GlVertexAttributeBindingTest {
                     report.format = null;
                     report.name = null;
                 }),
-                invalid(IllegalArgumentException.class, UNIT_BAD, report -> report.format = unit(0)),
-                invalid(IllegalArgumentException.class, UNIT_BAD, report -> report.format = unit(-4)),
-                invalid(IllegalArgumentException.class, UNIT_BAD, report -> report.format = unit(Integer.MIN_VALUE)),
                 invalid(IllegalArgumentException.class, COUNT_BAD, report -> report.count = 0),
                 invalid(IllegalArgumentException.class, COUNT_BAD, report -> report.count = 5),
                 invalid(IllegalArgumentException.class, COUNT_BAD, report -> report.count = -1),

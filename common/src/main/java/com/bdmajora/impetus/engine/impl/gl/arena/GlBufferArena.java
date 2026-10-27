@@ -7,235 +7,245 @@ import com.bdmajora.impetus.engine.impl.gl.buffer.GlMutableBuffer;
 import com.bdmajora.impetus.engine.impl.gl.device.CommandList;
 
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
+import java.util.ListIterator;
+import java.util.Objects;
+import java.util.TreeSet;
 
+// Suballocator that packs segments of whole elements into one GL buffer and grows or compacts that buffer on demand
 public class GlBufferArena {
+    // Switch that runs the segment list checks after every change
     static final boolean CHECK_ASSERTIONS = false;
 
+    // Usage hint of every backing buffer
     private static final GlBufferUsage BUFFER_USAGE = GlBufferUsage.STATIC_DRAW;
 
+    // Size in bytes from which growth adds half the current size instead of doubling it
     private static final int LARGE_ARENA_THRESHOLD_BYTES = 4 * 1024 * 1024;
 
+    // Divisor of the growth step of a large arena
     private static final int LARGE_GROWTH_FACTOR = 2;
 
+    // Order of free segments by length and then by offset
+    private static final Comparator<GlBufferSegment> BEST_FIT_ORDER = GlBufferArena::compareBestFit;
+
+    // Staging path of every upload
     private final StagingBuffer stagingBuffer;
+
+    // Free segments of the list in best fit order
+    private final TreeSet<GlBufferSegment> freeSegments = new TreeSet<>(BEST_FIT_ORDER);
+
+    // Search key of the best fit lookup that sits at offset zero and belongs to no arena
+    private final GlBufferSegment probe = new GlBufferSegment(null, 0, 1);
+
+    // Backing GL buffer
     private GlMutableBuffer arenaBuffer;
 
+    // First segment by offset or null when no segment is linked
     private GlBufferSegment head;
 
+    // Capacity in elements
     private int capacity;
+
+    // Elements held by live segments
     private int used;
 
+    // Flag set by the first delete
+    private boolean deleted;
+
+    // Size of one element in bytes
     private final int stride;
+
+    // Smallest capacity in elements that growth selects
     private final int minimumCapacity;
 
+    // Creates an arena with an empty backing buffer and rejects null arguments and a stride or minimum capacity out of range
     public GlBufferArena(CommandList commands, int stride, int minimumCapacityBytes, StagingBuffer stagingBuffer) {
+        Objects.requireNonNull(commands, "Command list must not be null");
+        Objects.requireNonNull(stagingBuffer, "Staging buffer must not be null");
+
         if (stride <= 0) {
             throw new IllegalArgumentException("Stride must be positive");
         }
 
+        if (minimumCapacityBytes < 0) {
+            throw new IllegalArgumentException("Minimum capacity must not be negative");
+        }
+
         this.stride = stride;
         this.minimumCapacity = this.elementsFor(minimumCapacityBytes);
-
-        this.capacity = 0;
-        this.head = null;
-
-        this.arenaBuffer = commands.createMutableBuffer();
-        commands.allocateStorage(this.arenaBuffer, 0L, BUFFER_USAGE);
-
         this.stagingBuffer = stagingBuffer;
+        this.arenaBuffer = createBuffer(commands, 0L);
     }
 
-    // Allocates a larger buffer and compacts every live segment into it
-    private void resize(CommandList commandList, int newCapacity) {
-        if (this.used > newCapacity) {
-            throw new UnsupportedOperationException("New capacity must be larger than used size");
+    // Creates a buffer with storage of the given size in bytes and deletes it again when the storage allocation throws
+    private static GlMutableBuffer createBuffer(CommandList commands, long bytes) {
+        GlMutableBuffer buffer = commands.createMutableBuffer();
+
+        try {
+            commands.allocateStorage(buffer, bytes, BUFFER_USAGE);
+        } catch (Throwable t) {
+            commands.deleteBuffer(buffer);
+            throw t;
         }
 
-        this.checkAssertions();
+        return buffer;
+    }
 
-        int tail = newCapacity - this.used;
+    // Moves the live segments behind one free segment at the start of a new buffer and leaves the arena unchanged when a GL call throws
+    private void resize(CommandList commands, int newCapacity) {
+        int freeLength = newCapacity - this.used;
+        GlMutableBuffer src = this.arenaBuffer;
+        GlMutableBuffer dst = createBuffer(commands, (long) newCapacity * this.stride);
 
-        List<GlBufferSegment> usedSegments = this.getUsedSegments();
-        List<PendingBufferCopyCommand> pendingCopies = this.buildTransferList(usedSegments, tail);
-
-        this.transferSegments(commandList, pendingCopies, newCapacity);
-
-        if (tail == 0) {
-            this.head = usedSegments.isEmpty() ? null : usedSegments.get(0);
-
-            if (this.head != null) {
-                this.head.setPrev(null);
-            }
-        } else {
-            this.head = new GlBufferSegment(this, 0, tail);
-            this.head.setFree(true);
-
-            if (usedSegments.isEmpty()) {
-                this.head.setNext(null);
-            } else {
-                this.head.setNext(usedSegments.get(0));
-                this.head.getNext()
-                        .setPrev(this.head);
-            }
+        try {
+            this.copyLiveSegments(commands, src, dst, freeLength);
+        } catch (Throwable t) {
+            commands.deleteBuffer(dst);
+            throw t;
         }
+
+        this.relinkLiveSegments(freeLength);
+        this.arenaBuffer = dst;
+        this.capacity = newCapacity;
+
+        commands.deleteBuffer(src);
 
         this.checkAssertions();
     }
 
-    // Plans the compaction copies, merging adjacent segments into one copy
-    private List<PendingBufferCopyCommand> buildTransferList(List<GlBufferSegment> usedSegments, int base) {
-        List<PendingBufferCopyCommand> pendingCopies = new ArrayList<>();
-        PendingBufferCopyCommand currentCopyCommand = null;
+    // Copies the live segments to the destination from the given element offset and merges each run of adjacent live segments into one copy
+    private void copyLiveSegments(CommandList commands, GlBuffer src, GlBuffer dst, int writeOffset) {
+        long stride = this.stride;
+        int runOffset = 0;
+        int runLength = 0;
 
-        int writeOffset = base;
-
-        for (int i = 0; i < usedSegments.size(); i++) {
-            GlBufferSegment s = usedSegments.get(i);
-
-            if (currentCopyCommand == null || currentCopyCommand.readOffset + currentCopyCommand.length != s.getOffset()) {
-                if (currentCopyCommand != null) {
-                    pendingCopies.add(currentCopyCommand);
+        for (GlBufferSegment seg = this.head; seg != null; seg = seg.getNext()) {
+            if (!seg.isFree()) {
+                if (runLength == 0) {
+                    runOffset = seg.getOffset();
                 }
 
-                currentCopyCommand = new PendingBufferCopyCommand(s.getOffset(), writeOffset, s.getLength());
-            } else {
-                currentCopyCommand.length += s.getLength();
+                runLength += seg.getLength();
+            } else if (runLength != 0) {
+                commands.copyBufferSubData(src, dst, runOffset * stride, writeOffset * stride, runLength * stride);
+                writeOffset += runLength;
+                runLength = 0;
             }
-
-            s.setOffset(writeOffset);
-
-            if (i + 1 < usedSegments.size()) {
-                s.setNext(usedSegments.get(i + 1));
-            } else {
-                s.setNext(null);
-            }
-
-            if (i - 1 < 0) {
-                s.setPrev(null);
-            } else {
-                s.setPrev(usedSegments.get(i - 1));
-            }
-
-            writeOffset += s.getLength();
         }
 
-        if (currentCopyCommand != null) {
-            pendingCopies.add(currentCopyCommand);
+        if (runLength != 0) {
+            commands.copyBufferSubData(src, dst, runOffset * stride, writeOffset * stride, runLength * stride);
         }
-
-        return pendingCopies;
     }
 
-    // Executes the planned copies into a fresh buffer and swaps it in
-    private void transferSegments(CommandList commandList, Collection<PendingBufferCopyCommand> list, int capacity) {
-        GlMutableBuffer srcBufferObj = this.arenaBuffer;
-        GlMutableBuffer dstBufferObj = commandList.createMutableBuffer();
+    // Rebuilds the segment list as one free segment of the given length followed by the live segments in offset order
+    private void relinkLiveSegments(int freeLength) {
+        GlBufferSegment first = null;
+        GlBufferSegment last = null;
 
-        commandList.allocateStorage(dstBufferObj, (long)capacity * this.stride, BUFFER_USAGE);
+        this.freeSegments.clear();
 
-        for (PendingBufferCopyCommand cmd : list) {
-            commandList.copyBufferSubData(srcBufferObj, dstBufferObj,
-                    (long)cmd.readOffset * this.stride,
-                    (long)cmd.writeOffset * this.stride,
-                    (long)cmd.length * this.stride);
+        if (freeLength > 0) {
+            first = last = new GlBufferSegment(this, 0, freeLength);
+            first.setFree(true);
+            this.freeSegments.add(first);
         }
 
-        commandList.deleteBuffer(srcBufferObj);
-
-        this.arenaBuffer = dstBufferObj;
-        this.capacity = capacity;
-    }
-
-    // Live segments in address order
-    private ArrayList<GlBufferSegment> getUsedSegments() {
-        ArrayList<GlBufferSegment> used = new ArrayList<>();
+        int writeOffset = freeLength;
         GlBufferSegment seg = this.head;
 
         while (seg != null) {
             GlBufferSegment next = seg.getNext();
 
             if (!seg.isFree()) {
-                used.add(seg);
+                seg.setOffset(writeOffset);
+                seg.setPrev(last);
+                writeOffset += seg.getLength();
+
+                if (last == null) {
+                    first = seg;
+                } else {
+                    last.setNext(seg);
+                }
+
+                last = seg;
             }
 
             seg = next;
         }
 
-        return used;
+        if (last != null) {
+            last.setNext(null);
+        }
+
+        this.head = first;
     }
 
-    // Long form
+    // Returns the bytes held by live segments
     public long getDeviceUsedMemoryL() {
-        return (long)this.used * this.stride;
+        return (long) this.used * this.stride;
     }
 
-    // Long form
+    // Returns the size of the backing buffer in bytes
     public long getDeviceAllocatedMemoryL() {
-        return (long)this.capacity * this.stride;
+        return (long) this.capacity * this.stride;
     }
 
-    // Carves from a free segment, splitting it if larger; null when nothing fits
+    // Returns a live segment carved from the end of the best fitting free segment or null when no free segment is large enough
     private GlBufferSegment alloc(int size) {
-        GlBufferSegment a = this.findFree(size);
+        // Gives a zero length request its own segment outside the list
+        if (size == 0) {
+            return new GlBufferSegment(this, 0, 0);
+        }
 
-        if (a == null) {
+        GlBufferSegment probe = this.probe;
+        probe.setLength(size);
+
+        GlBufferSegment free = this.freeSegments.ceiling(probe);
+
+        if (free == null) {
             return null;
         }
 
+        this.freeSegments.remove(free);
+
         GlBufferSegment result;
 
-        if (a.getLength() == size) {
-            a.setFree(false);
-
-            result = a;
+        if (free.getLength() == size) {
+            free.setFree(false);
+            result = free;
         } else {
-            GlBufferSegment b = new GlBufferSegment(this, a.getEnd() - size, size);
-            b.setNext(a.getNext());
-            b.setPrev(a);
+            GlBufferSegment next = free.getNext();
 
-            if (b.getNext() != null) {
-                b.getNext()
-                        .setPrev(b);
+            result = new GlBufferSegment(this, free.getEnd() - size, size);
+            result.setNext(next);
+            result.setPrev(free);
+
+            if (next != null) {
+                next.setPrev(result);
             }
 
-            a.setLength(a.getLength() - size);
-            a.setNext(b);
-
-            result = b;
+            free.setLength(free.getLength() - size);
+            free.setNext(result);
+            this.freeSegments.add(free);
         }
 
-        this.used += result.getLength();
+        this.used += size;
         this.checkAssertions();
 
         return result;
     }
 
-    // Best-fit walk of the whole segment list; an exact match returns immediately
-    private GlBufferSegment findFree(int size) {
-        GlBufferSegment entry = this.head;
-        GlBufferSegment best = null;
+    // Orders two segments by length and then by offset
+    private static int compareBestFit(GlBufferSegment a, GlBufferSegment b) {
+        int order = Integer.compare(a.getLength(), b.getLength());
 
-        while (entry != null) {
-            if (entry.isFree()) {
-                if (entry.getLength() == size) {
-                    return entry;
-                } else if (entry.getLength() >= size) {
-                    if (best == null || best.getLength() > entry.getLength()) {
-                        best = entry;
-                    }
-                }
-            }
-
-            entry = entry.getNext();
-        }
-
-        return best;
+        return order != 0 ? order : Integer.compare(a.getOffset(), b.getOffset());
     }
 
-    // Returns a segment and coalesces with free neighbours
+    // Marks the segment free and merges it with free neighbours and rejects a segment that is already free
     public void free(GlBufferSegment entry) {
         if (entry.isFree()) {
             throw new IllegalStateException("Already freed");
@@ -243,66 +253,81 @@ public class GlBufferArena {
 
         entry.setFree(true);
 
-        this.used -= entry.getLength();
+        int length = entry.getLength();
+
+        // Leaves the list alone for a deleted arena or a zero length segment
+        if (this.deleted || length == 0) {
+            return;
+        }
+
+        this.used -= length;
 
         GlBufferSegment next = entry.getNext();
 
         if (next != null && next.isFree()) {
+            this.freeSegments.remove(next);
             entry.mergeInto(next);
         }
 
         GlBufferSegment prev = entry.getPrev();
 
         if (prev != null && prev.isFree()) {
+            this.freeSegments.remove(prev);
             prev.mergeInto(entry);
+            entry = prev;
         }
 
+        this.freeSegments.add(entry);
         this.checkAssertions();
     }
 
-    // Frees the GL buffer
+    // Deletes the backing buffer and empties the arena on the first call and ignores later calls
     public void delete(CommandList commands) {
+        Objects.requireNonNull(commands, "Command list must not be null");
+
+        if (this.deleted) {
+            return;
+        }
+
+        this.deleted = true;
+        this.head = null;
+        this.freeSegments.clear();
+        this.capacity = 0;
+        this.used = 0;
+
         commands.deleteBuffer(this.arenaBuffer);
-        this.capacity = -1;
     }
 
-    // Whether delete has run
+    // Returns whether delete has run
     public boolean isDeleted() {
-        return this.capacity < 0;
+        return this.deleted;
     }
 
-    // No live segments
+    // Returns whether no live segment holds any element
     public boolean isEmpty() {
-        return this.used <= 0;
+        return this.used == 0;
     }
 
-    // The backing buffer, for binding
+    // Returns the backing buffer
     public GlBuffer getBufferObject() {
         return this.arenaBuffer;
     }
 
-    // Allocates and uploads each pending buffer, growing the arena when it fills; true if it grew; the queue is consumed (emptied) by the call
+    // Places every upload of the queue and grows the arena once when some do not fit and returns whether the backing buffer changed
     public boolean upload(CommandList commandList, List<PendingUpload> queue) {
-        // Record the buffer object first so a re-allocation during the upload can be detected and reported through the return flag
+        Objects.requireNonNull(commandList, "Command list must not be null");
+        Objects.requireNonNull(queue, "Upload queue must not be null");
+        this.checkNotDeleted();
+
         GlBuffer buffer = this.arenaBuffer;
 
-        // Try to upload all of the data into free segments first
         this.tryUploads(commandList, queue);
 
-        // If we weren't able to upload some buffers, they will have been left behind in the queue
         if (!queue.isEmpty()) {
-            // Calculate the amount of memory needed for the remaining uploads
-            int remainingElements = (int)queue.stream()
-                    .mapToLong(upload -> this.elementsFor(upload.getDataBuffer().getLength()))
-                    .sum();
-
-            // Grow the arena for the remaining uploads; the re-allocation compacts, leaving one continuous free segment
-            this.ensureCapacity(commandList, remainingElements);
-
-            // Try again to upload any buffers that failed last time
+            // Compacts or grows the arena into one free segment that holds every remaining upload
+            this.reserve(commandList, this.totalElements(queue));
             this.tryUploads(commandList, queue);
 
-            // If we still had failures, something has gone wrong
             if (!queue.isEmpty()) {
                 throw new RuntimeException("Failed to upload all buffers");
             }
@@ -311,130 +336,164 @@ public class GlBufferArena {
         return this.arenaBuffer != buffer;
     }
 
-    // Uploads everything that fits, leaving the rest in the queue
+    // Places every upload that fits and keeps the others in the queue in order and then flushes the staging buffer
     private void tryUploads(CommandList commandList, List<PendingUpload> queue) {
-        queue.removeIf(upload -> this.tryUpload(commandList, upload));
+        ListIterator<PendingUpload> reader = queue.listIterator();
+        ListIterator<PendingUpload> writer = queue.listIterator();
+        int kept = 0;
+        int done = 0;
+
+        try {
+            while (reader.hasNext()) {
+                PendingUpload upload = reader.next();
+
+                if (!this.tryUpload(commandList, upload)) {
+                    writer.next();
+                    writer.set(upload);
+                    kept++;
+                }
+
+                done++;
+            }
+        } finally {
+            // Removes the placed uploads and keeps a failing upload and every later one
+            queue.subList(kept, done).clear();
+        }
+
         this.stagingBuffer.flush(commandList);
     }
 
-    // One allocation and staged copy; false when the arena is full
+    // Allocates a segment and stages the data of the upload and returns false when no free segment is large enough
     private boolean tryUpload(CommandList commandList, PendingUpload upload) {
         ByteBuffer data = upload.getDataBuffer()
                 .getDirectBuffer();
 
-        int elementCount = this.elementsFor(data.remaining());
-
-        GlBufferSegment dst = this.alloc(elementCount);
+        GlBufferSegment dst = this.alloc(this.elementsFor(data.remaining()));
 
         if (dst == null) {
             return false;
         }
 
-        // Copy the data into our staging buffer, then copy it into the arena's buffer
-        this.stagingBuffer.enqueueCopy(commandList, data, this.arenaBuffer, (long)dst.getOffset() * this.stride);
-
-        upload.setResult(dst);
+        try {
+            this.stagingBuffer.enqueueCopy(commandList, data, this.arenaBuffer, (long) dst.getOffset() * this.stride);
+            upload.setResult(dst);
+        } catch (Throwable t) {
+            this.free(dst);
+            throw t;
+        }
 
         return true;
     }
 
+    // Returns the number of elements that hold the given number of bytes
     private int elementsFor(int byteLength) {
-        return (int)(((long)byteLength + this.stride - 1) / this.stride);
+        return Math.ceilDiv(byteLength, this.stride);
     }
 
-    public void ensureCapacity(CommandList commandList, int elementCount) {
-        long required = (long)this.used + elementCount;
+    // Returns the total number of elements of the uploads in the queue
+    private long totalElements(List<PendingUpload> queue) {
+        long total = 0L;
 
-        if (required * 2 <= this.capacity) {
-            this.resize(commandList, this.capacity);
-            return;
+        for (PendingUpload upload : queue) {
+            total += this.elementsFor(upload.getLength());
         }
 
-        this.resize(commandList, this.growthTargetFor(required));
+        return total;
     }
 
+    // Compacts or grows the arena so the given number of elements fits in one free segment and rejects a negative count or a deleted arena
+    public void ensureCapacity(CommandList commandList, int elementCount) {
+        Objects.requireNonNull(commandList, "Command list must not be null");
+
+        if (elementCount < 0) {
+            throw new IllegalArgumentException("Element count must not be negative");
+        }
+
+        this.checkNotDeleted();
+        this.reserve(commandList, elementCount);
+    }
+
+    // Compacts the arena when the live and requested elements fill at most half of it and grows it otherwise
+    void reserve(CommandList commandList, long elementCount) {
+        long required = this.used + elementCount;
+
+        this.resize(commandList, required <= this.capacity >> 1 ? this.capacity : this.growthTargetFor(required));
+    }
+
+    // Returns the capacity in elements that growth selects for the required elements and throws when they exceed the int range
     private int growthTargetFor(long required) {
-        long base = Math.max(required, this.capacity);
-        long baseBytes = base * this.stride;
-
-        long increment = baseBytes < LARGE_ARENA_THRESHOLD_BYTES ? base : base / LARGE_GROWTH_FACTOR;
-
-        long target = Math.max(base + increment, this.minimumCapacity);
-
         if (required > Integer.MAX_VALUE) {
             throw new OutOfMemoryError("Arena cannot grow beyond " + Integer.MAX_VALUE + " elements");
         }
 
-        return (int)Math.min(target, Integer.MAX_VALUE);
+        long base = Math.max(required, this.capacity);
+        long increment = base * this.stride < LARGE_ARENA_THRESHOLD_BYTES ? base : base / LARGE_GROWTH_FACTOR;
+
+        return (int) Math.min(Math.max(base + increment, this.minimumCapacity), Integer.MAX_VALUE);
     }
 
-    // Segment list invariants, debug builds only
+    // Rejects any use of a deleted arena
+    private void checkNotDeleted() {
+        if (this.deleted) {
+            throw new IllegalStateException("Arena has been deleted");
+        }
+    }
+
+    // Runs the segment list checks when the switch is on
     private void checkAssertions() {
         if (CHECK_ASSERTIONS) {
             this.checkAssertions0();
         }
     }
 
-    // The checks themselves
+    // Throws when the segment list or the free index breaks an invariant
     private void checkAssertions0() {
-        GlBufferSegment seg = this.head;
-        int used = 0;
+        GlBufferSegment prev = null;
+        int end = 0;
+        int live = 0;
+        int free = 0;
 
-        while (seg != null) {
-            if (seg.getOffset() < 0) {
-                throw new IllegalStateException("segment.start < 0: out of bounds");
-            } else if (seg.getEnd() > this.capacity) {
-                throw new IllegalStateException("segment.end > arena.capacity: out of bounds");
+        for (GlBufferSegment seg = this.head; seg != null; seg = seg.getNext()) {
+            if (seg.getPrev() != prev) {
+                throw new IllegalStateException("segment.prev is not the previous segment: broken links");
             }
 
-            if (!seg.isFree()) {
-                used += seg.getLength();
+            if (seg.getOffset() != end) {
+                throw new IllegalStateException("segment.start != segment.prev.end: overlapping or sparse segments");
             }
 
-            GlBufferSegment next = seg.getNext();
-
-            if (next != null) {
-                if (next.getOffset() < seg.getEnd()) {
-                    throw new IllegalStateException("segment.next.start < segment.end: overlapping segments (corrupted)");
-                } else if (next.getOffset() > seg.getEnd()) {
-                    throw new IllegalStateException("segment.next.start > segment.end: not truly connected (sparsity error)");
-                }
-
-                if (next.isFree() && next.getNext() != null) {
-                    if (next.getNext().isFree()) {
-                        throw new IllegalStateException("segment.free && segment.next.free: not merged consecutive segments");
-                    }
-                }
+            if (seg.getLength() <= 0) {
+                throw new IllegalStateException("segment.length <= 0: empty segment in the list");
             }
 
-            GlBufferSegment prev = seg.getPrev();
-
-            if (prev != null) {
-                if (prev.getEnd() > seg.getOffset()) {
-                    throw new IllegalStateException("segment.prev.end > segment.start: overlapping segments (corrupted)");
-                } else if (prev.getEnd() < seg.getOffset()) {
-                    throw new IllegalStateException("segment.prev.end < segment.start: not truly connected (sparsity error)");
+            if (seg.isFree()) {
+                if (prev != null && prev.isFree()) {
+                    throw new IllegalStateException("segment.free && segment.prev.free: not merged consecutive segments");
                 }
 
-                if (prev.isFree() && prev.getPrev() != null) {
-                    if (prev.getPrev().isFree()) {
-                        throw new IllegalStateException("segment.free && segment.prev.free: not merged consecutive segments");
-                    }
+                if (!this.freeSegments.contains(seg)) {
+                    throw new IllegalStateException("segment.free but not indexed: free index out of date");
                 }
+
+                free++;
+            } else {
+                live += seg.getLength();
             }
 
-            seg = next;
+            end = seg.getEnd();
+            prev = seg;
         }
 
-        if (this.used < 0) {
-            throw new IllegalStateException("arena.used < 0: failure to track");
-        } else if (this.used > this.capacity) {
-            throw new IllegalStateException("arena.used > arena.capacity: failure to track");
+        if (end != this.capacity) {
+            throw new IllegalStateException("segment.end != arena.capacity: segments do not cover the arena");
         }
 
-        if (this.used != used) {
+        if (free != this.freeSegments.size()) {
+            throw new IllegalStateException("free index holds segments outside the list");
+        }
+
+        if (live != this.used) {
             throw new IllegalStateException("arena.used is invalid");
         }
     }
-
 }

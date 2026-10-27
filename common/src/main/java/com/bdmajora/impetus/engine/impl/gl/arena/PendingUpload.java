@@ -3,46 +3,65 @@ package com.bdmajora.impetus.engine.impl.gl.arena;
 import com.bdmajora.impetus.engine.impl.common.util.NativeBuffer;
 import org.jetbrains.annotations.Nullable;
 
-public class PendingUpload {
+// Native buffer that waits for an arena and the segment that receives its bytes
+public final class PendingUpload {
+    // Bytes to upload
     private final NativeBuffer data;
+
+    // Capacity of the data in bytes
+    private final int length;
+
+    // Segment that holds the uploaded bytes or null until the arena places them
     private GlBufferSegment result;
 
+    // Creates an upload of the buffer and stores its capacity
     private PendingUpload(NativeBuffer data) {
         this.data = data;
+        this.length = data.getLength();
     }
 
+    // Returns a new upload of the buffer or null for a null buffer
     public static @Nullable PendingUpload of(@Nullable NativeBuffer data) {
-        if (data == null) {
-            return null;
-        }
-        return new PendingUpload(data);
+        return data == null ? null : new PendingUpload(data);
     }
 
-    // The bytes to upload
+    // Returns the bytes to upload
     public NativeBuffer getDataBuffer() {
         return this.data;
     }
 
-    // Set by the arena once allocated
+    // Stores the segment that holds the uploaded bytes and rejects a null segment or a second result
     protected void setResult(GlBufferSegment result) {
-        if (this.result != null) {
-            throw new IllegalStateException("Result already provided");
+        // Reads true for a null segment or an upload that already holds a result
+        if (result == null | this.result != null) {
+            throw resultError(result);
         }
 
         this.result = result;
     }
 
-    // Where the data landed; throws if not yet uploaded
+    // Creates the exception for a null segment or a second result
+    private static RuntimeException resultError(GlBufferSegment result) {
+        if (result == null) {
+            return new NullPointerException("Result must not be null");
+        }
+
+        return new IllegalStateException("Result already provided");
+    }
+
+    // Returns the segment that holds the uploaded bytes and rejects an upload that was not placed
     public GlBufferSegment getResult() {
-        if (this.result == null) {
+        GlBufferSegment result = this.result;
+
+        if (result == null) {
             throw new IllegalStateException("Result not computed");
         }
 
-        return this.result;
+        return result;
     }
 
-    // Bytes
+    // Returns the capacity of the data in bytes
     public int getLength() {
-        return this.data.getLength();
+        return this.length;
     }
 }

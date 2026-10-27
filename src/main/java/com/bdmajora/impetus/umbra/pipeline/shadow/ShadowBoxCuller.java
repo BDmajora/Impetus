@@ -2,23 +2,22 @@ package com.bdmajora.impetus.umbra.pipeline.shadow;
 
 import com.bdmajora.impetus.engine.impl.render.viewport.frustum.Frustum;
 
-// Bounds the shadow pass to a cube of shadowDistance around the camera, position-only by design since a view-dependent set made the floodfill strobe; used for both on and reversed as a conservative superset
+// Accepts camera relative boxes that overlap a cube of a given half size around the camera
 public final class ShadowBoxCuller implements Frustum {
+    // Half the edge length of the cube in blocks
     private final float maxDistance;
 
+    // Creates the culler for a half size in blocks
     public ShadowBoxCuller(float maxDistance) {
         this.maxDistance = maxDistance;
     }
 
-    // Returns true if VISIBLE, the engine's Frustum contract and the inverse of Iris's isCulled, so the ported condition is negated; backwards culls everything the shadow map should hold
+    // Returns whether the box overlaps the cube on every axis and treats a NaN bound as overlapping
     @Override
     public boolean testAab(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
-        if (maxX < -this.maxDistance || minX > this.maxDistance) {
-            return false;
-        }
-        if (maxY < -this.maxDistance || minY > this.maxDistance) {
-            return false;
-        }
-        return !(maxZ < -this.maxDistance) && !(minZ > this.maxDistance);
+        float distance = this.maxDistance;
+        return !(maxX < -distance || minX > distance
+                || maxY < -distance || minY > distance
+                || maxZ < -distance || minZ > distance);
     }
 }

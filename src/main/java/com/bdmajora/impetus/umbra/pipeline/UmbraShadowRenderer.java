@@ -1,357 +1,163 @@
 package com.bdmajora.impetus.umbra.pipeline;
 
-import com.bdmajora.impetus.umbra.pipeline.rendering.GlState;
-import com.bdmajora.impetus.umbra.compat.dh.DhCompat;
-import com.bdmajora.impetus.umbra.gl.GlTextureUnits;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.GlStateManager;
-import net.minecraft.client.renderer.tileentity.TileEntityRendererDispatcher;
-import net.minecraft.entity.Entity;
-import net.minecraft.tileentity.TileEntity;
-import net.minecraft.util.BlockRenderLayer;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.World;
 import com.bdmajora.impetus.engine.impl.gl.device.RenderDevice;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.joml.FrustumIntersection;
-import org.joml.Matrix4f;
-import org.joml.Vector3d;
-import com.bdmajora.impetus.impl.render.terrain.CameraHelper;
+import com.bdmajora.impetus.engine.impl.render.viewport.frustum.Frustum;
 import com.bdmajora.impetus.impl.render.terrain.ImpetusWorldRenderer;
+import com.bdmajora.impetus.umbra.compat.dh.DhCompat;
 import com.bdmajora.impetus.umbra.gl.framebuffer.UmbraFramebuffer;
 import com.bdmajora.impetus.umbra.gl.program.DrawBuffers;
+import com.bdmajora.impetus.umbra.pipeline.shadow.DhShadowLods;
+import com.bdmajora.impetus.umbra.pipeline.shadow.ShadowCamera;
+import com.bdmajora.impetus.umbra.pipeline.shadow.ShadowCasterPrograms;
+import com.bdmajora.impetus.umbra.pipeline.shadow.ShadowCasters;
+import com.bdmajora.impetus.umbra.pipeline.shadow.ShadowColorSettings;
+import com.bdmajora.impetus.umbra.pipeline.shadow.ShadowPassState;
+import com.bdmajora.impetus.umbra.pipeline.shadow.ShadowTargets;
+import com.bdmajora.impetus.umbra.pipeline.shadow.ShadowTerrain;
 import com.bdmajora.impetus.umbra.shaderpack.ProgramSource;
-import com.bdmajora.impetus.umbra.targets.DepthTexture;
 import com.bdmajora.impetus.umbra.uniforms.CapturedRenderingState;
 import com.bdmajora.impetus.umbra.uniforms.CelestialUniforms;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL12;
-import org.lwjgl.opengl.GL14;
-import org.lwjgl.opengl.GL15;
-import org.lwjgl.opengl.GL30;
-import org.lwjgl.opengl.GL33;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.texture.TextureMap;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.joml.Matrix4f;
+import org.joml.Vector3d;
+import org.joml.Vector3f;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.util.Arrays;
 import java.util.BitSet;
-import java.nio.FloatBuffer;
 import java.util.Map;
+import java.util.Objects;
 
-import com.bdmajora.impetus.umbra.gl.texture.InternalTextureFormat;
-import com.bdmajora.impetus.umbra.pipeline.shadow.ShadowColorSettings;
-
-import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
-
-// Second render of the world from the sun/moon's POV before the gbuffer pass samples it, in Umbra's ShadowRenderer order: solid+cutout terrain, fixed-function entities/block entities, depth copied to shadowtex1, then translucent terrain into shadowcolor0/1 and shadowtex0; the ortho shadow camera is snapped to shadowIntervalSize so texels do not swim
+// Renders the shadow map from the sun or moon before the gbuffer pass samples it
 public class UmbraShadowRenderer {
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
+    // Near plane of the shadow projection in blocks when the pack declares none
     public static final float DEFAULT_NEAR_PLANE = -100.05f;
+    // Far plane of the shadow projection in blocks when the pack declares none
     public static final float DEFAULT_FAR_PLANE = 156.0f;
+    // Grid step in blocks that the shadow camera snaps to when the pack declares none
     public static final float DEFAULT_INTERVAL_SIZE = 2.0f;
+    // Number of failed passes after which shadows stay off for the pack
+    static final int MAX_FAILURES = 3;
 
-    // Fixed-function matrix modes (GlStateManager.matrixMode takes the raw GL enum).
-    private static final int GL_MODELVIEW_MODE = 0x1700;
-    private static final int GL_PROJECTION_MODE = 0x1701;
-    private static final int GL_CULL_FACE = 0x0B44;
-    private static final int GL_DEPTH_FUNC = 0x0B74;
-
-    // True while the shadow pass is drawing; consulted by the matrix, program and draw-buffer seams, which answer differently for the shadow and camera passes
+    // Flag set while the shadow pass is drawing
     private static boolean shadowPassActive;
 
-    private final int resolution;
-    private final float halfPlaneLength;
-    private final float nearPlane;
-    private final float farPlane;
-    private final float sunPathRotation;
-    private final float intervalSize;
-    private final Float shadowMapFov;
-
-    // shadowtex0: every shadow caster, translucents included
-    private final DepthTexture depthTexture;
-    // shadowtex1: a copy of shadowtex0 taken just BEFORE translucent shadow geometry draws, so the difference is exactly "occluded only by glass and water", which is how packs tint light shafts
-    private final DepthTexture depthTextureNoTranslucents;
-    // What the pack permits this pass to draw: shadowTerrain, shadowEntities, shadowBlockEntities and friends
+    // Shadow textures and framebuffer
+    private final ShadowTargets targets;
+    // Sun or moon camera matrices
+    private final ShadowCamera camera;
+    // Section selection and terrain layer draws
+    private final ShadowTerrain terrain;
+    // Fixed function programs of entities and block entities
+    private final ShadowCasterPrograms programs;
+    // Entity and block entity draws
+    private final ShadowCasters casters;
+    // Culling and depth state saved around each pass
+    private final ShadowPassState passState = new ShadowPassState();
+    // Switches for what the pass draws
     private final ShadowContentSettings content;
-    // The pack's voxelDistance, the safe-zone radius under shadow.culling = reversed; 0 when undeclared, degenerating that mode to plain advanced culling
-    private final float voxelDistance;
-    // Whether the pack voxelizes during the shadow pass, inferred like Iris from a geometry stage or custom images rather than a declaration
-    private final boolean packVoxelizes;
-    // shadowDistance * shadowDistanceRenderMul, the distance the pass culls against, deliberately not the distance the projection covers
-    private final float cullDistance;
-    // Per-buffer format, clear and filtering, from the pack's shadowcolorN directives
-    private final ShadowColorSettings colorSettings;
-    // One texture per shadow colour buffer, 0 for buffers past OptiFine's two that the pack never touches, since a 4096 map costs 64 MB a buffer
-    private final int[] colorTextures;
-    // The buffers that exist, in index order; the frame-start clear and the attachment set
-    private final int[] allocatedColorBuffers;
-    private final UmbraFramebuffer framebuffer;
-    private final boolean[] hardwareFiltering;
-    private final boolean[] mipmapDepth;
-    private final boolean[] nearestDepth;
-    private final boolean separateHardwareSamplers;
-    // Texture unit for one-off raw work (creating shadow textures, mipmaps, depth copies), above CACHED_UNITS and clear of every pipeline unit so it never rewrites a tracked slot; always pair selectScratch with releaseScratch
-    private static final int TEXTURE_SETUP_UNIT = 31;
-    // The pack's shadow DRAWBUFFERS mask for the geometry draws, sanitised down to the buffers that exist
-    private final int[] shadowDrawBuffers;
+    // Draw buffer mask of the shadow program limited to allocated colour buffers
+    private final int[] drawBuffers;
+    // Action that rebinds the pack textures and images to their units
     private final Runnable shaderPackResourceRestorer;
-    // The FIXED-FUNCTION flavour of the pack's shadow program for entities and block entities, a separate compile since they draw immediate-mode and the Impetus-format terrain program cannot consume that; null when it failed, and entity shadows are then skipped
-    private final GbufferPrograms.Entry entityShadowProgram;
-
-    // shadow_block's flavour for the block-entity loop (Iris gives block entities their own shadow program); when the pack ships neither, both resolve onto the same `shadow` source and this holds the same Entry, which blockEntityProgramShared detects so teardown does not free it twice
-    private final GbufferPrograms.Entry blockEntityShadowProgram;
-
-    // Whether the two program fields hold the SAME object, which teardown checks before destroying either
-    private final boolean blockEntityProgramShared;
-
-    private final FloatBuffer matrixBuffer =
-            ByteBuffer.allocateDirect(16 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
-
+    // Number of passes that threw
     private int failureCount;
+    // Flag set once the pass gives up after repeated failures
     private boolean failed;
-    // Only fills setupShadowTerrain's deprecated frame argument; the section manager stamps its searches from its own counter
-    private int shadowListFrame;
+    // Flag set once destroy has run
     private boolean destroyed;
 
-    private final Matrix4f shadowModelView = new Matrix4f();
-    private final Matrix4f shadowProjection = new Matrix4f();
-    // The section filter built for the current pass, kept for the DH compat's LOD culling
-    private com.bdmajora.impetus.engine.impl.render.viewport.frustum.Frustum cullingFrustum;
-
-    // shadowSource compiles into the fixed-function entity flavour; samplerUnits already carries the gbuffers-stage overrides since the shadow pass belongs to that stage; hardwareFiltering, mipmapDepth and nearestDepth are PER TEXTURE (0 = shadowtex0, 1 = shadowtex1), and separateHardwareSamplers moves compare onto the *HW aliases
+    // Allocates the shadow targets and compiles the fixed function caster programs and frees everything again when any step throws
     public UmbraShadowRenderer(int resolution, float shadowDistance, float nearPlane, float farPlane,
-                              float intervalSize, Float shadowMapFov, float sunPathRotation,
-                              ProgramSource shadowSource,
-                              ProgramSource shadowEntitiesSource, ProgramSource shadowBlockSource,
-                              Map<String, Integer> samplerUnits,
-                              Map<String, String> shaderDefines, boolean[] hardwareFiltering,
-                              boolean[] mipmapDepth, boolean[] nearestDepth, boolean separateHardwareSamplers,
-                              Runnable shaderPackResourceRestorer, ShadowContentSettings content,
-                              float voxelDistance, float cullDistance, boolean packVoxelizes,
-                              ShadowColorSettings colorSettings, BitSet usedColorBuffers) {
-        this.resolution = resolution;
-        this.halfPlaneLength = shadowDistance;
-        this.nearPlane = nearPlane;
-        this.farPlane = farPlane;
-        this.intervalSize = intervalSize;
-        this.shadowMapFov = shadowMapFov;
-        this.sunPathRotation = sunPathRotation;
-        this.shaderPackResourceRestorer = shaderPackResourceRestorer;
-        this.content = content;
-        this.voxelDistance = voxelDistance;
-        this.cullDistance = cullDistance;
-        this.packVoxelizes = packVoxelizes;
-        this.hardwareFiltering = hardwareFiltering.clone();
-        this.mipmapDepth = mipmapDepth.clone();
-        this.nearestDepth = nearestDepth.clone();
-        this.separateHardwareSamplers = separateHardwareSamplers;
-
-        this.depthTexture = createShadowDepthTexture(resolution, this.hardwareFiltering[0],
-                this.mipmapDepth[0], this.nearestDepth[0], this.separateHardwareSamplers);
-        this.depthTextureNoTranslucents = createShadowDepthTexture(resolution, this.hardwareFiltering[1],
-                this.mipmapDepth[1], this.nearestDepth[1], this.separateHardwareSamplers);
-
-        // shadowcolor0/1 always exist, as OptiFine's do; the rest only when something references them
-        this.colorSettings = colorSettings;
-        this.colorTextures = new int[colorSettings.count()];
-        this.framebuffer = new UmbraFramebuffer();
-        int allocated = 0;
-        for (int index = 0; index < this.colorTextures.length; index++) {
-            if (index < ShadowColorSettings.OPTIFINE_BUFFERS || usedColorBuffers.get(index)) {
-                this.colorTextures[index] = createShadowColorTexture(resolution, colorSettings, index);
-                this.framebuffer.addColorAttachment(index, this.colorTextures[index]);
-                allocated++;
-            }
-        }
-        this.allocatedColorBuffers = new int[allocated];
-        for (int index = 0, slot = 0; index < this.colorTextures.length; index++) {
-            if (this.colorTextures[index] != 0) {
-                this.allocatedColorBuffers[slot++] = index;
-            }
-        }
-        this.framebuffer.addDepthAttachment(this.depthTexture.getTextureId());
-        this.framebuffer.drawBuffers(this.allocatedColorBuffers);
-
-        // The shadow program's DRAWBUFFERS; an index naming a buffer that does not exist would reference a missing image, so it is dropped
-        this.shadowDrawBuffers = shadowSource.getFragmentSource()
-                .map(source -> DrawBuffers.parseActive(source, shaderDefines))
-                .map(buffers -> keepAllocated(DrawBuffers.sanitize(buffers, this.colorTextures.length)))
-                .orElse(new int[]{0});
-
-        // shadow_entities / shadow_block, both falling back to plain `shadow` through the ProgramSet chain; for a pack shipping only `shadow` these are the identical ProgramSource and the second compile is skipped
-        ProgramSource entitiesSource = shadowEntitiesSource != null ? shadowEntitiesSource : shadowSource;
-        ProgramSource blockSource = shadowBlockSource != null ? shadowBlockSource : shadowSource;
-
-        this.entityShadowProgram = GbufferPrograms.compile(entitiesSource, shaderDefines, samplerUnits);
-        if (this.entityShadowProgram == null) {
-            LOGGER.warn("[Umbra] Fixed-function shadow program failed to compile; entity shadows disabled");
-        }
-        this.blockEntityProgramShared = blockSource == entitiesSource;
-        this.blockEntityShadowProgram = this.blockEntityProgramShared
-                ? this.entityShadowProgram
-                : GbufferPrograms.compile(blockSource, shaderDefines, samplerUnits);
-    }
-
-    private static DepthTexture createShadowDepthTexture(int resolution, boolean hardwareFiltering,
-                                                         boolean mipmap, boolean nearest,
-                                                         boolean separateHardwareSamplers) {
-        DepthTexture texture = new DepthTexture(resolution, resolution,
-                GL14.GL_DEPTH_COMPONENT24, GL11.GL_DEPTH_COMPONENT, GL11.GL_FLOAT);
-        // Configure on a scratch unit: a raw bind on the selected unit 0 changes the real binding without updating GlStateManager's slot record, and the trailing unbind leaves the cache asserting a texture no longer there (see GlTextureUnits)
-        GlTextureUnits.selectScratch(TEXTURE_SETUP_UNIT);
+                               float intervalSize, Float shadowMapFov, float sunPathRotation,
+                               ProgramSource shadowSource,
+                               ProgramSource shadowEntitiesSource, ProgramSource shadowBlockSource,
+                               Map<String, Integer> samplerUnits,
+                               Map<String, String> shaderDefines, boolean[] hardwareFiltering,
+                               boolean[] mipmapDepth, boolean[] nearestDepth, boolean separateHardwareSamplers,
+                               Runnable shaderPackResourceRestorer, ShadowContentSettings content,
+                               float voxelDistance, float cullDistance, boolean packVoxelizes,
+                               ShadowColorSettings colorSettings, BitSet usedColorBuffers) {
+        Objects.requireNonNull(shadowSource, "shadowSource");
+        Objects.requireNonNull(samplerUnits, "samplerUnits");
+        this.shaderPackResourceRestorer = Objects.requireNonNull(shaderPackResourceRestorer, "shaderPackResourceRestorer");
+        this.content = Objects.requireNonNull(content, "content");
+        this.camera = new ShadowCamera(shadowDistance, nearPlane, farPlane, intervalSize, shadowMapFov, sunPathRotation);
+        this.terrain = new ShadowTerrain(content, cullDistance, voxelDistance, packVoxelizes, sunPathRotation);
+        this.targets = new ShadowTargets(resolution, hardwareFiltering, mipmapDepth, nearestDepth,
+                separateHardwareSamplers, colorSettings, usedColorBuffers);
         try {
-            LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, texture.getTextureId());
-            if (hardwareFiltering && !separateHardwareSamplers) {
-                LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL14.GL_TEXTURE_COMPARE_MODE, GL30.GL_COMPARE_REF_TO_TEXTURE);
-            }
-            LWJGL.glTexParameteriv(GL11.GL_TEXTURE_2D, GL33.GL_TEXTURE_SWIZZLE_RGBA,
-                    new int[]{GL11.GL_RED, GL11.GL_RED, GL11.GL_RED, GL11.GL_ONE});
-            LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
-            LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
-            LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, shadowMinFilter(mipmap, nearest));
-            LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER,
-                    nearest ? GL11.GL_NEAREST : GL11.GL_LINEAR);
-            LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, 0);
-        } finally {
-            GlTextureUnits.releaseScratch();
+            this.drawBuffers = this.targets.drawMask(shadowSource.getFragmentSource()
+                    .map(source -> DrawBuffers.parseActive(source, shaderDefines))
+                    .orElse(null));
+            this.programs = new ShadowCasterPrograms(shadowSource, shadowEntitiesSource, shadowBlockSource,
+                    source -> GbufferPrograms.compile(source, shaderDefines, samplerUnits), shaderPackResourceRestorer);
+        } catch (Throwable failure) {
+            this.targets.destroy();
+            throw failure;
         }
-        return texture;
+        this.casters = new ShadowCasters(this.programs, content, shadowDistance);
     }
 
-    // GL filter constant from the pack's mipmap and nearest flags
-    private static int shadowMinFilter(boolean mipmap, boolean nearest) {
-        if (mipmap) {
-            return nearest ? GL11.GL_NEAREST_MIPMAP_NEAREST : GL11.GL_LINEAR_MIPMAP_LINEAR;
-        }
-        return nearest ? GL11.GL_NEAREST : GL11.GL_LINEAR;
-    }
-
-    // Drops draw buffers naming a shadowcolor that was never allocated, keeping shadowcolor0 when nothing is left
-    private int[] keepAllocated(int[] drawBuffers) {
-        int[] kept = new int[drawBuffers.length];
-        int count = 0;
-        for (int buffer : drawBuffers) {
-            if (this.colorTextures[buffer] != 0) {
-                kept[count++] = buffer;
-            }
-        }
-        return count == 0 ? new int[]{0} : Arrays.copyOf(kept, count);
-    }
-
-    // One shadowcolor texture at the shadow resolution in the pack's format, clamped at the edges like Iris's render targets
-    private static int createShadowColorTexture(int resolution, ShadowColorSettings settings, int index) {
-        int texture = LWJGL.glGenTextures();
-        InternalTextureFormat format = settings.format(index);
-        // Scratch unit, for the same reason as createShadowDepthTexture.
-        GlTextureUnits.selectScratch(TEXTURE_SETUP_UNIT);
-        try {
-            LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, texture);
-            boolean nearest = settings.nearest(index);
-            LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, shadowMinFilter(settings.mipmap(index), nearest));
-            LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, nearest ? GL11.GL_NEAREST : GL11.GL_LINEAR);
-            LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
-            LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
-            LWJGL.glTexImage2D(GL11.GL_TEXTURE_2D, 0, format.getInternalFormat(), resolution, resolution, 0,
-                    format.getPixelFormat(), format.getPixelType(), (ByteBuffer) null);
-            LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, 0);
-        } finally {
-            GlTextureUnits.releaseScratch();
-        }
-        return texture;
-    }
-
-    // Whether the shadow pass is currently rendering, checked by mixins that must skip work
+    // Returns whether the shadow pass is drawing
     public static boolean isShadowPass() {
         return shadowPassActive;
     }
 
-    // shadowtex0
+    // Returns the shadowtex0 texture name and throws once destroyed
     public int getDepthTextureId() {
-        return this.depthTexture.getTextureId();
+        return this.targets.depthTextureId();
     }
 
-    // shadowtex1
+    // Returns the shadowtex1 texture name and throws once destroyed
     public int getDepthTextureNoTranslucentsId() {
-        return this.depthTextureNoTranslucents.getTextureId();
+        return this.targets.depthNoTranslucentsTextureId();
     }
 
-    // shadowcolor<index>, or 0 when the pack never touches that buffer
+    // Returns the texture name of a shadow colour buffer or 0 for a buffer that does not exist and throws once destroyed
     public int getColorTextureId(int index) {
-        return index < this.colorTextures.length ? this.colorTextures[index] : 0;
+        return this.targets.colorTextureId(index);
     }
 
-    // The internal format of shadowcolor<index>, which glBindImageTexture needs to expose it as shadowcolorimg<index>
+    // Returns the internal format of a shadow colour buffer or 0 for an index outside the addressable buffers
     public int getColorInternalFormat(int index) {
-        return this.colorSettings.format(index).getInternalFormat();
+        return this.targets.colorInternalFormat(index);
     }
 
-    // How many shadowcolor buffers the pack may address: two, or eight under HIGHER_SHADOWCOLOR
+    // Returns how many shadow colour buffers the pack may address
     public int getColorBufferCount() {
-        return this.colorTextures.length;
+        return this.targets.colorBufferCount();
     }
 
-    // Shadow map size from the pack
+    // Returns the width and height of the shadow map in pixels
     public int getResolution() {
-        return this.resolution;
+        return this.targets.resolution();
     }
 
-    // The shadow framebuffer (every shadowcolor + shadowtex0), for the Distant Horizons compat to draw LODs into during the pass
+    // Returns the framebuffer with every shadow colour buffer and shadowtex0 attached
     public UmbraFramebuffer getFramebuffer() {
-        return this.framebuffer;
+        return this.targets.framebuffer();
     }
 
-    // The section filter of the current (or last) shadow pass, camera-relative; the DH compat culls its LOD columns with the same one
-    public com.bdmajora.impetus.engine.impl.render.viewport.frustum.Frustum getCullingFrustum() {
-        return this.cullingFrustum;
+    // Returns the camera relative section filter of the latest pass or null before the first one
+    public Frustum getCullingFrustum() {
+        return this.terrain.cullingFrustum();
     }
 
-    // The player's view as RenderGlobal's terrain setup builds it (feet position plus third-person offset, frustum.culling honoured), but from Umbra's captured matrices, since vanilla's shared clipping helper is re-initialised later in the frame while an async search may still be reading it
-    static com.bdmajora.impetus.engine.impl.render.viewport.Viewport playerViewport(Vector3d camera) {
-        Vector3d position = new Vector3d(camera).add(CameraHelper.getThirdPersonOffset());
-        UmbraRenderingPipeline pipeline = com.bdmajora.impetus.umbra.Umbra.getRenderingPipeline();
-        if (pipeline != null && pipeline.shouldDisableFrustumCulling()) {
-            return new com.bdmajora.impetus.engine.impl.render.viewport.Viewport((minX, minY, minZ, maxX, maxY, maxZ) -> true, position);
-        }
-        FrustumIntersection frustum = new FrustumIntersection().set(
-                new Matrix4f(CapturedRenderingState.INSTANCE.getGbufferProjection()).mul(CapturedRenderingState.INSTANCE.getGbufferModelView()), true);
-        return new com.bdmajora.impetus.engine.impl.render.viewport.Viewport(frustum::testAab, position);
+    // Returns the live shadow model view matrix
+    public Matrix4f getShadowModelView() {
+        return this.camera.modelView();
     }
 
-    // Whether the active pack draws Distant Horizons LODs into the shadow map this pass
-    private static boolean dhShadowsActive() {
-        UmbraRenderingPipeline pipeline = com.bdmajora.impetus.umbra.Umbra.getRenderingPipeline();
-        return pipeline != null && pipeline.getDhCompat() != null && pipeline.getDhCompat().shouldRenderShadows()
-                && DhCompat.hasRenderingEnabled();
+    // Returns the live shadow projection matrix
+    public Matrix4f getShadowProjection() {
+        return this.camera.projection();
     }
 
-    // Draws DH's LODs into the shadow map through DH's own renderer, restoring the pass's GL state it changes: DH enables face culling and (for water) blending, binds its VAO/buffers and a program, and rebinds texture units 0 and 1
-    private void renderDhShadows(boolean translucent) {
-        if (!dhShadowsActive()) {
-            return;
-        }
-        try {
-            if (translucent) {
-                DhCompat.renderDeferredLods();
-            } else {
-                DhCompat.renderShadowSolid();
-            }
-        } finally {
-            LWJGL.glUseProgram(0);
-            LWJGL.glBindVertexArray(0);
-            LWJGL.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
-            LWJGL.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
-            this.framebuffer.bind();
-            LWJGL.glViewport(0, 0, this.resolution, this.resolution);
-            GlStateManager.disableCull();
-            GlStateManager.disableBlend();
-            GlStateManager.depthMask(true);
-            GlStateManager.depthFunc(GL11.GL_LEQUAL);
-            GlTextureUnits.resetToUnit0();
-        }
-    }
-
-    // Renders the shadow map, called right AFTER the camera matrices are captured and BEFORE any gbuffer geometry so the deferred chain samples a finished map; leaves the shadow framebuffer and viewport bound for the caller to rebind
+    // Draws terrain and entities and translucent terrain into the shadow map and leaves the shadow framebuffer bound
     public void render() {
         if (this.failed || this.destroyed) {
             return;
@@ -360,367 +166,100 @@ public class UmbraShadowRenderer {
         if (worldRenderer == null) {
             return;
         }
-
-        computeMatrices();
-        CapturedRenderingState.INSTANCE.setShadowModelView(this.shadowModelView);
-        CapturedRenderingState.INSTANCE.setShadowProjection(this.shadowProjection);
-
-        boolean cullWasEnabled = false;
-        int previousDepthFunc = GL11.GL_LEQUAL;
-        boolean restoreGlState = false;
-
+        shadowPassActive = true;
         try {
-            shadowPassActive = true;
-            Minecraft mc = Minecraft.getMinecraft();
-            this.framebuffer.bind();
-            cullWasEnabled = LWJGL.glGetBoolean(GL_CULL_FACE);
-            previousDepthFunc = LWJGL.glGetInteger(GL_DEPTH_FUNC);
-            restoreGlState = true;
-            LWJGL.glViewport(0, 0, this.resolution, this.resolution);
-            GlStateManager.enableDepth();
-            GlStateManager.depthMask(true);
-            GlStateManager.depthFunc(GL11.GL_LEQUAL);
-            GlStateManager.clearDepth(1.0D);
-            GlStateManager.disableCull();
-            // Each shadowcolor clears to its own colour (white by default, no tint) unless the pack keeps it across frames; GlStateManager keeps the vanilla clear-color cache coherent
-            clearColorBuffers();
-            LWJGL.glClear(GL11.GL_DEPTH_BUFFER_BIT);
-            this.framebuffer.drawBuffers(this.shadowDrawBuffers);
-            // Put the clear colour back immediately: it is GLOBAL, cached by GlStateManager, and vanilla sets it once per frame BEFORE the "frustum" section this hooks, so leaked white survived to the next frame's clear of the DEFAULT framebuffer and flashed whenever the blit was delayed (screenshots); the mixin sets the fog colour just before calling, alpha 0 like vanilla
-            org.joml.Vector3f fog = CapturedRenderingState.INSTANCE.getFogColor();
-            GlStateManager.clearColor(fog.x, fog.y, fog.z, 0.0f);
-
-            GlStateManager.disableBlend();
-            // The shadow program alpha-tests foliage against the block atlas; make sure unit 0 holds it, since this runs before vanilla's own "prepareterrain" bind
-            bindBlockAtlas(mc);
-
-            Vector3d camera = CapturedRenderingState.INSTANCE.getCameraPosition();
-
-            // Umbra `shadow.culling = reversed` parity: build the DEDICATED shadow render list of every built section in range with no frustum or occlusion culling (setupShadowTerrain searches the shadow RenderListManager, isInShadowPass() routes the draws onto it); reusing the culled main lists made cave sections blink in the pack's voxelization and the floodfill strobed forever
-            RenderDevice.enterManagedCode();
-            try {
-                // `shadow.culling`: `off` keeps every loaded section, otherwise a box of the pack's shadowDistance (Umbra BoxCuller), position-only so the section set stays frame-stable; the advanced/safe-zone frustums derive from THIS frame's matrices and are rebuilt every pass. With DH LODs in the map the view frustum takes DH's far plane (Iris does the same), or the LODs past the vanilla far plane would never cast
-                boolean dhShadows = dhShadowsActive();
-                this.cullingFrustum = com.bdmajora.impetus.umbra.pipeline.shadow.ShadowFrustums.create(
-                        this.content.getCulling(), this.cullDistance, this.voxelDistance,
-                        this.packVoxelizes,
-                        Minecraft.getMinecraft().gameSettings.renderDistanceChunks * 16,
-                        this.sunPathRotation,
-                        dhShadows ? DhCompat.getProjection() : CapturedRenderingState.INSTANCE.getGbufferProjection());
-                // This pass precedes the terrain pass, so it also runs the player-view search, which takes the player's view rather than the sun's box
-                worldRenderer.setupShadowTerrain(
-                        playerViewport(camera),
-                        new com.bdmajora.impetus.engine.impl.render.viewport.Viewport(
-                                this.cullingFrustum,
-                                new Vector3d(camera.x, camera.y, camera.z)),
-                        ImpetusWorldRenderer.captureCameraState(mc.getRenderPartialTicks()),
-                        ++this.shadowListFrame, mc.player != null && mc.player.isSpectator());
-            } finally {
-                RenderDevice.exitManagedCode();
-            }
-
-            // 1) Solid + cutout terrain (Umbra order). Impetus requires draws inside its managed-device scope.
-            if (this.content.shouldRenderTerrain()) {
-                RenderDevice.enterManagedCode();
-                try {
-                    worldRenderer.drawChunkLayer(BlockRenderLayer.SOLID, camera.x, camera.y, camera.z);
-                    worldRenderer.drawChunkLayer(BlockRenderLayer.CUTOUT_MIPPED, camera.x, camera.y, camera.z);
-                    worldRenderer.drawChunkLayer(BlockRenderLayer.CUTOUT, camera.x, camera.y, camera.z);
-                } finally {
-                    RenderDevice.exitManagedCode();
-                }
-                // 1b) Distant Horizons' opaque LODs, where Iris's shadow pass reaches them through vanilla's chunk-layer hook
-                renderDhShadows(false);
-            }
-
-            // 2) Entities + block entities, fixed-function under the shadow matrices.
-            renderEntityShadows(mc, camera);
-
-            // 3) shadowtex1 = depth without translucents (Umbra copyPreTranslucentDepth).
-            copyDepthTo(this.depthTextureNoTranslucents);
-
-            // 4) Translucent terrain writes the shadow tint into shadowcolor0/1 and depth into shadowtex0, UNBLENDED like OptiFine (disableBlend before the draw) and Umbra: blending mixed every texel toward the white clear weighted by Complementary's alpha, which is its light-shaft HEIGHT not opacity, and pow2(rgb * 4.0) then went ~16x overbright wherever glass shadowed ground (8.4% of the map), the "sunlight leaking through terrain"
-            if (this.content.shouldRenderTranslucent() && this.content.shouldRenderTerrain()) {
-                bindBlockAtlas(mc);
-                GlStateManager.disableBlend();
-                RenderDevice.enterManagedCode();
-                try {
-                    worldRenderer.drawChunkLayer(BlockRenderLayer.TRANSLUCENT, camera.x, camera.y, camera.z);
-                } finally {
-                    RenderDevice.exitManagedCode();
-                }
-                GlStateManager.disableBlend();
-                // 4b) DH's deferred translucent LODs (water) into shadowtex0/shadowcolor, unblended like the terrain above
-                renderDhShadows(true);
-            }
-            generateMipmaps();
-        } catch (Throwable t) {
-            // The first frames can race renderer setup (no viewport or render lists yet), so only give up for good after repeated failures
-            if (++this.failureCount >= 3) {
+            drawPass(worldRenderer);
+        } catch (VirtualMachineError error) {
+            throw error;
+        } catch (Throwable failure) {
+            if (++this.failureCount >= MAX_FAILURES) {
                 this.failed = true;
-                LOGGER.error("[Umbra] Shadow pass failed repeatedly; disabling shadows for this pack", t);
+                LOGGER.error("[Umbra] Shadow pass failed repeatedly; disabling shadows for this pack", failure);
             }
         } finally {
-            if (restoreGlState) {
-                if (cullWasEnabled) {
-                    GlStateManager.enableCull();
-                } else {
-                    GlStateManager.disableCull();
-                }
-                GlStateManager.depthFunc(previousDepthFunc);
-                GlStateManager.depthMask(true);
-            }
+            this.passState.restore();
             shadowPassActive = false;
         }
     }
 
-    // Clears every allocated shadowcolor the pack wants cleared, one at a time since each has its own colour; integer formats go through glClearTexImage (GL 4.4), as a float clear colour is undefined for them
-    private void clearColorBuffers() {
-        for (int index : this.allocatedColorBuffers) {
-            if (!this.colorSettings.clear(index)) {
-                continue;
-            }
-            float[] color = this.colorSettings.clearColor(index);
-            InternalTextureFormat format = this.colorSettings.format(index);
+    // Runs every stage of one pass in order
+    private void drawPass(ImpetusWorldRenderer worldRenderer) {
+        CapturedRenderingState state = CapturedRenderingState.INSTANCE;
+        Vector3d cameraPosition = state.getCameraPosition();
+        this.camera.update(CelestialUniforms.getShadowAngle(), cameraPosition);
+        state.setShadowModelView(this.camera.modelView());
+        state.setShadowProjection(this.camera.projection());
+        Minecraft mc = Minecraft.getMinecraft();
 
-            if (format.isInteger() && LWJGL.isOpenGLVersionSupported(4, 4)) {
-                ByteBuffer data = ByteBuffer.allocateDirect(16).order(ByteOrder.nativeOrder());
-                for (float component : color) {
-                    data.putInt((int) component);
-                }
-                data.flip();
-                LWJGL.glClearTexImage(this.colorTextures[index], 0, format.getPixelFormat(), GL11.GL_INT, data);
-                continue;
-            }
-
-            this.framebuffer.drawBuffers(new int[]{index});
-            GlStateManager.clearColor(color[0], color[1], color[2], color[3]);
-            LWJGL.glClear(GL11.GL_COLOR_BUFFER_BIT);
-        }
-    }
-
-    // Terrain in the shadow pass still samples the atlas for cutouts
-    private static void bindBlockAtlas(Minecraft mc) {
-        mc.getTextureManager().bindTexture(net.minecraft.client.renderer.texture.TextureMap.LOCATION_BLOCKS_TEXTURE);
-    }
-
-    // Mips on the depth and colour textures the pack asked for
-    private void generateMipmaps() {
-        generateDepthMipmap(this.depthTexture, this.mipmapDepth[0], this.nearestDepth[0]);
-        generateDepthMipmap(this.depthTextureNoTranslucents, this.mipmapDepth[1], this.nearestDepth[1]);
-        for (int index : this.allocatedColorBuffers) {
-            if (this.colorSettings.mipmap(index)) {
-                GlTextureUnits.selectScratch(TEXTURE_SETUP_UNIT);
-                LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, this.colorTextures[index]);
-                LWJGL.glGenerateMipmap(GL11.GL_TEXTURE_2D);
-                LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, 0);
-            }
-        }
-        GlTextureUnits.resetToUnit0();
-        this.shaderPackResourceRestorer.run();
-    }
-
-    // One depth texture's mip chain and filter
-    private static void generateDepthMipmap(DepthTexture texture, boolean mipmap, boolean nearest) {
-        if (!mipmap) {
-            return;
-        }
-        GlTextureUnits.selectScratch(TEXTURE_SETUP_UNIT);
-        LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, texture.getTextureId());
-        LWJGL.glGenerateMipmap(GL11.GL_TEXTURE_2D);
-        LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, shadowMinFilter(true, nearest));
-        LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, 0);
-    }
-
-    // Binds one fixed-function shadow program and refreshes its uniforms; the resource restorer runs on BOTH sides since binding re-points the sampler units and the entity renderers in between rebind textures, and a null entry falls back to the entity program rather than leaving an unrelated one bound
-    private void bindShadowGeometryProgram(GbufferPrograms.Entry program) {
-        GbufferPrograms.Entry target = program != null ? program : this.entityShadowProgram;
-        if (target == null) {
-            return;
-        }
-        this.shaderPackResourceRestorer.run();
-        target.getProgram().getProgram().bind();
-        this.shaderPackResourceRestorer.run();
-        target.getUniforms().update();
-    }
-
-    // Renders entities and block entities into the shadow map like OptiFine: fixed-function geometry under the untransformed shadow program, shadow matrices on the fixed-function stack, render origin at the camera to match the snapped model-view; culling is a plain horizontal box like OptiFine's
-    private void renderEntityShadows(Minecraft mc, Vector3d camera) {
-        if (this.entityShadowProgram == null) {
-            return;
-        }
-        if (!this.content.shouldRenderEntities() && !this.content.shouldRenderPlayer()
-                && !this.content.shouldRenderAnyBlockEntities()) {
-            return;
-        }
-        World world = mc.world;
-        Entity viewEntity = mc.getRenderViewEntity();
-        if (world == null || viewEntity == null) {
-            return;
-        }
-        float partialTicks = CapturedRenderingState.INSTANCE.getTickDelta();
-        double cullRange = this.halfPlaneLength + 16.0;
-
-        // FF matrix stack <- shadow matrices (entities/TESRs draw through gl_ModelViewProjectionMatrix).
-        GlStateManager.matrixMode(GL_PROJECTION_MODE);
-        GlStateManager.pushMatrix();
-        loadMatrix(this.shadowProjection);
-        GlStateManager.matrixMode(GL_MODELVIEW_MODE);
-        GlStateManager.pushMatrix();
-        loadMatrix(this.shadowModelView);
-
+        this.targets.bind();
+        this.passState.save();
+        ShadowPassState.prepare();
         try {
-            // Anchor the render origin at the interpolated camera position the shadow model-view was built around; both dispatchers cache it, and vanilla re-caches for the main pass right after
-            mc.getRenderManager().cacheActiveRenderInfo(world, mc.fontRenderer, viewEntity, mc.pointedEntity,
-                    mc.gameSettings, partialTicks);
-            mc.getRenderManager().setRenderPosition(camera.x, camera.y, camera.z);
-            TileEntityRendererDispatcher.instance.prepare(world, mc.getTextureManager(), mc.fontRenderer,
-                    viewEntity, mc.objectMouseOver, partialTicks);
+            this.targets.clear(this.drawBuffers);
+        } finally {
+            // Puts back the frame clear colour with alpha 0
+            Vector3f fog = state.getFogColor();
+            GlStateManager.clearColor(fog.x, fog.y, fog.z, 0.0f);
+        }
+        GlStateManager.disableBlend();
+        bindBlockAtlas(mc);
 
-            bindShadowGeometryProgram(this.entityShadowProgram);
-
-            // Entities and TESRs draw fixed-function straight after shadow terrain rendered from its own VAO; hand the vertex pipeline back clean (see resetVanillaVertexArrayState), especially since the player model's display lists first compile here and bake the state for the session
-            GlState.resetVanillaVertexArrayState();
-
-            if (this.content.shouldRenderEntities() || this.content.shouldRenderPlayer()) {
-                bindShadowGeometryProgram(this.entityShadowProgram);
-                for (Entity entity : world.loadedEntityList) {
-                    if (entity.isDead
-                            || Math.abs(entity.posX - camera.x) > cullRange
-                            || Math.abs(entity.posZ - camera.z) > cullRange) {
-                        continue;
-                    }
-                    // shadowPlayer and shadowEntities are independent switches, so the player is filtered separately.
-                    boolean isPlayer = entity instanceof net.minecraft.entity.player.EntityPlayer;
-                    if (isPlayer ? !this.content.shouldRenderPlayer() : !this.content.shouldRenderEntities()) {
-                        continue;
-                    }
-                    mc.getRenderManager().renderEntityStatic(entity, partialTicks, false);
-                }
-            }
-
-            if (this.content.shouldRenderAnyBlockEntities()) {
-                // Umbra draws block entities in the shadow pass under shadow_block, not the entity program; with neither shipped this is the same object and the rebind is a no-op
-                bindShadowGeometryProgram(this.blockEntityShadowProgram);
-                boolean lightOnly = this.content.shouldRenderLightBlockEntitiesOnly();
-                for (TileEntity tileEntity : world.loadedTileEntityList) {
-                    if (TileEntityRendererDispatcher.instance.getRenderer(tileEntity) == null) {
-                        continue;
-                    }
-                    BlockPos pos = tileEntity.getPos();
-                    if (Math.abs(pos.getX() - camera.x) > cullRange || Math.abs(pos.getZ() - camera.z) > cullRange) {
-                        continue;
-                    }
-                    // shadowLightBlockEntities without shadowBlockEntities: only emitters, so a voxel-lighting pack sees light sources without paying for every chest and sign
-                    if (lightOnly && tileEntity.getBlockType().getLightValue(
-                            world.getBlockState(pos), world, pos) <= 0) {
-                        continue;
-                    }
-                    TileEntityRendererDispatcher.instance.render(tileEntity, partialTicks, -1);
-                }
+        boolean terrainEnabled = this.content.shouldRenderTerrain();
+        boolean dhShadows = DhShadowLods.active();
+        RenderDevice.enterManagedCode();
+        try {
+            this.terrain.select(worldRenderer, mc, cameraPosition,
+                    dhShadows ? DhCompat.getProjection() : state.getGbufferProjection());
+            if (terrainEnabled) {
+                this.terrain.drawOpaque(worldRenderer, cameraPosition);
             }
         } finally {
-            LWJGL.glUseProgram(0);
-            GlStateManager.matrixMode(GL_PROJECTION_MODE);
-            GlStateManager.popMatrix();
-            GlStateManager.matrixMode(GL_MODELVIEW_MODE);
-            GlStateManager.popMatrix();
-            // Entity/TESR rendering rebinds textures and toggles state; restore what the terrain layers assume.
-            GlStateManager.disableBlend();
-            GlStateManager.enableDepth();
-            GlStateManager.depthMask(true);
+            RenderDevice.exitManagedCode();
         }
-    }
+        if (terrainEnabled && dhShadows) {
+            DhShadowLods.render(false, this.targets);
+        }
 
-    // Uploads a JOML matrix into the fixed-function stack
-    private void loadMatrix(Matrix4f matrix) {
-        matrix.get(this.matrixBuffer);
-        GlStateManager.loadIdentity();
-        GlStateManager.multMatrix(this.matrixBuffer);
-    }
+        this.casters.render(mc, cameraPosition, this.camera.projection(), this.camera.modelView(), state.getTickDelta());
 
-    // Copies the shadow framebuffer's depth into destination; requires the shadow FBO bound as this pass's framebuffer, making it a framebuffer read rather than a texture blit
-    private void copyDepthTo(DepthTexture destination) {
-        GlTextureUnits.selectScratch(TEXTURE_SETUP_UNIT);
-        LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, destination.getTextureId());
-        LWJGL.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, 0, 0, this.resolution, this.resolution);
-        LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, 0);
-        GlTextureUnits.resetToUnit0();
-        // Unit 31 can belong to a custom texture or image sampler on 32-unit drivers; Umbra rebinds per program use, so restore before translucent shadow terrain continues
+        this.targets.copyDepthWithoutTranslucents();
+        this.shaderPackResourceRestorer.run();
+
+        // Translucent casters write tint and depth without blending
+        if (terrainEnabled && this.content.shouldRenderTranslucent()) {
+            bindBlockAtlas(mc);
+            GlStateManager.disableBlend();
+            RenderDevice.enterManagedCode();
+            try {
+                this.terrain.drawTranslucent(worldRenderer, cameraPosition);
+            } finally {
+                RenderDevice.exitManagedCode();
+            }
+            GlStateManager.disableBlend();
+            if (dhShadows) {
+                DhShadowLods.render(true, this.targets);
+            }
+        }
+
+        this.targets.generateMipmaps();
         this.shaderPackResourceRestorer.run();
     }
 
-    // The shadow camera, a verbatim port of Iris's ShadowMatrices (baseline model-view, snapModelViewToGrid, ortho); the GRID SNAP is what matters, since the previous hand-rolled snap omitted the half-cell centring and had the sign backwards, which made shadows flicker
-    private void computeMatrices() {
-        if (this.shadowMapFov != null) {
-            // ShadowMatrices.createPerspectiveMatrix(fov).
-            float yScale = (float) (1.0f / Math.tan(Math.toRadians(this.shadowMapFov) * 0.5f));
-            this.shadowProjection.set(
-                    yScale, 0.0f, 0.0f, 0.0f,
-                    0.0f, yScale, 0.0f, 0.0f,
-                    0.0f, 0.0f, (this.farPlane + this.nearPlane) / (this.nearPlane - this.farPlane), -1.0f,
-                    0.0f, 0.0f, 2.0f * this.farPlane * this.nearPlane / (this.nearPlane - this.farPlane), 1.0f);
-        } else {
-            // ShadowMatrices.createOrthoMatrix(halfPlaneLength, nearPlane, farPlane).
-            this.shadowProjection.identity().setOrtho(
-                    -this.halfPlaneLength, this.halfPlaneLength,
-                    -this.halfPlaneLength, this.halfPlaneLength,
-                    this.nearPlane, this.farPlane);
-        }
-
-        // ---- createBaselineModelViewMatrix(target, shadowAngle, sunPathRotation) ----
-        float shadowAngle = CelestialUniforms.getShadowAngle();
-        float skyAngle;
-        if (shadowAngle < 0.25f) {
-            skyAngle = shadowAngle + 0.75f;
-        } else {
-            skyAngle = shadowAngle - 0.25f;
-        }
-
-        this.shadowModelView.identity()
-                .rotateX((float) Math.toRadians(90.0f))
-                .rotateZ((float) Math.toRadians(skyAngle * -360.0f))
-                .rotateX((float) Math.toRadians(this.sunPathRotation));
-
-        // ---- snapModelViewToGrid(target, intervalSize, cameraX, cameraY, cameraZ) ----
-        Vector3d camera = CapturedRenderingState.INSTANCE.getCameraPosition();
-        if (Math.abs(this.intervalSize) != 0.0f) {
-            float halfIntervalSize = this.intervalSize / 2.0f;
-            float offsetX = (float) camera.x % this.intervalSize - halfIntervalSize;
-            float offsetY = (float) camera.y % this.intervalSize - halfIntervalSize;
-            float offsetZ = (float) camera.z % this.intervalSize - halfIntervalSize;
-            this.shadowModelView.translate(offsetX, offsetY, offsetZ);
-        }
+    // Binds the block atlas on the active unit
+    private static void bindBlockAtlas(Minecraft mc) {
+        mc.getTextureManager().bindTexture(TextureMap.LOCATION_BLOCKS_TEXTURE);
     }
 
-    // For the shadow matrix uniforms
-    public Matrix4f getShadowModelView() {
-        return this.shadowModelView;
-    }
-
-    // For the shadow matrix uniforms
-    public Matrix4f getShadowProjection() {
-        return this.shadowProjection;
-    }
-
-    // Frees the FBO and textures
+    // Frees the shadow targets and the caster programs once
     public void destroy() {
         if (this.destroyed) {
             return;
         }
         this.destroyed = true;
-        this.framebuffer.destroy();
-        this.depthTexture.destroy();
-        this.depthTextureNoTranslucents.destroy();
-        for (int index : this.allocatedColorBuffers) {
-            LWJGL.glDeleteTextures(this.colorTextures[index]);
-        }
-        // Only when it is genuinely a second program: with no shadow_block this is the same object as entityShadowProgram, and destroying it would double-free
-        if (!this.blockEntityProgramShared && this.blockEntityShadowProgram != null) {
-            this.blockEntityShadowProgram.getProgram().destroy();
-        }
-        if (this.entityShadowProgram != null) {
-            this.entityShadowProgram.getProgram().destroy();
+        try {
+            this.targets.destroy();
+        } finally {
+            this.programs.destroy();
         }
     }
 }

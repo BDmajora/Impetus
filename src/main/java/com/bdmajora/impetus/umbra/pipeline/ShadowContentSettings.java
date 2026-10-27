@@ -2,26 +2,36 @@ package com.bdmajora.impetus.umbra.pipeline;
 
 import com.bdmajora.impetus.umbra.shaderpack.ShaderProperties;
 
-// What the shadow pass may draw, from shadowTerrain, shadowEntities and similar directives; ignoring them costs frame time and shows shadows the pack omitted, defaults follow OptiFine
+import java.util.Objects;
+
+// What the shadow pass may draw from the shadowTerrain and shadowEntities and related directives with OptiFine defaults
 public final class ShadowContentSettings {
-    // shadow.culling — how the shadow pass decides which chunks to walk
+    // Section culling mode of the shadow pass from the shadow.culling directive
     public enum Culling {
-        // Cull against the shadow frustum only
+        // Mode that culls against the shadow frustum
         ON,
-        // No culling at all: every chunk in range is drawn
+        // Mode that draws every section in range
         OFF,
-        // Iris's AdvancedShadowCullingFrustum: keeps geometry BETWEEN the light and the view frustum that a plain shadow-frustum test drops, so an off-screen object still casts into the visible scene
+        // Mode that always draws sections near the camera and culls the rest against the shadow frustum
         REVERSED
     }
 
+    // Switch for terrain shadows
     private final boolean terrain;
+    // Switch for translucent terrain shadows
     private final boolean translucent;
+    // Switch for shadows of entities other than players
     private final boolean entities;
+    // Switch for shadows of every block entity
     private final boolean blockEntities;
+    // Switch for shadows of light emitting block entities
     private final boolean lightBlockEntities;
+    // Switch for player shadows
     private final boolean player;
+    // Section culling mode
     private final Culling culling;
 
+    // Creates settings from each switch and the culling mode
     private ShadowContentSettings(boolean terrain, boolean translucent, boolean entities, boolean blockEntities,
                                   boolean lightBlockEntities, boolean player, Culling culling) {
         this.terrain = terrain;
@@ -33,13 +43,14 @@ public final class ShadowContentSettings {
         this.culling = culling;
     }
 
-    // Everything rendered, no culling override
+    // Returns settings that draw everything except the light emitter subset with culling on
     public static ShadowContentSettings defaults() {
         return new ShadowContentSettings(true, true, true, true, false, true, Culling.ON);
     }
 
-    // Reads the shadow.* content directives
+    // Reads the shadow content directives and falls back to the defaults for each one that is missing
     public static ShadowContentSettings from(ShaderProperties properties) {
+        Objects.requireNonNull(properties, "properties");
         return new ShadowContentSettings(
                 properties.getShadowTerrain().orElse(Boolean.TRUE),
                 properties.getShadowTranslucent().orElse(Boolean.TRUE),
@@ -50,63 +61,59 @@ public final class ShadowContentSettings {
                 parseCulling(properties.getShadowCulling().orElse(null)));
     }
 
-    // true, false or reversed
+    // Returns OFF for false or off and REVERSED for reversed and ON for anything else including null
     private static Culling parseCulling(String value) {
         if (value == null) {
             return Culling.ON;
         }
-        switch (value) {
-            case "false":
-            case "off":
-                return Culling.OFF;
-            case "reversed":
-                return Culling.REVERSED;
-            default:
-                return Culling.ON;
-        }
+        return switch (value) {
+            case "false", "off" -> Culling.OFF;
+            case "reversed" -> Culling.REVERSED;
+            default -> Culling.ON;
+        };
     }
 
-    // shadowTerrain
+    // Returns whether terrain casts shadows
     public boolean shouldRenderTerrain() {
         return this.terrain;
     }
 
-    // shadowTranslucent
+    // Returns whether translucent terrain casts shadows
     public boolean shouldRenderTranslucent() {
         return this.translucent;
     }
 
-    // shadowEntities
+    // Returns whether entities other than players cast shadows
     public boolean shouldRenderEntities() {
         return this.entities;
     }
 
-    // True when the shadow pass draws any block entity at all (all, or the light-emitting subset), so the caller can skip the whole walk otherwise
+    // Returns whether any block entity casts shadows
     public boolean shouldRenderAnyBlockEntities() {
         return this.blockEntities || this.lightBlockEntities;
     }
 
-    // shadowBlockEntities
+    // Returns whether every block entity casts shadows
     public boolean shouldRenderBlockEntities() {
         return this.blockEntities;
     }
 
-    // shadowLightBlockEntities, which restricts to emissive ones
+    // Returns whether only light emitting block entities cast shadows
     public boolean shouldRenderLightBlockEntitiesOnly() {
         return !this.blockEntities && this.lightBlockEntities;
     }
 
-    // shadowPlayer
+    // Returns whether players cast shadows
     public boolean shouldRenderPlayer() {
         return this.player;
     }
 
-    // Frustum culling mode for the shadow pass
+    // Returns the section culling mode
     public Culling getCulling() {
         return this.culling;
     }
 
-    // For the startup log
+    // Returns every switch and the culling mode as one line of text
     @Override
     public String toString() {
         return "terrain=" + this.terrain + ", translucent=" + this.translucent + ", entities=" + this.entities

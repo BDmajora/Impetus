@@ -28,29 +28,29 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 // The GL a rendering test runs against: GL11/13/14 statics mocked, every texture unit and sampler binding modelled whichever path bound it (GlStateManager's cached one or a raw LWJGL call), the bound program tracked for GL_CURRENT_PROGRAM, and a 1.12 client at 320x240
-final class PipelineGl implements AutoCloseable {
-    static final int GL_CURRENT_PROGRAM = 0x8B8D;
-    static final int UNITS = 64;
+public final class PipelineGl implements AutoCloseable {
+    public static final int GL_CURRENT_PROGRAM = 0x8B8D;
+    public static final int UNITS = 64;
 
-    final int[] textures = new int[UNITS];
-    final int[] samplers = new int[UNITS];
-    final Minecraft client;
-    final GameSettings settings;
-    final MockedStatic<GL11> gl11;
-    final MockedStatic<GL13> gl13;
-    final MockedStatic<GL14> gl14;
-    int activeUnit;
-    int program;
+    public final int[] textures = new int[UNITS];
+    public final int[] samplers = new int[UNITS];
+    public final Minecraft client;
+    public final GameSettings settings;
+    public final MockedStatic<GL11> gl11;
+    public final MockedStatic<GL13> gl13;
+    public final MockedStatic<GL14> gl14;
+    public int activeUnit;
+    public int program;
     private final boolean framebufferSupported = OpenGlHelper.framebufferSupported;
     private final int defaultTexUnit = OpenGlHelper.defaultTexUnit;
     private final int lightmapTexUnit = OpenGlHelper.lightmapTexUnit;
 
-    static void bootstrap() {
+    public static void bootstrap() {
         Mc.bootstrap();
         Mc.textures();
     }
 
-    PipelineGl() {
+    public PipelineGl() {
         this.client = Mc.client();
         this.settings = Mc.uninitialized(GameSettings.class);
         this.settings.renderDistanceChunks = 8;
@@ -96,7 +96,7 @@ final class PipelineGl implements AutoCloseable {
     }
 
     // GL_MAX_TEXTURE_IMAGE_UNITS, GL_MAX_DRAW_BUFFERS, GL_MAX_COLOR_ATTACHMENTS, GL_MAX_IMAGE_UNITS
-    void limits(int textureUnits, int drawBuffers, int attachments, int imageUnits) {
+    public void limits(int textureUnits, int drawBuffers, int attachments, int imageUnits) {
         LWJGLService gl = TestGl.gl();
         when(gl.glGetInteger(0x8872)).thenReturn(textureUnits);
         when(gl.glGetInteger(0x8824)).thenReturn(drawBuffers);
@@ -107,12 +107,12 @@ final class PipelineGl implements AutoCloseable {
     }
 
     // Every program declares every uniform and sampler it is offered, at location 1
-    void allUniforms() {
+    public void allUniforms() {
         when(TestGl.gl().glGetUniformLocation(anyInt(), any(CharSequence.class))).thenReturn(1);
     }
 
     // GlStateManager's cache back to "unit 0, nothing bound", matching the modelled GL
-    static void resetStateManager() {
+    public static void resetStateManager() {
         Statics.set(GlStateManager.class, "activeTextureUnit", 0);
         Object[] states = Statics.get(GlStateManager.class, "textureState");
         for (Object state : states) {
@@ -138,13 +138,13 @@ final class PipelineGl implements AutoCloseable {
     }
 
     // What GlStateManager believes is bound on a cached unit
-    static int cachedTexture(int unit) {
+    public static int cachedTexture(int unit) {
         Object[] states = Statics.get(GlStateManager.class, "textureState");
         return Mixins.get(states[unit], "textureName");
     }
 
     // The cached active unit
-    static int cachedUnit() {
+    public static int cachedUnit() {
         return Statics.get(GlStateManager.class, "activeTextureUnit");
     }
 

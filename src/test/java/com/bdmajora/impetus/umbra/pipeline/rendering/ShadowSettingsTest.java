@@ -2,6 +2,7 @@ package com.bdmajora.impetus.umbra.pipeline.rendering;
 
 import com.bdmajora.impetus.umbra.material.WorldRenderingSettings;
 import com.bdmajora.impetus.umbra.pipeline.UmbraShadowRenderer;
+import com.bdmajora.impetus.umbra.pipeline.shadow.ShadowCamera;
 import com.bdmajora.impetus.umbra.shaderpack.ShaderPack;
 import com.bdmajora.impetus.umbra.uniforms.CelestialUniforms;
 import com.bdmajora.testing.TestGl;
@@ -48,6 +49,16 @@ class ShadowSettingsTest {
     private UmbraShadowRenderer create(ShaderPack pack) {
         return ShadowSettings.createRenderer(pack, new PackSources(pack.getProgramSet(), pack.getEnvironmentDefines()),
                 this.samplers, pack.getEnvironmentDefines(), Map.of(), () -> { });
+    }
+
+    // Returns the camera of a renderer
+    private static ShadowCamera camera(UmbraShadowRenderer renderer) {
+        return com.bdmajora.testing.Mixins.get(renderer, "camera");
+    }
+
+    // Returns whether the terrain stage of a renderer treats the pack as voxelizing
+    private static boolean packVoxelizes(UmbraShadowRenderer renderer) {
+        return com.bdmajora.testing.Mixins.<Boolean>get(com.bdmajora.testing.Mixins.get(renderer, "terrain"), "packVoxelizes");
     }
 
     @Test
@@ -136,8 +147,8 @@ class ShadowSettingsTest {
                 "/shadow.fsh", "const float shadowMapFov = 70.0;\nvoid main() {}");
         UmbraShadowRenderer fromConst = create(constFov);
         try {
-            assertEquals(70.0f, com.bdmajora.testing.Mixins.<Float>get(fromConst, "shadowMapFov"));
-            assertFalse(com.bdmajora.testing.Mixins.<Boolean>get(fromConst, "packVoxelizes"));
+            assertEquals(70.0f, camera(fromConst).fov());
+            assertFalse(packVoxelizes(fromConst));
         } finally {
             fromConst.destroy();
         }
@@ -145,8 +156,8 @@ class ShadowSettingsTest {
                 "/shadow.vsh", "#define SHADOWFOV 90.0\n" + VERTEX, "/shadow.fsh", "void main() {}");
         UmbraShadowRenderer fromDefine = create(legacy);
         try {
-            assertEquals(90.0f, com.bdmajora.testing.Mixins.<Float>get(fromDefine, "shadowMapFov"));
-            assertTrue(com.bdmajora.testing.Mixins.<Boolean>get(fromDefine, "packVoxelizes"));
+            assertEquals(90.0f, camera(fromDefine).fov());
+            assertTrue(packVoxelizes(fromDefine));
         } finally {
             fromDefine.destroy();
         }
@@ -164,8 +175,8 @@ class ShadowSettingsTest {
             String[] programs = {"/shadow.vsh", VERTEX, "/shadow.fsh", "void main() {}", "/dh_shadow.vsh", VERTEX, "/dh_shadow.fsh", "void main() {}"};
             UmbraShadowRenderer lod = create(PackSourcesTest.pack(programs));
             try {
-                assertEquals(-512.0f, com.bdmajora.testing.Mixins.<Float>get(lod, "nearPlane"));
-                assertEquals(512.0f, com.bdmajora.testing.Mixins.<Float>get(lod, "farPlane"));
+                assertEquals(-512.0f, camera(lod).nearPlane());
+                assertEquals(512.0f, camera(lod).farPlane());
             } finally {
                 lod.destroy();
             }
@@ -175,13 +186,13 @@ class ShadowSettingsTest {
             System.arraycopy(programs, 0, off, 2, programs.length);
             UmbraShadowRenderer plain = create(PackSourcesTest.pack(off));
             try {
-                assertEquals(UmbraShadowRenderer.DEFAULT_NEAR_PLANE, com.bdmajora.testing.Mixins.<Float>get(plain, "nearPlane"));
+                assertEquals(UmbraShadowRenderer.DEFAULT_NEAR_PLANE, camera(plain).nearPlane());
             } finally {
                 plain.destroy();
             }
             UmbraShadowRenderer noDhProgram = create(PackSourcesTest.pack("/shadow.vsh", VERTEX, "/shadow.fsh", "void main() {}"));
             try {
-                assertEquals(UmbraShadowRenderer.DEFAULT_FAR_PLANE, com.bdmajora.testing.Mixins.<Float>get(noDhProgram, "farPlane"));
+                assertEquals(UmbraShadowRenderer.DEFAULT_FAR_PLANE, camera(noDhProgram).farPlane());
             } finally {
                 noDhProgram.destroy();
             }

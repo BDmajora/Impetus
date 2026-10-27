@@ -32,7 +32,6 @@ import com.bdmajora.testing.TestGl;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.client.multiplayer.WorldClient;
-import net.minecraft.client.renderer.ActiveRenderInfo;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.renderer.RenderGlobal;
 import net.minecraft.client.renderer.entity.RenderManager;
@@ -46,7 +45,6 @@ import net.minecraft.tileentity.TileEntity;
 import net.minecraft.tileentity.TileEntityFurnace;
 import net.minecraft.util.math.BlockPos;
 import org.joml.Matrix4f;
-import org.joml.Vector3d;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -62,7 +60,6 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -573,28 +570,6 @@ class UmbraRenderingPipelineTest {
         when(TestGl.gl().glCheckFramebufferStatus(anyInt())).thenReturn(0);
         assertThrows(IllegalStateException.class, () -> new UmbraRenderingPipeline(pack));
         verify(TestGl.gl(), Mockito.atLeastOnce()).glDeleteSamplers(anyInt());
-    }
-
-    @Test
-    void theShadowPassGivesThePlayerWalkTheCapturedPlayerView() {
-        // Identity matrices make the view the clip cube around the feet, and an identity model-view adds no third-person offset
-        Mixins.set(Umbra.class, "renderingPipeline", null);
-        FloatBuffer modelView = Statics.get(ActiveRenderInfo.class, "MODELVIEW");
-        float[] saved = new float[16];
-        modelView.get(0, saved);
-        modelView.put(0, new float[] {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1});
-        CapturedRenderingState.INSTANCE.setGbufferProjection(new Matrix4f());
-        CapturedRenderingState.INSTANCE.setGbufferModelView(new Matrix4f());
-        try {
-            Viewport view = UmbraShadowRenderer.playerViewport(new Vector3d(100.5, 64, 100.5));
-            assertEquals(6, view.getChunkCoord().x());
-            assertEquals(4, view.getChunkCoord().y());
-            // Doubles pick the min/max overload; six ints would bind to the origin-and-half-size one
-            assertTrue(view.isBoxVisible(100.0, 64.0, 100.0, 101.0, 65.0, 101.0));
-            assertFalse(view.isBoxVisible(110.0, 64.0, 100.0, 111.0, 65.0, 101.0));
-        } finally {
-            modelView.put(0, saved);
-        }
     }
 
     @Test

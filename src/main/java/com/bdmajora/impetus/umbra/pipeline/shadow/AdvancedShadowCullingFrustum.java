@@ -5,162 +5,156 @@ import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
-// A shadow frustum fitted to the view seen from the light: keeps the view frustum's back planes and extrudes edge planes along the light vector; view-dependent, so unsafe for voxelising packs (see ShadowFrustums). Port of Iris's, after L. Spiro
+// Shadow frustum that keeps the view frustum planes facing away from the light and extrudes its silhouette edges along the light direction
 public class AdvancedShadowCullingFrustum implements Frustum {
+    // Largest number of planes the frustum stores
     private static final int MAX_CLIPPING_PLANES = 13;
-    // Values chosen to match JOML's FrustumIntersection constants so ported code reads the same; this port does not otherwise depend on that class
+    // Result for a box entirely outside one plane
     public static final int OUTSIDE = -1;
+    // Result for a box inside every plane
     public static final int INSIDE = -2;
+    // Result for a box that crosses at least one plane
     public static final int INTERSECT = -3;
 
+    // Distance box tested before the planes or null for no distance bound
     protected final ShadowBoxCuller boxCuller;
-    // Each plane stored as (a, b, c, -d), the same packing BaseClippingPlanes produces, so testing a point is one dot product against (x, y, z, 1)
-    private final float[][] planes = new float[MAX_CLIPPING_PLANES][4];
+    // Four coefficients per plane where a point is inside when the dot product with the point and 1 is not negative
+    private final float[] planes = new float[MAX_CLIPPING_PLANES * 4];
+    // Unit vector from the origin toward the shadow light
     private final Vector3f shadowLightVectorFromOrigin;
+    // Number of planes stored
     private int planeCount;
 
+    // Builds the planes from the view projection and the light direction with an optional distance box
     public AdvancedShadowCullingFrustum(Matrix4fc modelViewProjection, Vector3f shadowLightVectorFromOrigin,
                                         ShadowBoxCuller boxCuller) {
         this.shadowLightVectorFromOrigin = shadowLightVectorFromOrigin;
         this.boxCuller = boxCuller;
-
-        BaseClippingPlanes baseClippingPlanes = new BaseClippingPlanes(modelViewProjection);
-        boolean[] isBack = addBackPlanes(baseClippingPlanes);
-        addEdgePlanes(baseClippingPlanes, isBack);
+        Vector4f[] basePlanes = new BaseClippingPlanes(modelViewProjection).getPlanes();
+        boolean[] isBack = addBackPlanes(basePlanes);
+        addEdgePlanes(basePlanes, isBack);
     }
 
-    // Appends one culling plane
-    private void addPlane(float[] plane) {
+    // Appends one plane and drops it once the store is full
+    private void addPlane(float a, float b, float c, float w) {
         if (this.planeCount >= MAX_CLIPPING_PLANES) {
             return;
         }
-        this.planes[this.planeCount] = plane;
-        this.planeCount += 1;
+        int base = this.planeCount * 4;
+        this.planes[base] = a;
+        this.planes[base + 1] = b;
+        this.planes[base + 2] = c;
+        this.planes[base + 3] = w;
+        this.planeCount++;
     }
 
-    // Adds the view frustum's back planes as seen from the light (normal dot light >= 0, the planes light travels through); returns which were kept since the edge extrusion needs to know where back meets front
-    private boolean[] addBackPlanes(BaseClippingPlanes baseClippingPlanes) {
-        Vector4f[] planes = baseClippingPlanes.getPlanes();
-        boolean[] isBack = new boolean[planes.length];
-
-        for (int planeIndex = 0; planeIndex < planes.length; planeIndex++) {
-            Vector4f plane = planes[planeIndex];
-            Vector3f planeNormal = truncate(plane);
-
-            float dot = planeNormal.dot(this.shadowLightVectorFromOrigin);
+    // Stores every plane whose normal points along or across the light and returns which ones point along it
+    private boolean[] addBackPlanes(Vector4f[] basePlanes) {
+        boolean[] isBack = new boolean[basePlanes.length];
+        for (int planeIndex = 0; planeIndex < basePlanes.length; planeIndex++) {
+            Vector4f plane = basePlanes[planeIndex];
+            float dot = this.shadowLightVectorFromOrigin.dot(plane.x, plane.y, plane.z);
             boolean back = dot > 0.0f;
-            boolean edge = dot == 0.0f;
-
             isBack[planeIndex] = back;
-
-            if (back || edge) {
-                addPlane(new float[]{plane.x, plane.y, plane.z, plane.w});
+            if (back || dot == 0.0f) {
+                addPlane(plane.x, plane.y, plane.z, plane.w);
             }
         }
-
         return isBack;
     }
 
-    // Closes the volume by extruding a plane along the light vector wherever a back plane meets a front plane; otherwise the kept back planes form an open volume and nothing is culled
-    private void addEdgePlanes(BaseClippingPlanes baseClippingPlanes, boolean[] isBack) {
-        Vector4f[] planes = baseClippingPlanes.getPlanes();
-
-        for (int planeIndex = 0; planeIndex < planes.length; planeIndex++) {
+    // Adds an extruded plane on every edge where a back plane meets a plane that is not a back plane
+    private void addEdgePlanes(Vector4f[] basePlanes, boolean[] isBack) {
+        EdgeScratch scratch = new EdgeScratch();
+        for (int planeIndex = 0; planeIndex < basePlanes.length; planeIndex++) {
             if (!isBack[planeIndex]) {
                 continue;
             }
-            Vector4f plane = planes[planeIndex];
+            Vector4f plane = basePlanes[planeIndex];
             NeighboringPlaneSet neighbors = NeighboringPlaneSet.forPlane(planeIndex);
-
             if (!isBack[neighbors.plane0()]) {
-                addEdgePlane(plane, planes[neighbors.plane0()]);
+                addEdgePlane(plane, basePlanes[neighbors.plane0()], scratch);
             }
             if (!isBack[neighbors.plane1()]) {
-                addEdgePlane(plane, planes[neighbors.plane1()]);
+                addEdgePlane(plane, basePlanes[neighbors.plane1()], scratch);
             }
             if (!isBack[neighbors.plane2()]) {
-                addEdgePlane(plane, planes[neighbors.plane2()]);
+                addEdgePlane(plane, basePlanes[neighbors.plane2()], scratch);
             }
             if (!isBack[neighbors.plane3()]) {
-                addEdgePlane(plane, planes[neighbors.plane3()]);
+                addEdgePlane(plane, basePlanes[neighbors.plane3()], scratch);
             }
         }
     }
 
-    // Drops w
-    private static Vector3f truncate(Vector4f base) {
-        return new Vector3f(base.x(), base.y(), base.z());
-    }
-
-    // Avoids the sqrt when only comparing
-    private static float lengthSquared(Vector3f v) {
-        return v.x() * v.x() + v.y() * v.y() + v.z() * v.z();
-    }
-
-    // Cross product into a fresh vector
-    private static Vector3f cross(Vector3f first, Vector3f second) {
-        return new Vector3f(first.x(), first.y(), first.z()).cross(second);
-    }
-
-    // A plane through a silhouette edge of the camera frustum, extruded along the light
-    private void addEdgePlane(Vector4f backPlane4, Vector4f frontPlane4) {
-        Vector3f backPlaneNormal = truncate(backPlane4);
-        Vector3f frontPlaneNormal = truncate(frontPlane4);
-
-        // Vector along the intersection line of the two planes.
-        Vector3f intersection = cross(backPlaneNormal, frontPlaneNormal);
-
-        // The edge plane's normal must be perpendicular to the light vector — that is what makes it an edge plane.
-        Vector3f edgePlaneNormal = cross(intersection, this.shadowLightVectorFromOrigin);
-
-        // Pick a point on the intersection line so the plane's distance term can be solved for.
-        Vector3f ixb = cross(intersection, backPlaneNormal);
-        Vector3f fxi = cross(frontPlaneNormal, intersection);
-        ixb.mul(-frontPlane4.w());
-        fxi.mul(-backPlane4.w());
+    // Adds the plane through the line where two planes meet with a normal perpendicular to the light
+    private void addEdgePlane(Vector4f backPlane, Vector4f frontPlane, EdgeScratch scratch) {
+        Vector3f backNormal = scratch.backNormal.set(backPlane.x(), backPlane.y(), backPlane.z());
+        Vector3f frontNormal = scratch.frontNormal.set(frontPlane.x(), frontPlane.y(), frontPlane.z());
+        // Direction of the line where the two planes meet
+        Vector3f intersection = scratch.intersection.set(backNormal).cross(frontNormal);
+        Vector3f edgeNormal = scratch.edgeNormal.set(intersection).cross(this.shadowLightVectorFromOrigin);
+        // Point on the meeting line from the two plane offsets
+        Vector3f ixb = scratch.ixb.set(intersection).cross(backNormal);
+        Vector3f fxi = scratch.fxi.set(frontNormal).cross(intersection);
+        ixb.mul(-frontPlane.w());
+        fxi.mul(-backPlane.w());
         ixb.add(fxi);
-
-        float lengthSq = lengthSquared(intersection);
-        if (lengthSq == 0.0f) {
-            // Parallel planes have no intersection line; nothing to extrude.
+        float lengthSquared = intersection.x() * intersection.x() + intersection.y() * intersection.y()
+                + intersection.z() * intersection.z();
+        // Skips parallel planes which have no meeting line
+        if (lengthSquared == 0.0f) {
             return;
         }
-        Vector3f point = ixb.mul(1.0f / lengthSq);
-
-        // dot(normal, (x,y,z) - point) = 0  ->  d = dot(normal, point), and the stored term is -d.
-        float w = -edgePlaneNormal.dot(point);
-        addPlane(new float[]{edgePlaneNormal.x(), edgePlaneNormal.y(), edgePlaneNormal.z(), w});
+        Vector3f point = ixb.mul(1.0f / lengthSquared);
+        addPlane(edgeNormal.x(), edgeNormal.y(), edgeNormal.z(), -edgeNormal.dot(point));
     }
 
-    // Classifies a CAMERA-RELATIVE box as OUTSIDE, INSIDE or INTERSECT; three-way because SafeZoneCullingFrustum distinguishes fully-inside from straddling, while the engine only needs "not outside"
+    // Classifies a camera relative box as OUTSIDE or INSIDE or INTERSECT against every plane
     protected int checkCornerVisibility(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
         boolean inside = true;
-
-        for (int i = 0; i < this.planeCount; ++i) {
-            float[] plane = this.planes[i];
-
-            float outsideBoundX = (plane[0] < 0) ? minX : maxX;
-            float outsideBoundY = (plane[1] < 0) ? minY : maxY;
-            float outsideBoundZ = (plane[2] < 0) ? minZ : maxZ;
-
-            if (plane[0] * outsideBoundX + plane[1] * outsideBoundY + plane[2] * outsideBoundZ >= -plane[3]) {
-                inside &= plane[0] * (plane[0] < 0 ? maxX : minX)
-                        + plane[1] * (plane[1] < 0 ? maxY : minY)
-                        + plane[2] * (plane[2] < 0 ? maxZ : minZ) + plane[3] >= 0;
+        float[] planes = this.planes;
+        int end = this.planeCount * 4;
+        for (int base = 0; base < end; base += 4) {
+            float a = planes[base];
+            float b = planes[base + 1];
+            float c = planes[base + 2];
+            float w = planes[base + 3];
+            // The corner farthest along the normal decides outside and the nearest corner decides inside
+            float outsideBoundX = a < 0 ? minX : maxX;
+            float outsideBoundY = b < 0 ? minY : maxY;
+            float outsideBoundZ = c < 0 ? minZ : maxZ;
+            if (a * outsideBoundX + b * outsideBoundY + c * outsideBoundZ >= -w) {
+                inside &= a * (a < 0 ? maxX : minX) + b * (b < 0 ? maxY : minY) + c * (c < 0 ? maxZ : minZ) + w >= 0;
             } else {
                 return OUTSIDE;
             }
         }
-
         return inside ? INSIDE : INTERSECT;
     }
 
-    // Box against every plane; inside if no plane rejects it
+    // Returns whether a camera relative box passes the distance box and is not outside any plane
     @Override
     public boolean testAab(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
         if (this.boxCuller != null && !this.boxCuller.testAab(minX, minY, minZ, maxX, maxY, maxZ)) {
             return false;
         }
         return checkCornerVisibility(minX, minY, minZ, maxX, maxY, maxZ) != OUTSIDE;
+    }
+
+    // Vectors reused by every edge plane of one frustum
+    private static final class EdgeScratch {
+        // Normal of the back plane
+        final Vector3f backNormal = new Vector3f();
+        // Normal of the front plane
+        final Vector3f frontNormal = new Vector3f();
+        // Direction of the meeting line
+        final Vector3f intersection = new Vector3f();
+        // Normal of the edge plane
+        final Vector3f edgeNormal = new Vector3f();
+        // Meeting line direction crossed with the back normal
+        final Vector3f ixb = new Vector3f();
+        // Front normal crossed with the meeting line direction
+        final Vector3f fxi = new Vector3f();
     }
 }

@@ -28,15 +28,15 @@ class LinuxExtrasMixinsTest {
 
     @AfterEach
     void restore() {
-        Statics.set(OsKind.class, "CURRENT", this.realOs);
+        Statics.set(OsKind.class, "detected", this.realOs);
     }
 
     @Test
     void thePluginAppliesOnlyOnLinux() {
         LinuxExtrasMixinPlugin plugin = new LinuxExtrasMixinPlugin();
-        Statics.set(OsKind.class, "CURRENT", OsKind.WINDOWS);
+        Statics.set(OsKind.class, "detected", OsKind.WINDOWS);
         assertFalse(plugin.shouldApplyMixin("net.minecraft.client.Minecraft", "com.bdmajora.linuxextras.mixin.MinecraftWindowMixin"));
-        Statics.set(OsKind.class, "CURRENT", OsKind.LINUX);
+        Statics.set(OsKind.class, "detected", OsKind.LINUX);
         assertTrue(plugin.shouldApplyMixin("net.minecraft.client.Minecraft", "com.bdmajora.linuxextras.mixin.MinecraftWindowMixin"));
     }
 

@@ -63,8 +63,7 @@ final class MixinSubclassing implements ClassFileTransformer {
             "com/bdmajora/fulgor/lighting/DynamicLightsBridge",
             "com/bdmajora/equilibrium/mixin/EquilibriumMixinPlugin",
             "com/bdmajora/impetus/impl/compat/fluidlogged/FluidloggedCompat",
-            "com/bdmajora/impetus/impl/compat/littletiles/LittleTilesCompat",
-            "com/bdmajora/impetus/engine/impl/compat/environment/OsKind");
+            "com/bdmajora/impetus/impl/compat/littletiles/LittleTilesCompat");
 
     MixinSubclassing() {
         Set<Path> roots = classRoots();

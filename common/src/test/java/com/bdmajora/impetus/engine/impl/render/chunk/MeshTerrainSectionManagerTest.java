@@ -58,7 +58,7 @@ class MeshTerrainSectionManagerTest {
         }
         TestFogService.cutoff = 1f;
         Statics.set(MeshShaderSupport.class, "supported", null);
-        Statics.set(OsKind.class, "CURRENT", OsKind.LINUX);
+        Statics.set(OsKind.class, "detected", OsKind.LINUX);
         device.makeInactive();
     }
 

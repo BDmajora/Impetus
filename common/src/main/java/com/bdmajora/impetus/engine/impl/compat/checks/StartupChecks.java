@@ -33,8 +33,10 @@ public final class StartupChecks {
     private static final long OVERLAY_SCAN_TIMEOUT_SECONDS = 10;
     // Command that lists running processes as CSV without a header on Windows
     private static final String[] TASKLIST_COMMAND = {"tasklist", "/fo", "csv", "/nh"};
-    // Oldest NVIDIA driver without the terrain corruption bug
-    private static final DriverVersion MINIMUM_NVIDIA_DRIVER = new DriverVersion(536, 23);
+    // Oldest Windows NVIDIA driver without the terrain corruption bug
+    private static final DriverVersion MINIMUM_NVIDIA_WINDOWS_DRIVER = new DriverVersion(536, 23);
+    // Oldest NVIDIA driver of the same branch on Linux and the BSD family
+    private static final DriverVersion MINIMUM_NVIDIA_LINUX_DRIVER = new DriverVersion(535, 54);
     // Runtime name fragment reported by Android Java runtimes
     private static final LowerCaseNeedle ANDROID = new LowerCaseNeedle("android");
     // Virtual machine name fragment reported by Dalvik
@@ -168,8 +170,10 @@ public final class StartupChecks {
         return needle.occursIn(System.getProperty(key, ""));
     }
 
-    // Warns about the first NVIDIA adapter whose driver is older than the minimum
+    // Warns about the first NVIDIA adapter whose driver is older than the minimum of the running system
     private static void warnIfOutdatedNvidiaDriver(List<GraphicsAdapterInfo> adapters) {
+        var minimum = OsKind.current() == OsKind.LINUX ? MINIMUM_NVIDIA_LINUX_DRIVER : MINIMUM_NVIDIA_WINDOWS_DRIVER;
+
         for (var adapter : adapters) {
             if (adapter.vendor() != GraphicsVendor.NVIDIA) {
                 continue;
@@ -177,14 +181,15 @@ public final class StartupChecks {
 
             String driver = adapter.driverVersion();
             DriverVersion version = DriverVersion.parseNvidia(driver);
-            if (version != null && version.compareTo(MINIMUM_NVIDIA_DRIVER) < 0) {
+            if (version != null && version.compareTo(minimum) < 0) {
+                String recommended = minimum.major() + "." + minimum.minor();
                 ImpetusNotifications.warn("Outdated NVIDIA driver",
                         "Detected driver: " + driver,
-                        "Recommended: 536.23 or newer.");
+                        "Recommended: " + recommended + " or newer.");
                 MessageBoxUtil.showWarning("Impetus — Outdated NVIDIA driver",
                         "Your NVIDIA graphics driver appears to be out of date.\n\n" +
                         "Detected driver: " + driver + "\n" +
-                        "Recommended driver: 536.23 or newer\n\n" +
+                        "Recommended driver: " + recommended + " or newer\n\n" +
                         "Older NVIDIA drivers are known to cause severe performance issues and crashes\n" +
                         "with modern chunk renderers. Please update your graphics driver.");
                 return;

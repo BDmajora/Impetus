@@ -13,12 +13,12 @@ public enum OsKind {
 
     // Bit that turns an upper case ASCII letter into its lower case form
     private static final int ASCII_LOWER_CASE_BIT = 0x20;
-    // Classification of the running JVM
-    private static final OsKind CURRENT = detect(System.getProperty("os.name", ""));
+    // Classification of the running JVM set once by the class initialiser
+    private static OsKind detected = detect(System.getProperty("os.name", ""));
 
     // Returns the classification of the running JVM
     public static OsKind current() {
-        return CURRENT;
+        return detected;
     }
 
     // Returns the kind an os.name value names with Windows ahead of macOS and macOS ahead of the Linux family

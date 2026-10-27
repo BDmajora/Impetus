@@ -40,7 +40,7 @@ class ContextCreationTest {
 
     @BeforeEach
     void windowsWithANvidiaCard() throws Exception {
-        Statics.set(OsKind.class, "CURRENT", OsKind.WINDOWS);
+        Statics.set(OsKind.class, "detected", OsKind.WINDOWS);
         shared = Statics.get(GraphicsAdapterProbe.class, "SHARED");
         realProbe = shared.get();
         shared.set(CompletableFuture.completedFuture(NVIDIA));
@@ -56,7 +56,7 @@ class ContextCreationTest {
     @AfterEach
     void restore() throws Exception {
         if (video != null) video.close();
-        Statics.set(OsKind.class, "CURRENT", realOs);
+        Statics.set(OsKind.class, "detected", realOs);
         shared.set(realProbe);
         ForgeEarlyConfig.OPENGL_DEBUG_CONTEXT = realDebug;
         setOption(true);

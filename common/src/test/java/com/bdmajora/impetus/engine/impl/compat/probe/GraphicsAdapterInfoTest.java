@@ -30,8 +30,8 @@ class GraphicsAdapterInfoTest {
     private static final String DRIVER = "32.0.15.8142";
     // Name of a typical Linux adapter built from the PCI vendor and device ids
     private static final String PCI_NAME = "PCI 10de:2f04";
-    // Kernel driver name of a typical Linux NVIDIA adapter
-    private static final String KERNEL_DRIVER = "nvidia";
+    // Driver module version of a typical Linux NVIDIA adapter
+    private static final String LINUX_DRIVER = "615.71.09";
     // Length of the long adapter strings in characters
     private static final int LONG_LENGTH = 1 << 20;
     // String whose hash code is the smallest int
@@ -65,9 +65,9 @@ class GraphicsAdapterInfoTest {
         assertSame(GraphicsVendor.NVIDIA, info.vendor());
         assertSame(name, info.name());
         assertSame(driver, info.driverVersion());
-        GraphicsAdapterInfo linux = new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, PCI_NAME, KERNEL_DRIVER);
+        GraphicsAdapterInfo linux = new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, PCI_NAME, LINUX_DRIVER);
         assertSame(PCI_NAME, linux.name());
-        assertSame(KERNEL_DRIVER, linux.driverVersion());
+        assertSame(LINUX_DRIVER, linux.driverVersion());
     }
 
     // Verifies the constructor accepts every vendor

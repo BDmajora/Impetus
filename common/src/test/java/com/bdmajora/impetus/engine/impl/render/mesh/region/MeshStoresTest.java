@@ -39,7 +39,7 @@ public class MeshStoresTest {
     @AfterEach
     void forget() {
         Statics.set(MeshShaderSupport.class, "supported", null);
-        Statics.set(OsKind.class, "CURRENT", OsKind.LINUX);
+        Statics.set(OsKind.class, "detected", OsKind.LINUX);
     }
 
     // A mesh of quads quads, each a unit square at block (x, 0, 0) for x = 0..quads-1
@@ -96,7 +96,7 @@ public class MeshStoresTest {
         stream.delete();
 
         // The support probe is cached, so it must be re-run on the sparse-friendly OS
-        Statics.set(OsKind.class, "CURRENT", OsKind.WINDOWS);
+        Statics.set(OsKind.class, "detected", OsKind.WINDOWS);
         Statics.set(MeshShaderSupport.class, "supported", null);
         QuadArena sparse = new QuadArena(0, 16);
         int quads = sparse.alloc(100);

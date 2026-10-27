@@ -51,7 +51,7 @@ class MeshTerrainRendererTest {
     @AfterEach
     void forget() {
         Statics.set(MeshShaderSupport.class, "supported", null);
-        Statics.set(OsKind.class, "CURRENT", OsKind.LINUX);
+        Statics.set(OsKind.class, "detected", OsKind.LINUX);
         Statics.set(MeshTerrainRenderer.class, "activeConfig", null);
     }
 
@@ -203,7 +203,7 @@ class MeshTerrainRendererTest {
 
     @Test
     void sparseAutomaticBudgetsRefreshEveryMinute() {
-        Statics.set(OsKind.class, "CURRENT", OsKind.WINDOWS);
+        Statics.set(OsKind.class, "detected", OsKind.WINDOWS);
         var automatic = new MeshTerrainConfig(false, MeshTranslucencySorting.NONE, MeshStatistics.NONE, true, 2048, 0, 8);
         AtomicLong clock = new AtomicLong();
         MeshTerrainRenderer renderer = new MeshTerrainRenderer(automatic, 4, null, clock::get);

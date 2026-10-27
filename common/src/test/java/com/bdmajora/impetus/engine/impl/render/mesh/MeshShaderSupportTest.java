@@ -14,7 +14,7 @@ class MeshShaderSupportTest {
     @AfterEach
     void forget() {
         Statics.set(MeshShaderSupport.class, "supported", null);
-        Statics.set(OsKind.class, "CURRENT", OsKind.LINUX);
+        Statics.set(OsKind.class, "detected", OsKind.LINUX);
     }
 
     @Test
@@ -27,18 +27,18 @@ class MeshShaderSupportTest {
 
         Statics.set(MeshShaderSupport.class, "supported", null);
         Mockito.when(TestGl.gl().isExtensionSupported(Mockito.any())).thenReturn(true);
-        Statics.set(OsKind.class, "CURRENT", OsKind.WINDOWS);
+        Statics.set(OsKind.class, "detected", OsKind.WINDOWS);
         assertTrue(MeshShaderSupport.isSupported());
         assertEquals("", MeshShaderSupport.getUnsupportedReason());
         assertTrue(MeshShaderSupport.supportsSparseGeometry());
 
         Statics.set(MeshShaderSupport.class, "supported", null);
-        Statics.set(OsKind.class, "CURRENT", OsKind.LINUX);
+        Statics.set(OsKind.class, "detected", OsKind.LINUX);
         assertTrue(MeshShaderSupport.isSupported());
         assertFalse(MeshShaderSupport.supportsSparseGeometry());
         Mockito.when(TestGl.gl().isExtensionSupported(GLExtension.ARB_sparse_buffer)).thenReturn(false);
         Statics.set(MeshShaderSupport.class, "supported", null);
-        Statics.set(OsKind.class, "CURRENT", OsKind.WINDOWS);
+        Statics.set(OsKind.class, "detected", OsKind.WINDOWS);
         assertFalse(MeshShaderSupport.supportsSparseGeometry());
     }
 }

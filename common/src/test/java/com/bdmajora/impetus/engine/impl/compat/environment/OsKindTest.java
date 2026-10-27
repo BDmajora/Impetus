@@ -4,7 +4,9 @@ import com.bdmajora.testing.FreshClasses;
 import com.bdmajora.testing.Statics;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.Locale;
 import java.util.Properties;
 import java.util.Random;
@@ -12,6 +14,7 @@ import java.util.Random;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -33,6 +36,8 @@ class OsKindTest {
     private static final int RANDOM_NAMES = 300_000;
     // Length of the long names in characters
     private static final int LONG_LENGTH = 1 << 24;
+    // Number of calls that takes a method past the JIT compile thresholds
+    private static final int WARM_CALLS = 200_000;
 
     // Returns the kind the detection of OsKind assigns to the name
     private static OsKind detect(String name) {
@@ -117,7 +122,7 @@ class OsKindTest {
     // Verifies current returns the same cached kind on repeated calls
     @Test
     void currentReturnsCachedKind() {
-        OsKind cached = Statics.get(OsKind.class, "CURRENT");
+        OsKind cached = Statics.get(OsKind.class, "detected");
         for (int round = 0; round < 3; round++) {
             assertSame(cached, OsKind.current());
         }
@@ -126,14 +131,42 @@ class OsKindTest {
     // Verifies current returns a kind swapped into the cache
     @Test
     void currentReadsSwappedCache() {
-        OsKind original = Statics.get(OsKind.class, "CURRENT");
+        OsKind original = Statics.get(OsKind.class, "detected");
         try {
             for (OsKind kind : OsKind.values()) {
-                Statics.set(OsKind.class, "CURRENT", kind);
+                Statics.set(OsKind.class, "detected", kind);
                 assertSame(kind, OsKind.current());
             }
         } finally {
-            Statics.set(OsKind.class, "CURRENT", original);
+            Statics.set(OsKind.class, "detected", original);
+        }
+    }
+
+    // Verifies the cached classification is a private static field that is not final
+    @Test
+    void cachedKindIsAPrivateStaticFieldThatIsNotFinal() throws ReflectiveOperationException {
+        Field detected = OsKind.class.getDeclaredField("detected");
+        int modifiers = detected.getModifiers();
+        assertSame(OsKind.class, detected.getType());
+        assertTrue(Modifier.isPrivate(modifiers));
+        assertTrue(Modifier.isStatic(modifiers));
+        assertFalse(Modifier.isFinal(modifiers));
+    }
+
+    // Verifies current returns a swapped kind after enough calls to compile it
+    @Test
+    void currentReadsSwappedCacheAfterCompilation() {
+        OsKind original = Statics.get(OsKind.class, "detected");
+        try {
+            for (OsKind kind : OsKind.values()) {
+                for (int call = 0; call < WARM_CALLS; call++) {
+                    assertNotNull(OsKind.current());
+                }
+                Statics.set(OsKind.class, "detected", kind);
+                assertSame(kind, OsKind.current());
+            }
+        } finally {
+            Statics.set(OsKind.class, "detected", original);
         }
     }
 

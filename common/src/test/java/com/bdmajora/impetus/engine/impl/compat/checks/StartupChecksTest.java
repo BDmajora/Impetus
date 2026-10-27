@@ -54,6 +54,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -144,7 +145,7 @@ class StartupChecksTest {
     // Restores global state and clears the crash flags and workarounds and notifications
     @AfterEach
     void restore() {
-        Statics.set(OsKind.class, "CURRENT", realOs);
+        Statics.set(OsKind.class, "detected", realOs);
         Thread.setDefaultUncaughtExceptionHandler(realHandler);
         Statics.set(StartupChecks.class, "LOGGER", realLogger);
         System.arraycopy(realCommand, 0, command(), 0, realCommand.length);
@@ -715,13 +716,14 @@ class StartupChecksTest {
         assertTrue(compare(version(0, Integer.MAX_VALUE), version(0, Integer.MIN_VALUE)) > 0);
         assertTrue(compare(version(-1, 0), version(0, 0)) < 0);
         assertThrows(NullPointerException.class, () -> compare(version(1, 1), null));
-        Object minimum = Statics.get(StartupChecks.class, "MINIMUM_NVIDIA_DRIVER");
-        assertEquals(0, compare(minimum, version(536, 23)));
+        assertEquals(0, compare(Statics.get(StartupChecks.class, "MINIMUM_NVIDIA_WINDOWS_DRIVER"), version(536, 23)));
+        assertEquals(0, compare(Statics.get(StartupChecks.class, "MINIMUM_NVIDIA_LINUX_DRIVER"), version(535, 54)));
     }
 
     // Checks that only the first outdated NVIDIA adapter is reported
     @Test
     void driverCheckWarnsOnceForFirstOutdatedAdapter() {
+        windows();
         Statics.call(StartupChecks.class, "warnIfOutdatedNvidiaDriver", List.of(
                 new GraphicsAdapterInfo(GraphicsVendor.AMD, "Radeon", "1.0"),
                 new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, "GTX", "471.11"),
@@ -731,9 +733,10 @@ class StartupChecksTest {
         assertEquals(List.of("Detected driver: 471.11", "Recommended: 536.23 or newer."), warnings.get(0).lines());
     }
 
-    // Checks the driver versions on both sides of the minimum
+    // Checks the driver versions on both sides of the Windows minimum
     @Test
-    void driverCheckRespectsMinimumBoundary() {
+    void driverCheckRespectsWindowsMinimumBoundary() {
+        windows();
         for (String outdated : List.of("536.22", "535.99", "31.0.15.3622", "0.0", "-1.0")) {
             clearNotifications();
             Statics.call(StartupChecks.class, "warnIfOutdatedNvidiaDriver", List.of(new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, "GPU", outdated)));
@@ -743,6 +746,49 @@ class StartupChecksTest {
             clearNotifications();
             Statics.call(StartupChecks.class, "warnIfOutdatedNvidiaDriver", List.of(new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, "GPU", current)));
             assertEquals(0, count(NVIDIA_TITLE), current);
+        }
+    }
+
+    // Checks the driver versions on both sides of the Linux minimum
+    @Test
+    void driverCheckRespectsLinuxMinimumBoundary() {
+        Statics.set(OsKind.class, "detected", OsKind.LINUX);
+        for (String outdated : List.of("535.53", "535.53.99", "530.41.03", "470.256.02", "0.0", "-1.0")) {
+            clearNotifications();
+            Statics.call(StartupChecks.class, "warnIfOutdatedNvidiaDriver", List.of(new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, "GPU", outdated)));
+            assertEquals(1, count(NVIDIA_TITLE), outdated);
+        }
+        for (String current : List.of("535.54", "535.54.03", "535.104.05", "535.274.02", "536.22", "550.163.01", "615.71.09", "2147483647.0")) {
+            clearNotifications();
+            Statics.call(StartupChecks.class, "warnIfOutdatedNvidiaDriver", List.of(new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, "GPU", current)));
+            assertEquals(0, count(NVIDIA_TITLE), current);
+        }
+    }
+
+    // Checks that the Linux warning and dialog name the Linux minimum
+    @Test
+    void driverCheckNamesTheLinuxMinimum() {
+        Statics.set(OsKind.class, "detected", OsKind.LINUX);
+        try (MockedStatic<MessageBoxUtil> boxes = mockStatic(MessageBoxUtil.class)) {
+            Statics.call(StartupChecks.class, "warnIfOutdatedNvidiaDriver", List.of(new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, "GPU", "470.256.02")));
+            boxes.verify(() -> MessageBoxUtil.showWarning(eq("Impetus — Outdated NVIDIA driver"), contains("Recommended driver: 535.54 or newer")));
+        }
+        List<ImpetusNotification> warnings = ImpetusNotifications.getVisible().stream().filter(n -> n.title().equals(NVIDIA_TITLE)).toList();
+        assertEquals(1, warnings.size());
+        assertEquals(List.of("Detected driver: 470.256.02", "Recommended: 535.54 or newer."), warnings.get(0).lines());
+    }
+
+    // Checks that systems other than Linux keep the Windows minimum
+    @Test
+    void driverCheckKeepsTheWindowsMinimumElsewhere() {
+        for (OsKind kind : List.of(OsKind.WINDOWS, OsKind.MACOS, OsKind.UNKNOWN)) {
+            Statics.set(OsKind.class, "detected", kind);
+            clearNotifications();
+            try (MockedStatic<MessageBoxUtil> boxes = mockStatic(MessageBoxUtil.class)) {
+                Statics.call(StartupChecks.class, "warnIfOutdatedNvidiaDriver", List.of(new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, "GPU", "535.99")));
+                boxes.verify(() -> MessageBoxUtil.showWarning(eq("Impetus — Outdated NVIDIA driver"), contains("Recommended driver: 536.23 or newer")));
+            }
+            assertEquals(1, count(NVIDIA_TITLE), kind.name());
         }
     }
 
@@ -772,7 +818,7 @@ class StartupChecksTest {
     @Test
     void scanSkipsOtherSystems() {
         assumeShell();
-        Statics.set(OsKind.class, "CURRENT", OsKind.LINUX);
+        Statics.set(OsKind.class, "detected", OsKind.LINUX);
         Path marker = temp.resolve("ran");
         fakeTaskList("touch \"$0\"; echo rtss", marker.toString());
         scan();
@@ -928,7 +974,7 @@ class StartupChecksTest {
 
     // Makes the checks see Windows
     private static void windows() {
-        Statics.set(OsKind.class, "CURRENT", OsKind.WINDOWS);
+        Statics.set(OsKind.class, "detected", OsKind.WINDOWS);
     }
 
     // Returns the live task list command array

@@ -6,6 +6,6 @@ public record GraphicsAdapterInfo(
         GraphicsVendor vendor,
         // Name of the adapter or its PCI vendor and device ids
         String name,
-        // Driver version or kernel driver name with an empty string when the probe finds neither
+        // Driver version with an empty string when the probe finds none
         String driverVersion) {
 }

@@ -17,7 +17,7 @@ class WorkaroundsTest {
 
     @AfterEach
     void restore() {
-        Statics.set(OsKind.class, "CURRENT", realOs);
+        Statics.set(OsKind.class, "detected", realOs);
         Workarounds.init(new GlContextInfo("", "", ""), List.of());
     }
 
@@ -27,7 +27,7 @@ class WorkaroundsTest {
         GlContextInfo intel = new GlContextInfo("Intel", "", "");
         Workarounds.init(nvidia, List.of());
         assertFalse(Workarounds.isActive(Workarounds.Issue.NVIDIA_THREADED_OPTIMIZATIONS));
-        Statics.set(OsKind.class, "CURRENT", OsKind.WINDOWS);
+        Statics.set(OsKind.class, "detected", OsKind.WINDOWS);
         Workarounds.init(nvidia, List.of());
         assertTrue(Workarounds.isActive(Workarounds.Issue.NVIDIA_THREADED_OPTIMIZATIONS));
         Workarounds.init(intel, List.of());

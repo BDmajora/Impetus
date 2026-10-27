@@ -46,7 +46,7 @@ class MeshRenderPipelineTest {
     void forget() {
         ImpetusRuntimeOptions.chunkFadeInDuration = 0;
         Statics.set(MeshShaderSupport.class, "supported", null);
-        Statics.set(OsKind.class, "CURRENT", OsKind.LINUX);
+        Statics.set(OsKind.class, "detected", OsKind.LINUX);
     }
 
     static MeshTerrainConfig config(boolean temporal, MeshTranslucencySorting sorting, MeshStatistics statistics, int keep, int renderDistance) {

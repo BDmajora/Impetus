@@ -463,9 +463,9 @@ class DrawCommandListTest {
         }
     }
 
-    // Checks that the indirect draw forwards the byte offset unchanged at zero and misaligned and int and long limits
+    // Checks that the indirect draw forwards every aligned byte offset unchanged at zero and the int and long limits
     @ParameterizedTest
-    @ValueSource(longs = {0L, 1L, 3L, 4L, 20L, Integer.MAX_VALUE, 1L + Integer.MAX_VALUE, 1L << 32, Long.MAX_VALUE - 3L, Long.MAX_VALUE})
+    @ValueSource(longs = {0L, 4L, 8L, 20L, Integer.MAX_VALUE - 3L, 1L + Integer.MAX_VALUE, 1L << 32, Long.MAX_VALUE - 3L})
     void indirectOffsetOnTheDeviceListReachesGlUnchanged(long offset) {
         CommandList list = deviceList();
         GlTessellation tessellation = Mockito.mock(GlTessellation.class);

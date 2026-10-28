@@ -133,7 +133,7 @@ public final class DirectMultiDrawBatch extends MultiDrawBatch {
     }
 
     // Rejects a batch whose block is freed
-    private void requireLive() {
+    void requireLive() {
         if (this.slotLimit == 0) {
             throw new IllegalStateException(DELETED);
         }

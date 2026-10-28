@@ -251,17 +251,22 @@ class GlBufferTest {
         assertTrue(mapping.isDisposed());
     }
 
-    // Stores a mapping with no memory and disposes it on delete without reading any memory
+    // Stores a mapping and disposes it on delete without reading any memory
     @Test
-    void setAcceptsAMappingWithNoMemory() {
+    void setAcceptsAMappingWhoseMemoryIsNeverRead() {
         GlBuffer buffer = named(19);
-        GlBufferMapping empty = new GlBufferMapping(buffer, null);
-        buffer.setActiveMapping(empty);
-        assertSame(empty, buffer.getActiveMapping());
+        GlBufferMapping sealed = new GlBufferMapping(buffer, block(4)) {
+            // Fails the test on any read of the memory buffer
+            @Override
+            public ByteBuffer getMemoryBuffer() {
+                throw new AssertionError("Memory buffer was read");
+            }
+        };
+        buffer.setActiveMapping(sealed);
+        assertSame(sealed, buffer.getActiveMapping());
         buffer.delete();
         assertNull(buffer.getActiveMapping());
-        assertTrue(empty.isDisposed());
-        assertNull(empty.getMemoryBuffer());
+        assertTrue(sealed.isDisposed());
     }
 
     // Accepts a new mapping after the previous one was cleared
@@ -298,7 +303,13 @@ class GlBufferTest {
     @Test
     void setRejectsAMappingOfNoBuffer() {
         GlBuffer buffer = named(10);
-        GlBufferMapping orphan = new GlBufferMapping(null, block(4));
+        GlBufferMapping orphan = new GlBufferMapping(buffer, block(4)) {
+            // Reports no buffer
+            @Override
+            public GlBuffer getBufferObject() {
+                return null;
+            }
+        };
         assertEquals(FOREIGN, assertThrows(IllegalArgumentException.class, () -> buffer.setActiveMapping(orphan)).getMessage());
         assertNull(buffer.getActiveMapping());
     }

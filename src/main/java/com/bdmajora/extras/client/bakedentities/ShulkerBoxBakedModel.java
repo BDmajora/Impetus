@@ -45,14 +45,11 @@ public final class ShulkerBoxBakedModel extends BakedEntityModel {
         return EnumDyeColor.PURPLE;
     }
 
-    // TileEntityShulkerBoxRenderer's setup verbatim, with the lid at progress zero
+    // TileEntityShulkerBoxRenderer's setup with the lid at progress zero, minus its 0.9995 shrink: in the mesh that left a hairline slit at every seam of stacked or neighbouring boxes, and the full-size box also covers the renderer's own copy in the ticks after a close
     private List<BakedQuad> bake(EnumFacing facing, EnumDyeColor color) {
         Matrix4f matrix = new Matrix4f();
         matrix.translate(0.5F, 1.5F, 0.5F);
         matrix.scale(1.0F, -1.0F, -1.0F);
-        matrix.translate(0.0F, 1.0F, 0.0F);
-        matrix.scale(0.9995F, 0.9995F, 0.9995F);
-        matrix.translate(0.0F, -1.0F, 0.0F);
         switch (facing) {
             case DOWN -> {
                 matrix.translate(0.0F, 2.0F, 0.0F);

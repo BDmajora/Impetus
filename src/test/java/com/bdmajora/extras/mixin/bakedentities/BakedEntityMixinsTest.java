@@ -6,6 +6,7 @@ import com.bdmajora.extras.client.bakedentities.BakedEntities;
 import com.bdmajora.extras.client.bakedentities.BakedEntityContext;
 import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
+import net.minecraft.block.material.Material;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.model.ModelSign;
 import net.minecraft.client.renderer.block.model.IBakedModel;
@@ -14,6 +15,7 @@ import net.minecraft.tileentity.TileEntityBed;
 import net.minecraft.tileentity.TileEntityChest;
 import net.minecraft.tileentity.TileEntityEnderChest;
 import net.minecraft.tileentity.TileEntityShulkerBox;
+import net.minecraft.util.BlockRenderLayer;
 import net.minecraft.util.EnumBlockRenderType;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.IBlockAccess;
@@ -82,6 +84,21 @@ class BakedEntityMixinsTest {
         CallbackInfoReturnable<IBakedModel> vanilla = Mixins.cir();
         Mixins.call(shapes, "impetus$bakedEntityModel", Blocks.STONE.getDefaultState(), vanilla);
         assertFalse(vanilla.isCancelled());
+    }
+
+    @Test
+    void bakedShulkerBoxesDrawInTheCutoutLayer() {
+        BlockShulkerBoxLayerMixin layers = Mixins.instance(BlockShulkerBoxLayerMixin.class, Material.ROCK);
+        IBlockState box = Blocks.PURPLE_SHULKER_BOX.getDefaultState();
+        // Unbaked, vanilla's own answer: the solid layer
+        for (BlockRenderLayer layer : BlockRenderLayer.values()) {
+            assertEquals(layer == BlockRenderLayer.SOLID, layers.canRenderInLayer(box, layer), layer.toString());
+        }
+        // Baked, only the cutout layer, which discards the lid's see-through texels over the base's teeth
+        switches(true);
+        for (BlockRenderLayer layer : BlockRenderLayer.values()) {
+            assertEquals(layer == BlockRenderLayer.CUTOUT, layers.canRenderInLayer(box, layer), layer.toString());
+        }
     }
 
     @Test

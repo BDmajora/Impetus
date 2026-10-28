@@ -1,5 +1,6 @@
 package com.bdmajora.extras.client;
 
+import com.bdmajora.extras.client.itemfaces.ItemFaceCache;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.block.model.IBakedModel;
@@ -16,9 +17,9 @@ public final class ItemFrameLodState {
     private ItemFrameLodState() {
     }
 
-    // The model's quads for a face, minus the four side faces when LOD is active on a 3D model; NORTH/SOUTH is the front/back axis under vanilla's zero-rotation display transform, and flat sprites have no sides
+    // The model's quads for a face (coplanar faces resolved by ItemFaceCache), minus the four side faces when LOD is active on a 3D model; NORTH/SOUTH is the front/back axis under vanilla's zero-rotation display transform, and flat sprites have no sides
     public static List<BakedQuad> filterLodQuads(IBakedModel model, IBlockState state, EnumFacing side, long rand) {
-        List<BakedQuad> quads = model.getQuads(state, side, rand);
+        List<BakedQuad> quads = ItemFaceCache.quads(model, state, side, rand);
 
         if (!active || side == null || !model.isGui3d()) {
             return quads;

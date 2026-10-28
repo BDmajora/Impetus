@@ -26,6 +26,8 @@ final class RenderSchema {
             .bool("itemFrameNameTag", "Render item frame name tags", s -> s.itemFrameNameTag, (s, v) -> s.itemFrameNameTag = v)
             .bool("droppedItemsFancy", "Stack up to five models per dropped item pile instead of always drawing one",
                     s -> s.droppedItemsFancy, (s, v) -> s.droppedItemsFancy = v)
+            .bool("itemModelFlickerFix", "Stop item model faces that overlap on one plane (custom pack models on armor stands, in frames and in hand) from flickering as the camera moves",
+                    s -> s.itemModelFlickerFix, (s, v) -> s.itemModelFlickerFix = v)
             .bool("preventShaders", "Block the vanilla post-processing shader pipeline",
                     s -> s.preventShaders, (s, v) -> s.preventShaders = v)
             .bool("profileEntityRendering", "Break entity and block-entity rendering out by type in the F3 profiler graph",

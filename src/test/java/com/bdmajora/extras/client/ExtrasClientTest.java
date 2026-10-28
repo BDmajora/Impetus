@@ -3,6 +3,7 @@ package com.bdmajora.extras.client;
 import com.bdmajora.extras.Extras;
 import com.bdmajora.extras.ExtrasConfig;
 import com.bdmajora.impetus.impl.platform.GameWindow;
+import com.bdmajora.extras.client.bakedentities.ModelBoxAccess;
 import com.bdmajora.extras.client.budget.RenderBudgetController;
 import com.bdmajora.extras.mixin.panini.ShaderGroupAccessor;
 import com.bdmajora.impetus.ImpetusVintage;
@@ -15,6 +16,11 @@ import net.minecraft.block.material.Material;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.ScaledResolution;
+import net.minecraft.client.model.ModelBase;
+import net.minecraft.client.model.ModelRenderer;
+import net.minecraft.client.model.ModelShulker;
+import net.minecraft.client.model.PositionTextureVertex;
+import net.minecraft.client.model.TexturedQuad;
 import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.renderer.block.model.BakedQuad;
@@ -571,5 +577,117 @@ class ExtrasClientTest {
         TimeWeatherOverride.apply(stormy);
         verify(stormy).setRainStrength(0.0F);
         assertNotNull(Mixins.construct(TimeWeatherOverride.class));
+    }
+
+    // Lowest and highest of one corner value across a quad: 0 1 2 for position, 3 4 for the texture
+    private static float[] spread(TexturedQuad quad, int component) {
+        float[] spread = {Float.MAX_VALUE, -Float.MAX_VALUE};
+        for (PositionTextureVertex corner : quad.vertexPositions) {
+            float value = switch (component) {
+                case 0 -> (float) corner.vector3D.x;
+                case 1 -> (float) corner.vector3D.y;
+                case 2 -> (float) corner.vector3D.z;
+                case 3 -> corner.texturePositionX;
+                default -> corner.texturePositionY;
+            };
+            spread[0] = Math.min(spread[0], value);
+            spread[1] = Math.max(spread[1], value);
+        }
+        return spread;
+    }
+
+    private static ModelRenderer part(float x, float y, float z, int dx, int dy, int dz) {
+        ModelRenderer part = new ModelRenderer(new ModelBase() { }, 0, 0);
+        part.addBox(x, y, z, dx, dy, dz);
+        part.setRotationPoint(0.0F, 24.0F, 0.0F);
+        return part;
+    }
+
+    // What a split part draws: its one box's slices, flat faces as they were and each side as its slices top down
+    private static List<TexturedQuad> drawn(ModelRenderer part) {
+        return ((ShutShulker.QuadBox) part.cubeList.get(0)).quads();
+    }
+
+    @Test
+    void aShutShulkerCutsLidAndBaseSoTheirSharedRowsAreOneQuadInBoth() {
+        ModelShulker model = new ModelShulker();
+        ModelRenderer base = ShutShulker.split(model.base, model.lid);
+        ModelRenderer lid = ShutShulker.split(model.lid, model.base);
+        assertEquals(24.0F, base.rotationPointY);
+        assertEquals(24.0F, lid.rotationPointY);
+        TexturedQuad[] vanillaBase = ((ModelBoxAccess) model.base.cubeList.get(0)).impetus$getQuads();
+        TexturedQuad[] vanillaLid = ((ModelBoxAccess) model.lid.cubeList.get(0)).impetus$getQuads();
+        List<TexturedQuad> basePieces = drawn(base);
+        List<TexturedQuad> lidPieces = drawn(lid);
+        // Six faces each: the two flat ones whole, the four sides as two slices
+        assertEquals(10, basePieces.size());
+        assertEquals(10, lidPieces.size());
+        int piece = 0;
+        for (int face = 0; face < 6; face++) {
+            float[] height = spread(vanillaBase[face], 1);
+            if (height[0] == height[1]) {
+                assertSame(vanillaBase[face], basePieces.get(piece));
+                assertSame(vanillaLid[face], lidPieces.get(piece));
+                piece++;
+                continue;
+            }
+            TexturedQuad baseBand = basePieces.get(piece);
+            TexturedQuad baseLower = basePieces.get(piece + 1);
+            TexturedQuad lidUpper = lidPieces.get(piece);
+            TexturedQuad lidBand = lidPieces.get(piece + 1);
+            piece += 2;
+            // Every row stays: the base keeps its teeth (sheet rows 44 to 48) over its lower four, the lid its notched rows 24 to 28 under its upper eight
+            assertArrayEquals(new float[] {-8.0F, -4.0F}, spread(baseBand, 1), 1.0E-6F);
+            assertArrayEquals(new float[] {44.0F / 64.0F, 48.0F / 64.0F}, spread(baseBand, 4), 1.0E-6F);
+            assertArrayEquals(new float[] {-4.0F, 0.0F}, spread(baseLower, 1), 1.0E-6F);
+            assertArrayEquals(new float[] {48.0F / 64.0F, 52.0F / 64.0F}, spread(baseLower, 4), 1.0E-6F);
+            assertArrayEquals(new float[] {-16.0F, -8.0F}, spread(lidUpper, 1), 1.0E-6F);
+            assertArrayEquals(new float[] {16.0F / 64.0F, 24.0F / 64.0F}, spread(lidUpper, 4), 1.0E-6F);
+            assertArrayEquals(new float[] {-8.0F, -4.0F}, spread(lidBand, 1), 1.0E-6F);
+            assertArrayEquals(new float[] {24.0F / 64.0F, 28.0F / 64.0F}, spread(lidBand, 4), 1.0E-6F);
+            // The shared rows are one quad in both, corner for corner and on the same texel columns, so a lid notch and a base tooth always land on the same pixels
+            for (int corner = 0; corner < 4; corner++) {
+                PositionTextureVertex under = baseBand.vertexPositions[corner];
+                PositionTextureVertex over = lidBand.vertexPositions[corner];
+                assertEquals(under.vector3D.x, over.vector3D.x);
+                assertEquals(under.vector3D.y, over.vector3D.y);
+                assertEquals(under.vector3D.z, over.vector3D.z);
+                assertEquals(under.texturePositionX, over.texturePositionX);
+            }
+            // A corner already on a slice's edge is the original vertex, so the outer rows keep vanilla's exact coordinates
+            for (int corner = 0; corner < 4; corner++) {
+                PositionTextureVertex original = vanillaBase[face].vertexPositions[corner];
+                if (original.vector3D.y == 0.0D) {
+                    assertSame(original, baseLower.vertexPositions[corner]);
+                }
+            }
+        }
+        assertEquals(10, piece);
+
+        // A slice box draws its slices in place of the six faces it was built with
+        TexturedQuad slice = mock(TexturedQuad.class);
+        net.minecraft.client.renderer.BufferBuilder buffer = mock(net.minecraft.client.renderer.BufferBuilder.class);
+        new ShutShulker.QuadBox(base, model.base.cubeList.get(0), List.of(slice)).render(buffer, 0.0625F);
+        verify(slice).draw(buffer, 0.0625F);
+
+        // Anything but two plain unturned single boxes on one footprint, with an edge inside the part, is left as vanilla draws it
+        assertSame(model.base, ShutShulker.split(model.base, part(-4.0F, -16.0F, -4.0F, 8, 12, 8)));
+        assertSame(model.base, ShutShulker.split(model.base, part(-8.0F, -16.0F, -4.0F, 16, 12, 8)));
+        assertSame(model.base, ShutShulker.split(model.base, part(-8.0F, -24.0F, -8.0F, 16, 8, 16)));
+        assertSame(model.base, ShutShulker.split(model.base, part(-8.0F, -8.0F, -8.0F, 16, 8, 16)));
+        ModelRenderer turned = part(-8.0F, -16.0F, -8.0F, 16, 12, 16);
+        turned.rotateAngleY = 0.5F;
+        assertSame(model.base, ShutShulker.split(model.base, turned));
+        ModelRenderer parent = part(-8.0F, -16.0F, -8.0F, 16, 12, 16);
+        parent.addChild(part(0.0F, 0.0F, 0.0F, 1, 1, 1));
+        assertSame(model.base, ShutShulker.split(model.base, parent));
+        ModelRenderer empty = new ModelRenderer(new ModelBase() { }, 0, 0);
+        assertSame(empty, ShutShulker.split(empty, model.lid));
+        // A face crossing a cut without straight vertical edges has nothing to slide along and is kept whole
+        TexturedQuad slanted = new TexturedQuad(new PositionTextureVertex[] {new PositionTextureVertex(0.0F, -8.0F, 0.0F, 0.0F, 0.0F),
+                new PositionTextureVertex(1.0F, 0.0F, 0.0F, 1.0F, 0.0F), new PositionTextureVertex(1.0F, 0.0F, 1.0F, 1.0F, 1.0F),
+                new PositionTextureVertex(0.0F, -8.0F, 1.0F, 0.0F, 1.0F)});
+        assertEquals(List.of(slanted), ShutShulker.slice(slanted, List.of(-4.0F)));
+        assertNotNull(Mixins.construct(ShutShulker.class));
     }
 }

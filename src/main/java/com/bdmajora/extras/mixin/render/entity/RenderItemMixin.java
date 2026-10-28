@@ -12,7 +12,7 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 
 import java.util.List;
 
-// Item-frame LOD on the vanilla item path, scoped by ItemFrameLodState.active so other item renders pay one static boolean read; with allowEmissiveItems on, items go through ForgeHooksClientMixin instead
+// Item quads on the vanilla item path: coplanar faces resolved by ItemFaceCache, then item-frame LOD scoped by ItemFrameLodState.active; with allowEmissiveItems on, items go through ForgeHooksClientMixin instead
 @Mixin(RenderItem.class)
 public class RenderItemMixin {
     @Redirect(
@@ -20,7 +20,7 @@ public class RenderItemMixin {
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/block/model/IBakedModel;getQuads(Lnet/minecraft/block/state/IBlockState;Lnet/minecraft/util/EnumFacing;J)Ljava/util/List;")
     )
-    private List<BakedQuad> impetus$lodQuads(IBakedModel model, IBlockState state, EnumFacing side, long rand) {
+    private List<BakedQuad> impetus$itemQuads(IBakedModel model, IBlockState state, EnumFacing side, long rand) {
         return ItemFrameLodState.filterLodQuads(model, state, side, rand);
     }
 }

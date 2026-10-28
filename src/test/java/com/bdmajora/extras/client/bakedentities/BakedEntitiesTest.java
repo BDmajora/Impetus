@@ -276,6 +276,230 @@ class BakedEntitiesTest {
         assertEquals(5, odd.quads().size());
     }
 
+    private static ModelRenderer box(ModelBase model, float x, float y, float z, int dx, int dy, int dz) {
+        ModelRenderer part = new ModelRenderer(model, 0, 0);
+        part.addBox(x, y, z, dx, dy, dz);
+        return part;
+    }
+
+    // x, y, z, then atlas u, v of each corner
+    private static float[][] corners(BakedQuad quad) {
+        int[] data = quad.getVertexData();
+        float[][] corners = new float[4][];
+        for (int i = 0; i < 4; i++) {
+            int offset = i * 7;
+            corners[i] = new float[] {Float.intBitsToFloat(data[offset]), Float.intBitsToFloat(data[offset + 1]), Float.intBitsToFloat(data[offset + 2]),
+                    Float.intBitsToFloat(data[offset + 4]), Float.intBitsToFloat(data[offset + 5])};
+        }
+        return corners;
+    }
+
+    // Lowest and highest value one corner component takes
+    private static float[] range(BakedQuad quad, int component) {
+        float[] range = {Float.MAX_VALUE, -Float.MAX_VALUE};
+        for (float[] corner : corners(quad)) {
+            range[0] = Math.min(range[0], corner[component]);
+            range[1] = Math.max(range[1], corner[component]);
+        }
+        return range;
+    }
+
+    // Area two quads share across the axes other than the normal one
+    private static float shared(BakedQuad first, BakedQuad second, int normal) {
+        float area = 1.0F;
+        for (int axis = 0; axis < 3; axis++) {
+            if (axis != normal) {
+                float[] a = range(first, axis);
+                float[] b = range(second, axis);
+                area *= Math.max(0.0F, Math.min(a[1], b[1]) - Math.max(a[0], b[0]));
+            }
+        }
+        return area;
+    }
+
+    // Whether two quads are the same rectangle corner for corner, which is what makes them rasterize to the same depths and texels
+    private static boolean sameRectangle(BakedQuad first, BakedQuad second) {
+        float[][] a = corners(first);
+        float[][] b = corners(second);
+        for (int i = 0; i < 4; i++) {
+            for (int axis = 0; axis < 3; axis++) {
+                if (Float.floatToRawIntBits(a[i][axis]) != Float.floatToRawIntBits(b[i][axis])) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    // Two faces turned the same way on one plane either share no area or are the same rectangle; anything in between z-fights in the mesh
+    private static void assertFacesOnOnePlaneMissOrMatch(List<BakedQuad> quads, String variant) {
+        assertFalse(quads.isEmpty(), variant);
+        for (int i = 0; i < quads.size(); i++) {
+            for (int j = i + 1; j < quads.size(); j++) {
+                BakedQuad first = quads.get(i);
+                BakedQuad second = quads.get(j);
+                int normal = first.getFace().getAxis().ordinal();
+                float[] firstPlane = range(first, normal);
+                float[] secondPlane = range(second, normal);
+                if (first.getFace() == second.getFace() && firstPlane[1] - firstPlane[0] < 1.0E-4F && secondPlane[1] - secondPlane[0] < 1.0E-4F
+                        && Math.abs(firstPlane[0] - secondPlane[0]) < 1.0E-4F && shared(first, second, normal) > 1.0E-6F) {
+                    assertTrue(sameRectangle(first, second), variant + ": two " + first.getFace() + " faces overlap on one plane without matching");
+                }
+            }
+        }
+    }
+
+    // The faces turned one way whose sheet rows run exactly from one row to another
+    private static List<BakedQuad> rows(List<BakedQuad> quads, EnumFacing face, int from, int to) {
+        return quads.stream().filter(quad -> quad.getFace() == face && Math.abs(range(quad, 4)[0] - from / 64.0F) < 1.0E-5F
+                && Math.abs(range(quad, 4)[1] - to / 64.0F) < 1.0E-5F).toList();
+    }
+
+    @Test
+    void facesOnOnePlaneBakeIntoMatchingCellsAndBothStay() {
+        TextureAtlasSprite sprite = Minecraft.getMinecraft().getTextureMapBlocks().getAtlasSprite("x");
+        ModelBase model = new ModelBase() { };
+        // A small box sunk into the north face of a big one: the big face becomes a three by three grid whose middle cell is the small face's own rectangle, drawn before it
+        EntityModelBaker framed = new EntityModelBaker(sprite);
+        framed.bake(box(model, 0, 0, 0, 16, 16, 16), new Matrix4f());
+        framed.bake(box(model, 4, 4, 0, 8, 8, 4), new Matrix4f());
+        List<BakedQuad> quads = framed.quads();
+        assertSame(quads, framed.quads());
+        assertEquals(20, quads.size());
+        assertFacesOnOnePlaneMissOrMatch(quads, "framed");
+        List<BakedQuad> north = quads.stream().filter(quad -> quad.getFace() == EnumFacing.NORTH && range(quad, 2)[1] < 1.0E-6F).toList();
+        assertEquals(10, north.size());
+        float area = 0.0F;
+        for (BakedQuad cell : north.subList(0, 9)) {
+            area += shared(cell, cell, 2);
+        }
+        assertEquals(1.0F, area, 1.0E-5F);
+        BakedQuad middle = north.subList(0, 9).stream().filter(quad -> range(quad, 0)[0] == 0.25F && range(quad, 1)[0] == 0.25F).findFirst().orElseThrow();
+        assertTrue(sameRectangle(middle, north.get(9)));
+        // The cells keep the big face's own texture: the middle left one shows the first quarter of the face's u span (16 to 32 of 64) and the middle half of its v span
+        BakedQuad left = north.subList(0, 9).stream().filter(quad -> range(quad, 0)[1] == 0.25F && range(quad, 1)[0] == 0.25F).findFirst().orElseThrow();
+        assertArrayEquals(new float[] {0.25F, 0.3125F}, range(left, 3), 1.0E-5F);
+        assertArrayEquals(new float[] {0.625F, 0.875F}, range(left, 4), 1.0E-5F);
+        // Another bake starts over
+        framed.bake(box(model, 0, 0, 0, 1, 1, 1), new Matrix4f());
+        assertNotSame(quads, framed.quads());
+        // A part drawn twice keeps both copies, each face once per copy and the same rectangle, the later copy after
+        EntityModelBaker twice = new EntityModelBaker(sprite);
+        twice.bake(box(model, 0, 0, 0, 16, 16, 16), new Matrix4f());
+        twice.bake(box(model, 0, 0, 0, 16, 16, 16), new Matrix4f());
+        assertEquals(12, twice.quads().size());
+        for (int i = 0; i < 12; i += 2) {
+            assertTrue(sameRectangle(twice.quads().get(i), twice.quads().get(i + 1)));
+        }
+        // Boxes meeting face to face push the two touching faces apart along their own normals, so neither shows through the other
+        EntityModelBaker touching = new EntityModelBaker(sprite);
+        touching.bake(box(model, 0, 0, 0, 16, 16, 16), new Matrix4f());
+        touching.bake(box(model, 16, 0, 0, 16, 16, 16), new Matrix4f());
+        assertEquals(12, touching.quads().size());
+        float half = 1.0F / 1024.0F;
+        assertTrue(touching.quads().stream().anyMatch(quad -> quad.getFace() == EnumFacing.EAST && range(quad, 0)[0] == 1.0F + half));
+        assertTrue(touching.quads().stream().anyMatch(quad -> quad.getFace() == EnumFacing.WEST && range(quad, 0)[0] == 1.0F - half));
+        // Boxes apart are left exactly as baked
+        EntityModelBaker apart = new EntityModelBaker(sprite);
+        apart.bake(box(model, 0, 0, 0, 4, 4, 4), new Matrix4f());
+        apart.bake(box(model, 8, 0, 0, 4, 4, 4), new Matrix4f());
+        assertEquals(12, apart.quads().size());
+        assertTrue(apart.quads().stream().noneMatch(quad -> range(quad, 0)[0] == 0.5F + half));
+    }
+
+    @Test
+    void aShutShulkerBoxBakesTheRowsLidAndBaseShareAsOneQuadInEach() {
+        List<BakedQuad> box = quads(Blocks.WHITE_SHULKER_BOX.getDefaultState().withProperty(BlockShulkerBox.FACING, EnumFacing.UP));
+        // The four flat faces whole and each of the eight sides as two slices
+        assertEquals(20, box.size());
+        for (EnumFacing side : EnumFacing.Plane.HORIZONTAL) {
+            // Every row of the sheet stays: the base's teeth (rows 44 to 48) over its lower four, the lid's notched rows 24 to 28 under its upper eight
+            List<BakedQuad> baseLower = rows(box, side, 48, 52);
+            List<BakedQuad> baseBand = rows(box, side, 44, 48);
+            List<BakedQuad> lidBand = rows(box, side, 24, 28);
+            List<BakedQuad> lidUpper = rows(box, side, 16, 24);
+            assertEquals(1, baseLower.size(), side.getName());
+            assertEquals(1, baseBand.size(), side.getName());
+            assertEquals(1, lidBand.size(), side.getName());
+            assertEquals(1, lidUpper.size(), side.getName());
+            assertArrayEquals(new float[] {0.0F, 0.25F}, range(baseLower.get(0), 1), 1.0E-5F, side.getName());
+            assertArrayEquals(new float[] {0.25F, 0.5F}, range(baseBand.get(0), 1), 1.0E-5F, side.getName());
+            assertArrayEquals(new float[] {0.5F, 1.0F}, range(lidUpper.get(0), 1), 1.0E-5F, side.getName());
+            // The shared rows are one rectangle in both on the same texel columns, so the lid's see-through notch lands exactly on the base's tooth; the renderer's order, base then lid, is kept
+            assertTrue(sameRectangle(baseBand.get(0), lidBand.get(0)), side.getName());
+            for (int corner = 0; corner < 4; corner++) {
+                assertEquals(corners(baseBand.get(0))[corner][3], corners(lidBand.get(0))[corner][3], side.getName());
+            }
+            assertTrue(box.indexOf(baseBand.get(0)) < box.indexOf(lidBand.get(0)), side.getName());
+        }
+        // Every facing fills its block exactly, so stacked and neighbouring boxes meet with no slit between them
+        for (EnumFacing facing : EnumFacing.values()) {
+            List<BakedQuad> turned = quads(Blocks.WHITE_SHULKER_BOX.getDefaultState().withProperty(BlockShulkerBox.FACING, facing));
+            for (int axis = 0; axis < 3; axis++) {
+                float low = Float.MAX_VALUE;
+                float high = -Float.MAX_VALUE;
+                for (BakedQuad quad : turned) {
+                    low = Math.min(low, range(quad, axis)[0]);
+                    high = Math.max(high, range(quad, axis)[1]);
+                }
+                assertArrayEquals(new float[] {0.0F, 1.0F}, new float[] {low, high}, 1.0E-5F, facing + " axis " + axis);
+            }
+        }
+    }
+
+    @Test
+    void aShutChestBakesTheRowLidAndBaseShareAsOneQuadInEach() {
+        BakedEntityContext.clear();
+        List<BakedQuad> chest = quads(Blocks.CHEST.getDefaultState().withProperty(BlockChest.FACING, EnumFacing.SOUTH));
+        for (EnumFacing side : EnumFacing.Plane.HORIZONTAL) {
+            // The lid's bottom row (18 to 19 of the sheet) and the base's top row (33 to 34) become one rectangle, the base drawn after as the renderer does
+            List<BakedQuad> lidBand = rows(chest, side, 18, 19);
+            List<BakedQuad> baseBand = rows(chest, side, 33, 34);
+            assertEquals(1, lidBand.size(), side.getName());
+            assertEquals(1, baseBand.size(), side.getName());
+            assertTrue(sameRectangle(lidBand.get(0), baseBand.get(0)), side.getName());
+            assertTrue(chest.indexOf(lidBand.get(0)) < chest.indexOf(baseBand.get(0)), side.getName());
+            // The rest of each side keeps its rows
+            assertEquals(1, rows(chest, side, 14, 18).size(), side.getName());
+            assertEquals(1, rows(chest, side, 34, 43).size(), side.getName());
+        }
+    }
+
+    @Test
+    void bakedFacesOnOnePlaneEitherMissEachOtherOrMatchExactly() {
+        BlockPos pos = new BlockPos(10, 64, 10);
+        for (EnumFacing facing : EnumFacing.values()) {
+            assertFacesOnOnePlaneMissOrMatch(quads(Blocks.WHITE_SHULKER_BOX.getDefaultState().withProperty(BlockShulkerBox.FACING, facing)), "shulker box " + facing);
+        }
+        for (EnumFacing facing : EnumFacing.Plane.HORIZONTAL) {
+            IBlockState chest = Blocks.CHEST.getDefaultState().withProperty(BlockChest.FACING, facing);
+            BakedEntityContext.clear();
+            assertFacesOnOnePlaneMissOrMatch(quads(chest), "chest " + facing);
+            for (BlockPos partner : List.of(pos.offset(facing.rotateY()), pos.offset(facing.rotateYCCW()))) {
+                BakedEntityContext.set(world(Map.of(partner, chest), Map.of()), pos);
+                assertFacesOnOnePlaneMissOrMatch(quads(chest), "double chest " + facing + " " + partner);
+            }
+            BakedEntityContext.clear();
+            // The ender chest's lid and base sides each split at the row they share (eight more than its eighteen faces); the wall sign board and the bed's piece and legs share no plane
+            List<BakedQuad> enderChest = quads(Blocks.ENDER_CHEST.getDefaultState().withProperty(BlockHorizontal.FACING, facing));
+            assertFacesOnOnePlaneMissOrMatch(enderChest, "ender chest " + facing);
+            assertEquals(26, enderChest.size());
+            List<BakedQuad> wallSign = quads(Blocks.WALL_SIGN.getDefaultState().withProperty(BlockWallSign.FACING, facing));
+            assertFacesOnOnePlaneMissOrMatch(wallSign, "wall sign " + facing);
+            assertEquals(6, wallSign.size());
+            for (BlockBed.EnumPartType part : BlockBed.EnumPartType.values()) {
+                List<BakedQuad> bed = quads(Blocks.BED.getDefaultState().withProperty(BlockBed.FACING, facing).withProperty(BlockBed.PART, part));
+                assertFacesOnOnePlaneMissOrMatch(bed, "bed " + facing + " " + part);
+                assertEquals(18, bed.size());
+            }
+        }
+        for (int rotation = 0; rotation < 16; rotation++) {
+            List<BakedQuad> sign = quads(Blocks.STANDING_SIGN.getDefaultState().withProperty(BlockStandingSign.ROTATION, rotation));
+            assertFacesOnOnePlaneMissOrMatch(sign, "standing sign " + rotation);
+            assertEquals(12, sign.size());
+        }
+    }
+
     @Test
     void anEntitySheetLoadsItselfWhateverItsShape() throws Exception {
         EntitySheetSprite sprite = new EntitySheetSprite(new ResourceLocation("minecraft:entity/sign"), 4);

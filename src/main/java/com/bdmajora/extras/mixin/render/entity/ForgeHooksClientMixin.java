@@ -12,7 +12,7 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 
 import java.util.List;
 
-// Item-frame LOD on Forge's emissive-item path; allowEmissiveItems defaults to true, so most item rendering goes through renderLitItem instead of RenderItem.renderModel, and both are hooked
+// Item quads on Forge's emissive-item path (coplanar faces resolved, then item-frame LOD); allowEmissiveItems defaults to true, so most item rendering goes through renderLitItem instead of RenderItem.renderModel, and both are hooked
 @Mixin(ForgeHooksClient.class)
 public class ForgeHooksClientMixin {
     // Not remap = false despite the Forge class: the enclosing method is Forge's, but IBakedModel.getQuads is Minecraft's and becomes func_188616_a in production
@@ -21,7 +21,7 @@ public class ForgeHooksClientMixin {
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/block/model/IBakedModel;getQuads(Lnet/minecraft/block/state/IBlockState;Lnet/minecraft/util/EnumFacing;J)Ljava/util/List;")
     )
-    private static List<BakedQuad> impetus$lodQuads(IBakedModel model, IBlockState state, EnumFacing side, long rand) {
+    private static List<BakedQuad> impetus$itemQuads(IBakedModel model, IBlockState state, EnumFacing side, long rand) {
         return ItemFrameLodState.filterLodQuads(model, state, side, rand);
     }
 }

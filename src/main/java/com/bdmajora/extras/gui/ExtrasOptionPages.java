@@ -276,6 +276,8 @@ public final class ExtrasOptionPages {
                         config -> config.render.playerNameTag, null, null, null))
                 .add(OPTIONS.toggle("render.dropped_items", (config, value) -> config.render.droppedItemsFancy = value,
                         config -> config.render.droppedItemsFancy, OptionImpact.MEDIUM, null, null))
+                .add(OPTIONS.toggle("render.item_model_flicker_fix", (config, value) -> config.render.itemModelFlickerFix = value,
+                        config -> config.render.itemModelFlickerFix, null, null, null))
                 .add(beacons)
                 .add(OPTIONS.toggle("render.limit_beacon_beam", (config, value) -> config.render.limitBeaconBeamHeight = value,
                         config -> config.render.limitBeaconBeamHeight, null, null, beaconsOn))

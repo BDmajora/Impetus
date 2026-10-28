@@ -402,6 +402,8 @@ public final class ExtrasConfig {
         public boolean playerNameTag = true;
         // Switch that stacks up to five models per dropped item pile
         public boolean droppedItemsFancy = true;
+        // Switch that rebuilds item model faces sharing a plane so they stop flickering as the camera moves
+        public boolean itemModelFlickerFix = true;
         // Switch that blocks the vanilla post processing shaders
         public boolean preventShaders = false;
         // Switch that splits entity rendering by type in the F3 profiler

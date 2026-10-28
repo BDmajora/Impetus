@@ -342,6 +342,22 @@ class ShaderMixinsTest {
     }
 
     @Test
+    void nameplatesStayOutOfTheShadowMapOnly() {
+        assertNotNull(Mixins.instance(NameplateShadowPassMixin.class));
+        Object[] plate = {null, "Queue", 0.0F, 2.0F, 0.0F, 0, 45.0F, 10.0F, false, false};
+        assertFalse(cancels(NameplateShadowPassMixin.class, "impetus$noNameplateInShadowPass", plate));
+        // The pass flag alone, with no pack running, leaves the label be
+        Statics.set(UmbraShadowRenderer.class, "shadowPassActive", true);
+        assertFalse(cancels(NameplateShadowPassMixin.class, "impetus$noNameplateInShadowPass", plate));
+        // Inside a pack's shadow pass the label would turn with the camera, so it is dropped there
+        withPipeline();
+        assertTrue(cancels(NameplateShadowPassMixin.class, "impetus$noNameplateInShadowPass", plate));
+        // The main pass still draws every label
+        Statics.set(UmbraShadowRenderer.class, "shadowPassActive", false);
+        assertFalse(cancels(NameplateShadowPassMixin.class, "impetus$noNameplateInShadowPass", plate));
+    }
+
+    @Test
     void theArmKeepsBlendingOutsideTheHandStages() {
         RenderPlayerArmBlendMixin arm = Mixins.instance(RenderPlayerArmBlendMixin.class);
         // GlStateManager only reaches GL on a change, so blending starts off here

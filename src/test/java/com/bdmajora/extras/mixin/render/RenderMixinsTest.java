@@ -7,6 +7,7 @@ import com.bdmajora.extras.mixin.render.block_entity.TileEntityBeaconRendererMix
 import com.bdmajora.extras.mixin.render.block_entity.TileEntityEnchantmentTableRendererMixin;
 import com.bdmajora.extras.mixin.render.block_entity.TileEntityPistonRendererMixin;
 import com.bdmajora.extras.mixin.render.block_entity.TileEntityRendererDispatcherBudgetMixin;
+import com.bdmajora.extras.mixin.render.block_entity.TileEntityShulkerBoxRendererLidSeamMixin;
 import com.bdmajora.extras.mixin.render.entity.ForgeHooksClientMixin;
 import com.bdmajora.extras.mixin.render.entity.LayerCapeMixin;
 import com.bdmajora.extras.mixin.render.entity.RenderEntityItemMixin;
@@ -27,6 +28,8 @@ import com.bdmajora.testing.Mixins;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.AbstractClientPlayer;
 import net.minecraft.client.gui.MapItemRenderer;
+import net.minecraft.client.model.ModelRenderer;
+import net.minecraft.client.model.ModelShulker;
 import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.Tessellator;
@@ -39,6 +42,7 @@ import net.minecraft.entity.item.EntityItemFrame;
 import net.minecraft.entity.passive.EntityPig;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntityBeacon;
+import net.minecraft.tileentity.TileEntityShulkerBox;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.TextComponentString;
@@ -95,6 +99,35 @@ class RenderMixinsTest {
         args[leading.length] = ci;
         Mixins.call(mixin, handler, args);
         return ci.isCancelled();
+    }
+
+    @Test
+    void aShutShulkerBoxDrawsBothPartsCutAtTheRowsTheyShare() {
+        TileEntityShulkerBoxRendererLidSeamMixin renderer = Mixins.instance(TileEntityShulkerBoxRendererLidSeamMixin.class);
+        Mixins.set(renderer, "model", new ModelShulker());
+        TileEntityShulkerBox box = new TileEntityShulkerBox();
+        for (String part : List.of("Base", "Lid")) {
+            String handler = "impetus$drawShut" + part;
+            String cache = "impetus$shut" + part;
+            ModelRenderer vanillaPart = mock(ModelRenderer.class);
+            Mc.Recorded<Void> vanilla = Mc.operation();
+            // A lid on the move uncovers the band, so vanilla's own part is drawn
+            Mixins.set(box, "progress", 0.5F);
+            Mixins.call(renderer, handler, vanillaPart, 0.0625F, vanilla, box, 1.0F);
+            assertEquals(1, vanilla.count(), part);
+            // Shut, the cut copy is drawn in its place
+            Mixins.set(box, "progress", 0.0F);
+            ModelRenderer shut = mock(ModelRenderer.class);
+            Mixins.set(renderer, cache, shut);
+            Mixins.call(renderer, handler, vanillaPart, 0.0625F, vanilla, box, 1.0F);
+            verify(shut).render(0.0625F);
+            assertEquals(1, vanilla.count(), part);
+            // Built from the renderer's model on the first shut box; a part with nothing to cut is kept and drawn as it is
+            Mixins.set(renderer, cache, null);
+            Mixins.call(renderer, handler, vanillaPart, 0.0625F, vanilla, box, 1.0F);
+            verify(vanillaPart).render(0.0625F);
+            assertSame(vanillaPart, Mixins.get(renderer, cache), part);
+        }
     }
 
     @Test
@@ -186,8 +219,8 @@ class RenderMixinsTest {
         IBakedModel model = mock(IBakedModel.class);
         List<BakedQuad> quads = List.of(mock(BakedQuad.class));
         when(model.getQuads(any(), any(), anyLong())).thenReturn(quads);
-        assertSame(quads, Mixins.call(Mixins.instance(RenderItemMixin.class), "impetus$lodQuads", model, null, EnumFacing.UP, 0L));
-        assertSame(quads, Mixins.call(ForgeHooksClientMixin.class, "impetus$lodQuads", model, null, EnumFacing.UP, 0L));
+        assertSame(quads, Mixins.call(Mixins.instance(RenderItemMixin.class), "impetus$itemQuads", model, null, EnumFacing.UP, 0L));
+        assertSame(quads, Mixins.call(ForgeHooksClientMixin.class, "impetus$itemQuads", model, null, EnumFacing.UP, 0L));
         assertNotNull(Mixins.instance(ForgeHooksClientMixin.class));
     }
 

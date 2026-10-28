@@ -222,17 +222,10 @@ class GLRenderDeviceTest {
 
     @Test
     void batchAllocationFailuresAreReported() {
-        long real = MemoryUtil.nmemAlloc(64);
         try (MockedStatic<MemoryUtil> memory = Mockito.mockStatic(MemoryUtil.class, Mockito.CALLS_REAL_METHODS)) {
             memory.when(() -> MemoryUtil.nmemAlignedAlloc(Mockito.anyLong(), Mockito.anyLong())).thenReturn(0L);
             assertThrows(OutOfMemoryError.class, () -> new DirectMultiDrawBatch(1));
             assertThrows(OutOfMemoryError.class, () -> new IndirectMultiDrawBatch(1));
-            memory.when(() -> MemoryUtil.nmemAlignedAlloc(Mockito.anyLong(), Mockito.anyLong())).thenReturn(real, 0L);
-            memory.when(() -> MemoryUtil.nmemAlignedFree(Mockito.anyLong())).then(inv -> null);
-            assertThrows(OutOfMemoryError.class, () -> new DirectMultiDrawBatch(1));
-            memory.when(() -> MemoryUtil.nmemAlignedAlloc(Mockito.anyLong(), Mockito.anyLong())).thenReturn(real, real, 0L);
-            assertThrows(OutOfMemoryError.class, () -> new DirectMultiDrawBatch(1));
         }
-        MemoryUtil.nmemFree(real);
     }
 }

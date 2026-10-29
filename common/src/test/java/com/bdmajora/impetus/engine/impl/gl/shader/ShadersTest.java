@@ -110,7 +110,7 @@ class ShadersTest {
         new GlUniformInt(2).set(9);
         Mockito.verify(TestGl.gl()).glUniform1i(2, 9);
         new GlUniformFloat3v(3).set(new float[]{1, 2, 3});
-        Mockito.verify(TestGl.gl()).glUniform3fv(3, new float[]{1, 2, 3});
+        Mockito.verify(TestGl.gl()).glUniform3f(3, 1, 2, 3);
         new GlUniformFloat3v(3).set(4, 5, 6);
         Mockito.verify(TestGl.gl()).glUniform3f(3, 4, 5, 6);
         assertThrows(IllegalArgumentException.class, () -> new GlUniformFloat3v(3).set(new float[2]));

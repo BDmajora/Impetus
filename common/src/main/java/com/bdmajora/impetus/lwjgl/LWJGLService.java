@@ -420,6 +420,10 @@ public record LWJGLService(
         GL20C.glUniform1fv(location, value);
     }
 
+    public void glUniform1fv(int location, float[] value) {
+        GL20C.glUniform1fv(location, value);
+    }
+
     public void glUniform2i(int location, int v0, int v1) {
         GL20C.glUniform2i(location, v0, v1);
     }

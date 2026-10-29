@@ -18,6 +18,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InOrder;
 import org.mockito.Mockito;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.List;
 import java.util.Map;
@@ -117,9 +119,10 @@ class ShadersTest {
         new GlUniformFloat4v(4).set(new float[]{1, 2, 3, 4});
         Mockito.verify(TestGl.gl()).glUniform4f(4, 1, 2, 3, 4);
         assertThrows(IllegalArgumentException.class, () -> new GlUniformFloat4v(4).set(new float[3]));
-        new GlUniformFloatArray(5).set(new float[]{7, 8});
-        Mockito.verify(TestGl.gl()).glUniform1fv(Mockito.eq(5), Mockito.any(FloatBuffer.class));
-        FloatBuffer direct = FloatBuffer.allocate(2);
+        float[] elements = {7, 8};
+        new GlUniformFloatArray(5).set(elements);
+        Mockito.verify(TestGl.gl()).glUniform1fv(Mockito.eq(5), Mockito.same(elements));
+        FloatBuffer direct = ByteBuffer.allocateDirect(8).order(ByteOrder.nativeOrder()).asFloatBuffer();
         new GlUniformFloatArray(6).set(direct);
         Mockito.verify(TestGl.gl()).glUniform1fv(6, direct);
         new GlUniformMatrix3f(7).set(new Matrix3f());

@@ -356,7 +356,7 @@ class UmbraTerrainTest {
             UmbraTerrainShaderInterface fading = new UmbraTerrainShaderInterface(context, null, ProgramBlendState.empty(), ProgramAlphaTest.empty(), false);
             // Ages in milliseconds, capped at thirty seconds; no fade duration reads as a finished fade
             fading.setSectionAges(100_000_000_000L, new long[] {99_000_000_000L, 0L});
-            verify(TestGl.gl()).glUniform1fv(eq(4), any(FloatBuffer.class));
+            verify(TestGl.gl()).glUniform1fv(eq(4), any(float[].class));
             verify(TestGl.gl()).glUniform1f(4, 0.0f);
             com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions.chunkFadeInDuration = 500;
             fading.setSectionAges(1_000_000L, new long[] {0L});
@@ -368,13 +368,13 @@ class UmbraTerrainTest {
                     ? ((java.util.function.IntFunction<?>) invocation.getArgument(1)).apply(6) : null);
             new UmbraTerrainShaderInterface(agesOnly, null, ProgramBlendState.empty(), ProgramAlphaTest.empty(), false)
                     .setSectionAges(1_000_000L, new long[] {0L});
-            verify(TestGl.gl()).glUniform1fv(eq(6), any(FloatBuffer.class));
+            verify(TestGl.gl()).glUniform1fv(eq(6), any(float[].class));
 
             // No fade in the program: nothing uploads
             Mockito.clearInvocations(TestGl.gl());
             new UmbraTerrainShaderInterface(mock(ShaderBindingContext.class), null, ProgramBlendState.empty(), ProgramAlphaTest.empty())
                     .setSectionAges(1L, new long[] {0L});
-            verify(TestGl.gl(), never()).glUniform1fv(anyInt(), any(FloatBuffer.class));
+            verify(TestGl.gl(), never()).glUniform1fv(anyInt(), any(float[].class));
         } finally {
             com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions.chunkFadeInDuration = 0;
         }

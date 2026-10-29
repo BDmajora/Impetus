@@ -271,8 +271,9 @@ class GlUniformTest {
         Mockito.verify(gl).glUniform3f(-1, 1, 2, 3);
         new GlUniformFloat4v(-1).set(new float[]{1, 2, 3, 4});
         Mockito.verify(gl).glUniform4f(-1, 1, 2, 3, 4);
-        new GlUniformFloatArray(-1).set(new float[]{5});
-        Mockito.verify(gl).glUniform1fv(Mockito.eq(-1), Mockito.any(FloatBuffer.class));
+        float[] elements = {5};
+        new GlUniformFloatArray(-1).set(elements);
+        Mockito.verify(gl).glUniform1fv(Mockito.eq(-1), Mockito.same(elements));
         new GlUniformMatrix3f(-1).set(new Matrix3f());
         Mockito.verify(gl).glUniformMatrix3fv(Mockito.eq(-1), Mockito.eq(false), Mockito.any(FloatBuffer.class));
         new GlUniformMatrix4f(-1).set(new Matrix4f());

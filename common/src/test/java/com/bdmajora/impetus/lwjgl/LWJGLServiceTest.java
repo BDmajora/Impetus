@@ -370,6 +370,9 @@ class LWJGLServiceTest {
             gl20.verify(() -> GL20C.glUniform1i(1, 2));
             service.glUniform1fv(1, floats);
             gl20.verify(() -> GL20C.glUniform1fv(1, floats));
+            float[] scalars = {1f, 2f, 3f, 4f, 5f};
+            service.glUniform1fv(2, scalars);
+            gl20.verify(() -> GL20C.glUniform1fv(2, scalars));
             service.glUniform2i(1, 2, 3);
             gl20.verify(() -> GL20C.glUniform2i(1, 2, 3));
             service.glUniform3i(1, 2, 3, 4);

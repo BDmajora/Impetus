@@ -270,7 +270,7 @@ class GlUniformTest {
         new GlUniformFloat3v(-1).set(new float[]{1, 2, 3});
         Mockito.verify(gl).glUniform3f(-1, 1, 2, 3);
         new GlUniformFloat4v(-1).set(new float[]{1, 2, 3, 4});
-        Mockito.verify(gl).glUniform4fv(-1, new float[]{1, 2, 3, 4});
+        Mockito.verify(gl).glUniform4f(-1, 1, 2, 3, 4);
         new GlUniformFloatArray(-1).set(new float[]{5});
         Mockito.verify(gl).glUniform1fv(Mockito.eq(-1), Mockito.any(FloatBuffer.class));
         new GlUniformMatrix3f(-1).set(new Matrix3f());

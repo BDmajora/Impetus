@@ -13,6 +13,9 @@ import com.bdmajora.testing.TestGl;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.InOrder;
 import org.mockito.Mockito;
 
 import java.nio.FloatBuffer;
@@ -22,6 +25,17 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ShadersTest {
+    // Message of a negative uniform block binding point
+    private static final String BAD_BINDING = "Uniform block binding must not be negative";
+
+    // Links an empty program and clears the recorded calls
+    private static GlProgram<Object> linkedProgram() {
+        GlProgram<Object> program = GlProgram.builder("blocks").link(ctx -> null);
+        Mockito.clearInvocations(TestGl.gl());
+
+        return program;
+    }
+
     @Test
     void vertexFormatsBindConsecutiveAttributeLocationsBeforeLinking() {
         var format = com.bdmajora.impetus.engine.impl.gl.attribute.GlVertexFormat.builder(16)
@@ -133,5 +147,74 @@ class ShadersTest {
         assertEquals("#version 150\n#define A\n#define B 2\n#define C\n#define D 4\nfloat lib() { return 1.0; }\nvoid main() {}", parsed);
         assertThrows(IllegalArgumentException.class, () -> ShaderParser.parseShader("#import broken", n -> ""));
         new ShaderParser();
+    }
+
+    // Rejects a negative binding point for a present or missing block before any GL call
+    @ParameterizedTest
+    @ValueSource(ints = {-1, -2, Integer.MIN_VALUE + 1, Integer.MIN_VALUE})
+    void uniformBlockRejectsANegativeBindingPointBeforeAnyGlCall(int binding) {
+        Mockito.doReturn(1).when(TestGl.gl()).glGetUniformBlockIndex(Mockito.anyInt(), Mockito.eq("Block"));
+        GlProgram<Object> program = linkedProgram();
+
+        for (String name : new String[]{"Block", "Missing"}) {
+            IllegalArgumentException optional = assertThrows(IllegalArgumentException.class, () -> program.bindUniformBlockIfPresent(name, binding));
+            assertEquals(BAD_BINDING, optional.getMessage());
+            IllegalArgumentException required = assertThrows(IllegalArgumentException.class, () -> program.bindUniformBlock(name, binding));
+            assertEquals(BAD_BINDING, required.getMessage());
+        }
+
+        Mockito.verifyNoInteractions(TestGl.gl());
+    }
+
+    // Queries the block index then assigns every accepted binding point that the returned block binds at
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1, 35, 36, Integer.MAX_VALUE - 1, Integer.MAX_VALUE})
+    void uniformBlockAssignsEveryAcceptedBindingPoint(int binding) {
+        Mockito.doReturn(4).when(TestGl.gl()).glGetUniformBlockIndex(Mockito.anyInt(), Mockito.eq("Block"));
+        GlMutableBuffer buffer = new GlMutableBuffer();
+        GlProgram<Object> program = linkedProgram();
+
+        GlUniformBlock block = program.bindUniformBlockIfPresent("Block", binding);
+        assertNotNull(block);
+        block.bindBuffer(buffer);
+
+        InOrder order = Mockito.inOrder(TestGl.gl());
+        order.verify(TestGl.gl()).glGetUniformBlockIndex(program.handle(), "Block");
+        order.verify(TestGl.gl()).glUniformBlockBinding(program.handle(), 4, binding);
+        order.verify(TestGl.gl()).glBindBufferBase(0x8A11, binding, buffer.handle());
+        Mockito.verifyNoMoreInteractions(TestGl.gl());
+    }
+
+    // Returns null for every negative block index and assigns the binding point for every other index
+    @ParameterizedTest
+    @ValueSource(ints = {-1, -2, Integer.MIN_VALUE, 0, 1, Integer.MAX_VALUE})
+    void uniformBlockIndexDecidesPresence(int index) {
+        Mockito.doReturn(index).when(TestGl.gl()).glGetUniformBlockIndex(Mockito.anyInt(), Mockito.eq("Block"));
+        GlProgram<Object> program = linkedProgram();
+
+        GlUniformBlock block = program.bindUniformBlockIfPresent("Block", 2);
+
+        Mockito.verify(TestGl.gl()).glGetUniformBlockIndex(program.handle(), "Block");
+
+        if (index < 0) {
+            assertNull(block);
+        } else {
+            assertNotNull(block);
+            Mockito.verify(TestGl.gl()).glUniformBlockBinding(program.handle(), index, 2);
+        }
+
+        Mockito.verifyNoMoreInteractions(TestGl.gl());
+    }
+
+    // Rejects a deleted program before any GL call
+    @Test
+    void uniformBlockRejectsADeletedProgram() {
+        GlProgram<Object> program = linkedProgram();
+        program.delete();
+        Mockito.clearInvocations(TestGl.gl());
+
+        assertThrows(IllegalStateException.class, () -> program.bindUniformBlockIfPresent("Block", 0));
+        assertThrows(IllegalStateException.class, () -> program.bindUniformBlock("Block", 0));
+        Mockito.verifyNoInteractions(TestGl.gl());
     }
 }

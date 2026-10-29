@@ -67,6 +67,8 @@ public class GlProgram<T> extends GlObject implements ShaderBindingContext {
 
     @Override
     public @Nullable GlUniformBlock bindUniformBlockIfPresent(String name, int bindingPoint) {
+        // Rejects a negative binding point before any GL call
+        GlUniformBlock block = new GlUniformBlock(bindingPoint);
         int index = LWJGL.glGetUniformBlockIndex(this.handle(), name);
 
         if (index < 0) {
@@ -75,7 +77,7 @@ public class GlProgram<T> extends GlObject implements ShaderBindingContext {
 
         LWJGL.glUniformBlockBinding(this.handle(), index, bindingPoint);
 
-        return new GlUniformBlock(bindingPoint);
+        return block;
     }
 
     public static class Builder {

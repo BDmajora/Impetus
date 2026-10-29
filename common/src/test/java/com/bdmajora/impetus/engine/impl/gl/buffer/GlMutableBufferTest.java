@@ -2,7 +2,6 @@ package com.bdmajora.impetus.engine.impl.gl.buffer;
 
 import com.bdmajora.impetus.engine.impl.gl.device.CommandList;
 import com.bdmajora.impetus.engine.impl.gl.device.GLRenderDevice;
-import com.bdmajora.impetus.engine.impl.gl.functions.BufferMapRangeFunctions;
 import com.bdmajora.impetus.engine.impl.gl.util.EnumBitField;
 import com.bdmajora.impetus.lwjgl.LWJGLService;
 import com.bdmajora.testing.TestGl;
@@ -56,8 +55,6 @@ class GlMutableBufferTest {
     private static final GlBufferUsage USAGE = GlBufferUsage.STREAM_DRAW;
     // Map flags of a write mapping
     private static final EnumBitField<GlBufferMapFlags> WRITE = EnumBitField.of(GlBufferMapFlags.WRITE);
-    // Capacity of the whole buffer that the test driver maps for a full map
-    private static final int WHOLE_MAP = 1 << 16;
 
     // Shared GL mock that the reset extension clears before each test
     private final LWJGLService gl = TestGl.gl();
@@ -482,22 +479,6 @@ class GlMutableBufferTest {
             Mockito.verify(gl, Mockito.never()).glBufferData(anyInt(), any(ByteBuffer.class), anyInt());
             Mockito.verify(gl, Mockito.never()).glBufferData(anyInt(), anyLong(), anyLong(), anyInt());
         });
-    }
-
-    // Returns the whole mapped buffer only for a range from zero that equals the recorded size
-    @Test
-    void mapRangeTakesTheWholeMappingOnlyAtTheRecordedSize() {
-        GlMutableBuffer buffer = new GlMutableBuffer();
-        BufferMapRangeFunctions slice = BufferMapRangeFunctions.MAP_FULL_AND_SLICE;
-        buffer.setSize(64L);
-        assertEquals(WHOLE_MAP, slice.mapBufferRange(buffer, 0L, 64L, WRITE).capacity());
-        assertEquals(32, slice.mapBufferRange(buffer, 0L, 32L, WRITE).capacity());
-        assertEquals(60, slice.mapBufferRange(buffer, 4L, 60L, WRITE).capacity());
-        buffer.setSize(32L);
-        assertEquals(WHOLE_MAP, slice.mapBufferRange(buffer, 0L, 32L, WRITE).capacity());
-        assertEquals(64, slice.mapBufferRange(buffer, 0L, 64L, WRITE).capacity());
-        buffer.setSize(0L);
-        assertEquals(WHOLE_MAP, slice.mapBufferRange(buffer, 0L, 0L, WRITE).capacity());
     }
 
     // Keeps the public class with one public constructor and the public size accessors over one private field

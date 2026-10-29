@@ -7,40 +7,66 @@ import com.bdmajora.impetus.engine.impl.gl.GlObject;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-// One compiled shader stage, separate from the linked program because a stage is routinely attached to several programs with their own lifetimes
-public class GlShader extends GlObject {
-    private static final Logger LOGGER = LogManager.getLogger(GlShader.class);
+import java.util.Objects;
 
+// Compiled OpenGL shader stage that programs attach by name
+public class GlShader extends GlObject {
+    // Logger of the compile log
+    private static final Logger LOGGER = LogManager.getLogger(GlShader.class);
+    // Shader name that GL never assigns to a shader
+    private static final int NO_SHADER = 0;
+    // Maximum length of the compile log in characters
+    private static final int INFO_LOG_LENGTH = 4096;
+
+    // Name of the shader in the compile log and in error messages
     private final String name;
 
+    // Compiles the source as a shader of the type and rejects a null argument or a zero shader name from the driver
     public GlShader(ShaderType type, String name, String src) {
-        this.name = name;
+        int id = Objects.requireNonNull(type, "Type must not be null").id;
+        this.name = Objects.requireNonNull(name, "Name must not be null");
+        Objects.requireNonNull(src, "Source must not be null");
+        int handle = LWJGL.glCreateShader(id);
 
-        int handle = LWJGL.glCreateShader(type.id);
-        LWJGL.glShaderSourceSafe(handle, src);
-        LWJGL.glCompileShader(handle);
-
-        String log = LWJGL.glGetShaderInfoLog(handle, 4096);
-
-        if (!log.isEmpty()) {
-            LOGGER.warn("Shader compilation log for " + this.name + ": " + log);
+        if (handle == NO_SHADER) {
+            throw new IllegalStateException("Failed to create a shader");
         }
 
-        int result = LWJGL.glGetShaderi(handle, GL20.GL_COMPILE_STATUS);
+        try {
+            LWJGL.glShaderSourceSafe(handle, src);
+            LWJGL.glCompileShader(handle);
+            String log = LWJGL.glGetShaderInfoLog(handle, INFO_LOG_LENGTH);
 
-        if (result != GL20.GL_TRUE) {
-            throw new RuntimeException("Shader compilation failed, see log for details");
+            if (!log.isEmpty()) {
+                LOGGER.warn("Shader compilation log for {}: {}", name, log);
+            }
+
+            if (LWJGL.glGetShaderi(handle, GL20.GL_COMPILE_STATUS) != GL20.GL_TRUE) {
+                throw new RuntimeException("Shader compilation failed, see log for details");
+            }
+        } catch (Throwable t) {
+            // Deletes the shader and rethrows when compilation fails
+            try {
+                LWJGL.glDeleteShader(handle);
+            } catch (Throwable deleteFailure) {
+                // Attaches a failed delete to the compile failure
+                if (deleteFailure != t) {
+                    t.addSuppressed(deleteFailure);
+                }
+            }
+
+            throw t;
         }
 
         this.setHandle(handle);
     }
 
-    // For compile error messages
+    // Returns the name of the shader
     public String getName() {
         return this.name;
     }
 
-    // glDeleteShader
+    // Deletes the shader
     @Override
     protected void destroyInternal() {
         LWJGL.glDeleteShader(this.handle());

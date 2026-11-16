@@ -11,12 +11,15 @@ import net.minecraft.util.ResourceLocation;
 import java.util.Collections;
 import java.util.List;
 
-// The ender chest: the single chest model under its own texture, never paired
+// Baked model of ender chests.
 public final class EnderChestBakedModel extends BakedEntityModel {
+    // Texture of the ender chest.
     static final ResourceLocation TEXTURE = new ResourceLocation("minecraft", "entity/chest/ender");
 
+    // Base model of the chest.
     private final ModelChest model = new ModelChest();
 
+    // Returns the quads of the ender chest state.
     @Override
     protected List<BakedQuad> quadsFor(IBlockState state, BakedEntityContext context) {
         if (!(state.getBlock() instanceof BlockEnderChest)) {
@@ -29,6 +32,7 @@ public final class EnderChestBakedModel extends BakedEntityModel {
         return variant(facing, k -> bake(facing));
     }
 
+    // Returns the quads of one facing.
     private List<BakedQuad> bake(EnumFacing facing) {
         synchronized (this.model) {
             this.model.chestLid.rotateAngleX = 0.0F;
@@ -41,6 +45,7 @@ public final class EnderChestBakedModel extends BakedEntityModel {
         }
     }
 
+    // Returns the sprite of the particles.
     @Override
     protected TextureAtlasSprite particleSprite() {
         return BakedEntities.sprite(TEXTURE);

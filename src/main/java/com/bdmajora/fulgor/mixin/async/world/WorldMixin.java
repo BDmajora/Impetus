@@ -18,21 +18,24 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Gives a real world its async light manager on first use and routes checkLightFor into its queues; the server's workers drain them, the client drains from its tick before the frame renders
+// Mixin that changes World.
 @Mixin(World.class)
 public abstract class WorldMixin implements AsyncLitWorld {
+    // Field light manager added to the target.
     @Unique
     private volatile WorldLightManager fulgor$lightManager;
 
-    // Set at the end of construction so a subclass constructor calling checkLightFor cannot create a manager for a half-built world
+    // Field ready added to the target.
     @Unique
     private volatile boolean fulgor$ready;
 
+    // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void fulgor$markReady(CallbackInfo ci) {
         this.fulgor$ready = true;
     }
 
+    // Runs at the start of checkLightFor and can cancel it.
     @Inject(method = "checkLightFor", at = @At("HEAD"), cancellable = true)
     private void fulgor$queueLightUpdate(EnumSkyBlock lightType, BlockPos pos, CallbackInfoReturnable<Boolean> cir) {
         if (!this.fulgor$ready) {
@@ -44,7 +47,6 @@ public abstract class WorldMixin implements AsyncLitWorld {
         }
         World self = (World) (Object) this;
         if (self.isRemote) {
-            // A client chunk whose initial pass has not run must not race it
             Chunk chunk = fulgor$getAnyChunkImmediately(pos.getX() >> 4, pos.getZ() >> 4);
             if (chunk == null || !((AsyncLitChunk) chunk).fulgor$isLightReady()) {
                 cir.setReturnValue(false);
@@ -55,6 +57,7 @@ public abstract class WorldMixin implements AsyncLitWorld {
         cir.setReturnValue(true);
     }
 
+    // Returns the light manager.
     @Override
     public WorldLightManager fulgor$getLightManager() {
         WorldLightManager manager = this.fulgor$lightManager;
@@ -75,7 +78,7 @@ public abstract class WorldMixin implements AsyncLitWorld {
         return manager;
     }
 
-    // Server worlds and the client's current world only; preview and dummy worlds get vanilla lighting
+    // Helper method is real world added to the target.
     @Unique
     private static boolean fulgor$isRealWorld(World world) {
         if (world instanceof WorldServer) {
@@ -84,18 +87,21 @@ public abstract class WorldMixin implements AsyncLitWorld {
         return world.isRemote && FMLCommonHandler.instance().getSide() == Side.CLIENT && ClientWorldCheck.isCurrentClientWorld(world);
     }
 
+    // Returns a loaded chunk without loading or generating it.
     @Override
     public Chunk fulgor$getAnyChunkImmediately(int chunkX, int chunkZ) {
         WorldLightManager manager = this.fulgor$lightManager;
         return manager == null ? null : manager.getLoadedChunk(chunkX, chunkZ);
     }
 
+    // Returns whether chunk pending light.
     @Override
     public boolean fulgor$hasChunkPendingLight(int chunkX, int chunkZ) {
         WorldLightManager manager = this.fulgor$lightManager;
         return manager != null && manager.hasChunkPendingLight(chunkX, chunkZ);
     }
 
+    // Handles shutdown light manager.
     @Override
     public void fulgor$shutdownLightManager() {
         WorldLightManager manager = this.fulgor$lightManager;

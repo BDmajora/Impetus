@@ -9,9 +9,10 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 
 import java.util.Map;
 
-// Exposes BlockColors' private tint map so we can iterate registered color handlers
+// Mixin that changes BlockColors.
 @Mixin(BlockColors.class)
 public interface BlockColorsAccessor {
+    // Gives access to the field get block color map.
     @Accessor("blockColorMap")
     Map<IRegistryDelegate<Block>, IBlockColor> getBlockColorMap();
 }

@@ -21,18 +21,22 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-// FPS and coordinate overlay in the configured corner and contrast, hidden while F3 is up or the GUI is hidden; the light-updates warning is not optional since that switch makes the world quietly stop relighting
+// Overlay with the frame rate and coordinates and budget details.
 @Mod.EventBusSubscriber(Side.CLIENT)
 @SideOnly(Side.CLIENT)
 public final class ExtrasHud {
+    // Color of the text.
     private static final int TEXT_COLOR = 0xFFFFFF;
+    // Color of the text background.
     private static final int BACKGROUND_COLOR = 0x90505050;
+    // Distance from the screen edge.
     private static final int MARGIN = 2;
 
+    // Prevents instantiation
     private ExtrasHud() {
     }
 
-    // Draws the overlay unless the debug screen or hideGUI already owns the corner
+    // Draws the overlay lines in the chosen corner.
     @SubscribeEvent
     public static void onRenderOverlay(RenderGameOverlayEvent.Text event) {
         Minecraft minecraft = Minecraft.getMinecraft();
@@ -64,12 +68,11 @@ public final class ExtrasHud {
 
             drawLine(font, line, x, y, options.extra.textContrast);
 
-            // Stack away from the anchored corner so the block never runs off screen.
             y += corner.isBottom() ? -lineHeight : lineHeight;
         }
     }
 
-    // One line per enabled readout, in a fixed order
+    // Returns the lines to draw.
     private static List<String> collectLines(Minecraft minecraft, ExtrasConfig options) {
         List<String> lines = new ArrayList<>();
         ExtrasConfig.ExtraSettings settings = options.extra;
@@ -87,7 +90,6 @@ public final class ExtrasHud {
             lines.add(text);
         }
 
-        // reducedDebugInfo is a server-side restriction; overriding it is opt-in.
         if (settings.showCoords
                 && (settings.ignoreReducedDebugInfo || !minecraft.gameSettings.reducedDebugInfo)) {
             EntityPlayer player = minecraft.player;
@@ -114,7 +116,7 @@ public final class ExtrasHud {
         return lines;
     }
 
-    // Budget target against the frame-time EMA, the limits in force, and how much the last tick actually refused; zeros on the last line mean the scene has nothing to budget
+    // Adds the lines of the render budget.
     private static void addBudgetLines(List<String> lines, ExtrasConfig.RenderBudgetSettings settings) {
         RenderBudget budget = RenderBudgetController.budget();
 
@@ -138,7 +140,7 @@ public final class ExtrasHud {
                 RenderBudgetController.itemFramesSkipped(), RenderBudgetController.itemFramesProtected()));
     }
 
-    // " | CPU-bound" and the like once the GPU timer has a verdict, nothing before it or without timer queries
+    // Returns the text of the bottleneck state.
     private static String bottleneckLabel(BottleneckDetector.State state) {
         return switch (state) {
             case CPU_BOUND -> I18n.format("impetus.options.extras.overlay.budget.cpu_bound");
@@ -148,7 +150,7 @@ public final class ExtrasHud {
         };
     }
 
-    // "off", "96m (idle)" while under target, or "96m" while skipping is live
+    // Returns the text of a distance limit.
     private static String distanceLimit(boolean limited, int distance, boolean armed) {
         if (!limited) {
             return I18n.format("options.off");
@@ -158,6 +160,7 @@ public final class ExtrasHud {
                 : "impetus.options.extras.overlay.budget.distance_idle", distance);
     }
 
+    // Draws one line with the chosen contrast.
     private static void drawLine(FontRenderer font, String text, int x, int y,
                                  ExtrasConfig.TextContrast contrast) {
         switch (contrast) {

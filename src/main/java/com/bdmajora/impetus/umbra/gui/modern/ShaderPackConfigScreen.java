@@ -30,37 +30,55 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 
-// The loaded pack's own option screen, laid out from its screen directives as a grid of tiles; a pack with no layout gets one generated from its options, labels via PackLanguage
+// Screen of the options of the active shader pack with pending changes and profiles.
 public class ShaderPackConfigScreen extends GuiScreen {
+    // Columns of a screen that sets none.
     private static final int DEFAULT_COLUMNS = 2;
+    // Height of a row in pixels.
     private static final int ROW_HEIGHT = 22;
+    // Gap between columns in pixels.
     private static final int COL_GAP = 6;
+    // Height of the header in pixels.
     private static final int TOP = 56;
+    // Color of a value that differs from its default.
     private static final int VALUE_CHANGED = 0xFFFFF555;
+    // Color of a value at its default.
     private static final int VALUE_DEFAULT = 0xFF55FFFF;
 
+    // Screen shown on close.
     private final GuiScreen parent;
 
+    // Options of the pack.
     private OptionSet options;
+    // Saved option values.
     private OptionValues currentValues;
+    // Properties of the pack.
     private ShaderProperties properties;
+    // Profiles of the pack.
     private ProfileSet profileSet;
+    // Language strings of the pack.
     private PackLanguage lang;
 
+    // Changes that are not applied yet.
     private final Map<String, String> pending = new HashMap<>();
+    // Sub screen shown or null for the main screen.
     private String currentScreen;
+    // Page of the current screen.
     private int page;
 
+    // Every widget of the screen.
     private final List<AbstractWidget> widgets = new ArrayList<>();
+    // Option buttons of the screen.
     private final List<OptionButtonWidget> elements = new ArrayList<>();
-    // One context for the screen's lifetime, so its finished text survives between frames
+    // Draw context of the widgets.
     private final DrawContext drawContext = new VintageDrawContext();
 
+    // Creates a screen that returns to a parent.
     public ShaderPackConfigScreen(GuiScreen parent) {
         this.parent = parent;
     }
 
-    // Lays out the current screen's tiles from the pack's directives, or a generated layout when it has none
+    // Builds the option buttons of the current page and the navigation buttons.
     @Override
     public void initGui() {
         this.widgets.clear();
@@ -111,7 +129,6 @@ public class ShaderPackConfigScreen extends GuiScreen {
             }
         }
 
-        // Navigation row
         int navY = this.height - 52;
         if (this.currentScreen != null) {
             addButton(gridLeft, navY, 70, 20, TextComponent.literal("< Back"), () -> {
@@ -133,7 +150,6 @@ public class ShaderPackConfigScreen extends GuiScreen {
             next.setEnabled(this.page < totalPages - 1);
         }
 
-        // Bottom bar
         int y = this.height - 28;
         addButton(this.width / 2 - 154, y, 100, 20, TextComponent.literal("Reset All"), () -> {
             this.pending.clear();
@@ -151,15 +167,14 @@ public class ShaderPackConfigScreen extends GuiScreen {
         });
     }
 
-    // Bottom-bar button
+    // Adds a button to the screen.
     private FlatButtonWidget addButton(int x, int y, int w, int h, TextComponent label, Runnable action) {
         FlatButtonWidget button = new FlatButtonWidget(new Dim2i(x, y, w, h), label, action);
         this.widgets.add(button);
         return button;
     }
 
-    // --- Element construction ---
-
+    // Returns the button of a layout token or null for an empty slot.
     private OptionButtonWidget buildElement(String token, Dim2i dim) {
         if (token.equals("<empty>") || token.isEmpty()) {
             return null;
@@ -182,11 +197,10 @@ public class ShaderPackConfigScreen extends GuiScreen {
         if (this.options.getBooleanOptions().containsKey(token)) {
             return buildBoolean(token, dim);
         }
-        // Declared in the layout but not a discovered option — show a disabled tile.
         return new OptionButtonWidget(dim, TextComponent.literal("§7" + token), null, 0, true, false, null, null, null);
     }
 
-    // Tile for a multi-valued option, cycling on click
+    // Returns the button that cycles a string option.
     private OptionButtonWidget buildString(String name, Dim2i dim) {
         StringOption option = this.options.getStringOptions().get(name).getOption();
         String current = stringValueOf(name);
@@ -200,7 +214,7 @@ public class ShaderPackConfigScreen extends GuiScreen {
                 tooltip(name));
     }
 
-    // Tile for a boolean option, toggling on click
+    // Returns the button that toggles a boolean option.
     private OptionButtonWidget buildBoolean(String name, Dim2i dim) {
         BooleanOption option = this.options.getBooleanOptions().get(name).getOption();
         boolean on = booleanValueOf(name);
@@ -215,7 +229,7 @@ public class ShaderPackConfigScreen extends GuiScreen {
         return new OptionButtonWidget(dim, label, value, VALUE_DEFAULT, false, true, toggle, toggle, tooltip(name));
     }
 
-    // The profile selector tile
+    // Returns the button that cycles the profiles.
     private OptionButtonWidget buildProfile(Dim2i dim) {
         ProfileSet.ProfileResult result = this.profileSet.scan(this.options, effectiveValues());
         String name = result.current.map(p -> this.lang.profileLabel(p.name)).orElse("§7Custom");
@@ -224,7 +238,7 @@ public class ShaderPackConfigScreen extends GuiScreen {
                 () -> applyProfile(true), () -> applyProfile(false), null);
     }
 
-    // Steps to the next or previous profile and applies its values
+    // Stages the next or previous profile and rebuilds the screen.
     private void applyProfile(boolean forward) {
         ProfileSet.ProfileResult result = this.profileSet.scan(this.options, effectiveValues());
         Profile target = forward ? result.next : result.previous;
@@ -234,7 +248,7 @@ public class ShaderPackConfigScreen extends GuiScreen {
         initGui();
     }
 
-    // Advances an option through its allowed values with wrap-around
+    // Stages the next or previous allowed value of a string option.
     private void cycleString(String name, List<String> allowed, int direction) {
         if (allowed.isEmpty()) {
             return;
@@ -248,7 +262,7 @@ public class ShaderPackConfigScreen extends GuiScreen {
         initGui();
     }
 
-    // The option's localised comment, word-wrapped
+    // Returns the sentences of an option comment or null.
     private List<String> tooltip(String name) {
         String comment = this.lang.comment(name);
         if (comment == null) {
@@ -257,8 +271,7 @@ public class ShaderPackConfigScreen extends GuiScreen {
         return new ArrayList<>(Arrays.asList(comment.split("\\.\\s+")));
     }
 
-    // --- Layout ---
-
+    // Returns the layout of the current screen or every option in name order.
     private List<String> layoutTokens() {
         if (this.currentScreen != null) {
             List<String> sub = this.properties.getSubScreenOptions().get(this.currentScreen);
@@ -278,7 +291,7 @@ public class ShaderPackConfigScreen extends GuiScreen {
         return tokens;
     }
 
-    // From the screen directive, defaulting to two
+    // Returns the column count of the current screen.
     private int columnCount() {
         if (this.currentScreen != null) {
             Integer c = this.properties.getSubScreenColumnCount().get(this.currentScreen);
@@ -287,8 +300,7 @@ public class ShaderPackConfigScreen extends GuiScreen {
         return this.properties.getMainScreenColumnCount().filter(c -> c > 0).orElse(DEFAULT_COLUMNS);
     }
 
-    // --- Values ---
-
+    // Returns the pending or saved or default value of a string option.
     private String stringValueOf(String name) {
         if (this.pending.containsKey(name)) {
             return this.pending.get(name);
@@ -297,7 +309,7 @@ public class ShaderPackConfigScreen extends GuiScreen {
         return v.orElseGet(() -> this.options.getStringOptions().get(name).getOption().getDefaultValue());
     }
 
-    // Current value, or the default when unset
+    // Returns the pending or saved or default value of a boolean option.
     private boolean booleanValueOf(String name) {
         if (this.pending.containsKey(name)) {
             return "true".equals(this.pending.get(name));
@@ -306,14 +318,14 @@ public class ShaderPackConfigScreen extends GuiScreen {
         return this.currentValues.getBooleanValue(name).orElse(option.getDefaultValue());
     }
 
-    // Pending changes layered over the saved values
+    // Returns the saved values with the pending changes applied.
     private OptionValues effectiveValues() {
         MutableOptionValues values = this.currentValues.mutableCopy();
         values.addAll(this.pending);
         return values;
     }
 
-    // Saves and reloads the pack with the new values
+    // Queues the pending changes and reloads the renderers.
     private void apply() {
         Map<String, String> changes = new HashMap<>(this.pending);
         this.pending.clear();
@@ -322,7 +334,7 @@ public class ShaderPackConfigScreen extends GuiScreen {
         initGui();
     }
 
-    // Rebuilds chunk renderers, since option changes can alter the terrain program
+    // Reloads the world renderers.
     private void reloadRenderers() {
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.renderGlobal != null) {
@@ -330,8 +342,7 @@ public class ShaderPackConfigScreen extends GuiScreen {
         }
     }
 
-    // --- GuiScreen plumbing ---
-
+    // Passes a click to the first widget that takes it.
     @Override
     protected void mouseClicked(int mouseX, int mouseY, int mouseButton) {
         for (AbstractWidget widget : new ArrayList<>(this.widgets)) {
@@ -341,7 +352,7 @@ public class ShaderPackConfigScreen extends GuiScreen {
         }
     }
 
-    // Draws tiles, tooltips and the bottom bar
+    // Draws the title and widgets and the tooltip of the hovered option.
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         this.drawDefaultBackground();
@@ -358,7 +369,6 @@ public class ShaderPackConfigScreen extends GuiScreen {
             widget.render(ctx, mouseX, mouseY, partialTicks);
         }
 
-        // Tooltip for the hovered option element.
         for (OptionButtonWidget element : this.elements) {
             if (element.isEnabled() && element.getTooltip() != null && element.getDim().containsCursor(mouseX, mouseY)) {
                 this.drawHoveringText(element.getTooltip(), mouseX, mouseY);
@@ -367,7 +377,7 @@ public class ShaderPackConfigScreen extends GuiScreen {
         }
     }
 
-    // In a world the frame behind the screen is blurred and darkened, the same backdrop as the video options screen
+    // Draws the blurred world behind the screen or the vanilla background.
     @Override
     public void drawWorldBackground(int tint) {
         if (this.mc.world != null) {

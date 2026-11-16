@@ -15,22 +15,26 @@ import net.minecraft.tileentity.TileEntity;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-// Registry of per-type light handlers; lookup walks up the class hierarchy (a subclassed EntityItem would otherwise lose its glow) and memoises per concrete class
+// Registry of the light handlers of entity and block entity classes.
 public final class DynamicLightHandlers {
+    // Handler of each entity class.
     private static final Map<Class<?>, DynamicLightHandler<?>> ENTITY_HANDLERS = new ConcurrentHashMap<>();
+    // Handler of each block entity class.
     private static final Map<Class<?>, DynamicLightHandler<?>> TILE_ENTITY_HANDLERS = new ConcurrentHashMap<>();
 
-    // Concrete class to the handler found by walking its supertypes; includes negative results
+    // Resolved handler of each entity class.
     private static final Map<Class<?>, Object> ENTITY_LOOKUP = new ConcurrentHashMap<>();
+    // Resolved handler of each block entity class.
     private static final Map<Class<?>, Object> TILE_ENTITY_LOOKUP = new ConcurrentHashMap<>();
 
-    // Stands in for "no handler", since ConcurrentHashMap can't store null as a value
+    // Marker for a class without handler.
     private static final Object NONE = new Object();
 
+    // Prevents instantiation
     private DynamicLightHandlers() {
     }
 
-    // Vanilla light sources that aren't simply "an entity holding a bright item". The enderman's carried block has no world position, so it asks the state's own light value
+    // Registers the handlers of the vanilla entities.
     @SuppressWarnings("deprecation")
     public static void registerDefaultHandlers() {
         registerEntityHandler(EntityBlaze.class, DynamicLightHandler.makeHandler(blaze -> 10, blaze -> true));
@@ -46,25 +50,24 @@ public final class DynamicLightHandlers {
         registerEntityHandler(EntitySpectralArrow.class, entity -> 8);
     }
 
-    // Registration
-
-    // Registers a handler for entityClass and its subclasses; registering over an existing entry combines them by taking the brighter result
+    // Registers a handler for an entity class and combines it with an existing one.
     public static <T extends Entity> void registerEntityHandler(Class<T> entityClass,
                                                                 DynamicLightHandler<T> handler) {
         register(ENTITY_HANDLERS, ENTITY_LOOKUP, entityClass, handler);
     }
 
-    // As registerEntityHandler, for block entities
+    // Registers a handler for a block entity class and combines it with an existing one.
     public static <T extends TileEntity> void registerTileEntityHandler(Class<T> tileEntityClass,
                                                                         DynamicLightHandler<T> handler) {
         register(TILE_ENTITY_HANDLERS, TILE_ENTITY_LOOKUP, tileEntityClass, handler);
     }
 
-    // True when a mod has registered at least one block entity handler; nothing does by default
+    // Returns whether any block entity handler exists.
     public static boolean hasTileEntityHandlers() {
         return !TILE_ENTITY_HANDLERS.isEmpty();
     }
 
+    // Stores the handler and clears the resolved handlers.
     @SuppressWarnings("unchecked")
     private static <T> void register(Map<Class<?>, DynamicLightHandler<?>> handlers,
                                      Map<Class<?>, Object> lookup,
@@ -72,27 +75,36 @@ public final class DynamicLightHandlers {
         DynamicLightHandler<T> existing = (DynamicLightHandler<T>) handlers.get(clazz);
         DynamicLightHandler<T> combined = existing == null
                 ? handler
-                : source -> Math.max(existing.getLuminance(source), handler.getLuminance(source));
+                : new DynamicLightHandler<T>() {
+                    @Override
+                    public int getLuminance(T source) {
+                        return Math.max(existing.getLuminance(source), handler.getLuminance(source));
+                    }
+
+                    @Override
+                    public boolean isWaterSensitive(T source) {
+                        return existing.isWaterSensitive(source) || handler.isWaterSensitive(source);
+                    }
+                };
 
         handlers.put(clazz, combined);
 
-        // A new registration can change what any concrete class resolves to, so the memo is void.
         lookup.clear();
     }
 
-    // Lookup
-
+    // Returns the handler of the entity class or null.
     @SuppressWarnings("unchecked")
     public static <T extends Entity> DynamicLightHandler<T> getDynamicLightHandler(T entity) {
         return (DynamicLightHandler<T>) resolve(ENTITY_HANDLERS, ENTITY_LOOKUP, entity.getClass());
     }
 
-    // Handler for a block entity, walking up its class hierarchy and memoising the result
+    // Returns the handler of the block entity class or null.
     @SuppressWarnings("unchecked")
     public static <T extends TileEntity> DynamicLightHandler<T> getDynamicLightHandler(T tileEntity) {
         return (DynamicLightHandler<T>) resolve(TILE_ENTITY_HANDLERS, TILE_ENTITY_LOOKUP, tileEntity.getClass());
     }
 
+    // Returns the handler of the class or of its nearest superclass.
     private static DynamicLightHandler<?> resolve(Map<Class<?>, DynamicLightHandler<?>> handlers,
                                                   Map<Class<?>, Object> lookup, Class<?> concrete) {
         Object memo = lookup.get(concrete);
@@ -112,9 +124,7 @@ public final class DynamicLightHandlers {
         return found;
     }
 
-    // Gating
-
-    // Whether this entity is allowed to light up at all; player is gated on the first-person switch, everything else on its per-type toggle
+    // Returns whether the entity may emit light.
     public static boolean canEntityLightUp(Entity entity) {
         if (entity == Minecraft.getMinecraft().player && !DynamicLights.options().selfLightSource) {
             return false;
@@ -123,12 +133,12 @@ public final class DynamicLightHandlers {
         return LightSourceSettings.getInstance().isEntityEnabled(entity);
     }
 
-    // Whether the user has left this block entity type enabled
+    // Returns whether the block entity may emit light.
     public static boolean canTileEntityLightUp(TileEntity tileEntity) {
         return LightSourceSettings.getInstance().isBlockEntityEnabled(tileEntity);
     }
 
-    // The luminance this entity's registered handler reports, or zero if it has none or is gated off
+    // Returns the light level of the entity.
     public static <T extends Entity> int getLuminanceFrom(T entity) {
         if (!DynamicLights.options().entitiesLightSource) {
             return 0;
@@ -150,7 +160,7 @@ public final class DynamicLightHandlers {
         return clamp(handler.getLuminance(entity));
     }
 
-    // As getLuminanceFrom(Entity), for block entities
+    // Returns the light level of the block entity.
     public static <T extends TileEntity> int getLuminanceFrom(T tileEntity) {
         if (!DynamicLights.options().blockEntitiesLightSource) {
             return 0;
@@ -170,7 +180,7 @@ public final class DynamicLightHandlers {
         return clamp(handler.getLuminance(tileEntity));
     }
 
-    // Caps a handler's answer at 14; a source at 15 reads as a full-bright block with no visible falloff, so it looks like a rectangle of light instead of a glow
+    // Returns the light level limited to the maximum.
     private static int clamp(int luminance) {
         return Math.min(luminance, 14);
     }

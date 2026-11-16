@@ -1,28 +1,30 @@
 package com.bdmajora.impetus.engine.impl.render.chunk;
 
-// the type of chunk update task
+// Kinds of chunk update tasks.
 public enum ChunkUpdateType {
-    // First-time build; the queue size is arbitrary but keeps a worker pool saturated during world load while bounding the per-frame snapshot burst
+    // First build of a section.
     INITIAL_BUILD,
-    // chunk geometry is being sorted because the camera position changed
+    // Sort after the camera moved.
     SORT,
-    // Like SORT, but blocks the main thread if the camera is near enough that the sort must be reflected quickly
+    // Sort that blocks the main thread.
     IMPORTANT_SORT,
-    // chunk data has changed and remeshing is required
+    // Rebuild after the data changed.
     REBUILD,
-    // Like REBUILD, but blocks the main thread if the camera is near enough that the rebuild must be seen quickly
+    // Rebuild that blocks the main thread.
     IMPORTANT_REBUILD;
 
+    // Every kind.
     public static final ChunkUpdateType[] VALUES = values();
 
+    // Returns whether a queued update can be replaced by another.
     @Deprecated
     public static boolean canPromote(ChunkUpdateType prev, ChunkUpdateType next) {
         return prev == null || (prev == REBUILD && next == IMPORTANT_REBUILD);
     }
 
-    // borrowed from PR #2016
+    // Returns the update to queue when another update is already queued or null for none.
     public static ChunkUpdateType getPromotionUpdateType(ChunkUpdateType prev, ChunkUpdateType next) {
-        // No point submitting the same update twice
+        // Skips a repeated update
         if (prev == next) {
             return null;
         }
@@ -38,19 +40,18 @@ public enum ChunkUpdateType {
         return null;
     }
 
-    // true if the task is "important" and should block the main thread when the camera is near enough
+    // Returns whether the task is important.
     public boolean isImportant() {
         return this == IMPORTANT_REBUILD || this == IMPORTANT_SORT;
     }
 
-    // true if the task only sorts, rather than performing a full chunk rebuild
+    // Returns whether the task only sorts.
     public boolean isSort() {
         return this == SORT || this == IMPORTANT_SORT;
     }
 
     static {
         if (VALUES.length > 7) {
-            // See PackedSectionMetadata, OcclusionCuller, etc.
             throw new AssertionError("The occlusion system currently assumes there are at most 7 update types");
         }
     }

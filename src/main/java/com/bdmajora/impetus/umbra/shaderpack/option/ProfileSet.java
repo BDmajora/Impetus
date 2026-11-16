@@ -5,36 +5,39 @@ import com.bdmajora.impetus.umbra.shaderpack.option.values.OptionValues;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.BiConsumer;
 
-// The profiles a pack declares in declaration order (worst-to-best, so cycling forward raises quality), plus the reverse scan matching current values to a profile so the screen shows "Profile: High" rather than "Custom". From Iris
+// Profiles of a pack in file order and in precedence order.
 public class ProfileSet {
-    private final LinkedHashMap<String, Profile> orderedProfiles; // The order that profiles should cycle through
-    private final List<Profile> sortedProfiles; // The order that profiles should be scanned through
+    // Profiles in file order.
+    private final LinkedHashMap<String, Profile> orderedProfiles;
+    // Profiles from highest to lowest precedence.
+    private final List<Profile> sortedProfiles;
 
+    // Creates a set and sorts the profiles by precedence.
     public ProfileSet(LinkedHashMap<String, Profile> orderedProfiles) {
         List<Profile> sorted = new ArrayList<>(orderedProfiles.values());
 
         Comparator<Profile> lowToHigh = Comparator.comparing(p -> p.precedence);
         Comparator<Profile> highToLow = lowToHigh.reversed();
 
-        // Compare profiles with many constraints first, needed for accurate matching when one profile adds a constraint to another but is otherwise the same
         sorted.sort(highToLow);
 
         this.sortedProfiles = sorted;
         this.orderedProfiles = orderedProfiles;
     }
 
-    // In declaration order
+    // Visits every profile in file order.
     public void forEach(BiConsumer<String, Profile> action) {
         orderedProfiles.forEach(action);
     }
 
-    // Finds the profile the current values match, plus its neighbours for cycling
+    // Returns the first matching profile by precedence with its neighbors or the ends of the list.
     public ProfileResult scan(OptionSet options, OptionValues values) {
         if (sortedProfiles.isEmpty()) {
             return new ProfileResult(null, null, null);
@@ -51,26 +54,32 @@ public class ProfileSet {
             }
         }
 
-        // Default return if no profiles matched
         Profile next = sortedProfiles.get(0);
         Profile prev = sortedProfiles.get(sortedProfiles.size() - 1);
 
         return new ProfileResult(null, next, prev);
     }
 
-    // Builds from the parsed profile.<name> lines
+    // Parses every profile of a tree and parses each included profile once.
     public static ProfileSet fromTree(Map<String, List<String>> tree, OptionSet optionSet) {
         LinkedHashMap<String, Profile> profiles = new LinkedHashMap<>();
+        // Profiles already parsed so a shared include is parsed once
+        Map<String, Profile> parsed = new HashMap<>();
 
         for (String name : tree.keySet()) {
-            profiles.put(name, parse(name, new ArrayList<>(), tree, optionSet));
+            profiles.put(name, parse(name, new ArrayList<>(), tree, optionSet, parsed));
         }
 
         return new ProfileSet(profiles);
     }
 
-    // One profile, resolving profile.<parent> references recursively
-    private static Profile parse(String name, List<String> parents, Map<String, List<String>> tree, OptionSet optionSet) throws IllegalArgumentException {
+    // Parses a profile and its includes and rejects a missing or cyclic profile.
+    private static Profile parse(String name, List<String> parents, Map<String, List<String>> tree, OptionSet optionSet,
+                                 Map<String, Profile> parsed) throws IllegalArgumentException {
+        Profile done = parsed.get(name);
+        if (done != null) {
+            return done;
+        }
         Profile.Builder builder = new Profile.Builder(name);
         List<String> options = tree.get(name);
 
@@ -90,7 +99,11 @@ public class ProfileSet {
                 }
 
                 parents.add(dependency);
-                builder.addAll(parse(dependency, parents, tree, optionSet));
+                try {
+                    builder.addAll(parse(dependency, parents, tree, optionSet, parsed));
+                } finally {
+                    parents.remove(parents.size() - 1);
+                }
             } else if (option.startsWith("!")) {
                 builder.option(option.substring(1), "false");
             } else if (option.contains("=")) {
@@ -106,19 +119,26 @@ public class ProfileSet {
             }
         }
 
-        return builder.build();
+        Profile profile = builder.build();
+        parsed.put(name, profile);
+        return profile;
     }
 
-    // Profile count
+    // Returns the number of profiles.
     public int size() {
         return sortedProfiles.size();
     }
 
+    // Matching profile with the next and previous profiles.
     public static class ProfileResult {
+        // Matching profile if any.
         public final Optional<Profile> current;
+        // Profile after the match.
         public final Profile next;
+        // Profile before the match.
         public final Profile previous;
 
+        // Creates a result.
         private ProfileResult(Profile current, Profile next, Profile previous) {
             this.current = Optional.ofNullable(current);
             this.next = next;

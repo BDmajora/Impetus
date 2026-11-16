@@ -16,45 +16,58 @@
 
 package grondag.bitraster;
 
-/**
- * For crude but simple microbenchmarks - for small scope, in-game situations
- * where JMH would be more than I want.
- */
+// Simple timer for small measurements.
 public class MicroTimer {
+	// Number of runs per report.
 	private final int sampleSize;
+	// Name in the report.
 	private final String label;
+	// Number of runs.
 	private int hits;
+	// Total time of the runs.
 	private long elapsed;
+	// Shortest run.
 	private long min;
+	// Longest run.
 	private long max;
+	// Start time of the current run.
 	private long started;
 
+	// Number of runs of the subset.
 	private int subsetHits;
+	// Total time of the subset.
 	private long subsetElapsed;
+	// Shortest run of the subset.
 	private long subsetMin;
+	// Longest run of the subset.
 	private long subsetMax;
 
+	// Creates a timer and rejects a null label.
 	public MicroTimer(String label, int sampleSize) {
-		this.label = label;
+		this.label = java.util.Objects.requireNonNull(label, "label");
 		this.sampleSize = sampleSize;
+		this.min = Long.MAX_VALUE;
+		this.max = Long.MIN_VALUE;
+		this.subsetMin = Long.MAX_VALUE;
+		this.subsetMax = Long.MIN_VALUE;
 	}
 
+	// Returns the number of runs.
 	public int hits() {
 		return hits;
 	}
 
+	// Returns the total time.
 	public long elapsed() {
 		return elapsed;
 	}
 
+	// Starts a run.
 	public void start() {
 		started = System.nanoTime();
 	}
 
-	/**
-	 * Returns true if timer output stats this sample. For use if want to output
-	 * supplementary information at same time.
-	 */
+	// Ends a run and returns whether a report was printed.
 	public boolean stop(boolean subset) {
 		final long t = System.nanoTime() - started;
 		elapsed += t;
@@ -90,6 +103,7 @@ public class MicroTimer {
 		}
 	}
 
+	// Prints the statistics and clears them.
 	public void reportAndClear() {
 		if (hits == 0) {
 			hits = 1;
@@ -104,7 +118,7 @@ public class MicroTimer {
 			}
 
 			System.out.println(String.format("Subset avg duration = %,d ns, min = %d, max = %d, total duration = %,d, (%d) total runs = %,d",
-					subsetElapsed / subsetHits, subsetMin, subsetMax, subsetElapsed / 1000000, subsetElapsed * 100L / elapsed, subsetHits));
+					subsetElapsed / subsetHits, subsetMin, subsetMax, subsetElapsed / 1000000, subsetElapsed * 100L / Math.max(1L, elapsed), subsetHits));
 
 			subsetHits = 0;
 			subsetElapsed = 0;

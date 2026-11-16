@@ -20,38 +20,40 @@ import net.minecraft.client.renderer.block.model.multipart.ICondition;
 import java.util.ArrayList;
 import java.util.List;
 
-// Builds and interns the Predicate<IBlockState> objects behind multipart definitions; flattening turns Guava composites into one object over arrays, and interning shares it since flattened predicates compare equal by construction
+// Builds multipart predicates and shares equal ones.
 public final class ConditionCanonicalizer {
-    // Matches vanilla ConditionPropertyValue.SPLITTER; re-declared to avoid shadowing a private static.
+    // Splitter of alternative values.
     private static final Splitter VALUE_SPLITTER = Splitter.on('|').omitEmptyStrings();
 
+    // Pool of shared predicates.
     private static final DeduplicationCache<Predicate<IBlockState>> POOL =
             new DeduplicationCache<>("Multipart predicates", CoarctatioConfig.get().poolSizeLimit);
 
+    // Prevents instantiation
     private ConditionCanonicalizer() {
     }
 
-    // Arms the pool for a bake
+    // Opens the pool.
     public static void open() {
         POOL.open();
     }
 
-    // Drops the pool index after a bake; the shared predicates themselves live on in the models
+    // Closes the pool.
     public static void close() {
         POOL.close();
     }
 
-    // Predicates this pool prevented allocating a second copy of.
+    // Returns the number of predicates answered by the pool.
     public static long sharedCount() {
         return POOL.shared();
     }
 
-    // Hit and miss counts for /coarctatio
+    // Returns a one line report of the pool.
     public static String statistics() {
         return POOL.toString();
     }
 
-    // Replacement for ConditionPropertyValue.getPredicate; error messages mirror vanilla's wording since a malformed blockstate file is a pack-authoring bug
+    // Returns the predicate for a property value and rejects an unknown property or value.
     public static Predicate<IBlockState> propertyValue(BlockStateContainer container, String key, String value) {
         IProperty<?> property = container.getProperty(key);
 
@@ -90,7 +92,7 @@ public final class ConditionCanonicalizer {
         return negate ? intern(new NegatedPredicate(predicate)) : predicate;
     }
 
-    // Replacement for ConditionAnd.getPredicate, trying specialisations most-specific first (Hydrogen's order): all-boolean AND, all-single-value AND, AND of multi-valued tests, else a composite of interned children
+    // Returns a predicate that needs every predicate to match.
     public static Predicate<IBlockState> all(List<Predicate<IBlockState>> predicates) {
         if (predicates.size() == 1) {
             return predicates.get(0);
@@ -113,7 +115,7 @@ public final class ConditionCanonicalizer {
         return intern(flattened);
     }
 
-    // Replacement for ConditionOr.getPredicate.
+    // Returns a predicate that needs one predicate to match.
     public static Predicate<IBlockState> any(List<Predicate<IBlockState>> predicates) {
         if (predicates.size() == 1) {
             return predicates.get(0);
@@ -122,7 +124,7 @@ public final class ConditionCanonicalizer {
         return intern(CompositePredicate.any(predicates));
     }
 
-    // Resolves each child to its interned predicate, preserving order rather than sorting by hash like FerriteCore, since a mod ICondition may be order-sensitive and a wrong render beats a missed share
+    // Returns the predicates of the conditions.
     public static List<Predicate<IBlockState>> resolve(Iterable<? extends ICondition> conditions,
                                                        BlockStateContainer container) {
         List<Predicate<IBlockState>> resolved = new ArrayList<>();
@@ -134,7 +136,7 @@ public final class ConditionCanonicalizer {
         return resolved;
     }
 
-    // Parses one value token; an unknown value is a broken blockstate file, so it throws like vanilla
+    // Returns the parsed property value and rejects an unknown one.
     private static Object parseValue(BlockStateContainer container, IProperty<?> property, String raw, String original) {
         Optional<?> parsed = property.parseValue(raw);
 
@@ -145,7 +147,7 @@ public final class ConditionCanonicalizer {
         return parsed.get();
     }
 
-    // Returns the pooled instance, or registers this one if it is the first
+    // Returns the shared predicate equal to the predicate.
     private static Predicate<IBlockState> intern(Predicate<IBlockState> predicate) {
         return POOL.deduplicate(predicate);
     }

@@ -70,4 +70,24 @@ class ChunkHelpersTest {
         assertEquals(modelView, matrices.modelView());
         assertEquals(matrices, new ChunkRenderMatrices(projection, modelView));
     }
+
+    // Unmaps the index buffer when writing the indices fails and grows on a later call.
+    @Test
+    void sharedIndexBufferUnmapsWhenWritingFails() {
+        CommandList commands = device.createCommandList();
+        com.bdmajora.impetus.engine.impl.render.chunk.compile.sorting.ChunkPrimitiveType failing = org.mockito.Mockito.mock(
+                com.bdmajora.impetus.engine.impl.render.chunk.compile.sorting.ChunkPrimitiveType.class, org.mockito.Mockito.CALLS_REAL_METHODS);
+        org.mockito.Mockito.doReturn(6).when(failing).getIndexBufferElementsPerPrimitive();
+        org.mockito.Mockito.doThrow(new IllegalStateException("write")).doNothing().when(failing).generateSimpleIndexBuffer(org.mockito.Mockito.any(), org.mockito.Mockito.anyInt());
+        SharedQuadIndexBuffer buffer = new SharedQuadIndexBuffer(commands, failing);
+        assertThrows(IllegalStateException.class, () -> buffer.ensureCapacity(commands, 6));
+        var mutable = (com.bdmajora.impetus.engine.impl.gl.buffer.GlMutableBuffer) buffer.getBufferObject();
+        assertNull(mutable.getActiveMapping());
+        buffer.ensureCapacity(commands, 6);
+        org.mockito.Mockito.verify(failing, org.mockito.Mockito.times(2)).generateSimpleIndexBuffer(org.mockito.Mockito.any(), org.mockito.Mockito.anyInt());
+        buffer.ensureCapacity(commands, 0);
+        buffer.ensureCapacity(commands, -6);
+        org.mockito.Mockito.verify(failing, org.mockito.Mockito.times(2)).generateSimpleIndexBuffer(org.mockito.Mockito.any(), org.mockito.Mockito.anyInt());
+        buffer.delete(commands);
+    }
 }

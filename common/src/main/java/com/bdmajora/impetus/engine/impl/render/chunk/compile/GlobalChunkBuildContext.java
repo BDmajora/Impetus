@@ -2,22 +2,26 @@ package com.bdmajora.impetus.engine.impl.render.chunk.compile;
 
 import org.jetbrains.annotations.Nullable;
 
+// Lookup of the build context of the current thread.
 public final class GlobalChunkBuildContext {
-    private static ChunkBuildContext mainThreadContext;
-    private static Thread mainThread;
+    // Context of the main thread.
+    private static volatile ChunkBuildContext mainThreadContext;
+    // Thread treated as the main thread.
+    private static volatile Thread mainThread;
 
+    // Prevents instantiation
     private GlobalChunkBuildContext() {}
 
-    // Records the caller as the main thread
+    // Records the caller as the main thread.
     public static void setMainThread() {
         mainThread = Thread.currentThread();
     }
 
-    // This thread's context, from the worker or the main thread binding
+    // Returns the context of the current thread or null.
     @Nullable
     public static ChunkBuildContext get() {
         var thread = Thread.currentThread();
-        // Main thread first, because it's the most common case
+        // Checks the main thread first
         if(thread == mainThread) {
             return mainThreadContext;
         } else if(thread instanceof Holder holder) {
@@ -27,12 +31,14 @@ public final class GlobalChunkBuildContext {
         }
     }
 
-    // Gives the main thread a context so it can steal jobs
+    // Stores the context of the main thread.
     public static void bindMainThread(ChunkBuildContext context) {
         mainThreadContext = context;
     }
 
+    // Thread that owns a build context.
     public interface Holder {
+        // Returns the context of the thread.
         ChunkBuildContext impetus$getGlobalContext();
     }
 }

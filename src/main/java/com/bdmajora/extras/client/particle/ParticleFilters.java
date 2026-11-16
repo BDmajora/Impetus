@@ -4,15 +4,16 @@ import com.bdmajora.extras.Extras;
 import com.bdmajora.extras.ExtrasConfig;
 import net.minecraft.util.EnumParticleTypes;
 
-// The named particle switches resolved by vanilla id rather than class, since several ids share a class (ParticleSuspendedTown backs void, town aura and villager happy); read once into a table so the spawn path pays one index
+// Switches that hide particle types.
 public final class ParticleFilters {
-    // Which switch governs each particle id; null means "no named switch".
+    // Filter of each particle identifier.
     private static final Filter[] BY_ID = buildTable();
 
+    // Prevents instantiation
     private ParticleFilters() {
     }
 
-    // Whether a particle with this vanilla id may spawn; unknown ids (every modded particle) pass and are filtered later by class if disabled
+    // Returns whether the particle is shown.
     public static boolean isAllowed(int particleId) {
         ExtrasConfig options = Extras.options();
 
@@ -28,7 +29,7 @@ public final class ParticleFilters {
         return filter == null || filter.isEnabled(options);
     }
 
-    // Builds the id-indexed table once at class init
+    // Returns the filter of each particle identifier.
     private static Filter[] buildTable() {
         int size = 0;
         for (EnumParticleTypes type : EnumParticleTypes.values()) {
@@ -37,7 +38,6 @@ public final class ParticleFilters {
 
         Filter[] table = new Filter[size];
 
-        // OptiFine treats explosions and smoke as animations rather than particles; both names are kept where the user expects them and both read the animation switches
         put(table, Filter.EXPLOSION, EnumParticleTypes.EXPLOSION_NORMAL,
                 EnumParticleTypes.EXPLOSION_LARGE, EnumParticleTypes.EXPLOSION_HUGE);
         put(table, Filter.SMOKE, EnumParticleTypes.SMOKE_NORMAL, EnumParticleTypes.SMOKE_LARGE);
@@ -56,69 +56,79 @@ public final class ParticleFilters {
         return table;
     }
 
-    // Assigns one filter to every id it governs
+    // Assigns the filter to the particle types.
     private static void put(Filter[] table, Filter filter, EnumParticleTypes... types) {
         for (EnumParticleTypes type : types) {
             table[type.getParticleID()] = filter;
         }
     }
 
-    // One named switch, as a function of the loaded options.
+    // Switch that governs a group of particle types.
     private enum Filter {
+        // Explosion particles.
         EXPLOSION {
             @Override
             boolean isEnabled(ExtrasConfig options) {
                 return options.animation.explosion;
             }
         },
+        // Smoke particles.
         SMOKE {
             @Override
             boolean isEnabled(ExtrasConfig options) {
                 return options.animation.smoke;
             }
         },
+        // Flame particles.
         FLAME {
             @Override
             boolean isEnabled(ExtrasConfig options) {
                 return options.animation.flame;
             }
         },
+        // Redstone particles.
         REDSTONE {
             @Override
             boolean isEnabled(ExtrasConfig options) {
                 return options.animation.redstone;
             }
         },
+        // Portal particles.
         PORTAL {
             @Override
             boolean isEnabled(ExtrasConfig options) {
                 return options.particle.portalParticles;
             }
         },
+        // Underwater particles.
         WATER {
             @Override
             boolean isEnabled(ExtrasConfig options) {
                 return options.particle.waterParticles;
             }
         },
+        // Void particles.
         VOID {
             @Override
             boolean isEnabled(ExtrasConfig options) {
                 return options.particle.voidParticles;
             }
         },
+        // Potion particles.
         POTION {
             @Override
             boolean isEnabled(ExtrasConfig options) {
                 return options.particle.potionParticles;
             }
         },
+        // Dripping particles.
         DRIPPING {
             @Override
             boolean isEnabled(ExtrasConfig options) {
                 return options.particle.drippingWaterLava;
             }
         },
+        // Firework particles.
         FIREWORK {
             @Override
             boolean isEnabled(ExtrasConfig options) {
@@ -126,6 +136,7 @@ public final class ParticleFilters {
             }
         };
 
+        // Returns whether the group is shown.
         abstract boolean isEnabled(ExtrasConfig options);
     }
 }

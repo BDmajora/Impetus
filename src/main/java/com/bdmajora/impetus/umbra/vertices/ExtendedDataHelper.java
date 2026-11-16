@@ -4,17 +4,18 @@ import net.minecraft.block.Block;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 
-// Derives OptiFine's extended per-vertex data from Minecraft state for the mesher, only while a pack is active; no mc_midTexCoord helper on purpose, since it is the quad's UV centre, not the sprite's
+// Packers of extended vertex data.
 public final class ExtendedDataHelper {
+    // Prevents instantiation
     private ExtendedDataHelper() {
     }
 
-    // mc_Entity.x — the block's raw registry id, used when the pack's block.properties does not map this state
+    // Returns the block id of a state.
     public static int getBlockId(IBlockState state) {
         return Block.getIdFromBlock(state.getBlock());
     }
 
-    // mc_Entity.z — the 1.12.2 metadata for this state
+    // Returns the metadata of a state.
     public static int getBlockData(IBlockState state) {
         return state.getBlock().getMetaFromState(state);
     }

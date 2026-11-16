@@ -29,11 +29,12 @@
  */
 package com.bdmajora.impetus.engine.impl.util.sorting;
 
-// Based upon it.unimi.dsi.fastutil.ints.IntArrays implementation
+// Merge sort of index arrays by float keys based on the fastutil int array sort.
 public class MergeSort {
+    // Length below which a range is sorted by insertion.
     private static final int INSERTION_SORT_THRESHOLD = 16;
 
-    // The indices 0..n-1 ordered by their keys
+    // Returns the indices of the keys ordered by descending key.
     public static int[] mergeSort(float[] keys) {
         int[] indices = new int[keys.length];
         for (int i = 0; i < indices.length; i++) {
@@ -43,16 +44,18 @@ public class MergeSort {
         return indices;
     }
 
-    // Sorts an index array by its keys in place
+    // Sorts an index array by descending key in place.
     public static void mergeSort(final int[] indices, final float[] keys) {
+        java.util.Objects.requireNonNull(indices, "indices");
+        java.util.Objects.requireNonNull(keys, "keys");
         mergeSort(indices, keys, 0, indices.length, null);
     }
 
-    // Recursive top-down merge with an insertion-sort base case
+    // Sorts a range with a top down merge and insertion sort for short ranges.
     private static void mergeSort(final int[] indices, final float[] keys, final int fromIndex, final int toIndex, int[] supp) {
         int len = toIndex - fromIndex;
 
-        // Insertion sort on smallest arrays
+        // Sorts short ranges by insertion
         if (len < INSERTION_SORT_THRESHOLD) {
             InsertionSort.insertionSort(indices, fromIndex, toIndex, keys);
             return;
@@ -62,18 +65,18 @@ public class MergeSort {
             supp = indices.clone();
         }
 
-        // Recursively sort halves of a into supp
+        // Sorts both halves into the support array
         final int mid = (fromIndex + toIndex) >>> 1;
         mergeSort(supp, keys, fromIndex, mid, indices);
         mergeSort(supp, keys, mid, toIndex, indices);
 
-        // Already sorted, so just copy supp to indices; makes nearly ordered lists sort faster
+        // Copies back when the halves are already in order
         if (keys[supp[mid]] <= keys[supp[mid - 1]]) {
             System.arraycopy(supp, fromIndex, indices, fromIndex, len);
             return;
         }
 
-        // Merge sorted halves (now in supp) into indices
+        // Merges the halves into the index array
         int i = fromIndex, p = fromIndex, q = mid;
 
         while (i < toIndex) {

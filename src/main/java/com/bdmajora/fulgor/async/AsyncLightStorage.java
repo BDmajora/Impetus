@@ -6,24 +6,33 @@ import net.minecraft.nbt.NBTTagList;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraftforge.common.util.Constants;
 
-// Persists the SWMR light in the chunk's Level tag so a reloaded chunk skips its initial pass (Starlight's SaveUtil, via Pulsar); a chunk saved mid-relight simply carries no tag and relights on load
+// Saver and loader of async light data in chunk tags.
 public final class AsyncLightStorage {
-    // Bumped whenever the layout or the BFS semantics change incompatibly; old data relights once on load
+    // Version of the saved light format.
     public static final int LIGHT_VERSION = 1;
 
+    // Key of the light tag.
     private static final String TAG_ROOT = "FulgorLight";
+    // Key of the version.
     private static final String TAG_VERSION = "version";
+    // Key of the section list.
     private static final String TAG_SECTIONS = "sections";
+    // Key of the section y.
     private static final String TAG_Y = "y";
+    // Key of the block light state.
     private static final String TAG_BLOCK_STATE = "bs";
+    // Key of the block light data.
     private static final String TAG_BLOCK_DATA = "bd";
+    // Key of the sky light state.
     private static final String TAG_SKY_STATE = "ss";
+    // Key of the sky light data.
     private static final String TAG_SKY_DATA = "sd";
 
+    // Prevents instantiation
     private AsyncLightStorage() {
     }
 
-    // Writes the tag only for a chunk whose light is ready and has no queued work that could still change values
+    // Writes the light sections of a chunk into its tag.
     public static void save(Chunk chunk, WorldLightManager manager, NBTTagCompound level) {
         try {
             AsyncLitChunk lit = (AsyncLitChunk) chunk;
@@ -35,7 +44,6 @@ public final class AsyncLightStorage {
             if (blockNibbles == null || skyNibbles == null) {
                 return;
             }
-            // A lava pocket just turned to stone whose removal has not run would freeze phantom light into the save
             if (manager != null && manager.hasPendingLightWork(chunk.x, chunk.z)) {
                 return;
             }
@@ -43,7 +51,6 @@ public final class AsyncLightStorage {
 
             NBTTagList sections = new NBTTagList();
             for (int i = 0; i < ChunkLightHelper.LIGHT_SECTIONS; ++i) {
-                // Null entries are legal: the sky engine drops NULL-state nibbles to java nulls before publishing
                 SWMRNibbleArray blockNibble = blockNibbles[i];
                 SWMRNibbleArray skyNibble = hasSky ? skyNibbles[i] : null;
                 SWMRNibbleArray.SaveState blockState = blockNibble == null ? null : blockNibble.getSaveState();
@@ -73,12 +80,11 @@ public final class AsyncLightStorage {
             root.setTag(TAG_SECTIONS, sections);
             level.setTag(TAG_ROOT, root);
         } catch (Throwable t) {
-            // Not fatal: the chunk relights on next load
             Fulgor.LOGGER.warn("Failed to save light data for chunk ({}, {})", chunk.x, chunk.z, t);
         }
     }
 
-    // Restores the tag into the chunk and marks its saved light valid; anything invalid leaves the flag unset and the chunk relights
+    // Reads the light sections of a chunk from its tag.
     public static void load(Chunk chunk, NBTTagCompound level) {
         try {
             if (!level.hasKey(TAG_ROOT, Constants.NBT.TAG_COMPOUND)) {
@@ -116,13 +122,13 @@ public final class AsyncLightStorage {
         }
     }
 
+    // Returns the nibble array saved in a section tag.
     private static SWMRNibbleArray restoreNibble(NBTTagCompound section, String stateTag, String dataTag) {
         int state = section.getByte(stateTag);
         byte[] raw = section.hasKey(dataTag, Constants.NBT.TAG_BYTE_ARRAY) ? section.getByteArray(dataTag) : null;
         if (raw != null && raw.length != SWMRNibbleArray.ARRAY_SIZE) {
             throw new IllegalStateException("Light nibble of wrong length: " + raw.length);
         }
-        // Cloned since the NBT object owns the parsed array
         return new SWMRNibbleArray(raw == null ? null : raw.clone(), state);
     }
 }

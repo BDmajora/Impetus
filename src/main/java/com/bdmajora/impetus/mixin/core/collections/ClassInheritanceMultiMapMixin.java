@@ -9,14 +9,15 @@ import java.util.AbstractSet;
 import java.util.List;
 import java.util.function.Consumer;
 
+// Mixin that changes ClassInheritanceMultiMap.
 @Mixin(ClassInheritanceMultiMap.class)
 public abstract class ClassInheritanceMultiMapMixin<T> extends AbstractSet<T> {
+    // Reference to the field values of the target.
     @Shadow
     @Final
     private List<T> values;
 
-
-    // Overwrite avoids allocating an iterator on every forEach call
+    // Handles for each.
     @Override
     public void forEach(Consumer<? super T> action) {
         this.values.forEach(action);

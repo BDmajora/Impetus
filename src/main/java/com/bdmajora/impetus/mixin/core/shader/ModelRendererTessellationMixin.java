@@ -8,9 +8,10 @@ import net.minecraft.client.model.ModelRenderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
-// Vanilla's model part paths replay display lists of GL_QUADS, which a tessellated pack program rejects; while one is bound the boxes draw immediately instead (Extras' matrix path calls the same helper itself)
+// Mixin that changes ModelRenderer.
 @Mixin(ModelRenderer.class)
 public abstract class ModelRendererTessellationMixin {
+    // Wraps the call of GlStateManager.callList in render and renderWithRotation.
     @WrapOperation(method = {"render", "renderWithRotation"}, at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/GlStateManager;callList(I)V"))
     private void impetus$tessellatedList(int list, Operation<Void> original, @Local(argsOnly = true) float scale) {
         if (ImmediateTessellation.isActive()) {

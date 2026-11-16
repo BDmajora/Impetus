@@ -2,12 +2,14 @@ package com.bdmajora.coarctatio.client.resources;
 
 import java.io.FileNotFoundException;
 
-// The resource manager reports a missing file by throwing, and model loading probes for files that mostly do not exist (.mcmeta beside every texture, armature files beside every model, optional overrides), so it throws tens of thousands of times per load; filling the stack trace is nearly the whole cost of each. Callers only ever catch these by type
+// File not found error that carries no stack trace.
 public final class StacklessFileNotFoundException extends FileNotFoundException {
+    // Creates the error with a message.
     public StacklessFileNotFoundException(String message) {
         super(message);
     }
 
+    // Returns the error without recording a stack trace.
     @Override
     public synchronized Throwable fillInStackTrace() {
         return this;

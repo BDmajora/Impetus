@@ -16,18 +16,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.Optional;
 
-// Swaps vanilla's table-backed states for CoarctatioBlockState through Forge's createState hook (no coremod, no AT); cancelling at HEAD means a declined block (blacklisted, too many states, unindexable IProperty) just gets vanilla's state, per block
+// Mixin that changes BlockStateContainer.
 @Mixin(BlockStateContainer.class)
 public abstract class BlockStateContainerMixin implements MappedStateOwner {
-    // Null both before resolution and when this block was declined, hence the separate resolved flag
+    // Field state mapper added to the target.
     @Unique
     private PropertyValueMapper coarctatio$stateMapper;
 
-    // Distinguishes "not built yet" from "built and came back null", so a declined block is not re-analysed once per state
+    // Field state mapper resolved added to the target.
     @Unique
     private boolean coarctatio$stateMapperResolved;
 
-    // createState is called once per state, so the mapper is built on the first call; safe because the container assigns its property map before the state loop
+    // Handles mapper.
     @Override
     public PropertyValueMapper coarctatio$mapper(Block block) {
         if (!this.coarctatio$stateMapperResolved) {
@@ -38,7 +38,7 @@ public abstract class BlockStateContainerMixin implements MappedStateOwner {
         return this.coarctatio$stateMapper;
     }
 
-    // remap = false because methods Forge adds by patch are not in the obfuscation map and keep their source names
+    // Runs at the start of createState and can cancel it.
     @Inject(method = "createState", at = @At("HEAD"), cancellable = true, remap = false)
     private void coarctatio$createPackedState(Block block,
                                              ImmutableMap<IProperty<?>, Comparable<?>> properties,

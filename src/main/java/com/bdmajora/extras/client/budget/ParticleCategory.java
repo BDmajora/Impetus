@@ -6,13 +6,16 @@ import net.minecraft.client.particle.ParticleRain;
 
 import java.util.Locale;
 
-// What the particle budget may refuse: only COSMETIC; weather is gameplay feedback and block particles tell you a block broke, so both always spawn
+// Importance of a particle type.
 public enum ParticleCategory {
+    // Particle that may be skipped.
     COSMETIC,
+    // Weather particle.
     WEATHER,
+    // Particle that must stay.
     CRITICAL;
 
-    // Vanilla classes are matched by type; modded ones by name tokens up the hierarchy, which is how Pretty Rain, FBP and the like are recognised without a dependency. Block tokens go first and weather tokens read the simple name only, so "TerrainParticle" is block-like and a package named after rain protects nothing
+    // Returns the category of the particle class.
     static ParticleCategory classify(Class<? extends Particle> type) {
         if (ParticleRain.class.isAssignableFrom(type)) {
             return WEATHER;
@@ -41,6 +44,7 @@ public enum ParticleCategory {
         return COSMETIC;
     }
 
+    // Returns whether the class name belongs to block particles.
     private static boolean hasBlockToken(String name) {
         return name.contains("terrainparticle") || name.contains("blockparticle")
                 || name.contains("blockdust") || name.contains("blockstate")

@@ -22,19 +22,23 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-// World.MAX_ENTITY_RADIUS is a Forge global that any mod with a big entity raises for everyone, and every AABB query pads by it, so a mob's per-tick collision check scans up to 9 chunks instead of 1 once one such mod is present (Universal Tweaks' "Entity Radius Check"); for the vanilla entities whose own size is known this runs the same query with vanilla's 2-block padding. The class list is Universal Tweaks' and RLTweaker's: no wolves, horses, players, dragon or wither, since those either fight alongside the player or own explosions, and item-like entities are included
+// Entity queries that use a smaller search radius.
 public final class ReducedRadiusQuery {
+    // Search radius of the base game.
     private static final double VANILLA_RADIUS = 2.0D;
+    // Eligibility of each entity class.
     private static final Map<Class<?>, Boolean> ELIGIBLE = new ConcurrentHashMap<>();
 
+    // Prevents instantiation
     private ReducedRadiusQuery() {
     }
 
-    // False while no mod has touched the global, so the vanilla path is used untouched
+    // Returns whether the world radius differs from the base game.
     public static boolean applies() {
         return World.MAX_ENTITY_RADIUS != VANILLA_RADIUS;
     }
 
+    // Returns whether the entity class may use the smaller radius.
     public static boolean isEligible(Entity entity) {
         Class<?> type = entity.getClass();
         Boolean eligible = ELIGIBLE.get(type);
@@ -45,8 +49,8 @@ public final class ReducedRadiusQuery {
         return eligible;
     }
 
+    // Returns whether the class is a base game entity of a small size.
     private static boolean classify(Class<?> type) {
-        // Modded entities are left alone; their size is unknown here and they may be exactly why the radius was raised
         if (!type.getName().startsWith("net.minecraft.")) {
             return false;
         }
@@ -57,7 +61,7 @@ public final class ReducedRadiusQuery {
         return type == EntityItem.class || type == EntityItemFrame.class || type == EntityPainting.class || type == EntityXPOrb.class;
     }
 
-    // Vanilla's getEntitiesInAABBexcluding with the padding constant fixed at 2
+    // Returns the entities in the box found through the loaded chunks only.
     public static List<Entity> getEntitiesInAABBexcluding(World world, Entity entity, AxisAlignedBB box, Predicate<? super Entity> predicate) {
         List<Entity> list = new ArrayList<>();
         int minChunkX = MathHelper.floor((box.minX - VANILLA_RADIUS) / 16.0D);

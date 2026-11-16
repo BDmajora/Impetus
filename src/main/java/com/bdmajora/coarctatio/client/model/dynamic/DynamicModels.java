@@ -42,35 +42,40 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-// The model reload with dynamic loading on: collect locations, scan for textures, stitch, and bake only what mods ask for at ModelBakeEvent; everything else bakes on first use (VintageFix's dynamic resources, laid over Coarctatio's model pipeline)
+// Loads and bakes models on demand instead of all at once.
 public final class DynamicModels {
-    // Reload listeners that must run before the models rather than in registration order; TConstruct's texture creator generates the sprites its models reference
+    // Listener classes that run after the tables are filled.
     private static final Set<String> DEFERRED_LISTENER_CLASSES = Collections.singleton("slimeknights.tconstruct.library.client.CustomTextureCreator");
-    // "assets/ns/models/item/x.tmat.json" to "ns:item/x.tmat", the form the vanilla loader takes
+    // Pattern of model asset paths.
     private static final Pattern MODEL_PATH = Pattern.compile("^/?assets/(.+?(?=/))/(?:.+?(?=/))/(.*)\\.(?:[A-Za-z]*)$");
-    // Forge deprecates the plain listener for its selective one, but registerReloadListener still takes this type
+    // Listeners that were deferred.
     @SuppressWarnings("deprecation")
     private static final List<IResourceManagerReloadListener> DEFERRED = new ArrayList<>();
 
+    // Provider of unbaked models.
     private static UnbakedModelProvider unbaked;
+    // Provider of baked models.
     private static BakedModelProvider baked;
-    // Sprite names the scan registered weakly and no mod replaced, kept until the stitch so an unreferenced one can be dropped if the atlas does not fit
+    // Names of sprites registered without a reference.
     private static volatile Set<String> weaklyRegisteredSprites = Collections.emptySet();
-    // The atlas the reload in progress is filling, so the weak registration hook only fires for it
+    // Atlas that is being reloaded.
     private static volatile TextureMap reloadingAtlas;
 
+    // Prevents instantiation
     private DynamicModels() {
     }
 
+    // Returns the provider of unbaked models.
     public static UnbakedModelProvider unbaked() {
         return unbaked;
     }
 
+    // Returns the provider of baked models.
     public static BakedModelProvider baked() {
         return baked;
     }
 
-    // True for the one listener class deferred; the caller cancels its registration
+    // Returns whether the listener was deferred.
     @SuppressWarnings("deprecation")
     public static boolean deferListener(IResourceManagerReloadListener listener) {
         if (!DEFERRED_LISTENER_CLASSES.contains(listener.getClass().getName())) {
@@ -80,6 +85,7 @@ public final class DynamicModels {
         return true;
     }
 
+    // Runs every deferred listener.
     @SuppressWarnings("deprecation")
     private static void runDeferredListeners(IResourceManager resourceManager) {
         for (IResourceManagerReloadListener listener : DEFERRED) {
@@ -87,9 +93,8 @@ public final class DynamicModels {
         }
     }
 
-    // ModelManager.onResourceManagerReload, dynamic edition
+    // Replaces the model registry with on demand providers and loads the atlas.
     public static void reload(ModelManager manager, IResourceManager resourceManager, TextureMap atlas, BlockModelShapes shapes) {
-        // The pools stay open for the session: baking happens whenever a model is first drawn, and open() on the next reload starts them fresh
         Coarctatio.onResourceReloadStart();
         reloadingAtlas = atlas;
         List<IResourcePack> packs = resourceManager instanceof SimpleReloadableResourceManager
@@ -107,7 +112,6 @@ public final class DynamicModels {
             bar.step("Model locations");
             ModelLocations.init(loader, shapes.getBlockStateMapper());
         } catch (RuntimeException | Error e) {
-            // The scan started above waits on the location tables; a deferred listener or the loader failing first must not leave it parked
             TextureDiscovery.abandon(e);
             throw e;
         }
@@ -116,6 +120,7 @@ public final class DynamicModels {
         BakedModelProvider bakedModels = new BakedModelProvider(models);
         unbaked = models;
         baked = bakedModels;
+        // Replaces the model registry.
         ((ModelManagerAccess) manager).coarctatio$setModelRegistry(bakedModels);
         Set<ResourceLocation> textures = new HashSet<>();
         bar.step("Early model loading");
@@ -135,6 +140,7 @@ public final class DynamicModels {
             throw new IllegalStateException("The missing model is missing");
         }
         bakedModels.missingModel = missing;
+        // Replaces the default model.
         ((ModelManagerAccess) manager).coarctatio$setDefaultModel(missing);
         bakeEagerModels(eager);
         if (FluidRegistry.isUniversalBucketEnabled()) {
@@ -146,14 +152,14 @@ public final class DynamicModels {
         shapes.reloadModels();
     }
 
-    // Implemented on ModelManager by mixin; the two private fields the reload writes
+    // Access to the model manager fields.
     public interface ModelManagerAccess {
         void coarctatio$setModelRegistry(BakedModelProvider registry);
 
         void coarctatio$setDefaultModel(IBakedModel model);
     }
 
-    // TConstruct's material, tool and armor models are read by its own loaders before any bake and must already be resolvable; the material ones are pinned since they are asked for constantly
+    // Loads the models that must exist before baking and collects their textures.
     private static void loadEarlyModels(List<IResourcePack> packs, Set<ResourceLocation> textures) {
         Set<String> paths = new ObjectOpenHashSet<>();
         for (IResourcePack pack : packs) {
@@ -192,6 +198,7 @@ public final class DynamicModels {
         Coarctatio.LOGGER.info("Pinned {} early models", pinned);
     }
 
+    // Returns whether the path names an early model.
     private static boolean isEarlyModelPath(String path) {
         if (path.length() < 6 || !path.endsWith(".json")) {
             return false;
@@ -200,7 +207,7 @@ public final class DynamicModels {
         return name.endsWith("tmat") || name.endsWith("tcon") || name.endsWith(".mod") || name.endsWith("conarm");
     }
 
-    // Namespaces whose models are loaded up front the way vanilla did, for mods that expect every model of theirs to exist by ModelBakeEvent
+    // Returns the models of the eager namespaces and collects their textures.
     private static Map<ModelResourceLocation, IModel> loadEagerModels(Set<ResourceLocation> textures) {
         Set<String> namespaces = new HashSet<>(Arrays.asList(CoarctatioConfig.get().dynamicModelsEagerNamespaces));
         List<ResourceLocation> locations = new ArrayList<>();
@@ -216,7 +223,6 @@ public final class DynamicModels {
                 }
             }
         }
-        // Guidebook's book model is drawn by a renderer that never registers it, so its textures would otherwise miss the atlas
         if (Loader.isModLoaded("gbook")) {
             locations.add(new ResourceLocation("gbook", "block/custom/book"));
         }
@@ -247,6 +253,7 @@ public final class DynamicModels {
         return loaded;
     }
 
+    // Bakes the eagerly loaded models.
     private static void bakeEagerModels(Map<ModelResourceLocation, IModel> eager) {
         if (eager.isEmpty()) {
             return;
@@ -263,15 +270,15 @@ public final class DynamicModels {
         ProgressManager.pop(bar);
     }
 
+    // Adds the textures of the model.
     private static void collectTextures(IModel model, Set<ResourceLocation> into) {
         try {
             into.addAll(model.getTextures());
         } catch (RuntimeException ignored) {
-            // A model whose parent chain is broken still loads; its textures are simply not known yet
         }
     }
 
-    // Called from the atlas right before TextureStitchEvent.Pre: the scanned sprites and every fluid's, registered weakly so a mod's own registration for the same name wins
+    // Registers the discovered textures and fluid sprites for the atlas being reloaded.
     public static void registerDiscoveredSprites(TextureMap atlas) {
         if (atlas != reloadingAtlas) {
             return;
@@ -286,6 +293,7 @@ public final class DynamicModels {
         }
     }
 
+    // Registers the fluid sprite when its file exists.
     private static void registerFluidSprite(WeakSpriteTextureMap atlas, ResourceLocation sprite) {
         if (sprite == null) {
             return;
@@ -294,24 +302,23 @@ public final class DynamicModels {
         try (IResource ignored = Minecraft.getMinecraft().getResourceManager().getResource(file)) {
             registerWeak(atlas, sprite);
         } catch (Exception ignored) {
-            // Fluids registered without textures are drawn by their own renderers
         }
     }
 
+    // Registers the sprite without keeping a reference.
     private static void registerWeak(WeakSpriteTextureMap atlas, ResourceLocation sprite) {
         try {
             atlas.coarctatio$registerSpriteWeak(sprite);
         } catch (RuntimeException ignored) {
-            // A malformed location the scan matched is not a sprite
         }
     }
 
-    // The atlas hands over its weak set once stitching starts, when weak and strong no longer differ for registration purposes
+    // Stores the names of sprites registered without a reference.
     public static void rememberWeakSprites(Set<String> names) {
         weaklyRegisteredSprites = new ObjectOpenHashSet<>(names);
     }
 
-    // Stitches, and if the scan over-collected past what fits, first drops every weakly registered sprite no model references, then the largest sprites one at a time
+    // Stitches the atlas and falls back to fewer sprites when it does not fit.
     public static void stitchWithFallback(Stitcher stitcher) {
         boolean triedReferencedOnly = false;
         while (true) {
@@ -331,7 +338,7 @@ public final class DynamicModels {
         }
     }
 
-    // Loads every known model and its dependencies with texture capture on, the slow path vanilla always took
+    // Returns the sprites that loaded models reference.
     private static Set<String> referencedSpriteNames() {
         Set<ResourceLocation> captured = Collections.synchronizedSet(new HashSet<>());
         UnbakedModelProvider.textureCapture = captured;
@@ -354,7 +361,6 @@ public final class DynamicModels {
                     }
                 }
             } catch (Exception ignored) {
-                // A model that fails to load references nothing
             }
         }
         bar.step("");
@@ -367,11 +373,12 @@ public final class DynamicModels {
         return names;
     }
 
-    // Names the stitcher may drop: weakly registered and not in the referenced set
+    // Returns whether the sprite may be dropped.
     public static boolean isDroppable(String spriteName, Set<String> referenced) {
         return weaklyRegisteredSprites.contains(spriteName) && !referenced.contains(spriteName);
     }
 
+    // Returns the cache sizes as text lines.
     public static List<String> statistics() {
         if (baked == null) {
             return Collections.emptyList();

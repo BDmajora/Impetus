@@ -248,4 +248,30 @@ class GlObjectsTest {
             System.setProperty("os.name", os);
         }
     }
+
+    // Rejects a second link of one builder and links once even after a failed link.
+    @Test
+    void aBuilderLinksOnce() {
+        when(TestGl.gl().glCreateProgram()).thenReturn(91);
+        ProgramBuilder builder = ProgramBuilder.begin("once");
+        assertNotNull(builder.link());
+        assertThrows(IllegalStateException.class, builder::link);
+        when(TestGl.gl().glGetProgrami(91, GL20.GL_LINK_STATUS)).thenReturn(0);
+        ProgramBuilder failing = ProgramBuilder.begin("fails");
+        assertThrows(ProgramCreationException.class, failing::link);
+        assertThrows(IllegalStateException.class, failing::link);
+        verify(TestGl.gl(), times(2)).glLinkProgram(91);
+        verify(TestGl.gl(), times(1)).glDeleteProgram(91);
+    }
+
+    // Reads a null link log as empty.
+    @Test
+    void aNullLinkLogIsEmpty() {
+        when(TestGl.gl().glCreateProgram()).thenReturn(92);
+        when(TestGl.gl().glGetProgramInfoLog(92, 32768)).thenReturn(null);
+        assertNotNull(ProgramBuilder.begin("nolog").link());
+        when(TestGl.gl().glGetProgrami(92, GL20.GL_LINK_STATUS)).thenReturn(0);
+        assertTrue(assertThrows(ProgramCreationException.class, () -> ProgramBuilder.begin("nolog2").link())
+                .getMessage().contains("(no info log)"));
+    }
 }

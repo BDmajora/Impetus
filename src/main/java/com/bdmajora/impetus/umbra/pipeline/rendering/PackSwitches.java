@@ -6,30 +6,33 @@ import com.bdmajora.impetus.umbra.shaderpack.ShaderPack;
 import com.bdmajora.impetus.umbra.shaderpack.ShaderProperties;
 import com.bdmajora.impetus.umbra.shaderpack.loading.ProgramArrayId;
 
-// The pack's shaders.properties switches the frame consults, plus the world-rendering settings it publishes for the chunk meshers
+// Switches read from the pack properties.
 public final class PackSwitches {
-    // backFace.<layer> keys in BlockRenderLayer order on 1.12.2: SOLID, CUTOUT_MIPPED, CUTOUT, TRANSLUCENT
+    // Back face keys.
     private static final String[] BACK_FACE_KEYS = {"solid", "cutoutMipped", "cutout", "translucent"};
 
-    // prepareBeforeShadow: the prepare family runs before the shadow map, for packs whose shadow pass samples what prepare produces
+    // Prepare before shadow.
     public final boolean prepareBeforeShadow;
-    // allowConcurrentCompute: no full barrier between consecutive dispatches, only safe when the pack says they are independent
+    // Allow concurrent compute.
     public final boolean allowConcurrentCompute;
-    // rain.depth / beacon.beam.depth: whether those draws write the depth buffer
+    // Rain depth.
     public final boolean rainDepth;
+    // Beacon beam depth.
     public final boolean beaconBeamDepth;
-    // frustum.culling / occlusion.culling, both on by default
+    // Frustum culling.
     public final boolean frustumCulling;
+    // Occlusion culling.
     public final boolean occlusionCulling;
-    // skipAllRendering: no world geometry at all, only the composite chain
+    // Skip all rendering.
     public final boolean skipAllRendering;
-    // separateEntityDraws: entities render in their own pass after the deferred chain
+    // Separate entity draws.
     public final boolean separateEntityDraws;
-    // particles.ordering = mixed | after | before, relative to the deferred chain
+    // Particle ordering.
     public final String particleOrdering;
-    // Vanilla culls every layer; a pack shading both sides or reading geometry from the light's side keeps back faces
+    // Back face culling.
     private final boolean[] backFaceCulling = new boolean[BACK_FACE_KEYS.length];
 
+    // Creates a pack switches from its pack.
     public PackSwitches(ShaderPack pack) {
         ShaderProperties properties = pack.getProperties();
         this.prepareBeforeShadow = properties.getPrepareBeforeShadow().orElse(Boolean.FALSE);
@@ -40,7 +43,6 @@ public final class PackSwitches {
         this.occlusionCulling = properties.getOcclusionCulling().orElse(Boolean.TRUE);
         this.skipAllRendering = properties.getSkipAllRendering().orElse(Boolean.FALSE);
         this.separateEntityDraws = properties.getSeparateEntityDraws().orElse(Boolean.FALSE);
-        // Umbra's order: an explicit directive wins, else a pack with a deferred chain and no separate entity draws gets `after` (particles not lit by deferred), else `mixed`; any deferred slot counts, a chain starting at deferred1 included
         this.particleOrdering = properties.getParticleOrdering()
                 .orElseGet(() -> hasDeferredChain(pack) && !this.separateEntityDraws ? "after" : "mixed");
         for (int i = 0; i < BACK_FACE_KEYS.length; i++) {
@@ -48,6 +50,7 @@ public final class PackSwitches {
         }
     }
 
+    // Returns whether the pack has deferred passes.
     private static boolean hasDeferredChain(ShaderPack pack) {
         for (int i = 0; i < ProgramArrayId.Deferred.getNumPrograms(); i++) {
             if (pack.getProgramSet().get(ProgramArrayId.Deferred, i).isPresent()) {
@@ -57,12 +60,12 @@ public final class PackSwitches {
         return false;
     }
 
-    // false when the pack wants that terrain layer's back faces drawn; an ordinal outside the four layers culls as vanilla does
+    // Returns whether a block layer culls back faces.
     public boolean cullsBackFaces(int layerOrdinal) {
         return layerOrdinal < 0 || layerOrdinal >= this.backFaceCulling.length || this.backFaceCulling[layerOrdinal];
     }
 
-    // Publishes the pack's block.properties mapping (null keeps raw 1.12.2 ids) and its lighting switches; registry resolution needs the game fully initialised, so this runs at pipeline build
+    // Publishes the world settings of a pack.
     public static void publishWorldSettings(ShaderPack pack, int renderDistanceChunks) {
         ShaderProperties properties = pack.getProperties();
         WorldRenderingSettings.setBlockStateIds(BlockMaterialMapping.createBlockStateIdTable(pack.getIdMap()));
@@ -77,7 +80,7 @@ public final class PackSwitches {
         WorldRenderingSettings.setVoxelizeLightBlocks(properties.getVoxelizeLightBlocks().orElse(Boolean.FALSE));
     }
 
-    // Vanilla's values once no pack renders; oldLighting goes back to TRUE, its default, since false left vanilla terrain without face shading after shaders were turned off
+    // Restores the default world settings.
     public static void resetWorldSettings() {
         WorldRenderingSettings.setBlockStateIds(null);
         WorldRenderingSettings.setBlockRenderLayers(null);

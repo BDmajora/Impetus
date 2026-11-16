@@ -2,12 +2,14 @@ package com.bdmajora.impetus.umbra.shaderpack.materialmap;
 
 import java.util.Objects;
 
-// A namespace:name pair defaulting to `minecraft` (verbatim port of Iris's NamespacedId); deliberately unvalidated, since packs name blocks from uninstalled mods and rejecting them would fail the whole pack
+// Name with a namespace.
 public final class NamespacedId {
+    // Namespace of the id.
     private final String namespace;
+    // Path of the id.
     private final String name;
 
-    // Splits on the FIRST colon only, so a name containing further colons keeps them
+    // Creates a namespaced id from its combined.
     public NamespacedId(String combined) {
         int colonIdx = combined.indexOf(':');
         if (colonIdx == -1) {
@@ -19,22 +21,23 @@ public final class NamespacedId {
         }
     }
 
+    // Creates a namespaced id from its namespace and name.
     public NamespacedId(String namespace, String name) {
         this.namespace = Objects.requireNonNull(namespace);
         this.name = Objects.requireNonNull(name);
     }
 
-    // Before the colon, minecraft when absent
+    // Returns the namespace.
     public String getNamespace() {
         return this.namespace;
     }
 
-    // After the colon
+    // Returns the name.
     public String getName() {
         return this.name;
     }
 
-    // Both equals and hashCode are needed because these are map keys throughout the material mapping
+    // Returns whether it equals.
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -47,13 +50,13 @@ public final class NamespacedId {
         return this.namespace.equals(that.namespace) && this.name.equals(that.name);
     }
 
-    // Consistent with equals
+    // Computes the hash of the code.
     @Override
     public int hashCode() {
         return 31 * (31 + this.namespace.hashCode()) + this.name.hashCode();
     }
 
-    // namespace:name
+    // Returns the namespace and path text.
     @Override
     public String toString() {
         return this.namespace + ":" + this.name;

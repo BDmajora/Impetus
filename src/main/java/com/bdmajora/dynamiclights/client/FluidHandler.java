@@ -8,26 +8,28 @@ import net.minecraft.world.IBlockAccess;
 import net.minecraftforge.fluids.IFluidBlock;
 import net.minecraftforge.fml.common.Loader;
 
-// Whether a position is inside a fluid ("extinguish when underwater"), checking both the block material and Forge's IFluidBlock so modded fluids count
+// Tests whether a position holds a fluid.
 public final class FluidHandler {
+    // Whether the fluid logging mod is loaded.
     private static final boolean FLUIDLOGGING = Loader.isModLoaded("fluidlogged_api");
 
+    // Prevents instantiation
     private FluidHandler() {
     }
 
-    // Whether the entity's eyes are inside a fluid at the current render partial tick
+    // Returns whether the eyes of the entity are in a fluid.
     public static boolean isFluid(Entity entity) {
         float partialTicks = Minecraft.getMinecraft().getRenderPartialTicks();
         return isFluid(entity.world, new BlockPos(entity.getPositionEyes(partialTicks)));
     }
 
-    // Whether the position holds a liquid, checking Fluidlogged's second state when that mod is present
+    // Returns whether the position holds a fluid.
     public static boolean isFluid(IBlockAccess access, BlockPos pos) {
         IBlockState state = getFluidState(access, pos);
         return state.getMaterial().isLiquid() || state.getBlock() instanceof IFluidBlock;
     }
 
-    // Fluid occupying pos, not necessarily the block there; with Fluidlogged API a position can hold both a block and a fluid (e.g. a fluidlogged fence)
+    // Returns the fluid state or the block state of the position.
     private static IBlockState getFluidState(IBlockAccess access, BlockPos pos) {
         return FLUIDLOGGING ? FluidloggedCompat.getFluidOrReal(access, pos) : access.getBlockState(pos);
     }

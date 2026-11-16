@@ -8,26 +8,27 @@ import net.minecraft.item.ItemStack;
 
 import java.util.function.Function;
 
-// Reports how brightly one kind of entity or block entity glows; mods register via DynamicLightHandlers and get tracking, rebuilds and the lightmap for free
+// Source of the light level of one kind of object.
 public interface DynamicLightHandler<T> {
-    // Luminance in the vanilla 0-15 scale
+    // Returns the light level of the source.
     int getLuminance(T lightSource);
 
-    // Whether this source is extinguished by being underwater
+    // Returns whether the source goes out in a fluid.
     default boolean isWaterSensitive(T lightSource) {
         return false;
     }
 
+    // Returns a handler built from a light function and a water function.
     static <T extends EntityLivingBase> DynamicLightHandler<T> makeHandler(
             Function<T, Integer> luminance, Function<T, Boolean> waterSensitive) {
         return new DynamicLightHandler<T>() {
-            // Delegates to the function this handler was built with
+            // Returns the light level of the source.
             @Override
             public int getLuminance(T lightSource) {
                 return luminance.apply(lightSource);
             }
 
-            // Delegates to the function this handler was built with; explosive light always goes out underwater
+            // Returns whether the source goes out in a fluid.
             @Override
             public boolean isWaterSensitive(T lightSource) {
                 return waterSensitive.apply(lightSource);
@@ -35,7 +36,7 @@ public interface DynamicLightHandler<T> {
         };
     }
 
-    // Wraps handler so the entity's held and worn items count towards its luminance too
+    // Returns a handler that also counts held and worn items.
     static <T extends EntityLivingBase> DynamicLightHandler<T> makeLivingEntityHandler(
             DynamicLightHandler<T> handler) {
         return entity -> Math.max(
@@ -43,11 +44,11 @@ public interface DynamicLightHandler<T> {
                 handler.getLuminance(entity));
     }
 
-    // Creeper handler that follows the configured explosive lighting mode; handler is an extra one to max with, or null
+    // Returns a handler that lights a creeper while it flashes.
     static <T extends EntityCreeper> DynamicLightHandler<T> makeCreeperEntityHandler(
             DynamicLightHandler<T> handler) {
         return new DynamicLightHandler<T>() {
-            // Flash intensity drives brightness in FANCY mode; SIMPLE uses a constant once the fuse is lit
+            // Returns the light of the flash combined with the wrapped handler.
             @Override
             public int getLuminance(T entity) {
                 int luminance = 0;
@@ -69,7 +70,7 @@ public interface DynamicLightHandler<T> {
                 return luminance;
             }
 
-            // Explosive light always goes out underwater
+            // Returns true.
             @Override
             public boolean isWaterSensitive(T lightSource) {
                 return true;

@@ -6,10 +6,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Patches SplashProgress' "GL info" crash callable; Cleanroom only checks for the client thread, but LWJGL3 throws from glGetString on any thread without a current context, which crashes the crash report itself
+// Mixin that changes 1.
 @Mixin(targets = {"net/minecraftforge/fml/client/SplashProgress$1"})
 public class SplashProgressCallableMixin {
-    // Reports GL info only when the window's context is current here
+    // Runs at the start of call and can cancel it.
     @Inject(method = "call()Ljava/lang/String;", at = @At("HEAD"), cancellable = true, remap = false)
     private void checkContext(CallbackInfoReturnable<String> cir) {
         boolean isContextAvailable;

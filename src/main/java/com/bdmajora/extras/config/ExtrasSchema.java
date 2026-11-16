@@ -3,9 +3,9 @@ package com.bdmajora.extras.config;
 import com.bdmajora.extras.ExtrasConfig;
 import net.minecraftforge.common.config.Configuration;
 
-// Every setting group of the Extras config and the particle class lists
+// Schema of every Extras setting group.
 public final class ExtrasSchema {
-    // Every setting group in the field order of the config
+    // Schema of the groups settings.
     private static final SettingGroup<?>[] GROUPS = {
             VisualSchema.ANIMATION, VisualSchema.PARTICLE, VisualSchema.DETAIL,
             RenderSchema.RENDER, InterfaceSchema.EXTRA, RenderSchema.RENDER_BUDGET, RenderSchema.GPU_BOOSTER,
@@ -18,7 +18,7 @@ public final class ExtrasSchema {
     private ExtrasSchema() {
     }
 
-    // Reads every setting into the config and saves the file when a key was missing
+    // Reads the value.
     public static void read(Configuration config, ExtrasConfig options) {
         for (SettingGroup<?> group : GROUPS) {
             group.load(config, options);
@@ -29,7 +29,7 @@ public final class ExtrasSchema {
         }
     }
 
-    // Writes every setting of the config and saves the file
+    // Writes the value.
     public static void write(Configuration config, ExtrasConfig options) {
         for (SettingGroup<?> group : GROUPS) {
             group.save(config, options);

@@ -16,35 +16,58 @@
 
 package grondag.bitraster;
 
+// Four by four matrix of fixed point numbers.
 public class Matrix4L {
+	// Fraction bits of an element.
 	public static final int MATRIX_PRECISION_BITS = 16;
+	// Value of one.
 	public static final long MATRIX_PRECISION_UNITY = 1 << MATRIX_PRECISION_BITS;
+	// Value of one half.
 	public static final long MATRIX_PRECISION_HALF = MATRIX_PRECISION_UNITY / 2;
+	// Factor from a fixed point value to a float.
 	public static final float FLOAT_CONVERSION = 1f / MATRIX_PRECISION_UNITY;
 
+	// Element of row 0 and column 0.
 	private long a00;
+	// Element of row 0 and column 1.
 	private long a01;
+	// Element of row 0 and column 2.
 	private long a02;
+	// Element of row 0 and column 3.
 	private long a03;
+	// Element of row 1 and column 0.
 	private long a10;
+	// Element of row 1 and column 1.
 	private long a11;
+	// Element of row 1 and column 2.
 	private long a12;
+	// Element of row 1 and column 3.
 	private long a13;
+	// Element of row 2 and column 0.
 	private long a20;
+	// Element of row 2 and column 1.
 	private long a21;
+	// Element of row 2 and column 2.
 	private long a22;
+	// Element of row 2 and column 3.
 	private long a23;
+	// Element of row 3 and column 0.
 	private long a30;
+	// Element of row 3 and column 1.
 	private long a31;
+	// Element of row 3 and column 2.
 	private long a32;
+	// Element of row 3 and column 3.
 	private long a33;
 
+	// Returns the elements as text.
 	@Override
 	public String toString() {
 		return String.format("[%d, %d, %d, %d], [%d, %d, %d, %d], [%d, %d, %d, %d], [%d, %d, %d, %d]",
 			a00, a01, a02, a03, a10, a11, a12, a13, a20, a21, a22, a23, a30, a31, a32, a33);
 	}
 
+	// Stores every element from floats.
 	public void set(
 			float a00, float a01, float a02, float a03,
 			float a10, float a11, float a12, float a13,
@@ -72,6 +95,7 @@ public class Matrix4L {
 		this.a33 = Math.round(a33 * MATRIX_PRECISION_UNITY);
 	}
 
+	// Copies the elements of another matrix.
 	public void copyFrom(Matrix4L other) {
 		a00 = other.a00;
 		a01 = other.a01;
@@ -94,6 +118,7 @@ public class Matrix4L {
 		a33 = other.a33;
 	}
 
+	// Returns whether every element equals the element of another matrix.
 	public boolean matches(Matrix4L other) {
 		return a00 == other.a00
 				&& a01 == other.a01
@@ -116,6 +141,7 @@ public class Matrix4L {
 				&& a33 == other.a33;
 	}
 
+	// Stores the identity matrix.
 	public void loadIdentity() {
 		a00 = MATRIX_PRECISION_UNITY;
 		a01 = 0;
@@ -135,6 +161,7 @@ public class Matrix4L {
 		a33 = MATRIX_PRECISION_UNITY;
 	}
 
+	// Multiplies this matrix by another matrix.
 	public void multiply(Matrix4L other) {
 		final long f = a00 * other.a00 + a01 * other.a10 + a02 * other.a20 + a03 * other.a30;
 		final long g = a00 * other.a01 + a01 * other.a11 + a02 * other.a21 + a03 * other.a31;
@@ -170,7 +197,11 @@ public class Matrix4L {
 		a33 = ((u + MATRIX_PRECISION_HALF) >> MATRIX_PRECISION_BITS);
 	}
 
+	// Applies a translation with the precision of its numbers and rejects a precision above the matrix precision.
 	public void translate(long x, long y, long z, int precision) {
+		if (precision > MATRIX_PRECISION_BITS) {
+			throw new IllegalArgumentException("Precision above " + MATRIX_PRECISION_BITS + " bits");
+		}
 		final int shift = MATRIX_PRECISION_BITS - precision;
 		assert shift >= 0;
 
@@ -189,194 +220,202 @@ public class Matrix4L {
 		a33 += ((u + MATRIX_PRECISION_HALF) >> MATRIX_PRECISION_BITS);
 	}
 
+	// Returns the element of row 0 and column 0 as a float.
 	public float a00f() {
 		return FLOAT_CONVERSION * a00;
 	}
 
+	// Returns the element of row 0 and column 1 as a float.
 	public float a01f() {
 		return FLOAT_CONVERSION * a01;
 	}
 
+	// Returns the element of row 0 and column 2 as a float.
 	public float a02f() {
 		return FLOAT_CONVERSION * a02;
 	}
 
+	// Returns the element of row 0 and column 3 as a float.
 	public float a03f() {
 		return FLOAT_CONVERSION * a03;
 	}
 
+	// Returns the element of row 1 and column 0 as a float.
 	public float a10f() {
 		return FLOAT_CONVERSION * a10;
 	}
 
+	// Returns the element of row 1 and column 1 as a float.
 	public float a11f() {
 		return FLOAT_CONVERSION * a11;
 	}
 
+	// Returns the element of row 1 and column 2 as a float.
 	public float a12f() {
 		return FLOAT_CONVERSION * a12;
 	}
 
+	// Returns the element of row 1 and column 3 as a float.
 	public float a13f() {
 		return FLOAT_CONVERSION * a13;
 	}
 
+	// Returns the element of row 2 and column 0 as a float.
 	public float a20f() {
 		return FLOAT_CONVERSION * a20;
 	}
 
+	// Returns the element of row 2 and column 1 as a float.
 	public float a21f() {
 		return FLOAT_CONVERSION * a21;
 	}
 
+	// Returns the element of row 2 and column 2 as a float.
 	public float a22f() {
 		return FLOAT_CONVERSION * a22;
 	}
 
+	// Returns the element of row 2 and column 3 as a float.
 	public float a23f() {
 		return FLOAT_CONVERSION * a23;
 	}
 
+	// Returns the element of row 3 and column 0 as a float.
 	public float a30f() {
 		return FLOAT_CONVERSION * a30;
 	}
 
+	// Returns the element of row 3 and column 1 as a float.
 	public float a31f() {
 		return FLOAT_CONVERSION * a31;
 	}
 
+	// Returns the element of row 3 and column 2 as a float.
 	public float a32f() {
 		return FLOAT_CONVERSION * a32;
 	}
 
+	// Returns the element of row 3 and column 3 as a float.
 	public float a33f() {
 		return FLOAT_CONVERSION * a33;
 	}
 
+	// Returns the element of row 0 and column 0.
 	public long a00() {
 		return a00;
 	}
 
+	// Returns the element of row 0 and column 1.
 	public long a01() {
 		return a01;
 	}
 
+	// Returns the element of row 0 and column 2.
 	public long a02() {
 		return a02;
 	}
 
+	// Returns the element of row 0 and column 3.
 	public long a03() {
 		return a03;
 	}
 
+	// Returns the element of row 1 and column 0.
 	public long a10() {
 		return a10;
 	}
 
+	// Returns the element of row 1 and column 1.
 	public long a11() {
 		return a11;
 	}
 
+	// Returns the element of row 1 and column 2.
 	public long a12() {
 		return a12;
 	}
 
+	// Returns the element of row 1 and column 3.
 	public long a13() {
 		return a13;
 	}
 
+	// Returns the element of row 2 and column 0.
 	public long a20() {
 		return a20;
 	}
 
+	// Returns the element of row 2 and column 1.
 	public long a21() {
 		return a21;
 	}
 
+	// Returns the element of row 2 and column 2.
 	public long a22() {
 		return a22;
 	}
 
+	// Returns the element of row 2 and column 3.
 	public long a23() {
 		return a23;
 	}
 
+	// Returns the element of row 3 and column 0.
 	public long a30() {
 		return a30;
 	}
 
+	// Returns the element of row 3 and column 1.
 	public long a31() {
 		return a31;
 	}
 
+	// Returns the element of row 3 and column 2.
 	public long a32() {
 		return a32;
 	}
 
+	// Returns the element of row 3 and column 3.
 	public long a33() {
 		return a33;
 	}
 
-	/**
-	 * Computes X component of transformed vector. Assumes input W is 1.
-	 * Result has standard precision.
-	 */
+	// Returns the x of the transformed point.
 	public long transformVec4X(int x, int y, int z) {
 		return a00 * x + a01 * y + a02 * z + a03;
 	}
 
-	/**
-	 * Computes Y component of transformed vector. Assumes input W is 1.
-	 * Result has standard precision.
-	 */
+	// Returns the y of the transformed point.
 	public long transformVec4Y(int x, int y, int z) {
 		return a10 * x + a11 * y + a12 * z + a13;
 	}
 
-	/**
-	 * Computes Z component of transformed vector. Assumes input W is 1.
-	 * Result has standard precision.
-	 */
+	// Returns the z of the transformed point.
 	public long transformVec4Z(int x, int y, int z) {
 		return a20 * x + a21 * y + a22 * z + a23;
 	}
 
-	/**
-	 * Computes W component of transformed vector. Assumes input W is 1.
-	 * Result has standard precision.
-	 */
+	// Returns the w of the transformed point.
 	public long transformVec4W(int x, int y, int z) {
 		return a30 * x + a31 * y + a32 * z + a33;
 	}
 
-	/**
-	 * Computes X component of transformed vector.
-	 * Result has standard precision.
-	 */
+	// Returns the x of the transformed vector.
 	public long transformVec4X(int x, int y, int z, int w) {
 		return a00 * x + a01 * y + a02 * z + a03 * w;
 	}
 
-	/**
-	 * Computes Y component of transformed vector.
-	 * Result has standard precision.
-	 */
+	// Returns the y of the transformed vector.
 	public long transformVec4Y(int x, int y, int z, int w) {
 		return a10 * x + a11 * y + a12 * z + a13 * w;
 	}
 
-	/**
-	 * Computes Z component of transformed vector.
-	 * Result has standard precision.
-	 */
+	// Returns the z of the transformed vector.
 	public long transformVec4Z(int x, int y, int z, int w) {
 		return a20 * x + a21 * y + a22 * z + a23 * w;
 	}
 
-	/**
-	 * Computes W component of transformed vector.
-	 * Result has standard precision.
-	 */
+	// Returns the w of the transformed vector.
 	public long transformVec4W(int x, int y, int z, int w) {
 		return a30 * x + a31 * y + a32 * z + a33 * w;
 	}

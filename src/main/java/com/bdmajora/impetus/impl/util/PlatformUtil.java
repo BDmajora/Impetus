@@ -4,9 +4,10 @@ import net.minecraft.client.Minecraft;
 
 import java.io.File;
 
+// Helpers for the operating system.
 public class PlatformUtil {
 
-    // The game directory
+    // Returns the game dir.
     public static File getGameDir() {
         return Minecraft.getMinecraft().gameDir;
     }

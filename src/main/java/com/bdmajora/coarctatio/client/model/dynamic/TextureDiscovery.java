@@ -34,13 +34,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
-// Finds the sprites to stitch without loading a model: every png under the texture folders models draw from, plus whatever the blockstate and model json files name, the way 1.19.3+ lists atlas sources (VintageFix's TextureCollector); runs on its own pool while the main thread builds the location tables
+// Finds the textures that models use before the atlas is built.
 public final class TextureDiscovery {
-    // The texture subfolders block and item models are known to use, across vanilla and the mods that keep their own layout; a sprite outside them is found through the json crawl or not at all
+    // Pattern of texture paths that are collected.
     private static final Pattern TEXTURE_PATH = Pattern.compile("^/?assets/(.+?(?=/))/textures/((?:attachment|aspect.?|bettergrass|block.?|cape|customoverlay|decors|item.?|entity/(armor|bed|chest)|fluid.?|model.?|part.?|pipe|rendering|ropebridge|slot.?|solid_block|tile.?|tinkers|tconstruct|valuetype.?)/.*)\\.png$");
-    // Any quoted string shaped like a resource location, inside a json file
-    private static final Pattern JSON_LOCATION = Pattern.compile("\"(?:([A-Za-z0-9_\\-.]+):|)([A-za-z0-9_\\-./]+)\"");
-    // Sprites mods register from code, in folders the pattern above does not cover
+    // Pattern of quoted locations inside model files.
+    private static final Pattern JSON_LOCATION = Pattern.compile("\"(?:([A-Za-z0-9_\\-.]+):|)([A-Za-z0-9_\\-./]+)\"");
+    // Textures that mods need and that no file mentions.
     private static final ImmutableListMultimap<String, ResourceLocation> EXTRA_BY_MOD = ImmutableListMultimap.<String, ResourceLocation>builder()
             .put("mekanism", new ResourceLocation("mekanism", "entities/robit"))
             .put("gbook", new ResourceLocation("gbook", "cover"))
@@ -49,9 +49,10 @@ public final class TextureDiscovery {
             .put("gbook", new ResourceLocation("gbook", "transparent"))
             .put("industrialwires", new ResourceLocation("minecraft", "font/ascii"))
             .build();
-    // Loose resource folders some packs ship next to the jar
+    // Folders of the game directory that hold extra resources.
     private static final String[] GAME_FOLDERS = {"resources", "oresources"};
 
+    // Worker pool of the scan.
     private static final ForkJoinPool POOL = new ForkJoinPool(Math.max(2, Runtime.getRuntime().availableProcessors() - 1), pool -> {
         ForkJoinWorkerThread thread = ForkJoinPool.defaultForkJoinWorkerThreadFactory.newThread(pool);
         thread.setName("Coarctatio texture scan " + thread.getPoolIndex());
@@ -59,30 +60,35 @@ public final class TextureDiscovery {
         return thread;
     }, null, false);
 
-    // The scan in flight for the reload under way, joined when the atlas registers its sprites
+    // Scan that is running or null.
     private static volatile ForkJoinTask<Set<ResourceLocation>> pending;
-    // Its discovery, so the reload can say when the location tables are filled, or that they never will be this time
+    // Scan of the current reload or null.
     private static volatile TextureDiscovery current;
+    // Packs to scan.
     private final List<IResourcePack> packs;
+    // Manager that reads the model files.
     private final IResourceManager manager;
+    // Model files already read.
     private final Set<ResourceLocation> visitedJson = Collections.synchronizedSet(new ObjectOpenHashSet<>());
+    // Known results of resource existence checks.
     private final Map<ResourceLocation, Boolean> exists = new ConcurrentHashMap<>();
-    // Completed by the reload once ModelLocations is filled; the json crawl waits for it on the pool. Per scan, so a reload that dies early cannot leave a later scan waiting on it
+    // Future completed when the location tables are filled.
     private final CompletableFuture<Void> tablesReady = new CompletableFuture<>();
 
+    // Creates a scan.
     private TextureDiscovery(IResourceManager manager, List<IResourcePack> packs) {
         this.manager = manager;
         this.packs = packs;
     }
 
-    // Started at the top of the model reload, before the location tables exist; the json crawl waits for them
+    // Starts a scan in the background.
     public static void start(IResourceManager manager, List<IResourcePack> packs) {
         TextureDiscovery discovery = new TextureDiscovery(manager, packs);
         current = discovery;
         pending = POOL.submit(discovery::discover);
     }
 
-    // The location tables are filled; the scan's json crawl may read them
+    // Signals that the location tables are filled.
     public static void tablesReady() {
         TextureDiscovery discovery = current;
         if (discovery != null) {
@@ -90,7 +96,7 @@ public final class TextureDiscovery {
         }
     }
 
-    // The reload failed before the tables were filled: the crawl fails rather than parking a pool thread for good, and the scan is dropped
+    // Cancels the scan and passes the cause to its waiting tasks.
     public static void abandon(Throwable cause) {
         TextureDiscovery discovery = current;
         current = null;
@@ -100,7 +106,7 @@ public final class TextureDiscovery {
         }
     }
 
-    // Blocks until the scan is done and hands over its result once
+    // Waits for the scan and returns the textures found.
     public static Set<ResourceLocation> take() {
         ForkJoinTask<Set<ResourceLocation>> task = pending;
         if (task == null) {
@@ -111,6 +117,7 @@ public final class TextureDiscovery {
         return task.join();
     }
 
+    // Returns the textures found in packs and in model files.
     private Set<ResourceLocation> discover() {
         long start = System.nanoTime();
         ForkJoinTask<List<ResourceLocation>> fromJson = POOL.submit(this::crawlJson);
@@ -129,7 +136,6 @@ public final class TextureDiscovery {
                     seen += match("assets/" + base.relativize(path).toString().replace(java.io.File.separatorChar, '/'), textures);
                 }
             } catch (FileNotFoundException | NoSuchFileException ignored) {
-                // Not every install has the loose folders
             } catch (IOException e) {
                 Coarctatio.LOGGER.error("Error listing {}", base, e);
             }
@@ -142,6 +148,7 @@ public final class TextureDiscovery {
         return textures;
     }
 
+    // Adds the texture of a path and returns one when the path matched.
     private static int match(String path, Set<ResourceLocation> into) {
         Matcher matcher = TEXTURE_PATH.matcher(path);
         if (!matcher.matches()) {
@@ -151,7 +158,7 @@ public final class TextureDiscovery {
         return 1;
     }
 
-    // Reads every blockstate and item model json the location tables name and follows the model references inside, so a texture in an unlisted folder is still found if a model uses it
+    // Returns the textures named by block state and item model files.
     private List<ResourceLocation> crawlJson() {
         this.tablesReady.join();
         Set<ResourceLocation> blockstates = new ObjectOpenHashSet<>();
@@ -165,7 +172,6 @@ public final class TextureDiscovery {
             ResourceLocation file = new ResourceLocation(location.getNamespace(), "blockstates/" + location.getPath() + ".json");
             results.add(CompletableFuture.supplyAsync(() -> this.texturesIn(file), POOL));
         }
-        // Snapshot: early loading on the main thread adds override files to this map while the crawl runs
         List<ResourceLocation> itemFiles;
         synchronized (ModelLocations.ITEM_VARIANT_FILES) {
             itemFiles = new ArrayList<>(ModelLocations.ITEM_VARIANT_FILES.values());
@@ -183,6 +189,7 @@ public final class TextureDiscovery {
         return new ArrayList<>(textures);
     }
 
+    // Returns whether the resource exists.
     private boolean resourceExists(ResourceLocation location) {
         return this.exists.computeIfAbsent(location, key -> {
             try (IResource ignored = this.manager.getResource(key)) {
@@ -193,7 +200,7 @@ public final class TextureDiscovery {
         });
     }
 
-    // Every location-shaped string that is a texture, or the textures of the model it names; the scan is textual since parsing every model as json is what made vanilla's load slow
+    // Returns the textures named by a model file and its parents.
     private List<ResourceLocation> texturesIn(ResourceLocation json) {
         if (!this.visitedJson.add(json)) {
             return ImmutableList.of();

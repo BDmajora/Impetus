@@ -2,26 +2,27 @@ package com.bdmajora.impetus.umbra.targets;
 
 import java.util.BitSet;
 
-// Tracks per colour buffer whether main and alt are swapped: a pass samples the front and renders into the back, then flips (OptiFine's flipBuffers); a BitSet since the flip state is snapshotted per pass at schedule time and cloning is one word
+// Tracker of which render targets are flipped.
 public class BufferFlipper {
+    // Targets that are flipped.
     private final BitSet flippedBuffers = new BitSet();
 
-    // Swaps front and back for one buffer
+    // Toggles the flip of a target.
     public void flip(int target) {
         this.flippedBuffers.flip(target);
     }
 
-    // Whether the buffer's alt texture is currently front
+    // Returns whether a target is flipped.
     public boolean isFlipped(int target) {
         return this.flippedBuffers.get(target);
     }
 
-    // A copy, not the live set: each pass records the flip state it runs under at SCHEDULE time while the flipper keeps mutating
+    // Returns a copy of the flips.
     public BitSet snapshot() {
         return (BitSet) this.flippedBuffers.clone();
     }
 
-    // Back to all-unflipped at frame start, so pass N always runs under the flip state it was scheduled with
+    // Clears every flip.
     public void reset() {
         this.flippedBuffers.clear();
     }

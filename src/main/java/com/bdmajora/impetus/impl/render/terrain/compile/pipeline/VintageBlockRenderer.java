@@ -42,38 +42,59 @@ import com.bdmajora.impetus.engine.api.util.NormI8;
 import com.bdmajora.impetus.umbra.vertices.NormalHelper;
 import com.bdmajora.impetus.mixin.core.terrain.BlockColorsAccessor;
 
+import com.bdmajora.impetus.umbra.material.WorldRenderingSettings;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
+// Renders the quads of baked block models into the chunk mesh buffers.
 public class VintageBlockRenderer {
+    // Build context of the chunk.
     private final VintageChunkBuildContext context;
+    // Consumer of vertex data.
     private final VertexBufferConsumer consumer;
+    // Smooth and flat lighters.
     private final LightPipelineProvider lighters;
+    // Color providers by block.
     private final Map<IRegistryDelegate<Block>, IBlockColor> blockColors;
 
+    // Light of the current quad.
     private final QuadLightData quadLightData = new QuadLightData();
+    // Tint of each vertex of the current quad.
     private final int[] quadColors = new int[4];
+    // Vertices of the current quad.
     private final ChunkVertexEncoder.Vertex[] vertices = ChunkVertexEncoder.Vertex.uninitializedQuad();
+    // Orientation chosen for each cull face of the current block.
     private final ModelQuadOrientation[] currentOrientations = new ModelQuadOrientation[EnumFacing.VALUES.length];
+    // Render pass optimization state of the options.
     private final boolean useRenderPassOptimization;
 
+    // State of the current block.
     private IBlockState currentState;
+    // World view of the current block or null.
     private ImpetusBlockAccess currentBlockAccess;
 
+    // Analyzer of the quad groups.
     private final BakedQuadGroupAnalyzer analyzer = new BakedQuadGroupAnalyzer();
 
+    // Rendering flags of the current quad group.
     private int currentQuadRenderingFlags;
 
-    // The OptiFine per-block attributes (mc_Entity, emission) and the AO writer, resolved once per block rather than per quad or per vertex
+    // Shader pack state of the current block.
     private boolean shadersActive;
+    // Shader block id of the current block.
     private int currentBlockId;
+    // Render type ordinal of the current block.
     private int currentBlockRenderType;
+    // Metadata of the current block.
     private int currentBlockData;
+    // Emission of the current block between 0 and 255.
     private int currentBlockEmission;
+    // Writer that folds occlusion into the vertex color.
     private ChunkColorWriter colorWriter = ChunkColorWriter.IMPETUS;
 
+    // Creates a renderer for a build context and a light cache.
     public VintageBlockRenderer(VintageChunkBuildContext context, LightDataCache cache) {
         this.consumer = new VertexBufferConsumer();
         this.context = context;
@@ -82,12 +103,12 @@ public class VintageBlockRenderer {
         this.useRenderPassOptimization = ImpetusVintage.options().performance.useRenderPassOptimization;
     }
 
-    // Clears per-section caches before the next section
+    // Forgets the orientations of the last block.
     public void resetSharedState() {
         Arrays.fill(this.currentOrientations, null);
     }
 
-    // BlockModelRenderer.renderModel's equivalent, reached through the dispatcher hook, so the state is already actual and extended; emits every quad culled against neighbours and says whether any were
+    // Renders every face of a model and returns whether a quad was emitted.
     public boolean renderModel(IBakedModel model, IBlockState state, BlockPos pos, ImpetusBlockAccess blockAccess, BlockRenderLayer layer) {
         int defaultFlags = BakedQuadGroupAnalyzer.USE_ALL_THINGS;
         if (!useRenderPassOptimization) {
@@ -100,11 +121,14 @@ public class VintageBlockRenderer {
         this.currentBlockAccess = blockAccess;
         this.colorWriter = ChunkColorWriter.active();
         this.shadersActive = UmbraTerrainProgramOverride.areShadersActive();
+        boolean aoSetting = Minecraft.isAmbientOcclusionEnabled();
+        // Light value of the block read once when the emission or the occlusion check needs it
+        int lightValue = this.shadersActive || aoSetting ? state.getLightValue(blockAccess, pos) : 0;
         if (this.shadersActive) {
-            this.currentBlockId = com.bdmajora.impetus.umbra.material.WorldRenderingSettings.getBlockStateId(state);
+            this.currentBlockId = WorldRenderingSettings.getBlockStateId(state);
             this.currentBlockRenderType = state.getRenderType().ordinal();
             this.currentBlockData = state.getBlock().getMetaFromState(state);
-            this.currentBlockEmission = clampBlockEmission(state.getLightValue(blockAccess, pos));
+            this.currentBlockEmission = clampBlockEmission(lightValue);
         }
 
         var buffers = this.context.buffers;
@@ -117,7 +141,7 @@ public class VintageBlockRenderer {
 
         var offset = this.currentState.getOffset(blockAccess, pos);
 
-        var aoEnabled = Minecraft.isAmbientOcclusionEnabled() && state.getLightValue(blockAccess, pos) == 0 && model.isAmbientOcclusion(state);
+        var aoEnabled = aoSetting && lightValue == 0 && model.isAmbientOcclusion(state);
 
         var lighter = this.lighters.getLighter(aoEnabled ? LightMode.SMOOTH : LightMode.FLAT);
 
@@ -145,7 +169,7 @@ public class VintageBlockRenderer {
         return rendered;
     }
 
-    // Runs the chosen light pipeline for one quad
+    // Calculates the light of a quad.
     private QuadLightData getVertexLight(LightPipeline lighter, BlockPos pos, EnumFacing cullFace, BakedQuadView quad) {
         QuadLightData light = this.quadLightData;
         lighter.calculate(quad, pos.getX(), pos.getY(), pos.getZ(), light, VintageDiffuseProvider.fromEnumFacingOrUnassigned(cullFace), quad.getLightFace(), quad.hasShade(), false);
@@ -153,12 +177,11 @@ public class VintageBlockRenderer {
         return light;
     }
 
-    // Tint colours per vertex, through the biome blender when the quad is tinted
+    // Returns the tint of each vertex of a quad.
     private int[] getVertexColors(BlockPos pos, IBlockColor colorProvider, BakedQuadView quad) {
         final int[] vertexColors = this.quadColors;
 
         if (colorProvider != null && quad.hasColor()) {
-            // Force full alpha on all colors
             Arrays.fill(vertexColors, 0xFF000000 | ColorARGB.toABGR(colorProvider.colorMultiplier(this.currentState, this.currentBlockAccess, pos, quad.getColorIndex())));
         } else {
             Arrays.fill(vertexColors, 0xFFFFFFFF);
@@ -167,13 +190,13 @@ public class VintageBlockRenderer {
         return vertexColors;
     }
 
+    // Renders a list of quads and records their animated sprites.
     private void renderQuadList(ChunkModelBuilder defaultBuffer, ChunkBuildBuffers buffers,
                                 Material material, BlockPos pos, EnumFacing cullFace,
                                 LightPipeline lighter, IBlockColor colorProvider, Vec3d offset,
                                 List<BakedQuad> quads) {
         int localX = pos.getX() & 15, localY = pos.getY() & 15, localZ = pos.getZ() & 15;
         var config = buffers.getRenderPassConfiguration();
-        //noinspection ForLoopReplaceableByForEach
         for (int i = 0, quadsSize = quads.size(); i < quadsSize; i++) {
             var quad = quads.get(i);
             var format = quad.getFormat();
@@ -183,7 +206,6 @@ public class VintageBlockRenderer {
 
             BakedQuadView quadView = (BakedQuadView)quad;
 
-            // Run through our light pipeline
             var light = this.getVertexLight(lighter, pos, cullFace, quadView);
             var colors = this.getVertexColors(pos, colorProvider, quadView);
 
@@ -200,8 +222,7 @@ public class VintageBlockRenderer {
 
             TextureAtlasSprite sprite = (TextureAtlasSprite)quadView.impetus$getSprite();
 
-            if (sprite.hasAnimationMetadata() && buffer.getSectionContextBundle() instanceof MinecraftBuiltRenderSectionData<?,?> mcData) {
-                // Vintage sections are always built over TextureAtlasSprite
+            if (sprite != null && sprite.hasAnimationMetadata() && buffer.getSectionContextBundle() instanceof MinecraftBuiltRenderSectionData<?,?> mcData) {
                 @SuppressWarnings("unchecked")
                 Collection<TextureAtlasSprite> animated = (Collection<TextureAtlasSprite>) mcData.animatedSprites;
                 animated.add(sprite);
@@ -209,6 +230,7 @@ public class VintageBlockRenderer {
         }
     }
 
+    // Writes the four vertices of a quad into a mesh buffer.
     private void writeGeometry(int localX, int localY, int localZ, ChunkModelBuilder builder,
                                Vec3d offset,
                                Material material,
@@ -246,7 +268,6 @@ public class VintageBlockRenderer {
             out.vanillaNormal = vanillaNormal;
             out.trueNormal = trueNormal;
 
-            // at_midBlock: (0.5 - model-local vertex position) points at the block centre regardless of chunk/region offset; colored-lighting voxelization samples there to stay off voxel-cell boundaries
             out.midBlockX = 0.5f - quad.getX(srcIndex);
             out.midBlockY = 0.5f - quad.getY(srcIndex);
             out.midBlockZ = 0.5f - quad.getZ(srcIndex);
@@ -260,9 +281,8 @@ public class VintageBlockRenderer {
         vertexBuffer.push(vertices, material);
     }
 
-    // Fills the OptiFine per-vertex attributes (mc_midTexCoord, at_tangent, mc_Entity) UmbraChunkVertexType encodes under a shader pack; all four vertices share the values
+    // Writes the shader pack attributes of the four vertices.
     private void populateUmbraVertexData(ChunkVertexEncoder.Vertex[] vertices, BakedQuadView quad, int trueNormal) {
-        // mc_midTexCoord must be the centre of THIS QUAD's mapped region (sum of UVs * 0.25, as Umbra does), not the sprite centre; Chocapic-derived packs rebuild their sprite basis from it, and the sprite centre smeared torch caps into a 1px band
         float midU = 0.0f, midV = 0.0f;
         for (int i = 0; i < 4; i++) {
             midU += quad.getTexU(i);
@@ -271,7 +291,6 @@ public class VintageBlockRenderer {
         midU *= 0.25f;
         midV *= 0.25f;
 
-        // Read positions/UVs off the source quad, never `vertices`, which are already rotated into ModelQuadOrientation order; a rotated triple yields a tangent turned 90° and made Sildur's water wave normals checkerboard under grazing fresnel
         int tangent = NormalHelper.computeTangent(
                 NormI8.unpackX(trueNormal), NormI8.unpackY(trueNormal), NormI8.unpackZ(trueNormal),
                 quad.getX(0), quad.getY(0), quad.getZ(0), quad.getTexU(0), quad.getTexV(0),
@@ -295,7 +314,7 @@ public class VintageBlockRenderer {
         }
     }
 
-    // The emission byte of at_midBlock; vanilla is 0-15 but a mod's getLightValue may answer past that
+    // Returns the emission limited to between 0 and 255.
     private static int clampBlockEmission(int value) {
         return value < 0 ? 0 : (value > 255 ? 255 : value);
     }

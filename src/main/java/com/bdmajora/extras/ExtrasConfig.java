@@ -8,51 +8,51 @@ import net.minecraftforge.common.config.Configuration;
 import java.io.File;
 import java.util.Objects;
 
-// Every Extras setting group backed by a Forge configuration file that stores enum constants by ordinal
+// Settings of the Extras module.
 public final class ExtrasConfig {
-    // Texture animation switches
+    // Group of the animation settings.
     public final AnimationSettings animation = new AnimationSettings();
-    // Particle switches and particle ticking options
+    // Group of the particle settings.
     public final ParticleSettings particle = new ParticleSettings();
-    // Sky and weather and colour detail switches
+    // Group of the detail settings.
     public final DetailSettings detail = new DetailSettings();
-    // World render switches and fog and cloud tuning
+    // Group of the render settings.
     public final RenderSettings render = new RenderSettings();
-    // Overlay and toast and quality of life settings
+    // Group of the extra settings.
     public final ExtraSettings extra = new ExtraSettings();
-    // Adaptive render budget settings
+    // Group of the render budget settings.
     public final RenderBudgetSettings renderBudget = new RenderBudgetSettings();
-    // GPU booster switches
+    // Group of the gpu booster settings.
     public final GpuBoosterSettings gpuBooster = new GpuBoosterSettings();
-    // Parallel server ticking settings
+    // Group of the async settings.
     public final AsyncSettings async = new AsyncSettings();
-    // Switches of block entities drawn as terrain
+    // Group of the baked entities settings.
     public final BakedEntitySettings bakedEntities = new BakedEntitySettings();
-    // Packet size limits and timeouts and Krypton switches
+    // Group of the network settings.
     public final NetworkSettings network = new NetworkSettings();
-    // Thread priorities and the render loop yield switch
+    // Group of the threads settings.
     public final ThreadSettings threads = new ThreadSettings();
-    // Occlusion culling of entities and block entities
+    // Group of the occlusion settings.
     public final OcclusionSettings occlusion = new OcclusionSettings();
-    // HUD framebuffer cache settings
+    // Group of the hud settings.
     public final HudSettings hud = new HudSettings();
-    // Glyph batching switch
+    // Group of the text settings.
     public final TextSettings text = new TextSettings();
-    // Client tick work skipped while its inputs stay unchanged
+    // Group of the client tick settings.
     public final ClientTickSettings clientTick = new ClientTickSettings();
-    // Model box transform switch
+    // Group of the entity models settings.
     public final EntityModelSettings entityModels = new EntityModelSettings();
-    // Fancy leaf face culling settings
+    // Group of the leaves settings.
     public final LeafSettings leaves = new LeafSettings();
-    // World load and screenshot and texture atlas switches
+    // Group of the loading settings.
     public final LoadingSettings loading = new LoadingSettings();
-    // Hold to zoom settings
+    // Group of the zoom settings.
     public final ZoomSettings zoom = new ZoomSettings();
 
-    // Forge configuration behind the settings or null for a detached config
+    // Choice of the config option.
     private Configuration config;
 
-    // Reads the file into a new config and adds missing keys and falls back to unwritten defaults when the read fails
+    // Loads the value.
     public static ExtrasConfig load(File file) {
         Configuration config = new Configuration(Objects.requireNonNull(file, "file"));
         ExtrasConfig options = new ExtrasConfig();
@@ -69,7 +69,7 @@ public final class ExtrasConfig {
         return options;
     }
 
-    // Writes every setting to the file and applies the live settings and does nothing for a detached config
+    // Writes the changes.
     public void writeChanges() {
         Configuration file = config;
         if (file == null) {
@@ -79,631 +79,708 @@ public final class ExtrasConfig {
         ExtrasRuntime.apply(this);
     }
 
-    // Corner of the screen that anchors the FPS and coordinate overlay
+    // Choices of the overlay corner setting.
     public enum OverlayCorner implements Localized {
+        // Value that selects top left.
         TOP_LEFT("impetus.options.extras.overlay_corner.top_left", false, false),
+        // Value that selects top right.
         TOP_RIGHT("impetus.options.extras.overlay_corner.top_right", false, true),
+        // Value that selects bottom left.
         BOTTOM_LEFT("impetus.options.extras.overlay_corner.bottom_left", true, false),
+        // Value that selects bottom right.
         BOTTOM_RIGHT("impetus.options.extras.overlay_corner.bottom_right", true, true);
 
-        // Lang key of the cycler label
+        // Text of the key option.
         private final String key;
-        // Flag that marks a corner on the bottom edge
+        // Switch of the bottom option.
         private final boolean bottom;
-        // Flag that marks a corner on the right edge
+        // Switch of the right option.
         private final boolean right;
 
-        // Stores the lang key and the edges of the corner
+        // Creates an overlay corner from its key and bottom and right.
         OverlayCorner(String key, boolean bottom, boolean right) {
             this.key = key;
             this.bottom = bottom;
             this.right = right;
         }
 
-        // Returns the lang key of the cycler label
+        // Returns the translation key of the entry.
         @Override
         public String translationKey() {
             return this.key;
         }
 
-        // Returns whether the corner sits on the bottom edge
+        // Returns whether bottom.
         public boolean isBottom() {
             return this.bottom;
         }
 
-        // Returns whether the corner sits on the right edge
+        // Returns whether right.
         public boolean isRight() {
             return this.right;
         }
     }
 
-    // Interior leaf faces the mesher drops in fancy mode
+    // Choices of the leaf culling setting.
     public enum LeafCulling implements Localized {
+        // Value that selects default.
         DEFAULT("impetus.options.extras.leaf_culling.default"),
+        // Value that selects check.
         CHECK("impetus.options.extras.leaf_culling.check"),
+        // Value that selects depth.
         DEPTH("impetus.options.extras.leaf_culling.depth");
 
-        // Lang key of the cycler label
+        // Text of the key option.
         private final String key;
 
-        // Stores the lang key of the mode
+        // Creates a leaf culling from its key.
         LeafCulling(String key) {
             this.key = key;
         }
 
-        // Returns the lang key of the cycler label
+        // Returns the translation key of the entry.
         @Override
         public String translationKey() {
             return this.key;
         }
     }
 
-    // Backdrop that keeps overlay text readable against the world
+    // Choices of the text contrast setting.
     public enum TextContrast implements Localized {
+        // Value that selects none.
         NONE("impetus.options.extras.text_contrast.none"),
+        // Value that selects background.
         BACKGROUND("impetus.options.extras.text_contrast.background"),
+        // Value that selects shadow.
         SHADOW("impetus.options.extras.text_contrast.shadow");
 
-        // Lang key of the cycler label
+        // Text of the key option.
         private final String key;
 
-        // Stores the lang key of the backdrop
+        // Creates a text contrast from its key.
         TextContrast(String key) {
             this.key = key;
         }
 
-        // Returns the lang key of the cycler label
+        // Returns the translation key of the entry.
         @Override
         public String translationKey() {
             return this.key;
         }
     }
 
-    // Rule that decides when clouds turn translucent
+    // Choices of the cloud translucency setting.
     public enum CloudTranslucency implements Localized {
+        // Value that selects default.
         DEFAULT("impetus.options.extras.cloud_translucency.default"),
+        // Value that selects always.
         ALWAYS("impetus.options.extras.cloud_translucency.always"),
+        // Value that selects never.
         NEVER("impetus.options.extras.cloud_translucency.never");
 
-        // Lang key of the cycler label
+        // Text of the key option.
         private final String key;
 
-        // Stores the lang key of the rule
+        // Creates a cloud translucency from its key.
         CloudTranslucency(String key) {
             this.key = key;
         }
 
-        // Returns the lang key of the cycler label
+        // Returns the translation key of the entry.
         @Override
         public String translationKey() {
             return this.key;
         }
     }
 
-    // Distance metric of terrain fog with VANILLA as spherical and RADIAL as horizontal only
+    // Choices of the fog shape setting.
     public enum FogShape implements Localized {
+        // Value that selects vanilla.
         VANILLA("impetus.options.extras.fog_shape.vanilla"),
+        // Value that selects cylindrical.
         CYLINDRICAL("impetus.options.extras.fog_shape.cylindrical"),
+        // Value that selects radial.
         RADIAL("impetus.options.extras.fog_shape.radial"),
+        // Value that selects planar.
         PLANAR("impetus.options.extras.fog_shape.planar");
 
-        // Lang key of the cycler label
+        // Text of the key option.
         private final String key;
 
-        // Stores the lang key of the shape
+        // Creates a fog shape from its key.
         FogShape(String key) {
             this.key = key;
         }
 
-        // Returns the lang key of the cycler label
+        // Returns the translation key of the entry.
         @Override
         public String translationKey() {
             return this.key;
         }
 
-        // Returns the u_FogShape uniform value of the shape as defined in the fog shader include
+        // Handles the shader index.
         public int shaderIndex() {
             return this.ordinal();
         }
     }
 
-    // Client side time of day lock
+    // Choices of the time override setting.
     public enum TimeOverride implements Localized {
+        // Value that selects default.
         DEFAULT("impetus.options.extras.time.default"),
+        // Value that selects day.
         DAY("impetus.options.extras.time.day"),
+        // Value that selects night.
         NIGHT("impetus.options.extras.time.night");
 
-        // Lang key of the cycler label
+        // Text of the key option.
         private final String key;
 
-        // Stores the lang key of the lock
+        // Creates a time override from its key.
         TimeOverride(String key) {
             this.key = key;
         }
 
-        // Returns the lang key of the cycler label
+        // Returns the translation key of the entry.
         @Override
         public String translationKey() {
             return this.key;
         }
     }
 
-    // Client side weather lock
+    // Choices of the weather override setting.
     public enum WeatherOverride implements Localized {
+        // Value that selects default.
         DEFAULT("impetus.options.extras.weather.default"),
+        // Value that selects clear.
         CLEAR("impetus.options.extras.weather.clear"),
+        // Value that selects rain.
         RAIN("impetus.options.extras.weather.rain"),
+        // Value that selects thunder.
         THUNDER("impetus.options.extras.weather.thunder");
 
-        // Lang key of the cycler label
+        // Text of the key option.
         private final String key;
 
-        // Stores the lang key of the lock
+        // Creates a weather override from its key.
         WeatherOverride(String key) {
             this.key = key;
         }
 
-        // Returns the lang key of the cycler label
+        // Returns the translation key of the entry.
         @Override
         public String translationKey() {
             return this.key;
         }
     }
 
-    // Render budget profile in rising order of aggressiveness with the frame time each one aims for
+    // Choices of the budget profile setting.
     public enum BudgetProfile implements Localized {
+        // Value that selects quality.
         QUALITY("impetus.options.extras.budget_profile.quality", 22.2),
+        // Value that selects balanced.
         BALANCED("impetus.options.extras.budget_profile.balanced", 16.7),
+        // Value that selects performance.
         PERFORMANCE("impetus.options.extras.budget_profile.performance", 14.0);
 
-        // Lang key of the cycler label
+        // Text of the key option.
         private final String key;
-        // Frame time in milliseconds that the frame time average is measured against
+        // Value of the target frame millis option.
         public final double targetFrameMillis;
 
-        // Stores the lang key and the target frame time of the profile
+        // Creates a budget profile from its key and target frame millis.
         BudgetProfile(String key, double targetFrameMillis) {
             this.key = key;
             this.targetFrameMillis = targetFrameMillis;
         }
 
-        // Returns the lang key of the cycler label
+        // Returns the translation key of the entry.
         @Override
         public String translationKey() {
             return this.key;
         }
     }
 
-    // Vertical sync mode with adaptive sync beside the vanilla on and off pair
+    // Choices of the vertical sync setting.
     public enum VerticalSync implements Localized {
+        // Value that selects off.
         OFF("options.off"),
+        // Value that selects on.
         ON("options.on"),
+        // Value that selects adaptive.
         ADAPTIVE("impetus.options.extras.vertical_sync.adaptive");
 
-        // Lang key of the cycler label
+        // Text of the key option.
         private final String key;
 
-        // Stores the lang key of the mode
+        // Creates a vertical sync from its key.
         VerticalSync(String key) {
             this.key = key;
         }
 
-        // Returns the lang key of the cycler label
+        // Returns the translation key of the entry.
         @Override
         public String translationKey() {
             return this.key;
         }
     }
 
-    // Texture animation switches where all gates every other switch
+    // Settings of the animation group.
     public static final class AnimationSettings {
-        // Master switch over every texture animation
+        // Switch of the all option.
         public boolean all = true;
+        // Switch of the water option.
         public boolean water = true;
+        // Switch of the lava option.
         public boolean lava = true;
+        // Switch of the fire option.
         public boolean fire = true;
+        // Switch of the portal option.
         public boolean portal = true;
-        // Switch of every block animation without a switch of its own
+        // Switch of the block animations option.
         public boolean blockAnimations = true;
+        // Switch of the redstone option.
         public boolean redstone = true;
+        // Switch of the explosion option.
         public boolean explosion = true;
+        // Switch of the flame option.
         public boolean flame = true;
+        // Switch of the smoke option.
         public boolean smoke = true;
-        // Switch of modded sculk sensor style animations
+        // Switch of the sculk sensor option.
         public boolean sculkSensor = true;
     }
 
-    // Particle switches and particle ticking options where all gates every particle
+    // Settings of the particle group.
     public static final class ParticleSettings {
-        // Master switch over every particle
+        // Switch of the all option.
         public boolean all = true;
+        // Switch of the rain splash option.
         public boolean rainSplash = true;
+        // Switch of the block break option.
         public boolean blockBreak = true;
+        // Switch of the block breaking option.
         public boolean blockBreaking = true;
+        // Switch of the void particles option.
         public boolean voidParticles = true;
+        // Switch of the water particles option.
         public boolean waterParticles = true;
+        // Switch of the portal particles option.
         public boolean portalParticles = true;
+        // Switch of the potion particles option.
         public boolean potionParticles = true;
+        // Switch of the dripping water lava option.
         public boolean drippingWaterLava = true;
+        // Switch of the firework particles option.
         public boolean fireworkParticles = true;
-        // Switch that ticks vanilla particles on the worker pool
+        // Switch of the parallel tick option.
         public boolean parallelTick = true;
-        // Switch that also ticks modded particle classes on the worker pool
+        // Switch of the parallel modded option.
         public boolean parallelModded = false;
-        // Switch that samples the light of each particle once per tick
+        // Switch of the light cache option.
         public boolean lightCache = true;
-        // Switch that skips the quads of vanilla particles outside the view frustum
+        // Switch of the cull offscreen option.
         public boolean cullOffscreen = true;
-        // Switch that remembers block cells with nothing to collide with
+        // Switch of the collision cache option.
         public boolean collisionCache = true;
     }
 
-    // Celestial and environmental detail switches and the star count
+    // Settings of the detail group.
     public static final class DetailSettings {
-        // Fewest stars the star count allows
+        // Smallest value of the stars setting.
         public static final int STARS_MIN = 500;
-        // Star count of a fresh config
+        // Default value of the stars setting.
         public static final int STARS_DEFAULT = 1500;
-        // Most stars the star count allows
+        // Largest value of the stars setting.
         public static final int STARS_MAX = 32000;
 
+        // Switch of the sky option.
         public boolean sky = true;
+        // Switch of the stars option.
         public boolean stars = true;
-        // Number of stars generated for the sky
+        // Value of the total stars option.
         public int totalStars = STARS_DEFAULT;
+        // Switch of the sun option.
         public boolean sun = true;
+        // Switch of the moon option.
         public boolean moon = true;
+        // Switch of the rain snow option.
         public boolean rainSnow = true;
-        // Switch of the biome tint of grass and foliage and water
+        // Switch of the biome colors option.
         public boolean biomeColors = true;
-        // Switch of the biome tint of the sky
+        // Switch of the sky colors option.
         public boolean skyColors = true;
-        // Switch of the darker swamp tint of grass and foliage
+        // Switch of the swamp colors option.
         public boolean swampColors = true;
+        // Switch of the void fog option.
         public boolean voidFog = true;
+        // Switch of the show capes option.
         public boolean showCapes = true;
-        // Switch of the item name popup on a hotbar slot change
+        // Switch of the held item tooltips option.
         public boolean heldItemTooltips = true;
     }
 
-    // World render switches and fog and cloud tuning without cloud height or distance
+    // Settings of the render group.
     public static final class RenderSettings {
-        // Smallest cloud scale in quarter steps
+        // Smallest value of the cloud scale setting.
         public static final int CLOUD_SCALE_MIN = 1;
-        // Cloud scale in quarter steps that matches the vanilla cloud size
+        // Constant cloud scale vanilla.
         public static final int CLOUD_SCALE_VANILLA = 4;
-        // Largest cloud scale in quarter steps
+        // Largest value of the cloud scale setting.
         public static final int CLOUD_SCALE_MAX = 16;
 
+        // Switch of the fog option.
         public boolean fog = true;
-        // Fog start as a percentage of the fog end
+        // Value of the fog start option.
         public int fogStart = 100;
-        // Fog distance in chunks where 0 follows the render distance
+        // Value of the fog distance option.
         public int fogDistance = 0;
-        // Distance metric of terrain fog
+        // Choice of the fog shape option.
         public FogShape fogShape = FogShape.VANILLA;
-        // Cloud size in quarter steps of the vanilla size
+        // Value of the cloud scale option.
         public int cloudScale = CLOUD_SCALE_VANILLA;
-        // Rule that decides when clouds turn translucent
+        // Choice of the cloud translucency option.
         public CloudTranslucency cloudTranslucency = CloudTranslucency.DEFAULT;
-        // Switch of client side light updates
+        // Switch of the light updates option.
         public boolean lightUpdates = true;
+        // Switch of the item frames option.
         public boolean itemFrames = true;
-        // Distance in blocks past which framed items lose their side faces where 0 turns it off
+        // Value of the item frame lod distance option.
         public int itemFrameLodDistance = 0;
+        // Switch of the item frame name tag option.
         public boolean itemFrameNameTag = true;
+        // Switch of the armor stands option.
         public boolean armorStands = true;
+        // Switch of the paintings option.
         public boolean paintings = true;
+        // Switch of the pistons option.
         public boolean pistons = true;
+        // Switch of the beacons option.
         public boolean beacons = true;
-        // Switch that stops beacon beams at the world ceiling
+        // Switch of the limit beacon beam height option.
         public boolean limitBeaconBeamHeight = false;
+        // Switch of the enchanting table books option.
         public boolean enchantingTableBooks = true;
+        // Switch of the player name tag option.
         public boolean playerNameTag = true;
-        // Switch that stacks up to five models per dropped item pile
+        // Switch of the dropped items fancy option.
         public boolean droppedItemsFancy = true;
-        // Switch that rebuilds item model faces sharing a plane so they stop flickering as the camera moves
+        // Switch of the item model flicker fix option.
         public boolean itemModelFlickerFix = true;
-        // Switch that blocks the vanilla post processing shaders
+        // Switch of the prevent shaders option.
         public boolean preventShaders = false;
-        // Switch that splits entity rendering by type in the F3 profiler
+        // Switch of the profile entity rendering option.
         public boolean profileEntityRendering = false;
     }
 
-    // Overlay and toast and quality of life settings
+    // Settings of the extra group.
     public static final class ExtraSettings {
-        // Shortest F3 overlay rebuild interval in ticks
+        // Smallest value of the steady hud refresh setting.
         public static final int STEADY_HUD_REFRESH_MIN = 1;
-        // F3 overlay rebuild interval in ticks of a fresh config
+        // Default value of the steady hud refresh setting.
         public static final int STEADY_HUD_REFRESH_DEFAULT = 1;
-        // Longest F3 overlay rebuild interval in ticks
+        // Largest value of the steady hud refresh setting.
         public static final int STEADY_HUD_REFRESH_MAX = 20;
-        // Autosave interval in ticks of the vanilla server
+        // Constant autosave vanilla ticks.
         public static final int AUTOSAVE_VANILLA_TICKS = 900;
-        // Shortest autosave interval in ticks
+        // Constant autosave min ticks.
         public static final int AUTOSAVE_MIN_TICKS = 0;
-        // Longest autosave interval in ticks
+        // Constant autosave max ticks.
         public static final int AUTOSAVE_MAX_TICKS = 36000;
 
+        // Switch of the show fps option.
         public boolean showFps = false;
-        // Switch that adds the average and the low percentiles to the FPS overlay
+        // Switch of the show fps extended option.
         public boolean showFpsExtended = true;
+        // Switch of the show coords option.
         public boolean showCoords = false;
-        // Switch that shows coordinates despite the reducedDebugInfo game rule
+        // Switch of the ignore reduced debug info option.
         public boolean ignoreReducedDebugInfo = false;
-        // Corner of the screen that anchors the overlay
+        // Choice of the overlay corner option.
         public OverlayCorner overlayCorner = OverlayCorner.TOP_LEFT;
-        // Backdrop of the overlay text
+        // Choice of the text contrast option.
         public TextContrast textContrast = TextContrast.SHADOW;
-        // Switch that throttles the F3 overlay text rebuild
+        // Switch of the steady debug hud option.
         public boolean steadyDebugHud = true;
-        // F3 overlay rebuild interval in ticks
+        // Value of the steady debug hud refresh interval option.
         public int steadyDebugHudRefreshInterval = STEADY_HUD_REFRESH_DEFAULT;
-        // Switch of adaptive vertical sync where the driver supports it
+        // Switch of the use adaptive sync option.
         public boolean useAdaptiveSync = false;
-        // Master switch over every toast
+        // Switch of the toasts option.
         public boolean toasts = true;
+        // Switch of the toast advancement option.
         public boolean toastAdvancement = true;
+        // Switch of the toast recipe option.
         public boolean toastRecipe = true;
+        // Switch of the toast tutorial option.
         public boolean toastTutorial = true;
+        // Switch of the toast system option.
         public boolean toastSystem = true;
-        // Switch that appends the source mod name to item tooltips
+        // Switch of the mod name tooltip option.
         public boolean modNameTooltip = false;
-        // Switch of the Panini projection post effect
+        // Switch of the panini projection option.
         public boolean paniniProjection = false;
-        // Panini projection strength as a percentage
+        // Value of the panini projection strength option.
         public int paniniProjectionStrength = 25;
-        // Client side time of day lock
+        // Choice of the time override option.
         public TimeOverride timeOverride = TimeOverride.DEFAULT;
-        // Client side weather lock
+        // Choice of the weather override option.
         public WeatherOverride weatherOverride = WeatherOverride.DEFAULT;
-        // Singleplayer autosave interval in ticks
+        // Value of the autosave interval option.
         public int autosaveInterval = AUTOSAVE_VANILLA_TICKS;
     }
 
-    // Adaptive render budget settings that trade distant mobs and cosmetic particles for frame time
+    // Settings of the render budget group.
     public static final class RenderBudgetSettings {
-        // Smallest share of cosmetic particles as a percentage
+        // Smallest value of the particle budget setting.
         public static final int PARTICLE_BUDGET_MIN = 0;
-        // Share of cosmetic particles as a percentage of a fresh config
+        // Default value of the particle budget setting.
         public static final int PARTICLE_BUDGET_DEFAULT = 65;
-        // Largest share of cosmetic particles as a percentage
+        // Largest value of the particle budget setting.
         public static final int PARTICLE_BUDGET_MAX = 100;
-        // Shortest entity cull distance in blocks
+        // Smallest value of the entity distance setting.
         public static final int ENTITY_DISTANCE_MIN = 16;
-        // Entity cull distance in blocks of a fresh config
+        // Default value of the entity distance setting.
         public static final int ENTITY_DISTANCE_DEFAULT = 96;
-        // Longest entity cull distance in blocks
+        // Largest value of the entity distance setting.
         public static final int ENTITY_DISTANCE_MAX = 256;
-        // Shortest block entity skip distance in blocks
+        // Smallest value of the block entity distance setting.
         public static final int BLOCK_ENTITY_DISTANCE_MIN = 32;
-        // Block entity skip distance in blocks of a fresh config
+        // Default value of the block entity distance setting.
         public static final int BLOCK_ENTITY_DISTANCE_DEFAULT = 48;
-        // Longest block entity skip distance in blocks
+        // Largest value of the block entity distance setting.
         public static final int BLOCK_ENTITY_DISTANCE_MAX = 128;
 
-        // Master switch of the render budget
+        // Switch of the enabled option.
         public boolean enabled = false;
-        // Profile that sets the target frame time
+        // Choice of the profile option.
         public BudgetProfile profile = BudgetProfile.BALANCED;
-        // Switch that tightens the budget a further step under heavy frame pressure
+        // Switch of the adaptive option.
         public boolean adaptive = true;
-        // Share of cosmetic particles allowed to spawn as a percentage
+        // Value of the particle budget option.
         public int particleBudget = PARTICLE_BUDGET_DEFAULT;
-        // Distance in blocks past which idle living entities may be skipped
+        // Value of the entity cull distance option.
         public int entityCullDistance = ENTITY_DISTANCE_DEFAULT;
-        // Switch that skips distant living entities other than players under pressure
+        // Switch of the smart entity culling option.
         public boolean smartEntityCulling = true;
-        // Switch that skips distant decorative block entities under pressure
+        // Switch of the block entities option.
         public boolean blockEntities = true;
-        // Distance in blocks past which decorative block entities and item frames may be skipped
+        // Value of the block entity distance option.
         public int blockEntityDistance = BLOCK_ENTITY_DISTANCE_DEFAULT;
-        // Switch that skips distant plain item frames under pressure
+        // Switch of the item frames option.
         public boolean itemFrames = true;
-        // Switch of the HUD overlay of the budget state
+        // Switch of the overlay option.
         public boolean overlay = false;
     }
 
-    // GPU booster switches where enabled gates every other switch
+    // Settings of the gpu booster group.
     public static final class GpuBoosterSettings {
-        // Master switch over the GPU booster set
+        // Switch of the enabled option.
         public boolean enabled = false;
-        // Switch of the entity and particle random generator
+        // Switch of the fast random option.
         public boolean fastRandom = true;
-        // Switch of the MathHelper angle wrapping and log2 replacements
+        // Switch of the fast math option.
         public boolean fastMath = true;
-        // Switch of streamed vertex buffer uploads for immediate mode geometry
+        // Switch of the stream uploads option.
         public boolean streamUploads = true;
-        // Switch of the vertex array object cache per vertex format
+        // Switch of the vertex format cache option.
         public boolean vertexFormatCache = true;
     }
 
-    // Parallel server ticking settings where the master switch holds until the next launch
+    // Settings of the async group.
     public static final class AsyncSettings {
-        // Most worker threads for parallel ticking
+        // Largest value of the threads setting.
         public static final int THREADS_MAX = 64;
-        // Entity ids that tick on the main thread in a fresh config
+        // Constant default synchronized.
         public static final String[] DEFAULT_SYNCHRONIZED = {
                 "minecraft:tnt", "minecraft:item", "minecraft:xp_orb", "minecraft:hopper_minecart"
         };
 
-        // Master switch of parallel ticking that holds until the next launch
+        // Switch of the enabled option.
         public boolean enabled = true;
-        // Worker thread count where 0 picks about three quarters of the cores
+        // Value of the threads option.
         public int threads = 0;
-        // Switch that ticks vanilla entities in parallel
+        // Switch of the entities option.
         public boolean entities = true;
-        // Switch that also ticks modded entities in parallel
+        // Switch of the modded entities option.
         public boolean moddedEntities = false;
-        // Switch that runs block random ticks in parallel
+        // Switch of the random ticks option.
         public boolean randomTicks = true;
-        // Switch that evaluates natural spawn attempts in parallel
+        // Switch of the spawning option.
         public boolean spawning = true;
-        // Entity ids or namespace wildcards that always tick on the main thread
+        // Text of the synchronized entities option.
         public String[] synchronizedEntities = DEFAULT_SYNCHRONIZED.clone();
     }
 
-    // Switches of resting block entities drawn as terrain where enabled gates every other switch
+    // Settings of the baked entity group.
     public static final class BakedEntitySettings {
-        // Master switch over every baked block entity
+        // Switch of the enabled option.
         public boolean enabled = true;
+        // Switch of the chests option.
         public boolean chests = true;
+        // Switch of the ender chests option.
         public boolean enderChests = true;
+        // Switch of the signs option.
         public boolean signs = true;
+        // Switch of the beds option.
         public boolean beds = true;
+        // Switch of the shulker boxes option.
         public boolean shulkerBoxes = true;
     }
 
-    // Packet size limits and timeouts and Krypton switches
+    // Settings of the network group.
     public static final class NetworkSettings {
-        // Shortest timeout in seconds
+        // Smallest value of the timeout setting.
         public static final int TIMEOUT_MIN = 5;
-        // Longest timeout in seconds
+        // Largest value of the timeout setting.
         public static final int TIMEOUT_MAX = 600;
-        // Read timeout in seconds of a fresh config
+        // Default value of the read timeout setting.
         public static final int READ_TIMEOUT_DEFAULT = 120;
-        // Login timeout in seconds of a fresh config
+        // Default value of the login timeout setting.
         public static final int LOGIN_TIMEOUT_DEFAULT = 120;
-        // Keep alive timeout in seconds of a fresh config
+        // Default value of the keep alive timeout setting.
         public static final int KEEP_ALIVE_TIMEOUT_DEFAULT = 120;
 
-        // Switch that lifts the vanilla packet and string and NBT size caps
+        // Switch of the large packets option.
         public boolean largePackets = true;
-        // Switch that flushes each connection once per server tick
+        // Switch of the flush consolidation option.
         public boolean flushConsolidation = true;
-        // Switch of table driven varint sizing and encoding
+        // Switch of the fast var ints option.
         public boolean fastVarInts = true;
-        // Switch of packet compression without intermediate array copies
+        // Switch of the pooled compression option.
         public boolean pooledCompression = true;
+        // Value of the read timeout seconds option.
         public int readTimeoutSeconds = READ_TIMEOUT_DEFAULT;
+        // Value of the login timeout seconds option.
         public int loginTimeoutSeconds = LOGIN_TIMEOUT_DEFAULT;
+        // Value of the keep alive timeout seconds option.
         public int keepAliveTimeoutSeconds = KEEP_ALIVE_TIMEOUT_DEFAULT;
     }
 
-    // Thread priorities and the render loop yield switch with game defaults in a fresh config
+    // Settings of the thread group.
     public static final class ThreadSettings {
-        // Lowest Java thread priority
+        // Smallest value of the priority setting.
         public static final int PRIORITY_MIN = Thread.MIN_PRIORITY;
-        // Java thread priority the game threads start with
+        // Constant priority normal.
         public static final int PRIORITY_NORMAL = Thread.NORM_PRIORITY;
-        // Highest Java thread priority
+        // Largest value of the priority setting.
         public static final int PRIORITY_MAX = Thread.MAX_PRIORITY;
-        // Priority Impetus gives its chunk builder threads
+        // Default value of the chunk builder setting.
         public static final int CHUNK_BUILDER_DEFAULT = Thread.NORM_PRIORITY - 2;
 
-        // Java priority of the client render thread
+        // Value of the render thread priority option.
         public int renderThreadPriority = PRIORITY_NORMAL;
-        // Java priority of the integrated server thread
+        // Value of the server thread priority option.
         public int serverThreadPriority = PRIORITY_NORMAL;
-        // Java priority of the chunk builder threads
+        // Value of the chunk builder priority option.
         public int chunkBuilderPriority = CHUNK_BUILDER_DEFAULT;
-        // Switch that skips the Thread.yield call of the render loop
+        // Switch of the remove render yield option.
         public boolean removeRenderYield = false;
     }
 
-    // Occlusion culling of entities and block entities where enabled gates every other switch
+    // Settings of the occlusion group.
     public static final class OcclusionSettings {
-        // Largest culled entity size in blocks of a fresh config
+        // Default value of the max entity size setting.
         public static final int MAX_ENTITY_SIZE_DEFAULT = 4;
-        // Largest culled block entity size in blocks of a fresh config
+        // Default value of the max block entity size setting.
         public static final int MAX_BLOCK_ENTITY_SIZE_DEFAULT = 4;
-        // Ray end slack in hundredths of a block of a fresh config
+        // Default value of the slack setting.
         public static final int SLACK_DEFAULT = 100;
 
-        // Master switch of occlusion culling
+        // Switch of the enabled option.
         public boolean enabled = true;
-        // Switch that culls hidden entities
+        // Switch of the entities option.
         public boolean entities = true;
-        // Switch that culls hidden block entities
+        // Switch of the block entities option.
         public boolean blockEntities = true;
-        // Entity width or height in blocks above which an entity is never culled
+        // Value of the max entity size option.
         public int maxEntitySize = MAX_ENTITY_SIZE_DEFAULT;
-        // Render box size in blocks above which a block entity is never culled
+        // Value of the max block entity size option.
         public int maxBlockEntitySize = MAX_BLOCK_ENTITY_SIZE_DEFAULT;
-        // Hundredths of a block at the end of each ray that never occlude
+        // Value of the raycast slack option.
         public int raycastSlack = SLACK_DEFAULT;
     }
 
-    // HUD framebuffer cache settings
+    // Settings of the hud group.
     public static final class HudSettings {
-        // Lowest HUD cache redraw rate per second
+        // Smallest value of the cache fps setting.
         public static final int CACHE_FPS_MIN = 10;
-        // HUD cache redraw rate per second of a fresh config
+        // Default value of the cache fps setting.
         public static final int CACHE_FPS_DEFAULT = 30;
-        // Highest HUD cache redraw rate per second
+        // Largest value of the cache fps setting.
         public static final int CACHE_FPS_MAX = 120;
 
-        // Switch that draws the HUD into a framebuffer at a capped rate
+        // Switch of the cache enabled option.
         public boolean cacheEnabled = false;
-        // HUD cache redraws per second
+        // Value of the cache fps option.
         public int cacheFps = CACHE_FPS_DEFAULT;
     }
 
-    // Glyph batching switch
+    // Settings of the text group.
     public static final class TextSettings {
-        // Switch that draws the glyphs of each string in one batch
+        // Switch of the batch glyphs option.
         public boolean batchGlyphs = true;
     }
 
-    // Client tick work skipped while its inputs stay unchanged
+    // Settings of the client tick group.
     public static final class ClientTickSettings {
-        // Switch that skips lightmap rebuilds while only the torch flicker changes
+        // Switch of the lightmap caching option.
         public boolean lightmapCaching = true;
     }
 
-    // Model box transform switch
+    // Settings of the entity model group.
     public static final class EntityModelSettings {
-        // Switch that positions each model box with one matrix multiply
+        // Switch of the matrix transforms option.
         public boolean matrixTransforms = true;
     }
 
-    // Fancy leaf interior face culling settings
+    // Settings of the leaf group.
     public static final class LeafSettings {
-        // Fewest solid blocks behind a leaf face in depth mode
+        // Smallest value of the depth setting.
         public static final int DEPTH_MIN = 1;
-        // Solid blocks behind a leaf face in depth mode of a fresh config
+        // Default value of the depth setting.
         public static final int DEPTH_DEFAULT = 2;
-        // Most solid blocks behind a leaf face in depth mode
+        // Largest value of the depth setting.
         public static final int DEPTH_MAX = 4;
 
-        // Interior leaf faces the mesher drops
+        // Choice of the culling mode option.
         public LeafCulling cullingMode = LeafCulling.DEFAULT;
-        // Solid blocks that must lie behind a leaf face before depth mode drops it
+        // Value of the culling depth option.
         public int cullingDepth = DEPTH_DEFAULT;
     }
 
-    // World load and screenshot and texture atlas switches
+    // Settings of the loading group.
     public static final class LoadingSettings {
-        // Switch that skips the forced garbage collection on world load and unload
+        // Switch of the skip world load gc option.
         public boolean skipWorldLoadGc = true;
-        // Switch that skips the terrain loading screen on dimension change and respawn
+        // Switch of the smooth dimension change option.
         public boolean smoothDimensionChange = true;
-        // Switch that frees the screenshot readback buffers after each screenshot
+        // Switch of the release screenshot buffers option.
         public boolean releaseScreenshotBuffers = true;
-        // Switch that encodes and writes screenshots on a background thread
+        // Switch of the async screenshots option.
         public boolean asyncScreenshots = true;
-        // Switch that asks the driver for its largest texture size
+        // Switch of the driver atlas limit option.
         public boolean driverAtlasLimit = true;
     }
 
-    // Hold to zoom settings
+    // Settings of the zoom group.
     public static final class ZoomSettings {
-        // Divisor that turns the zoom level into a fraction of the view width
+        // Constant level scale.
         public static final int LEVEL_SCALE = 100;
-        // Smallest zoom level in hundredths of the view width
+        // Smallest value of the level setting.
         public static final int LEVEL_MIN = 5;
-        // Zoom level in hundredths of the view width that matches Logical Zoom
+        // Default value of the level setting.
         public static final int LEVEL_DEFAULT = 23;
-        // Largest zoom level in hundredths of the view width
+        // Largest value of the level setting.
         public static final int LEVEL_MAX = 90;
 
-        // Switch of the zoom key
+        // Switch of the enabled option.
         public boolean enabled = true;
-        // Share of the normal view width kept while zoomed in hundredths
+        // Value of the level option.
         public int level = LEVEL_DEFAULT;
-        // Switch that turns the cinematic camera on while zoomed
+        // Switch of the smooth camera option.
         public boolean smoothCamera = true;
-        // Switch that hides the hand and held items while zoomed
+        // Switch of the hide hand option.
         public boolean hideHand = true;
     }
 }

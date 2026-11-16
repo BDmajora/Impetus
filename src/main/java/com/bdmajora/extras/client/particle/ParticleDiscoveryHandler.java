@@ -10,17 +10,18 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
-// Runs particle discovery off the options screen and off the per-particle path; keyed off the Minecraft.effectRenderer instance (recreated per world load, when factories register) so it runs exactly once per world regardless of load order
+// Scans the particle factories when a manager appears.
 @Mod.EventBusSubscriber(Side.CLIENT)
 @SideOnly(Side.CLIENT)
 public final class ParticleDiscoveryHandler {
-    // The last instance scanned; a different one means a new world was loaded.
+    // Manager that was scanned last.
     private static ParticleManager lastScanned;
 
+    // Prevents instantiation
     private ParticleDiscoveryHandler() {
     }
 
-    // Scans the particle manager's factories once per manager instance, at tick END
+    // Scans a new particle manager.
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) {
@@ -39,7 +40,7 @@ public final class ParticleDiscoveryHandler {
         flushIfDirty(registry);
     }
 
-    // Persists what the session accumulated: classes only seen at spawn time and the user's per-class toggles, neither of which goes through a scan
+    // Saves the settings when the data changed.
     @SubscribeEvent
     public static void onWorldUnload(WorldEvent.Unload event) {
         if (event.getWorld() == null || !event.getWorld().isRemote) {
@@ -48,7 +49,7 @@ public final class ParticleDiscoveryHandler {
         flushIfDirty(ParticleClassRegistry.getInstance());
     }
 
-    // Persists newly discovered classes so their toggles exist from the next launch
+    // Saves the settings when the registry changed.
     private static void flushIfDirty(ParticleClassRegistry registry) {
         if (registry.isDirty()) {
             Extras.save();

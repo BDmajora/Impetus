@@ -3,17 +3,22 @@ package com.bdmajora.fulgor.lighting;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.IChunkProvider;
 
-// 5x5 chunk snapshot around one column for recheckGaps: 25 lookups up front instead of 1024 through the provider; entries may be null, so use isLoaded since a partial answer produces skylight seams
+// Square of loaded chunks around a center chunk.
 public final class WorldChunkSlice {
+    // Width of the square in chunks.
     private static final int DIAMETER = 5;
+    // Chunks from the center to an edge.
     private static final int RADIUS = DIAMETER / 2;
 
+    // Chunks of the square by row.
     private final Chunk[] chunks = new Chunk[DIAMETER * DIAMETER];
 
-    // Chunk coords of the slice's corner, for rebasing world coords onto the array
+    // Chunk x of the first column.
     private final int originX;
+    // Chunk z of the first row.
     private final int originZ;
 
+    // Creates a world chunk slice from its chunk provider and x and z.
     public WorldChunkSlice(IChunkProvider chunkProvider, int x, int z) {
         for (int xDiff = -RADIUS; xDiff <= RADIUS; xDiff++) {
             for (int zDiff = -RADIUS; zDiff <= RADIUS; zDiff++) {
@@ -26,12 +31,12 @@ public final class WorldChunkSlice {
         this.originZ = z - RADIUS;
     }
 
-    // The chunk containing the given block coordinates, or null if it was not loaded
+    // Returns the chunk that holds a block position.
     public Chunk getChunkFromWorldCoords(int x, int z) {
         return getChunk((x >> 4) - this.originX, (z >> 4) - this.originZ);
     }
 
-    // Whether every chunk within radius blocks of the given position is present
+    // Returns whether every chunk within a radius of a block is loaded.
     public boolean isLoaded(int x, int z, int radius) {
         int xStart = ((x - radius) >> 4) - this.originX;
         int zStart = ((z - radius) >> 4) - this.originZ;
@@ -49,7 +54,7 @@ public final class WorldChunkSlice {
         return true;
     }
 
-    // Slice-relative lookup; null for an unloaded neighbour
+    // Returns the chunk at slice coordinates.
     private Chunk getChunk(int x, int z) {
         if (x < 0 || x >= DIAMETER || z < 0 || z >= DIAMETER) {
             return null;

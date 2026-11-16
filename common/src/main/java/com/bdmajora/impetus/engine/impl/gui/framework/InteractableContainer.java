@@ -4,24 +4,22 @@ import java.util.List;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
 
+// Interactable that forwards events to children and manages keyboard focus.
 public interface InteractableContainer extends Interactable {
+    // Returns the children in tree order.
     Stream<? extends Interactable> interactableChildren();
 
-    /**
-     * the child that most recently claimed a mouseClicked. while set, drag events
-     * are routed straight to it instead of being re-checked against the cursor position each time,
-     * so a drag started on e.g. a slider isn't dropped the moment the cursor strays off its narrow
-     * hitbox. Cleared on mouseReleased.
-     */
+    // Returns the child that captured the last click.
     Interactable getCapturedChild();
+    // Stores the child that captured the last click.
     void setCapturedChild(Interactable child);
 
-    // Called when a child's own code throws; true once something working stands in the child's place, false to have the failure rethrown
+    // Returns whether a failed child was replaced and false to rethrow the failure.
     default boolean recoverChild(Interactable child, Throwable failure) {
         return false;
     }
 
-    // Asks one child, recovering it when its own code throws, after which it answers as the fallback; anything not recovered is rethrown untouched
+    // Asks one child and answers the fallback when a failure was recovered.
     private boolean ask(Interactable child, Predicate<Interactable> question, boolean fallback) {
         try {
             return question.test(child);
@@ -33,7 +31,7 @@ public interface InteractableContainer extends Interactable {
         }
     }
 
-    // The first child the action handles, over a copy since an action may rebuild the frame; a child that throws and is recovered counts as handling it
+    // Runs an action on a copy of the children until one handles it.
     private boolean runSingleChildAction(Predicate<Interactable> action) {
         List<? extends Interactable> children = interactableChildren().toList();
         for (int i = 0; i < children.size(); i++) {
@@ -44,24 +42,24 @@ public interface InteractableContainer extends Interactable {
         return false;
     }
 
-    // Any child
+    // Returns whether the cursor is over any child.
     default boolean isMouseOver(double mouseX, double mouseY) {
         Predicate<Interactable> over = child -> child.isMouseOver(mouseX, mouseY);
         return interactableChildren().anyMatch(child -> this.ask(child, over, false));
     }
 
-    // Whether a child holds keyboard focus, itself or through one of its own children
+    // Returns whether a child or one of its descendants holds focus.
     private static boolean holdsFocus(Interactable child) {
         return child instanceof Focusable focusable && focusable.isFocused()
                 || child instanceof InteractableContainer container && container.getFocusedChild() != null;
     }
 
-    // The child holding keyboard focus, itself or through a descendant, or null
+    // Returns the child that holds focus directly or through a descendant or null.
     default Interactable getFocusedChild() {
         return interactableChildren().filter(child -> this.ask(child, InteractableContainer::holdsFocus, false)).findFirst().orElse(null);
     }
 
-    // Drops a child's focus, its own and anything below it; never handles anything
+    // Drops the focus of a child and its descendants and returns false.
     private static boolean dropFocus(Interactable child) {
         if (child instanceof Focusable focusable && focusable.isFocused()) {
             focusable.setFocused(false);
@@ -72,7 +70,7 @@ public interface InteractableContainer extends Interactable {
         return false;
     }
 
-    // Focuses a control Tab may stop at
+    // Focuses a child that accepts focus and returns whether it did.
     private static boolean takeFocus(Interactable child) {
         Focusable focusable = (Focusable) child;
         if (!focusable.canFocus()) {
@@ -82,7 +80,7 @@ public interface InteractableContainer extends Interactable {
         return true;
     }
 
-    // The focused control however deep it sits, or null
+    // Returns the focused control at any depth or null.
     default Focusable getFocusedControl() {
         Interactable child = getFocusedChild();
         if (child instanceof Focusable focusable) {
@@ -91,16 +89,16 @@ public interface InteractableContainer extends Interactable {
         return child instanceof InteractableContainer container ? container.getFocusedControl() : null;
     }
 
-    // Drops keyboard focus everywhere below this container
+    // Drops focus from every descendant.
     default void clearFocus() {
         interactableChildren().forEach(child -> this.ask(child, InteractableContainer::dropFocus, false));
     }
 
-    // One Tab step: the next focusable control past the focused one, or the first (the last going backwards) when nothing here has focus; false once the step runs off the end, leaving nothing here focused
+    // Moves focus one control forward or backward and returns false past the end.
     default boolean moveFocus(boolean forward) {
         List<? extends Interactable> children = interactableChildren().toList();
         Interactable current = getFocusedChild();
-        // A child container keeps the step while it has controls left in that direction
+        // Lets a focused child container keep the step first
         if (current instanceof InteractableContainer container && container.moveFocus(forward)) {
             return true;
         }
@@ -122,11 +120,10 @@ public interface InteractableContainer extends Interactable {
         return false;
     }
 
-    // First child that handles it; a click drops focus everywhere here and the control that takes it is focused
+    // Forwards a click to the first child that handles it and moves focus to that child.
     @Override
     default boolean mouseClicked(InteractionContext context, double mouseX, double mouseY, int button) {
         setCapturedChild(null);
-        // Cleared before the click lands, so the control it lands on ends up the only one focused even when the click rebuilds the frame under it
         clearFocus();
         return runSingleChildAction(i -> {
             if (i.mouseClicked(context, mouseX, mouseY, button)) {
@@ -140,7 +137,7 @@ public interface InteractableContainer extends Interactable {
         });
     }
 
-    // First child that handles it
+    // Forwards a release to the captured child or the first child that handles it.
     @Override
     default boolean mouseReleased(InteractionContext context, double mouseX, double mouseY, int button) {
         Interactable captured = getCapturedChild();
@@ -152,7 +149,7 @@ public interface InteractableContainer extends Interactable {
         return runSingleChildAction(i -> i.mouseReleased(context, mouseX, mouseY, button));
     }
 
-    // First child that handles it
+    // Forwards a drag to the captured child or the first child that handles it.
     @Override
     default boolean mouseDragged(InteractionContext context, double mouseX, double mouseY, int button, double deltaX, double deltaY) {
         Interactable captured = getCapturedChild();
@@ -162,13 +159,13 @@ public interface InteractableContainer extends Interactable {
         return runSingleChildAction(i -> i.isMouseOver(mouseX, mouseY) && i.mouseDragged(context, mouseX, mouseY, button, deltaX, deltaY));
     }
 
-    // First child that handles it
+    // Forwards a scroll to the first child under the cursor that handles it.
     @Override
     default boolean mouseScrolled(InteractionContext context, double mouseX, double mouseY, double deltaX, double deltaY) {
         return runSingleChildAction(i -> i.isMouseOver(mouseX, mouseY) && i.mouseScrolled(context, mouseX, mouseY, deltaX, deltaY));
     }
 
-    // The focused child first, so a focused button never takes Space from the search bar, then the others in order
+    // Forwards a key to the focused child first and then to the other children.
     @Override
     default boolean keyTyped(InteractionContext context, char typedChar, int keyCode) {
         Interactable focused = getFocusedChild();
@@ -178,7 +175,7 @@ public interface InteractableContainer extends Interactable {
         return runSingleChildAction(i -> i != focused && i.keyTyped(context, typedChar, keyCode));
     }
 
-    // A screen's key event: keyTyped, then a Tab no control took moves focus (Shift+Tab backwards), wrapping round at either end
+    // Forwards a key and moves focus when an unused Tab arrives.
     default boolean dispatchKeyTyped(InteractionContext context, char typedChar, int keyCode) {
         if (keyTyped(context, typedChar, keyCode)) {
             return true;
@@ -187,7 +184,7 @@ public interface InteractableContainer extends Interactable {
             return false;
         }
         boolean forward = !context.isSpecialKeyDown(InteractionContext.SpecialKey.SHIFT);
-        // A step off the end leaves nothing focused, so the second starts over from the other end; both fail only when nothing can take focus
+        // Retries once to wrap around
         return moveFocus(forward) || moveFocus(forward);
     }
 }

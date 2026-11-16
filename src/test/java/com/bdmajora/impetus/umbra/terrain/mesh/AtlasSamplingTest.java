@@ -47,4 +47,20 @@ class AtlasSamplingTest {
         assertEquals("texture2D()", AtlasSampling.rewrite("texture2D()"));
         assertEquals("texture2D(, uv)", AtlasSampling.rewrite("texture2D(, uv)"));
     }
+
+    // Returns a fragment without atlas reads unchanged and splices many reads in source order.
+    @Test
+    void rewriteKeepsUntouchedSourcesAndSplicesInOrder() {
+        String plain = "void main() { gl_FragColor = vec4(1.0); }";
+        assertSame(plain, AtlasSampling.rewrite(plain));
+        StringBuilder many = new StringBuilder("void main() {\n");
+        StringBuilder expected = new StringBuilder("void main() {\n");
+        for (int i = 0; i < 200; i++) {
+            many.append("    c += texture2D(tex, uv").append(i).append(");\n");
+            expected.append("    c += texture2D(tex, uv").append(i).append(", UMBRA_ATLAS_BIAS);\n");
+        }
+        many.append("}\n");
+        expected.append("}\n");
+        assertEquals(expected.toString(), AtlasSampling.rewrite(many.toString()));
+    }
 }

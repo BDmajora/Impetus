@@ -6,16 +6,18 @@ import org.lwjgl.opengl.GL20;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// A single compiled GLSL stage, mirroring OptiFine's createVertShader/createFragShader through the LWJGL abstraction; the caller must already have run GlslPreprocessor
+// Compiled shader stage.
 public class GlShader extends GlResource {
+    // Name of the source file.
     private final String name;
+    // Stage of the shader.
     private final ShaderType type;
 
+    // Creates a gl shader from its type and name and source.
     public GlShader(ShaderType type, String name, String source) {
         this.name = name;
         this.type = type;
 
-        // Strict-driver rewrites for the paths reaching the driver through THIS class (gbuffer, fullscreen chain, compute); the terrain/shadow override builds the engine's GlShader instead and calls finalizeForDriver itself
         source = GlslPreprocessor.finalizeForDriver(name, source);
 
         int handle = LWJGL.glCreateShader(type.id);
@@ -23,7 +25,6 @@ public class GlShader extends GlResource {
             throw new ShaderCompileException(name, "glCreateShader returned 0 (driver could not allocate a shader object)");
         }
 
-        // glShaderSourceSafe works around an AMD driver bug; see LWJGLService#glShaderSourceSafe.
         LWJGL.glShaderSourceSafe(handle, source);
         LWJGL.glCompileShader(handle);
 
@@ -38,17 +39,17 @@ public class GlShader extends GlResource {
         setHandle(handle);
     }
 
-    // Pack path, for compile error messages
+    // Returns the name.
     public String getName() {
         return this.name;
     }
 
-    // The stage, which tells a program whether it was linked with tessellation
+    // Returns the type.
     public ShaderType getType() {
         return this.type;
     }
 
-    // glDeleteShader
+    // Deletes the shader.
     @Override
     protected void destroyInternal() {
         LWJGL.glDeleteShader(getGlId());

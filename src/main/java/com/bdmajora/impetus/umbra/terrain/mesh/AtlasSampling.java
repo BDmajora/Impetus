@@ -8,27 +8,30 @@ import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-// The raster path draws cutout blocks with the atlas's mipmaps off, but the mesh backend draws every opaque quad in one program; so a ported fragment stage's atlas lookups are told per quad: implicit-LOD calls get a bias that drops to the base level, explicit LODs and gradients are scaled to zero, both keyed on the quad's flat umbra_Mipped (1 mipped, 0 not)
+// Rewrites block atlas reads of a fragment stage to follow the mip state of a mesh shader quad.
 final class AtlasSampling {
-    // The flat input the mesh stage feeds from the material's mipmap bit
+    // Name of the mip state varying.
     static final String MIPPED = "umbra_Mipped";
-    // Nvidium's own terrain uses the same -8: past the atlas's four levels, so an unmipped quad samples level 0 wherever it is
+    // Define of the level of detail bias of an unmipped quad.
     static final String BIAS_DEFINE = "#define UMBRA_ATLAS_BIAS ((" + MIPPED + " - 1.0) * 8.0)\n";
 
-    // Every name Umbra binds the block atlas under in a terrain program
+    // Sampler names of the block atlas.
     private static final Set<String> ATLAS = Set.of("tex", "texture", "gtexture", "gcolor");
 
-    // Arguments before an optional bias, for the lookups the hardware picks a level for
+    // Implicit level reads with their argument counts before a bias.
     private static final Map<String, Integer> IMPLICIT = Map.of("texture", 2, "texture2D", 2, "textureProj", 2, "texture2DProj", 2,
             "textureOffset", 3, "textureProjOffset", 3);
-    // Where the level sits in a lookup that names it
+    // Explicit level reads with the index of the level argument.
     private static final Map<String, Integer> LOD = Map.of("textureLod", 2, "texture2DLod", 2, "texture2DLodEXT", 2, "textureLodOffset", 2);
-    // Where the two gradients sit in a lookup that passes them
+    // Gradient reads with the index of the first gradient argument.
     private static final Map<String, Integer> GRAD = Map.of("textureGrad", 2, "texture2DGradARB", 2, "texture2DGradEXT", 2, "textureGradOffset", 2);
 
+    // Pattern of a read call.
     private static final Pattern CALL;
+    // Pattern of a GLSL comment.
     private static final Pattern COMMENT = Pattern.compile("//[^\\n]*|/\\*(?s:.*?)\\*/");
 
+    // Builds the call pattern from every read name
     static {
         List<String> names = new ArrayList<>(IMPLICIT.keySet());
         names.addAll(LOD.keySet());
@@ -36,25 +39,33 @@ final class AtlasSampling {
         CALL = Pattern.compile("\\b(" + String.join("|", names) + ")\\s*\\(");
     }
 
+    // Prevents instantiation
     private AtlasSampling() {
     }
 
-    // Whether the fragment stage samples the atlas anywhere
+    // Returns whether a fragment stage reads the block atlas.
     static boolean samplesAtlas(String fragment) {
         return !insertions(fragment).isEmpty();
     }
 
-    // The fragment stage with every atlas lookup keyed on umbra_Mipped; UMBRA_ATLAS_BIAS and the input itself are the caller's to declare
+    // Returns the fragment stage with every atlas read adjusted.
     static String rewrite(String fragment) {
-        StringBuilder out = new StringBuilder(fragment);
-        // Back to front, so each insertion leaves the positions before it valid
-        for (Map.Entry<Integer, String> insertion : insertions(fragment).descendingMap().entrySet()) {
-            out.insert(insertion.getKey(), insertion.getValue());
+        TreeMap<Integer, String> insertions = insertions(fragment);
+        if (insertions.isEmpty()) {
+            return fragment;
         }
-        return out.toString();
+        // Splices every insertion in one forward pass
+        StringBuilder out = new StringBuilder(fragment.length() + insertions.size() * 24);
+        int copied = 0;
+        for (Map.Entry<Integer, String> insertion : insertions.entrySet()) {
+            int at = insertion.getKey();
+            out.append(fragment, copied, at).append(insertion.getValue());
+            copied = at;
+        }
+        return out.append(fragment, copied, fragment.length()).toString();
     }
 
-    // Text to insert by position for every atlas lookup, nested ones included; comments are blanked first so neither their calls nor their brackets count
+    // Returns the texts to insert by position for every atlas read.
     private static TreeMap<Integer, String> insertions(String fragment) {
         String code = blankComments(fragment);
         TreeMap<Integer, String> insertions = new TreeMap<>();
@@ -83,13 +94,13 @@ final class AtlasSampling {
         return insertions;
     }
 
-    // Brackets an argument and appends to it; no two insertions share a position, since an argument is never empty and a nested call's arguments sit strictly inside its brackets
+    // Adds parentheses around an argument followed by a text.
     private static void wrap(TreeMap<Integer, String> insertions, int[] arg, String after) {
         insertions.put(arg[0], "(");
         insertions.put(arg[1], after);
     }
 
-    // The trimmed [start, end) of each top-level argument of the call whose '(' ends just before open, or null when the brackets never close
+    // Returns the trimmed argument spans of a call or null when it never closes.
     private static List<int[]> arguments(String code, int open) {
         List<int[]> args = new ArrayList<>();
         int depth = 0;
@@ -114,6 +125,7 @@ final class AtlasSampling {
         return null;
     }
 
+    // Returns a span without its surrounding whitespace.
     private static int[] trim(String code, int start, int end) {
         while (start < end && Character.isWhitespace(code.charAt(start))) {
             start++;
@@ -124,7 +136,7 @@ final class AtlasSampling {
         return new int[]{start, end};
     }
 
-    // The source with each comment's characters turned to spaces, newlines kept, so positions still line up
+    // Returns the source with comments replaced by spaces and the line breaks kept.
     private static String blankComments(String source) {
         StringBuilder out = new StringBuilder(source);
         Matcher comment = COMMENT.matcher(source);

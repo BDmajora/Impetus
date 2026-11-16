@@ -14,19 +14,23 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Lights a minecart by its display tile (glowstone by command lights the tunnel); EntityMinecart overrides onUpdate without calling up so it needs its own hook, ported from SodiumDynamicLights
+// Mixin that changes EntityMinecart.
 @Mixin(EntityMinecart.class)
 public abstract class EntityMinecartMixin extends Entity implements DynamicLightSource {
+    // Reference to the method get display tile of the target.
     @Shadow
     public abstract IBlockState getDisplayTile();
 
+    // Field minecart luminance added to the target.
     @Unique
     private int impetus$minecartLuminance;
 
+    // Creates an entity minecart mixin from its world.
     private EntityMinecartMixin(World world) {
         super(world);
     }
 
+    // Runs at the end of onUpdate.
     @Inject(method = "onUpdate", at = @At("TAIL"))
     private void impetus$onMinecartTick(CallbackInfo ci) {
         if (!this.world.isRemote) {
@@ -36,8 +40,8 @@ public abstract class EntityMinecartMixin extends Entity implements DynamicLight
         this.impetus$tickDynamicLight(this.isDead);
     }
 
+    // Handles dynamic light tick.
     @Override
-    // The displayed block rides the cart, so it has no world position to ask the position-aware overload with
     @SuppressWarnings("deprecation")
     public void impetus$dynamicLightTick() {
         Entity self = (Entity) (Object) this;
@@ -55,6 +59,7 @@ public abstract class EntityMinecartMixin extends Entity implements DynamicLight
                 DynamicLightHandlers.getLuminanceFrom(self)));
     }
 
+    // Returns the luminance.
     @Override
     public int impetus$getLuminance() {
         return this.impetus$minecartLuminance;

@@ -9,7 +9,7 @@ import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import org.lwjgl.opengl.NVMeshShader;
 
-// The shader stages this engine compiles, each carrying its GL type enum
+// Shader stages the engine compiles with their GL type enums and file extensions.
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public enum ShaderType {
     VERTEX(GL20.GL_VERTEX_SHADER, "vsh"),
@@ -18,10 +18,13 @@ public enum ShaderType {
     TESS_CTRL(GL42.GL_TESS_CONTROL_SHADER, "tcs"),
     TESS_EVALUATE(GL42.GL_TESS_EVALUATION_SHADER, "tes"),
     COMPUTE(GL43.GL_COMPUTE_SHADER, "csh"),
-    // NV_mesh_shader stages for the mesh-shader terrain backend; a driver without the extension rejects them at glCreateShader, so MeshShaderSupport is checked first
+    // Task stage of the NV mesh shader extension.
     TASK(NVMeshShader.GL_TASK_SHADER_NV, "task"),
+    // Mesh stage of the NV mesh shader extension.
     MESH(NVMeshShader.GL_MESH_SHADER_NV, "mesh");
 
+    // GL enum passed to glCreateShader.
     public final int id;
+    // File extension of sources for this stage.
     public final String fileExtension;
 }

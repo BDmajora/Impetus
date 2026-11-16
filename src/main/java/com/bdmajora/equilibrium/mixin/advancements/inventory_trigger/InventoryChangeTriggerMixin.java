@@ -17,9 +17,10 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// The gate (Universal Tweaks, after Icterine): a change that emptied a slot, shrank a stack, or grew one without crossing any count an advancement asks for cannot complete an inventory_changed criterion, so nothing is scanned; otherwise the slot tallies are computed once here rather than once per listening advancement. A trigger with no stack context, as fired by mods calling it directly, runs vanilla's full check
+// Mixin that changes InventoryChangeTrigger.
 @Mixin(InventoryChangeTrigger.class)
 public abstract class InventoryChangeTriggerMixin {
+    // Runs at the start of trigger and can cancel it.
     @Inject(method = "trigger", at = @At("HEAD"), cancellable = true)
     private void equilibrium$gateOnChangedStack(EntityPlayerMP player, InventoryPlayer inventory, CallbackInfo ci) {
         SlotChangeContext context = (SlotChangeContext) inventory;
@@ -37,6 +38,7 @@ public abstract class InventoryChangeTriggerMixin {
         equilibrium$tallySlots(inventory, context);
     }
 
+    // Handles tally slots.
     private static void equilibrium$tallySlots(InventoryPlayer inventory, SlotChangeContext context) {
         int full = 0;
         int empty = 0;
@@ -55,7 +57,7 @@ public abstract class InventoryChangeTriggerMixin {
         context.equilibrium$setSlotCounts(full, empty, occupied);
     }
 
-    // Every count bound an advancement declares becomes a threshold the gate above knows about; the typed method, not its ICriterionInstance bridge
+    // Runs before every return of deserializeInstance.
     @Inject(method = "deserializeInstance(Lcom/google/gson/JsonObject;Lcom/google/gson/JsonDeserializationContext;)Lnet/minecraft/advancements/critereon/InventoryChangeTrigger$Instance;", at = @At("RETURN"))
     private void equilibrium$collectThresholds(JsonObject json, JsonDeserializationContext context, CallbackInfoReturnable<InventoryChangeTrigger.Instance> cir, @Local ItemPredicate[] predicates) {
         for (ItemPredicate predicate : predicates) {

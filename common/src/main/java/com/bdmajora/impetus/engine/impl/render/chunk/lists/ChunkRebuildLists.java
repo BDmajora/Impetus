@@ -7,14 +7,22 @@ import java.util.ArrayDeque;
 import java.util.EnumMap;
 import java.util.Map;
 
-// Sections needing a rebuild bucketed by urgency; hasAdditionalUpdates means the graph walk's per-frame cap dropped some (counted per type in queueOverflowCounts for the debug overlay)
+// Sections that need a rebuild grouped by update type.
 public record ChunkRebuildLists(Map<ChunkUpdateType, ArrayDeque<RenderSection>> byUpdateType, boolean hasAdditionalUpdates, Map<ChunkUpdateType, Integer> queueOverflowCounts) {
-    // Sections queued for one update type
-    public int getUpdateCount(ChunkUpdateType type) {
-        return byUpdateType.get(type).size() + queueOverflowCounts.getOrDefault(type, 0);
+    // Rejects null maps.
+    public ChunkRebuildLists {
+        java.util.Objects.requireNonNull(byUpdateType, "byUpdateType");
+        java.util.Objects.requireNonNull(queueOverflowCounts, "queueOverflowCounts");
     }
 
-    // Nothing queued
+    // Returns the number of queued and dropped sections of a type.
+    public int getUpdateCount(ChunkUpdateType type) {
+        ArrayDeque<RenderSection> queue = byUpdateType.get(type);
+        long total = (queue == null ? 0 : queue.size()) + (long) queueOverflowCounts.getOrDefault(type, 0);
+        return (int) Math.min(Integer.MAX_VALUE, total);
+    }
+
+    // Returns whether nothing is queued.
     public boolean isEmpty() {
         if (hasAdditionalUpdates) {
             return false;
@@ -27,7 +35,7 @@ public record ChunkRebuildLists(Map<ChunkUpdateType, ArrayDeque<RenderSection>> 
         return true;
     }
 
-    // A fresh set of empty queues; never shared, since sections are injected into a manager's lists between graph updates
+    // Creates empty queues for every type.
     public static ChunkRebuildLists empty() {
         Map<ChunkUpdateType, ArrayDeque<RenderSection>> rebuildLists = new EnumMap<>(ChunkUpdateType.class);
 

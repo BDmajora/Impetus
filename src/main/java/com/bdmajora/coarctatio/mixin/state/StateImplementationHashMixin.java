@@ -6,12 +6,15 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// A block state's hash is its property map's hash, recomputed from every entry on each call; states are HashMap keys all over modded code (render caches, machine recipes, world-gen replacement tables) and the map never changes after construction (StellarCore's blockStateImplementationHashCodeCache). Coarctatio's own state class inherits this
+// Mixin that changes StateImplementation.
 @Mixin(BlockStateContainer.StateImplementation.class)
 public abstract class StateImplementationHashMixin {
+    // Cached hash.
     private int coarctatio$hash;
+    // Flag set once the hash is cached.
     private boolean coarctatio$hashed;
 
+    // Runs at the start of hashCode and can cancel it.
     @Inject(method = "hashCode", at = @At("HEAD"), cancellable = true)
     private void coarctatio$cachedHash(CallbackInfoReturnable<Integer> cir) {
         if (this.coarctatio$hashed) {
@@ -19,6 +22,7 @@ public abstract class StateImplementationHashMixin {
         }
     }
 
+    // Runs before every return of hashCode.
     @Inject(method = "hashCode", at = @At("RETURN"))
     private void coarctatio$rememberHash(CallbackInfoReturnable<Integer> cir) {
         this.coarctatio$hash = cir.getReturnValue();

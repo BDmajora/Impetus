@@ -72,7 +72,7 @@ class ModelQuadPropertiesTest {
         float[][] slanted = {{0, 0, 1}, {0, 1, 0}, {1, 1, 0}, {1, 0, 1}};
         assertFalse(ModelQuadFlags.contains(ModelQuadFlags.getQuadFlags(quad(slanted, -1), ModelQuadFacing.NEG_Y), ModelQuadFlags.IS_PARALLEL));
         // UNASSIGNED has no axis, so the axis switch trips before its own guard does
-        assertThrows(NullPointerException.class, () -> ModelQuadFlags.getQuadFlags(quad(slanted, -1), ModelQuadFacing.UNASSIGNED));
+        assertThrows(IllegalArgumentException.class, () -> ModelQuadFlags.getQuadFlags(quad(slanted, -1), ModelQuadFacing.UNASSIGNED));
         new ModelQuadFlags();
     }
 
@@ -102,5 +102,33 @@ class ModelQuadPropertiesTest {
         assertEquals(ModelQuadOrientation.FLIP, ModelQuadOrientation.orientByBrightness(new float[4], new int[]{1, 0, 1, 0}));
         assertArrayEquals(new int[]{0, 1, 2, 2, 3, 0}, ModelQuadWinding.CLOCKWISE.getIndices());
         assertArrayEquals(new int[]{0, 3, 2, 1, 0, 2}, ModelQuadWinding.COUNTERCLOCKWISE.getIndices());
+    }
+
+    // Marks a baked quad with fewer than four vertices partial without reading missing vertices.
+    @Test
+    void shortBakedQuadsArePartialAndReadOnlyTheirVertices() {
+        for (int count : new int[]{-1, 0, 1, 2, 3}) {
+            BakedQuadView baked = Mockito.mock(BakedQuadView.class);
+            Mockito.when(baked.getVerticesCount()).thenReturn(count);
+            Mockito.when(baked.getColor(Mockito.anyInt())).thenReturn(-1);
+            int flags = ModelQuadFlags.getQuadFlags(baked, ModelQuadFacing.NEG_Y, ModelQuadFlags.IS_TRUSTED_SPRITE);
+            assertTrue(ModelQuadFlags.contains(flags, ModelQuadFlags.IS_PARTIAL), "count " + count);
+            assertTrue(ModelQuadFlags.contains(flags, ModelQuadFlags.IS_POPULATED));
+            for (int i = Math.max(0, count); i < 4; i++) {
+                Mockito.verify(baked, Mockito.never()).getX(i);
+            }
+        }
+    }
+
+    // Keeps unrelated earlier flags and replaces the calculated ones.
+    @Test
+    void earlierFlagsAreKeptOrReplaced() {
+        ModelQuadView full = face(ModelQuadFacing.NEG_Y, -1);
+        int flags = ModelQuadFlags.getQuadFlags(full, ModelQuadFacing.NEG_Y, ModelQuadFlags.IS_PARTIAL | ModelQuadFlags.IS_VANILLA_SHADED);
+        assertFalse(ModelQuadFlags.contains(flags, ModelQuadFlags.IS_PARTIAL));
+        assertTrue(ModelQuadFlags.contains(flags, ModelQuadFlags.IS_VANILLA_SHADED));
+        assertThrows(IllegalArgumentException.class, () -> ModelQuadFlags.getQuadFlags(full, ModelQuadFacing.UNASSIGNED));
+        assertFalse(ModelQuadFlags.contains(0, -1));
+        assertTrue(ModelQuadFlags.contains(ModelQuadFlags.IS_POPULATED, Integer.MIN_VALUE));
     }
 }

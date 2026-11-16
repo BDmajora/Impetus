@@ -22,50 +22,49 @@ import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
 
-// A parsed shaders.properties: the full map plus typed accessors; pipeline directives from the preprocessed contents so option gates resolve, menu layout from the original, split on first = rather than Properties since its escapes mangle GLSL
+// Parsed contents of a pack properties file.
 public final class ShaderProperties {
+    // Logger of this class.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
 
     private final Map<String, String> raw;
     private final Map<String, String> original;
     private final Map<String, String> expressionDefines;
+    // Programs the current profile disables.
     private final Set<String> profileDisabledPrograms;
 
-    // --- Option-menu layout directives (parsed from the raw, non-preprocessed file) ---
+    // Options shown as sliders.
     private final List<String> sliderOptions = new ArrayList<>();
     private final Map<String, List<String>> profiles = new LinkedHashMap<>();
+    // Options of the main screen or null.
     private List<String> mainScreenOptions = null;
     private final Map<String, List<String>> subScreenOptions = new LinkedHashMap<>();
+    // Columns of the main screen or null.
     private Integer mainScreenColumnCount = null;
     private final Map<String, Integer> subScreenColumnCount = new HashMap<>();
 
-    // texture.noise, the pack's own noise texture replacing the generated noisetex (Umbra ShaderProperties parity)
+    // Path of the noise texture or null.
     private String noiseTexturePath = null;
-    // texture.<stage>.<sampler> — per-stage sampler overrides, keyed by stage and then by sampler name
     private final Map<TextureStage, Map<String, String>> customTextures = new EnumMap<>(TextureStage.class);
-    // customTexture.<name> — pack-defined named samplers, bound in every stage rather than scoped to one
     private final Map<String, String> irisCustomTextures = new LinkedHashMap<>();
-    // Raw texture.<stage>.<sampler> directives resolved into a minted customtexN sampler plus the type-checked rename redirecting that stage's programs (Iris's customTexturePatching); the type check keeps a 3D texture from feeding a sampler2D of the same name
+    // Sampler renames of custom textures.
     private final List<CustomTexturePatch> customTexturePatches =
             new ArrayList<>();
-    // The counter behind the minted customtexN names, matching Iris's customTexAmount
+    // Number of custom textures.
     private int customTexAmount = 0;
-    // size.buffer.colortexN — explicit render-target sizes, either absolute texels or screen-relative fractions
     private final Map<Integer, float[]> bufferSizes = new LinkedHashMap<>();
-    // Per AXIS, whether the matching bufferSizes entry is a fraction of the render size rather than texels, since `512 0.5` is a legal mix
     private final Map<Integer, boolean[]> bufferSizeRelative = new LinkedHashMap<>();
-    // image.<name>, the writable custom images a pack reaches through imageStore, in DECLARATION ORDER since that is the order image units are assigned
+    // Custom image definitions.
     private final List<CustomImageDefinition> irisCustomImages =
             new ArrayList<>();
-    // flip.<program>.<target>, explicit ping-pong overrides including the deferred_pre and composite_pre pseudo-programs that run before their chains
     private final Map<String, Map<Integer, Boolean>> explicitFlips = new LinkedHashMap<>();
-    // scale.<program> (Iris's viewportScaleOverrides): the pass rasterises into a SUB-RECTANGLE of its targets, how packs run SSAO and volumetrics at reduced resolution; distinct from size.buffer.colortexN, which resizes the target itself. Stored as {scale, offsetX, offsetY}
     private final Map<String, float[]> viewportScaleOverrides = new LinkedHashMap<>();
 
-    // The uniform.<type>.<name> and variable.<type>.<name> custom expressions, accumulated into a builder because declaration order matters for evaluation
+    // Builder of the custom uniforms.
     private final CustomUniforms.Builder customUniforms =
             new CustomUniforms.Builder();
 
+    // Creates a shader properties from its preprocessed and original.
     private ShaderProperties(Map<String, String> preprocessed, Map<String, String> original,
                              Map<String, String> expressionDefines, Set<String> profileDisabledPrograms) {
         this.raw = Collections.unmodifiableMap(new LinkedHashMap<>(preprocessed));
@@ -77,23 +76,24 @@ public final class ShaderProperties {
         parseCustomUniformDirectives();
     }
 
-    // No directives at all; every getter returns its default
+    // Returns empty properties.
     public static ShaderProperties empty() {
         return new ShaderProperties(Collections.emptyMap(), Collections.emptyMap(),
                 Collections.emptyMap(), Collections.emptySet());
     }
 
-    // Parses with NO conditional evaluation, every #if-guarded line read and the last wins; only for callers with no define set, the pipeline always uses the two-argument form
+    // Parses properties text without a preprocessed copy.
     public static ShaderProperties parse(String contents) {
         Map<String, String> map = parseMap(contents);
         return new ShaderProperties(map, map, Collections.emptyMap(), Collections.emptySet());
     }
 
-    // original is the file as shipped (menu-layout directives read from it), preprocessed has conditionals resolved against the active defines and options (everything the pipeline consumes reads from it)
+    // Parses properties text with its preprocessed copy.
     public static ShaderProperties parse(String original, String preprocessed) {
         return parse(original, preprocessed, Collections.emptyMap(), Collections.emptySet());
     }
 
+    // Parses properties text with defines and known custom uniforms.
     public static ShaderProperties parse(String original, String preprocessed,
                                          Map<String, String> expressionDefines,
                                          Set<String> profileDisabledPrograms) {
@@ -101,14 +101,17 @@ public final class ShaderProperties {
                 expressionDefines, profileDisabledPrograms);
     }
 
-    // A copy with the active profile's program.<name>.enabled=false entries applied
+    // Returns a copy with the profile disabled programs.
     public ShaderProperties withProfileDisabledPrograms(Set<String> disabledPrograms) {
         return new ShaderProperties(this.raw, this.original, this.expressionDefines, disabledPrograms);
     }
 
-    // Key=value lines, honouring backslash continuation and skipping comments
+    // Parses properties text into a map.
     private static Map<String, String> parseMap(String contents) {
         Map<String, String> map = new LinkedHashMap<>();
+        if (contents == null) {
+            return map;
+        }
         for (String rawLine : contents.split("\r\n|\r|\n")) {
             String line = rawLine.trim();
             if (line.isEmpty() || line.charAt(0) == '#' || line.charAt(0) == '!') {
@@ -127,7 +130,7 @@ public final class ShaderProperties {
         return map;
     }
 
-    // Parses the uniform.<type>.<name> and variable.<type>.<name> directives into the custom-uniforms builder, mirroring Iris
+    // Reads the custom uniform and variable lines.
     private void parseCustomUniformDirectives() {
         this.raw.forEach((key, value) -> {
             boolean isUniform = key.startsWith("uniform.");
@@ -148,17 +151,17 @@ public final class ShaderProperties {
         });
     }
 
-    // The collected custom uniform and variable declarations, still as a builder so the pipeline can finish them
+    // Returns the custom uniforms.
     public CustomUniforms.Builder getCustomUniforms() {
         return this.customUniforms;
     }
 
-    // The raw preprocessed key/value directives as a read-only view, what the accessors read from and what a consumer uses for an uncovered key
+    // Returns the raw.
     public Map<String, String> getRaw() {
         return this.raw;
     }
 
-    // Parses the option-menu layout directives (sliders, profile.*, screen, screen.*, column counts) from the ORIGINAL contents, since the menu must present every option regardless of which values are active
+    // Reads the screen and slider lines.
     private void parseMenuDirectives(Map<String, String> original) {
         original.forEach((key, value) -> {
             if (key.equals("sliders")) {
@@ -182,7 +185,7 @@ public final class ShaderProperties {
         });
     }
 
-    // Parses the custom-texture directives like Iris: texture.noise, texture.<stage>.<sampler> (a .N mip-level suffix is dropped to the base name), customTexture.<name> (Iris-exclusive, every stage); a multi-token value is a raw-texture definition resolved later at data load
+    // Reads the texture and image lines.
     private void parseCustomTextureDirectives() {
         this.raw.forEach((key, value) -> {
             if (key.equals("texture.noise")) {
@@ -199,7 +202,6 @@ public final class ShaderProperties {
                     return;
                 }
                 String stageName = rest.substring(0, dot);
-                // OptiFine allows a trailing ".N" mip-level suffix; Umbra keeps only the base sampler name.
                 String samplerName = rest.substring(dot + 1).split("\\.")[0];
                 Optional<TextureStage> stage = TextureStage.parse(stageName);
                 if (!stage.isPresent()) {
@@ -209,7 +211,6 @@ public final class ShaderProperties {
                 }
                 String[] parts = value.trim().split("\\s+");
                 if (parts.length > 1) {
-                    // A raw texture definition; Umbra does NOT hijack the sampler's unit for the whole stage but mints a new name and renames only programs declaring a matching sampler type, since Photon's colortex6 is a sampler3D in deferred/deferred1 and a sampler2D in deferred3/deferred4
                     String textureType = rawTextureType(parts);
                     if (textureType == null) {
                         LOGGER.warn("[Umbra] Unknown raw texture directive for {}: {}", key, value);
@@ -245,7 +246,7 @@ public final class ShaderProperties {
         });
     }
 
-    // The texture target of a raw texture.* definition inferred from TOKEN COUNT like Iris: 6 is 1D, 7 is whatever <type> says (2D or rectangle), 8 is 3D, anything else malformed
+    // Returns the raw texture type of a definition or null.
     private static String rawTextureType(String[] parts) {
         return switch (parts.length) {
             case 6 -> "TEXTURE_1D";
@@ -255,7 +256,7 @@ public final class ShaderProperties {
         };
     }
 
-    // size.buffer.colortexN = <width> <height>; Iris decides absolute vs relative per axis by whether the token parses as an INTEGER, so `512 512` is fixed and `0.5 0.5` is half resolution
+    // Reads a buffer size line.
     private void parseBufferSize(String key, String value) {
         String targetName = key.substring("size.buffer.".length()).trim();
         Integer index = UmbraRenderTargets.colorTargetIndex(targetName);
@@ -268,16 +269,14 @@ public final class ShaderProperties {
             LOGGER.warn("[Umbra] {} needs exactly two values (got '{}'), ignoring it", key, value);
             return;
         }
-        // Complementary writes `size.buffer.colortex1 = REFLECTION_RES REFLECTION_RES`, so a non-numeric token is resolved against the pack's option values first
         parts[0] = resolveNumericMacro(parts[0]);
         parts[1] = resolveNumericMacro(parts[1]);
         try {
-            // Umbra (TextureScaleOverride) decides PER AXIS: a token containing '.' is a fraction, one without is texels, so `512 0.5` is fixed width by half height; check the text, since "1 1" is 1x1 and "1.0 1.0" is full resolution
             boolean xRelative = parts[0].contains(".");
             boolean yRelative = parts[1].contains(".");
             float x = Float.parseFloat(parts[0]);
             float y = Float.parseFloat(parts[1]);
-            if (x <= 0.0f || y <= 0.0f) {
+            if (!Float.isFinite(x) || !Float.isFinite(y) || x <= 0.0f || y <= 0.0f) {
                 LOGGER.warn("[Umbra] {} has a non-positive size ({} {}), ignoring it", key, parts[0], parts[1]);
                 return;
             }
@@ -288,7 +287,7 @@ public final class ShaderProperties {
         }
     }
 
-    // Resolves an option macro where a number is expected, since packs size buffers by their options; unchanged when already numeric or undefined, so the caller's parse fails and warns naming the directive
+    // Returns a numeric value of a macro name or the token.
     private String resolveNumericMacro(String token) {
         if (token.isEmpty() || Character.isDigit(token.charAt(0)) || token.charAt(0) == '.'
                 || token.charAt(0) == '-') {
@@ -298,18 +297,18 @@ public final class ShaderProperties {
         return resolved == null ? token : resolved.trim();
     }
 
-    // The explicit render-target sizes as {width, height}, texels or fractions per the per-axis relative flags, which must be read alongside
+    // Returns the buffer sizes.
     public Map<Integer, float[]> getBufferSizes() {
         return Collections.unmodifiableMap(this.bufferSizes);
     }
 
-    // The {xRelative, yRelative} pair for one target, or {false, false} when it declares no size at all
+    // Returns which size parts of a buffer are relative.
     public boolean[] getBufferSizeRelative(int index) {
         boolean[] flags = this.bufferSizeRelative.get(index);
         return flags == null ? new boolean[]{false, false} : flags.clone();
     }
 
-    // flip.<program>.<buffer> = true|false
+    // Reads a flip line.
     private void parseExplicitFlip(String key, String value) {
         String rest = key.substring("flip.".length());
         int dot = rest.indexOf('.');
@@ -332,7 +331,7 @@ public final class ShaderProperties {
                 .put(target, shouldFlip.get());
     }
 
-    // scale.<program> = <factor> [offsetX offsetY]; Iris parses the offsets as a PAIR, so exactly two tokens is malformed and rejected rather than guessed, matching its ArrayIndexOutOfBoundsException branch
+    // Reads a viewport scale line.
     private void parseViewportScale(String key, String value) {
         String program = key.substring("scale.".length());
         if (program.isEmpty()) {
@@ -348,18 +347,22 @@ public final class ShaderProperties {
             float scale = Float.parseFloat(parts[0]);
             float offsetX = parts.length == 3 ? Float.parseFloat(parts[1]) : 0.0f;
             float offsetY = parts.length == 3 ? Float.parseFloat(parts[2]) : 0.0f;
+            if (!Float.isFinite(scale) || !Float.isFinite(offsetX) || !Float.isFinite(offsetY)) {
+                LOGGER.warn("[Umbra] Scale directive for {} is not finite: {}", program, value);
+                return;
+            }
             this.viewportScaleOverrides.put(program, new float[]{scale, offsetX, offsetY});
         } catch (NumberFormatException e) {
             LOGGER.warn("[Umbra] Unable to parse scale directive for {}: {}", program, value);
         }
     }
 
-    // The {scale, offsetX, offsetY} override for one fullscreen pass, or null when it has none
+    // Returns the viewport scale of a program or null.
     public float[] getViewportScale(String programName) {
         return this.viewportScaleOverrides.get(programName);
     }
 
-    // Tokens of a space-separated value
+    // Splits text on whitespace.
     private static List<String> splitWhitespace(String value) {
         List<String> result = new ArrayList<>();
         for (String token : value.trim().split("\\s+")) {
@@ -370,7 +373,7 @@ public final class ShaderProperties {
         return result;
     }
 
-    // Null rather than an exception for a malformed number
+    // Parses an int or returns null.
     private static Integer parseIntOrNull(String value) {
         try {
             return Integer.parseInt(value.trim());
@@ -379,210 +382,202 @@ public final class ShaderProperties {
         }
     }
 
-    // The raw directive map, unmodifiable and in declaration order
+    // Returns the raw properties.
     public Map<String, String> asMap() {
         return this.raw;
     }
 
-    // The options the pack wants rendered as sliders rather than click-to-cycle buttons, a presentation choice only since both walk the same value list
+    // Returns the slider options.
     public List<String> getSliderOptions() {
         return Collections.unmodifiableList(this.sliderOptions);
     }
 
-    // The declared profiles in declaration order, each mapping to its option directives; order makes next/previous cycling meaningful
+    // Returns the profiles.
     public Map<String, List<String>> getProfiles() {
         return Collections.unmodifiableMap(this.profiles);
     }
 
-    // The main option screen's layout, empty when the pack declares none, in which case the screen is generated from the discovered options
+    // Returns the main screen options.
     public Optional<List<String>> getMainScreenOptions() {
         return Optional.ofNullable(this.mainScreenOptions);
     }
 
-    // The sub-screen layouts, keyed by sub-screen name
+    // Returns the sub screen options.
     public Map<String, List<String>> getSubScreenOptions() {
         return Collections.unmodifiableMap(this.subScreenOptions);
     }
 
-    // screen.columns
+    // Returns the main screen column count.
     public Optional<Integer> getMainScreenColumnCount() {
         return Optional.ofNullable(this.mainScreenColumnCount);
     }
 
-    // screen.<name>.columns per sub-screen
+    // Returns the sub screen column count.
     public Map<String, Integer> getSubScreenColumnCount() {
         return Collections.unmodifiableMap(this.subScreenColumnCount);
     }
 
-    // Raw lookup for directives with no dedicated getter
+    // Returns the value.
     public Optional<String> get(String key) {
         return Optional.ofNullable(this.raw.get(key));
     }
 
-    // --- Typed pipeline-relevant accessors ---
-
-    // shadowMapResolution — the square shadow map's edge length in texels, empty when unspecified
+    // Returns the shadow map resolution.
     public OptionalInt getShadowMapResolution() {
         return getInt("shadowMapResolution");
     }
 
-    // shadowDistance — how far the shadow map reaches, in blocks, empty when unspecified
+    // Returns the shadow distance.
     public OptionalInt getShadowDistance() {
         return getInt("shadowDistance");
     }
 
-    // shadow.enabled — the pack's explicit shadow toggle, empty when it states no preference
+    // Returns the shadow enabled.
     public Optional<Boolean> getShadowEnabled() {
         return getBoolean("shadow.enabled");
     }
 
-    // dhShadow.enabled — whether Distant Horizons LODs cast into the shadow map (Iris's PackShadowDirectives.isDhShadowEnabled), empty when unstated
+    // Returns the dh shadow enabled.
     public Optional<Boolean> getDhShadowEnabled() {
         return getBoolean("dhShadow.enabled");
     }
 
-    // clouds = off | fast | fancy, empty when the pack leaves the player's own setting alone
+    // Returns the cloud mode.
     public Optional<String> getCloudMode() {
         return get("clouds").map(s -> s.toLowerCase(Locale.ROOT));
     }
 
-    // dhClouds = off | fast | fancy: whether Distant Horizons draws its own clouds under this pack (Iris's getDHCloudSetting), empty meaning "follow clouds"
+    // Returns the dh cloud mode.
     public Optional<String> getDhCloudMode() {
         return get("dhClouds").map(s -> s.toLowerCase(Locale.ROOT));
     }
 
-    // Vanilla feature toggles: OptiFine lets a pack suppress vanilla world features it draws itself, each a plain true/false key, absent meaning "leave vanilla alone"
-
-    // sun — draw the vanilla sun quad. Packs that render their own celestial bodies set this false.
+    // Returns the render sun.
     public Optional<Boolean> getRenderSun() {
         return getBoolean("sun");
     }
 
-    // moon — draw the vanilla moon quad.
+    // Returns the render moon.
     public Optional<Boolean> getRenderMoon() {
         return getBoolean("moon");
     }
 
-    // stars — draw the vanilla star field (Umbra extension; OptiFine folds stars into the sky).
+    // Returns the render stars.
     public Optional<Boolean> getRenderStars() {
         return getBoolean("stars");
     }
 
-    // sky — draw the vanilla sky dome/void plane at all (Umbra extension).
+    // Returns the render sky.
     public Optional<Boolean> getRenderSky() {
         return getBoolean("sky");
     }
 
-    // vignette — draw vanilla's screen vignette overlay.
+    // Returns the render vignette.
     public Optional<Boolean> getRenderVignette() {
         return getBoolean("vignette");
     }
 
-    // underwaterOverlay — draw vanilla's underwater texture overlay.
+    // Returns the render underwater overlay.
     public Optional<Boolean> getRenderUnderwaterOverlay() {
         return getBoolean("underwaterOverlay");
     }
 
-    // weather — draw vanilla rain/snow particles (Umbra extension).
+    // Returns the render weather.
     public Optional<Boolean> getRenderWeather() {
         return getBoolean("weather");
     }
 
-    // beacon.beam.depth — whether the beacon beam writes depth.
+    // Returns the beacon beam depth.
     public Optional<Boolean> getBeaconBeamDepth() {
         return getBoolean("beacon.beam.depth");
     }
 
-    // rain.depth — whether rain/snow writes depth.
+    // Returns the rain depth.
     public Optional<Boolean> getRainDepth() {
         return getBoolean("rain.depth");
     }
 
-    // separateAo — feed vanilla's ambient occlusion as vertex colour separately from block light.
+    // Returns the separate ao.
     public Optional<Boolean> getSeparateAo() {
         return getBoolean("separateAo");
     }
 
-    // oldLighting — keep vanilla's fixed-function directional block shading.
+    // Returns the old lighting.
     public Optional<Boolean> getOldLighting() {
         return getBoolean("oldLighting");
     }
 
-    // oldHandLight — use the legacy held-light behaviour instead of heldBlockLightValue.
+    // Returns the old hand light.
     public Optional<Boolean> getOldHandLight() {
         return getBoolean("oldHandLight");
     }
 
-    // dynamicHandLight — let the held item emit light through the heldBlockLightValue uniform.
+    // Returns the dynamic hand light.
     public Optional<Boolean> getDynamicHandLight() {
         return getBoolean("dynamicHandLight");
     }
 
-    // frustum.culling — allow vanilla frustum culling in the main pass.
+    // Returns the frustum culling.
     public Optional<Boolean> getFrustumCulling() {
         return getBoolean("frustum.culling");
     }
 
-    // occlusion.culling — allow vanilla occlusion culling in the main pass.
+    // Returns the occlusion culling.
     public Optional<Boolean> getOcclusionCulling() {
         return getBoolean("occlusion.culling");
     }
 
-    // backFace.solid|cutout|cutoutMipped|translucent — per-terrain-layer back-face culling override.
+    // Returns the back face culling switch of a layer.
     public Optional<Boolean> getBackFaceCulling(String layer) {
         return getBoolean("backFace." + layer);
     }
 
-    // ------------------------------------------------------------------ shadow pass content
-
-    // shadowTerrain — draw terrain into the shadow map.
+    // Returns the shadow terrain.
     public Optional<Boolean> getShadowTerrain() {
         return getBoolean("shadowTerrain");
     }
 
-    // shadowTranslucent — draw translucent terrain into the shadow map (colored/water shadows).
+    // Returns the shadow translucent.
     public Optional<Boolean> getShadowTranslucent() {
         return getBoolean("shadowTranslucent");
     }
 
-    // shadowEntities — draw entities into the shadow map.
+    // Returns the shadow entities.
     public Optional<Boolean> getShadowEntities() {
         return getBoolean("shadowEntities");
     }
 
-    // shadowBlockEntities — draw block entities (TESRs) into the shadow map.
+    // Returns the shadow block entities.
     public Optional<Boolean> getShadowBlockEntities() {
         return getBoolean("shadowBlockEntities");
     }
 
-    // shadowLightBlockEntities — draw only light-emitting block entities into the shadow map.
+    // Returns the shadow light block entities.
     public Optional<Boolean> getShadowLightBlockEntities() {
         return getBoolean("shadowLightBlockEntities");
     }
 
-    // shadowPlayer — draw the player model into the shadow map.
+    // Returns the shadow player.
     public Optional<Boolean> getShadowPlayer() {
         return getBoolean("shadowPlayer");
     }
 
-    // shadow.culling = on | off | reversed; Photon and Complementary ask for reversed, keeping geometry between the light and camera a normal frustum test drops
+    // Returns the shadow culling.
     public Optional<String> getShadowCulling() {
         return get("shadow.culling").map(s -> s.toLowerCase(Locale.ROOT));
     }
 
-    // ------------------------------------------------------------------ pipeline behaviour flags
-
-    // voxelizeLightBlocks — submit light-emitting blocks to the shadow pass for voxelization.
+    // Returns the voxelize light blocks.
     public Optional<Boolean> getVoxelizeLightBlocks() {
         return getBoolean("voxelizeLightBlocks");
     }
 
-    // separateEntityDraws — draw entities in their own pass, after the deferred chain.
+    // Returns the separate entity draws.
     public Optional<Boolean> getSeparateEntityDraws() {
         return getBoolean("separateEntityDraws");
     }
 
-    // particles.ordering = mixed | after | before, falling back to OptiFine's older particles.before.deferred boolean only while UNSET; MakeUp-UltraFast and E-LITE declare only the legacy key, and ignoring it drew their particles after the deferred chain
+    // Returns the particle ordering.
     public Optional<String> getParticleOrdering() {
         Optional<String> ordering = get("particles.ordering").map(s -> s.toLowerCase(Locale.ROOT));
         if (ordering.isPresent()) {
@@ -593,72 +588,72 @@ public final class ShaderProperties {
                 : Optional.empty();
     }
 
-    // prepareBeforeShadow — run the prepare family before the shadow map instead of after.
+    // Returns the prepare before shadow.
     public Optional<Boolean> getPrepareBeforeShadow() {
         return getBoolean("prepareBeforeShadow");
     }
 
-    // allowConcurrentCompute — skip the memory barrier between consecutive compute dispatches.
+    // Returns the allow concurrent compute.
     public Optional<Boolean> getAllowConcurrentCompute() {
         return getBoolean("allowConcurrentCompute");
     }
 
-    // supportsColorCorrection — the pack handles the output colour space itself.
+    // Returns the supports color correction.
     public Optional<Boolean> getSupportsColorCorrection() {
         return getBoolean("supportsColorCorrection");
     }
 
-    // breaksAnisotropy, the pack is incompatible with anisotropic atlas filtering; parsed for parity only, since this renderer never anisotropically filters the atlas (see BlockAtlasFiltering)
+    // Returns the breaks anisotropy.
     public Optional<Boolean> getBreaksAnisotropy() {
         return getBoolean("breaksAnisotropy");
     }
 
-    // skipAllRendering — draw nothing but the composite chain (debug/benchmark packs).
+    // Returns the skip all rendering.
     public Optional<Boolean> getSkipAllRendering() {
         return getBoolean("skipAllRendering");
     }
 
-    // fallbackTex, the texture index a pack nominates for an unbound sampler; parsed for parity, and like Umbra nothing reads it
+    // Returns the fallback tex.
     public OptionalInt getFallbackTex() {
         return getInt("fallbackTex");
     }
 
-    // Per-program alpha test override, e.g. alphaTest.gbuffers_water = GREATER 0.0001 or alphaTest.gbuffers_terrain = off
+    // Returns the alpha test override of a program.
     public Optional<String> getAlphaTestOverride(String programName) {
         return get("alphaTest." + programName);
     }
 
-    // texture.noise — pack path of the PNG that replaces the generated noisetex, if specified.
+    // Returns the noise texture path.
     public Optional<String> getNoiseTexturePath() {
         return Optional.ofNullable(this.noiseTexturePath);
     }
 
-    // texture.<stage>.<sampler> overrides: stage → (sampler name → pack path / resource location).
+    // Returns the custom textures.
     public Map<TextureStage, Map<String, String>> getCustomTextures() {
         return Collections.unmodifiableMap(this.customTextures);
     }
 
-    // customTexture.<name> definitions: sampler name → pack path / resource location (all stages).
+    // Returns the umbra custom textures.
     public Map<String, String> getUmbraCustomTextures() {
         return Collections.unmodifiableMap(this.irisCustomTextures);
     }
 
-    // Raw texture.<stage>.<sampler> directives as type-checked sampler renames (see the patch's javadoc).
+    // Returns the custom texture patches.
     public List<CustomTexturePatch> getCustomTexturePatches() {
         return Collections.unmodifiableList(this.customTexturePatches);
     }
 
-    // image.<name> definitions in declaration order (Umbra custom writable images).
+    // Returns the umbra custom images.
     public List<CustomImageDefinition> getUmbraCustomImages() {
         return Collections.unmodifiableList(this.irisCustomImages);
     }
 
-    // Per-program blend override by source name, e.g. blend.composite2 = SRC_ALPHA ONE_MINUS_SRC_ALPHA or blend.water = off
+    // Returns the blend override of a program.
     public Optional<String> getBlendModeOverride(String programName) {
         return get("blend." + programName);
     }
 
-    // per-program enable toggle, e.g. program.composite4.enabled = false
+    // Returns the enabled switch of a program.
     public Optional<Boolean> getProgramEnabled(String programName) {
         if (isProfileDisabled(programName)) {
             return Optional.of(Boolean.FALSE);
@@ -671,13 +666,13 @@ public final class ShaderProperties {
                 "program." + programName + "..enabled");
     }
 
-    // Whether the active profile switched the program off
+    // Returns whether the current profile disables a program.
     private boolean isProfileDisabled(String programName) {
         return this.profileDisabledPrograms.contains(programName)
                 || this.profileDisabledPrograms.contains("world0/" + programName);
     }
 
-    // First of several alternative spellings that is set
+    // Returns the first boolean of a list of keys.
     private Optional<Boolean> firstBoolean(String... keys) {
         for (String key : keys) {
             Optional<Boolean> value = getBoolean(key);
@@ -688,13 +683,13 @@ public final class ShaderProperties {
         return Optional.empty();
     }
 
-    // The program's flip directives, by buffer index
+    // Returns the flips of a program by buffer.
     public Map<Integer, Boolean> getExplicitFlips(String programName) {
         Map<Integer, Boolean> flips = this.explicitFlips.get(programName);
         return flips == null ? Collections.emptyMap() : Collections.unmodifiableMap(flips);
     }
 
-    // Parsed integer, empty when unset or malformed
+    // Returns an int property or empty.
     private OptionalInt getInt(String key) {
         String value = this.raw.get(key);
         if (value == null) {
@@ -707,7 +702,7 @@ public final class ShaderProperties {
         }
     }
 
-    // Parsed boolean, empty when unset or malformed
+    // Returns a boolean property or empty.
     private Optional<Boolean> getBoolean(String key) {
         String value = this.raw.get(key);
         if (value == null) {
@@ -720,7 +715,7 @@ public final class ShaderProperties {
         return PropertiesPreprocessor.evaluateBooleanExpression(value, this.expressionDefines);
     }
 
-    // true/false, on/off; empty for anything else
+    // Parses true or false or returns empty.
     private static Optional<Boolean> parseBooleanValue(String value) {
         return switch (value.trim().toLowerCase(Locale.ROOT)) {
             case "true" -> Optional.of(Boolean.TRUE);

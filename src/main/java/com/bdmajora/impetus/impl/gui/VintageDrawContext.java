@@ -35,27 +35,28 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-// Implements the engine's abstract DrawContext on top of 1.12.2's GuiScreen/GlStateManager calls
+// Draw context of the option screens on the vanilla font and tessellator.
 public class VintageDrawContext implements DrawContext {
+    // Font of the game.
     private final FontRenderer font = Minecraft.getMinecraft().fontRenderer;
-    // Most components kept before the cache starts over, so text that changes every frame cannot grow it without end
+    // Largest number of cached components before the cache is cleared.
     private static final int COMPONENT_CACHE_LIMIT = 1024;
-    // Finished vanilla text per component, since the same components are drawn every frame and TextComponent objects are treated as immutable keys
+    // Formatted and plain text of each component.
     private final Map<TextComponent, Compiled> componentCache;
-    // Text version the cached text was made under
+    // Language version of the cached text.
     private long cacheVersion;
 
-    // caches generated dynamic texture locations for mod logos, keyed by mod ID; a null value records "no logo" so the container and pack lookups do not repeat every frame
+    // Logo paths by mod id.
     private static final Map<String, String> MOD_LOGOS = new HashMap<>();
-    // ResourceLocation parses its string on construction, and the sidebar blits the same few icons every frame
+    // Loaded logo textures by path.
     private static final Map<String, ResourceLocation> ICON_LOCATIONS = new HashMap<>();
 
-    // Impetus and its subsystems ship sidebar icons as textures under assets/impetus/textures/gui, bypassing the mcmod.info lookup below which needs a Forge container; keyed by the mod id the option pages register under
+    // Logos shipped with the mod by module id.
     private static final Map<String, String> BUNDLED_LOGOS = new HashMap<>();
 
+    // Fills the bundled logos
     static {
         BUNDLED_LOGOS.put("impetus", "impetus:textures/gui/impetus.png");
-        // The Extras pages are Impetus' own, so they share its mark
         BUNDLED_LOGOS.put("extras", "impetus:textures/gui/impetus.png");
         BUNDLED_LOGOS.put("coarctatio", "impetus:textures/gui/coarctatio.png");
         BUNDLED_LOGOS.put("equilibrium", "impetus:textures/gui/equilibrium.png");
@@ -63,17 +64,19 @@ public class VintageDrawContext implements DrawContext {
         BUNDLED_LOGOS.put("umbra", "impetus:textures/gui/umbra.png");
     }
 
-    // Transforms pushed through this context and not yet popped
+    // Number of pushed matrices.
     private int matrixDepth;
-    // Window-pixel scissor boxes as x, y, width, height, one per enabled scissor, so disabling one puts back the box it was nested in
+    // Stack of scissor rectangles in groups of four.
     private int[] scissors = new int[16];
+    // Number of pushed scissor rectangles.
     private int scissorDepth;
 
+    // Creates a context with an empty text cache.
     public VintageDrawContext() {
         this.componentCache = new HashMap<>();
     }
 
-    // Maps Sodium's style set onto vanilla's Style object
+    // Returns a vanilla component with the styles applied.
     private ITextComponent applyStyles(ITextComponent c, Set<TextFormattingStyle> styles) {
         if (styles.isEmpty()) {
             return c;
@@ -96,7 +99,7 @@ public class VintageDrawContext implements DrawContext {
         return mutable;
     }
 
-    // First key with a translation, so fallbacks work
+    // Returns the first translated key or the first key.
     private static String findKey(List<String> keys) {
         for (var str : keys) {
             if (I18n.hasKey(str)) {
@@ -106,12 +109,11 @@ public class VintageDrawContext implements DrawContext {
         return keys.get(0);
     }
 
-    // Translates one Sodium component into a vanilla one
+    // Returns the vanilla form of a component.
     private ITextComponent convertComponent(TextComponent component) {
         if (component instanceof TextComponent.Literal literal) {
             return new TextComponentString(literal.text());
         } else if (component instanceof TextComponent.Translatable translatable) {
-            // Each argument is converted afresh, since vanilla points a child's style at its parent and a shared child would take the last parent's style
             return new TextComponentTranslation(findKey(translatable.keys()), translatable.args().stream().map(a -> {
                 if (a instanceof TextComponent c) {
                     return convertComponent(c);
@@ -120,7 +122,6 @@ public class VintageDrawContext implements DrawContext {
                 }
             }).toArray());
         } else if (component instanceof TextComponent.Styled styled) {
-            // Converted afresh for the same reason, so a plain and a greyed copy of the same text keep their own styles
             var innerComponent = convertComponent(styled.inner());
             return applyStyles(innerComponent, styled.styles());
         } else {
@@ -128,14 +129,13 @@ public class VintageDrawContext implements DrawContext {
         }
     }
 
-    // A component's vanilla text formatted with its style codes for drawing and plain for measuring
+    // Formatted and plain text of a component.
     private record Compiled(String formatted, String plain) {
     }
 
-    // Returns the component's finished text, made once and again only after the translations or fonts change
+    // Returns the cached text of a component and clears the cache after a language change or when full.
     private Compiled compile(TextComponent component) {
         long version = this.textVersion();
-        // Drops text made under other translations, along with the fallback key each translation picked
         if (version != this.cacheVersion) {
             this.componentCache.clear();
             this.cacheVersion = version;
@@ -152,13 +152,13 @@ public class VintageDrawContext implements DrawContext {
         return compiled;
     }
 
-    // Vanilla's Gui.drawRect
+    // Fills a rectangle.
     @Override
     public void fill(int x1, int y1, int x2, int y2, int color) {
         Gui.drawRect(x1, y1, x2, y2, color);
     }
 
-    // The four edges of the default outline in one draw with Gui.drawRect's state and colour, where four fills cost four draws and four rounds of state changes
+    // Draws a one pixel border.
     @Override
     public void drawBorder(int x1, int y1, int x2, int y2, int color) {
         Tessellator tessellator = Tessellator.getInstance();
@@ -170,7 +170,6 @@ public class VintageDrawContext implements DrawContext {
         );
         GlStateManager.color((color >> 16 & 255) / 255.0F, (color >> 8 & 255) / 255.0F, (color & 255) / 255.0F, (color >>> 24) / 255.0F);
         buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION);
-        // The same rectangles as the default, corners included, so a translucent outline blends exactly as before
         quad(buffer, x1, y1, x2, y1 + 1);
         quad(buffer, x1, y2 - 1, x2, y2);
         quad(buffer, x1, y1, x1 + 1, y2);
@@ -180,7 +179,7 @@ public class VintageDrawContext implements DrawContext {
         GlStateManager.disableBlend();
     }
 
-    // One rectangle's corners in Gui.drawRect's order, which puts the larger x and y first
+    // Adds a rectangle to the buffer.
     private static void quad(BufferBuilder buffer, int x1, int y1, int x2, int y2) {
         int left = Math.max(x1, x2);
         int right = Math.min(x1, x2);
@@ -192,7 +191,7 @@ public class VintageDrawContext implements DrawContext {
         buffer.pos(left, top, 0.0D).endVertex();
     }
 
-    // Through the font renderer, with or without shadow
+    // Draws a component and returns the end position.
     @Override
     public int drawString(TextComponent str, int x, int y, int color, boolean shadow) {
         GlStateManager.enableBlend();
@@ -204,7 +203,7 @@ public class VintageDrawContext implements DrawContext {
         return len;
     }
 
-    // Binds and draws a full texture; the GL colour is reset to opaque white first because Gui.drawRect leaves the last fill colour (e.g. translucent black from a widget background) in place, which would tint and fade the icon by whatever was drawn before it
+    // Draws a whole image into a rectangle.
     @Override
     public void blitWholeImage(String icon, int x, int y, int width, int height) {
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
@@ -219,20 +218,20 @@ public class VintageDrawContext implements DrawContext {
         GlStateManager.disableBlend();
     }
 
-    // GlStateManager, counted so a failed draw can be unwound
+    // Pushes the model view matrix.
     @Override
     public void pushMatrix() {
         GlStateManager.pushMatrix();
         this.matrixDepth++;
     }
 
-    // GlStateManager
+    // Translates the model view matrix.
     @Override
     public void translate(double x, double y, double z) {
         GlStateManager.translate(x, y, z);
     }
 
-    // GlStateManager; an extra pop goes to GL as before without counting below zero
+    // Pops the model view matrix.
     @Override
     public void popMatrix() {
         GlStateManager.popMatrix();
@@ -241,7 +240,7 @@ public class VintageDrawContext implements DrawContext {
         }
     }
 
-    // Converts GUI coordinates to window pixels, flipping y since GL's origin is bottom-left, and clips a nested box to the one around it
+    // Pushes a scissor rectangle intersected with the current one.
     @Override
     public void enableScissor(int x, int y, int x2, int y2) {
         int width = x2 - x + 1;
@@ -259,7 +258,6 @@ public class VintageDrawContext implements DrawContext {
             int top = Math.min(boxY + boxHeight, this.scissors[outer + 1] + this.scissors[outer + 3]);
             boxX = Math.max(boxX, this.scissors[outer]);
             boxY = Math.max(boxY, this.scissors[outer + 1]);
-            // A box wholly outside the one around it clips everything
             boxWidth = Math.max(0, right - boxX);
             boxHeight = Math.max(0, top - boxY);
         }
@@ -275,7 +273,7 @@ public class VintageDrawContext implements DrawContext {
         GL11.glScissor(boxX, boxY, boxWidth, boxHeight);
     }
 
-    // Ends the innermost clip, putting back the box it was nested in, or turning clipping off after the outermost
+    // Pops a scissor rectangle and restores the one below.
     @Override
     public void disableScissor() {
         if (this.scissorDepth > 0) {
@@ -289,56 +287,56 @@ public class VintageDrawContext implements DrawContext {
         GL11.glScissor(this.scissors[outer], this.scissors[outer + 1], this.scissors[outer + 2], this.scissors[outer + 3]);
     }
 
-    // Counted in pushMatrix and popMatrix
+    // Returns the number of pushed matrices.
     @Override
     public int matrixDepth() {
         return this.matrixDepth;
     }
 
-    // Counted in enableScissor and disableScissor
+    // Returns the number of pushed scissor rectangles.
     @Override
     public int scissorDepth() {
         return this.scissorDepth;
     }
 
-    // Font renderer width of the compiled component
+    // Returns the width of a component.
     @Override
     public int getStringWidth(TextComponent component) {
         return font.getStringWidth(compile(component).plain());
     }
 
-    // Truncates to fit, for tooltips
+    // Returns the longest start of a text that fits a width.
     @Override
     public String substrByWidth(String str, int maxWidth) {
         return font.trimStringToWidth(str, maxWidth);
     }
 
-    // Word-wraps through the font renderer and converts each line back
+    // Splits a component into lines that fit a width.
     @Override
     public List<TextComponent> split(TextComponent component, int maxWidth) {
         return font.listFormattedStringToWidth(compile(component).formatted(), maxWidth).stream().map(TextComponent::literal).collect(Collectors.toList());
     }
 
-    // Plain text with formatting codes stripped
+    // Returns the plain text of a component.
     @Override
     public String extractString(TextComponent component) {
         return compile(component).plain();
     }
 
-    // Font renderer's line height
+    // Returns the height of a line.
     @Override
     public int lineHeight() {
         return font.FONT_HEIGHT;
     }
 
-    // Moves on when the translations reload, stamped with the time they did, or the font switches its unicode or bidi mode, so text the option rows keep is fitted again
+    // Returns the language version of the text.
     @Override
     @SuppressWarnings("deprecation")
     public long textVersion() {
         return net.minecraft.util.text.translation.I18n.getLastTranslationUpdateTimeInMilliseconds() << 2 | (font.getUnicodeFlag() ? 1 : 0) | (font.getBidiFlag() ? 2 : 0);
     }
 
-    // Sidebar heading for a group of pages; Impetus' subsystems are not registered Forge mods so their raw lowercase id is capitalised to match "Impetus", while a third-party mod's own display name wins
+    // Returns the display name of a mod.
     @Override
     public TextComponent getFriendlyModName(String modId) {
         var container = Loader.instance().getIndexedModList().get(modId);
@@ -349,7 +347,7 @@ public class VintageDrawContext implements DrawContext {
         return TextComponent.literal(capitalize(modId));
     }
 
-    // First character upper-cased via Character.toUpperCase, not String.toUpperCase, which applies the default locale and on a Turkish install maps "i" to the dotted capital
+    // Returns a text with its first letter in upper case.
     private static String capitalize(String modId) {
         if (modId == null || modId.isEmpty()) {
             return modId;
@@ -358,7 +356,7 @@ public class VintageDrawContext implements DrawContext {
         return Character.toUpperCase(modId.charAt(0)) + modId.substring(1);
     }
 
-    // Bundled icons first, then the mod's own logo file, resolved once per mod id
+    // Returns the logo path of a mod or null.
     @Override
     public @Nullable String getModLogoPath(String modId) {
         String bundled = BUNDLED_LOGOS.get(modId);
@@ -375,7 +373,7 @@ public class VintageDrawContext implements DrawContext {
         return path;
     }
 
-    // Uploads the mod's logo as a dynamic texture and returns its location, or null when the mod has none
+    // Loads the logo of a mod once.
     private String loadModLogo(String modId) {
         var container = Loader.instance().getIndexedModList().get(modId);
         if (container == null) {

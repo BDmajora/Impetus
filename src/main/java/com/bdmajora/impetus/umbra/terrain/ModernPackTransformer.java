@@ -3,32 +3,39 @@ package com.bdmajora.impetus.umbra.terrain;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-// Stage normalisation for modern single-source packs (Complementary, BSL) compiling the same file as both stages under #ifdef gates; deliberately does almost nothing, since the compatibility context's preprocessor handles the gates and only #version is raised to 330 compatibility
+// Rewriter of modern GLSL for the legacy pipeline.
 public final class ModernPackTransformer {
+    // Pattern of the version line.
     private static final Pattern VERSION = Pattern.compile("(?m)^\\s*#version\\s+(\\d+)(?:\\s+\\w+)?\\s*$");
+    // Uint declaration.
     private static final Pattern UINT_DECLARATION = Pattern.compile(
             "(?m)^(\\s*(?:const\\s+)?uint\\s+[A-Za-z_][A-Za-z0-9_]*\\s*=\\s*)([^;]+)(;.*)$");
+    // Uvec constructor.
     private static final Pattern UVEC_CONSTRUCTOR = Pattern.compile("\\buvec([234])\\s*\\(([^()]*)\\)");
+    // Vec2 declaration from fixed function vec4.
     private static final Pattern VEC2_DECLARATION_FROM_FIXED_FUNCTION_VEC4 = Pattern.compile(
             "(?m)^(\\s*(?:const\\s+)?vec2\\s+[A-Za-z_][A-Za-z0-9_]*\\s*=\\s*)([^;\\n]+)(;.*)$");
+    // Fixed function vec4 term.
     private static final Pattern FIXED_FUNCTION_VEC4_TERM = Pattern.compile(
             "\\b(?:gl_MultiTexCoord[0-7]|gl_Color|gl_Vertex|mc_midTexCoord|iris_MultiTexCoord[0-7]"
                     + "|iris_Color|iris_Vertex|iris_MidTexFull)\\b");
+    // Trailing swizzle.
     private static final Pattern TRAILING_SWIZZLE = Pattern.compile("\\.\\s*[xyzwrgastpq]{1,4}\\s*$");
 
+    // Prevents instantiation
     private ModernPackTransformer() {
     }
 
-    // True when the source declares #version 130 or higher, separating modern single-source packs from the GLSL-120 Chocapic family; a version check not a feature check, and a 130 pack can still use compatibility built-ins for real (see the fog rewrite)
+    // Returns whether a source uses modern GLSL.
     public static boolean isModernSource(String source) {
         if (source == null) {
             return false;
         }
         Matcher matcher = VERSION.matcher(source);
-        return matcher.find() && Integer.parseInt(matcher.group(1)) >= 130;
+        return matcher.find() && com.bdmajora.impetus.umbra.util.SafeInt.parse(matcher.group(1)) >= 130;
     }
 
-    // Normalises the #version and returns the source otherwise untouched; the stage is already selected by the #define VERTEX_SHADER / FRAGMENT_SHADER the entry point carries
+    // Returns the rewritten source.
     public static String transform(String source) {
         String body = VERSION.matcher(source).replaceAll("");
         body = rewriteFogParameters(body);
@@ -36,12 +43,12 @@ public final class ModernPackTransformer {
         return "#version " + targetVersion(source) + " compatibility\n" + stripLeadingBlankLines(body);
     }
 
-    // The compatibility version to compile at: at least 330, never BELOW the pack's own declaration (Complementary's shadow stub declares 400), and 430 when the source uses image load/store or other features 330 lacks
+    // Returns the version to compile a source at.
     private static int targetVersion(String source) {
         int version = 330;
         java.util.regex.Matcher declared = VERSION.matcher(source);
         if (declared.find()) {
-            version = Math.max(version, Integer.parseInt(declared.group(1)));
+            version = Math.max(version, com.bdmajora.impetus.umbra.util.SafeInt.parse(declared.group(1)));
         }
         if (source.contains("imageStore") || source.contains("imageLoad") || source.contains("imageAtomic")) {
             version = Math.max(version, 430);
@@ -49,7 +56,7 @@ public final class ModernPackTransformer {
         return version;
     }
 
-    // So the #version line lands first, as GLSL requires
+    // Removes blank lines before the first line.
     private static String stripLeadingBlankLines(String source) {
         int start = 0;
         while (start < source.length()) {
@@ -67,12 +74,11 @@ public final class ModernPackTransformer {
         return source.substring(start);
     }
 
-    // Substitutes gl_Fog.* with the live uniforms via the shared FogParameters; gl_Fog.color used to become vec4(0.0) on the wrong assumption that only 1.17+ packs reach here, which turned Body Camera's `if (gl_Fog.color.rgb != vec3(0.0))` cloud fade always false, and the constant scalars made Complementary's `(lViewPos * 3.0 - gl_Fog.start) * gl_Fog.scale` unbounded instead of the 0..1 fog factor
+    // Replaces fog struct reads with the fog uniforms.
     private static String rewriteFogParameters(String source) {
         if (!source.contains("gl_Fog")) {
             return source;
         }
-        // Names already declared upstream (a prologue-carrying path) must not be declared a second time.
         boolean[] alreadyDeclared = new boolean[FogParameters.DECLARATIONS.length];
         for (int i = 0; i < FogParameters.DECLARATIONS.length; i++) {
             alreadyDeclared[i] = source.contains(identifierOf(FogParameters.DECLARATIONS[i]));
@@ -90,7 +96,7 @@ public final class ModernPackTransformer {
         return declarations.length() == 0 ? source : injectAfterPreamble(source, declarations.toString());
     }
 
-    // Pulls the identifier out of a declaration string: "uniform vec4 iris_FogColor;" gives "iris_FogColor"
+    // Identifiers the of.
     private static String identifierOf(String declaration) {
         String trimmed = declaration.trim();
         int end = trimmed.lastIndexOf(';');
@@ -98,13 +104,14 @@ public final class ModernPackTransformer {
         return trimmed.substring(start + 1, end);
     }
 
-    // The real named attribute feeding gl_MultiTexCoord0 on the full-screen quad, since the built-in cannot be relied on there (see bindFullscreenTexCoord)
+    // Name of the fullscreen texture coordinate attribute.
     public static final String FULLSCREEN_TEXCOORD_ATTRIBUTE = "iris_QuadTexCoord";
 
+    // Pattern of the first texture coordinate read.
     private static final Pattern MULTI_TEX_COORD_0 =
             Pattern.compile("(?<![A-Za-z0-9_])gl_MultiTexCoord0(?![A-Za-z0-9_])");
 
-    // Rewrites gl_MultiTexCoord0 in a full-screen vertex shader to a real named attribute: generic attribute 8 aliases to it only on NVIDIA (GL guarantees aliasing for attribute 0 alone, Mesa implements exactly that), so on Mesa every composite sampled one corner texel with no GL error; Iris substitutes vec4(UV0, 0.0, 1.0) the same way, and substitution rather than #define since gl_ macro names are reserved. Gbuffer programs get the real conventional attribute from Minecraft's arrays
+    // Feeds the fullscreen texture coordinate to a vertex stage.
     public static String bindFullscreenTexCoord(String vertexSource) {
         if (vertexSource == null || !vertexSource.contains("gl_MultiTexCoord0")) {
             return vertexSource;
@@ -114,7 +121,7 @@ public final class ModernPackTransformer {
         return injectAfterPreamble(rewritten, "in vec2 " + FULLSCREEN_TEXCOORD_ATTRIBUTE + ";");
     }
 
-    // Inserts declarations immediately before the first real (non-preprocessor) token rather than prepending, since GLSL requires every #extension to precede any real token
+    // Inserts text after the version and extension lines.
     private static String injectAfterPreamble(String source, String declarations) {
         String[] lines = source.split("\n", -1);
         boolean inBlockComment = false;
@@ -163,7 +170,7 @@ public final class ModernPackTransformer {
         return out.toString();
     }
 
-    // Fixes unsigned constructs 330 rejects that 130 tolerated
+    // Adds unsigned suffixes where strict drivers need them.
     static String rewriteUnsignedStrictness(String source) {
         Matcher constUint = UINT_DECLARATION.matcher(source);
         StringBuffer rewritten = new StringBuffer(source.length());
@@ -176,7 +183,7 @@ public final class ModernPackTransformer {
         return rewriteFixedFunctionVec2Narrowing(rewriteUnsignedVectorConstructors(rewritten.toString()));
     }
 
-    // uvec constructors from signed literals
+    // Wraps int arguments of unsigned vector constructors.
     private static String rewriteUnsignedVectorConstructors(String source) {
         Matcher constructor = UVEC_CONSTRUCTOR.matcher(source);
         StringBuffer rewritten = new StringBuffer(source.length());
@@ -201,7 +208,7 @@ public final class ModernPackTransformer {
         return rewritten.toString();
     }
 
-    // Explicit .xy where a vec4 built-in is assigned to a vec2
+    // Narrows fixed function vec4 reads assigned to vec2.
     private static String rewriteFixedFunctionVec2Narrowing(String source) {
         Matcher declaration = VEC2_DECLARATION_FROM_FIXED_FUNCTION_VEC4.matcher(source);
         StringBuffer rewritten = new StringBuffer(source.length());

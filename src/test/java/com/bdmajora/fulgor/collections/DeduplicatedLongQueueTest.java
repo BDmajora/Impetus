@@ -80,4 +80,26 @@ class DeduplicatedLongQueueTest {
         }
         assertEquals(0, queue.size());
     }
+
+    // Rejects a null pool and keeps order across many segments with repeated drains.
+    @Test
+    void nullPoolAndManySegments() {
+        assertThrows(NullPointerException.class, () -> new DeduplicatedLongQueue(null, 16, false));
+        DeduplicatedLongQueue.Pool pool = new DeduplicatedLongQueue.Pool();
+        DeduplicatedLongQueue queue = new DeduplicatedLongQueue(pool, 16, false);
+        for (int round = 0; round < 3; round++) {
+            for (long i = 0; i < 5000; i++) {
+                assertTrue(queue.enqueue(i == 0 ? Long.MIN_VALUE : i == 4999 ? Long.MAX_VALUE : i));
+            }
+            assertEquals(5000, queue.size());
+            assertEquals(Long.MIN_VALUE, queue.dequeue());
+            for (long i = 1; i < 4999; i++) {
+                assertEquals(i, queue.dequeue());
+            }
+            assertEquals(Long.MAX_VALUE, queue.dequeue());
+            assertTrue(queue.isEmpty());
+            assertEquals(0, queue.size());
+            assertThrows(java.util.NoSuchElementException.class, queue::dequeue);
+        }
+    }
 }

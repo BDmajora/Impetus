@@ -1,19 +1,23 @@
 package com.bdmajora.impetus.umbra.vertices;
 
-// The extended per-vertex attributes a pack expects and the slots OptiFine hard-codes for them, bound at link time and matched by the encoders (a mismatch feeds tangents where entity ids are expected); overlayId does not exist on 1.12.2
+// Attribute locations of pack terrain.
 public final class UmbraVertexAttributes {
-    // Block id in x and metadata in y, both derived from the IBlockState
+    // Name of the block id attribute.
     public static final String MC_ENTITY = "mc_Entity";
+    // Location of the block id attribute.
     public static final int MC_ENTITY_SLOT = 10;
 
-    // The centre UV of the texture region this QUAD maps, the mean of its four vertex UVs; packs rebuild an atlas-local basis from it so their texcoord maths survives sprite animation
+    // Name of the texture center attribute.
     public static final String MC_MID_TEX_COORD = "mc_midTexCoord";
+    // Location of the texture center attribute.
     public static final int MC_MID_TEX_COORD_SLOT = 11;
 
-    // Tangent in xyz and bitangent handedness in w, derived from the face normal and the UV orientation
+    // Name of the tangent attribute.
     public static final String AT_TANGENT = "at_tangent";
+    // Location of the tangent attribute.
     public static final int AT_TANGENT_SLOT = 12;
 
+    // Prevents instantiation
     private UmbraVertexAttributes() {
     }
 }

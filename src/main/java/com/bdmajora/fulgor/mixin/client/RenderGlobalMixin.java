@@ -15,33 +15,35 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 
 import java.util.Set;
 
-// Replaces RenderGlobal's HashSet<BlockPos> light-update set (MC-80966: vanilla only drains it from updateClouds when the chunk builder is idle, which under load never happens) with a DeduplicatedLongQueue drained unconditionally from the client tick; see MinecraftMixin for ordering
+// Mixin that changes RenderGlobal.
 @SideOnly(Side.CLIENT)
 @Mixin(RenderGlobal.class)
 public abstract class RenderGlobalMixin implements LightUpdateProcessor {
-    // One tick's worth of changed positions, always deduplicating (unlike the engine's queues) since one light change routinely notifies the same position from several sides
+    // Field light updates added to the target.
     @Unique
     private final DeduplicatedLongQueue fulgor$lightUpdates =
             new DeduplicatedLongQueue(new DeduplicatedLongQueue.Pool(), 1024, true);
 
+    // Reference to the method mark blocks for update of the target.
     @Shadow
     protected abstract void markBlocksForUpdate(int minX, int minY, int minZ,
+                                                // Highest corner of the box and the immediate flag.
                                                 int maxX, int maxY, int maxZ, boolean updateImmediately);
 
-    // Overwrites vanilla's notifyLightSet to collect into a long queue instead of a set of boxed positions
+    // Replaces the whole method notifyLightSet.
     @Overwrite
     public void notifyLightSet(BlockPos pos) {
         this.fulgor$lightUpdates.enqueue(pos.toLong());
     }
 
-    // Disables vanilla's updateClouds drain by claiming its light-update set is always empty (ordinal 0; the second isEmpty() is the pending-rebuild check and is left alone)
+    // Replaces the call of Set.isEmpty in updateClouds.
     @Redirect(method = "updateClouds",
             at = @At(value = "INVOKE", target = "Ljava/util/Set;isEmpty()Z", ordinal = 0, remap = false))
     private boolean fulgor$disableVanillaDrain(Set<?> lightUpdates) {
         return true;
     }
 
-    // Drains the queue into chunk rebuilds; dedup reset happens after the drain (not before, as in the engine) since nothing is enqueued mid-drain and resetting early would drop a position that changed on two consecutive ticks
+    // Handles process light updates.
     @Override
     public void fulgor$processLightUpdates() {
         while (!this.fulgor$lightUpdates.isEmpty()) {
@@ -51,7 +53,6 @@ public abstract class RenderGlobalMixin implements LightUpdateProcessor {
             int y = pos.getY();
             int z = pos.getZ();
 
-            // A one-block margin matching vanilla: a light change at a section edge alters the neighbouring section's face AO too
             this.markBlocksForUpdate(x - 1, y - 1, z - 1, x + 1, y + 1, z + 1, false);
         }
 

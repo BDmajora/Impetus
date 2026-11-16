@@ -130,4 +130,61 @@ class ModScanCacheTest {
         Mixins.call(ModScanCache.class, "write", snapshot);
         Files.deleteIfExists(cacheFile().resolveSibling("mod-scan.bin.tmp"));
     }
+
+    private static void writeCache(java.util.function.Consumer<java.io.DataOutputStream> body) throws Exception {
+        Files.createDirectories(cacheFile().getParent());
+        try (java.io.DataOutputStream out = new java.io.DataOutputStream(
+                new java.util.zip.GZIPOutputStream(Files.newOutputStream(cacheFile())))) {
+            out.writeInt(1);
+            out.writeUTF(net.minecraftforge.common.ForgeVersion.getVersion());
+            body.accept(out);
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+    }
+
+    @Test
+    void aHostileLengthIsRefusedWithoutAllocating() throws Exception {
+        writeCache(out -> {
+            try {
+                out.writeInt(1);
+                out.writeUTF("jar|1|2");
+                out.writeInt(1);
+                out.writeUTF("com/x/Y.class");
+                out.writeInt(Integer.MAX_VALUE);
+            } catch (java.io.IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+        });
+        assertTrue(ModScanCache.recordFor("jar|1|2").isEmpty());
+    }
+
+    @Test
+    void negativeCountsAreRefused() throws Exception {
+        writeCache(out -> {
+            try {
+                out.writeInt(-5);
+            } catch (java.io.IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+        });
+        assertTrue(ModScanCache.recordFor("a").isEmpty());
+        forgetLoadedRecords();
+        writeCache(out -> {
+            try {
+                out.writeInt(1);
+                out.writeUTF("a");
+                out.writeInt(-1);
+            } catch (java.io.IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+        });
+        assertTrue(ModScanCache.recordFor("a").isEmpty());
+    }
+
+    @Test
+    void emptyBlobsAndNullBlobsDoNotDecode() {
+        assertNull(ModScanCache.decode(new byte[0]));
+        assertNull(ModScanCache.decode(null));
+    }
 }

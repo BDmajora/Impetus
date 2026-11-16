@@ -1,13 +1,14 @@
 package com.bdmajora.impetus.engine.impl.util;
 
+// Branch free comparisons.
 public class BitwiseMath {
-    // Returns 1 if a < b else 0, valid for all values of a and b
+    // Returns one when a is less than b and zero otherwise for every pair of values.
     public static int lessThan(int a, int b) {
-        return (a - b) >>> 31;
+        return (int) (((long) a - b) >>> 63);
     }
 
-    // Returns 1 if a > b else 0, valid for all values of a and b
+    // Returns one when a is greater than b and zero otherwise for every pair of values.
     public static int greaterThan(int a, int b) {
-        return (b - a) >>> 31;
+        return (int) (((long) b - a) >>> 63);
     }
 }

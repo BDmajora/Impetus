@@ -7,13 +7,16 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.entity.Entity;
 import net.minecraft.tileentity.TileEntity;
 
-// The render-thread side: reads the worker's verdict and decides whether to honour it. A verdict older than a second is stale (the worker stalled or the world changed under it) and is ignored, and nothing is culled in the shadow pass since a mob behind a wall still casts a shadow across the floor
+// Skips the rendering of hidden entities and block entities.
 public final class OcclusionCulling {
+    // Age after which a result no longer counts.
     private static final long STALE_NANOS = 1_000_000_000L;
 
+    // Prevents instantiation
     private OcclusionCulling() {
     }
 
+    // Returns whether the entity is hidden.
     public static boolean shouldSkipEntity(Entity entity) {
         ExtrasConfig.OcclusionSettings settings = Extras.options().occlusion;
         if (!settings.enabled || !settings.entities) {
@@ -27,6 +30,7 @@ public final class OcclusionCulling {
         return cullable.impetus$isOccluded() && System.nanoTime() - cullable.impetus$occlusionStamp() < STALE_NANOS;
     }
 
+    // Returns whether the block entity is hidden.
     public static boolean shouldSkipBlockEntity(TileEntity blockEntity) {
         ExtrasConfig.OcclusionSettings settings = Extras.options().occlusion;
         if (!settings.enabled || !settings.blockEntities) {
@@ -40,7 +44,7 @@ public final class OcclusionCulling {
         return cullable.impetus$isOccluded() && System.nanoTime() - cullable.impetus$occlusionStamp() < STALE_NANOS;
     }
 
-    // Debug overlay line
+    // Returns the overlay text of the last pass.
     public static String status() {
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.world == null) {

@@ -21,23 +21,31 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
-// Compiles every compute stage attached to one program (<name>.csh plus the <name>_a..z.csh Umbra extension); dispatch size follows Umbra's priority: indirect directive, const ivec3 workGroups, const vec2 workGroupsRender, then one invocation per pixel
+// Builder of the compute passes of a program.
 public final class ComputeBuilder {
+    // Logger of this class.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
+    // Single work group.
     private static final int[] ONE_GROUP = {1, 1, 1};
+    // Render scale of the full screen.
     private static final float[] FULL_SCREEN = {1.0f, 1.0f};
 
     private final Map<String, String> defines;
     private final Function<TextureStage, Map<String, CustomTextureManager.Override>> overrides;
+    // Render targets flipped at least once.
     private final BitSet flippedAtLeastOnce;
     private final Map<String, ComputeDirectives.IndirectPointer> indirectPointers;
+    // Storage buffers of the pack.
     private final ShaderStorageBufferHolder storageBuffers;
-    // The first 3D custom image's size, for the shadowcomp volume fallback, or null
+    // Size of the voxel volume.
     private final int[] voxelVolume;
 
+    // Creates a compute builder from its defines.
     public ComputeBuilder(Map<String, String> defines,
                           Function<TextureStage, Map<String, CustomTextureManager.Override>> overrides,
+                          // Flips and indirect pointers.
                           BitSet flippedAtLeastOnce, Map<String, ComputeDirectives.IndirectPointer> indirectPointers,
+                          // Storage buffers and voxel volume.
                           ShaderStorageBufferHolder storageBuffers, int[] voxelVolume) {
         this.defines = defines;
         this.overrides = overrides;
@@ -47,13 +55,12 @@ public final class ComputeBuilder {
         this.voxelVolume = voxelVolume;
     }
 
-    // Every linked compute stage of the program, in variant order; one that fails is logged and skipped
+    // Returns the compute passes of a program source.
     public List<ComputePass> build(ProgramSource source, TextureStage stage) {
         String[] sources = source.getComputeSources();
         if (sources.length == 0) {
             return Collections.emptyList();
         }
-        // The voxel-volume fallback is a shadowcomp-only workaround for Complementary's under-declared floodfill groups; Umbra never second-guesses a declared workGroups, and Photon's deferred4_a.csh declares (1,1,1) for a reduction that scaling would run 4096 times over
         int[] volume = stage == TextureStage.SHADOWCOMP ? this.voxelVolume : null;
         List<ComputePass> built = new ArrayList<>();
         for (int variant = 0; variant < sources.length; variant++) {
@@ -70,6 +77,7 @@ public final class ComputeBuilder {
         return built;
     }
 
+    // Compiles one compute pass.
     private ComputePass compile(String name, String raw, TextureStage stage, int[] volume) {
         String csh = ShaderSourceFixes.stabilize(name, ShaderMacros.injectDefines(
                 CustomTextureTransformer.transform(name, raw, stage), this.defines));
@@ -102,7 +110,6 @@ public final class ComputeBuilder {
             if (volumeGroups != null) {
                 workGroups = volumeGroups;
             } else {
-                // Umbra ComputeProgram.getWorkGroups' last resort: cover the screen, one invocation per pixel
                 if (renderScale == null && indirectBuffer == -1) {
                     renderScale = FULL_SCREEN;
                 }
@@ -125,7 +132,6 @@ public final class ComputeBuilder {
                     ShadowSamplerKinds.detect(program.getGlId()), workGroups, renderScale, localSize,
                     indirectBuffer, indirectOffset);
         } catch (RuntimeException e) {
-            // Linked but unusable: free it rather than leak it for the rest of the session
             program.destroy();
             throw e;
         }

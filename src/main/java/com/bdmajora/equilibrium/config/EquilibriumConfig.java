@@ -22,18 +22,21 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 
-// Port of Lithium's LithiumConfig; the tree comes from EquilibriumOptions (Java, not a generated resource) and mod overrides from ModCompatibility's class detection, since no mod list exists at coremod time
+// Switches of the general performance patches loaded from a properties file.
 public class EquilibriumConfig {
+    // Name of the properties file.
     private static final String FILE_NAME = "equilibrium.properties";
 
+    // Switches by name.
     private final Map<String, Option> options = new HashMap<>();
 
-    // Only the options that have dependencies, so the fixpoint loop does not walk the whole tree
+    // Switches that have dependencies.
     private final Set<Option> optionsWithDependencies = new LinkedHashSet<>();
 
-    // Where save() writes; null only if the config directory could not be resolved
+    // File of the settings.
     private Path file;
 
+    // Creates the switches with their defaults and dependencies.
     private EquilibriumConfig() {
         for (EquilibriumOptions.Entry entry : EquilibriumOptions.entries().values()) {
             this.addMixinRule(entry.name(), entry.enabledByDefault());
@@ -46,8 +49,9 @@ public class EquilibriumConfig {
         }
     }
 
-    // The written file lists every option with its default commented out (unlike Lithium's empty file), since a user opening it is usually bisecting a bug
+    // Returns the settings read from the file and writes a default file when it is missing.
     public static EquilibriumConfig load(Path file) {
+        java.util.Objects.requireNonNull(file, "file");
         EquilibriumConfig config = new EquilibriumConfig();
         config.file = file;
 
@@ -74,7 +78,7 @@ public class EquilibriumConfig {
         return config;
     }
 
-    // Config file location resolved like Fulgor and Coarctatio; Launch.minecraftHome is null under a test harness so the working directory stands in, and the directory is created eagerly so save() need not care
+    // Returns the settings file inside the config folder.
     public static Path defaultFile() {
         File home = Launch.minecraftHome;
         Path dir = (home == null ? Paths.get(".") : home.toPath()).resolve("config");
@@ -88,19 +92,18 @@ public class EquilibriumConfig {
         return dir.resolve(FILE_NAME);
     }
 
-    // Registers one rule; a duplicate key means the option tree declares a mixin twice, a programming error, so it throws instead of overwriting
+    // Adds a switch and rejects a duplicate.
     private void addMixinRule(String mixin, boolean enabled) {
         if (this.options.put(mixin, new Option(mixin, enabled, false)) != null) {
             throw new IllegalStateException("Mixin rule already defined: " + mixin);
         }
     }
 
-    // Links a rule to one it requires, so applyDependencies can switch it off when the parent is off
+    // Links a switch to the value that another switch must hold.
     private void addRuleDependency(String rule, String dependency, boolean requiredValue) {
         Option option = this.options.get(rule);
         Option dependencyOption = this.options.get(dependency);
 
-        // EquilibriumOptions validates this at class-init, so reaching either branch means the tree and this loader drifted, not user error
         if (option == null || dependencyOption == null) {
             Equilibrium.LOGGER.error("Dependency '{} depends on {}={}' names an option that does not exist, skipping",
                     rule, dependency, requiredValue);
@@ -111,7 +114,7 @@ public class EquilibriumConfig {
         this.optionsWithDependencies.add(option);
     }
 
-    // Folds a loaded properties file onto the defaults; unknown keys are warned and skipped so an old config still loads
+    // Applies every valid line of the file.
     private void readProperties(Properties props) {
         for (Map.Entry<Object, Object> entry : props.entrySet()) {
             String key = (String) entry.getKey();
@@ -140,7 +143,7 @@ public class EquilibriumConfig {
         }
     }
 
-    // Applies one installed mod's request to force an option; disabling wins over enabling, since wrongly keeping a patch (crash) is worse than wrongly dropping one (lost perf)
+    // Applies a value forced by a mod unless the player set the switch.
     void applyModOverride(ModCompatibility.Override override) {
         Option option = this.options.get(override.option());
 
@@ -154,7 +157,6 @@ public class EquilibriumConfig {
             return;
         }
 
-        // A user who explicitly set an option has the last word; unlike Lithium, our overrides come from detection the user never asked for, and silent overriding is worse than an incompatibility warning
         if (option.isUserDefined()) {
             Equilibrium.LOGGER.warn("{} is installed and wants '{}={}', but the config file sets it to {}. "
                             + "Leaving the configured value; expect problems if it turns out to be wrong.",
@@ -171,7 +173,7 @@ public class EquilibriumConfig {
         }
     }
 
-    // Finds the option governing a mixin class by trying every package prefix as "mixin.<prefix>"; the first DISABLED rule short-circuits (mixin.world=false kills everything under it), else the deepest rule wins, null means no opinion
+    // Returns the switch that governs the mixin class.
     public Option getEffectiveOptionForMixin(String mixinClassName) {
         int lastSplit = 0;
         int nextSplit;
@@ -197,13 +199,13 @@ public class EquilibriumConfig {
         return rule;
     }
 
-    // Recursive because a child is only truly on when every ancestor is too
+    // Returns whether the switch and its parents are on.
     public boolean isOptionEnabled(String optionName) {
         Option option = this.options.get(optionName);
         return option != null && option.isEnabledRecursive(this);
     }
 
-    // Used by the options screen, which edits in place then save()s; an unknown name is a silent no-op since a miss means the screen and tree drifted
+    // Stores a value that the player chose.
     public void setOptionEnabled(String optionName, boolean enabled) {
         Option option = this.options.get(optionName);
 
@@ -212,12 +214,12 @@ public class EquilibriumConfig {
         }
     }
 
-    // Exact-name lookup; null when nothing declares that key
+    // Returns the switch of the name or null.
     public Option getOption(String optionName) {
         return this.options.get(optionName);
     }
 
-    // Parent is the name up to the last dot, so mixin.world.foo yields mixin.world
+    // Returns the switch that governs the option or null.
     public Option getParent(Option option) {
         String optionName = option.getName();
         int split = optionName.lastIndexOf('.');
@@ -225,12 +227,12 @@ public class EquilibriumConfig {
         return split == -1 ? null : this.options.get(optionName.substring(0, split));
     }
 
-    // Total declared options, shown by the stats command
+    // Returns the number of switches.
     public int getOptionCount() {
         return this.options.size();
     }
 
-    // How many options a mod forced away from the user's value, which is what makes a config look ignored
+    // Returns the number of switches set by the player or a mod.
     public int getOptionOverrideCount() {
         int count = 0;
 
@@ -243,14 +245,13 @@ public class EquilibriumConfig {
         return count;
     }
 
-    // Repeats until a pass changes nothing, since disabling one option can break an already-visited dependency; terminates because nothing re-enables, so the enabled count strictly decreases
+    // Turns off switches until every dependency holds.
     private void applyDependencies() {
-        //noinspection StatementWithEmptyBody
         while (this.applyDependenciesOnce()) {
         }
     }
 
-    // One sweep; returns whether anything changed so the caller knows to sweep again
+    // Runs one pass and returns whether a switch changed.
     private boolean applyDependenciesOnce() {
         boolean changed = false;
 
@@ -261,7 +262,7 @@ public class EquilibriumConfig {
         return changed;
     }
 
-    // Rewrites every key so the file doubles as documentation; a null file is a no-op and IO failure is logged, since losing settings must not stop launch
+    // Writes the settings to the file.
     public void save() {
         if (this.file == null) {
             return;
@@ -274,16 +275,25 @@ public class EquilibriumConfig {
                 Files.createDirectories(parent);
             }
 
-            try (OutputStream stream = Files.newOutputStream(this.file);
+            Path temp = this.file.resolveSibling(this.file.getFileName() + ".tmp");
+
+            try (OutputStream stream = Files.newOutputStream(temp);
                  Writer writer = new BufferedWriter(new OutputStreamWriter(stream, StandardCharsets.UTF_8))) {
                 this.write(writer);
+            }
+
+            try {
+                Files.move(temp, this.file, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                Files.move(temp, this.file, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (IOException e) {
             Equilibrium.LOGGER.warn("Could not write {}", this.file, e);
         }
     }
 
-    // Emits the whole file: banner, then each category with its description, dependencies and default
+    // Writes the commented settings file.
     private void write(Writer writer) throws IOException {
         writer.write("# Equilibrium — Impetus' general-purpose performance subsystem.\n");
         writer.write("#\n");
@@ -331,7 +341,6 @@ public class EquilibriumConfig {
 
             writer.write("# Default: " + entry.enabledByDefault() + "\n");
 
-            // Untouched options stay commented out so the file keeps saying what the default is instead of freezing today's default into the user's config
             if (option != null && option.isUserDefined()) {
                 writer.write(entry.name() + "=" + option.isEnabled() + "\n");
             } else {
@@ -340,7 +349,7 @@ public class EquilibriumConfig {
         }
     }
 
-    // Greedy word wrap for the description comments; long words are left to overflow rather than broken
+    // Returns the text split into lines of at most the width.
     private static List<String> wrap(String text, int width) {
         List<String> lines = new ArrayList<>();
         StringBuilder line = new StringBuilder();

@@ -8,22 +8,23 @@ import org.apache.logging.log4j.Logger;
 import java.util.Objects;
 import java.util.function.Function;
 
-// Fixed function shadow programs that entities and block entities draw with
+// Shadow programs of entities and block entities that share one program when the pack gives one.
 public final class ShadowCasterPrograms {
+    // Logger of compile failures.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
 
-    // Program for entities or null when it failed to compile
+    // Program of entities or null.
     private final GbufferPrograms.Entry entity;
-    // Program for block entities which is the entity program when both share one source
+    // Program of block entities or null.
     private final GbufferPrograms.Entry blockEntity;
-    // Flag set when both fields hold the same program
+    // Shared state of the two programs.
     private final boolean shared;
-    // Action that rebinds the pack textures and images to their units
+    // Action that rebinds the pack resources.
     private final Runnable resourceRestorer;
-    // Flag set once destroy has run
+    // Released state of the programs.
     private boolean destroyed;
 
-    // Compiles the entity and block entity programs and falls back to the shadow source for either one that is null
+    // Compiles both programs and deletes the first when the second fails.
     public ShadowCasterPrograms(ProgramSource shadowSource, ProgramSource entitiesSource, ProgramSource blockSource,
                                 Function<ProgramSource, GbufferPrograms.Entry> compiler, Runnable resourceRestorer) {
         Objects.requireNonNull(shadowSource, "shadowSource");
@@ -33,33 +34,41 @@ public final class ShadowCasterPrograms {
         ProgramSource blocks = blockSource != null ? blockSource : shadowSource;
         this.entity = compiler.apply(entities);
         if (this.entity == null) {
-            LOGGER.warn("[Umbra] Fixed-function shadow program failed to compile; entity shadows disabled");
+            LOGGER.warn("[Umbra] Fixed function shadow program failed to compile; entity shadows disabled");
         }
         this.shared = blocks == entities;
-        this.blockEntity = this.shared ? this.entity : compiler.apply(blocks);
+        // Deletes the entity program when the block program fails
+        try {
+            this.blockEntity = this.shared ? this.entity : compiler.apply(blocks);
+        } catch (RuntimeException | Error e) {
+            if (this.entity != null) {
+                this.entity.getProgram().destroy();
+            }
+            throw e;
+        }
     }
 
-    // Returns whether entities have a program to draw with
+    // Returns whether the entity program compiled.
     public boolean hasEntityProgram() {
         return this.entity != null;
     }
 
-    // Returns whether block entities have their own program or the entity program to fall back on
+    // Returns whether a block entity program exists.
     public boolean hasBlockEntityProgram() {
         return this.blockEntity != null || this.entity != null;
     }
 
-    // Binds the entity program and refreshes its uniforms
+    // Binds the entity program.
     public void bindEntity() {
         bind(this.entity);
     }
 
-    // Binds the block entity program or the entity program when it is missing and refreshes its uniforms
+    // Binds the block entity program or the entity program.
     public void bindBlockEntity() {
         bind(this.blockEntity != null ? this.blockEntity : this.entity);
     }
 
-    // Binds one program between two resource restores and refreshes its uniforms
+    // Binds a program between pack resource rebinds and uploads its uniforms.
     private void bind(GbufferPrograms.Entry program) {
         if (program == null) {
             return;
@@ -70,17 +79,20 @@ public final class ShadowCasterPrograms {
         program.getUniforms().update();
     }
 
-    // Frees each distinct program once
+    // Deletes the programs once.
     public void destroy() {
         if (this.destroyed) {
             return;
         }
         this.destroyed = true;
-        if (!this.shared && this.blockEntity != null) {
-            this.blockEntity.getProgram().destroy();
-        }
-        if (this.entity != null) {
-            this.entity.getProgram().destroy();
+        try {
+            if (!this.shared && this.blockEntity != null) {
+                this.blockEntity.getProgram().destroy();
+            }
+        } finally {
+            if (this.entity != null) {
+                this.entity.getProgram().destroy();
+            }
         }
     }
 }

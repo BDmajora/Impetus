@@ -7,32 +7,40 @@ import com.bdmajora.impetus.engine.impl.gl.shader.ShaderBindingContext;
 import java.util.List;
 import java.util.function.BiFunction;
 
+// Fog formulas of the chunk shader.
 public enum ChunkFogMode implements ChunkShaderComponent.Factory<ChunkShaderFogComponent> {
+    // Fog is off.
     NONE(ChunkShaderFogComponent.None::new, List.of()),
+    // Exponential fog.
     EXP(ChunkShaderFogComponent.Exp::new, List.of("USE_FOG", "USE_FOG_EXP")),
+    // Squared exponential fog.
     EXP2(ChunkShaderFogComponent.Exp2::new, List.of("USE_FOG", "USE_FOG_EXP2")),
+    // Linear fog.
     SMOOTH(ChunkShaderFogComponent.Smooth::new, List.of("USE_FOG", "USE_FOG_SMOOTH"));
 
+    // Factory of the fog component.
     private final BiFunction<ShaderBindingContext, ChunkShaderEnvironment, ChunkShaderFogComponent> factory;
+    // Shader definitions of the mode.
     private final List<String> defines;
 
+    // Creates a fog mode.
     ChunkFogMode(BiFunction<ShaderBindingContext, ChunkShaderEnvironment, ChunkShaderFogComponent> factory, List<String> defines) {
         this.factory = factory;
         this.defines = defines;
     }
 
-    // The uniform component for this mode
+    // Creates the fog component.
     @Override
     public ChunkShaderFogComponent create(ShaderBindingContext context, ChunkShaderEnvironment environment) {
         return factory.apply(context, environment);
     }
 
-    // Shader defines selecting the fog formula
+    // Returns the shader definitions of the mode.
     public List<String> getDefines() {
         return this.defines;
     }
 
-    // GL fog mode constant to enum
+    // Returns the mode of a GL fog constant and rejects an unknown constant.
     public static ChunkFogMode fromGLMode(int mode) {
         switch (mode) {
             case 0:

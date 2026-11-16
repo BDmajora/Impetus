@@ -6,22 +6,29 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-// The option tree: every mixin.* rule, default and description declared once; an option's name is its mixin package path so it governs everything beneath it, and it is smaller than Lithium's since options that cannot remove work on 1.12.2 were dropped
+// Catalogue of every switch with its description.
 public final class EquilibriumOptions {
-    // Immutable, in declaration order; the config file and the GUI both present them this way.
+    // Every switch by name.
     private static final Map<String, Entry> ENTRIES = build();
 
+    // Prevents instantiation
     private EquilibriumOptions() {
     }
 
-    // One rule.
+    // Description of one switch.
     public static final class Entry {
+        // Name of the switch.
         private final String name;
+        // Default value.
         private final boolean enabledByDefault;
+        // Text that explains the switch.
         private final String description;
+        // Text that explains differences from the base game or null.
         private final String nonVanilla;
+        // Required values of other switches.
         private final Map<String, Boolean> dependencies;
 
+        // Creates an entry.
         Entry(String name, boolean enabledByDefault, String description, String nonVanilla,
               Map<String, Boolean> dependencies) {
             this.name = name;
@@ -31,44 +38,44 @@ public final class EquilibriumOptions {
             this.dependencies = dependencies;
         }
 
-        // Full dotted rule name
+        // Returns the name.
         public String name() {
             return this.name;
         }
 
-        // Value used when the user has not set the key
+        // Returns the default value.
         public boolean enabledByDefault() {
             return this.enabledByDefault;
         }
 
-        // Prose written into the config file above the key
+        // Returns the description.
         public String description() {
             return this.description;
         }
 
-        // How behaviour differs from vanilla, or null when it does not.
+        // Returns the text about differences from the base game or null.
         public String nonVanillaBehaviour() {
             return this.nonVanilla;
         }
 
-        // Other rules this one requires, and the value each must hold
+        // Returns the required values of other switches.
         public Map<String, Boolean> dependencies() {
             return this.dependencies;
         }
 
-        // The name with the mixin. prefix removed, which is what the lang keys are built from.
+        // Returns the name without its prefix.
         public String path() {
             return this.name.substring("mixin.".length());
         }
 
-        // The top-level category, used to group the GUI tab into sections.
+        // Returns the first part of the path.
         public String category() {
             String path = this.path();
             int split = path.indexOf('.');
             return split == -1 ? path : path.substring(0, split);
         }
 
-        // How deep this rule sits, so the GUI can indent children under their parent.
+        // Returns how deep the switch sits below the prefix.
         public int depth() {
             int depth = 0;
 
@@ -82,17 +89,17 @@ public final class EquilibriumOptions {
         }
     }
 
-    // The whole tree in declaration order, which is the order the config file is written in
+    // Returns every entry by name.
     public static Map<String, Entry> entries() {
         return ENTRIES;
     }
 
-    // Single entry by rule name, or null when nothing declares it
+    // Returns the entry of the name or null.
     public static Entry get(String name) {
         return ENTRIES.get(name);
     }
 
-    // The categories in declaration order, which is the order the GUI tab lists its groups in.
+    // Returns the categories in order of first use.
     public static List<String> categories() {
         List<String> categories = new ArrayList<>();
 
@@ -107,7 +114,7 @@ public final class EquilibriumOptions {
         return categories;
     }
 
-    // Entries under one heading, used to build a GUI group
+    // Returns the entries of the category.
     public static List<Entry> inCategory(String category) {
         List<Entry> entries = new ArrayList<>();
 
@@ -120,11 +127,10 @@ public final class EquilibriumOptions {
         return entries;
     }
 
-    // Declares the option tree once; order here is the order users see everywhere
+    // Builds the catalogue.
     private static Map<String, Entry> build() {
         Builder builder = new Builder();
 
-        // ------------------------------------------------------ advancements
         builder.add("mixin.advancements", true,
                 "Advancement trigger optimizations");
         builder.add("mixin.advancements.inventory_trigger", true,
@@ -135,7 +141,6 @@ public final class EquilibriumOptions {
                         + "stack must match a predicate before the inventory is walked (Universal "
                         + "Tweaks, Icterine).");
 
-        // ---------------------------------------------------------------- ai
         builder.add("mixin.ai", true,
                 "Mob AI optimizations");
         builder.add("mixin.ai.goal_selector", true,
@@ -143,7 +148,6 @@ public final class EquilibriumOptions {
                         + "java.util.LinkedHashSet. Both sets are walked every tick for every mob in "
                         + "range, and the vanilla ones put every task behind its own node.");
 
-        // ------------------------------------------------------------- alloc
         builder.add("mixin.alloc", true,
                 "Patches that reduce memory allocations");
         builder.add("mixin.alloc.entity_tracker", true,
@@ -165,7 +169,6 @@ public final class EquilibriumOptions {
                 "Redstone wire power propagation reuses the shared facing array instead of copying "
                         + "EnumFacing.values() once per wire per power level.");
 
-        // ------------------------------------------------------------- block
         builder.add("mixin.block", true,
                 "Optimizations related to blocks");
         builder.add("mixin.block.hopper", true,
@@ -180,7 +183,6 @@ public final class EquilibriumOptions {
                         + "and resolves the block above the wire once per update rather than once per "
                         + "direction.");
 
-        // ------------------------------------------------------------- chunk
         builder.add("mixin.chunk", true,
                 "Various world chunk optimizations");
         builder.add("mixin.chunk.no_validation", true,
@@ -192,7 +194,6 @@ public final class EquilibriumOptions {
                         + "the BlockPos object, dropping the hash and equals dispatch and the node per "
                         + "entry on a map probed by every tile entity lookup. Iteration order is kept.");
 
-        // ------------------------------------------------------- collections
         builder.add("mixin.collections", true,
                 "Various collection optimizations");
         builder.add("mixin.collections.mob_spawning", true,
@@ -200,7 +201,6 @@ public final class EquilibriumOptions {
                         + "java.util.HashSet. It is rebuilt every spawn cycle and probed once per "
                         + "candidate chunk per player.");
 
-        // ------------------------------------------------------------ entity
         builder.add("mixin.entity", true,
                 "Various entity optimizations");
         builder.add("mixin.entity.collisions", true,
@@ -251,7 +251,6 @@ public final class EquilibriumOptions {
                         + "division vanilla performs there needs the swing duration, and working that out "
                         + "means checking the entity's haste and mining fatigue effects.");
 
-        // -------------------------------------------------------------- math
         builder.add("mixin.math", true,
                 "Various math optimizations");
         builder.add("mixin.math.fast_blockpos", true,
@@ -265,7 +264,6 @@ public final class EquilibriumOptions {
                         + "trigonometric identities to reconstruct the quadrants it drops. Results are "
                         + "bit-for-bit identical to vanilla, and verified to be at startup.");
 
-        // -------------------------------------------------------------- util
         builder.add("mixin.util", true,
                 "Various utilities for other mixins. These add no optimization on their own; turning "
                         + "one off disables everything that depends on it.");
@@ -279,7 +277,6 @@ public final class EquilibriumOptions {
                 "Access a world's loaded chunks directly, without going through the chunk provider's "
                         + "dispatch and its map lookup.");
 
-        // ------------------------------------------------------------- world
         builder.add("mixin.world", true,
                 "Various world related optimizations");
         builder.add("mixin.world.chunk_gen_limit", false,
@@ -347,7 +344,6 @@ public final class EquilibriumOptions {
                         + "pointer chase from every lookup. Redstone, liquids and crops schedule "
                         + "thousands of these per second on a busy world.");
 
-        // ----------------------------------------------------------- worldgen
         builder.add("mixin.worldgen", true,
                 "World generation optimizations, after Noisium's approach of bypassing the abstractions "
                         + "between the generator and the storage it fills; every rule keeps generation "
@@ -368,16 +364,21 @@ public final class EquilibriumOptions {
         return builder.finish();
     }
 
-    // Small fluent helper so the tree above reads as a list rather than a wall of constructor calls.
+    // Builder of the catalogue.
     private static final class Builder {
+        // Entries added so far.
         private final Map<String, Entry> entries = new LinkedHashMap<>();
+        // Dependencies of each entry.
         private final Map<String, Map<String, Boolean>> dependencies = new LinkedHashMap<>();
+        // Name of the entry added last.
         private String current;
 
+        // Adds an entry without a note about differences.
         Builder add(String name, boolean enabledByDefault, String description) {
             return this.add(name, enabledByDefault, description, null);
         }
 
+        // Adds an entry and rejects a duplicate.
         Builder add(String name, boolean enabledByDefault, String description, String nonVanilla) {
             Map<String, Boolean> deps = new LinkedHashMap<>();
 
@@ -391,13 +392,18 @@ public final class EquilibriumOptions {
             return this;
         }
 
+        // Adds a dependency to the entry added last.
         Builder requires(String dependency, boolean requiredValue) {
+            if (this.current == null) {
+                throw new IllegalStateException("requires() needs a preceding add()");
+            }
+
             this.dependencies.get(this.current).put(dependency, requiredValue);
             return this;
         }
 
+        // Returns the entries and rejects a dependency on an unknown switch.
         Map<String, Entry> finish() {
-            // Every dependency must name a real option; a typo would silently disable nothing and only show up as "why is this mixin still applied", so fail at class-init
             for (Map.Entry<String, Map<String, Boolean>> entry : this.dependencies.entrySet()) {
                 for (String dependency : entry.getValue().keySet()) {
                     if (!this.entries.containsKey(dependency)) {

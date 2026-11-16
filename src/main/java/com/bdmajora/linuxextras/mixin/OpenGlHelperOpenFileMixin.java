@@ -9,9 +9,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.io.File;
 
-// Every "open folder" button (resource packs, world folder, Forge's error screens) goes through here, which Cleanroom answers with AWT's Desktop.open
+// Mixin that changes OpenGlHelper.
 @Mixin(OpenGlHelper.class)
 public abstract class OpenGlHelperOpenFileMixin {
+    // Runs at the start of openFile and can cancel it.
     @Inject(method = "openFile(Ljava/io/File;)V", at = @At("HEAD"), cancellable = true)
     private static void linuxextras$openWithXdg(File file, CallbackInfo ci) {
         if (XdgOpen.open(file.getAbsolutePath())) {

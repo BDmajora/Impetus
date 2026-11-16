@@ -12,16 +12,18 @@ import net.minecraft.client.renderer.block.statemap.BlockStateMapper;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
-// State-to-location tables built per block on first use instead of for every block at reload; the state mapper builds a fresh map on each call, so the result is kept, bounded by total entries
+// Finds the model location of a block state through a bounded cache.
 public final class StateModelLocations {
+    // Variants of each block.
     private final LoadingCache<Block, Map<IBlockState, ModelResourceLocation>> byBlock;
 
+    // Creates the lookup and rejects a null mapper.
     public StateModelLocations(BlockStateMapper mapper) {
+        java.util.Objects.requireNonNull(mapper, "mapper");
         this.byBlock = CacheBuilder.newBuilder()
                 .maximumWeight(100000)
                 .weigher((Block block, Map<IBlockState, ModelResourceLocation> map) -> Math.max(1, map.size()))
                 .build(new CacheLoader<Block, Map<IBlockState, ModelResourceLocation>>() {
-                    // Mappers are not written for concurrent use and the chunk builders ask from several threads
                     @Override
                     public Map<IBlockState, ModelResourceLocation> load(Block block) {
                         synchronized (mapper) {
@@ -31,6 +33,7 @@ public final class StateModelLocations {
                 });
     }
 
+    // Returns the model location of the state.
     public ModelResourceLocation locationFor(IBlockState state) {
         try {
             return this.byBlock.get(state.getBlock()).get(state);

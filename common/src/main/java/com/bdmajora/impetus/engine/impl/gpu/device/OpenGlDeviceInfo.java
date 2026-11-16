@@ -7,15 +7,19 @@ import com.bdmajora.impetus.engine.impl.gl.functions.DeviceFunctions;
 import com.bdmajora.impetus.lwjgl.GLExtension;
 
 import java.util.EnumSet;
+import java.util.Objects;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
+// Builds device descriptions from the current GL context.
 public final class OpenGlDeviceInfo {
+    // Prevents instantiation
     private OpenGlDeviceInfo() {
     }
 
-    // Builds a device description from GL capability queries
+    // Creates a device description from GL capability queries.
     public static GpuDevice capture(DeviceFunctions functions) {
+        Objects.requireNonNull(functions, "functions");
         GlContextInfo context = GlContextInfo.capture();
         EnumSet<GpuDeviceFeature> features = EnumSet.noneOf(GpuDeviceFeature.class);
 

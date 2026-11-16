@@ -6,13 +6,15 @@ import com.bdmajora.impetus.umbra.shaderpack.option.OptionSet;
 
 import java.util.Optional;
 
-// Snapshot of every configurable option's current value, storing only those differing from the pack default; from Umbra
+// Contract of the option values.
 public interface OptionValues {
+    // Returns the stored value of a boolean option.
     OptionalBoolean getBooleanValue(String name);
 
+    // Returns the stored value of a string option.
     Optional<String> getStringValue(String name);
 
-    // Changed value, else the declared default
+    // Returns the stored value or the default of a boolean option.
     default boolean getBooleanValueOrDefault(String name) {
         return getBooleanValue(name).orElseGet(() -> {
             if (!getOptionSet().getBooleanOptions().containsKey(name)) {
@@ -23,16 +25,20 @@ public interface OptionValues {
         });
     }
 
-    // Changed value, else the declared default
+    // Returns the stored value or the default of a string option.
     default String getStringValueOrDefault(String name) {
         return getStringValue(name).orElseGet(() -> getOptionSet().getStringOptions().get(name).getOption().getDefaultValue());
     }
 
+    // Returns the options changed.
     int getOptionsChanged();
 
+    // Returns an editable copy.
     MutableOptionValues mutableCopy();
 
+    // Returns a frozen copy.
     ImmutableOptionValues toImmutable();
 
+    // Returns the option set.
     OptionSet getOptionSet();
 }

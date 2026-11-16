@@ -18,38 +18,41 @@ import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Set;
 
-// Per-face light occlusion: a FaceLightOcclusion block answers itself, a block found at post-init to have a non-solid side on a non-full-cube state gets a 16-meta x 6-face table, everything else uses its scalar opacity
+// Table of the faces of each block that stop light.
 @SuppressWarnings("deprecation")
 public final class FaceOcclusion {
-    // Block to 96 packed face-solidity bits
     private static final Reference2ObjectOpenHashMap<Block, long[]> FACE_SOLIDITY = new Reference2ObjectOpenHashMap<>();
+    // Has sided transparency.
     private static final Set<Block> HAS_SIDED_TRANSPARENCY = Collections.newSetFromMap(new IdentityHashMap<>());
 
-    // Axis direction ordinal to facing, matching BfsLightEngine.AxisDirection
+    // Facings by axis and direction.
     private static final EnumFacing[] AXIS_TO_FACING = {
             EnumFacing.EAST, EnumFacing.WEST, EnumFacing.SOUTH, EnumFacing.NORTH, EnumFacing.UP, EnumFacing.DOWN
     };
 
+    // Flag set once the tables are filled.
     private static volatile boolean registered;
 
+    // Prevents instantiation
     private FaceOcclusion() {
     }
 
+    // Returns whether a block passes light on some faces only.
     public static boolean hasSidedTransparency(Block block) {
         return HAS_SIDED_TRANSPARENCY.contains(block);
     }
 
-    // Whether a face of a table block is solid; only meaningful for blocks with sided transparency that do not implement the interface, and metas above 15 count as solid
+    // Returns whether a face of a block state stops light.
     public static boolean isFaceSolid(Block block, int meta, int axisDir) {
         long[] bits = FACE_SOLIDITY.get(block);
-        if (bits == null || meta > 15) {
+        if (bits == null || meta < 0 || meta > 15 || axisDir < 0 || axisDir > 5) {
             return true;
         }
         int bitIndex = meta * 6 + axisDir;
         return (bits[bitIndex >> 6] & (1L << (bitIndex & 63))) != 0;
     }
 
-    // Absorption (1-15) into a state through one face, from the interface, the table, or the scalar opacity
+    // Returns the opacity of a state toward a direction.
     public static int resolveScalarAbsorption(IBlockState state, int dirOrdinal) {
         Block block = state.getBlock();
         if (block instanceof FaceLightOcclusion) {
@@ -62,8 +65,8 @@ public final class FaceOcclusion {
         return Math.max(1, opacity);
     }
 
-    // Probes every registered block's 16 metas x 6 faces with isSideSolid at post-init, once mods have finished shaping their blocks
-    public static void registerDefaults() {
+    // Fills the tables of the vanilla blocks.
+    public static synchronized void registerDefaults() {
         if (registered) {
             return;
         }
@@ -82,7 +85,6 @@ public final class FaceOcclusion {
 
             for (int meta = 0; meta < 16; meta++) {
                 IBlockState state;
-                // A modded block can throw on a meta it never uses, or on a cube query without a tile entity; either just skips that meta
                 try {
                     state = block.getStateFromMeta(meta);
                     if (state.isFullCube() || state.getLightOpacity() <= 0) {
@@ -124,45 +126,54 @@ public final class FaceOcclusion {
         Fulgor.LOGGER.info("Registered {} blocks with per-face light transparency", count);
     }
 
-    // Minimal world for probing isSideSolid: the state under test at the origin, air everywhere else
+    // Block access that returns one state at every position.
     private static final class FakeBlockAccess implements IBlockAccess {
+        // State returned at every position.
         IBlockState state = Blocks.AIR.getDefaultState();
 
+        // Returns the block state.
         @Override
         public IBlockState getBlockState(BlockPos pos) {
             return pos.equals(BlockPos.ORIGIN) ? this.state : Blocks.AIR.getDefaultState();
         }
 
+        // Returns whether air block.
         @Override
         public boolean isAirBlock(BlockPos pos) {
             return !pos.equals(BlockPos.ORIGIN);
         }
 
+        // Returns the tile entity.
         @Override
         public TileEntity getTileEntity(BlockPos pos) {
             return null;
         }
 
+        // Returns the combined light.
         @Override
         public int getCombinedLight(BlockPos pos, int lightValue) {
             return lightValue;
         }
 
+        // Returns the strong power.
         @Override
         public int getStrongPower(BlockPos pos, EnumFacing direction) {
             return 0;
         }
 
+        // Returns the biome.
         @Override
         public Biome getBiome(BlockPos pos) {
             return Biome.getBiomeForId(0);
         }
 
+        // Returns whether side solid.
         @Override
         public boolean isSideSolid(BlockPos pos, EnumFacing side, boolean _default) {
             return pos.equals(BlockPos.ORIGIN) ? this.state.isSideSolid(this, pos, side) : _default;
         }
 
+        // Returns the world type.
         @Override
         public WorldType getWorldType() {
             return WorldType.DEFAULT;

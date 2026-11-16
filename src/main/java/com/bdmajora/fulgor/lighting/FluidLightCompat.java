@@ -6,12 +6,13 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.chunk.Chunk;
 
-// Folds Fluidlogged API's second block state into light calc (opacity/luminance is the max of both, so a fluidlogged sea lantern still glows); isolated so its classes only resolve when Fulgor.hasFluidloggedApi()
+// Reader of the light of fluid capabilities.
 final class FluidLightCompat {
+    // Prevents instantiation
     private FluidLightCompat() {
     }
 
-    // Max of the block and fluid opacity, so a fluidlogged block does not lose the fluid's contribution
+    // Returns the larger of the block and fluid opacity.
     static int getLightOpacity(IBlockState state, IBlockAccess world, BlockPos pos, Chunk chunk) {
         FluidState fluid = FluidState.getFromProvider(chunk, pos);
 
@@ -22,7 +23,7 @@ final class FluidLightCompat {
         return Math.max(fluid.getState().getLightOpacity(world, pos), state.getLightOpacity(world, pos));
     }
 
-    // Max of the block and fluid luminance, so a fluidlogged sea lantern still glows
+    // Returns the larger of the block and fluid light.
     static int getLightValue(int blockLightValue, IBlockAccess world, BlockPos pos, Chunk chunk) {
         FluidState fluid = FluidState.getFromProvider(chunk, pos);
 

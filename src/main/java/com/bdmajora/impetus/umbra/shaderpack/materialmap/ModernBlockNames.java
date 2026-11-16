@@ -6,31 +6,27 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-// Translates 1.13+ flattened block names in a modern pack's block.properties to 1.12.2 registry names; Photon gates its map on MC_VERSION >= 11300 with an empty else, so IdMap uses the modern branch through here. Renames only, predicates carried over
+// Translator of modern block names to legacy blocks.
 public final class ModernBlockNames {
-    // Modern name -> the 1.12.2 entry tokens covering it; an array since one flattened name can need several entries, which may carry their own state predicates
     private static final Map<String, String[]> RENAMES = new HashMap<>();
 
-    // light_gray was called silver in 1.12.2 — the only dye colour whose name changed
+    // Legacy name of light gray.
     private static final String LEGACY_LIGHT_GRAY = "silver";
 
-    // Colour-suffixed families 1.12.2 modelled as ONE block with a `color` property, so white_wool becomes wool:color=white
     private static final Map<String, String> COLORED_FAMILIES = new HashMap<>();
 
-    // Colour-suffixed families already one block PER colour on 1.12.2, so only the colour word needs fixing, and in practice only light_gray does
+    // Suffixes of colored blocks.
     private static final String[] COLORED_BLOCK_SUFFIXES = {"_shulker_box", "_glazed_terracotta"};
 
-    // The dye colours as 1.13+ spells them; light_gray is the only one 1.12.2 disagrees about
+    // Names of the dye colors.
     private static final java.util.Set<String> COLORS = new java.util.HashSet<>(java.util.Arrays.asList(
             "white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray", "light_gray",
             "cyan", "purple", "blue", "brown", "green", "red", "black"));
 
     static {
-        // Fluids. Umbra/OptiFine packs match the still and flowing blocks alike.
         RENAMES.put("water", new String[]{"water", "flowing_water"});
         RENAMES.put("lava", new String[]{"lava", "flowing_lava"});
 
-        // Small plants.
         RENAMES.put("grass", new String[]{"tallgrass:type=tall_grass"});
         RENAMES.put("short_grass", new String[]{"tallgrass:type=tall_grass"});
         RENAMES.put("fern", new String[]{"tallgrass:type=fern"});
@@ -49,12 +45,10 @@ public final class ModernBlockNames {
         RENAMES.put("cobweb", new String[]{"web"});
         RENAMES.put("melon", new String[]{"melon_block"});
 
-        // Tall plants. 1.12.2 has a single double_plant block; the pack's half=lower/upper predicate does the work.
         for (String tall : new String[]{"tall_grass", "large_fern", "sunflower", "lilac", "rose_bush", "peony"}) {
             RENAMES.put(tall, new String[]{"double_plant"});
         }
 
-        // Leaves and logs: two blocks each in 1.12.2, split by wood type.
         for (String leaves : new String[]{"oak_leaves", "spruce_leaves", "birch_leaves", "jungle_leaves"}) {
             RENAMES.put(leaves, new String[]{"leaves"});
         }
@@ -73,7 +67,6 @@ public final class ModernBlockNames {
             RENAMES.put(planks, new String[]{"planks"});
         }
 
-        // Stone and ground materials the packs give hardcoded specular to.
         RENAMES.put("sand", new String[]{"sand:variant=sand"});
         RENAMES.put("red_sand", new String[]{"sand:variant=red_sand"});
         for (String sandstone : new String[]{"chiseled_sandstone", "cut_sandstone", "smooth_sandstone"}) {
@@ -97,7 +90,6 @@ public final class ModernBlockNames {
         RENAMES.put("snow_block", new String[]{"snow"});
         RENAMES.put("slime_block", new String[]{"slime"});
 
-        // Light sources. The flattening turned several lit states into their own 1.12.2 block.
         RENAMES.put("wall_torch", new String[]{"torch"});
         RENAMES.put("redstone_wall_torch", new String[]{"redstone_torch"});
         RENAMES.put("jack_o_lantern", new String[]{"lit_pumpkin"});
@@ -116,10 +108,11 @@ public final class ModernBlockNames {
         COLORED_FAMILIES.put("_bed", "bed");
     }
 
+    // Prevents instantiation
     private ModernBlockNames() {
     }
 
-    // The 1.12.2 equivalents of one entry, or the entry itself when it needs no translation; a list since one modern name can map onto several blocks
+    // Returns the legacy entries of a modern entry.
     public static List<BlockEntry> translate(BlockEntry entry) {
         if (!"minecraft".equals(entry.getId().getNamespace())) {
             return Collections.singletonList(entry);
@@ -135,9 +128,8 @@ public final class ModernBlockNames {
         return translated;
     }
 
-    // 1.13+ flattened names back to 1.12.2 block:meta tokens
+    // Legacies the tokens for.
     private static String[] legacyTokensFor(String name, Map<String, String> predicates) {
-        // Lit states that became separate blocks: the pack names the modern block plus `lit=true`, and an unlit entry must keep pointing at the unlit 1.12.2 block, so this cannot live in the flat rename table
         if ("true".equals(predicates.get("lit"))) {
             if ("redstone_lamp".equals(name)) {
                 return new String[]{"lit_redstone_lamp"};
@@ -167,7 +159,7 @@ public final class ModernBlockNames {
         return null;
     }
 
-    // The 1.12.2 dye-colour word of a <color><suffix> name, or null; checked against the actual colour set so white_glazed_terracotta does not read as the "white_glazed" colour of a _terracotta family
+    // Returns the color prefix of a name or null.
     private static String colorPrefix(String name, String suffix) {
         if (!name.endsWith(suffix) || name.length() == suffix.length()) {
             return null;
@@ -179,13 +171,12 @@ public final class ModernBlockNames {
         return "light_gray".equals(color) ? LEGACY_LIGHT_GRAY : color;
     }
 
-    // Applies the modern entry's predicates to a legacy token
+    // Returns a copy with the inherited predicates.
     private static BlockEntry withInheritedPredicates(String token, Map<String, String> inherited) {
         BlockEntry parsed = (BlockEntry) BlockEntry.parse(token);
         if (inherited.isEmpty()) {
             return parsed;
         }
-        // The translated token is the more specific statement of the two, so it wins any key collision.
         Map<String, String> merged = new HashMap<>(inherited);
         merged.putAll(parsed.getPropertyPredicates());
         return new BlockEntry(parsed.getId(), merged);

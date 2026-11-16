@@ -12,10 +12,10 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 
 import java.util.List;
 
-// Item quads on Forge's emissive-item path (coplanar faces resolved, then item-frame LOD); allowEmissiveItems defaults to true, so most item rendering goes through renderLitItem instead of RenderItem.renderModel, and both are hooked
+// Mixin that changes ForgeHooksClient.
 @Mixin(ForgeHooksClient.class)
 public class ForgeHooksClientMixin {
-    // Not remap = false despite the Forge class: the enclosing method is Forge's, but IBakedModel.getQuads is Minecraft's and becomes func_188616_a in production
+    // Replaces the call of IBakedModel.getQuads in renderLitItem.
     @Redirect(
             method = "renderLitItem(Lnet/minecraft/client/renderer/RenderItem;Lnet/minecraft/client/renderer/block/model/IBakedModel;ILnet/minecraft/item/ItemStack;)V",
             at = @At(value = "INVOKE",

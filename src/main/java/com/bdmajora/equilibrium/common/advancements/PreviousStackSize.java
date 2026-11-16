@@ -1,8 +1,10 @@
 package com.bdmajora.equilibrium.common.advancements;
 
-// Implemented on ItemStack: the count the stack had before the last container change, which is what lets a trigger tell "grew past 16" from "shrank to 16"
+// Stack that remembers its count before the last change.
 public interface PreviousStackSize {
+    // Returns the count before the last change.
     int equilibrium$previousCount();
 
+    // Stores the count before the last change.
     void equilibrium$setPreviousCount(int count);
 }

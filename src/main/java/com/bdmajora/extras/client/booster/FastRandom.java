@@ -3,23 +3,33 @@ package com.bdmajora.extras.client.booster;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicLong;
 
-// A java.util.Random on xoroshiro128++ with a ziggurat normal: vanilla hands every entity and every particle its own Random, which costs an AtomicLong, a CAS loop on the seed uniquifier and a nanoTime call apiece, and then serves nextGaussian through a synchronized polar loop over StrictMath. This one is two longs seeded from a counter, unsynchronized, and samples a normal with one table lookup nearly every time. Not thread-safe by design, which matches how the game uses per-entity randoms
+// Random source with a fast generator.
 public final class FastRandom extends Random {
+    // Version of the serial form.
     private static final long serialVersionUID = 1L;
+    // Whether the source replaces the standard one.
     public static boolean enabled;
 
+    // Increment of the seed mixer.
     private static final long GOLDEN = 0x9E3779B97F4A7C15L;
+    // Source of the seeds.
     private static final AtomicLong SEEDS = new AtomicLong(System.nanoTime());
-    // Particles are constructed and updated on the client thread only, so they can share one instance and pay nothing per spawn
+    // Shared source of the particles.
     private static final FastRandom PARTICLES = new FastRandom();
 
-    // Ziggurat tables for the standard normal, 128 layers (Marsaglia & Tsang)
+    // Number of layers of the Gaussian table.
     private static final int LAYERS = 128;
+    // Start of the Gaussian tail.
     private static final double TAIL = 3.442619855899;
+    // Area of one layer.
     private static final double LAYER_AREA = 9.91256303526217e-3;
+    // Scale of the integer samples.
     private static final double SCALE = 2147483648.0;
+    // Acceptance limit of each layer.
     private static final double[] THRESHOLD = new double[LAYERS];
+    // Width of each layer.
     private static final double[] WIDTH = new double[LAYERS];
+    // Height of each layer.
     private static final double[] HEIGHT = new double[LAYERS];
 
     static {
@@ -41,24 +51,27 @@ public final class FastRandom extends Random {
         }
     }
 
-    // No initializers: Random's constructor calls setSeed before this class's field initializers would run
+    // First half of the state.
     private long state0;
+    // Second half of the state.
     private long state1;
 
+    // Creates a source with a fresh seed.
     public FastRandom() {
         super(SEEDS.getAndAdd(GOLDEN));
     }
 
+    // Creates a source with the seed.
     public FastRandom(long seed) {
         super(seed);
     }
 
-    // The shared client-thread instance for particles
+    // Returns the shared source of the particles.
     public static FastRandom particles() {
         return PARTICLES;
     }
 
-    // splitmix64 over the seed fills both words; a zero state would be a fixed point so it is nudged
+    // Resets the state from the seed.
     @Override
     public void setSeed(long seed) {
         long z = seed + GOLDEN;
@@ -69,13 +82,14 @@ public final class FastRandom extends Random {
         }
     }
 
+    // Returns the mixed bits of the value.
     private static long mix(long z) {
         z = (z ^ (z >>> 30)) * 0xBF58476D1CE4E5B9L;
         z = (z ^ (z >>> 27)) * 0x94D049BB133111EBL;
         return z ^ (z >>> 31);
     }
 
-    // xoroshiro128++ step
+    // Returns the next random long.
     @Override
     public long nextLong() {
         long s0 = this.state0;
@@ -87,33 +101,37 @@ public final class FastRandom extends Random {
         return result;
     }
 
-    // Everything Random derives from next() takes the top bits, which are the strongest in this generator
+    // Returns the next random bits.
     @Override
     protected int next(int bits) {
-        return (int) (this.nextLong() >>> (64 - bits));
+        return bits <= 0 ? 0 : (int) (this.nextLong() >>> (64 - bits));
     }
 
+    // Returns the next random int.
     @Override
     public int nextInt() {
         return (int) (this.nextLong() >>> 32);
     }
 
+    // Returns the next random boolean.
     @Override
     public boolean nextBoolean() {
         return this.nextLong() < 0L;
     }
 
+    // Returns the next random float between 0 and 1.
     @Override
     public float nextFloat() {
         return (this.nextLong() >>> 40) * 0x1.0p-24F;
     }
 
+    // Returns the next random double between 0 and 1.
     @Override
     public double nextDouble() {
         return (this.nextLong() >>> 11) * 0x1.0p-53D;
     }
 
-    // Ziggurat: a random layer and a 32-bit sample; inside the layer's rectangle (nearly always) the sample scaled by the layer width is the answer, otherwise the wedge or the tail is resolved exactly
+    // Returns the next normally distributed value.
     @Override
     public double nextGaussian() {
         for (;;) {

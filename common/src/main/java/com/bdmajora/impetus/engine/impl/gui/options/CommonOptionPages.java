@@ -18,14 +18,17 @@ import com.bdmajora.impetus.api.options.structure.*;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
+// Option pages shared by every platform.
 public class CommonOptionPages {
-    // The keep distance in chunks, singular at one
+    // Formatter of the keep distance in chunks.
     private static final ControlValueFormatter KEEP_DISTANCE = ControlValueFormatter.translateQuantity("impetus.options.mesh_terrain.keep_distance.value");
 
-    // Translucency sorting options
+    // Creates the group of translucency sorting options.
     public static OptionGroup sortingGroup(ImpetusGameOptions gameOpts) {
+        Objects.requireNonNull(gameOpts, "gameOpts");
         return OptionGroup.createBuilder()
                 .setId(StandardOptions.Group.SORTING)
                 .add(OptionImpl.createBuilder(boolean.class, gameOpts)
@@ -50,28 +53,30 @@ public class CommonOptionPages {
                 .build();
     }
 
-    // The General page's Graphics API cycler; built once per screen and handed to the Nvidium page too, so its settings follow the pending choice before Apply
+    // Creates the option that selects the graphics API.
     public static OptionImpl<ImpetusGameOptions, ImpetusGameOptions.GraphicsApi> graphicsApi(ImpetusGameOptions gameOpts) {
+        Objects.requireNonNull(gameOpts, "gameOpts");
         return OptionImpl.createBuilder(ImpetusGameOptions.GraphicsApi.class, gameOpts)
                 .setId(StandardOptions.Option.GRAPHICS_API.cast())
                 .setName(TextComponent.translatable("options.graphicsApi"))
                 .setTooltip(TextComponent.translatable("impetus.options.graphics_api.tooltip"))
                 .setControl(o -> new CyclingControl<>(o, ImpetusGameOptions.GraphicsApi.class))
                 .setImpact(OptionImpact.HIGH)
-                // Live, so a backend that failed to start (markBroken) greys the switch out on the next screen
+                // Disables the option when a backend failed to start
                 .setEnabledPredicate(MeshShaderSupport::isSupported)
-                // A GPU without mesh shaders reads OpenGL whatever the file says, and the saved choice survives for when the config moves back
+                // Reads OpenGL on a GPU without mesh shaders
                 .setBinding((opts, value) -> opts.graphicsApi = value,
                         opts -> MeshShaderSupport.isSupported() ? opts.graphicsApi : ImpetusGameOptions.GraphicsApi.OPENGL)
                 .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                 .build();
     }
 
-    // The Performance page shared by every platform
+    // Creates the performance page.
     public static OptionPage performance(ImpetusGameOptions gameOpts) {
+        Objects.requireNonNull(gameOpts, "gameOpts");
         List<OptionGroup> groups = new ArrayList<>();
 
-        // Group 1: chunk updates (matches Sodium 0.9.1)
+        // Adds the chunk update options
         groups.add(OptionGroup.createBuilder()
                 .setId(StandardOptions.Group.CHUNK_UPDATES)
                 .add(OptionImpl.createBuilder(int.class, gameOpts)
@@ -100,7 +105,7 @@ public class CommonOptionPages {
                 .build()
         );
 
-        // Group 2: rendering & culling (matches Sodium 0.9.1)
+        // Adds the rendering and culling options
         groups.add(OptionGroup.createBuilder()
                 .setId(StandardOptions.Group.RENDERING_CULLING)
                 .add(OptionImpl.createBuilder(boolean.class, gameOpts)
@@ -164,7 +169,7 @@ public class CommonOptionPages {
                         .build())
                 .build());
 
-        // Group 3: translucency sorting / quad splitting (matches Sodium 0.9.1)
+        // Adds the quad splitting options
         groups.add(OptionGroup.createBuilder()
                 .setId(StandardOptions.Group.SORTING)
                 .add(OptionImpl.createBuilder(ImpetusGameOptions.QuadSplittingMode.class, gameOpts)
@@ -182,7 +187,7 @@ public class CommonOptionPages {
                         .build())
                 .build());
 
-        // Group 4: Impetus engine tunables (no upstream Sodium equivalent; kept so functionality is not lost)
+        // Adds the engine options
         groups.add(OptionGroup.createBuilder()
                 .setId(StandardOptions.Group.CPU_SAVING)
                 .add(OptionImpl.createBuilder(AsyncOcclusionMode.class, gameOpts)
@@ -300,13 +305,15 @@ public class CommonOptionPages {
         return new OptionPage(StandardOptions.Pages.PERFORMANCE, TextComponent.translatable("impetus.options.pages.performance"), List.copyOf(groups));
     }
 
-    // Nvidium's settings on a page of their own, next to Performance in the sidebar
+    // Creates the page of the Nvidium options.
     public static OptionPage nvidium(ImpetusGameOptions gameOpts, Option<ImpetusGameOptions.GraphicsApi> graphicsApi) {
         return new OptionPage(StandardOptions.Pages.NVIDIUM, TextComponent.translatable("impetus.options.pages.nvidium"), List.of(meshTerrainGroup(gameOpts, graphicsApi)));
     }
 
-    // Nvidium's tuning; greyed out unless the Graphics API switch (pending value included) is on Nvidium
+    // Creates the group of the Nvidium options that are enabled while Nvidium is selected.
     public static OptionGroup meshTerrainGroup(ImpetusGameOptions gameOpts, Option<ImpetusGameOptions.GraphicsApi> graphicsApi) {
+        Objects.requireNonNull(gameOpts, "gameOpts");
+        Objects.requireNonNull(graphicsApi, "graphicsApi");
         BooleanSupplier nvidium = () -> graphicsApi.isAvailable() && graphicsApi.getValue() == ImpetusGameOptions.GraphicsApi.NVIDIUM;
 
         return OptionGroup.createBuilder()
@@ -374,7 +381,7 @@ public class CommonOptionPages {
                 .build();
     }
 
-    // Zero keeps exactly the render distance and the top of the range never evicts for distance
+    // Returns the text of a keep distance.
     static TextComponent formatKeepDistance(int value) {
         if (value == 0) {
             return TextComponent.translatable("impetus.options.mesh_terrain.keep_distance.render_distance");

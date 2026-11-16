@@ -12,12 +12,13 @@ import net.minecraft.world.World;
 
 import javax.annotation.Nullable;
 
-// Allocation-free transcription of World.rayTraceBlocks (which allocates a Vec3d and BlockPos per step); the odd fixups are kept since they keep client and server block selection agreeing
+// Traces a ray through blocks.
 public final class FastRayCaster {
+    // Prevents instantiation
     private FastRayCaster() {
     }
 
-    // matches World#rayTraceBlocks(Vec3d, Vec3d, boolean, boolean, boolean), with a cursor of its own
+    // Returns the first hit of the ray or null.
     @Nullable
     public static RayTraceResult rayTraceBlocks(World world, Vec3d start, Vec3d end, boolean stopOnLiquid,
                                                 boolean ignoreBlockWithoutBoundingBox,
@@ -30,14 +31,13 @@ public final class FastRayCaster {
             return null;
         }
 
-        // Loading, because World#getBlockState loads; a ray stopping at the loaded edge would let mobs see through unloaded terrain
         ChunkSectionCursor cursor = new ChunkSectionCursor(world, true);
 
         return trace(world, cursor, start, end, stopOnLiquid, ignoreBlockWithoutBoundingBox,
                 returnLastUncollidableBlock);
     }
 
-    // The same traversal against a caller-supplied cursor; explosion exposure fires dozens of converging rays over mostly the same blocks, and sharing the cursor is most of the win
+    // Returns the first hit of the ray read through the cursor or null.
     @Nullable
     public static RayTraceResult trace(World world, ChunkSectionCursor cursor, Vec3d start, Vec3d end,
                                        boolean stopOnLiquid, boolean ignoreBlockWithoutBoundingBox,
@@ -54,7 +54,6 @@ public final class FastRayCaster {
         double curY = start.y;
         double curZ = start.z;
 
-        // The block the ray starts inside is tested before any stepping happens.
         {
             IBlockState state = cursor.getBlockState(x, y, z);
             BlockPos pos = new BlockPos(x, y, z);
@@ -134,7 +133,6 @@ public final class FastRayCaster {
                 tZ = (planeZ - curZ) / deltaZ;
             }
 
-            // Negative zero would compare as the smallest candidate and stall the ray; nudging it negative forces progress, vanilla's fixup kept exactly
             if (tX == -0.0D) {
                 tX = -1.0E-4D;
             }
@@ -166,14 +164,12 @@ public final class FastRayCaster {
                 curZ = planeZ;
             }
 
-            // Landing exactly on a positive face puts floor() in the next block along, so step back.
             x = MathHelper.floor(curX) - (facing == EnumFacing.EAST ? 1 : 0);
             y = MathHelper.floor(curY) - (facing == EnumFacing.UP ? 1 : 0);
             z = MathHelper.floor(curZ) - (facing == EnumFacing.SOUTH ? 1 : 0);
 
             IBlockState state = cursor.getBlockState(x, y, z);
 
-            // Air is most of what a ray crosses and never collides, so answer before allocating; skipped when the caller wants the last uncollidable block, since vanilla records air positions as misses
             if (!returnLastUncollidableBlock && state.getMaterial() == Material.AIR) {
                 continue;
             }
@@ -192,7 +188,6 @@ public final class FastRayCaster {
                     return hit;
                 }
             } else if (returnLastUncollidableBlock) {
-                // Vanilla builds this whether or not anyone asked for it, then throws it away.
                 lastUncollidable = new RayTraceResult(RayTraceResult.Type.MISS,
                         new Vec3d(curX, curY, curZ), facing, new BlockPos(x, y, z));
             }

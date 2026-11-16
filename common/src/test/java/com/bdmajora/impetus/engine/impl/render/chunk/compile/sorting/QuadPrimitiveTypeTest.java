@@ -82,4 +82,22 @@ class QuadPrimitiveTypeTest {
         MemoryUtil.memFree(tooSmall);
         MemoryUtil.memFree(direct);
     }
+
+    // Rejects a buffer whose position leaves too few bytes and writes from the position of a large enough one.
+    @Test
+    void simpleBuffersRespectThePosition() {
+        ByteBuffer exact = indices(1, QuadPrimitiveType.TRIANGULATED);
+        exact.position(4);
+        assertThrows(IllegalStateException.class, () -> QuadPrimitiveType.TRIANGULATED.generateSimpleIndexBuffer(exact, 1));
+        ByteBuffer larger = MemoryUtil.memCalloc(28).order(ByteOrder.nativeOrder());
+        larger.putInt(0, -7).position(4);
+        QuadPrimitiveType.TRIANGULATED.generateSimpleIndexBuffer(larger, 1);
+        assertEquals(-7, larger.getInt(0));
+        assertEquals(0, larger.getInt(4));
+        assertEquals(0, larger.getInt(24));
+        QuadPrimitiveType.TRIANGULATED.generateSimpleIndexBuffer(larger, 0);
+        assertThrows(IllegalArgumentException.class, () -> QuadPrimitiveType.TRIANGULATED.generateSimpleIndexBuffer(larger, -1));
+        MemoryUtil.memFree(exact);
+        MemoryUtil.memFree(larger);
+    }
 }

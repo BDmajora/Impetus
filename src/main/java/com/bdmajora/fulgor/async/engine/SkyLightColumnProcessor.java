@@ -7,19 +7,23 @@ import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 
 import java.util.Arrays;
 
-// The skylight-specific half of the sky engine: vertical extrusion of full light down open columns and the batched seeding of changed columns; the horizontal BFS stays in SkyLightEngine
+// Processor of the sky light of one column.
 final class SkyLightColumnProcessor {
-    // A column walk spreads everywhere but back up
+    // Direction set of a column spread.
     private static final long COLUMN_SPREAD = BfsLightEngine.AxisDirection.POSITIVE_Y.everythingButThisDirection;
+    // Engine that owns the processor.
     private final SkyLightEngine engine;
+    // Flags of sections that need null checks.
     private final boolean[] nullPropagationChecks = new boolean[ChunkLightHelper.LIGHT_SECTIONS];
-    // Highest changed Y per column of the chunk being processed, reused across tasks
+    // Highest opaque y of each column.
     private final int[] columnMaxY = new int[16 * 16];
 
+    // Creates a sky light column processor from its engine.
     SkyLightColumnProcessor(SkyLightEngine engine) {
         this.engine = engine;
     }
 
+    // Initializes the nibble.
     void initNibble(int chunkX, int chunkY, int chunkZ, boolean extrude, boolean initRemovedNibbles) {
         SkyLightEngine engine = this.engine;
         if (chunkY < LightEngineCache.MIN_LIGHT_SECTION || chunkY > LightEngineCache.MAX_LIGHT_SECTION
@@ -37,7 +41,7 @@ final class SkyLightColumnProcessor {
         initSkyNibble(nibble, chunkX, chunkY, chunkZ, extrude);
     }
 
-    // A section above the highest non-empty one is full sky; one below it is extruded from the first real section above, or left uninitialised when not extruding
+    // Initializes the sky nibble.
     private void initSkyNibble(SWMRNibbleArray nibble, int chunkX, int chunkY, int chunkZ, boolean extrude) {
         SkyLightEngine engine = this.engine;
         if (!nibble.isNullNibbleUpdating()) {
@@ -86,6 +90,7 @@ final class SkyLightColumnProcessor {
         }
     }
 
+    // Stores the nibble null.
     void setNibbleNull(int chunkX, int chunkY, int chunkZ) {
         SWMRNibbleArray nibble = this.engine.getNibbleFromCache(chunkX, chunkY, chunkZ);
         if (nibble != null) {
@@ -93,7 +98,7 @@ final class SkyLightColumnProcessor {
         }
     }
 
-    // Drops NULL-state nibbles out of the window so the BFS treats them as absent, publishing the state change first
+    // Reloads the cached nibbles.
     void rewriteNibbleCache() {
         SWMRNibbleArray[] cache = this.engine.nibbleCache;
         for (int index = 0; index < cache.length; ++index) {
@@ -105,10 +110,12 @@ final class SkyLightColumnProcessor {
         }
     }
 
+    // Clears the null check flags.
     void resetNullPropagationChecks() {
         Arrays.fill(this.nullPropagationChecks, false);
     }
 
+    // Prepares edge checks for a chunk.
     void prepareBatchedEdgeChecks(int chunkX, int chunkZ) {
         resetNullPropagationChecks();
         rewriteNibbleCache();
@@ -117,7 +124,7 @@ final class SkyLightColumnProcessor {
         }
     }
 
-    // Once per section per task: if any of the 3x3 neighbourhood at this height has a real nibble, all nine get one
+    // Initialises a null section and returns whether it changed.
     boolean checkNullSection(int chunkX, int chunkY, int chunkZ, boolean extrudeInitialised) {
         SkyLightEngine engine = this.engine;
         if (chunkY < LightEngineCache.MIN_LIGHT_SECTION || chunkY > LightEngineCache.MAX_LIGHT_SECTION
@@ -148,7 +155,7 @@ final class SkyLightColumnProcessor {
         return needInitNeighbours;
     }
 
-    // The level at a position, or for an absent section the bottom layer of the first present section above; 15 when nothing is above
+    // Returns the light of a position with null sections extruded.
     private int getLightLevelExtruded(int worldX, int worldY, int worldZ) {
         SkyLightEngine engine = this.engine;
         int chunkX = worldX >> 4;
@@ -169,7 +176,7 @@ final class SkyLightColumnProcessor {
         return 15;
     }
 
-    // Walks one column down from startY carrying the sky level through transparent blocks, queueing each position for horizontal spread; returns the Y it stopped at
+    // Tries the propagate skylight.
     int tryPropagateSkylight(int worldX, int startY, int worldZ, boolean extrudeInitialised, boolean delayLightSet) {
         SkyLightEngine engine = this.engine;
         int encodeOffset = engine.coordinateOffset;
@@ -189,7 +196,6 @@ final class SkyLightColumnProcessor {
             }
             int currentInfo = engine.lightInfoAt(engine.getBlockState(worldX, startY, worldZ), worldX, startY, worldZ);
 
-            // Face 5 is the bottom of the block above, face 4 the top of this one; a solid face on either stops the column
             int aboveOpacity = LightInfo.opacity(aboveInfo);
             if (aboveOpacity > 0 && ((aboveInfo & LightInfo.REGISTRY) == 0 || LightInfo.isFaceSolid(aboveInfo, 5))) {
                 break;
@@ -213,7 +219,6 @@ final class SkyLightColumnProcessor {
             boolean appended = engine.appendToIncreaseQueue(speculativeValue);
 
             if (engine.getNibbleFromCache(worldX >> 4, startY >> 4, worldZ >> 4) == null) {
-                // The section is absent, so the speculative entry is rolled back (only if it was actually written) and the walk skips to the section below
                 if (appended) {
                     --engine.increaseQueueInitialLength;
                 }
@@ -229,6 +234,7 @@ final class SkyLightColumnProcessor {
         return startY;
     }
 
+    // Queues the sky light changes of changed positions.
     void processBlockPositionChanges(int chunkX, int chunkZ, IntOpenHashSet changedPositions) {
         SkyLightEngine engine = this.engine;
         rewriteNibbleCache();
@@ -275,6 +281,7 @@ final class SkyLightColumnProcessor {
         engine.performLightDecrease();
     }
 
+    // Queues the sky light change of one block.
     void propagateBlockChange(int blockX, int blockY, int blockZ) {
         SkyLightEngine engine = this.engine;
         rewriteNibbleCache();
@@ -286,19 +293,20 @@ final class SkyLightColumnProcessor {
         engine.performLightDecrease();
     }
 
-    // Walks the column down from its highest change with level writes deferred, then queues the darkening of whatever full-sky run lies below the stop point
+    // Queues full sky light down a column.
     private void seedColumn(int worldX, int fromY, int worldZ) {
         int maximumPropagationY = tryPropagateSkylight(worldX, fromY, worldZ, true, true);
         seedFullColumnDecrease(worldX, maximumPropagationY, worldZ);
     }
 
+    // Applies the delayed queues.
     private void applyDelayedQueues() {
         SkyLightEngine engine = this.engine;
         applyDelayedQueue(engine.increaseQueue, engine.increaseQueueInitialLength, true);
         applyDelayedQueue(engine.decreaseQueue, engine.decreaseQueueInitialLength, false);
     }
 
-    // Queues a decrease for every full-sky position below the point the column walk stopped, since whatever stopped it now shadows them
+    // Queues a decrease down a whole column.
     private void seedFullColumnDecrease(int worldX, int maximumPropagationY, int worldZ) {
         SkyLightEngine engine = this.engine;
         if (getLightLevelExtruded(worldX, maximumPropagationY, worldZ) != 15) {
@@ -324,7 +332,7 @@ final class SkyLightColumnProcessor {
         }
     }
 
-    // Writes the levels the column walks deferred, now that every column has been seeded
+    // Applies the delayed queue.
     private void applyDelayedQueue(long[] queue, int length, boolean useLevel) {
         SkyLightEngine engine = this.engine;
         int decodeOffsetX = -engine.encodeOffsetX;

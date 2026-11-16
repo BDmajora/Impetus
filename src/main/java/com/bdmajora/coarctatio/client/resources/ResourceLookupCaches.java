@@ -10,22 +10,26 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.HashSet;
 import java.util.Set;
 
-// The reload generation every resource-lookup cache keys itself on, plus the folder walk used to index directory packs; a reload bumps the generation and each cache rebuilds on its next miss, so an edited development pack is seen after F3+T exactly as before
+// Shared state of resource lookup caches.
 public final class ResourceLookupCaches {
-    private static volatile int generation;
+    // Number of reloads seen.
+    private static final java.util.concurrent.atomic.AtomicInteger generation = new java.util.concurrent.atomic.AtomicInteger();
 
+    // Prevents instantiation
     private ResourceLookupCaches() {
     }
 
+    // Returns the number of reloads seen.
     public static int generation() {
-        return generation;
+        return generation.get();
     }
 
+    // Marks every cached lookup as outdated.
     public static void onReload() {
-        generation++;
+        generation.incrementAndGet();
     }
 
-    // Every regular file under `root` as a forward-slash relative path, exact case; a folder pack's whole tree is read once instead of a stat per lookup
+    // Returns the relative paths of every file under the folder.
     public static Set<String> indexFolder(File root) {
         Set<String> paths = new HashSet<>();
         Path base = root.toPath();
@@ -48,7 +52,6 @@ public final class ResourceLookupCaches {
                 }
             });
         } catch (IOException ignored) {
-            // A half-indexed folder only means some lookups fall back to "missing", which is what an unreadable file would answer anyway
         }
         return paths;
     }

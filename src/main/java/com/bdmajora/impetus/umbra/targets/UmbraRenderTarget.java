@@ -10,21 +10,33 @@ import com.bdmajora.impetus.umbra.gl.texture.TextureParameters;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// One pack colour buffer (colortexN, gcolor in older packs) owning TWO GL textures like OptiFine's dfbColorTexturesA/B, since a pass must read the previous output while writing its own; pass N samples main and renders into alt, then BufferFlipper swaps
+// Color target of a shader pack with a main and an alternate texture.
 public class UmbraRenderTarget {
+    // Empty pixel source of an allocation.
     private static final ByteBuffer NULL_BUFFER = null;
+    // GL enum of trilinear filtering.
     private static final int GL_LINEAR_MIPMAP_LINEAR = 0x2703;
 
+    // Format of both textures.
     private final InternalTextureFormat internalFormat;
+    // GL name of the main texture.
     private final int mainTexture;
+    // GL name of the alternate texture.
     private final int altTexture;
+    // Linear filtering state of the format.
     private final boolean linear;
+    // Width in pixels.
     private int width;
+    // Height in pixels.
     private int height;
+    // Live state of the textures.
     private boolean valid = true;
+    // Mipmapped state of the main texture.
     private boolean mainMipmapped;
+    // Mipmapped state of the alternate texture.
     private boolean altMipmapped;
 
+    // Creates both textures and deletes them when one fails.
     public UmbraRenderTarget(InternalTextureFormat internalFormat, int width, int height) {
         this.internalFormat = internalFormat;
         this.width = width;
@@ -34,13 +46,21 @@ public class UmbraRenderTarget {
         this.altTexture = LWJGL.glGenTextures();
 
         this.linear = !internalFormat.isInteger();
-        setupTexture(this.mainTexture, width, height, this.linear);
-        setupTexture(this.altTexture, width, height, this.linear);
+        // Deletes both textures when their setup fails
+        try {
+            setupTexture(this.mainTexture, width, height, this.linear);
+            setupTexture(this.altTexture, width, height, this.linear);
+        } catch (RuntimeException | Error e) {
+            LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+            LWJGL.glDeleteTextures(this.mainTexture);
+            LWJGL.glDeleteTextures(this.altTexture);
+            throw e;
+        }
 
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, 0);
     }
 
-    // Allocates storage and sets the sampler state for one of the two textures
+    // Sets the filter and wrap and allocates the storage of a texture.
     private void setupTexture(int texture, int width, int height, boolean linear) {
         int filter = linear ? GL11.GL_LINEAR : GL11.GL_NEAREST;
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, texture);
@@ -49,20 +69,19 @@ public class UmbraRenderTarget {
                 this.internalFormat.getPixelFormat(), this.internalFormat.getPixelType(), NULL_BUFFER);
     }
 
-    // Reallocates both textures; contents are lost
+    // Reallocates both textures at a new size and forgets their mipmaps.
     public void resize(int newWidth, int newHeight) {
         requireValid();
         this.width = newWidth;
         this.height = newHeight;
-        boolean linear = !this.internalFormat.isInteger();
-        setupTexture(this.mainTexture, newWidth, newHeight, linear);
-        setupTexture(this.altTexture, newWidth, newHeight, linear);
+        setupTexture(this.mainTexture, newWidth, newHeight, this.linear);
+        setupTexture(this.altTexture, newWidth, newHeight, this.linear);
         this.mainMipmapped = false;
         this.altMipmapped = false;
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, 0);
     }
 
-    // Builds the mip chain for whichever texture was just rendered to
+    // Generates the mipmaps of a texture of a linear format.
     public void generateMipmaps(boolean alt) {
         requireValid();
         if (!this.linear) {
@@ -76,7 +95,7 @@ public class UmbraRenderTarget {
         turnOnMips(alt);
     }
 
-    // Switches the sampler to a mipmapped filter
+    // Marks a texture as mipmapped.
     public void turnOnMips(boolean alt) {
         if (alt) {
             this.altMipmapped = true;
@@ -85,7 +104,7 @@ public class UmbraRenderTarget {
         }
     }
 
-    // Returns both textures to the non-mipmapped filter
+    // Restores the plain filter of every mipmapped texture.
     public void resetMipmaps() {
         requireValid();
         if (this.mainMipmapped) {
@@ -98,7 +117,7 @@ public class UmbraRenderTarget {
         }
     }
 
-    // Switches one texture back to the non-mipmapped filter
+    // Marks a texture as not mipmapped.
     public void turnOffMips(boolean alt) {
         if (alt) {
             this.altMipmapped = false;
@@ -107,49 +126,52 @@ public class UmbraRenderTarget {
         }
     }
 
-    // The filter reset itself
+    // Restores the plain filter of a texture.
     private void resetMipmapState(int texture) {
         int filter = this.linear ? GL11.GL_LINEAR : GL11.GL_NEAREST;
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, texture);
         TextureParameters.setFilter2D(filter);
     }
 
-    // The format the pack requested for this buffer
+    // Returns the format of the textures.
     public InternalTextureFormat getInternalFormat() {
         return this.internalFormat;
     }
 
-    // The texture currently being read
+    // Returns the GL name of the main texture.
     public int getMainTexture() {
         requireValid();
         return this.mainTexture;
     }
 
-    // The texture currently being written
+    // Returns the GL name of the alternate texture.
     public int getAltTexture() {
         requireValid();
         return this.altTexture;
     }
 
-    // Current width
+    // Returns the width in pixels.
     public int getWidth() {
         return this.width;
     }
 
-    // Current height
+    // Returns the height in pixels.
     public int getHeight() {
         return this.height;
     }
 
-    // Frees both textures
+    // Deletes both textures once and rejects a second call.
     public void destroy() {
         requireValid();
         this.valid = false;
-        LWJGL.glDeleteTextures(this.mainTexture);
-        LWJGL.glDeleteTextures(this.altTexture);
+        try {
+            LWJGL.glDeleteTextures(this.mainTexture);
+        } finally {
+            LWJGL.glDeleteTextures(this.altTexture);
+        }
     }
 
-    // Throws if used after destroy
+    // Rejects a destroyed target.
     private void requireValid() {
         if (!this.valid) {
             throw new IllegalStateException("Tried to use a destroyed UmbraRenderTarget");

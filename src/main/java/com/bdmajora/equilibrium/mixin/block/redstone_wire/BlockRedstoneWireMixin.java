@@ -12,23 +12,25 @@ import org.spongepowered.asm.mixin.Shadow;
 
 import java.util.Set;
 
-// Removes the repeated block reads from calculateCurrentChanges: each horizontal neighbour was fetched twice and the block above up to four times; now each neighbour reads once and the block above lazily, with the load-bearing ordering of getMaxCurrentStrength and canProvidePower kept verbatim
+// Mixin that changes BlockRedstoneWire.
 @Mixin(BlockRedstoneWire.class)
 public abstract class BlockRedstoneWireMixin {
+    // Reference to the field blocks needing update of the target.
     @Shadow
     @Final
     private Set<BlockPos> blocksNeedingUpdate;
 
+    // Reference to the field can provide power of the target.
     @Shadow
     private boolean canProvidePower;
 
-    // Private in the target, so it cannot be shadowed as abstract; the body is never reached.
+    // Reference to the method get max current strength of the target.
     @Shadow
     private int getMaxCurrentStrength(World worldIn, BlockPos pos, int strength) {
         throw new AssertionError();
     }
 
-    // Overwrite: vanilla's power calculation without the redundant neighbour set allocations
+    // Replaces the whole method calculateCurrentChanges.
     @Overwrite
     private IBlockState calculateCurrentChanges(World worldIn, BlockPos pos1, BlockPos pos2, IBlockState state) {
         IBlockState previousState = state;
@@ -46,7 +48,6 @@ public abstract class BlockRedstoneWireMixin {
 
         int wirePower = 0;
 
-        // Tri-state: 0 unresolved, 1 solid, -1 not solid; resolved at most once per call and only if some horizontal neighbour is a solid cube
         int aboveIsNormalCube = 0;
 
         for (EnumFacing facing : EnumFacing.Plane.HORIZONTAL) {
@@ -88,7 +89,6 @@ public abstract class BlockRedstoneWireMixin {
         if (previousPower != power) {
             state = state.withProperty(BlockRedstoneWire.POWER, power);
 
-            // Only write if nothing else changed the block underneath while strengths were gathered; vanilla's guard, kept verbatim
             if (worldIn.getBlockState(pos1) == previousState) {
                 worldIn.setBlockState(pos1, state, 2);
             }

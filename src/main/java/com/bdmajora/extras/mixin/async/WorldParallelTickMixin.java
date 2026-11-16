@@ -23,42 +23,51 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-// The entity loop rewired for the pool: vanilla's per-entity updateEntity call becomes a collect, and the collected lists are ticked together once the loop's own bookkeeping (dismounts, already-dead removals) has run; the dead are then removed the way vanilla's loop would have
+// Mixin that changes World.
 @Mixin(World.class)
 public abstract class WorldParallelTickMixin implements ParallelWorld {
+    // Reference to the field loaded entity list of the target.
     @Shadow
     @Final
     @Mutable
     public List<Entity> loadedEntityList;
 
+    // Reference to the field player entities of the target.
     @Shadow
     @Final
     @Mutable
     public List<EntityPlayer> playerEntities;
 
+    // Reference to the field is remote of the target.
     @Shadow
     @Final
     public boolean isRemote;
 
+    // Reference to the method on entity removed of the target.
     @Shadow
     public abstract void onEntityRemoved(Entity entity);
 
+    // Reference to the method is chunk loaded of the target.
     @Shadow
     protected abstract boolean isChunkLoaded(int x, int z, boolean allowEmpty);
 
+    // Reference to the method get chunk of the target.
     @Shadow
     public abstract Chunk getChunk(int chunkX, int chunkZ);
 
+    // Field parallel added to the target.
     @Unique
     private boolean impetus$parallel;
 
+    // Field async batch added to the target.
     @Unique
     private List<Entity> impetus$asyncBatch;
 
+    // Field sync batch added to the target.
     @Unique
     private List<Entity> impetus$syncBatch;
 
-    // Server worlds get the lists that tolerate off-thread readers; done here since the fields are final and every later hook keys off the flag
+    // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void impetus$installConcurrentLists(CallbackInfo ci) {
         if (!ParallelProcessor.INSTALLED || this.isRemote) {
@@ -69,12 +78,13 @@ public abstract class WorldParallelTickMixin implements ParallelWorld {
         this.playerEntities = new CopyOnWriteArrayList<>(this.playerEntities);
     }
 
+    // Returns whether parallel.
     @Override
     public boolean impetus$isParallel() {
         return this.impetus$parallel;
     }
 
-    // Arms the batch right where vanilla enters its "regular" loop, after players have ticked
+    // Runs inside updateEntities.
     @Inject(method = "updateEntities", at = @At(value = "INVOKE_STRING",
             target = "Lnet/minecraft/profiler/Profiler;endStartSection(Ljava/lang/String;)V", args = "ldc=regular"))
     private void impetus$armBatch(CallbackInfo ci) {
@@ -84,7 +94,7 @@ public abstract class WorldParallelTickMixin implements ParallelWorld {
         }
     }
 
-    // While armed, sorts each entity into a batch instead of ticking it; unarmed (client, disabled) it is vanilla's call
+    // Replaces the call of World.updateEntity in updateEntities.
     @Redirect(method = "updateEntities", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/world/World;updateEntity(Lnet/minecraft/entity/Entity;)V"))
     private void impetus$collectOrTick(World world, Entity entity) {
@@ -100,7 +110,7 @@ public abstract class WorldParallelTickMixin implements ParallelWorld {
         }
     }
 
-    // Runs the batches where vanilla moves on to block entities, then removes whatever died, mirroring the loop's "remove" section
+    // Runs inside updateEntities.
     @Inject(method = "updateEntities", at = @At(value = "INVOKE_STRING",
             target = "Lnet/minecraft/profiler/Profiler;endStartSection(Ljava/lang/String;)V", args = "ldc=blockEntities"))
     private void impetus$runBatch(CallbackInfo ci) {
@@ -116,7 +126,7 @@ public abstract class WorldParallelTickMixin implements ParallelWorld {
         impetus$removeDead(async, sync);
     }
 
-    // Dead entities leave their chunk, the loaded list and the listeners exactly once; vanilla's loop may already have removed an entity that died before its deferred tick, and those are skipped
+    // Helper method remove dead added to the target.
     @Unique
     private void impetus$removeDead(List<Entity> async, List<Entity> sync) {
         Set<Entity> dead = null;

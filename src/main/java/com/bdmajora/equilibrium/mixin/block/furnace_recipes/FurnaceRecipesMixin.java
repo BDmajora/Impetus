@@ -14,7 +14,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.util.List;
 import java.util.Map;
 
-// getSmeltingResult and getSmeltingExperience each walk every smelting entry with compareItemStacks, and a furnace with an input asks once per tick (Chibi's optimizeFurnaceRecipeStore, done as an index over vanilla's maps rather than a replacement map so no registration order or wildcard semantics change); the lookup now only visits entries registered for the stack's item
+// Mixin that changes FurnaceRecipes.
 @Mixin(FurnaceRecipes.class)
 public abstract class FurnaceRecipesMixin {
     @Shadow
@@ -25,28 +25,32 @@ public abstract class FurnaceRecipesMixin {
     @Final
     private Map<ItemStack, Float> experienceList;
 
+    // Reference to the method compare item stacks of the target.
     @Shadow
     protected abstract boolean compareItemStacks(ItemStack stack1, ItemStack stack2);
 
+    // Index of results by input.
     private FurnaceRecipeIndex<ItemStack> equilibrium$inputs;
+    // Index of experience by output.
     private FurnaceRecipeIndex<Float> equilibrium$outputs;
 
+    // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void equilibrium$buildIndexes(CallbackInfo ci) {
         this.equilibrium$inputs = new FurnaceRecipeIndex<>(this.smeltingList);
         this.equilibrium$outputs = new FurnaceRecipeIndex<>(this.experienceList);
     }
 
-    // The only registration path vanilla and Forge offer; direct map edits are caught by the size check
+    // Runs before every return of addSmeltingRecipe.
     @Inject(method = "addSmeltingRecipe", at = @At("RETURN"))
     private void equilibrium$invalidateOnAdd(ItemStack input, ItemStack stack, float experience, CallbackInfo ci) {
-        // The constructor registers vanilla's entries before the indexes exist
         if (this.equilibrium$inputs != null) {
             this.equilibrium$inputs.invalidate();
             this.equilibrium$outputs.invalidate();
         }
     }
 
+    // Runs at the start of getSmeltingResult and can cancel it.
     @Inject(method = "getSmeltingResult", at = @At("HEAD"), cancellable = true)
     private void equilibrium$indexedResult(ItemStack stack, CallbackInfoReturnable<ItemStack> cir) {
         if (this.equilibrium$inputs == null || stack.isEmpty()) {
@@ -63,12 +67,12 @@ public abstract class FurnaceRecipesMixin {
         cir.setReturnValue(ItemStack.EMPTY);
     }
 
+    // Runs at the start of getSmeltingExperience and can cancel it.
     @Inject(method = "getSmeltingExperience", at = @At("HEAD"), cancellable = true)
     private void equilibrium$indexedExperience(ItemStack stack, CallbackInfoReturnable<Float> cir) {
         if (this.equilibrium$outputs == null || stack.isEmpty()) {
             return;
         }
-        // Forge asks the item first and only falls back to the table on a negative answer; that order is kept
         float fromItem = stack.getItem().getSmeltingExperience(stack);
         if (fromItem != -1.0F) {
             cir.setReturnValue(fromItem);

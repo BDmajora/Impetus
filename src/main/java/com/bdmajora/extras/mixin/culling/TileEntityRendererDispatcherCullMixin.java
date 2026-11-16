@@ -8,9 +8,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// The same three-argument entry the render budget gates; a culled block entity costs one flag read
+// Mixin that changes TileEntityRendererDispatcher.
 @Mixin(TileEntityRendererDispatcher.class)
 public abstract class TileEntityRendererDispatcherCullMixin {
+    // Runs at the start of render and can cancel it.
     @Inject(method = "render(Lnet/minecraft/tileentity/TileEntity;FI)V", at = @At("HEAD"), cancellable = true)
     private void impetus$skipOccluded(TileEntity blockEntity, float partialTicks, int destroyStage, CallbackInfo ci) {
         if (OcclusionCulling.shouldSkipBlockEntity(blockEntity)) {

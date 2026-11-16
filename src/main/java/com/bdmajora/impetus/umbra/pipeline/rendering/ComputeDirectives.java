@@ -9,34 +9,42 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-// A compute stage's dispatch directives (workGroups, workGroupsRender, local_size), read from the active source with the raw source as fallback, since the conditional evaluator cannot expand every macro shape
+// Work group directives of a compute shader.
 public final class ComputeDirectives {
+    // Logger of this class.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
-    // ivec, uvec or vec; the old u?ivec spelling never matched GLSL's uvec3
+    // Work groups vector.
     private static final Pattern WORK_GROUPS_VECTOR = Pattern.compile(
             "const\\s+[iu]?vec([234])\\s+workGroups\\s*=\\s*[iu]?vec\\d\\s*\\(([^)]*)\\)");
+    // Work groups named.
     private static final Pattern WORK_GROUPS_NAMED = Pattern.compile("const\\s+int\\s+workGroups([XYZ])\\s*=\\s*(\\d+)\\s*;");
+    // Work groups render.
     private static final Pattern WORK_GROUPS_RENDER = Pattern.compile(
             "const\\s+vec2\\s+workGroupsRender\\s*=\\s*vec2\\s*\\(([^)]*)\\)");
-    // Each axis on its own, so `local_size_y = 4, local_size_x = 8` and a lone local_size_y both read right; GLSL defaults an absent axis to 1
+    // Local size.
     private static final Pattern LOCAL_SIZE = Pattern.compile("local_size_([xyz])\\s*=\\s*(\\d+)");
+    // Prefix of indirect dispatch keys.
     private static final String INDIRECT_PREFIX = "indirect.";
 
-    // indirect.<pass> = <bufferObject index> <byte offset>
+    // Data of the indirect pointer.
     public record IndirectPointer(int buffer, long offset) {
     }
 
+    // Work groups.
     private final int[] workGroups;
+    // Render scale.
     private final float[] renderScale;
+    // Local size.
     private final int[] localSize;
 
+    // Creates a compute directives from its work groups and render scale and local size.
     private ComputeDirectives(int[] workGroups, float[] renderScale, int[] localSize) {
         this.workGroups = workGroups;
         this.renderScale = renderScale;
         this.localSize = localSize;
     }
 
-    // One preprocess and one comment strip per stage; the raw source is only stripped when the active one lacks a directive
+    // Parses the directives of a compute source.
     public static ComputeDirectives parse(String source, Map<String, String> defines) {
         String active = stripComments(GlslPreprocessor.resolveConditionals(source, defines));
         int[] groups = workGroups(active);
@@ -51,22 +59,22 @@ public final class ComputeDirectives {
         return new ComputeDirectives(groups, scale, local);
     }
 
-    // The declared absolute dispatch, or null
+    // Returns the fixed work group counts or null.
     public int[] workGroups() {
         return this.workGroups;
     }
 
-    // The const vec2 workGroupsRender factors, or null
+    // Returns the screen scale of the dispatch or null.
     public float[] renderScale() {
         return this.renderScale;
     }
 
-    // The layout(local_size_*) values, or null when the stage declares none
+    // Returns the local work group size.
     public int[] localSize() {
         return this.localSize;
     }
 
-    // The absolute dispatch from either spelling; an invalid vector entry voids the directive rather than guessing
+    // Parses the fixed work group counts of a source.
     static int[] workGroups(String code) {
         Matcher vector = WORK_GROUPS_VECTOR.matcher(code);
         if (vector.find()) {
@@ -90,7 +98,6 @@ public final class ComputeDirectives {
         while (matcher.find()) {
             int axis = matcher.group(1).charAt(0) - 'X';
             int value = positiveInt(matcher.group(2));
-            // The first declaration of an axis wins, as a per-axis find() did
             if (named[axis] == 0 && value > 0) {
                 named[axis] = value;
                 any = true;
@@ -99,7 +106,7 @@ public final class ComputeDirectives {
         return any ? new int[]{Math.max(1, named[0]), Math.max(1, named[1]), Math.max(1, named[2])} : null;
     }
 
-    // Screen-relative factors; a non-finite value voids the directive since NaN is the fixed-dispatch sentinel downstream
+    // Parses the screen scale of a source.
     static float[] renderScale(String code) {
         Matcher matcher = WORK_GROUPS_RENDER.matcher(code);
         if (!matcher.find()) {
@@ -115,7 +122,7 @@ public final class ComputeDirectives {
         }
     }
 
-    // The local size per axis; a zero or unreadable axis counts as 1 so no dispatch divides by it
+    // Parses the local work group size of a source.
     static int[] localSize(String code) {
         Matcher matcher = LOCAL_SIZE.matcher(code);
         int[] size = {0, 0, 0};
@@ -130,7 +137,7 @@ public final class ComputeDirectives {
         return any ? new int[]{Math.max(1, size[0]), Math.max(1, size[1]), Math.max(1, size[2])} : null;
     }
 
-    // A positive int, tolerating GLSL's unsigned suffix; -1 for anything else, overflow included
+    // Parses a positive int or returns minus one.
     static int positiveInt(String raw) {
         String value = raw.trim();
         if (value.endsWith("u") || value.endsWith("U")) {
@@ -144,7 +151,7 @@ public final class ComputeDirectives {
         }
     }
 
-    // A float literal with an optional f suffix
+    // Parses a float literal or returns NaN.
     static float floatLiteral(String raw) {
         String value = raw.trim();
         if (value.endsWith("f") || value.endsWith("F")) {
@@ -153,19 +160,19 @@ public final class ComputeDirectives {
         return Float.parseFloat(value);
     }
 
-    // Ceiling division that never overflows and never returns less than one group; a non-positive divisor counts as 1
+    // Returns a quotient rounded up.
     public static int ceilDiv(int value, int divisor) {
         long d = Math.max(1, divisor);
         long groups = (Math.max(0L, value) + d - 1) / d;
         return (int) Math.max(1L, Math.min(Integer.MAX_VALUE, groups));
     }
 
-    // Groups along one screen axis for a workGroupsRender dispatch, the float product truncated like Umbra's
+    // Returns the groups that cover a scaled screen size.
     public static int screenGroups(int size, float scale, int localSize) {
         return ceilDiv((int) Math.ceil(size * scale), localSize);
     }
 
-    // Whether the dispatch reaches every element of the target volume, in long so huge declarations cannot wrap
+    // Returns whether the groups cover a volume.
     public static boolean coversVolume(int[] workGroups, int[] localSize, int[] volume) {
         for (int i = 0; i < 3; i++) {
             if ((long) workGroups[i] * localSize[i] < volume[i]) {
@@ -175,7 +182,7 @@ public final class ComputeDirectives {
         return true;
     }
 
-    // Every indirect.<pass> directive; GL wants a non-negative offset that is a multiple of four, and the index must name a bufferObject
+    // Parses the indirect dispatch pointers of the properties.
     public static Map<String, IndirectPointer> parseIndirectPointers(Map<String, String> rawProperties) {
         Map<String, IndirectPointer> pointers = new LinkedHashMap<>();
         rawProperties.forEach((key, value) -> {
@@ -201,7 +208,7 @@ public final class ComputeDirectives {
         return pointers;
     }
 
-    // Line and block comments out in one linear pass, each block comment becoming one space as the GLSL preprocessor does; an unterminated block runs to the end, and a source without comments comes back as is
+    // Returns a source without comments.
     public static String stripComments(String source) {
         int length = source.length();
         StringBuilder out = null;

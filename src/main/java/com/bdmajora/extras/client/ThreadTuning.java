@@ -5,20 +5,25 @@ import com.bdmajora.impetus.engine.impl.render.chunk.compile.executor.ChunkBuild
 import net.minecraft.client.Minecraft;
 import com.bdmajora.impetus.engine.impl.common.util.MathUtil;
 
-// Thread priorities and the render loop's yield, after wisecase2's StutterFix: every value defaults to what the game does on its own, so nothing here moves until the user asks
+// Thread priorities of the game.
 public final class ThreadTuning {
-    // Read from the render loop every frame, so a plain static rather than a config walk
+    // Whether the render thread skips its yield.
     public static volatile boolean removeRenderYield;
 
+    // Client thread.
     private static volatile Thread clientThread;
+    // Server thread.
     private static volatile Thread serverThread;
+    // Priority of the client thread.
     private static volatile int renderPriority = Thread.NORM_PRIORITY;
+    // Priority of the server thread.
     private static volatile int serverPriority = Thread.NORM_PRIORITY;
 
+    // Prevents instantiation
     private ThreadTuning() {
     }
 
-    // Applied whenever the Extras config loads or saves; the config loads on the client thread, which is how that thread is found
+    // Applies the thread settings.
     public static void apply(ExtrasConfig.ThreadSettings settings) {
         removeRenderYield = settings.removeRenderYield;
         renderPriority = clampPriority(settings.renderThreadPriority);
@@ -32,16 +37,18 @@ public final class ThreadTuning {
         setPriority(serverThread, serverPriority);
     }
 
-    // The server thread announces itself when its run loop starts, and is dropped when it stops
+    // Records the server thread and sets its priority.
     public static void onServerThreadStarted(Thread thread) {
         serverThread = thread;
         setPriority(thread, serverPriority);
     }
 
+    // Forgets the server thread.
     public static void onServerThreadStopped() {
         serverThread = null;
     }
 
+    // Sets the priority of a live thread and ignores a refusal.
     private static void setPriority(Thread thread, int priority) {
         if (thread == null || !thread.isAlive() || thread.getPriority() == priority) {
             return;
@@ -49,10 +56,10 @@ public final class ThreadTuning {
         try {
             thread.setPriority(priority);
         } catch (SecurityException | IllegalArgumentException ignored) {
-            // A priority the JVM refuses is not worth a crash; the thread keeps what it had
         }
     }
 
+    // Returns the priority limited to the valid range.
     private static int clampPriority(int priority) {
         return MathUtil.clamp(priority, Thread.MIN_PRIORITY, Thread.MAX_PRIORITY);
     }

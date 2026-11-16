@@ -4,16 +4,20 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
-// One option deduplicated across every file and line it was declared in, so the config screen shows ONE control and the writer can patch every copy; from Iris, with ImmutableSet replaced by an unmodifiable LinkedHashSet that keeps declaration order stable
+// Option declared in one or more source locations with the same default.
 public abstract class MergedOption<O extends BaseOption, M extends MergedOption<O, M>> {
+    // Option whose comment and default are kept.
     protected final O option;
+    // Source locations of the option.
     private final Set<OptionLocation> locations;
 
+    // Creates a merged option over a location set.
     protected MergedOption(O option, Set<OptionLocation> locations) {
         this.option = option;
         this.locations = locations;
     }
 
+    // Creates a merged option with one location.
     protected MergedOption(OptionLocation location, O option) {
         this.option = option;
         Set<OptionLocation> set = new LinkedHashSet<>();
@@ -21,18 +25,18 @@ public abstract class MergedOption<O extends BaseOption, M extends MergedOption<
         this.locations = Collections.unmodifiableSet(set);
     }
 
-    // Whether the two declarations agree on their default; disagreeing defaults make the option genuinely ambiguous, with no single value the screen could show, and picking one would change what half the includes compile with
+    // Returns whether another option has the same default.
     protected abstract boolean sameDefault(O other);
 
+    // Creates a merged option of the subclass.
     protected abstract M create(O option, Set<OptionLocation> locations);
 
-    // Merges another declaration of the same option, or null when irreconcilable; null rather than an exception since an ambiguous option just drops from the config screen and the pack still runs
+    // Joins the locations of two options or returns null when their defaults differ.
     public M merge(M other) {
         if (!sameDefault(other.option)) {
             return null;
         }
 
-        // Keep whichever declaration carried a comment, the human-readable label the screen displays, since usually only one of several identical declarations has one
         O merged = this.option.getComment().isPresent() ? this.option : other.option;
 
         Set<OptionLocation> mergedLocations = new LinkedHashSet<>(this.locations);
@@ -41,12 +45,12 @@ public abstract class MergedOption<O extends BaseOption, M extends MergedOption<
         return create(merged, Collections.unmodifiableSet(mergedLocations));
     }
 
-    // The option
+    // Returns the kept option.
     public O getOption() {
         return option;
     }
 
-    // Every file and line that defines it
+    // Returns the source locations.
     public Set<OptionLocation> getLocations() {
         return locations;
     }

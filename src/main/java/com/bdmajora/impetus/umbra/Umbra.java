@@ -26,54 +26,60 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.function.BooleanSupplier;
 
-// Entry point and state holder for the shader layer: the parsed ShaderPack, compiled UmbraPipeline and per-frame UmbraRenderingPipeline, each with its own lifetime; nothing here throws, every failure leaves shaders off
+// Entry point of the Umbra shader loader.
 public final class Umbra {
+    // Name of the module in logs.
     public static final String MODNAME = "Impetus/Umbra";
+    // Logger of the module.
     private static final Logger LOGGER = LogManager.getLogger(MODNAME);
 
+    // Config of the module.
     private static UmbraConfig config;
+    // Loaded shader pack or null.
     private static ShaderPack currentPack;
 
-    // Option values queued by the in-game menu, applied and merged into <pack>.txt on the next reload; queued because changing an option recompiles the pack, which only happens on the render thread
     private static final Map<String, String> shaderPackOptionQueue = new HashMap<>();
-    // When set, the next reload discards every changed option value and takes the pack's own defaults
+    // Flag set when the pack options are reset on reload.
     private static boolean resetShaderPackOptions;
 
-    // The compiled programs for the current pack, built lazily on the render thread since compiling needs a GL context
+    // Active pipeline holder or null.
     private static UmbraPipeline pipeline;
+    // Flag set when the pipeline must be rebuilt.
     private static boolean pipelineNeedsInit;
 
-    // The frame pipeline (render targets, gbuffer, composite/final chain), built at renderWorld HEAD rather than with the compile because it sizes targets from the current framebuffer
+    // Pipeline of the loaded pack or null.
     private static UmbraRenderingPipeline renderingPipeline;
-    // Latched when construction failed for the current pack, so the attempt is not repeated and re-logged every frame
+    // Flag set when building the pipeline failed.
     private static boolean renderingPipelineFailed;
 
-    // Whether Nvidium is the Graphics API on a GPU that can run it, under which a pack loads from its Nvidium port; read live so switching the API can reload the pack
+    // Nvidium terrain.
     private static BooleanSupplier nvidiumTerrain = () -> ImpetusVintage.options().graphicsApi == ImpetusGameOptions.GraphicsApi.NVIDIUM
             && MeshShaderSupport.isSupported();
-    // Whether the current pack was loaded for Nvidium, so an API switch that needs the other copy is noticed
+    // Flag set when the pack was loaded for mesh terrain.
     private static boolean loadedForNvidium;
-    // Why the current pack's terrain cannot be drawn by Nvidium as far as porting goes (a failed port, or the programs it kept on OpenGL); empty when nothing was lost
+    // Message about the mesh terrain port.
     private static String nvidiumPortNote = "";
 
-    // The dimension last reported by onWorldChanged, so a pack loaded mid-game starts on the right program set
+    // Id of the current dimension.
     private static int dimensionId;
+    // Name of the current dimension.
     private static String dimensionName;
 
+    // Prevents instantiation
     private Umbra() {
     }
 
-    // The shader layer's logger
+    // Returns the logger.
     public static Logger logger() {
         return LOGGER;
     }
 
-    // Selected pack name and the shaderpacks directory
+    // Returns the config.
     public static UmbraConfig getConfig() {
         return config;
     }
 
-    // Brings Umbra up against a game directory (optionsshaders.txt, shaderpacks/, parse the selected pack); never throws, since a broken pack must not stop the game starting
+    // Loads the config and prepares the shader pack state.
     public static void initialize(Path gameDirectory) {
         config = new UmbraConfig(gameDirectory);
         try {
@@ -89,7 +95,7 @@ public final class Umbra {
         }
     }
 
-    // Loads or reloads the pack the config names; existing state is cleared FIRST so a failed load cannot leave half the previous pack live
+    // Loads the selected pack.
     public static synchronized void loadCurrentShaderpack() {
         unloadShaderpack();
 
@@ -97,13 +103,11 @@ public final class Umbra {
             return;
         }
 
-        // Under Nvidium the pack loads from its port, made or refreshed here as needed; the options stay in the original's file either way, so both copies share them
         String name = config.getShaderPackName();
         Path configTxt = config.getShaderpacksDirectory().resolve(name + ".txt");
         loadedForNvidium = nvidiumTerrain.getAsBoolean();
         Path packPath = loadedForNvidium ? nvidiumPort(config.getSelectedPackPath()) : config.getSelectedPackPath();
 
-        // Load the persisted changed option values, layer the queued in-game changes on top, then apply.
         Map<String, String> changedConfigs = readConfigProperties(configTxt);
         changedConfigs.putAll(shaderPackOptionQueue);
         shaderPackOptionQueue.clear();
@@ -123,14 +127,12 @@ public final class Umbra {
                 return;
             }
 
-            // Persist the effective changed values (only options that differ from pack defaults are stored).
             MutableOptionValues effective = pack.getShaderPackOptions().getOptionValues().mutableCopy();
             Properties toSave = new Properties();
             effective.getBooleanValues().forEach((k, v) -> toSave.setProperty(k, Boolean.toString(v)));
             effective.getStringValues().forEach(toSave::setProperty);
             writeConfigProperties(configTxt, toSave);
 
-            // A pack picked from the menu mid-game starts on the dimension already being played
             if (dimensionName != null) {
                 pack.selectDimension(dimensionId, dimensionName);
             }
@@ -142,7 +144,7 @@ public final class Umbra {
         }
     }
 
-    // The world is about to change, before its renderer is rebuilt: a dimension with its own pack folder swaps the program set, and the frame pipeline follows on the next frame; null name means no world
+    // Handles the world changed.
     public static synchronized void onWorldChanged(int id, String name) {
         dimensionId = id;
         dimensionName = name;
@@ -152,26 +154,25 @@ public final class Umbra {
         }
     }
 
-    // Queues option changes from the in-game menu and reloads so they take effect and persist; keyed by option name, value "true"/"false" or the raw token
+    // Saves option changes and reloads the pack.
     public static synchronized void queueShaderPackOptions(Map<String, String> changes) {
         shaderPackOptionQueue.putAll(changes);
         loadCurrentShaderpack();
     }
 
-    // Resets every changed option back to the pack's own defaults and reloads immediately
+    // Clears the option values and reloads the pack.
     public static synchronized void resetShaderPackOptionsAndReload() {
         resetShaderPackOptions = true;
         loadCurrentShaderpack();
     }
 
-    // Loads the pack's saved option values
+    // Reads a properties file into a map.
     private static Map<String, String> readConfigProperties(Path path) {
         Map<String, String> result = new HashMap<>();
         if (!Files.exists(path)) {
             return result;
         }
         Properties properties = new Properties();
-        // NB: OptiFine specifies these config files as ISO-8859-1, which Properties.load already defaults to for byte streams
         try (InputStream is = Files.newInputStream(path)) {
             properties.load(is);
         } catch (IOException e) {
@@ -182,7 +183,7 @@ public final class Umbra {
         return result;
     }
 
-    // Saves the pack's option values
+    // Writes a properties file.
     private static void writeConfigProperties(Path path, Properties properties) {
         try (OutputStream os = Files.newOutputStream(path)) {
             properties.store(os, "This file stores overrides for the shader pack's default options.");
@@ -191,21 +192,19 @@ public final class Umbra {
         }
     }
 
-    // Render-thread hook building or rebuilding the compiled pipeline the first frame after a pack change; cheap no-op otherwise, needs a GL context, and a compile failure logs and leaves shaders off
+    // Rebuilds the pipeline when needed.
     public static synchronized void updatePipeline() {
         if (!pipelineNeedsInit) {
             return;
         }
-        // With the pack switched off entirely there is no renderWorld-driven rebuild, so tear down here; with a pack active, leave the flag for beginFrame() so teardown and rebuild happen together
         if (currentPack == null) {
             pipelineNeedsInit = false;
             destroyPipelines();
         }
     }
 
-    // Render-thread hook for renderWorld HEAD: builds the frame pipeline on the first frame after a pack change and returns it; null when shaders are off OR the build failed, both meaning render vanilla
+    // Returns the pipeline for this frame.
     public static synchronized UmbraRenderingPipeline beginFrame() {
-        // Distant Horizons' rendering toggle: a flip reloads the pack (its define environment and LOD programs are baked at load), which lands in the rebuild below
         com.bdmajora.impetus.umbra.compat.dh.DhCompat.checkFrame();
         if (pipelineNeedsInit) {
             pipelineNeedsInit = false;
@@ -226,12 +225,12 @@ public final class Umbra {
         return renderingPipeline;
     }
 
-    // The frame pipeline for mid-frame and end-of-frame hooks, or null when shaders are off; never BUILDS anything, so safe from any hook regardless of ordering
+    // Returns the rendering pipeline.
     public static UmbraRenderingPipeline getRenderingPipeline() {
         return renderingPipeline;
     }
 
-    // Frees GL resources on pack unload; must run on the render thread
+    // Deletes every pipeline.
     private static void destroyPipelines() {
         if (pipeline != null) {
             pipeline.destroy();
@@ -243,7 +242,7 @@ public final class Umbra {
         }
     }
 
-    // Phase switches from the vanilla render mixins; a no-op with no pack loaded
+    // Stores the phase.
     public static void setPhase(ProgramId phase) {
         UmbraRenderingPipeline pipeline = getRenderingPipeline();
         if (pipeline != null) {
@@ -251,6 +250,7 @@ public final class Umbra {
         }
     }
 
+    // Stores the phase.
     public static void setPhase(ProgramId phase, int renderStage) {
         UmbraRenderingPipeline pipeline = getRenderingPipeline();
         if (pipeline != null) {
@@ -258,7 +258,7 @@ public final class Umbra {
         }
     }
 
-    // The glowing-eyes and enchantment-glint brackets from the entity layer mixins; no-ops with no pack loaded, so the mixins stay one line each
+    // Switches to the eyes program.
     public static void beginEyes() {
         UmbraRenderingPipeline pipeline = getRenderingPipeline();
         if (pipeline != null) {
@@ -266,6 +266,7 @@ public final class Umbra {
         }
     }
 
+    // Leaves the eyes program.
     public static void endEyes() {
         UmbraRenderingPipeline pipeline = getRenderingPipeline();
         if (pipeline != null) {
@@ -273,6 +274,7 @@ public final class Umbra {
         }
     }
 
+    // Switches to the armor glint program.
     public static void beginArmorGlint() {
         UmbraRenderingPipeline pipeline = getRenderingPipeline();
         if (pipeline != null) {
@@ -280,6 +282,7 @@ public final class Umbra {
         }
     }
 
+    // Leaves the armor glint program.
     public static void endArmorGlint() {
         UmbraRenderingPipeline pipeline = getRenderingPipeline();
         if (pipeline != null) {
@@ -287,7 +290,7 @@ public final class Umbra {
         }
     }
 
-    // Re-uploads the per-object uniforms (entity/item/block-entity ids, entity colour) to the bound program; no-op with no pack loaded
+    // Recomputes the uniforms that change each frame.
     public static void refreshDynamicUniforms() {
         UmbraRenderingPipeline pipeline = getRenderingPipeline();
         if (pipeline != null) {
@@ -295,39 +298,38 @@ public final class Umbra {
         }
     }
 
-    // The compiled pipeline, or null when shaders are disabled or it has not been built yet this frame
+    // Returns the pipeline.
     public static UmbraPipeline getPipeline() {
         return pipeline;
     }
 
-    // Drops the active pack and everything built from it
+    // Unloads the pack and deletes its pipeline.
     public static synchronized void unloadShaderpack() {
         currentPack = null;
-        // GL teardown must run on the render thread; flag a rebuild so updatePipeline() disposes the pipeline there.
         pipelineNeedsInit = true;
     }
 
-    // Whether a pack is parsed and active; this is what IrisApi reports to other mods, so it means "shaders are running", not "a pack is selected", and a pack whose pipeline failed to build is not running
+    // Returns whether shader pack in use.
     public static boolean isShaderPackInUse() {
         return currentPack != null && !renderingPipelineFailed;
     }
 
-    // The parsed pack, or null when shaders are disabled
+    // Returns the current pack.
     public static ShaderPack getCurrentPack() {
         return currentPack;
     }
 
-    // The selected pack's name or the "off" sentinel; selection is config state and exists even when nothing loaded
+    // Returns the selected pack name.
     public static String getSelectedPackName() {
         return config == null ? UmbraConfig.NO_PACK : config.getShaderPackName();
     }
 
-    // Every pack found under shaderpacks/, for the selection screen
+    // Returns the names of the installed packs.
     public static List<String> listAvailablePacks() {
         return config == null ? java.util.Collections.emptyList() : config.listShaderpacks();
     }
 
-    // The selected pack's Nvidium port in nvidium_shaderpacks/, written the first time the pack loads under Nvidium and again whenever the pack or the port format has changed since; the original when it is not there to port or porting fails, which leaves its terrain on OpenGL
+    // Returns the mesh terrain port of a pack.
     private static Path nvidiumPort(Path original) {
         nvidiumPortNote = "";
         if (!Files.exists(original)) {
@@ -351,12 +353,12 @@ public final class Umbra {
         }
     }
 
-    // What porting the current pack for Nvidium lost, for the F3 overlay: why the port failed, or the programs it kept on OpenGL and why; empty when nothing was
+    // Returns the nvidium port note.
     public static String getNvidiumPortNote() {
         return nvidiumPortNote;
     }
 
-    // Reloads the pack when the Graphics API now wants the other copy of it (the port or the original); true when it did, so the caller rebuilds the renderers
+    // Reloads the pack when the terrain backend changed and returns whether it did.
     public static synchronized boolean reloadIfTerrainBackendChanged() {
         if (config == null || !config.isShaderPackEnabled() || loadedForNvidium == nvidiumTerrain.getAsBoolean()) {
             return false;
@@ -365,7 +367,7 @@ public final class Umbra {
         return true;
     }
 
-    // Selects a pack by name (or NO_PACK to disable), persists to optionsshaders.txt and re-parses; does NO GL work so it is safe from the GUI thread, and updatePipeline rebuilds next frame
+    // Stores the shaderpack and reload.
     public static synchronized void setShaderpackAndReload(String name) {
         if (config == null) {
             return;

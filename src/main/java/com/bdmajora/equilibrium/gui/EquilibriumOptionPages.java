@@ -20,36 +20,40 @@ import java.util.List;
 import java.util.Map;
 import java.util.LinkedHashMap;
 
-// Optimizations page in Impetus' video options, built by walking EquilibriumOptions so new entries appear for free; every toggle is REQUIRES_GAME_RESTART since the mixin plugin reads options before the window exists
+// Option pages of the general performance patches.
 public final class EquilibriumOptionPages {
+    // Identifier of the module.
     private static final String MOD_ID = "equilibrium";
 
+    // Storage that reads and writes the settings.
     private static final OptionStorage<EquilibriumConfig> STORAGE = new OptionStorage<EquilibriumConfig>() {
-        // The options screen edits the live config directly
+        // Returns the loaded settings.
         @Override
         public EquilibriumConfig getData() {
             return Equilibrium.config();
         }
 
-        // Writes the file once the screen is dismissed
+        // Writes the settings to the file.
         @Override
         public void save() {
             Equilibrium.config().save();
         }
     };
 
+    // Prevents instantiation
     private EquilibriumOptionPages() {
     }
 
-    // Which page each category lands on; a category declared later without a row here goes to the internals page
+    // Page of each category.
     private static final Map<String, String> PAGE_BY_CATEGORY = ImmutableMap.<String, String>builder()
             .put("world", "world").put("chunk", "world").put("worldgen", "world")
             .put("entity", "entities").put("ai", "entities").put("collections", "entities").put("advancements", "entities")
             .put("block", "internals").put("alloc", "internals").put("math", "internals").put("util", "internals")
             .build();
+    // Order of the pages.
     private static final List<String> PAGE_ORDER = ImmutableList.of("world", "entities", "internals");
 
-    // Three pages, one group per declared category headed with the category's name, in declaration order within each page
+    // Returns the pages with one group for each category.
     public static List<OptionPage> pages() {
         Map<String, List<OptionGroup>> byPage = new LinkedHashMap<>();
         for (String pageId : PAGE_ORDER) {
@@ -57,7 +61,6 @@ public final class EquilibriumOptionPages {
         }
 
         for (String category : EquilibriumOptions.categories()) {
-            // FIX: Prefix the category string with "group." so it doesn't collide with boolean toggles
             OptionGroup.Builder group = OptionGroup.createBuilder()
                     .setId(OptionIdentifier.create(MOD_ID, "group." + category))
                     .setName(TextComponent.translatable("impetus.options.equilibrium.category." + category));
@@ -71,7 +74,6 @@ public final class EquilibriumOptionPages {
 
         List<OptionPage> pages = new ArrayList<>();
         for (Map.Entry<String, List<OptionGroup>> entry : byPage.entrySet()) {
-            // "page." keeps the id clear of the rule toggles, whose ids are the bare category paths (equilibrium:world is mixin.world)
             pages.add(new OptionPage(
                     OptionIdentifier.create(MOD_ID, "page." + entry.getKey()),
                     TextComponent.translatable("impetus.options.pages.equilibrium." + entry.getKey()),
@@ -80,7 +82,7 @@ public final class EquilibriumOptionPages {
         return pages;
     }
 
-    // One checkbox per rule, wired to the config and labelled from the lang keys
+    // Returns the toggle of the entry.
     private static OptionImpl<EquilibriumConfig, Boolean> toggle(EquilibriumOptions.Entry entry) {
         String key = langKey(entry);
 
@@ -104,11 +106,10 @@ public final class EquilibriumOptionPages {
         return builder.build();
     }
 
-    // Impact assigned per category, not per option; utility categories get no badge since they enable other options rather than removing work
+    // Returns the impact of the entry category or null.
     private static OptionImpact impactOf(EquilibriumOptions.Entry entry) {
         switch (entry.category()) {
             case "world":
-                // Explosions, ray casting and block access. The largest single wins on this version.
                 return OptionImpact.HIGH;
             case "entity":
             case "math":
@@ -127,12 +128,12 @@ public final class EquilibriumOptionPages {
         }
     }
 
-    // e.g. mixin.alloc.enum_values.piston_block -> alloc_enum_values_piston_block
+    // Returns the path of the entry as an identifier.
     private static String key(EquilibriumOptions.Entry entry) {
         return entry.path().replace('.', '_');
     }
 
-    // Lang key for a rule, derived from its path so a new option needs no GUI change
+    // Returns the translation key prefix of the entry.
     private static String langKey(EquilibriumOptions.Entry entry) {
         return "impetus.options.equilibrium." + key(entry);
     }

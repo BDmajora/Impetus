@@ -12,26 +12,27 @@ import com.bdmajora.impetus.umbra.Umbra;
 import com.bdmajora.impetus.umbra.material.WorldRenderingSettings;
 import com.bdmajora.impetus.umbra.uniforms.CapturedRenderingState;
 
+// Mixin that changes RenderManager.
 @Mixin(RenderManager.class)
 public class RenderManagerEntityIdMixin {
-    // Primitive stack: one push and pop per rendered object, so no boxing
+    // Field entity id stack added to the target.
     @Unique
     private final IntArrayList impetus$entityIdStack = new IntArrayList();
 
+    // Runs at the start of renderEntityStatic.
     @Inject(method = "renderEntityStatic(Lnet/minecraft/entity/Entity;FZ)V", at = @At("HEAD"))
     private void impetus$beginEntity(Entity entity, float partialTicks, boolean p_188388_3_, CallbackInfo ci) {
         CapturedRenderingState state = CapturedRenderingState.INSTANCE;
         this.impetus$entityIdStack.push(state.getCurrentRenderedEntity());
         state.setCurrentRenderedEntity(WorldRenderingSettings.getEntityId(entity));
-        // Sends the id change to the bound program; setting it only on CapturedRenderingState leaves it in Java, since the uniform uploads at phase bind and one phase covers every object
         Umbra.refreshDynamicUniforms();
     }
 
+    // Runs before every return of renderEntityStatic.
     @Inject(method = "renderEntityStatic(Lnet/minecraft/entity/Entity;FZ)V", at = @At("RETURN"))
     private void impetus$endEntity(Entity entity, float partialTicks, boolean p_188388_3_, CallbackInfo ci) {
         CapturedRenderingState.INSTANCE.setCurrentRenderedEntity(
                 this.impetus$entityIdStack.isEmpty() ? -1 : this.impetus$entityIdStack.popInt());
-        // The restore matters as much as the set: without it the last entity's id stays live over everything drawn after the batch
         Umbra.refreshDynamicUniforms();
     }
 

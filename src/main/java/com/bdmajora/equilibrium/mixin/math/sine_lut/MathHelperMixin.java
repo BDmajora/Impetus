@@ -11,15 +11,16 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Swaps vanilla's 256 KB sine table for CompactSineLUT's 64 KB one and nulls SIN_TABLE, since the cache footprint is the point; only the two overwritten methods read it, and ModCompatibility disables this when BetterFps' transformer would still read the field
+// Mixin that changes MathHelper.
 @Mixin(MathHelper.class)
 public class MathHelperMixin {
+    // Reference to the field sin table of the target.
     @Shadow
     @Final
     @Mutable
     private static float[] SIN_TABLE;
 
-    // Builds the compact table then drops vanilla's, which nothing has read yet at this point
+    // Runs before every return of static initializer.
     @Inject(method = "<clinit>", at = @At("RETURN"))
     private static void onClassInit(CallbackInfo ci) {
         CompactSineLUT.init(SIN_TABLE);
@@ -27,13 +28,13 @@ public class MathHelperMixin {
         SIN_TABLE = null;
     }
 
-    // Overwrite: through the compact table
+    // Replaces the whole method sin.
     @Overwrite
     public static float sin(float value) {
         return CompactSineLUT.sin(value);
     }
 
-    // Overwrite: through the compact table
+    // Replaces the whole method cos.
     @Overwrite
     public static float cos(float value) {
         return CompactSineLUT.cos(value);

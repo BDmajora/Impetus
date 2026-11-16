@@ -17,27 +17,39 @@ import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.SectionLattice;
 import com.bdmajora.impetus.engine.impl.render.chunk.region.RenderRegion;
 import org.joml.Vector3ic;
 
+// Visitor that collects the visible sections into render lists and the sections to rebuild into queues.
 public class VisibleChunkCollector implements OcclusionCuller.Visitor {
+    // Render lists in draw order.
     @Getter(AccessLevel.PACKAGE)
     private final ObjectArrayList<ChunkRenderList> sortedRenderLists;
+    // Rebuild queues by update type.
     private final EnumMap<ChunkUpdateType, ArrayDeque<RenderSection>> sortedRebuildLists;
+    // Sections dropped from each queue by update type.
     private final int[] rebuildQueueOverflowCounts;
+    // Render list of each region.
     private final ChunkRenderList[] renderListsByRegion;
 
+    // Candidates for rebuilding by update type.
     private final LongArrayList[] rebuildCandidates;
 
+    // Frame of the search.
     private final int frame;
 
+    // Number of first builds queued per frame.
     private final int targetQueueSize;
 
+    // Lattice of the sections.
     private final SectionLattice lattice;
 
-    // Camera position in blocks, used as the origin for the rebuild ordering
+    // Camera position in blocks.
     private final int cameraX, cameraY, cameraZ;
 
+    // Dropped candidate state of the queues.
     private boolean hasAdditionalUpdates;
+    // Finished state of the queues.
     private boolean rebuildListsFinished;
 
+    // Creates a collector.
     public VisibleChunkCollector(SectionLattice lattice, int frame, int regionIdsLength, int targetQueueSize, Vector3ic cameraBlockPos) {
         this.lattice = lattice;
         this.frame = frame;
@@ -57,6 +69,7 @@ public class VisibleChunkCollector implements OcclusionCuller.Visitor {
         }
     }
 
+    // Creates and registers the render list of a region.
     private ChunkRenderList createRenderList(RenderRegion region) {
         ChunkRenderList renderList = new ChunkRenderList(region);
         this.sortedRenderLists.add(renderList);
@@ -64,10 +77,10 @@ public class VisibleChunkCollector implements OcclusionCuller.Visitor {
         return renderList;
     }
 
+    // Adds a visited section to its render list and the rebuild candidates.
     @Override
     public void visit(int latticeIndex, int regionId, int sectionIndex, int chunkX, int chunkY, int chunkZ, int meta, boolean visible) {
-        // Note: even if a section does not have render objects, we must ensure the render list is initialized and put
-        // into the sorted queue of lists, so that we maintain the correct order of draw calls.
+        // Creates the list of the region even for an empty section to keep the draw order
         ChunkRenderList renderList = this.renderListsByRegion[regionId];
 
         if (renderList == null) {
@@ -82,15 +95,14 @@ public class VisibleChunkCollector implements OcclusionCuller.Visitor {
 
             ChunkUpdateType type = PackedSectionMetadata.getCompactPendingUpdate(meta);
 
-            // Skip sections with an in-flight build to avoid redundant work. This is an advisory
-            // check only: submitRebuildTasks() will validate getPendingUpdate() independently before
-            // scheduling, so a stale read here cannot cause a double submission.
+            // Skips sections with a build in flight
             if (type != null && !PackedSectionMetadata.isCompactBuildInFlight(meta)) {
                 this.addRebuildCandidate(latticeIndex, chunkX, chunkY, chunkZ, type);
             }
         }
     }
 
+    // Adds a section to the candidates ordered by distance to the camera.
     private void addRebuildCandidate(int latticeIndex, int chunkX, int chunkY, int chunkZ, ChunkUpdateType type) {
         long dx = ((long) chunkX << 4) + 8 - this.cameraX;
         long dy = ((long) chunkY << 4) + 8 - this.cameraY;
@@ -106,6 +118,7 @@ public class VisibleChunkCollector implements OcclusionCuller.Visitor {
         candidates.add((distanceSq << 32) | (latticeIndex & 0xFFFFFFFFL));
     }
 
+    // Fills the rebuild queues from the nearest candidates and rejects a second call.
     public void finishRebuildLists() {
         if (this.rebuildListsFinished) {
             throw new IllegalStateException("Rebuild lists already finished");
@@ -126,11 +139,11 @@ public class VisibleChunkCollector implements OcclusionCuller.Visitor {
             long[] keys = candidates.elements();
             int count = candidates.size();
 
-            // Do not limit the queue size for rebuilds
-            int limit = type == ChunkUpdateType.INITIAL_BUILD ? Math.min(count, this.targetQueueSize) : count;
+            // Limits only the first builds
+            int limit = type == ChunkUpdateType.INITIAL_BUILD ? Math.max(0, Math.min(count, this.targetQueueSize)) : count;
 
-            // Only use max-heap selection when we need 1/3 or less of the full list
-            if (limit * 3 < count) {
+            // Selects with a heap when at most a third is needed
+            if ((long) limit * 3 < count) {
                 keys = selectSmallest(keys, count, limit);
             } else {
                 Arrays.sort(keys, 0, count);
@@ -151,14 +164,12 @@ public class VisibleChunkCollector implements OcclusionCuller.Visitor {
         }
     }
 
-    /**
-     * {@return the {@code k} smallest of the first {@code count} keys, in ascending order}
-     *
-     * <p>Uses a bounded max-heap: once it holds {@code k} keys, a candidate larger than the heap's root is rejected
-     * with a single comparison, so for the common case where most candidates are farther than the cutoff this runs
-     * in roughly linear time instead of the {@code n log n} of a full sort.</p>
-     */
+    // Returns the smallest keys in ascending order.
     private static long[] selectSmallest(long[] keys, int count, int k) {
+        if (k <= 0) {
+            return new long[0];
+        }
+
         var comparator = LongComparators.OPPOSITE_COMPARATOR;
 
         long[] heap = Arrays.copyOf(keys, k);
@@ -178,10 +189,12 @@ public class VisibleChunkCollector implements OcclusionCuller.Visitor {
         return heap;
     }
 
+    // Creates the sorted render lists.
     public SortedRenderLists createRenderLists() {
         return new SortedRenderLists(this.sortedRenderLists);
     }
 
+    // Returns the rebuild queues and rejects a call before they were finished.
     public ChunkRebuildLists getRebuildLists() {
         if (!this.rebuildListsFinished) {
             throw new IllegalStateException("finishRebuildLists() must be called on the search thread first");

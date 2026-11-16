@@ -12,14 +12,16 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Routes both registry walks through the cache; getRemainingItems repeats the same scan findMatchingRecipe just did, so a craft costs two full walks in vanilla
+// Mixin that changes CraftingManager.
 @Mixin(CraftingManager.class)
 public abstract class CraftingManagerMixin {
+    // Runs at the start of findMatchingRecipe and can cancel it.
     @Inject(method = "findMatchingRecipe", at = @At("HEAD"), cancellable = true)
     private static void equilibrium$cachedMatch(InventoryCrafting matrix, World world, CallbackInfoReturnable<IRecipe> cir) {
         cir.setReturnValue(CraftingCache.findMatchingRecipe(matrix, world));
     }
 
+    // Runs at the start of getRemainingItems and can cancel it.
     @Inject(method = "getRemainingItems", at = @At("HEAD"), cancellable = true)
     private static void equilibrium$cachedRemaining(InventoryCrafting matrix, World world, CallbackInfoReturnable<NonNullList<ItemStack>> cir) {
         IRecipe recipe = CraftingCache.findMatchingRecipe(matrix, world);

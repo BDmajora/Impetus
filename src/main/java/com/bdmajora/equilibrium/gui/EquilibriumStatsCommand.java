@@ -7,27 +7,27 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
 
-// /equilibrium reports active optimizations and who disabled the rest; client-side so it works in single-player and on servers without the mod
+// Command that prints which patches are active.
 public class EquilibriumStatsCommand extends CommandBase {
-    // Command name, so this is /equilibrium
+    // Returns the command name.
     @Override
     public String getName() {
         return "equilibrium";
     }
 
-    // Shown by /help
+    // Returns the usage text.
     @Override
     public String getUsage(ICommandSender sender) {
         return "/equilibrium — report which of Impetus' general performance patches are active";
     }
 
-    // Zero so any player can run it; it only reads local config state
+    // Returns the permission level that every player has.
     @Override
     public int getRequiredPermissionLevel() {
         return 0;
     }
 
-    // Indented lines are detail under a heading, so they are greyed to keep the report readable
+    // Sends the statistics to the sender.
     @Override
     public void execute(MinecraftServer server, ICommandSender sender, String[] args) {
         for (String line : Equilibrium.statistics()) {

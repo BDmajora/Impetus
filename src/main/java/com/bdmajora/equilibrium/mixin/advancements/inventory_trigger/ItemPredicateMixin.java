@@ -9,16 +9,19 @@ import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 
-// The count test is an int compare and the item test can be an NBT/ore-dictionary walk, so the count goes first and is phrased as a crossing: the stack must have entered the range with this change
+// Mixin that changes ItemPredicate.
 @Mixin(ItemPredicate.class)
 public abstract class ItemPredicateMixin implements SizeCheckedPredicate {
+    // Reference to the field count of the target.
     @Shadow
     @Final
     private MinMaxBounds count;
 
+    // Reference to the method test of the target.
     @Shadow
     public abstract boolean test(ItemStack stack);
 
+    // Handles matches crossing.
     @Override
     public boolean equilibrium$matchesCrossing(ItemStack stack) {
         Float min = ((MinMaxBoundsAccessor) this.count).equilibrium$min();

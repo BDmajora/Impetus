@@ -2,24 +2,29 @@ package com.bdmajora.dynamiclights;
 
 import com.bdmajora.impetus.impl.gui.Localized;
 
-// How a creeper flash or TNT fuse becomes light: SIMPLE is one constant luminance (one rebuild), FANCY ramps it and re-lights on every change, so the cost difference is purely rebuild count
+// Lighting mode of explosive entities.
 public enum ExplosiveLightingMode implements Localized {
+    // No lighting.
     OFF("impetus.options.dynamiclights.explosive.off"),
+    // Constant lighting.
     SIMPLE("impetus.options.dynamiclights.explosive.simple"),
+    // Lighting that follows the flash.
     FANCY("impetus.options.dynamiclights.explosive.fancy");
 
+    // Translation key of the name.
     private final String key;
 
+    // Creates a mode.
     ExplosiveLightingMode(String key) {
         this.key = key;
     }
 
-    // Anything but OFF
+    // Returns whether the mode lights anything.
     public boolean isEnabled() {
         return this != OFF;
     }
 
-    // Lang key for the cycler label
+    // Returns the translation key of the name.
     @Override
     public String translationKey() {
         return this.key;

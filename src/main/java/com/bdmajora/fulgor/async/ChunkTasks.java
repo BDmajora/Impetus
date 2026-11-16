@@ -4,30 +4,38 @@ import com.google.common.util.concurrent.SettableFuture;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import net.minecraft.world.chunk.Chunk;
 
-// One chunk's batched light work: block and section changes, an initial lighting request and edge checks accumulate here until a worker takes the batch
+// Pending light work of one chunk.
 public final class ChunkTasks {
+    // Packed chunk position.
     public final long chunkCoordinate;
-    // Completed when the batch has been processed or dropped, for unload to wait on
+    // Future completed when the work is done.
     public final SettableFuture<Void> onComplete;
-    // Changed positions packed as x | z << 4 | y << 8
+    // Packed positions of changed blocks.
     public IntOpenHashSet changedPositions;
-    // Per-section emptiness changes: null untouched, TRUE emptied, FALSE filled
+    // Changed section set.
     public Boolean[] changedSectionSet;
-    // Non-null when the chunk needs its initial lighting pass
+    // Chunk to light from scratch or null.
     public Chunk initialLightChunk;
+    // Empty flags of its sections.
     public Boolean[] initialLightEmptySections;
-    // Generation of the coordinated relight this batch carries, zero for an ordinary batch
+    // Queue generation of the initial lighting.
     public long initialLightGeneration;
-    // Non-null for a chunk restored with valid saved light, which only needs its nibbles and emptiness map set up
+    // Chunk to seed on load or null.
     public Chunk loadInitChunk;
+    // Empty flags of its sections.
     public Boolean[] loadInitEmptySections;
+    // Sections whose sky light edges need checks.
     public IntOpenHashSet queuedEdgeChecksSky;
+    // Sections whose block light edges need checks.
     public IntOpenHashSet queuedEdgeChecksBlock;
-    // Generation whose final edge reconciliation this batch carries, zero for ordinary edge maintenance
+    // Queue generation of the edge checks.
     public long initialLightEdgeGeneration;
+    // Number of edge check attempts.
     public int edgeCheckAttempts;
+    // Number of relight attempts.
     public int relightAttempts;
 
+    // Creates a chunk tasks from its chunk coordinate.
     public ChunkTasks(long chunkCoordinate) {
         this.chunkCoordinate = chunkCoordinate;
         this.onComplete = SettableFuture.create();

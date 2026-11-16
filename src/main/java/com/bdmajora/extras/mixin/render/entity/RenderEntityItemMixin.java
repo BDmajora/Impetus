@@ -8,9 +8,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// OptiFine's Dropped Items switch, Fancy vs Fast: vanilla stacks up to five model copies by stack size, Fast draws one, a real saving on a floor covered in drops
+// Mixin that changes RenderEntityItem.
 @Mixin(RenderEntityItem.class)
 public class RenderEntityItemMixin {
+    // Runs at the start of getModelCount and can cancel it.
     @Inject(method = "getModelCount", at = @At("HEAD"), cancellable = true)
     private void impetus$modelCount(ItemStack stack, CallbackInfoReturnable<Integer> cir) {
         if (!Extras.options().render.droppedItemsFancy) {

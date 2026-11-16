@@ -2,24 +2,26 @@ package com.bdmajora.impetus.umbra.uniforms.custom;
 
 import com.bdmajora.impetus.umbra.gl.uniform.UniformCollector;
 
-// The custom-uniform set of whichever pack is loaded; static like CommonUniforms since threading the pipeline through every compilation path (several reached from mixins with no reference) is worse. Compile sites call assignTo beside addCommonUniforms, the pipeline calls update once per frame before any upload
+// Custom uniforms of the active pack.
 public final class ActiveCustomUniforms {
+    // Active uniforms or null.
     private static CustomUniforms active;
 
+    // Prevents instantiation
     private ActiveCustomUniforms() {
     }
 
-    // Installs the pack's custom uniforms
+    // Stores the value.
     public static void set(CustomUniforms uniforms) {
         active = uniforms;
     }
 
-    // On pack unload
+    // Drops the active uniforms.
     public static void clear() {
         active = null;
     }
 
-    // Evaluates every expression for this frame
+    // Recomputes the active uniforms.
     public static void update() {
         CustomUniforms current = active;
         if (current != null) {
@@ -27,7 +29,7 @@ public final class ActiveCustomUniforms {
         }
     }
 
-    // Registers each declared uniform against a program
+    // Assigns the to.
     public static void assignTo(UniformCollector collector) {
         CustomUniforms current = active;
         if (current != null) {
@@ -35,7 +37,7 @@ public final class ActiveCustomUniforms {
         }
     }
 
-    // This frame's evaluated value for every pack-declared uniform and variable, or empty with no pack; formatted as strings for display, a reporting view only
+    // Returns the current values by name.
     public static java.util.Map<String, String> snapshot() {
         CustomUniforms current = active;
         return current == null ? java.util.Collections.emptyMap() : current.snapshot();

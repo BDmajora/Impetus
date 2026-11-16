@@ -10,57 +10,66 @@ import java.util.Map;
 import com.bdmajora.impetus.engine.impl.common.util.MathUtil;
 import org.lwjgl.system.MemoryUtil;
 
-// 16-byte terrain vertex read by the mesh shader as one uvec4: shade folded into 24-bit colour on the CPU, light in two bytes; the GlVertexFormat exists only because ChunkVertexType demands one
+// Terrain vertex of 16 bytes that the mesh shader reads as one vector.
 public class MeshChunkVertex implements MeshVertexLayout {
+    // Bytes of one vertex.
     public static final int STRIDE = 16;
 
-    // One uvec4 attribute; an attribute-less format is rejected by the builder, which used to make this class unloadable
+    // GL format of the vertex.
     public static final GlVertexFormat VERTEX_FORMAT = GlVertexFormat.builder(STRIDE)
             .addElement("a_Packed", 0, GlVertexAttributeFormat.UNSIGNED_INT, 4, false, true)
             .build();
 
+    // Number of position values.
     private static final int POSITION_MAX_VALUE = 65536;
+    // Value of the texture coordinate one.
     public static final int TEXTURE_MAX_VALUE = 32768;
 
+    // Offset that makes positions unsigned.
     private static final float MODEL_ORIGIN = 8.0f;
+    // Range of positions in blocks.
     private static final float MODEL_RANGE = 32.0f;
+    // Blocks per position step.
     private static final float MODEL_SCALE = MODEL_RANGE / POSITION_MAX_VALUE;
+    // Position steps per block.
     private static final float MODEL_SCALE_INV = POSITION_MAX_VALUE / MODEL_RANGE;
 
+    // Texture coordinate per step.
     private static final float TEXTURE_SCALE = 1.0f / TEXTURE_MAX_VALUE;
 
-    // Packed units per block, i.e. 65536 / 32
+    // Position steps per block.
     private static final int UNITS_PER_BLOCK = (int) (MODEL_SCALE_INV);
-    // Where a section-local coordinate of 0 lands in packed units
+    // Packed position of the section origin.
     private static final int PACKED_ORIGIN = (int) (MODEL_ORIGIN * MODEL_SCALE_INV);
 
+    // Shared instance.
     public static final MeshChunkVertex INSTANCE = new MeshChunkVertex();
 
-    // Positions are packed integers over the section
+    // Returns the position scale.
     @Override
     public float getPositionScale() {
         return MODEL_SCALE;
     }
 
-    // Shift so a small negative margin fits
+    // Returns the position offset.
     @Override
     public float getPositionOffset() {
         return -MODEL_ORIGIN;
     }
 
-    // UVs are packed integers
+    // Returns the texture scale.
     @Override
     public float getTextureScale() {
         return TEXTURE_SCALE;
     }
 
-    // Layout the mesh shader unpacks
+    // Returns the GL format.
     @Override
     public GlVertexFormat getVertexFormat() {
         return VERTEX_FORMAT;
     }
 
-    // Writes one packed vertex per call
+    // Creates an encoder that writes one vertex per call.
     @Override
     public ChunkVertexEncoder createEncoder() {
         return (ptr, material, vertex, sectionIndex) -> {
@@ -75,7 +84,7 @@ public class MeshChunkVertex implements MeshVertexLayout {
         };
     }
 
-    // Tells the shader the mesh layout is in use
+    // Returns the shader definitions including the mesh layout flag.
     @Override
     public Map<String, String> getDefines() {
         var map = MeshVertexLayout.super.getDefines();
@@ -84,44 +93,43 @@ public class MeshChunkVertex implements MeshVertexLayout {
         return map;
     }
 
-    // ---- readers, for the section bounding box ----
-
+    // Reads the packed x of a vertex.
     public static int readPackedX(long ptr) {
         return MemoryUtil.memGetInt(ptr) & 0xFFFF;
     }
 
-    // Reads the packed y field from a vertex in memory
+    // Reads the packed y of a vertex.
     public static int readPackedY(long ptr) {
         return (MemoryUtil.memGetInt(ptr) >>> 16) & 0xFFFF;
     }
 
-    // Reads the packed z field
+    // Reads the packed z of a vertex.
     public static int readPackedZ(long ptr) {
         return MemoryUtil.memGetInt(ptr + 4) & 0xFFFF;
     }
 
-    // Packed position back to its 1-block cell in the section, clamped to 0..15 since vertices may sit slightly outside the section (fence posts) and the occlusion box is per-section
+    // Returns the block coordinate of a packed position limited to the section.
     public static int decodeBlockCoord(int packed) {
         int block = (packed - PACKED_ORIGIN) / UNITS_PER_BLOCK;
         return Math.max(0, Math.min(15, block));
     }
 
-    // Back to float
+    // Returns the coordinate of a packed position.
     public static float decodePosition(int packed) {
         return (packed / MODEL_SCALE_INV) - MODEL_ORIGIN;
     }
 
-    // Float to packed integer, shared by every MeshVertexLayout since they keep this position encoding
+    // Returns the packed position of a coordinate.
     public static int encodePosition(float value) {
         return ((int) ((MODEL_ORIGIN + value) * MODEL_SCALE_INV)) & 0xFFFF;
     }
 
-    // Float UV to packed integer
+    // Returns the packed texture coordinate.
     private static int encodeTexture(float value) {
         return Math.round(value * TEXTURE_MAX_VALUE) & 0xFFFF;
     }
 
-    // Folds the shade factor (stashed in alpha by the mesher) into RGB, freeing the fourth byte for sky light; integer scaling truncates like the float path did
+    // Returns the color with the shade folded into the channels.
     private static int packShadedColor(int color) {
         int shade = ColorABGR.unpackAlpha(color);
         int r = (ColorABGR.unpackRed(color) * shade) / 255;
@@ -131,7 +139,7 @@ public class MeshChunkVertex implements MeshVertexLayout {
         return ColorABGR.pack(r, g, b, 0x00);
     }
 
-    // 16-bit lightmap coordinates down to a byte each, clamped to 8..248 so rounding never lands on the lightmap's outermost texels (same reason it samples CLAMP_TO_EDGE)
+    // Returns the light packed into two bytes.
     private static int packLight(int light) {
         int sky = MathUtil.clamp((light >>> 16) & 0xFF, 8, 248);
         int block = MathUtil.clamp(light & 0xFF, 8, 248);

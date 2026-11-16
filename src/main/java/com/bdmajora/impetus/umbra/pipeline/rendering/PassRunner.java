@@ -13,15 +13,17 @@ import java.util.List;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Executes the baked schedule: fullscreen passes, their computes, the mid-world families and the shadowcomp chain
+// Runner of one fullscreen pass.
 public final class PassRunner {
+    // Pipeline state shared by the passes.
     private final PipelineState state;
 
+    // Creates a pass runner from its state.
     public PassRunner(PipelineState state) {
         this.state = state;
     }
 
-    // Full-screen passes draw with depth, blend and alpha test off; through GlStateManager so vanilla's later toggles are not skipped
+    // Sets the GL state of a fullscreen pass.
     static void enterFullscreenState() {
         GlStateManager.disableBlend();
         GlStateManager.disableDepth();
@@ -29,7 +31,7 @@ public final class PassRunner {
         GlStateManager.disableAlpha();
     }
 
-    // One pass into its framebuffer, or Minecraft's for the final pass; Umbra's CompositeRenderer.renderAll order: the pass's computes dispatch first under its flip state, samplers and images in place, then the draw (deferred4 texelFetches what deferred4_a imageStored)
+    // Runs a fullscreen pass.
     void run(FullscreenPass pass, Minecraft mc) {
         if (!pass.computes.isEmpty()) {
             TextureBinder.bindColorSamplers(pass.colorSamplers);
@@ -55,10 +57,8 @@ public final class PassRunner {
         pass.program.bind();
         this.state.binder.bindPackResources();
         pass.uniforms.update();
-        // Last, since nothing above touches the shadow units but the previous pass may have left the other flavour there
         this.state.shadowSamplers.apply(pass.shadowSamplerKinds, false);
         if (pass.modern) {
-            // ftransform() = ortho * [0,1] = NDC and gl_TextureMatrix[0] passes the texcoord through; saved and restored so the hand and GUI after the chain are unaffected
             GlState.pushFullscreenMatrices();
             this.state.quad.draw();
             GlState.popFixedFunctionMatrices();
@@ -67,12 +67,12 @@ public final class PassRunner {
         }
     }
 
-    // colorimgN and shadowcolorimgN under a pass's flip state
+    // Binds the images for a flip state.
     void bindImages(BitSet flips) {
         this.state.images.bind(flips, this.state.targets, this.state.shadowRenderer);
     }
 
-    // A family that runs mid world rendering (begin, prepare), then the gbuffer state put back
+    // Runs a list of fullscreen passes.
     void runFamily(List<FullscreenPass> family, Minecraft mc) {
         if (family.isEmpty()) {
             return;
@@ -94,7 +94,7 @@ public final class PassRunner {
         }
     }
 
-    // After fullscreen work mid-frame: units cleaned, then every gbuffer-stage sampler bound again for the geometry that follows
+    // Restores the gbuffer bindings.
     void restoreGbufferBindings(boolean shadow) {
         TextureBinder binder = this.state.binder;
         binder.restoreUnits();
@@ -108,7 +108,7 @@ public final class PassRunner {
         this.state.feedback.bindColorSamplers(this.state.activeGbufferFlips);
     }
 
-    // Dispatches in order with a full barrier after each, since Complementary's floodfill iterations read the previous output; allowConcurrentCompute is the pack asserting independence, and then one barrier publishes the whole group
+    // Runs a list of compute passes.
     void dispatch(List<ComputePass> computes) {
         boolean concurrent = this.state.switches.allowConcurrentCompute;
         for (ComputePass compute : computes) {
@@ -126,13 +126,12 @@ public final class PassRunner {
         }
     }
 
-    // The shadowcomp chain: a full barrier makes the shadow pass's voxelization visible, then each pass; compute-only entries bind only images, since colortex0..7 would land on the atlas and lightmap units the world is about to use
+    // Runs the shadow composite passes.
     void runShadowComposites(Minecraft mc) {
         List<FullscreenPass> passes = this.state.schedule.shadowComposite;
         if (passes.isEmpty()) {
             return;
         }
-        // The shadow-terrain draw that just voxelized can reset units, so the voxel/floodfill bindings are re-established rather than trusted
         this.state.binder.bindPackResources();
         LWJGL.glMemoryBarrier(GL42.GL_ALL_BARRIER_BITS);
         boolean drewRaster = false;
@@ -141,19 +140,17 @@ public final class PassRunner {
                 bindImages(pass.flipsBefore);
                 dispatch(pass.computes);
             } else {
-                // run() dispatches the raster pass's own computes first, so they must not run again here
                 run(pass, mc);
                 drewRaster = true;
             }
         }
         LWJGL.glUseProgram(0);
         if (drewRaster) {
-            // The caller binds the finished shadow maps right after, so only the rest is restored here
             restoreGbufferBindings(false);
         }
     }
 
-    // Generates mips on the targets the pass declared via mipmapEnabled, on a scratch unit above every sampler allocation
+    // Generates the mipmaps that a pass asks for.
     private void generateMipmaps(FullscreenPass pass) {
         BitSet mipmapped = pass.mipmappedBuffers;
         if (mipmapped.isEmpty()) {
@@ -170,7 +167,7 @@ public final class PassRunner {
         GlTextureUnits.resetToUnit0();
     }
 
-    // Returns the targets passes mipmapped to their plain filter at frame end; nothing else mipmaps a colour target, so the others are skipped
+    // Clears the mipmap flags.
     void resetMipmaps() {
         BitSet mipmapped = this.state.schedule.mipmapped;
         if (mipmapped.isEmpty()) {
@@ -187,7 +184,7 @@ public final class PassRunner {
         GlTextureUnits.resetToUnit0();
     }
 
-    // Snapshots the active gbuffer's depth (how OptiFine makes depthtex1/2), from the shader framebuffer's own depth rather than whatever a previous hook left bound
+    // Copies the depth.
     void copyDepth(DepthTexture destination) {
         if (this.state.gbuffers.current != null) {
             this.state.gbuffers.current.bind();

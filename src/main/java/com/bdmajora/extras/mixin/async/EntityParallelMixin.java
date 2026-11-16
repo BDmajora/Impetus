@@ -14,35 +14,40 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
-// Entity id allocation made atomic (two workers constructing drops at once must not share an id, since the tracker keys on it) and the passenger list guarded on the vehicle; rider-side fields are left alone so no rider->vehicle->rider lock cycle can form
+// Mixin that changes Entity.
 @Mixin(Entity.class)
 public abstract class EntityParallelMixin implements PortalAccessor {
+    // Field next id added to the target.
     @Unique
     private static final AtomicInteger impetus$nextId = new AtomicInteger();
 
+    // Reference to the field in portal of the target.
     @Shadow
     protected boolean inPortal;
 
+    // Reference to the field entity id of the target.
     @Shadow
     private int entityId;
 
-    // Vanilla's nextEntityID++ still runs but its result is overwritten; the static keeps drifting upward so nothing else that reads it is surprised
+    // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void impetus$atomicId(CallbackInfo ci) {
         this.entityId = impetus$nextId.getAndIncrement();
     }
 
-    // Forge's deprecated reset takes the same path; remap is off because the method is a Forge patch with no obfuscated name
+    // Runs before every return of resetEntityId.
     @Inject(method = "resetEntityId", at = @At("RETURN"), remap = false)
     private void impetus$atomicResetId(CallbackInfo ci) {
         this.entityId = impetus$nextId.getAndIncrement();
     }
 
+    // Returns whether in portal.
     @Override
     public boolean impetus$isInPortal() {
         return this.inPortal;
     }
 
+    // Handles locked add passenger.
     @WrapMethod(method = "addPassenger")
     private void impetus$lockedAddPassenger(Entity passenger, Operation<Void> original) {
         if (!ParallelProcessor.INSTALLED) {
@@ -54,6 +59,7 @@ public abstract class EntityParallelMixin implements PortalAccessor {
         }
     }
 
+    // Handles locked remove passenger.
     @WrapMethod(method = "removePassenger")
     private void impetus$lockedRemovePassenger(Entity passenger, Operation<Void> original) {
         if (!ParallelProcessor.INSTALLED) {

@@ -9,9 +9,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Steps aside while the box is closed in the mesh; the block damage overlay reaches shulker boxes through the model path, so the breaking pass is not special here
+// Mixin that changes TileEntityShulkerBoxRenderer.
 @Mixin(TileEntityShulkerBoxRenderer.class)
 public abstract class TileEntityShulkerBoxRendererMixin {
+    // Runs at the start of render and can cancel it.
     @Inject(method = "render(Lnet/minecraft/tileentity/TileEntityShulkerBox;DDDFIF)V", at = @At("HEAD"), cancellable = true)
     private void impetus$skipStaticBox(TileEntityShulkerBox te, double x, double y, double z, float partialTicks, int destroyStage, float alpha, CallbackInfo ci) {
         if (destroyStage >= 0 || !BakedEntities.shulkerBoxes || !te.hasWorld()) {

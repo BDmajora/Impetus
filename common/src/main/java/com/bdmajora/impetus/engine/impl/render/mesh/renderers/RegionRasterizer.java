@@ -6,10 +6,12 @@ import com.bdmajora.impetus.engine.impl.render.mesh.gl.MeshProgram;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Phase 1: one box per frustum-visible region against last frame's depth, recording which survive; no task shader since the workload is fixed, colour/depth writes off, representative fragment test on
+// Draws one box per visible region and records which pass the depth test.
 public class RegionRasterizer {
+    // Program of the draw.
     private final MeshProgram program;
 
+    // Creates the program.
     public RegionRasterizer(ShaderConstants constants) {
         this.program = MeshProgram.builder("mesh/region_raster")
                 .constants(constants)
@@ -18,13 +20,16 @@ public class RegionRasterizer {
                 .link();
     }
 
-    // One mesh workgroup per visible region
+    // Draws one workgroup per visible region and rejects a negative count.
     public void raster(int visibleRegionCount) {
+        if (visibleRegionCount < 0) {
+            throw new IllegalArgumentException("Negative region count " + visibleRegionCount);
+        }
         this.program.bind();
         LWJGL.glDrawMeshTasksNV(0, visibleRegionCount);
     }
 
-    // Frees the program
+    // Deletes the program.
     public void delete() {
         this.program.delete();
     }

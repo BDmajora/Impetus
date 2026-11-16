@@ -3,47 +3,48 @@ package com.bdmajora.impetus.engine.impl.render.chunk;
 import com.bdmajora.impetus.engine.api.util.ColorABGR;
 import com.bdmajora.impetus.engine.api.util.ColorMixer;
 
-// The two ways per-vertex AO can be folded into a chunk vertex's packed colour; chosen by the active shader pack, so the mesher asks once per quad rather than branching in the encoder
+// Ways ambient occlusion is folded into the packed color of a chunk vertex.
 public enum ChunkColorWriter {
-    // AO in alpha, RGB stays the pure block/biome tint: the shaders.properties `separateAo` directive, set by nearly every modern pack so it can apply AO in its own lighting model (as Iris does in XHFPTerrainVertex)
+    // Mode that stores occlusion in alpha and keeps the tint in the color channels.
     SEPARATE_AO {
-        // Applies AO to the colour for this mode
+        // Returns the color with occlusion applied.
         @Override
         public int writeColor(int colorWithAlpha, float aoValue) {
             return ColorABGR.withAlpha(colorWithAlpha, aoValue);
         }
     },
-    // AO multiplied straight into RGB like vanilla 1.12.2; aoValue is 0..1 scaled to 0..255, alpha still carries the quad's translucency
+    // Mode that multiplies occlusion into the color channels and keeps alpha.
     IMPETUS {
-        // Applies AO to the colour for this mode
+        // Returns the color with occlusion applied.
         @Override
         public int writeColor(int colorWithAlpha, float aoValue) {
             return ColorMixer.mulSingleWithoutAlpha(colorWithAlpha, (int)(aoValue * 255));
         }
     };
 
-    // Called once per vertex on the meshing hot path; colorWithAlpha is packed ABGR, aoValue is 0..1
+    // Returns a packed ABGR color with an occlusion value between 0 and 1 applied.
     public abstract int writeColor(int colorWithAlpha, float aoValue);
 
-    // The writer the mesher should use right now per the active pack's `separateAo`; read per section build so a pack reload applies on the next rebuild
+    // Returns the writer of the current occlusion mode.
     public static ChunkColorWriter active() {
         return SeparateAoState.enabled ? SEPARATE_AO : IMPETUS;
     }
 
-    // Holds the flag here rather than in Umbra because the mesher runs on engine worker threads and the engine must not depend on the shader-pack model; Umbra pushes the value via set()
+    // Flag that keeps ambient occlusion out of the vertex color.
     public static final class SeparateAoState {
-        // volatile because the writer is the render thread at pack load and the readers are mesh workers
+        // Separate occlusion state shared across threads.
         private static volatile boolean enabled;
 
+        // Prevents instantiation
         private SeparateAoState() {
         }
 
-        // Switches the mode
+        // Stores the separate occlusion state.
         public static void set(boolean value) {
             enabled = value;
         }
 
-        // Current mode
+        // Returns the separate occlusion state.
         public static boolean isEnabled() {
             return enabled;
         }

@@ -18,50 +18,56 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-/**
- * Owns the render lists of one pass (terrain, or the shadow pass) and the search that produces them. The lattice
- * and search thread are shared between passes through {@link SectionGraph}.
- */
+// Render lists of one pass and the search that produces them.
 public class RenderListManager {
+    // Lists of the visible sections.
     @Getter
     @NotNull
     private SortedRenderLists renderLists;
+    // Sections that need a rebuild.
     @Getter
     @NotNull
     private ChunkRebuildLists rebuildLists;
 
+    // Graph shared with the other pass.
     private final SectionGraph graph;
+    // Lattice of the graph.
     private final SectionLattice lattice;
-    // Whether this manager produces the shadow pass's lists. The shadow search is orthographic and receiver-driven;
-    // the terrain search is the camera-rooted one with the angular frustum clamp.
+    // Whether this manager serves the shadow pass.
     private final boolean shadow;
-    // Whether this pass's searches run on the shared search thread rather than inline.
+    // Whether the searches run on the search thread.
     private final boolean async;
 
-    // Non-null for the duration of an in-progress graph search (already completed when the search ran inline).
+    // Search in progress or null.
     private CompletableFuture<VisibleChunkCollector> currentOcclusionFuture;
 
+    // Whether a new search is needed.
     @Getter
     @Setter
     private boolean needsUpdate = true;
 
+    // Frame of the lists in use.
     @Getter
     private int lastUpdatedFrame;
 
+    // Frame of the search in progress.
     private int pendingLastUpdatedFrame;
 
+    // Visibility of the lists in use.
     @NotNull
     private SectionLattice.VisibilitySnapshot visibilitySnapshot = SectionLattice.VisibilitySnapshot.EMPTY;
 
-    // Snapshot produced by the in-progress search. Written on the async thread; read on the render thread
-    // in finishPreviousGraphUpdate() after join() establishes happens-before, then published to visibilitySnapshot.
+    // Visibility produced by the search in progress.
     @Nullable
     private SectionLattice.VisibilitySnapshot pendingVisibilitySnapshot;
 
+    // Ticker of the visible sections or null.
     @Nullable
     private final SectionTicker sectionTicker;
 
+    // Counts shown on the debug screen.
     public record RenderListDebugStatistics(Object2IntOpenHashMap<TerrainRenderPass> renderPassCounts, int[] sortingSectionCounts) {
+        // Returns the sorting counts as text.
         public String getSortingString() {
             StringBuilder sb = new StringBuilder();
 
@@ -80,16 +86,12 @@ public class RenderListManager {
         }
     }
 
+    // Cached debug counts.
     private RenderListDebugStatistics debugStatistics;
 
-    /**
-     * @param graph  the lattice and search thread shared with the other pass's manager
-     * @param shadow whether this manager serves the shadow pass
-     * @param mode   which passes search asynchronously: {@code EVERYTHING} for both, {@code ONLY_SHADOW} for the
-     *               shadow pass alone, {@code NONE} for neither
-     */
+    // Creates a manager and rejects a null graph.
     public RenderListManager(SectionGraph graph, boolean shadow, AsyncOcclusionMode mode, @Nullable SectionTicker sectionTicker) {
-        this.graph = graph;
+        this.graph = java.util.Objects.requireNonNull(graph, "graph");
         this.lattice = graph.getLattice();
         this.shadow = shadow;
         this.async = mode == AsyncOcclusionMode.EVERYTHING || (shadow && mode == AsyncOcclusionMode.ONLY_SHADOW);
@@ -98,9 +100,7 @@ public class RenderListManager {
         this.rebuildLists = ChunkRebuildLists.empty();
     }
 
-    /**
-     * Start the terrain search from the camera section. Only valid on the terrain manager.
-     */
+    // Starts the search from the camera and rejects use on the shadow manager.
     public void startGraphUpdate(Viewport viewport, int frame, int regionIdsLength, float searchDistance, boolean useOcclusionCulling, int targetQueueSize) {
         if (this.shadow) {
             throw new IllegalStateException("startGraphUpdate is for the terrain pass; use startShadowGraphUpdate");
@@ -112,12 +112,7 @@ public class RenderListManager {
                 this.lattice.findVisible(visitor, viewport, searchDistance, regionIdsLength, useOcclusionCulling, true, frame));
     }
 
-    /**
-     * Start the shadow search. Only valid on the shadow manager, and only after the terrain manager has submitted
-     * its search for this frame.
-     *
-     * @param lightVector unit vector toward the shadow light, or {@code null} to run the frustum-only scan instead
-     */
+    // Starts the shadow search and rejects use on the terrain manager.
     public void startShadowGraphUpdate(Viewport shadowViewport, int frame, int regionIdsLength, float searchDistance, @Nullable Vector3fc lightVector, int targetQueueSize) {
         if (!this.shadow) {
             throw new IllegalStateException("startShadowGraphUpdate is for the shadow pass; use startGraphUpdate");
@@ -129,6 +124,7 @@ public class RenderListManager {
                 this.lattice.findShadowVisible(visitor, shadowViewport, searchDistance, regionIdsLength, lightVector, frame));
     }
 
+    // Submits a search and joins it at once when it runs inline.
     private void submitSearch(int frame, int regionIdsLength, int targetQueueSize, Viewport viewport,
                               Function<VisibleChunkCollector, SectionLattice.VisibilitySnapshot> search) {
         if (this.currentOcclusionFuture != null) {
@@ -140,11 +136,10 @@ public class RenderListManager {
         Supplier<VisibleChunkCollector> occlusionTask = () -> {
             this.pendingVisibilitySnapshot = search.apply(visitor);
 
-            // Sort the rebuild lists here rather than on the render thread when the result is joined
+            // Sorts the rebuild lists on the search thread
             visitor.finishRebuildLists();
 
-            // WARNING: when async, this runs on the search thread.
-            // SectionTicker.onRenderListUpdated() must be safe to call off the render thread.
+            // Notifies the ticker from the search thread
             if (this.sectionTicker != null) {
                 this.sectionTicker.onRenderListUpdated(visitor.getSortedRenderLists());
             }
@@ -162,44 +157,50 @@ public class RenderListManager {
         this.needsUpdate = false;
     }
 
+    // Joins the search in progress and publishes its lists and runs the deferred updates.
     public void finishPreviousGraphUpdate() {
         if (currentOcclusionFuture != null) {
-            VisibleChunkCollector visitor = currentOcclusionFuture.join();
+            try {
+                VisibleChunkCollector visitor = currentOcclusionFuture.join();
 
-            this.renderLists = visitor.createRenderLists();
-            this.rebuildLists = visitor.getRebuildLists();
+                this.renderLists = visitor.createRenderLists();
+                this.rebuildLists = visitor.getRebuildLists();
 
-            // Publish the finished search's snapshot before advancing lastUpdatedFrame, so any concurrent
-            // reader that observes the new frame also observes the snapshot produced for it.
-            this.visibilitySnapshot = this.pendingVisibilitySnapshot;
-            this.pendingVisibilitySnapshot = null;
+                // Publishes the visibility before the frame
+                this.visibilitySnapshot = this.pendingVisibilitySnapshot;
+                this.lastUpdatedFrame = this.pendingLastUpdatedFrame;
 
-            this.currentOcclusionFuture = null;
-            this.lastUpdatedFrame = this.pendingLastUpdatedFrame;
-
-            this.debugStatistics = null;
-
-            this.graph.onSearchJoined();
+                this.debugStatistics = null;
+            } finally {
+                this.pendingVisibilitySnapshot = null;
+                this.currentOcclusionFuture = null;
+                this.graph.onSearchJoined();
+            }
         }
 
-        // Run tasks deferred while searches were in flight. The join() above establishes happens-before,
-        // so the search thread's writes to the lattice arrays are visible here. A no-op while the other
-        // pass's search is still running.
+        // Runs the updates that waited for the searches
         this.graph.runDeferredTasks();
     }
 
+    // Joins the search in progress and forgets it even when it failed.
     public void destroy() {
         if (currentOcclusionFuture != null) {
-            currentOcclusionFuture.join();
-            currentOcclusionFuture = null;
-            this.graph.onSearchJoined();
+            try {
+                currentOcclusionFuture.join();
+            } finally {
+                currentOcclusionFuture = null;
+                this.pendingVisibilitySnapshot = null;
+                this.graph.onSearchJoined();
+            }
         }
     }
 
+    // Returns whether a section is visible in the lists in use.
     public boolean isSectionVisible(int x, int y, int z) {
         return this.visibilitySnapshot.isSectionVisible(x, y, z, this.lastUpdatedFrame);
     }
 
+    // Ticks the visible sections.
     public void tickVisibleRenders() {
         if (this.sectionTicker != null) {
             this.sectionTicker.tickVisibleRenders();
@@ -207,6 +208,7 @@ public class RenderListManager {
     }
 
 
+    // Returns the debug counts and calculates them once per search.
     public RenderListDebugStatistics getDebugStatistics() {
         if (this.debugStatistics == null) {
             this.debugStatistics = computeDebugStatistics();
@@ -214,6 +216,7 @@ public class RenderListManager {
         return this.debugStatistics;
     }
 
+    // Returns the debug text of the ticker.
     public String getTickerDebugString() {
         if (this.sectionTicker == null) {
             return "";
@@ -221,6 +224,7 @@ public class RenderListManager {
         return this.sectionTicker.getDebugString();
     }
 
+    // Counts the sections per pass and per sorting level.
     private RenderListDebugStatistics computeDebugStatistics() {
         Object2IntOpenHashMap<TerrainRenderPass> renderPassCounts = new Object2IntOpenHashMap<>();
 
@@ -264,7 +268,7 @@ public class RenderListManager {
                     int sectionIndex = iter.nextByteAsInt();
                     var section = region.getSection(sectionIndex);
 
-                    // Do not count sections without translucent data
+                    // Skips sections without translucent data
                     if(section == null || section.getHighestSortingIndex() == RenderSection.NO_TRANSLUCENT_GEOMETRY) {
                         continue;
                     }

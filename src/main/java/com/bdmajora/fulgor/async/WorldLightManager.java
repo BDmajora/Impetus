@@ -15,21 +15,28 @@ import net.minecraft.world.chunk.Chunk;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-// One per World under the async engine: owns the two lane queues, their workers and the initial-light coordinator (Pulsar's WorldLightManager, itself from SuperNova)
+// Owner of the light engines and queue of one world.
 public final class WorldLightManager {
-    // A dense skylight edit of this many positions in one chunk is rebuilt in the sky lane rather than propagated position by position, since neighbouring stale columns would re-seed what the previous task cleared (MC-117067 / MC-117094)
+    // Changed position count above which sky light is relit in bulk.
     private static final int BULK_SKY_THRESHOLD = 16;
 
+    // World of the manager.
     private final World world;
+    // Loaded chunks.
     private final LoadedChunkMap loadedChunkMap = new LoadedChunkMap();
 
-    // On the server each queue is drained by its own worker; on the client both are drained from the tick, so the engines share storage with the vanilla nibbles and mark render updates directly
+    // Queue of sky light work.
     private final LightQueue skyQueue;
+    // Queue of block light work.
     private final LightQueue blockQueue;
+    // Coordinator of initial lighting.
     private final InitialLightCoordinator initialLighting;
+    // Worker of sky light.
     private final LightEngineWorker skyWorker;
+    // Worker of block light.
     private final LightEngineWorker blockWorker;
 
+    // Creates a world light manager from its world and has sky light.
     public WorldLightManager(World world, boolean hasSkyLight) {
         this.world = world;
         this.skyQueue = hasSkyLight ? new LightQueue() : null;
@@ -44,19 +51,22 @@ public final class WorldLightManager {
                 (task, engine) -> processTask(task, engine, InitialLightCoordinator.LANE_BLOCK), "Block", threaded);
     }
 
+    // Registers the chunk.
     public void registerChunk(Chunk chunk) {
         this.loadedChunkMap.put(ChunkPos.asLong(chunk.x, chunk.z), chunk);
     }
 
+    // Unregisters the chunk.
     public void unregisterChunk(int cx, int cz) {
         this.loadedChunkMap.remove(ChunkPos.asLong(cx, cz));
     }
 
+    // Returns the loaded chunk.
     public Chunk getLoadedChunk(int chunkX, int chunkZ) {
         return this.loadedChunkMap.get(ChunkPos.asLong(chunkX, chunkZ));
     }
 
-    // Edge checks run horizontally only, so once the four neighbours are ready this chunk's seam light is final and safe to send; 1.12.2 has no light packet to correct a chunk afterwards
+    // Returns whether the neighbours of a chunk have their light.
     public boolean areNeighboursLightReady(int cx, int cz) {
         for (int i = 0; i < 4; ++i) {
             int nx = cx + ((i == 0) ? 1 : (i == 1) ? -1 : 0);
@@ -69,6 +79,7 @@ public final class WorldLightManager {
         return true;
     }
 
+    // Queues the block change.
     public void queueBlockChange(int x, int y, int z) {
         AsyncLightStats.BLOCK_CHANGES.increment();
         if (this.skyQueue != null) {
@@ -77,7 +88,7 @@ public final class WorldLightManager {
         this.blockQueue.queueBlockChange(x, y, z);
     }
 
-    // A section's emptiness changed, typically a block placed into a previously absent section
+    // Queues the section change.
     public void queueSectionChange(int cx, int sectionY, int cz, boolean empty) {
         if (this.skyQueue != null) {
             this.skyQueue.queueSectionChange(cx, sectionY, cz, empty);
@@ -85,11 +96,12 @@ public final class WorldLightManager {
         this.blockQueue.queueSectionChange(cx, sectionY, cz, empty);
     }
 
+    // Queues the chunk light.
     public void queueChunkLight(int cx, int cz, Chunk chunk, Boolean[] emptySections) {
         this.initialLighting.queue(cx, cz, chunk, emptySections);
     }
 
-    // The cheap load-time init for a chunk restored with valid saved light; the caller has already marked it ready
+    // Queues the chunk load init.
     public void queueChunkLoadInit(int cx, int cz, Chunk chunk, Boolean[] emptySections) {
         if (this.skyQueue != null) {
             this.skyQueue.queueChunkLoadInit(cx, cz, chunk, emptySections);
@@ -97,19 +109,22 @@ public final class WorldLightManager {
         this.blockQueue.queueChunkLoadInit(cx, cz, chunk, emptySections);
     }
 
+    // Removes the chunk from queues.
     public void removeChunkFromQueues(int cx, int cz) {
         this.initialLighting.removeChunk(cx, cz);
     }
 
+    // Returns whether updates.
     public boolean hasUpdates() {
         return (this.skyQueue != null && this.skyQueue.hasWork()) || this.blockQueue.hasWork();
     }
 
+    // Returns whether chunk pending light.
     public boolean hasChunkPendingLight(int cx, int cz) {
         return (this.skyQueue != null && this.skyQueue.hasPendingWork(cx, cz)) || this.blockQueue.hasPendingWork(cx, cz);
     }
 
-    // Client tick: drains both lanes on the main thread; the engines publish straight into the vanilla nibbles and mark render updates, so there is no separate drain
+    // Publishes finished light to the client.
     public void processClientUpdates() {
         if (this.skyWorker != null) {
             this.skyWorker.processPending();
@@ -121,6 +136,7 @@ public final class WorldLightManager {
         this.blockQueue.clearWorkSignal();
     }
 
+    // Runs one task on a lane.
     private void processTask(ChunkTasks task, BfsLightEngine engine, int lane) {
         boolean sky = lane == InitialLightCoordinator.LANE_SKY;
         LightQueue queue = sky ? this.skyQueue : this.blockQueue;
@@ -142,7 +158,6 @@ public final class WorldLightManager {
             return;
         }
 
-        // A dense skylight edit is rebuilt in this lane only; routing it through the two-lane coordinator also rebuilt block light, which could erase a source before its queued removal propagated into an empty neighbouring section
         boolean promoteBulkChange = sky && task.initialLightChunk == null && task.initialLightEdgeGeneration <= 0L
                 && task.changedPositions != null && task.changedPositions.size() >= BULK_SKY_THRESHOLD;
         if (promoteBulkChange) {
@@ -184,7 +199,6 @@ public final class WorldLightManager {
 
             if (task.initialLightChunk != null) {
                 AsyncLightStats.INITIAL_LIGHTS.increment();
-                // Emptiness is re-read at execution since a coordinated relight may have absorbed section changes while queued
                 engine.light(task.initialLightChunk, BfsLightEngine.getEmptySectionsForChunk(task.initialLightChunk), false);
                 valueOverflowed |= engine.wasQueueOverflowed();
             } else if (task.changedSectionSet != null || (task.changedPositions != null && !task.changedPositions.isEmpty())) {
@@ -240,7 +254,7 @@ public final class WorldLightManager {
         }
     }
 
-    // Re-queues a full relight after an overflow: a coordinated relight keeps its generation and defers completion, an ordinary batch is promoted to a coordinated relight so the final sync and edge checks run
+    // Requeues a task after a queue overflow and returns whether it was requeued.
     private boolean requeueAfterOverflow(LightQueue queue, ChunkTasks task, int cx, int cz, String laneName) {
         AsyncLightStats.QUEUE_OVERFLOWS.increment();
         if (task.relightAttempts < InitialLightCoordinator.MAX_RELIGHT_ATTEMPTS) {
@@ -257,7 +271,6 @@ public final class WorldLightManager {
             }
 
             queue.requeueChunkLight(cx, cz, chunk, emptySections, task.initialLightGeneration, task.relightAttempts);
-            // A false return means a newer generation is queued; it supersedes this attempt either way, so the old one must not report completion
             return true;
         }
 
@@ -265,7 +278,7 @@ public final class WorldLightManager {
         return false;
     }
 
-    // Relights one chunk from scratch and, on the server, resends it once done since there is no light packet to correct clients otherwise
+    // Queues a full relight of a chunk.
     public boolean forceRelightChunk(int cx, int cz) {
         long key = ChunkPos.asLong(cx, cz);
         Chunk chunk = this.loadedChunkMap.get(key);
@@ -283,7 +296,6 @@ public final class WorldLightManager {
                 if (server == null) {
                     return;
                 }
-                // Packet construction must happen on the server thread
                 server.addScheduledTask(() -> {
                     if (!(this.world instanceof WorldServer)) {
                         return;
@@ -299,7 +311,7 @@ public final class WorldLightManager {
         return true;
     }
 
-    // Whether queued work could still change this chunk's light values, which decides if the SWMR data is safe to persist
+    // Returns whether pending light work.
     public boolean hasPendingLightWork(int cx, int cz) {
         long key = ChunkPos.asLong(cx, cz);
         if (this.initialLighting.hasPending(key)) {
@@ -308,7 +320,7 @@ public final class WorldLightManager {
         return (this.skyQueue != null && this.skyQueue.hasPendingLightWork(key)) || this.blockQueue.hasPendingLightWork(key);
     }
 
-    // Waits briefly for queued or in-flight work on a chunk; false on timeout so unload can invalidate the save rather than serialise data a worker may still be writing
+    // Waits for the pending work.
     public boolean awaitPendingWork(int cx, int cz) {
         long key = ChunkPos.asLong(cx, cz);
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(50L);
@@ -337,6 +349,7 @@ public final class WorldLightManager {
         return false;
     }
 
+    // Returns the pending work future.
     private Future<Void> getPendingWorkFuture(long key) {
         Future<Void> future = this.skyQueue == null ? null : this.skyQueue.getPendingWorkFuture(key);
         if (future != null) {
@@ -349,6 +362,7 @@ public final class WorldLightManager {
         return this.initialLighting.getPendingFuture(key);
     }
 
+    // Shuts down.
     public void shutdown() {
         if (this.skyWorker != null) {
             this.skyWorker.requestStop();

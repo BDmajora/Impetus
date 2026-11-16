@@ -9,13 +9,14 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
 
-// Fog start and end; Impetus reads GL_FOG_START/END into shader uniforms, so both stay finite with start < end and disabling fog is left to EntityRendererFogMixin. Gameplay fog exempt, see FogState
+// Mixin that changes EntityRenderer.
 @Mixin(EntityRenderer.class)
 public class EntityRendererFogFalloffMixin {
-    // Vanilla's GL_LINEAR fog end, used to keep a custom start below it
+    // Reference to the field far plane distance of the target.
     @Shadow
     private float farPlaneDistance;
 
+    // Changes an argument of the call of GlStateManager.setFogStart in setupFog.
     @ModifyArg(
             method = "setupFog",
             at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/GlStateManager;setFogStart(F)V"),
@@ -38,6 +39,7 @@ public class EntityRendererFogFalloffMixin {
         return Math.min(original * startFraction, this.farPlaneDistance - 0.5F);
     }
 
+    // Changes an argument of the call of GlStateManager.setFogEnd in setupFog.
     @ModifyArg(
             method = "setupFog",
             at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/GlStateManager;setFogEnd(F)V"),

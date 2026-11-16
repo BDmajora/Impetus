@@ -9,9 +9,10 @@ import net.minecraft.client.renderer.tileentity.TileEntitySignRenderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
-// Leaves the board and post to the mesh and keeps drawing the text; the breaking pass still draws the board since that is where the damage texture goes
+// Mixin that changes TileEntitySignRenderer.
 @Mixin(TileEntitySignRenderer.class)
 public abstract class TileEntitySignRendererMixin {
+    // Wraps the call of ModelSign.renderSign in render.
     @WrapOperation(method = "render(Lnet/minecraft/tileentity/TileEntitySign;DDDFIF)V",
             at = @At(value = "INVOKE", target = "Lnet/minecraft/client/model/ModelSign;renderSign()V"))
     private void impetus$skipStaticBoard(ModelSign model, Operation<Void> original, @Local(argsOnly = true, ordinal = 0) int destroyStage) {

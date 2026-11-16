@@ -6,29 +6,44 @@ import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexEn
 import com.bdmajora.impetus.engine.impl.util.QuadUtil;
 import org.joml.Vector3f;
 
+import java.util.Objects;
+
+// Records the quads of a translucent mesh for sorting.
 public class TranslucentQuadRecorder {
+    // Starting capacity in quads.
     private static final int EXPECTED_QUADS = 1000;
 
+    // Centers of the quads.
     private final FloatArrayList quadCenters = new FloatArrayList(EXPECTED_QUADS * 3);
+    // Bounds of the quads.
     private final FloatArrayList quadBounds = new FloatArrayList(EXPECTED_QUADS * 6);
+    // Normals of the quads.
     private final FloatArrayList quadNormals = new FloatArrayList(EXPECTED_QUADS * 3);
+    // Plane offsets of the quads.
     private final FloatArrayList quadDots = new FloatArrayList(EXPECTED_QUADS);
+    // Facings of the quads.
     private final ByteArrayList quadFacings = new ByteArrayList(EXPECTED_QUADS);
 
+    // Vertices of the quad being read.
     private final Vector3f[] vertexPositions = new Vector3f[4];
+    // Normal of the quad being read.
     private final Vector3f currentNormal = new Vector3f();
+    // Number of vertices read of the current quad.
     private int currentVertex;
 
+    // Creates a recorder.
     public TranslucentQuadRecorder() {
-        for(int i = 0; i < 4; i++) {
+        for (int i = 0; i < 4; i++) {
             vertexPositions[i] = new Vector3f();
         }
     }
 
+    // Returns the sort state of the recorded quads.
     public SortState getSortState() {
         return TranslucentSorter.analyze(this.toQuadSet());
     }
 
+    // Removes the recorded quads.
     public void clear() {
         quadCenters.clear();
         quadBounds.clear();
@@ -38,6 +53,7 @@ public class TranslucentQuadRecorder {
         currentVertex = 0;
     }
 
+    // Calculates the normal of the current quad from its diagonals.
     private void calculateNormal() {
         final Vector3f v0 = vertexPositions[0];
 
@@ -85,8 +101,8 @@ public class TranslucentQuadRecorder {
         currentNormal.set(normX, normY, normZ);
     }
 
+    // Records the center and bounds and normal of the current quad.
     private void captureQuad() {
-        // The four positions in vertexPositions form a quad. Find its center and axis-aligned bounds
         float totalX = 0, totalY = 0, totalZ = 0;
         float minX = Float.POSITIVE_INFINITY, minY = Float.POSITIVE_INFINITY, minZ = Float.POSITIVE_INFINITY;
         float maxX = Float.NEGATIVE_INFINITY, maxY = Float.NEGATIVE_INFINITY, maxZ = Float.NEGATIVE_INFINITY;
@@ -128,17 +144,20 @@ public class TranslucentQuadRecorder {
         quadFacings.add((byte) QuadUtil.findNormalFace(currentNormal.x, currentNormal.y, currentNormal.z).ordinal());
     }
 
+    // Records a vertex and completes a quad every four vertices and rejects null.
     public void capture(ChunkVertexEncoder.Vertex vertex) {
+        Objects.requireNonNull(vertex, "vertex");
         int i = currentVertex;
         vertexPositions[i].set(vertex.x, vertex.y, vertex.z);
         i++;
-        if(i == 4) {
+        if (i == 4) {
             captureQuad();
             i = 0;
         }
         currentVertex = i;
     }
 
+    // Returns the recorded quads.
     public QuadSet toQuadSet() {
         return new QuadSet(quadCenters.size() / 3, quadCenters.toFloatArray(), quadBounds.toFloatArray(),
                 quadNormals.toFloatArray(), quadDots.toFloatArray(), quadFacings.toByteArray());

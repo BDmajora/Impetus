@@ -37,75 +37,111 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Adaptive client render budgeting, a 1.12.2 reimplementation of GpuShift 1.2.8 by orf (MIT): an EMA of frame time against a per-profile target yields a pressure figure, which tightens a particle spawn budget and the distances past which idle mobs, decorative block entities and item frames are skipped; particles are refused evenly by a carry accumulator, mobs by a per-entity hysteresis so nothing flickers at the boundary. Every per-frame path is O(1) with no allocation: the only map is keyed by entity identity and swept on a fixed cadence
+// Computes the render budget and decides what to skip.
 @Mod.EventBusSubscriber(Side.CLIENT)
 @SideOnly(Side.CLIENT)
 public final class RenderBudgetController {
+    // Weight of a new frame time.
     private static final double EMA_ALPHA = 0.12;
-    // Frames over budget before an entity is actually dropped, so one hitch cannot pop a mob out
+    // Frames an entity must stay far away before it is skipped.
     private static final int CULL_CONFIRMATION_FRAMES = 6;
+    // Frames after which an unseen decision expires.
     private static final long CACHE_MAX_AGE_FRAMES = 1200;
+    // Frames between sweeps of old decisions.
     private static final long CACHE_SWEEP_INTERVAL_FRAMES = 60;
-    // Nothing inside this many blocks is ever skipped regardless of the configured distances
+    // Distance inside which entities are never skipped.
     private static final double CLOSE_PROTECTION_DISTANCE = 32.0;
+    // Square of the protection distance.
     private static final double CLOSE_PROTECTION_DISTANCE_SQ = CLOSE_PROTECTION_DISTANCE * CLOSE_PROTECTION_DISTANCE;
+    // Margin that prevents flicker at the limit.
     private static final double HYSTERESIS_DISTANCE = 12.0;
+    // Pressure at which adaptive limits start.
     private static final double ADAPTIVE_PRESSURE_THRESHOLD = 0.2;
-    // Skipping arms once frames run 3% over target and disarms only when back at or under it, so a machine sitting exactly on its frame cap cannot toggle every tick
+    // Pressure at which limits apply.
     private static final double ARM_PRESSURE = 0.03;
-    // With a pack running the block-entity line moves out, since shaders make far chests cheap relative to everything else
+    // Extra block entity distance while a shader pack runs.
     private static final int SHADER_BLOCK_ENTITY_BONUS = 32;
 
+    // Time of the previous frame.
     private static long lastFrameNanos;
+    // Smoothed frame time.
     private static double emaFrameMillis;
+    // Number of frames seen.
     private static long frameIndex;
+    // Whether limits applied in the previous tick.
     private static boolean armedLastTick;
+    // Current budget.
     private static volatile RenderBudget budget = RenderBudget.NEUTRAL;
 
-    // GPU time of each frame between the render tick's start and end, read back a few frames late, feeding the detector that decides which half the adaptive step tightens; null while adaptive budgeting is off or the driver has no timer queries
+    // Detector of the bottleneck.
     private static final BottleneckDetector bottleneck = new BottleneckDetector();
+    // Graphics timer or null.
     private static TimerQueryManager gpuTimer;
-    // A start timestamp is out and its end still owed
+    // Whether a graphics timing is running.
     private static boolean gpuFrameOpen;
 
-    // Last-applied settings, compared each tick so an options change resets the caches instead of bleeding stale decisions through
+    // Setting seen in the previous tick.
     private static boolean lastEnabled;
+    // Profile seen in the previous tick.
     private static ExtrasConfig.BudgetProfile lastProfile;
+    // Setting seen in the previous tick.
     private static boolean lastAdaptive;
+    // Setting seen in the previous tick.
     private static int lastParticleBudget;
+    // Setting seen in the previous tick.
     private static int lastEntityCullDistance;
+    // Setting seen in the previous tick.
     private static boolean lastSmartEntityCulling;
 
+    // Skip decision of each entity.
     private static final Map<Entity, Decision> decisions = new IdentityHashMap<>();
-    // Concurrent, and the carry below guarded, because addEffect runs on the particle pool too: a firework's starter and a huge explosion spawn their children from their own tick
+    // Category of each particle class.
     private static final Map<Class<?>, ParticleCategory> particleCategories = new ConcurrentHashMap<>();
+    // Lock that guards the particle carry.
     private static final Object PARTICLE_CARRY_LOCK = new Object();
-    // Boolean.TRUE for the vanilla decorative renderers that may be skipped, FALSE for everything else, so the per-block-entity cost is one identity lookup
+    // Whether each block entity class may be skipped.
     private static final Map<Class<?>, Boolean> budgetableBlockEntities = new HashMap<>();
+    // Fraction of a particle carried to the next one.
     private static double particleCarry;
 
-    // Counted over the tick in progress, then copied into the shown fields at tick end so the overlay reads whole ticks
+    // Entities skipped in this tick.
     private static int entitiesSkipped;
+    // Entities kept in this tick.
     private static int entitiesProtected;
+    // Particles skipped in this tick.
     private static int particlesSkipped;
+    // Particles kept in this tick.
     private static int particlesProtected;
+    // Block entities skipped in this tick.
     private static int blockEntitiesSkipped;
+    // Block entities kept in this tick.
     private static int blockEntitiesProtected;
+    // Item frames skipped in this tick.
     private static int itemFramesSkipped;
+    // Item frames kept in this tick.
     private static int itemFramesProtected;
+    // Count of the previous tick.
     private static int shownEntitiesSkipped;
+    // Count of the previous tick.
     private static int shownEntitiesProtected;
+    // Count of the previous tick.
     private static int shownParticlesSkipped;
+    // Count of the previous tick.
     private static int shownParticlesProtected;
+    // Count of the previous tick.
     private static int shownBlockEntitiesSkipped;
+    // Count of the previous tick.
     private static int shownBlockEntitiesProtected;
+    // Count of the previous tick.
     private static int shownItemFramesSkipped;
+    // Count of the previous tick.
     private static int shownItemFramesProtected;
 
+    // Prevents instantiation
     private RenderBudgetController() {
     }
 
-    // Feeds the frame-time EMA once per frame and sweeps stale entity decisions on a fixed cadence
+    // Updates the frame time and the graphics timing.
     @SubscribeEvent
     public static void onRenderTick(TickEvent.RenderTickEvent event) {
         if (event.phase != TickEvent.Phase.START) {
@@ -135,7 +171,7 @@ public final class RenderBudgetController {
         }
     }
 
-    // Hands the detector this frame's CPU time with the newest GPU reading, then opens the next GPU measurement; only while the adaptive step can act on the verdict
+    // Starts the graphics timing of the frame.
     private static void openGpuFrame(double cpuMillis) {
         ExtrasConfig.RenderBudgetSettings settings = Extras.options().renderBudget;
         if (!settings.enabled || !settings.adaptive) {
@@ -153,7 +189,6 @@ public final class RenderBudgetController {
             gpuTimer = new TimerQueryManager();
         }
 
-        // A frame whose end never came (an exception mid-render) is closed here so the pairs stay balanced
         closeGpuFrame();
         if (gpuTimer.updateTime()) {
             bottleneck.record(cpuMillis, gpuTimer.getLastTime() / 1_000_000.0, settings.profile.targetFrameMillis);
@@ -162,6 +197,7 @@ public final class RenderBudgetController {
         gpuFrameOpen = true;
     }
 
+    // Ends the graphics timing of the frame.
     private static void closeGpuFrame() {
         if (gpuFrameOpen) {
             gpuTimer.finishProfiling();
@@ -169,7 +205,7 @@ public final class RenderBudgetController {
         }
     }
 
-    // Budgeting or its adaptive step switched off: queries go back to the pool and the next measurement starts from scratch
+    // Releases the graphics timer.
     private static void stopGpuTiming() {
         if (gpuTimer != null) {
             closeGpuFrame();
@@ -179,7 +215,7 @@ public final class RenderBudgetController {
         }
     }
 
-    // GL_TIMESTAMP queries are GL 3.3 core or ARB_timer_query
+    // Returns whether the driver supports timer queries.
     private static boolean timerQueriesSupported() {
         try {
             return LWJGL.isOpenGLVersionSupported(3, 3) || LWJGL.isExtensionSupported(GLExtension.ARB_timer_query);
@@ -188,7 +224,7 @@ public final class RenderBudgetController {
         }
     }
 
-    // Resolves the budget for the coming tick and rolls the overlay counters
+    // Recomputes the budget and publishes the counters.
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) {
@@ -217,7 +253,7 @@ public final class RenderBudgetController {
         itemFramesProtected = 0;
     }
 
-    // Any change drops the caches; relaxing the profile also clamps the EMA to the new target, otherwise the old pressure would keep the tighter budget in force for seconds after the user asked for less
+    // Resets the state when a setting changed.
     private static void handleSettingsChange(ExtrasConfig.RenderBudgetSettings settings) {
         boolean changed = settings.enabled != lastEnabled
                 || settings.profile != lastProfile
@@ -244,7 +280,7 @@ public final class RenderBudgetController {
         lastSmartEntityCulling = settings.smartEntityCulling;
     }
 
-    // Profile clamps the configured values into its band, pressure past the threshold tightens them one step, and an active shader pack loosens them since the frame time is then mostly the pack's and skipping mobs would buy little
+    // Returns the budget for the settings and the frame time.
     private static RenderBudget calculate(ExtrasConfig.RenderBudgetSettings settings) {
         if (!settings.enabled) {
             armedLastTick = false;
@@ -258,7 +294,6 @@ public final class RenderBudgetController {
 
         double particleScale = settings.particleBudget / 100.0;
         int entityDistance = settings.entityCullDistance;
-        // 100% means the user handed particles to something else (or wants them all); never re-enable it from here
         boolean particlesUnlimited = particleScale >= 1.0;
 
         switch (profile) {
@@ -277,7 +312,6 @@ public final class RenderBudgetController {
             default -> { }
         }
 
-        // Which half the adaptive step tightens follows the bottleneck, as GpuShift does: far mobs are CPU work, particles mostly GPU fill; unmeasured or mixed, both
         BottleneckDetector.State bound = bottleneck.state();
         boolean adaptive = settings.adaptive && pressure >= ADAPTIVE_PRESSURE_THRESHOLD && bound != BottleneckDetector.State.HEADROOM;
         if (adaptive) {
@@ -306,7 +340,6 @@ public final class RenderBudgetController {
             entityDistance = Math.max(entityDistance, 64);
         }
 
-        // Performance skips distant things unconditionally; the others only while actually over target, with hysteresis on the arming itself
         boolean armed = profile == ExtrasConfig.BudgetProfile.PERFORMANCE
                 || pressure >= ARM_PRESSURE
                 || (armedLastTick && pressure > 0.0);
@@ -329,12 +362,12 @@ public final class RenderBudgetController {
                 bound);
     }
 
-    // The budget in force for the current tick
+    // Returns the current budget.
     public static RenderBudget budget() {
         return budget;
     }
 
-    // Whether this living entity's model should be skipped this frame; the pure-arithmetic distance gate runs before anything that touches the entity's data manager, so close mobs cost a few multiplies and at most one map lookup
+    // Returns whether the entity is skipped.
     public static boolean shouldCullLivingEntity(EntityLivingBase entity) {
         RenderBudget current = budget;
         if (!current.armed || !current.limitsEntities() || entity instanceof EntityPlayer) {
@@ -384,7 +417,6 @@ public final class RenderBudgetController {
             decisions.put(entity, decision);
             decision.farFrames = 1;
         } else if (frameIndex - decision.lastSeenFrame > 1) {
-            // Not seen last frame: it was off screen or culled elsewhere, so the run of far frames starts over
             decision.farFrames = 1;
         } else if (frameIndex > decision.lastSeenFrame) {
             decision.farFrames++;
@@ -398,7 +430,7 @@ public final class RenderBudgetController {
         return decision.cull;
     }
 
-    // Squared distance from the view entity (the player when there is none) to the entity, or -1 when there is no viewer or the entity IS the viewer, which the callers never cull
+    // Returns the squared distance to the viewer or minus one.
     private static double viewerDistanceSquared(Minecraft minecraft, Entity entity) {
         Entity viewer = minecraft.getRenderViewEntity();
         if (viewer == null) {
@@ -413,7 +445,7 @@ public final class RenderBudgetController {
         return dx * dx + dy * dy + dz * dz;
     }
 
-    // Whether shouldCullLivingEntity dropped this entity in the current frame; lets the shadow go with the model rather than hover over empty ground
+    // Returns whether the entity was skipped in this frame.
     public static boolean wasCulledThisFrame(Entity entity) {
         if (decisions.isEmpty()) {
             return false;
@@ -422,7 +454,7 @@ public final class RenderBudgetController {
         return decision != null && decision.cull && decision.lastSeenFrame == frameIndex;
     }
 
-    // Close, mounted, glowing, named, and anything not actually registered in the client world (GUI previews, inventory mannequins, freshly spawned mobs behind a screen) stay drawn; ordered cheapest first, with the data-manager reads (glowing, name) last
+    // Returns whether the entity must never be skipped.
     private static boolean isProtected(EntityLivingBase entity, Minecraft minecraft, double distanceSquared) {
         if (distanceSquared <= CLOSE_PROTECTION_DISTANCE_SQ) {
             return true;
@@ -441,7 +473,7 @@ public final class RenderBudgetController {
         return entity.isGlowing() || entity.hasCustomName();
     }
 
-    // Whether this block entity's special renderer should be skipped this frame: only vanilla's decorative ones (chests, signs, heads, banners, beds, shulker boxes, enchanting tables) past the line, never the one under the crosshair, never anything modded
+    // Returns whether the block entity is skipped.
     public static boolean shouldCullBlockEntity(TileEntity blockEntity) {
         RenderBudget current = budget;
         if (!current.armed || !current.limitsBlockEntities()) {
@@ -476,7 +508,7 @@ public final class RenderBudgetController {
         return true;
     }
 
-    // Exact vanilla classes only, so a modded chest that extends the vanilla one keeps rendering; the result is cached per class
+    // Returns whether the block entity type may be skipped.
     private static boolean isBudgetableBlockEntity(TileEntity blockEntity) {
         if (!blockEntity.getClass().getName().startsWith("net.minecraft.")) {
             return false;
@@ -491,7 +523,7 @@ public final class RenderBudgetController {
                 || blockEntity instanceof TileEntityEnchantmentTable;
     }
 
-    // Whether this item frame should be skipped this frame; glowing, named and map frames are kept since those are the ones people look at from afar
+    // Returns whether the item frame is skipped.
     public static boolean shouldCullItemFrame(EntityItemFrame frame) {
         RenderBudget current = budget;
         if (!current.armed || !current.itemFramesLimited || !current.limitsBlockEntities()) {
@@ -516,7 +548,7 @@ public final class RenderBudgetController {
         return true;
     }
 
-    // Whether this particle should be refused; the carry accumulator keeps exactly the budgeted fraction and spaces the refusals evenly, so a 65% budget never drops three in a row
+    // Returns whether the particle is skipped.
     public static boolean shouldCullParticle(Particle particle) {
         RenderBudget current = budget;
         if (!current.limitsParticles()) {
@@ -547,44 +579,53 @@ public final class RenderBudgetController {
         return true;
     }
 
-    // Overlay readouts from the last whole tick
-
+    // Returns the entities skipped in the previous tick.
     public static int entitiesSkipped() {
         return shownEntitiesSkipped;
     }
 
+    // Returns the entities kept in the previous tick.
     public static int entitiesProtected() {
         return shownEntitiesProtected;
     }
 
+    // Returns the particles skipped in the previous tick.
     public static int particlesSkipped() {
         return shownParticlesSkipped;
     }
 
+    // Returns the particles kept in the previous tick.
     public static int particlesProtected() {
         return shownParticlesProtected;
     }
 
+    // Returns the block entities skipped in the previous tick.
     public static int blockEntitiesSkipped() {
         return shownBlockEntitiesSkipped;
     }
 
+    // Returns the block entities kept in the previous tick.
     public static int blockEntitiesProtected() {
         return shownBlockEntitiesProtected;
     }
 
+    // Returns the item frames skipped in the previous tick.
     public static int itemFramesSkipped() {
         return shownItemFramesSkipped;
     }
 
+    // Returns the item frames kept in the previous tick.
     public static int itemFramesProtected() {
         return shownItemFramesProtected;
     }
 
-    // Per-entity hysteresis state, mutated in place since it is touched every frame for every far mob
+    // Skip decision of one entity.
     private static final class Decision {
+        // Whether the entity is skipped.
         boolean cull;
+        // Consecutive frames the entity stayed far away.
         int farFrames;
+        // Frame of the last decision.
         long lastSeenFrame;
     }
 }

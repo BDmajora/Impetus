@@ -8,9 +8,10 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 
 import java.util.Random;
 
-// Every particle constructs its own java.util.Random, the single most expensive line of a particle spawn; under GPU Booster they all share the client thread's FastRandom and the spawn allocates nothing for it
+// Mixin that changes Particle.
 @Mixin(Particle.class)
 public class ParticleRandomMixin {
+    // Replaces the creation of Random in constructor.
     @Redirect(
             method = "<init>(Lnet/minecraft/world/World;DDD)V",
             at = @At(value = "NEW", target = "java/util/Random", remap = false)

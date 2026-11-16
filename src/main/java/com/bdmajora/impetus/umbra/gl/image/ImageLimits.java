@@ -2,22 +2,23 @@ package com.bdmajora.impetus.umbra.gl.image;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// The driver's GL_MAX_IMAGE_UNITS, queried once; image units are a separate namespace from texture units and glBindImageTexture never touches the selector, which is what makes per-program image allocation safe on 1.12.2
+// Image unit limit of the driver.
 public final class ImageLimits {
-    // Spelled as a literal because the generated GL constant classes do not carry it
+    // GL enum of the image unit limit.
     private static final int GL_MAX_IMAGE_UNITS = 0x8D57;
 
-    // Lazily built rather than a static initializer, because the query needs a live GL context
+    // Cached limits or null.
     private static ImageLimits instance;
 
+    // Number of image units.
     private final int maxImageUnits;
 
+    // Creates an image limits with default state.
     private ImageLimits() {
-        // A driver without image support reports 0 (or fails the query), which the builder turns into a hard error naming the image rather than a silent bind to unit 0
         this.maxImageUnits = Math.max(0, LWJGL.glGetInteger(GL_MAX_IMAGE_UNITS));
     }
 
-    // Queried on first use and cached
+    // Returns the value.
     public static ImageLimits get() {
         if (instance == null) {
             instance = new ImageLimits();
@@ -25,12 +26,12 @@ public final class ImageLimits {
         return instance;
     }
 
-    // Drops the cached query so a context recreation re-reads the limit, which can differ on a different GPU
+    // Drops the cached limits.
     public static void reset() {
         instance = null;
     }
 
-    // GL_MAX_IMAGE_UNITS
+    // Returns the max image units.
     public int getMaxImageUnits() {
         return this.maxImageUnits;
     }

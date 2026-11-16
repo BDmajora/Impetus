@@ -24,41 +24,41 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.concurrent.TimeUnit;
 
-// LittleTiles 1.5 draws nothing through its block model: its RenderingThread bakes each tile entity into BLOCK-format buffers already offset to the section origin, and its coremod splices them into vanilla's chunk upload, a path the Impetus mesher replaces
+// Compatibility with LittleTiles meshes.
 public final class LittleTilesCompat {
+    // Mod id of LittleTiles.
     public static final String MODID = "littletiles";
+    // Is loaded.
     public static final boolean IS_LOADED = Loader.isModLoaded(MODID);
 
-    // A section whose bakes keep finishing (a build streaming in) is remeshed at most this often rather than once per tile entity
+    // Remesh delay nanos.
     private static final long REMESH_DELAY_NANOS = TimeUnit.MILLISECONDS.toNanos(50);
-    // Four BLOCK vertices; a baked buffer is only ever copied in whole quads
+    // Quad bytes.
     private static final int QUAD_BYTES = DefaultVertexFormats.BLOCK.getSize() * 4;
-    // Packed section position to when the first bake waiting on it finished; filled from LittleTiles' threads, drained on the render thread
+    // Due times of pending remeshes by position.
     private static final Long2LongOpenHashMap PENDING_REMESHES = new Long2LongOpenHashMap();
 
+    // Prevents instantiation
     private LittleTilesCompat() {
     }
 
-    // From the mesher for every tile entity it meets: LittleTiles' own get their baked buffers spliced in after the block's empty model
+    // Adds the baked tiles of a block entity to the mesh.
     public static void renderTiles(TileEntity tileEntity, IBlockAccess slice, BlockPos pos, IBlockState state,
+                                   // Build context of the section.
                                    VintageChunkBuildContext context, Object section) {
         if (!(tileEntity instanceof TileEntityLittleTiles)) {
             return;
         }
         TileEntityLittleTiles tiles = (TileEntityLittleTiles) tileEntity;
-        // A stand-in from the slice, or a tile entity whose tiles have not arrived yet or were unloaded
         if (!tiles.hasLoaded()) {
             return;
         }
         int light = lightFingerprint(slice, pos);
         TileEntityRenderManager render = tiles.render;
-        // The RenderingThread holds this while it swaps a layer's buffer, so none is read half replaced
         synchronized (render) {
-            // Light is baked into the vertices and LittleTiles only hears of it changing through notifyLightSet, which the async light engine never calls
             if (((BakedLightTracker) render).impetus$lightChanged(light)) {
                 render.hasLightChanged = true;
             }
-            // Queues a bake when light, a neighbour or LittleTiles' render state moved on, as vanilla's upload hook does
             tiles.updateQuadCache(section);
             for (BlockRenderLayer layer : VintageChunkBuildContext.LAYERS) {
                 IRenderDataCache data = render.getBufferCache().get(layer.ordinal());
@@ -69,7 +69,7 @@ public final class LittleTilesCompat {
         }
     }
 
-    // Appends the whole quads of one baked buffer to the section's vanilla buffer for the layer; false when there were none
+    // Copies the quads.
     private static boolean copyQuads(IRenderDataCache data, VintageChunkBuildContext context, BlockRenderLayer layer) {
         ByteBuffer buffer = data.byteBuffer();
         if (buffer == null) {
@@ -80,7 +80,6 @@ public final class LittleTilesCompat {
         if (length <= 0) {
             return false;
         }
-        // A view, so the cache's own position and limit stay LittleTiles'; duplicate() drops the byte order, and a combined BufferLink never had it
         ByteBuffer view = buffer.duplicate().order(ByteOrder.nativeOrder());
         view.clear();
         view.limit(length);
@@ -90,7 +89,7 @@ public final class LittleTilesCompat {
         return true;
     }
 
-    // The packed light a bake reads at the block and across each face, folded into one int
+    // Returns a hash of the light around a block.
     static int lightFingerprint(IBlockAccess access, BlockPos pos) {
         int fingerprint = light(access, pos);
         BlockPos.MutableBlockPos neighbour = new BlockPos.MutableBlockPos();
@@ -101,15 +100,14 @@ public final class LittleTilesCompat {
         return fingerprint;
     }
 
-    // Through the state as the bake reads it, so dynamic light folded into getPackedLightmapCoords counts too
+    // Returns the packed light of a block.
     private static int light(IBlockAccess access, BlockPos pos) {
         return access.getBlockState(pos).getPackedLightmapCoords(access, pos);
     }
 
-    // From LittleTiles' RenderingThread once a bake is final: vanilla LittleTiles marks the RenderChunk instead, but Impetus's vestigial ViewFrustum hands it the same sixteen for the whole world
+    // Schedules a remesh of a block entity.
     public static void queueRemesh(TileEntity tileEntity) {
         World world = tileEntity.getWorld();
-        // Tile entities inside animations live in LittleTiles' sub-worlds and draw through its own render chunks
         if (world == null || world != Minecraft.getMinecraft().world) {
             return;
         }
@@ -123,7 +121,7 @@ public final class LittleTilesCompat {
         }
     }
 
-    // Once a frame on the render thread: remeshes every section whose first finished bake has waited out the delay
+    // Remeshes the due sections.
     public static void flushRemeshes(ImpetusWorldRenderer renderer) {
         synchronized (PENDING_REMESHES) {
             if (PENDING_REMESHES.isEmpty()) {

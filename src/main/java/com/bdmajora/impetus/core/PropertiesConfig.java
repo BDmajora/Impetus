@@ -8,29 +8,36 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
-// The plain-Properties config file the mixin plugins read during coremod setup, before Forge/Minecraft classes are safe; Launch is the only outside class referenced, so every module config that must load that early shares this rather than its own copy of the file handling
+// Properties file in the config directory with typed reads and atomic saves.
 public final class PropertiesConfig {
+    // Logger of read and write failures.
     private final Logger logger;
+    // Name of the file.
     private final String fileName;
+    // Comment written at the top of the file.
     private final String header;
-    // Where save writes; null only if the config directory could not be resolved
+    // Path of the file or null before the first load.
     private Path file;
+    // Values of the last load.
     private Properties loaded = new Properties();
 
+    // Creates a config for a file name.
     public PropertiesConfig(Logger logger, String fileName, String header) {
         this.logger = logger;
         this.fileName = fileName;
         this.header = header;
     }
 
-    // Reads the file if present, otherwise starts from defaults; the caller parses the result and then writes back so a fresh file discovers every switch
+    // Reads the file and returns its values or empty values when it is missing or unreadable.
     public Properties load() {
         this.file = configDirectory().resolve(this.fileName);
         Properties props = new Properties();
@@ -45,31 +52,45 @@ public final class PropertiesConfig {
         return props;
     }
 
-    // Rewrites the file with every key so a user who never opened it still discovers the switches; user-set values are preserved verbatim by the caller re-supplying them
+    // Writes values through a temporary file and does nothing before the first load.
     public void save(Map<String, String> values) {
         if (this.file == null) {
             return;
         }
         Properties out = new Properties();
         out.putAll(values);
-        try (OutputStream stream = Files.newOutputStream(this.file)) {
-            out.store(stream, this.header);
+        Path temp = this.file.resolveSibling(this.file.getFileName() + ".tmp");
+        try {
+            try (OutputStream stream = Files.newOutputStream(temp)) {
+                out.store(stream, this.header);
+            }
+            try {
+                Files.move(temp, this.file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(temp, this.file, StandardCopyOption.REPLACE_EXISTING);
+            }
         } catch (IOException e) {
             this.logger.warn("Could not write {}", this.file, e);
+            // Removes the temporary file of a failed write
+            try {
+                Files.deleteIfExists(temp);
+            } catch (IOException cleanup) {
+                e.addSuppressed(cleanup);
+            }
         }
     }
 
-    // Insertion-ordered so the written file lists switches in declaration order
+    // Returns an empty ordered map of values.
     public static Map<String, String> values() {
         return new LinkedHashMap<>();
     }
 
-    // The config directory, created eagerly; falls back to the working directory when minecraftHome is unset
+    // Returns the config directory as a path.
     private Path configDirectory() {
         return configDirectory(this.logger).toPath();
     }
 
-    // config/ under the game directory, created eagerly; the modules on Forge's Configuration resolve their file through this too
+    // Returns the config directory and creates it when missing.
     public static File configDirectory(Logger logger) {
         File home = Launch.minecraftHome;
         File directory = new File(home == null ? new File(".") : home, "config");
@@ -79,11 +100,12 @@ public final class PropertiesConfig {
         return directory;
     }
 
+    // Returns a file in the config directory.
     public static File configFile(Logger logger, String fileName) {
         return new File(configDirectory(logger), fileName);
     }
 
-    // Lenient boolean parse; anything unrecognised keeps the default
+    // Returns a boolean value or the fallback for a missing or malformed value.
     public boolean bool(String key, boolean fallback) {
         String value = this.loaded.getProperty(key);
         if (value == null) {
@@ -95,7 +117,7 @@ public final class PropertiesConfig {
                 : fallback;
     }
 
-    // Clamped integer parse; out-of-range and unparseable values keep the default
+    // Returns an int value or the fallback for a missing or malformed or out of range value.
     public int integer(String key, int fallback, int min, int max) {
         String value = this.loaded.getProperty(key);
         if (value == null) {
@@ -109,11 +131,11 @@ public final class PropertiesConfig {
         }
     }
 
-    // Comma-separated list; blank entries are dropped so a trailing comma is harmless
+    // Returns the non empty comma separated entries of a value or of the fallback.
     public String[] list(String key, String fallback) {
         String value = this.loaded.getProperty(key);
         if (value == null) {
-            value = fallback;
+            value = fallback == null ? "" : fallback;
         }
         List<String> entries = new ArrayList<>();
         for (String entry : value.split(",")) {

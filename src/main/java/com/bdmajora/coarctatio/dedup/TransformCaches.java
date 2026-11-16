@@ -8,12 +8,12 @@ import net.minecraft.client.renderer.block.model.ItemTransformVec3f;
 
 import java.util.Objects;
 
-// Bake-scoped pools for camera transforms and the override list, which every baked model carries and almost never varies; FoamFix's dedup done at construction instead of a reflective post-bake walk
+// Pools for item camera transforms.
 public final class TransformCaches {
-    // ItemCameraTransforms defines no equals, so the strategy compares its eight vectors in the same order for hash and equality
+    // Equality rule that compares every display slot.
     private static final Hash.Strategy<ItemCameraTransforms> TRANSFORMS_STRATEGY =
             new Hash.Strategy<ItemCameraTransforms>() {
-                // Structural hash over all eight transforms, so equal-by-value instances collide
+                // Returns a hash over every display slot.
                 @Override
                 public int hashCode(ItemCameraTransforms transforms) {
                     if (transforms == null) {
@@ -30,7 +30,7 @@ public final class TransformCaches {
                     return 31 * hash + vectorHash(transforms.fixed);
                 }
 
-                // Structural equality; vanilla's class does not define equals
+                // Returns whether every display slot is equal.
                 @Override
                 public boolean equals(ItemCameraTransforms a, ItemCameraTransforms b) {
                     if (a == b) {
@@ -51,19 +51,21 @@ public final class TransformCaches {
                 }
             };
 
+    // Pool of camera transforms.
     public static final DeduplicationCache<ItemCameraTransforms> TRANSFORMS =
             new DeduplicationCache<>("Camera transforms", CoarctatioConfig.get().poolSizeLimit, TRANSFORMS_STRATEGY);
 
+    // Prevents instantiation
     private TransformCaches() {
     }
 
-    // ItemTransformVec3f does define hashCode, so this only has to add null tolerance. Forge deprecates the type for TRSRTransformation, but vanilla's ItemCameraTransforms is built from it
+    // Returns the hash of a transform or zero when null.
     @SuppressWarnings("deprecation")
     private static int vectorHash(ItemTransformVec3f vector) {
         return vector == null ? 0 : vector.hashCode();
     }
 
-    // Collapses an empty override list onto ItemOverrideList.NONE; JSON models with no `overrides` still get a fresh empty instance, and non-empty lists are genuinely per-model
+    // Returns the shared empty list for a list without overrides.
     public static ItemOverrideList deduplicate(ItemOverrideList overrides) {
         if (overrides == null) {
             return null;
@@ -72,12 +74,12 @@ public final class TransformCaches {
         return overrides.getOverrides().isEmpty() ? ItemOverrideList.NONE : overrides;
     }
 
-    // Arms the pools for a bake
+    // Opens the pool.
     public static void open() {
         TRANSFORMS.open();
     }
 
-    // Drops the pool indices after a bake; the shared objects live on in the models
+    // Closes the pool.
     public static void close() {
         TRANSFORMS.close();
     }

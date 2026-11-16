@@ -871,4 +871,53 @@ class ImpetusVideoOptionsControllerTest {
             Mockito.verifyNoInteractions(logger);
         });
     }
+
+    // Asks each healthy option once in the frame that drops a broken option between them.
+    @Test
+    void aDroppedOptionDoesNotRestartTheChangeScan() {
+        withLogger(logger -> {
+            Option<Boolean> before = mockOption("Before");
+            Option<Boolean> broken = mockOption("Broken");
+            Option<Boolean> after = mockOption("After");
+            Mockito.when(broken.hasChanged()).thenThrow(new IllegalStateException("changes"));
+            Mockito.when(broken.getId()).thenReturn(OptionIdentifier.create("broken_mod", "broken", Boolean.class));
+            Mockito.when(after.hasChanged()).thenReturn(true);
+            FakeDrawContext draw = new FakeDrawContext();
+            ImpetusVideoOptionsController controller = new ImpetusVideoOptionsController(() -> { },
+                    List.of(pageOf("impetus", "One", before, broken), pageOf("impetus", "Two", after, broken)), draw);
+            controller.init(1000, 500);
+            long beforeAsked = asked(before, "hasChanged");
+            long afterAsked = asked(after, "hasChanged");
+            controller.render(draw, 0, 0, 0f);
+            assertTrue(controller.isHasPendingChanges());
+            assertEquals(1, asked(broken, "hasChanged"));
+            assertTrue(asked(before, "hasChanged") - beforeAsked >= 1);
+            assertTrue(asked(after, "hasChanged") - afterAsked >= 1);
+            Mockito.verify(logger, Mockito.times(1)).error(eq(BROKEN_LOG), any(), any(), any(Throwable.class));
+        });
+    }
+
+    // Scans every option when the broken option is first and last and finds no change.
+    @Test
+    void brokenOptionsAtBothEndsAreDroppedInOneFrame() {
+        withLogger(logger -> {
+            Option<Boolean> first = mockOption("First");
+            Option<Boolean> middle = mockOption("Middle");
+            Option<Boolean> last = mockOption("Last");
+            Mockito.when(first.hasChanged()).thenThrow(new IllegalStateException("first"));
+            Mockito.when(last.hasChanged()).thenThrow(new IllegalStateException("last"));
+            Mockito.when(first.getId()).thenReturn(OptionIdentifier.create("broken_mod", "first", Boolean.class));
+            Mockito.when(last.getId()).thenReturn(OptionIdentifier.create("broken_mod", "last", Boolean.class));
+            FakeDrawContext draw = new FakeDrawContext();
+            ImpetusVideoOptionsController controller = new ImpetusVideoOptionsController(() -> { },
+                    List.of(pageOf("impetus", "One", first, middle, last)), draw);
+            controller.init(1000, 500);
+            controller.render(draw, 0, 0, 0f);
+            controller.render(draw, 0, 0, 0f);
+            assertFalse(controller.isHasPendingChanges());
+            assertEquals(1, asked(first, "hasChanged"));
+            assertEquals(1, asked(last, "hasChanged"));
+            Mockito.verify(logger, Mockito.times(2)).error(eq(BROKEN_LOG), any(), any(), any(Throwable.class));
+        });
+    }
 }

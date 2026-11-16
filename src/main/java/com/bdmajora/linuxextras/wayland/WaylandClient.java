@@ -17,44 +17,70 @@ import static java.lang.foreign.MemoryLayout.PathElement.groupElement;
 import static java.lang.foreign.ValueLayout.ADDRESS;
 import static java.lang.foreign.ValueLayout.JAVA_INT;
 
-// libwayland-client over FFM, with a private event queue; requests follow wayland-scanner's wire format
+// Minimal libwayland client bound through the foreign function interface.
 final class WaylandClient {
+    // Marshal flag that destroys the proxy.
     static final int MARSHAL_FLAG_DESTROY = 1;
+    // Opcode of the registry request of the display.
     private static final int DISPLAY_GET_REGISTRY = 1;
+    // Opcode of the bind request of the registry.
     private static final int REGISTRY_BIND = 0;
+    // Layout of a native message description.
     static final StructLayout WL_MESSAGE = MemoryLayout.structLayout(ADDRESS.withName("name"), ADDRESS.withName("signature"), ADDRESS.withName("types"));
+    // Layout of a native interface description.
     static final StructLayout WL_INTERFACE = MemoryLayout.structLayout(ADDRESS.withName("name"), JAVA_INT.withName("version"),
             JAVA_INT.withName("method_count"), ADDRESS.withName("methods"), JAVA_INT.withName("event_count"), MemoryLayout.paddingLayout(4L),
             ADDRESS.withName("events"));
-    // Every wl_argument is a union no wider than a pointer
+    // Bytes of one marshalled argument.
     private static final long ARGUMENT_SIZE = 8L;
+    // Signature of the global event.
     private static final FunctionDescriptor GLOBAL = FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, JAVA_INT, ADDRESS, JAVA_INT);
+    // Signature of the global remove event.
     private static final FunctionDescriptor GLOBAL_REMOVE = FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, JAVA_INT);
 
-    // libwayland-client as the dynamic linker finds it; tests put a compositor written in Java here
+    // Loader of the client library.
     static final AtomicReference<Function<Arena, SymbolLookup>> LIBRARY = new AtomicReference<>(WaylandClient::systemLibrary);
 
+    // Arena of every native allocation.
     final Arena arena;
+    // Native linker.
     final Linker linker = Linker.nativeLinker();
+    // Symbols of the client library.
     private final SymbolLookup library;
+    // Display connection.
     private final MemorySegment display;
+    // Handle of wl_display_create_queue.
     private final MethodHandle createQueue;
+    // Handle of wl_event_queue_destroy.
     private final MethodHandle destroyQueue;
+    // Handle of wl_proxy_create_wrapper.
     private final MethodHandle createWrapper;
+    // Handle of wl_proxy_wrapper_destroy.
     private final MethodHandle destroyWrapper;
+    // Handle of wl_proxy_set_queue.
     private final MethodHandle setQueue;
+    // Handle of wl_proxy_marshal_array_flags.
     private final MethodHandle marshal;
+    // Handle of wl_proxy_add_listener.
     private final MethodHandle addListener;
+    // Handle of wl_proxy_get_version.
     private final MethodHandle getVersion;
+    // Handle of wl_proxy_destroy.
     private final MethodHandle destroyProxy;
+    // Handle of wl_display_roundtrip_queue.
     private final MethodHandle roundtrip;
+    // Private event queue or null.
     private MemorySegment queue = MemorySegment.NULL;
+    // Display wrapper on the private queue or null.
     private MemorySegment wrapper = MemorySegment.NULL;
+    // Registry proxy or null.
     private MemorySegment registry = MemorySegment.NULL;
-    // The interfaces globals() looks for and the registry names announced for them; names start at 1, so 0 is one never announced
+    // Interface names to look up.
     private String[] wanted = new String[0];
+    // Global names of the wanted interfaces or zero.
     private int[] found = new int[0];
 
+    // Creates a client for a display and binds every native function.
     WaylandClient(Arena arena, long display) {
         this.arena = arena;
         this.library = LIBRARY.get().apply(arena);
@@ -72,14 +98,16 @@ final class WaylandClient {
         this.roundtrip = function(this.library, "wl_display_roundtrip_queue", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS));
     }
 
+    // Returns the system client library.
     static SymbolLookup systemLibrary(Arena arena) {
         return SymbolLookup.libraryLookup("libwayland-client.so.0", arena);
     }
 
-    // Lists the compositor's globals once, on the private queue; each wanted interface's registry name comes back in order, 0 for one it does not offer
+    // Returns the global names of the interfaces and releases an earlier lookup first.
     int[] globals(String... interfaces) throws Throwable {
-        this.queue = (MemorySegment) this.createQueue.invoke(this.display);
-        this.wrapper = (MemorySegment) this.createWrapper.invoke(this.display);
+        this.close();
+        this.queue = notNull((MemorySegment) this.createQueue.invoke(this.display), "an event queue");
+        this.wrapper = notNull((MemorySegment) this.createWrapper.invoke(this.display), "a display wrapper");
         this.setQueue.invoke(this.wrapper, this.queue);
         this.registry = request(this.wrapper, DISPLAY_GET_REGISTRY, dataSymbol("wl_registry_interface"), version(this.wrapper), 0, MemorySegment.NULL);
         this.wanted = interfaces;
@@ -90,7 +118,7 @@ final class WaylandClient {
         return this.found;
     }
 
-    // wl_registry.global, called back from inside libwayland, where a thrown exception would abort the JVM, so it only compares strings
+    // Records the name of an announced global that is wanted.
     private void global(MemorySegment data, MemorySegment registry, int name, MemorySegment wlInterface, int version) {
         String announced = wlInterface.reinterpret(Integer.MAX_VALUE).getString(0L, StandardCharsets.US_ASCII);
         for (int i = 0; i < this.wanted.length; i++) {
@@ -100,13 +128,13 @@ final class WaylandClient {
         }
     }
 
-    // Binds a global listed by globals() at the given version
+    // Binds a global to an interface at a version.
     MemorySegment bind(int name, MemorySegment wlInterface, int version) throws Throwable {
         MemorySegment interfaceName = wlInterface.reinterpret(WL_INTERFACE.byteSize()).get(ADDRESS, WL_INTERFACE.byteOffset(groupElement("name")));
         return request(this.registry, REGISTRY_BIND, wlInterface, version, 0, name, interfaceName, version, MemorySegment.NULL);
     }
 
-    // Sends a request; arguments are Integers or MemorySegments, a new_id goes as NULL, and the new proxy, of wlInterface, comes back
+    // Sends a request and returns the new proxy and rejects a missing proxy.
     MemorySegment request(MemorySegment proxy, int opcode, MemorySegment wlInterface, int version, int flags, Object... arguments) throws Throwable {
         MemorySegment array = this.arena.allocate(ARGUMENT_SIZE * Math.max(1, arguments.length));
         for (int i = 0; i < arguments.length; i++) {
@@ -124,21 +152,22 @@ final class WaylandClient {
         return result;
     }
 
-    // A destructor request, after which libwayland frees the proxy
+    // Sends a destroying request.
     void destroy(MemorySegment proxy, int opcode) throws Throwable {
         request(proxy, opcode, MemorySegment.NULL, version(proxy), MARSHAL_FLAG_DESTROY);
     }
 
-    // Frees a proxy whose interface has no destructor request
+    // Destroys a proxy.
     void destroyProxy(MemorySegment proxy) throws Throwable {
         this.destroyProxy.invoke(proxy);
     }
 
+    // Returns the version of a proxy.
     int version(MemorySegment proxy) throws Throwable {
         return (int) this.getVersion.invoke(proxy);
     }
 
-    // Points a proxy's events at upcalls, in event opcode order
+    // Adds a listener of event handlers to a proxy.
     void listen(MemorySegment proxy, MemorySegment... handlers) throws Throwable {
         MemorySegment listener = this.arena.allocate(ADDRESS, handlers.length);
         for (int i = 0; i < handlers.length; i++) {
@@ -147,37 +176,57 @@ final class WaylandClient {
         this.addListener.invoke(proxy, listener, MemorySegment.NULL);
     }
 
-    // Waits until the compositor has answered everything sent on the private queue, delivering its events to the listeners
+    // Waits for the server to answer every request and rejects a failed connection.
     void roundtrip(String during) throws Throwable {
         if ((int) this.roundtrip.invoke(this.display, this.queue) < 0) {
             throw new IllegalStateException("The Wayland connection failed while " + during);
         }
     }
 
-    // Frees the registry, wrapper and queue, skipping what never got made
+    // Destroys the registry and the wrapper and the queue once each and continues after a failure.
     void close() throws Throwable {
-        if (this.registry.address() != 0L) {
-            this.destroyProxy.invoke(this.registry);
-        }
-        if (this.wrapper.address() != 0L) {
-            this.destroyWrapper.invoke(this.wrapper);
-        }
-        if (this.queue.address() != 0L) {
-            this.destroyQueue.invoke(this.queue);
+        MemorySegment registry = this.registry;
+        MemorySegment wrapper = this.wrapper;
+        MemorySegment queue = this.queue;
+        this.registry = MemorySegment.NULL;
+        this.wrapper = MemorySegment.NULL;
+        this.queue = MemorySegment.NULL;
+        try {
+            if (registry.address() != 0L) {
+                this.destroyProxy.invoke(registry);
+            }
+        } finally {
+            try {
+                if (wrapper.address() != 0L) {
+                    this.destroyWrapper.invoke(wrapper);
+                }
+            } finally {
+                if (queue.address() != 0L) {
+                    this.destroyQueue.invoke(queue);
+                }
+            }
         }
     }
 
-    // One of libwayland's own interface descriptions, such as wl_shm_interface
+    // Returns a native result and rejects a null pointer.
+    private static MemorySegment notNull(MemorySegment result, String what) {
+        if (result.address() == 0L) {
+            throw new IllegalStateException("libwayland could not create " + what);
+        }
+        return result;
+    }
+
+    // Returns a data symbol of the library and rejects a missing one.
     MemorySegment dataSymbol(String name) {
         return this.library.find(name).orElseThrow(() -> new IllegalStateException("libwayland-client has no " + name));
     }
 
-    // A wl_message table for count requests or events
+    // Allocates an array of message descriptions.
     MemorySegment messages(int count) {
         return this.arena.allocate(WL_MESSAGE, count);
     }
 
-    // Fills one wl_message; types holds the interface of each object or new_id argument, NULL for the rest
+    // Writes one message description.
     void setMessage(MemorySegment messages, int index, String name, String signature, MemorySegment... types) {
         MemorySegment message = messages.asSlice(index * WL_MESSAGE.byteSize(), WL_MESSAGE);
         MemorySegment typeTable = types.length == 0 ? MemorySegment.NULL : this.arena.allocate(ADDRESS, types.length);
@@ -189,7 +238,7 @@ final class WaylandClient {
         message.set(ADDRESS, WL_MESSAGE.byteOffset(groupElement("types")), typeTable);
     }
 
-    // A protocol's wl_interface as wayland-scanner would generate it; every interface here is declared at version 1
+    // Allocates an interface description.
     MemorySegment createInterface(String name, MemorySegment requests, int requestCount, MemorySegment events, int eventCount) {
         MemorySegment wlInterface = this.arena.allocate(WL_INTERFACE);
         wlInterface.set(ADDRESS, WL_INTERFACE.byteOffset(groupElement("name")), this.arena.allocateFrom(name));
@@ -201,12 +250,13 @@ final class WaylandClient {
         return wlInterface;
     }
 
-    // A C function pointer calling one of target's methods; lookup is the caller's own, which can see its private handlers
+    // Creates a native stub that calls a method of a target.
     MemorySegment upcall(MethodHandles.Lookup lookup, Object target, String method, FunctionDescriptor descriptor) throws ReflectiveOperationException {
         MethodHandle handle = lookup.findVirtual(target.getClass(), method, descriptor.toMethodType()).bindTo(target);
         return this.linker.upcallStub(handle, descriptor, this.arena);
     }
 
+    // Returns a downcall handle and rejects a missing function.
     MethodHandle function(SymbolLookup lookup, String name, FunctionDescriptor descriptor) {
         return this.linker.downcallHandle(lookup.find(name).orElseThrow(() -> new IllegalStateException("Missing native function " + name)), descriptor);
     }

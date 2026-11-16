@@ -23,26 +23,36 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-// CTM wraps every model that uses a connected texture during ModelBakeEvent by walking the loader's stateModels, which dynamic loading leaves empty; this does the same check per model as it bakes, through reflection so CTM need not be present at build time (VintageFix's CTMHelper)
+// Wraps dynamically baked models that use connected textures.
 public final class CtmModelWrapping {
+    // Texture metadata handler of the other mod.
     private final Object handler;
+    // Models already judged for wrapping.
     private final Object2BooleanMap<ResourceLocation> wrappedModels;
+    // Handle that wraps a model.
     private final MethodHandle wrap;
+    // Handle that reads texture metadata.
     private final MethodHandle getMetadata;
+    // Handle that converts a sprite location to a file location.
     private final MethodHandle spriteToAbsolute;
+    // Base class of wrapped models.
     private final Class<?> ctmBakedModel;
+    // Class of multipart models.
     private final Class<?> multipartModel;
+    // Field that holds the parts of a multipart model.
     private final Field partModels;
+    // Class that wraps vanilla models.
     private final Class<?> vanillaModelWrapper;
+    // Field that holds the vanilla model.
     private final Field wrappedModelBlock;
 
+    // Creates the wrapper and fails when the other mod is not reachable.
     private CtmModelWrapping() throws ReflectiveOperationException {
         MethodHandles.Lookup lookup = MethodHandles.lookup();
         Class<?> metadataHandler = Class.forName("team.chisel.ctm.client.util.TextureMetadataHandler");
         this.handler = metadataHandler.getField("INSTANCE").get(null);
         Field wrapped = metadataHandler.getDeclaredField("wrappedModels");
         wrapped.setAccessible(true);
-        // CTM declares the field as Object2BooleanMap<ResourceLocation>; reflection only hands it back raw
         @SuppressWarnings("unchecked")
         Object2BooleanMap<ResourceLocation> wrappedModels = (Object2BooleanMap<ResourceLocation>) wrapped.get(this.handler);
         this.wrappedModels = wrappedModels;
@@ -61,7 +71,7 @@ public final class CtmModelWrapping {
         this.wrappedModelBlock.setAccessible(true);
     }
 
-    // Registered at mod construction when CTM is present, ahead of the first bake
+    // Registers the wrapper when the other mod is loaded.
     public static void register() {
         if (!Loader.isModLoaded("ctm")) {
             return;
@@ -74,12 +84,13 @@ public final class CtmModelWrapping {
         }
     }
 
+    // Wraps the baked model when it uses connected textures.
     @SubscribeEvent
     public void onDynamicBake(DynamicModelBakeEvent event) {
         if (!(event.location instanceof ModelResourceLocation) || event.unbakedModel == null) {
             return;
         }
-        if (this.ctmBakedModel.isInstance(event.bakedModel) || event.bakedModel.isBuiltInRenderer()) {
+        if (event.bakedModel == null || this.ctmBakedModel.isInstance(event.bakedModel) || event.bakedModel.isBuiltInRenderer()) {
             return;
         }
         ModelResourceLocation location = (ModelResourceLocation) event.location;
@@ -88,7 +99,12 @@ public final class CtmModelWrapping {
             shouldWrap = this.wrappedModels.getOrDefault(location, false);
         }
         if (!shouldWrap) {
-            shouldWrap = this.referencesConnectedTexture(location, event.unbakedModel);
+            try {
+                shouldWrap = this.referencesConnectedTexture(location, event.unbakedModel);
+            } catch (RuntimeException e) {
+                Coarctatio.LOGGER.error("Could not inspect model {} for CTM", location, e);
+                shouldWrap = false;
+            }
             synchronized (this.wrappedModels) {
                 this.wrappedModels.put(location, shouldWrap);
             }
@@ -103,7 +119,7 @@ public final class CtmModelWrapping {
         }
     }
 
-    // Breadth-first over the model, its parents and its dependencies, stopping at the first texture with CTM metadata
+    // Returns whether the model or one of its dependencies uses a connected texture.
     private boolean referencesConnectedTexture(ModelResourceLocation root, IModel rootModel) {
         Deque<ResourceLocation> pending = new ArrayDeque<>();
         Set<ResourceLocation> seen = new HashSet<>();
@@ -121,7 +137,6 @@ public final class CtmModelWrapping {
             Set<ResourceLocation> dependencies = new HashSet<>(model.getDependencies());
             try {
                 if (this.vanillaModelWrapper.isInstance(model)) {
-                    // getTextures resolves "#name" references but not the parents' own texture maps
                     ModelBlock parent = ((ModelBlock) this.wrappedModelBlock.get(model)).parent;
                     while (parent != null) {
                         for (String texture : parent.textures.values()) {
@@ -133,7 +148,6 @@ public final class CtmModelWrapping {
                     }
                 }
                 if (this.multipartModel.isInstance(model)) {
-                    // A multipart model reports no textures or dependencies of its own; its parts do
                     @SuppressWarnings("unchecked")
                     Map<?, IModel> parts = (Map<?, IModel>) this.partModels.get(model);
                     textures.clear();
@@ -159,6 +173,7 @@ public final class CtmModelWrapping {
         return false;
     }
 
+    // Returns whether the texture has connected texture metadata.
     private boolean hasMetadata(ResourceLocation texture) {
         try {
             return this.getMetadata.invoke(this.spriteToAbsolute.invoke(texture)) != null;

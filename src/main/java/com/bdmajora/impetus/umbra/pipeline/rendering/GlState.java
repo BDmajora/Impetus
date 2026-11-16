@@ -18,23 +18,28 @@ import java.util.Arrays;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// The GL state hand-offs between the pipeline and vanilla: main framebuffer, fixed-function matrices, blend, vertex arrays, scratch texture binds and error checks
+// Saver and restorer of the GL state around pipeline passes.
 public final class GlState {
+    // Logger of this class.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
+    // Gl back buffer.
     private static final int GL_BACK_BUFFER = 0x0405;
-    // Fixed-function matrix modes, not in the core GL wrapper used elsewhere
+    // Gl modelview mode.
     static final int GL_MODELVIEW_MODE = 0x1700;
+    // Gl projection mode.
     static final int GL_PROJECTION_MODE = 0x1701;
+    // Gl texture mode.
     static final int GL_TEXTURE_MODE = 0x1702;
-    // gl_Vertex/gl_Normal/gl_Color/gl_MultiTexCoord0..7 all alias generic slots below this
+    // Vanilla aliased attribute slots.
     private static final int VANILLA_ALIASED_ATTRIBUTE_SLOTS = 16;
-    // GL keeps at most one flag per error kind, so a context still reporting after this many reads is stuck (lost) and draining stops instead of spinning
+    // Max drained errors.
     private static final int MAX_DRAINED_ERRORS = 64;
 
+    // Prevents instantiation
     private GlState() {
     }
 
-    // Back to vanilla's framebuffer
+    // Binds the vanilla framebuffer.
     public static void bindMainRenderTarget(Minecraft mc) {
         if (OpenGlHelper.isFramebufferEnabled()) {
             mc.getFramebuffer().bindFramebuffer(true);
@@ -44,14 +49,14 @@ public final class GlState {
         }
     }
 
-    // Resets draw and read buffers after an FBO with custom ones
+    // Restores the draw and read buffers of the vanilla framebuffer.
     public static void restoreMainDrawReadBuffers() {
         int buffer = OpenGlHelper.isFramebufferEnabled() ? GL30.GL_COLOR_ATTACHMENT0 : GL_BACK_BUFFER;
         LWJGL.glDrawBuffers(buffer);
         LWJGL.glReadBuffer(buffer);
     }
 
-    // The ortho projection mapping the [0,1] quad to NDC (Umbra's composite gl_ProjectionMatrix) with identity modelview and texture, so `gl_Position = ftransform()` (Complementary/BSL) resolves; saved for popFixedFunctionMatrices
+    // Pushes identity matrices for a fullscreen draw.
     static void pushFullscreenMatrices() {
         GlStateManager.matrixMode(GL_PROJECTION_MODE);
         GlStateManager.pushMatrix();
@@ -65,7 +70,7 @@ public final class GlState {
         GlStateManager.loadIdentity();
     }
 
-    // Restores the matrices pushFullscreenMatrices saved
+    // Pops the fixed function matrices.
     static void popFixedFunctionMatrices() {
         GlStateManager.matrixMode(GL_PROJECTION_MODE);
         GlStateManager.popMatrix();
@@ -75,7 +80,7 @@ public final class GlState {
         GlStateManager.popMatrix();
     }
 
-    // Hands the fixed-function vertex pipeline back to vanilla: it submits through client arrays aliasing generic slots (0 gl_Vertex, 2 gl_Normal, 3 gl_Color, 8..15 texcoords), and a leftover generic array wins and flattens the attribute (a constant gl_MultiTexCoord0 gave a flat green arm), baked into ModelRenderer's display list on first compile
+    // Turns off the vanilla vertex arrays.
     public static void resetVanillaVertexArrayState() {
         LWJGL.glBindVertexArray(0);
         LWJGL.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
@@ -85,13 +90,13 @@ public final class GlState {
         }
     }
 
-    // Unit 0 back to vanilla in a cache-trustworthy state: raw scratch binds desync GlStateManager's active-unit and texture caches, after which the skin bind no-ops and the arm samples the block atlas; stepping through unit 1 and a cached unbind leave real GL and the cache both on 0
+    // Reselects unit zero in GL and the state manager.
     static void resyncTextureUnitZero() {
         GlTextureUnits.resetToUnit0();
         GlStateManager.bindTexture(0);
     }
 
-    // Turns blending off per attachment after a pass that set it per attachment; maxDrawBuffers is the context's GL_MAX_DRAW_BUFFERS, read once per pipeline rather than queried per pass
+    // Turns off blending on every draw buffer.
     static void disableIndexedBlend(int drawBufferSlots, int maxDrawBuffers) {
         if (!LWJGL.supportsBufferBlending()) {
             return;
@@ -102,14 +107,14 @@ public final class GlState {
         }
     }
 
-    // Blend state for the opaque terrain pass on every attachment
+    // Sets opaque blending on the draw buffers.
     static void opaqueGbufferBlend(int drawBufferSlots, int maxDrawBuffers) {
         GlStateManager.disableBlend();
         GlStateManager.depthMask(true);
         disableIndexedBlend(drawBufferSlots, maxDrawBuffers);
     }
 
-    // OptiFine's beginWater() contract for translucent terrain: blending AND depth writes on, since composites find water by comparing depthtex0 with depthtex1; slots past the GPU's draw buffers would be GL_INVALID_VALUE
+    // Sets translucent blending on the draw buffers.
     static void translucentGbufferBlend(int drawBufferSlots, int maxDrawBuffers) {
         GlStateManager.enableBlend();
         GlStateManager.tryBlendFuncSeparate(
@@ -126,7 +131,7 @@ public final class GlState {
         }
     }
 
-    // Binds a texture on the scratch unit and returns the previous binding; custom textures may live on that unit, so it is put back
+    // Binds a texture on the scratch unit and returns the old one.
     static int bindScratchTexture2D(int texture) {
         GlTextureUnits.selectScratch(SamplerLayout.DEPTH_COPY_SCRATCH_UNIT);
         int previous = LWJGL.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
@@ -134,13 +139,13 @@ public final class GlState {
         return previous;
     }
 
-    // Rebinds the saved texture and hands the selector back
+    // Rebinds the old texture on the scratch unit.
     static void restoreScratchTexture2D(int texture) {
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, texture);
         GlTextureUnits.resetToUnit0();
     }
 
-    // Fails loudly with the purpose and attachments named, since an incomplete FBO renders nothing silently
+    // Logs a framebuffer that is not complete.
     static void checkComplete(UmbraFramebuffer framebuffer, String purpose, int[] buffers) {
         int status = framebuffer.getStatus();
         if (status != GL30.GL_FRAMEBUFFER_COMPLETE) {
@@ -149,7 +154,7 @@ public final class GlState {
         }
     }
 
-    // The block-atlas size for the atlasSize/terrainTextureSize uniforms
+    // Records the size of the block atlas.
     static void captureAtlasSize(Minecraft mc) {
         ITextureObject atlas = mc.getTextureManager().getTexture(TextureMap.LOCATION_BLOCKS_TEXTURE);
         if (atlas == null) {
@@ -165,14 +170,13 @@ public final class GlState {
         }
     }
 
-    // Clears pending GL errors so the next check is attributable
+    // Clears pending GL errors.
     public static void drainGlError() {
         for (int i = 0; i < MAX_DRAINED_ERRORS && LWJGL.glGetError() != 0; i++) {
-            // discard
         }
     }
 
-    // Logs a pending GL error with the call site
+    // Logs pending GL errors with a place.
     public static void reportGlError(String where) {
         int error = LWJGL.glGetError();
         if (error != 0) {

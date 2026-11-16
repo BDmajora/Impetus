@@ -26,22 +26,23 @@ import com.bdmajora.extras.gui.ExtrasOptionPages;
 import java.util.ArrayList;
 import java.util.List;
 
-// General and Quality pages laid out to match Sodium 0.9.1 exactly; every option is real and backed by vanilla GameSettings or the engine, no placeholders
+// Builder of the Impetus pages of the video options screen.
 public class ImpetusGameOptionPages {
+    // Sodium opts.
     private static final ImpetusGameOptions sodiumOpts = ImpetusVintage.options();
+    // Storage of the vanilla settings.
     private static final MinecraftOptionsStorage vanillaOpts = new MinecraftOptionsStorage();
 
-    // Pushes the leaves setting to every leaf block, which caches it
+    // Applies the leaves quality.
     private static void applyLeavesQuality(boolean seeThrough) {
         Blocks.LEAVES.setGraphicsLevel(seeThrough);
         Blocks.LEAVES2.setGraphicsLevel(seeThrough);
     }
 
-    // Render distance, brightness, GUI scale and the like; the Graphics API option comes from the screen, which shares it with the Performance page
+    // Returns the general page.
     public static OptionPage general(Option<ImpetusGameOptions.GraphicsApi> graphicsApi) {
         List<OptionGroup> groups = new ArrayList<>();
 
-        // Group 1: render/simulation distance + brightness
         groups.add(OptionGroup.createBuilder()
                 .setId(StandardOptions.Group.RENDERING)
                 .add(OptionImpl.createBuilder(int.class, vanillaOpts)
@@ -58,7 +59,6 @@ public class ImpetusGameOptionPages {
                         .setName(TextComponent.translatable("options.simulationDistance"))
                         .setTooltip(TextComponent.translatable("impetus.options.simulation_distance.tooltip"))
                         .setControl(option -> new SliderControl(option, 5, 32, 1, ControlValueFormatter.translateVariable("options.chunks")))
-                        // 1.12.2 unifies simulation and render distance; keep them in lockstep.
                         .setBinding((options, value) -> options.renderDistanceChunks = value, options -> options.renderDistanceChunks)
                         .setImpact(OptionImpact.HIGH)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
@@ -74,7 +74,6 @@ public class ImpetusGameOptionPages {
                         .build())
                 .build());
 
-        // Group 2: window/display
         groups.add(OptionGroup.createBuilder()
                 .setId(StandardOptions.Group.WINDOW)
                 .add(OptionImpl.createBuilder(int.class, vanillaOpts)
@@ -94,14 +93,12 @@ public class ImpetusGameOptionPages {
                         .setTooltip(TextComponent.translatable("impetus.options.fullscreen.tooltip"))
                         .setControl(option -> new CyclingControl<>(option, ImpetusGameOptions.FullscreenMode.class))
                         .setImpact(OptionImpact.HIGH)
-                        // The window might refuse a mode, so the option holds where it actually ended up
                         .setBinding((opts, value) -> opts.fullscreenMode = WindowModes.apply(Minecraft.getMinecraft(), value), opts -> opts.fullscreenMode)
                         .build())
                 .add(OptionImpl.createBuilder(int.class, sodiumOpts)
                         .setId(StandardOptions.Option.FULLSCREEN_RESOLUTION.cast())
                         .setName(TextComponent.translatable("options.fullscreen.resolution"))
                         .setTooltip(TextComponent.translatable("impetus.options.fullscreen.resolution.tooltip"))
-                        // A slider needs two stops, so with no fullscreen modes both read "Current" rather than the screen failing to open
                         .setControl(option -> new SliderControl(option, 0, Math.max(1, FullscreenResolutions.count() - 1), 1,
                                 value -> TextComponent.literal(FullscreenResolutions.label(value))))
                         .setBinding((opts, value) -> {
@@ -109,19 +106,16 @@ public class ImpetusGameOptionPages {
                             FullscreenResolutions.apply(value);
                         }, opts -> opts.fullscreenResolution)
                         .build())
-                // Off, On or Adaptive; the cycler keeps vanilla's VSync flag in step with the adaptive switch
                 .add(ExtrasOptionPages.verticalSync())
                 .add(OptionImpl.createBuilder(int.class, vanillaOpts)
                         .setId(StandardOptions.Option.MAX_FRAMERATE.cast())
                         .setName(TextComponent.translatable("options.framerateLimit"))
                         .setTooltip(TextComponent.translatable("impetus.options.fps_limit.tooltip"))
                         .setControl(option -> new SliderControl(option, 10, 260, 10, ControlValueFormatter.fpsLimit()))
-                        // Every limit the game does not apply reads as 260, so the thumb sits at the unlimited end and the arrows step down from it; untouched, the stored value is never rewritten
                         .setBinding((opts, value) -> opts.limitFramerate = value, opts -> opts.limitFramerate <= 0 || opts.limitFramerate > 260 ? 260 : opts.limitFramerate)
                         .build())
                 .build());
 
-        // Group 3: indicators
         groups.add(OptionGroup.createBuilder()
                 .setId(StandardOptions.Group.INDICATORS)
                 .add(OptionImpl.createBuilder(int.class, vanillaOpts)
@@ -143,7 +137,6 @@ public class ImpetusGameOptionPages {
                         .build())
                 .build());
 
-        // Group 4: graphics API, OpenGL or Nvidium
         groups.add(OptionGroup.createBuilder()
                 .setId(StandardOptions.Group.GRAPHICS)
                 .add(graphicsApi)
@@ -152,11 +145,10 @@ public class ImpetusGameOptionPages {
         return new OptionPage(StandardOptions.Pages.GENERAL, TextComponent.translatable("impetus.options.pages.general"), ImmutableList.copyOf(groups));
     }
 
-    // Graphics, clouds, weather, particles, leaves and similar fidelity switches
+    // Returns the quality page.
     public static OptionPage quality() {
         List<OptionGroup> groups = new ArrayList<>();
 
-        // Group 1: improved transparency
         groups.add(OptionGroup.createBuilder()
                 .setId(StandardOptions.Group.GRAPHICS)
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
@@ -166,7 +158,6 @@ public class ImpetusGameOptionPages {
                         .setControl(TickBoxControl::new)
                         .setBinding((opts, value) -> {
                             opts.quality.improvedTransparency = value;
-                            // Improved transparency requires per-face translucency sorting to be active.
                             if (value) {
                                 opts.performance.useTranslucentFaceSorting = true;
                             }
@@ -176,7 +167,6 @@ public class ImpetusGameOptionPages {
                         .build())
                 .build());
 
-        // Group 2: the big "details" group (clouds .. chunk fade)
         groups.add(OptionGroup.createBuilder()
                 .setId(StandardOptions.Group.DETAILS)
                 .add(OptionImpl.createBuilder(int.class, vanillaOpts)
@@ -282,7 +272,6 @@ public class ImpetusGameOptionPages {
                         .build())
                 .build());
 
-        // Group 3: mipmaps
         groups.add(OptionGroup.createBuilder()
                 .setId(StandardOptions.Group.MIPMAPS)
                 .add(OptionImpl.createBuilder(int.class, vanillaOpts)
@@ -296,7 +285,6 @@ public class ImpetusGameOptionPages {
                         .build())
                 .build());
 
-        // Group 4, texture filtering; minification is deliberately not offered since the atlas has no sprite borders, so anisotropic and mipmapped minification paint the block grid on distant terrain (see BlockAtlasFiltering)
         groups.add(OptionGroup.createBuilder()
                 .setId(StandardOptions.Group.FILTERING)
                 .add(OptionImpl.createBuilder(ImpetusGameOptions.PixelFilteringMode.class, sodiumOpts)
@@ -310,7 +298,6 @@ public class ImpetusGameOptionPages {
                         .build())
                 .build());
 
-        // Group 5: fluids + entity sort
         groups.add(OptionGroup.createBuilder()
                 .setId(StandardOptions.Group.FLUIDS)
                 .add(OptionImpl.createBuilder(boolean.class, sodiumOpts)
@@ -344,7 +331,7 @@ public class ImpetusGameOptionPages {
         return new OptionPage(StandardOptions.Pages.QUALITY, TextComponent.translatable("impetus.options.pages.quality"), ImmutableList.copyOf(groups));
     }
 
-    // Fluidlogged API's client-side guess on a page of its own; the screen only adds it when Fluidlogged API is loaded, since nothing renders the guessed fluid without it
+    // Returns the fluidlogging page.
     public static OptionPage fluidlogging() {
         OptionGroup group = OptionGroup.createBuilder()
                 .setId(StandardOptions.Group.FLUIDLOGGING)
@@ -362,12 +349,12 @@ public class ImpetusGameOptionPages {
         return new OptionPage(StandardOptions.Pages.FLUIDLOGGING, TextComponent.translatable("impetus.options.pages.fluidlogging"), ImmutableList.of(group));
     }
 
-    // Storage over vanilla's GameSettings
+    // Returns the vanilla opts.
     public static OptionStorage<GameSettings> getVanillaOpts() {
         return vanillaOpts;
     }
 
-    // Storage over Impetus' own options
+    // Returns the sodium opts.
     public static OptionStorage<ImpetusGameOptions> getSodiumOpts() {
         return sodiumOpts;
     }

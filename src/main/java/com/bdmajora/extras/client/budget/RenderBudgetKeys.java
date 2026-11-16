@@ -13,25 +13,29 @@ import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import org.lwjgl.input.Keyboard;
 
-// GpuShift's two keys: F8 flips the budget overlay, F9 opens the Impetus video settings; both are rebindable through the vanilla controls screen under their own category
+// Key bindings of the render budget.
 @Mod.EventBusSubscriber(Side.CLIENT)
 @SideOnly(Side.CLIENT)
 public final class RenderBudgetKeys {
+    // Category of the key bindings.
     private static final String CATEGORY = "impetus.key.category";
 
+    // Key that toggles the overlay.
     private static final KeyBinding TOGGLE_OVERLAY = new KeyBinding("impetus.key.budget_overlay", Keyboard.KEY_F8, CATEGORY);
+    // Key that opens the settings.
     private static final KeyBinding OPEN_SETTINGS = new KeyBinding("impetus.key.open_settings", Keyboard.KEY_F9, CATEGORY);
 
+    // Prevents instantiation
     private RenderBudgetKeys() {
     }
 
-    // Called once from the mod's init phase; the controls screen only lists bindings registered by then
+    // Registers the key bindings.
     public static void register() {
         ClientRegistry.registerKeyBinding(TOGGLE_OVERLAY);
         ClientRegistry.registerKeyBinding(OPEN_SETTINGS);
     }
 
-    // KeyInputEvent only fires with no screen open, so the settings screen gets a null parent and returns to the game
+    // Runs the actions of pressed keys.
     @SubscribeEvent
     public static void onKeyInput(InputEvent.KeyInputEvent event) {
         while (TOGGLE_OVERLAY.isPressed()) {

@@ -6,47 +6,53 @@ import com.seibel.distanthorizons.api.interfaces.override.rendering.IDhApiFrameb
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Hands DH one of Umbra's framebuffers as its render target (Iris's DhFrameBufferWrapper): DH binds it for the LOD pass, and the attachment calls DH makes while (re)creating its textures are ignored since the compat attaches DH's depth itself and the colour targets are the pipeline's
+// Distant Horizons view of a pipeline framebuffer that the pipeline keeps owning.
 public final class DhFramebufferWrapper implements IDhApiFramebuffer {
+    // Pipeline framebuffer that receives the Distant Horizons draws.
     private final UmbraFramebuffer framebuffer;
 
+    // Wraps a pipeline framebuffer.
     public DhFramebufferWrapper(UmbraFramebuffer framebuffer) {
         this.framebuffer = framebuffer;
     }
 
+    // Returns true so Distant Horizons draws into this framebuffer every frame.
     @Override
     public boolean overrideThisFrame() {
         return true;
     }
 
+    // Binds the pipeline framebuffer.
     @Override
     public void bind() {
         this.framebuffer.bind();
     }
 
+    // Ignores the attachment because the pipeline attaches its own depth texture.
     @Override
     public void addDepthAttachment(int textureId, boolean isCombinedStencil) {
-        // DhCompatInternal.reconnectDHTextures attaches DH's depth where it belongs
     }
 
+    // Returns the name of the pipeline framebuffer.
     @Override
     public int getId() {
         return this.framebuffer.getGlId();
     }
 
+    // Binds the framebuffer and returns its completeness status.
     @Override
     public int getStatus() {
         bind();
         return LWJGL.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
     }
 
+    // Ignores the attachment because the pipeline attaches its own color textures.
     @Override
     public void addColorAttachment(int textureIndex, int textureId) {
-        // The colour targets are the pipeline's gbuffer textures, never DH's
     }
 
+    // Leaves the framebuffer alive because the pipeline deletes it.
     @Override
     public void destroy() {
-        // Owned by DhCompatInternal (or the shadow renderer), freed with the pipeline
     }
 }

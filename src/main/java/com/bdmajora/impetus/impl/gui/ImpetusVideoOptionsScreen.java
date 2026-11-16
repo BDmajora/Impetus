@@ -20,19 +20,23 @@ import com.bdmajora.impetus.ImpetusVintage;
 import java.io.IOException;
 import java.util.*;
 
+// Video options screen of Impetus.
 public class ImpetusVideoOptionsScreen extends GuiScreen {
+    // Screen to return to.
     private final GuiScreen prevScreen;
+    // Controller of the screen.
     private final ImpetusVideoOptionsController controller;
-    // One context for the screen's lifetime, so its compiled-component cache survives between frames
+    // Draw context of the screen.
     private final VintageDrawContext drawContext = new VintageDrawContext();
 
+    // Last cursor position.
     private int lastMouseX, lastMouseY;
 
+    // Creates an impetus video options screen from its prev screen.
     public ImpetusVideoOptionsScreen(GuiScreen prevScreen) {
         super();
         this.prevScreen = prevScreen;
         this.controller = new ImpetusVideoOptionsController(() -> this.mc.displayGuiScreen(this.prevScreen), createPages(this), this.drawContext) {
-            // Reloads the renderer, textures or world as the changed options demand. Cleanroom deprecates refreshResources without a replacement, and an asset-flagged option needs the full reload
             @Override
             @SuppressWarnings("deprecation")
             protected void applyFlagSideEffects(Set<OptionFlag> flags) {
@@ -40,7 +44,6 @@ public class ImpetusVideoOptionsScreen extends GuiScreen {
 
                 Minecraft client = Minecraft.getMinecraft();
 
-                // The pack has to load before the renderers rebuild around it: a pipeline change re-parses it, which also picks its Nvidium port or the original, and otherwise a Graphics API switch can point it at the other copy
                 boolean pipeline = flags.contains(OptionFlag.REQUIRES_SHADER_PIPELINE_RELOAD);
                 boolean rebuild = pipeline || flags.contains(OptionFlag.REQUIRES_RENDERER_RELOAD);
                 if (pipeline) {
@@ -60,24 +63,20 @@ public class ImpetusVideoOptionsScreen extends GuiScreen {
                 if (flags.contains(OptionFlag.REQUIRES_ASSET_RELOAD)) {
                     client.getTextureMapBlocks().setMipmapLevels(mc.gameSettings.mipmapLevels);
                     client.refreshResources();
-                    // Re-apply the atlas sampler state in case the atlas was not fully restitched.
                     com.bdmajora.impetus.impl.render.texture.BlockAtlasFiltering.reapplyToBlockAtlas();
                 }
 
-                // Push hot-path option values into the engine's runtime snapshot.
                 com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions.apply(ImpetusVintage.options());
 
-                // Anything else that toggles vanilla VSync writes the swap interval directly, clearing adaptive sync; re-assert after any apply, no-op unless it is on
                 com.bdmajora.extras.client.AdaptiveSync.reapply();
             }
         };
         resetDrag();
     }
 
-    // Assembles every subsystem's pages in sidebar order; pages group under their namespace, so Extras and its nine topic pages fold as one section beneath Impetus
+    // Returns every options page.
     private static List<OptionPage> createPages(GuiScreen parent) {
         List<OptionPage> pages = new ArrayList<>();
-        // One Graphics API option on General, read by the Nvidium page so its settings grey out as the cycler moves
         var graphicsApi = CommonOptionPages.graphicsApi(ImpetusVintage.options());
         pages.add(ImpetusGameOptionPages.general(graphicsApi));
         pages.add(ImpetusGameOptionPages.quality());
@@ -91,7 +90,6 @@ public class ImpetusVideoOptionsScreen extends GuiScreen {
         pages.add(FulgorOptionPages.lighting());
         pages.addAll(EquilibriumOptionPages.pages());
 
-        // The Umbra group: shader packs (only when a shader mod actually resolved) and, beneath them, dynamic lights, which share the namespace
         if (ShaderModBridge.isShaderModPresent()) {
             pages.add(UmbraOptionPages.shaderPacks(parent));
         }
@@ -100,7 +98,7 @@ public class ImpetusVideoOptionsScreen extends GuiScreen {
         return pages;
     }
 
-    // Forwards to the Sodium screen and starts drag tracking
+    // Forwards a click to the controller.
     @Override
     protected void mouseClicked(int mouseX, int mouseY, int mouseButton) {
         this.controller.getFrame().mouseClicked(VintageInteractionContext.INSTANCE, mouseX, mouseY, mouseButton);
@@ -108,20 +106,20 @@ public class ImpetusVideoOptionsScreen extends GuiScreen {
         lastMouseY = mouseY;
     }
 
-    // Forwards and ends drag tracking
+    // Forwards a release to the controller.
     @Override
     protected void mouseReleased(int mouseX, int mouseY, int mouseButton) {
         this.controller.getFrame().mouseReleased(VintageInteractionContext.INSTANCE, mouseX, mouseY, mouseButton);
         resetDrag();
     }
 
-    // Clears the drag origin
+    // Ends any drag.
     private void resetDrag() {
         lastMouseX = -1;
         lastMouseY = -1;
     }
 
-    // Synthesises drag events, which vanilla does not deliver as such
+    // Forwards a drag to the controller.
     @Override
     protected void mouseClickMove(int mouseX, int mouseY, int clickedMouseButton, long timeSinceLastClick) {
         super.mouseClickMove(mouseX, mouseY, clickedMouseButton, timeSinceLastClick);
@@ -137,10 +135,9 @@ public class ImpetusVideoOptionsScreen extends GuiScreen {
         lastMouseY = mouseY;
     }
 
-    // Forwards keys; Escape is handled by the parent
+    // Forwards a key to the controller.
     @Override
     protected void keyTyped(char typedChar, int keyCode) throws IOException {
-        // Give the framework (the focused control, then the rest, then Tab to move focus) first refusal; fall back to vanilla handling (ESC-to-close).
         if (this.controller.getFrame().dispatchKeyTyped(VintageInteractionContext.INSTANCE, typedChar, keyCode)) {
             return;
         }
@@ -148,7 +145,7 @@ public class ImpetusVideoOptionsScreen extends GuiScreen {
         super.keyTyped(typedChar, keyCode);
     }
 
-    // Forwards scroll wheel events, which vanilla reports outside the click callbacks
+    // Forwards scrolling to the controller.
     @Override
     public void handleMouseInput() throws IOException {
         super.handleMouseInput();
@@ -161,14 +158,14 @@ public class ImpetusVideoOptionsScreen extends GuiScreen {
         }
     }
 
-    // Draws the Sodium screen through the vintage draw context
+    // Draws the screen.
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         this.drawDefaultBackground();
         this.controller.render(this.drawContext, mouseX, mouseY, partialTicks);
     }
 
-    // In a world the frame behind the screen is blurred and darkened so the options read against it; out of one vanilla's dirt background stays
+    // Draws the blurred backdrop.
     @Override
     public void drawWorldBackground(int tint) {
         if (this.mc.world != null) {
@@ -179,7 +176,7 @@ public class ImpetusVideoOptionsScreen extends GuiScreen {
         super.drawWorldBackground(tint);
     }
 
-    // Rebuilds layout for the current resolution
+    // Initializes the gui.
     @Override
     public void initGui() {
         this.controller.init(this.width, this.height);

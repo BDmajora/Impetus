@@ -1,13 +1,17 @@
 package com.bdmajora.impetus.umbra.shaderpack.texture;
 
-// One texture.<stage>.<sampler> directive resolved the Iris way: a minted name, and only that stage's programs declaring <sampler> with a matching type are renamed; the type check is what makes Photon render (colortex6 is sampler3D in some passes, sampler2D in others)
+// Sampler rename applied to one texture stage.
 public final class CustomTexturePatch {
+    // Sampler name to replace.
     private final String samplerName;
+    // Stage the rename applies to.
     private final TextureStage stage;
-    // The declared raw target, e.g. TEXTURE_3D — this is the half the transformer type-checks against
+    // Texture type of the replacement.
     private final String textureType;
+    // Replacement sampler name.
     private final String newSamplerName;
 
+    // Creates a custom texture patch from its sampler name and stage and texture type and new sampler name.
     public CustomTexturePatch(String samplerName, TextureStage stage, String textureType, String newSamplerName) {
         this.samplerName = samplerName;
         this.stage = stage;
@@ -15,27 +19,27 @@ public final class CustomTexturePatch {
         this.newSamplerName = newSamplerName;
     }
 
-    // The sampler the pack declared
+    // Returns the sampler name.
     public String getSamplerName() {
         return this.samplerName;
     }
 
-    // Which stage it applies to
+    // Returns the stage.
     public TextureStage getStage() {
         return this.stage;
     }
 
-    // sampler type expected
+    // Returns the texture type.
     public String getTextureType() {
         return this.textureType;
     }
 
-    // The renamed sampler the pipeline actually binds
+    // Returns the new sampler name.
     public String getNewSamplerName() {
         return this.newSamplerName;
     }
 
-    // For logging
+    // Returns the text of the patch.
     @Override
     public String toString() {
         return this.samplerName + " (" + this.textureType + ", " + this.stage + ") -> " + this.newSamplerName;

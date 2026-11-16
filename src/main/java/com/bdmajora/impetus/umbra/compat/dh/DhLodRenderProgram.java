@@ -15,17 +15,24 @@ import org.joml.Matrix4fc;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// A pack's dh_terrain, dh_water or dh_shadow program built on DH's LOD vertex format (Iris's IrisLodRenderProgram): DH keeps its own VAO and draw calls, this program is bound over DH's from the DhApiBeforeRenderPassEvent/DhApiBeforeBufferRenderEvent handlers, so its attribute locations must be DH's (0 vPosition, 1 colour, 2 extra) and it takes DH's per-pass matrices and per-buffer model offset the way DH's own shader would
+// Distant Horizons program of LOD terrain with a shader pack.
 public final class DhLodRenderProgram extends DhRenderProgram {
+    // Name of the program.
     private final String name;
+    // Compare or raw kind of each shadow sampler.
     private final ShadowSamplerKinds shadowSamplerKinds;
+    // Translucent state of the program.
     private final boolean translucent;
-    // Per-pass and per-buffer uniforms of the generated prologue
+    // Location of the model offset.
     private final int uModelOffset;
+    // Location of the world height offset.
     private final int uWorldYOffset;
+    // Location of the micro offset.
     private final int uMircoOffset;
+    // Location of the near clip distance.
     private final int uClipDistance;
 
+    // Creates a program with its uniform locations.
     private DhLodRenderProgram(GlProgram program, String name, int[] drawBuffers, ProgramBlendState blendState,
                                ProgramUniforms uniforms, ShadowSamplerKinds shadowSamplerKinds, boolean translucent) {
         super(program, drawBuffers, blendState, uniforms);
@@ -38,7 +45,7 @@ public final class DhLodRenderProgram extends DhRenderProgram {
         this.uClipDistance = program.getUniformLocation("clipDistance");
     }
 
-    // Transforms and links one DH program on DH's VAO layout (GlDhTerrainShaderProgram): uvec4 position+meta, normalized colour, uvec4 material/normal/tile
+    // Transforms and links the LOD program of a pack and deletes it when its setup fails.
     static DhLodRenderProgram create(UmbraRenderingPipeline pipeline, ShaderPack pack, ProgramSource source,
                                      boolean shadowPass, boolean translucent) {
         Stage stage = transform(pack, source, false);
@@ -49,46 +56,57 @@ public final class DhLodRenderProgram extends DhRenderProgram {
                         .bindAttributeLocation(1, "iris_color")
                         .bindAttributeLocation(2, "irisExtra"),
                 DhLodRenderProgram::assignFixedSamplers);
-        return new DhLodRenderProgram(program, stage.name, stage.drawBuffers,
-                ProgramBlendState.from(pack.getProperties(), stage.name), buildUniforms(label, stage.name, program),
-                ShadowSamplerKinds.detect(program.getGlId()), translucent);
+        // Deletes the program when its uniforms or sampler kinds cannot be read
+        try {
+            return new DhLodRenderProgram(program, stage.name, stage.drawBuffers,
+                    ProgramBlendState.from(pack.getProperties(), stage.name), buildUniforms(label, stage.name, program),
+                    ShadowSamplerKinds.detect(program.getGlId()), translucent);
+        } catch (RuntimeException | Error e) {
+            program.destroy();
+            throw e;
+        }
     }
 
-    // The samplers with a fixed unit for a LOD draw: DH's block atlas (and the block sampler aliases, which DH programs never read) on unit 0, the lightmap on unit 1 like every gbuffer program; set once, fillUniformData binds the textures
+    // Points the atlas and lightmap samplers at their units.
     private static void assignFixedSamplers(GlProgram program) {
         assignSamplerUnit(program, 0, "dhBlockAtlas", "texture", "gtexture", "tex", "gcolor");
         assignSamplerUnit(program, 1, "lightmap", "texLightmap");
     }
 
+    // Returns the kind of each shadow sampler.
     public ShadowSamplerKinds getShadowSamplerKinds() {
         return this.shadowSamplerKinds;
     }
 
+    // Returns whether the program draws translucent terrain.
     public boolean isTranslucent() {
         return this.translucent;
     }
 
+    // Returns the name of the program.
     public String getName() {
         return this.name;
     }
 
+    // Binds the program.
     public void bind() {
         this.program.bind();
     }
 
+    // Unbinds every program.
     public void unbind() {
         LWJGL.glUseProgram(0);
     }
 
+    // Deletes the program.
     public void free() {
         this.program.destroy();
     }
 
-    // Per pass: DH's matrices for this pass (the LOD projection or the shadow matrices), the lightmap and atlas on the units the samplers point at, DH's near clip, and the pack's whole uniform set
+    // Binds the program and its textures and uploads the matrices and uniforms of a frame.
     public void fillUniformData(Matrix4fc projection, Matrix4fc modelView, int worldYOffset, float partialTicks) {
         this.program.bind();
 
-        // DH binds these the other way round (lightmap 0, atlas 1) in its own setup, and its atlas bind is raw, so a cached bind here would be skipped against a stale cache: force both
         GlTextureUnits.forceBindTexture2D(1, CustomTextureManager.getLightmapTextureId());
         int atlas = DhCompatInternal.getBlockAtlasTextureId();
         if (atlas > 0) {
@@ -96,7 +114,6 @@ public final class DhLodRenderProgram extends DhRenderProgram {
         }
 
         uploadMatrices(projection, modelView);
-        // DH's own values: a 0.01 block micro offset separating coplanar LOD faces, and the near clip distance its fragment fade reads
         setUniform(this.uMircoOffset, 0.01f);
         setUniform(this.uWorldYOffset, (float) worldYOffset);
         if (this.uClipDistance != -1 && DhApi.Delayed.renderProxy != null) {
@@ -106,7 +123,7 @@ public final class DhLodRenderProgram extends DhRenderProgram {
         this.uniforms.update();
     }
 
-    // Per LOD buffer: the buffer's corner relative to the camera, which the prologue adds to every vertex
+    // Uploads the offset of the drawn model.
     public void setModelPos(DhApiVec3f modelPos) {
         if (this.uModelOffset != -1) {
             LWJGL.glUniform3f(this.uModelOffset, modelPos.x, modelPos.y, modelPos.z);

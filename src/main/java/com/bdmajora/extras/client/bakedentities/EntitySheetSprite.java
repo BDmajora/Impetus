@@ -11,22 +11,24 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.function.Function;
 
-// An entity texture sheet on the block atlas. Vanilla's loader throws "broken aspect ratio" for any sprite that is not square and not animated, and sign.png is 64x32, so the sheet would be quietly swapped for the missing sprite (magenta signs); this reads its own size and frame instead and leaves only the mipmaps to the atlas
+// Sprite that loads a whole entity texture sheet.
 final class EntitySheetSprite extends TextureAtlasSprite {
-    // The atlas's level count, fixed for the stitch this sprite was registered for
+    // Number of mipmap levels.
     private final int mipmapLevels;
 
+    // Creates a sprite for the location.
     EntitySheetSprite(ResourceLocation location, int mipmapLevels) {
         super(location.toString());
         this.mipmapLevels = mipmapLevels;
     }
 
+    // Returns true.
     @Override
     public boolean hasCustomLoader(IResourceManager manager, ResourceLocation location) {
         return true;
     }
 
-    // False means stitch it; the atlas then runs generateMipmaps over the frame stored here, which reads one slot per level, so the array is sized for the atlas's level count
+    // Reads the sheet and stores its frames.
     @Override
     public boolean load(IResourceManager manager, ResourceLocation location, Function<ResourceLocation, TextureAtlasSprite> textureGetter) {
         try (IResource resource = manager.getResource(location)) {
@@ -42,7 +44,6 @@ final class EntitySheetSprite extends TextureAtlasSprite {
             this.framesTextureData.add(frame);
             return false;
         } catch (IOException | RuntimeException e) {
-            // Left unstitched, which lands it on the missing sprite the way vanilla would; logged here since the FML texture report is silenced
             Extras.LOGGER.warn("Could not load entity sheet {}: {}", location, e.toString());
             return true;
         }

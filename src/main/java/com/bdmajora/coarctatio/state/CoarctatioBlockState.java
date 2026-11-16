@@ -9,21 +9,22 @@ import net.minecraft.block.state.IBlockState;
 
 import java.util.Map;
 
-// Block state carrying a packed int (see PropertyValueMapper) instead of a property-value table; produced via Forge's createState hook, so mods overriding it are unaffected
+// Block state that finds its neighbors through packed property indexes.
 public class CoarctatioBlockState extends BlockStateContainer.StateImplementation {
+    // Mapper shared by every state of the block.
     protected final PropertyValueMapper mapper;
 
-    // This state's packed index, assigned in buildPropertyValueTable().
+    // Packed property indexes of this state.
     protected int value;
 
+    // Creates a state with compacted properties.
     public CoarctatioBlockState(PropertyValueMapper mapper, Block block,
                                ImmutableMap<IProperty<?>, Comparable<?>> properties) {
-        // Compacted before super since the field is final in StateImplementation; CompactPropertyMaps returns the original when the injection is unavailable or the map shape is unexpected
         super(block, CompactPropertyMaps.compact(mapper.sharedKeys(properties), properties));
         this.mapper = mapper;
     }
 
-    // For states synthesised at runtime (only CoarctatioExtendedBlockState), which never go through buildPropertyValueTable() since they are not in the cartesian product
+    // Creates a state with a known packed value.
     protected CoarctatioBlockState(PropertyValueMapper mapper, Block block,
                                   ImmutableMap<IProperty<?>, Comparable<?>> properties, int value) {
         super(block, properties);
@@ -31,14 +32,14 @@ public class CoarctatioBlockState extends BlockStateContainer.StateImplementatio
         this.value = value;
     }
 
-    // Registers with the mapper instead of building an ImmutableTable, turning a table-per-state into one array entry per state
+    // Registers the state with the mapper and stores its packed value.
     @Override
     public void buildPropertyValueTable(
             Map<Map<IProperty<?>, Comparable<?>>, BlockStateContainer.StateImplementation> map) {
         this.value = this.mapper.register(this);
     }
 
-    // Mask-and-index through the mapper instead of a table lookup; returns this when the value is unchanged
+    // Returns the state with the property set and rejects an unknown property or value.
     @Override
     public <T extends Comparable<T>, V extends T> IBlockState withProperty(IProperty<T> property, V newValue) {
         int packed = this.mapper.withValue(this.value, property, newValue);
@@ -54,7 +55,6 @@ public class CoarctatioBlockState extends BlockStateContainer.StateImplementatio
         IBlockState state = this.mapper.byValue(packed);
 
         if (state == null) {
-            // Unreachable unless an IProperty reports different allowed values on different calls, leaving holes in the cartesian product
             throw new IllegalStateException("Impetus/Coarctatio: no state registered for "
                     + Block.REGISTRY.getNameForObject(getBlock()) + " at packed index " + packed
                     + " while setting " + property + " to " + newValue
@@ -64,7 +64,7 @@ public class CoarctatioBlockState extends BlockStateContainer.StateImplementatio
         return state;
     }
 
-    // Lazily rebuilds the property-value table for states someone queries (FoamFix returns null and crashes mods reading via IBlockProperties); stored in the inherited field for direct access, and unsynchronised publish is safe since ImmutableTable is all-final
+    // Returns the table of neighbors and builds it on first use.
     @Override
     @SuppressWarnings({"unchecked", "rawtypes"})
     public ImmutableTable<IProperty<?>, Comparable<?>, IBlockState> getPropertyValueTable() {
@@ -104,7 +104,7 @@ public class CoarctatioBlockState extends BlockStateContainer.StateImplementatio
         return table;
     }
 
-    // Builds the same exception text vanilla would, so callers catching on the message keep working
+    // Returns the error that explains why the property could not be set.
     private IllegalArgumentException describeFailure(IProperty<?> property, Object newValue) {
         if (!getProperties().containsKey(property)) {
             return new IllegalArgumentException("Cannot set property " + property

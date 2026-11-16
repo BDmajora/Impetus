@@ -11,18 +11,21 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Beacon beam visibility and height; the clamp is applied at the per-segment draw since renderBeacon only gets a segment list, and the beacon is cached across the call for its world height ceiling
+// Mixin that changes TileEntityBeaconRenderer.
 @Mixin(TileEntityBeaconRenderer.class)
 public class TileEntityBeaconRendererMixin {
+    // Field current beacon added to the target.
     @Unique
     private TileEntityBeacon impetus$currentBeacon;
 
+    // Runs at the start of render and can cancel it.
     @Inject(
             method = "render(Lnet/minecraft/tileentity/TileEntityBeacon;DDDFIF)V",
             at = @At("HEAD"),
             cancellable = true
     )
     private void impetus$beginRender(TileEntityBeacon beacon, double x, double y, double z,
+                                     // Partial ticks and destroy stage and alpha.
                                      float partialTicks, int destroyStage, float alpha, CallbackInfo ci) {
         this.impetus$currentBeacon = null;
 
@@ -34,22 +37,27 @@ public class TileEntityBeaconRendererMixin {
         this.impetus$currentBeacon = beacon;
     }
 
+    // Runs before every return of render.
     @Inject(
             method = "render(Lnet/minecraft/tileentity/TileEntityBeacon;DDDFIF)V",
             at = @At("RETURN")
     )
     private void impetus$endRender(TileEntityBeacon beacon, double x, double y, double z,
+                                   // Partial ticks and destroy stage and alpha.
                                    float partialTicks, int destroyStage, float alpha, CallbackInfo ci) {
         this.impetus$currentBeacon = null;
     }
 
+    // Wraps the call of TileEntityBeaconRenderer.renderBeamSegment in renderBeacon.
     @WrapOperation(
             method = "renderBeacon(DDDDDLjava/util/List;D)V",
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/tileentity/TileEntityBeaconRenderer;renderBeamSegment(DDDDDDII[F)V")
     )
     private void impetus$limitBeamSegment(double x, double y, double z, double partialTicks,
+                                          // Beam scale and world time.
                                           double beamScale, double worldTime,
+                                          // Segment range and colors.
                                           int segmentStart, int segmentHeight, float[] colors,
                                           Operation<Void> original) {
         TileEntityBeacon beacon = this.impetus$currentBeacon;

@@ -16,17 +16,18 @@ import net.minecraftforge.fml.relauncher.SideOnly;
 import javax.annotation.Nullable;
 import java.util.List;
 
-// Appends the owning mod's name to item tooltips like mezz's ModNameTooltip via ItemTooltipEvent, which also covers JEI/HEI tooltips; EventPriority#LOW puts the line last
+// Adds the mod name to item tooltips.
 @Mod.EventBusSubscriber(Side.CLIENT)
 @SideOnly(Side.CLIENT)
 public final class ModNameTooltipHandler {
-    // Blue italic — the conventional styling for this line.
+    // Formatting of the added line.
     private static final String FORMAT = TextFormatting.BLUE.toString() + TextFormatting.ITALIC;
 
+    // Prevents instantiation
     private ModNameTooltipHandler() {
     }
 
-    // Appends the owning mod's name as the last tooltip line
+    // Adds the mod name unless the tooltip already ends with it.
     @SubscribeEvent(priority = EventPriority.LOW)
     public static void onItemTooltip(ItemTooltipEvent event) {
         if (!Extras.options().extra.modNameTooltip) {
@@ -44,7 +45,7 @@ public final class ModNameTooltipHandler {
         }
     }
 
-    // Owning mod via the registry name's namespace; null for empty stacks and unknown namespaces
+    // Returns the name of the mod that created the item or null.
     @Nullable
     private static String resolveModName(ItemStack stack) {
         if (stack.isEmpty()) {
@@ -52,7 +53,6 @@ public final class ModNameTooltipHandler {
         }
 
         Item item = stack.getItem();
-        // Honours items that reassign their creator (tools spawned by another mod), falling back to the registry-name namespace
         String modId = item.getCreatorModId(stack);
         if (modId == null) {
             return null;
@@ -62,7 +62,7 @@ public final class ModNameTooltipHandler {
         return container != null ? container.getName() : null;
     }
 
-    // Whether the last line already is the mod name; JEI appends it through the same event, and this stops the two stacking
+    // Returns whether the last line of the tooltip is the mod name.
     private static boolean alreadyPresent(List<String> tooltip, String modName) {
         if (tooltip.size() <= 1) {
             return false;

@@ -15,15 +15,19 @@ import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-// hasResourceName goes to ZipFile.getEntry, a synchronised native lookup, and model loading asks every pack about every candidate path; the entry names are read once into a set the first time a pack is asked (VintageFix's and StellarCore's resource existence caches). Per instance, since the pack keeps its ZipFile open for as long as it lives anyway. Mod jars are FileResourcePacks too, so this covers every mod's assets
+// Mixin that changes FileResourcePack.
 @Mixin(FileResourcePack.class)
 public abstract class FileResourcePackMixin implements IndexedResourcePack {
+    // Reference to the method get resource pack zip file of the target.
     @Shadow
     protected abstract ZipFile getResourcePackZipFile() throws IOException;
 
+    // Names of the entries in the zip.
     private Set<String> coarctatio$entries;
+    // Flag set when the zip listing failed.
     private boolean coarctatio$entriesFailed;
 
+    // Runs at the start of hasResourceName and can cancel it.
     @Inject(method = "hasResourceName", at = @At("HEAD"), cancellable = true)
     private void coarctatio$lookupInIndex(String name, CallbackInfoReturnable<Boolean> cir) {
         Set<String> entries = this.coarctatio$entries;
@@ -41,7 +45,7 @@ public abstract class FileResourcePackMixin implements IndexedResourcePack {
         cir.setReturnValue(entries.contains(name));
     }
 
-    // The same index, for the texture scan; built here if nothing has probed the pack yet
+    // Handles indexed paths.
     @Override
     public Set<String> coarctatio$indexedPaths() {
         if (this.coarctatio$entries == null && !this.coarctatio$entriesFailed) {
@@ -51,6 +55,7 @@ public abstract class FileResourcePackMixin implements IndexedResourcePack {
         return this.coarctatio$entries;
     }
 
+    // Handles index.
     private Set<String> coarctatio$index() {
         try {
             ZipFile zip = this.getResourcePackZipFile();
@@ -58,7 +63,6 @@ public abstract class FileResourcePackMixin implements IndexedResourcePack {
             Enumeration<? extends ZipEntry> iterator = zip.entries();
             while (iterator.hasMoreElements()) {
                 ZipEntry entry = iterator.nextElement();
-                // Only assets and top-level files (pack.mcmeta, pack.png) are ever asked for; class files stay out of the set
                 String entryName = entry.getName();
                 if (entryName.startsWith("assets/") || entryName.indexOf('/') == -1) {
                     entries.add(entryName);

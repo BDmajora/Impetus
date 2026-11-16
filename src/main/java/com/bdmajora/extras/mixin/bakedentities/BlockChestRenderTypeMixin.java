@@ -9,9 +9,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Reports MODEL instead of ENTITYBLOCK_ANIMATED while baked, which is what lets the chunk mesher and the block damage overlay pick the block up
+// Mixin that changes BlockChest.
 @Mixin(BlockChest.class)
 public abstract class BlockChestRenderTypeMixin {
+    // Runs at the start of getRenderType and can cancel it.
     @Inject(method = "getRenderType", at = @At("HEAD"), cancellable = true)
     private void impetus(IBlockState state, CallbackInfoReturnable<EnumBlockRenderType> cir) {
         if (BakedEntities.isBaked(state.getBlock())) {

@@ -11,15 +11,19 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.List;
 
-// Folds nearby experience orbs into one (Clumps' idea): a mob farm drops dozens of orbs per kill and each is an entity with a full tick, a tracker entry and a pickup that costs the player a two-tick cooldown, so they pile up for minutes. Once a second an orb absorbs every orb within a block and the survivor hands its whole value over in one pickup. Off by default since one orb worth 500 points repairs Mending gear in one go and vanilla parity is gone
+// Mixin that changes EntityXPOrb.
 @Mixin(EntityXPOrb.class)
 public abstract class EntityXPOrbMixin {
+    // Ticks between merge attempts.
     private static final int MERGE_INTERVAL = 20;
+    // Distance within which orbs merge.
     private static final double MERGE_REACH = 1.0D;
 
+    // Reference to the field xp value of the target.
     @Shadow
     private int xpValue;
 
+    // Runs before every return of onUpdate.
     @Inject(method = "onUpdate", at = @At("RETURN"))
     private void equilibrium$absorbNeighbours(CallbackInfo ci) {
         EntityXPOrb self = (EntityXPOrb) (Object) this;
@@ -38,10 +42,10 @@ public abstract class EntityXPOrbMixin {
             other.setDead();
         }
         this.xpValue = total;
-        // The oldest orb would otherwise despawn first and take everything it absorbed with it
         self.xpOrbAge = Math.min(self.xpOrbAge, oldestAge(nearby, self.xpOrbAge));
     }
 
+    // Handles oldest age.
     private static int oldestAge(List<EntityXPOrb> orbs, int own) {
         int youngest = own;
         for (EntityXPOrb orb : orbs) {
@@ -50,7 +54,7 @@ public abstract class EntityXPOrbMixin {
         return youngest;
     }
 
-    // The pickup cooldown exists to pace many small orbs; with one merged orb it only delays the pickup
+    // Runs at the start of onCollideWithPlayer.
     @Inject(method = "onCollideWithPlayer", at = @At("HEAD"))
     private void equilibrium$noPickupCooldown(EntityPlayer player, CallbackInfo ci) {
         if (!player.world.isRemote && player.xpCooldown > 0) {

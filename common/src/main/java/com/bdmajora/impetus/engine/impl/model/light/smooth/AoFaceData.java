@@ -5,16 +5,22 @@ import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFacing;
 
 import static com.bdmajora.impetus.engine.impl.model.light.data.LightDataAccess.*;
 
+// Light and occlusion values of the four corners of a face.
 class AoFaceData {
+    // Packed lightmap of each corner.
     public final int[] lm = new int[4];
 
+    // Ambient occlusion of each corner.
     public final float[] ao = new float[4];
+    // Block light of each corner.
     public final float[] bl = new float[4];
+    // Sky light of each corner.
     public final float[] sl = new float[4];
 
+    // Completion flags of the face.
     private int flags;
 
-    // Gathers the nine neighbouring light words and computes the four corner values
+    // Reads the neighbor light words and calculates the corner values.
     public void initLightData(LightDataAccess cache, int x, int y, int z, ModelQuadFacing direction, boolean offset) {
         final int adjX;
         final int adjY;
@@ -72,7 +78,7 @@ class AoFaceData {
         final boolean e3op = unpackOP(e3);
         final boolean e3em = unpackEM(e3);
 
-        // If neither edge of a corner is occluded, then use the light
+        // Uses the edge light when both edges of a corner are open
         final int c0lm;
         final float c0ao;
         final boolean c0em;
@@ -108,7 +114,7 @@ class AoFaceData {
         final boolean c2em;
 
         if (e2op && e1op) {
-            // FIX: Use e1 instead of e0 to fix lighting errors in some directions
+            // Uses the second edge
             c2lm = e1lm;
             c2ao = e1ao;
             c2em = e1em;
@@ -124,7 +130,7 @@ class AoFaceData {
         final boolean c3em;
 
         if (e3op && e1op) {
-            // FIX: Use e1 instead of e0 to fix lighting errors in some directions
+            // Uses the second edge
             c3lm = e1lm;
             c3ao = e1ao;
             c3em = e1em;
@@ -150,7 +156,7 @@ class AoFaceData {
         this.flags |= AoCompletionFlags.HAS_LIGHT_DATA;
     }
 
-    // Splits packed corner light into separate sky and block arrays, once
+    // Splits the packed corner light into block and sky values.
     public void unpackLightData() {
         int[] lm = this.lm;
 
@@ -170,22 +176,22 @@ class AoFaceData {
         this.flags |= AoCompletionFlags.HAS_UNPACKED_LIGHT_DATA;
     }
 
-    // Weighted sky light
+    // Returns the sky light weighted by the corner weights.
     public float getBlendedSkyLight(float[] w) {
         return weightedSum(this.sl, w);
     }
 
-    // Weighted block light
+    // Returns the block light weighted by the corner weights.
     public float getBlendedBlockLight(float[] w) {
         return weightedSum(this.bl, w);
     }
 
-    // Weighted AO shade
+    // Returns the occlusion weighted by the corner weights.
     public float getBlendedShade(float[] w) {
         return weightedSum(this.ao, w);
     }
 
-    // Dot product over four corners
+    // Returns the dot product of two four value arrays.
     private static float weightedSum(float[] v, float[] w) {
         float t0 = v[0] * w[0];
         float t1 = v[1] * w[1];
@@ -195,31 +201,31 @@ class AoFaceData {
         return t0 + t1 + t2 + t3;
     }
 
-    // Vanilla layout to a float
+    // Returns the sky light of a packed lightmap.
     private static float unpackSkyLight(int i) {
         return (i >> 16) & 0xFF;
     }
 
-    // Vanilla layout to a float
+    // Returns the block light of a packed lightmap.
     private static float unpackBlockLight(int i) {
         return i & 0xFF;
     }
 
-    // Vanilla's corner rule: average, ignoring zeros unless the block is emissive
+    // Returns the average lightmap of four samples.
     private static int calculateCornerBrightness(int a, int b, int c, int d, boolean aem, boolean bem, boolean cem, boolean dem) {
-        // FIX: normalize corner vectors to the minimum non-zero value between each one to prevent strange issues
+        // Raises zero samples to the smallest nonzero sample
         if ((a == 0) || (b == 0) || (c == 0) || (d == 0)) {
-            // Find the minimum value between all corners
+            // Finds the smallest nonzero sample
             final int min = minNonZero(minNonZero(a, b), minNonZero(c, d));
 
-            // Normalize the corner values
+            // Raises the samples
             a = Math.max(a, min);
             b = Math.max(b, min);
             c = Math.max(c, min);
             d = Math.max(d, min);
         }
 
-        // FIX: apply the fullbright lightmap from emissive blocks at the very end so it cannot influence the minimum lightmap (e.g. sculk sensors in a dark room)
+        // Replaces emissive samples with full brightness
         if (aem) {
             a = LightDataAccess.FULL_BRIGHT;
         }
@@ -236,7 +242,7 @@ class AoFaceData {
         return ((a + b + c + d) >> 2) & 0xFF00FF;
     }
 
-    // Smaller of two, treating zero as absent
+    // Returns the smaller value and ignores a zero.
     private static int minNonZero(int a, int b) {
         if (a == 0) {
             return b;
@@ -247,17 +253,17 @@ class AoFaceData {
         return Math.min(a, b);
     }
 
-    // Whether initLightData ran
+    // Returns whether the light data was read.
     public boolean hasLightData() {
         return (this.flags & AoCompletionFlags.HAS_LIGHT_DATA) != 0;
     }
 
-    // Whether unpackLightData ran
+    // Returns whether the light data was unpacked.
     public boolean hasUnpackedLightData() {
         return (this.flags & AoCompletionFlags.HAS_UNPACKED_LIGHT_DATA) != 0;
     }
 
-    // Clears both flags for reuse
+    // Clears the completion flags.
     public void reset() {
         this.flags = 0;
     }

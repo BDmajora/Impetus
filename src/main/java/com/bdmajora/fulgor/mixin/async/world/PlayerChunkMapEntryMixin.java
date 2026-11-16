@@ -14,19 +14,21 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import javax.annotation.Nullable;
 
-// Holds a chunk back from clients until its light and its four neighbours' are final; the entry retries every tick so this only delays, and it is not done through Chunk.isPopulated, which also gates block-change packets
+// Mixin that changes PlayerChunkMapEntry.
 @Mixin(PlayerChunkMapEntry.class)
 public abstract class PlayerChunkMapEntryMixin {
+    // Reference to the field chunk of the target.
     @Shadow
     @Nullable
     private Chunk chunk;
 
+    // Reference to the field sent to players of the target.
     @Shadow
     private boolean sentToPlayers;
 
+    // Runs at the start of sendToPlayers and can cancel it.
     @Inject(method = "sendToPlayers", at = @At("HEAD"), cancellable = true)
     private void fulgor$gateSendOnLight(CallbackInfoReturnable<Boolean> cir) {
-        // Already sent (a relight only resends through the manager), or nothing to gate yet
         if (this.sentToPlayers || FulgorConfig.get().asyncSendChunksWithoutLight) {
             return;
         }

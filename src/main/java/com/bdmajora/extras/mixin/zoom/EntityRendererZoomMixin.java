@@ -9,15 +9,16 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Logical Zoom's two camera hooks: the zoom state latches at the start of the frame, and the world FOV narrows where vanilla computes it
+// Mixin that changes EntityRenderer.
 @Mixin(EntityRenderer.class)
 public class EntityRendererZoomMixin {
+    // Runs at the start of updateCameraAndRender.
     @Inject(method = "updateCameraAndRender", at = @At("HEAD"))
     private void impetus$updateZoom(float partialTicks, long nanoTime, CallbackInfo ci) {
         LogicalZoom.update();
     }
 
-    // useFOVSetting is false only for the first-person hand, which keeps its own fixed 70 degrees like the original
+    // Changes the return value of getFOVModifier.
     @ModifyReturnValue(method = "getFOVModifier", at = @At("RETURN"))
     private float impetus$zoomFov(float fov, @Local(argsOnly = true) boolean useFOVSetting) {
         return useFOVSetting ? LogicalZoom.zoomFov(fov) : fov;

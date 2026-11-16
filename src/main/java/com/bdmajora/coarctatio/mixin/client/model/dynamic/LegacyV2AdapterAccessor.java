@@ -5,9 +5,10 @@ import net.minecraft.client.resources.LegacyV2Adapter;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
-// The pack a format-2 adapter wraps, listed in its place
+// Mixin that changes LegacyV2Adapter.
 @Mixin(LegacyV2Adapter.class)
 public interface LegacyV2AdapterAccessor {
+    // Gives access to the field pack.
     @Accessor("pack")
     IResourcePack coarctatio$pack();
 }

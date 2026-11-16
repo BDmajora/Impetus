@@ -16,15 +16,21 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-// One shader file's source plus every configurable option in it, discovered at parse time and edited back to apply values; lines parse in isolation except #ifdef reference tracking. From Iris with guava/fastutil replaced and LineTransform inlined
+// Source file with the options it declares and the ability to rewrite them.
 public final class OptionAnnotatedSource {
+    // Lines of the source.
     private final List<String> lines;
 
+    // Boolean options by line index.
     private final Map<Integer, BooleanOption> booleanOptions;
+    // String options by line index.
     private final Map<Integer, StringOption> stringOptions;
+    // Parse warnings by line index.
     private final Map<Integer, String> diagnostics;
+    // Lines that test each boolean define.
     private final Map<String, List<Integer>> booleanDefineReferences;
 
+    // Names of the constants that act as options.
     private static final Set<String> VALID_CONST_OPTION_NAMES = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
             "shadowMapResolution",
             "shadowDistance",
@@ -63,12 +69,12 @@ public final class OptionAnnotatedSource {
             "superSamplingLevel",
             "noiseTextureResolution")));
 
+    // Parses the options of a source text.
     public OptionAnnotatedSource(final String source) {
-        // Match any valid newline sequence: https://stackoverflow.com/a/31060125
         this(Arrays.asList(source.split("\\R")));
     }
 
-    // Parses line by line recording where every option lives, so apply() rewrites exactly those lines and leaves everything else byte-identical
+    // Parses the options of source lines.
     public OptionAnnotatedSource(final List<String> lines) {
         this.lines = Collections.unmodifiableList(new ArrayList<>(lines));
 
@@ -85,22 +91,18 @@ public final class OptionAnnotatedSource {
         this.booleanDefineReferences = Collections.unmodifiableMap(builder.booleanDefineReferences);
     }
 
-    // Classifies one line as a boolean define, a const, or nothing
+    // Records the option or define reference of one line.
     private static void parseLine(AnnotationsBuilder builder, int index, String lineText) {
-        // Check to see if this line contains anything of interest before we try to parse it.
         if (!lineText.contains("#define")
                 && !lineText.contains("const")
                 && !lineText.contains("#ifdef")
                 && !lineText.contains("#ifndef")) {
-            // Nothing of interest.
             return;
         }
 
-        // Parse the trimmed form of the line to ignore indentation and trailing whitespace.
         ParsedString line = new ParsedString(lineText.trim());
 
         if (line.takeLiteral("#ifdef") || line.takeLiteral("#ifndef")) {
-            // #ifdef/#ifndef references decide whether a boolean option is recognized as configurable; #if and #elif are not checked
             parseIfdef(builder, index, line);
         } else if (line.takeLiteral("const")) {
             parseConst(builder, index, line);
@@ -109,7 +111,7 @@ public final class OptionAnnotatedSource {
         }
     }
 
-    // Records #ifdef references so unreferenced defines are not offered as options
+    // Records a define tested by an ifdef or ifndef line.
     private static void parseIfdef(AnnotationsBuilder builder, int index, ParsedString line) {
         if (!line.takeSomeWhitespace()) {
             return;
@@ -127,9 +129,8 @@ public final class OptionAnnotatedSource {
                 .computeIfAbsent(name, n -> new ArrayList<>()).add(index);
     }
 
-    // const int/float/bool NAME = value; // [allowed values]
+    // Records a constant option.
     private static void parseConst(AnnotationsBuilder builder, int index, ParsedString line) {
-        // const is already taken.
 
         if (!line.takeSomeWhitespace()) {
             builder.diagnostics.put(index, "Expected whitespace after const and before type declaration");
@@ -237,12 +238,10 @@ public final class OptionAnnotatedSource {
         }
     }
 
-    // #define NAME [value] // [allowed values], possibly commented out
+    // Records a define option.
     private static void parseDefineOption(AnnotationsBuilder builder, int index, ParsedString line) {
-        // Remove the leading comment for processing.
         boolean hasLeadingComment = line.takeComments();
 
-        // allow but do not require whitespace between comments and #define
         line.takeSomeWhitespace();
 
         if (!line.takeLiteral("#define")) {
@@ -268,23 +267,19 @@ public final class OptionAnnotatedSource {
             return;
         }
 
-        // Maybe take some whitespace
         boolean tookWhitespace = line.takeSomeWhitespace();
 
         if (line.isEnd()) {
-            // Plain define directive without a comment.
             builder.booleanOptions.put(index, new BooleanOption(OptionType.DEFINE, name, null, !hasLeadingComment));
             return;
         }
 
         if (line.takeComments()) {
-            // A bare comment with no allowed-values part, since boolean options only have two values
             String comment = line.takeRest().trim();
 
             builder.booleanOptions.put(index, new BooleanOption(OptionType.DEFINE, name, comment, !hasLeadingComment));
             return;
         } else if (!tookWhitespace) {
-            // Invalid syntax.
             builder.diagnostics.put(index,
                     "Invalid syntax after #define directive. Only alphanumeric or underscore " +
                             "characters are allowed in option names.");
@@ -340,27 +335,27 @@ public final class OptionAnnotatedSource {
         builder.stringOptions.put(index, option);
     }
 
-    // Boolean options by line
+    // Returns the boolean options by line.
     public Map<Integer, BooleanOption> getBooleanOptions() {
         return booleanOptions;
     }
 
-    // Valued options by line
+    // Returns the string options by line.
     public Map<Integer, StringOption> getStringOptions() {
         return stringOptions;
     }
 
-    // Lines that looked like options but were rejected, with why
+    // Returns the parse warnings by line.
     public Map<Integer, String> getDiagnostics() {
         return diagnostics;
     }
 
-    // Every #ifdef reference, by define name
+    // Returns the lines that test each define.
     public Map<String, List<Integer>> getBooleanDefineReferences() {
         return booleanDefineReferences;
     }
 
-    // The options this file contributes, dropping defines nothing references
+    // Returns the string options and the boolean options that some source tests.
     public OptionSet getOptionSet(AbsolutePackPath filePath, Set<String> booleanDefineReferences) {
         OptionSet.Builder builder = OptionSet.builder();
 
@@ -379,7 +374,7 @@ public final class OptionAnnotatedSource {
         return builder.build();
     }
 
-    // Applies the values and returns the edited source; three edits since packs declare options three ways (boolean #define commented/uncommented, string #define value rewritten, const edited in place), and only recorded lines are touched
+    // Returns the source with every changed option rewritten.
     public String apply(OptionValues values) {
         StringBuilder source = new StringBuilder();
 
@@ -391,9 +386,8 @@ public final class OptionAnnotatedSource {
         return source.toString();
     }
 
-    // Rewrites one option line to reflect the chosen value
+    // Returns one line with its option value applied.
     private String edit(OptionValues values, int index, String existing) {
-        // See if it's a boolean option
         BooleanOption booleanOption = booleanOptions.get(index);
 
         if (booleanOption != null) {
@@ -402,7 +396,6 @@ public final class OptionAnnotatedSource {
                 return setBooleanDefineValue(existing, value, booleanOption.getDefaultValue());
             } else if (booleanOption.getType() == OptionType.CONST) {
                 if (value != OptionalBoolean.DEFAULT) {
-                    // Value will never be default here, but we're using orElse just to get a normal boolean out of it.
                     return editConst(existing, Boolean.toString(booleanOption.getDefaultValue()), Boolean.toString(value.orElse(booleanOption.getDefaultValue())));
                 } else {
                     return existing;
@@ -429,13 +422,12 @@ public final class OptionAnnotatedSource {
         return existing;
     }
 
-    // Substitutes a const's value in place
+    // Replaces the first copy of the old value after the equals sign.
     private String editConst(String line, String currentValue, String newValue) {
         int equalsIndex = line.indexOf('=');
 
         if (equalsIndex == -1) {
-            // This shouldn't be possible.
-            throw new IllegalStateException();
+            throw new IllegalStateException("Constant option line has no initialiser: " + line);
         }
 
         String firstPart = line.substring(0, equalsIndex);
@@ -446,12 +438,12 @@ public final class OptionAnnotatedSource {
         return firstPart + secondPart;
     }
 
-    // Whether the define is commented out, meaning off
+    // Returns whether a line starts with a line comment.
     private static boolean hasLeadingComment(String line) {
         return line.trim().startsWith("//");
     }
 
-    // Uncomments a define
+    // Returns a line without its leading comment markers.
     private static String removeLeadingComment(String line) {
         ParsedString parsed = new ParsedString(line);
 
@@ -461,23 +453,29 @@ public final class OptionAnnotatedSource {
         return parsed.takeRest();
     }
 
-    // Comments or uncomments a define to match the value
+    // Comments or uncomments a define line to match its value.
     private static String setBooleanDefineValue(String line, OptionalBoolean newValue, boolean defaultValue) {
         if (hasLeadingComment(line) && newValue.orElse(defaultValue)) {
             return removeLeadingComment(line);
         } else if (!newValue.orElse(defaultValue)) {
-            return "//" + line;
+            return hasLeadingComment(line) ? line : "//" + line;
         } else {
             return line;
         }
     }
 
+    // Mutable maps filled while parsing.
     private static class AnnotationsBuilder {
+        // Boolean options by line index.
         private final Map<Integer, BooleanOption> booleanOptions;
+        // String options by line index.
         private final Map<Integer, StringOption> stringOptions;
+        // Parse warnings by line index.
         private final Map<Integer, String> diagnostics;
+        // Lines that test each boolean define.
         private final Map<String, List<Integer>> booleanDefineReferences;
 
+        // Creates empty maps.
         private AnnotationsBuilder() {
             booleanOptions = new HashMap<>();
             stringOptions = new HashMap<>();

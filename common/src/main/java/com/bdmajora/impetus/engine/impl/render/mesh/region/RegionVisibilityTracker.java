@@ -4,28 +4,36 @@ import java.util.Arrays;
 import java.util.function.IntPredicate;
 import org.lwjgl.system.MemoryUtil;
 
-
-// Per-region history of how often it was in the frustum and when its box last passed the depth test, fed from downloaded region visibility bytes; picks what to evict when the geometry budget runs out (Nvidium's RegionVisibilityTracker)
+// Tracks how often each region was visible to choose regions to evict.
 public class RegionVisibilityTracker {
-    // A region must have been sampled this many frames before its history is trusted enough to evict on
+    // Samples a region needs before its history is trusted.
     static final int MIN_SAMPLES = 200;
 
+    // Samples of each region.
     private final int[] samples;
+    // Frame in which each region was last visible.
     private final int[] lastVisible;
+    // Number of recorded frames.
     private int frame;
 
+    // Creates a tracker and rejects a negative region count.
     public RegionVisibilityTracker(int maxRegions) {
+        if (maxRegions < 0) {
+            throw new IllegalArgumentException("Negative region count " + maxRegions);
+        }
         this.samples = new int[maxRegions];
         this.lastVisible = new int[maxRegions];
     }
 
-    // One frame's result: regionIds in visible-list order, and the visibility byte per entry at address
+    // Records the visibility of the listed regions for one frame.
     public void record(short[] regionIds, int count, long address) {
         this.frame++;
 
         for (int i = 0; i < count; i++) {
             int regionId = Short.toUnsignedInt(regionIds[i]);
-            this.samples[regionId]++;
+            if (this.samples[regionId] < Integer.MAX_VALUE) {
+                this.samples[regionId]++;
+            }
 
             if (MemoryUtil.memGetByte(address + i) != 0) {
                 this.lastVisible[regionId] = this.frame;
@@ -33,13 +41,13 @@ public class RegionVisibilityTracker {
         }
     }
 
-    // Forgets a region whose id was released, so a new region reusing the id starts clean
+    // Clears the history of a region.
     public void reset(int regionId) {
         this.samples[regionId] = 0;
         this.lastVisible[regionId] = 0;
     }
 
-    // The well-sampled region seen longest ago among those the filter accepts, or -1
+    // Returns the accepted region that was seen longest ago or minus one.
     public int leastRecentlySeen(int maxIndex, IntPredicate candidate) {
         int best = -1;
         int oldest = Integer.MAX_VALUE;
@@ -58,7 +66,7 @@ public class RegionVisibilityTracker {
         return best;
     }
 
-    // Drops all history
+    // Clears all history.
     public void clear() {
         Arrays.fill(this.samples, 0);
         Arrays.fill(this.lastVisible, 0);

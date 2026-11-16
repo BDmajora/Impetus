@@ -11,12 +11,15 @@ import org.lwjgl.system.MemoryUtil;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+// Tests the staging upload stream.
 class UploadStreamTest {
+    // Enables the mesh capable GL stand in.
     @BeforeEach
     void capable() {
         TestGl.meshCapable();
     }
 
+    // Makes every fence report the given state.
     private static void fencesSignal(boolean signalled) {
         Mockito.doAnswer(inv -> {
             inv.<IntBuffer>getArgument(2).put(0, 1);
@@ -24,6 +27,7 @@ class UploadStreamTest {
         }).when(TestGl.gl()).glGetSynci(Mockito.anyLong(), Mockito.anyInt(), Mockito.any());
     }
 
+    // Stages and commits uploads and reclaims them by fence.
     @Test
     void uploadsAreStagedCommittedAndReclaimedByFence() {
         UploadStream stream = new UploadStream(64);
@@ -50,6 +54,7 @@ class UploadStreamTest {
         stream.delete();
     }
 
+    // Stalls a full ring until earlier frames retire.
     @Test
     void aFullRingStallsUntilEarlierFramesRetire() {
         UploadStream stream = new UploadStream(32);
@@ -63,6 +68,34 @@ class UploadStreamTest {
         stream.endFrame();
         assertThrows(IllegalStateException.class, () -> stream.upload(target, 64, 32));
         fencesSignal(true);
+        stream.delete();
+    }
+
+    // Rejects every use after delete and deletes once.
+    @Test
+    void useAfterDeleteIsRejected() {
+        UploadStream stream = new UploadStream(64);
+        BindlessBuffer target = new BindlessBuffer(256);
+        stream.upload(target, 0, 16);
+        stream.delete();
+        stream.delete();
+        assertThrows(IllegalStateException.class, () -> stream.upload(target, 0, 16));
+        assertThrows(IllegalStateException.class, stream::commit);
+        assertThrows(IllegalStateException.class, stream::endFrame);
+        Mockito.verify(TestGl.gl(), Mockito.never()).glCopyNamedBufferSubData(Mockito.anyInt(), Mockito.anyInt(), Mockito.anyLong(), Mockito.anyLong(), Mockito.anyLong());
+    }
+
+    // Rejects a null target and sizes past the int range.
+    @Test
+    void argumentLimits() {
+        UploadStream stream = new UploadStream(64);
+        BindlessBuffer target = new BindlessBuffer(256);
+        assertThrows(NullPointerException.class, () -> stream.upload(null, 0, 16));
+        assertThrows(IllegalArgumentException.class, () -> stream.upload(target, 0, -1));
+        assertThrows(IllegalArgumentException.class, () -> stream.upload(target, 0, Integer.MAX_VALUE + 1L));
+        assertThrows(IllegalArgumentException.class, () -> stream.upload(target, Long.MAX_VALUE, 16));
+        assertThrows(IllegalArgumentException.class, () -> stream.upload(target, 241, 16));
+        stream.upload(target, 240, 16);
         stream.delete();
     }
 }

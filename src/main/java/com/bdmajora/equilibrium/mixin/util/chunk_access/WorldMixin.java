@@ -10,15 +10,18 @@ import org.spongepowered.asm.mixin.Unique;
 
 import javax.annotation.Nullable;
 
-// One-entry chunk cache on World behind ChunkAccess: reads arrive in runs landing in the same chunk, and the cache is validated by coordinates so a racy read (mods tick off-thread, the chunk builder reads world state) can only miss; unloadQueued is cleared on hit because getLoadedChunk does, and that is how the server learns a chunk is still in use
+// Mixin that changes World.
 @Mixin(World.class)
 public abstract class WorldMixin implements ChunkAccess {
+    // Reference to the field chunk provider of the target.
     @Shadow
     protected IChunkProvider chunkProvider;
 
+    // Field last chunk added to the target.
     @Unique
     private Chunk equilibrium$lastChunk;
 
+    // Returns the loaded chunk.
     @Nullable
     @Override
     public Chunk equilibrium$getLoadedChunk(int chunkX, int chunkZ) {
@@ -38,6 +41,7 @@ public abstract class WorldMixin implements ChunkAccess {
         return chunk;
     }
 
+    // Returns the chunk cached.
     @Override
     public Chunk equilibrium$getChunkCached(int chunkX, int chunkZ) {
         Chunk cached = this.equilibrium$lastChunk;
@@ -49,7 +53,6 @@ public abstract class WorldMixin implements ChunkAccess {
 
         Chunk chunk = this.chunkProvider.provideChunk(chunkX, chunkZ);
 
-        // The client's provider answers with a shared empty chunk at the origin when nothing is loaded; storing that would poison the cache, so only a chunk that agrees about where it is gets kept
         if (chunk != null && chunk.x == chunkX && chunk.z == chunkZ) {
             this.equilibrium$lastChunk = chunk;
         }

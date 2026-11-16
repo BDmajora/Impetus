@@ -2,37 +2,44 @@ package com.bdmajora.dynamiclights;
 
 import com.bdmajora.impetus.impl.gui.Localized;
 
-// How often a moving source may re-light nearby chunks; a floor on rebuild scheduling, not a frame budget, since a source at a section corner would otherwise queue eight rebuilds every tick
+// Update rate of the dynamic lights.
 public enum DynamicLightsMode implements Localized {
+    // Lights are off.
     OFF(0, "impetus.options.dynamiclights.mode.off"),
+    // Lights update every half second.
     SLOW(500, "impetus.options.dynamiclights.mode.slow"),
+    // Lights update every quarter second.
     FAST(250, "impetus.options.dynamiclights.mode.fast"),
+    // Lights update every tick.
     REALTIME(0, "impetus.options.dynamiclights.mode.realtime");
 
+    // Milliseconds between updates.
     private final int delay;
+    // Translation key of the name.
     private final String key;
 
+    // Creates a mode.
     DynamicLightsMode(int delay, String key) {
         this.delay = delay;
         this.key = key;
     }
 
-    // Anything but OFF
+    // Returns whether the mode updates lights.
     public boolean isEnabled() {
         return this != OFF;
     }
 
-    // True when #getDelay() is a real floor rather than "every update".
+    // Returns whether updates wait between steps.
     public boolean hasDelay() {
         return this.delay != 0;
     }
 
-    // Minimum milliseconds between updates for a single source.
+    // Returns the milliseconds between updates.
     public int getDelay() {
         return this.delay;
     }
 
-    // Lang key for the cycler label
+    // Returns the translation key of the name.
     @Override
     public String translationKey() {
         return this.key;

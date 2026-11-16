@@ -7,41 +7,32 @@ import org.jetbrains.annotations.Nullable;
 import java.nio.ByteBuffer;
 import java.util.List;
 
+// Kind of primitive that terrain geometry is drawn as.
 public interface ChunkPrimitiveType {
-    // Bytes for an index buffer of this many primitives
+    // Returns the bytes of an index buffer for a number of primitives and rejects a negative count or an overflow.
     default int getIndexBufferSize(int numPrimitives) {
-        return numPrimitives * getIndexBufferElementsPerPrimitive() * 4;
+        if (numPrimitives < 0) {
+            throw new IllegalArgumentException("Negative primitive count " + numPrimitives);
+        }
+        return Math.multiplyExact(Math.multiplyExact(numPrimitives, getIndexBufferElementsPerPrimitive()), 4);
     }
 
-    // the number of vertices in a primitive, e.g. 4 for quads, 3 for triangles
+    // Returns the number of vertices of a primitive.
     int getVerticesPerPrimitive();
 
-    // the number of index buffer elements per primitive, e.g. 6 for quads, 3 for triangles
+    // Returns the number of indices of a primitive.
     int getIndexBufferElementsPerPrimitive();
 
-    // What the GL draw call is issued as
+    // Returns the GL primitive of the draw call.
     GlPrimitiveType getGlPrimitiveType();
 
-    // Generates a "simple" index buffer drawing numPrimitives in vertex-buffer order; the caller supplies a buffer sized by getIndexBufferSize(int)
+    // Writes indices that draw the primitives in vertex order.
     void generateSimpleIndexBuffer(ByteBuffer indexBuffer, int numPrimitives);
 
-    /**
-     * Generate a sorted index buffer for numPrimitives primitives, with data on the primitives provided in chunkData.
-     * <p>
-     * The caller is responsible for providing a buffer of size given by {@link ChunkPrimitiveType#getIndexBufferSize(int)}.
-     * <p>
-     * The provided camera position will be subchunk-relative, and thus makes sense to compare directly with the vertex
-     * positions provided in the SortState.
-     * @param indexBuffer a NativeBuffer that should be populated with 32-bit integers
-     * @param numPrimitives the number of primitives to generate the buffer for
-     * @param chunkData the sorting data for the given primitives
-     * @param x x position of the camera
-     * @param y y position of the camera
-     * @param z z position of the camera
-     */
+    // Writes indices that draw the primitives from far to near for a camera position.
     void generateSortedIndexBuffer(ByteBuffer indexBuffer, int numPrimitives, @Nullable SortState chunkData, float x, float y, float z);
 
-    // Shader defines this primitive type needs
+    // Returns the shader definitions the primitive needs.
     default List<String> getDefines() {
         return List.of();
     }

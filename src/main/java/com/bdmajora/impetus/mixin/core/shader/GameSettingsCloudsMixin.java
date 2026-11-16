@@ -10,12 +10,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.OptionalInt;
 
-// The "clouds = off | fast | fancy" shaders.properties override (Umbra's MixinOptions_CloudsOverride); vanilla's renderDistanceChunks >= 4 gate is mirrored first so a pack cannot force clouds on where vanilla suppresses them
+// Mixin that changes GameSettings.
 @Mixin(GameSettings.class)
 public class GameSettingsCloudsMixin {
+    // Reference to the field render distance chunks of the target.
     @Shadow
     public int renderDistanceChunks;
 
+    // Runs at the start of shouldRenderClouds and can cancel it.
     @Inject(method = "shouldRenderClouds", at = @At("HEAD"), cancellable = true)
     private void impetus$overrideCloudMode(CallbackInfoReturnable<Integer> cir) {
         if (this.renderDistanceChunks < 4) {

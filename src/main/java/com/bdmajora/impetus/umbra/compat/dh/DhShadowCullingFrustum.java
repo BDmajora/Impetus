@@ -7,23 +7,28 @@ import com.seibel.distanthorizons.api.interfaces.override.rendering.IDhApiShadow
 import com.seibel.distanthorizons.api.objects.math.DhApiMat4f;
 import org.joml.Vector3d;
 
-// Culls DH's LOD sections in the shadow pass with the same frustum the shadow pass culls Impetus's sections with (Iris's AdvancedShadowCullingFrustumMixin): DH hands over world-space column bounds, Umbra's frustums test camera-relative boxes, and the world's height range comes from DH's update call
+// Shadow frustum that Distant Horizons uses to cull LODs.
 public final class DhShadowCullingFrustum implements IDhApiShadowCullingFrustum {
+    // Shadow renderer.
     private final UmbraShadowRenderer shadowRenderer;
+    // Lowest y of the world.
     private int worldMinY;
+    // Highest y of the world.
     private int worldMaxY;
 
+    // Creates a dh shadow culling frustum from its shadow renderer.
     public DhShadowCullingFrustum(UmbraShadowRenderer shadowRenderer) {
         this.shadowRenderer = shadowRenderer;
     }
 
-    // DH's own view-projection is ignored: the shadow pass's frustum already encodes the light direction and the camera view, which is the point of overriding it
+    // Records the world height range of the frame.
     @Override
     public void update(int worldMinBlockY, int worldMaxBlockY, DhApiMat4f worldViewProjection) {
         this.worldMinY = worldMinBlockY;
         this.worldMaxY = worldMaxBlockY;
     }
 
+    // Returns whether an LOD column is inside the shadow frustum.
     @Override
     public boolean intersects(int lodBlockPosMinX, int lodBlockPosMinZ, int lodBlockWidth, int lodDetailLevel) {
         Frustum frustum = this.shadowRenderer.getCullingFrustum();

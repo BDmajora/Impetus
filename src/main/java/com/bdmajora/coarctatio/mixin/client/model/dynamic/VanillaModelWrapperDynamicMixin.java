@@ -21,27 +21,31 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.function.Function;
 
-// Forge's wrapper loads its override models into the loader's stateModels while listing dependencies and bakes through a 100 ms cache keyed on the getter; neither suits on-demand loading, so overrides become aliases and bakes go straight to bakeImpl. remap = false, Forge class
+// Mixin that changes VanillaModelWrapper.
 @Mixin(targets = "net/minecraftforge/client/model/ModelLoader$VanillaModelWrapper", remap = false)
 public abstract class VanillaModelWrapperDynamicMixin {
+    // Reference to the field model of the target.
     @Shadow
     @Final
     private ModelBlock model;
 
+    // Reference to the method bake impl of the target.
     @Shadow
     public abstract IBakedModel bakeImpl(IModelState state, VertexFormat format, Function<ResourceLocation, TextureAtlasSprite> bakedTextureGetter);
 
+    // Replaces the call of Map.put in getDependencies.
     @Redirect(method = "getDependencies", at = @At(value = "INVOKE", target = "Ljava/util/Map;put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"))
     private Object coarctatio$skipStateModelPut(Map<Object, Object> stateModels, Object key, Object value) {
         return null;
     }
 
+    // Replaces the call of ModelLoaderRegistry.getModelOrLogError in getDependencies.
     @Redirect(method = "getDependencies", at = @At(value = "INVOKE", target = "Lnet/minecraftforge/client/model/ModelLoaderRegistry;getModelOrLogError(Lnet/minecraft/util/ResourceLocation;Ljava/lang/String;)Lnet/minecraftforge/client/model/IModel;"))
     private IModel coarctatio$skipOverrideLoad(ResourceLocation location, String error) {
         return null;
     }
 
-    // The inventory variant of each override resolves to the override's model file, which is what vanilla's stateModels entry achieved
+    // Runs before every return of getDependencies.
     @Inject(method = "getDependencies", at = @At("RETURN"))
     private void coarctatio$aliasOverrides(CallbackInfoReturnable<Collection<ResourceLocation>> cir) {
         for (ResourceLocation override : this.model.getOverrideLocations()) {
@@ -49,6 +53,7 @@ public abstract class VanillaModelWrapperDynamicMixin {
         }
     }
 
+    // Runs at the start of bake and can cancel it.
     @Inject(method = "bake", at = @At("HEAD"), cancellable = true)
     private void coarctatio$bakeDirectly(IModelState state, VertexFormat format, Function<ResourceLocation, TextureAtlasSprite> bakedTextureGetter, CallbackInfoReturnable<IBakedModel> cir) {
         cir.setReturnValue(this.bakeImpl(state, format, bakedTextureGetter));

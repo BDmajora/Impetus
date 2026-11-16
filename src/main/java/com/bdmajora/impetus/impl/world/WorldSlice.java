@@ -42,83 +42,84 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-// Copies a slice of world state (blocks, biomes, light) off-thread so chunk build tasks see a consistent snapshot; not shareable across threads, and pooled since the backing arrays are large
+// Block access over cloned sections around a section.
 public class WorldSlice implements ImpetusBlockAccess {
-    // The number of blocks on each axis in a section.
+    // Blocks along a section edge.
     private static final int SECTION_BLOCK_LENGTH = 16;
 
-    // The number of blocks in a section.
+    // Blocks in a section.
     private static final int SECTION_BLOCK_COUNT = SECTION_BLOCK_LENGTH * SECTION_BLOCK_LENGTH * SECTION_BLOCK_LENGTH;
 
-    // The radius of blocks around the origin chunk that should be copied.
+    // Blocks read beyond the section on each side.
     private static final int NEIGHBOR_BLOCK_RADIUS = 2;
 
-    // The radius of chunks around the origin chunk that should be copied.
+    // Neighbor chunk radius.
     private static final int NEIGHBOR_CHUNK_RADIUS = MathHelper.roundUp(NEIGHBOR_BLOCK_RADIUS, 16) >> 4;
 
-    // The number of sections on each axis of this slice.
+    // Sections along a slice edge.
     private static final int SECTION_LENGTH = 1 + (NEIGHBOR_CHUNK_RADIUS * 2);
 
-    // Lookup table size for mapping values to coordinate pairs, always a power of two so hot-path multiplications become shifts
+    // Table length.
     private static final int TABLE_LENGTH = MathHelper.smallestEncompassingPowerOfTwo(SECTION_LENGTH);
 
-    // The number of bits needed for each X/Y/Z component in a lookup table.
+    // Table bits.
     private static final int TABLE_BITS = Integer.bitCount(TABLE_LENGTH - 1);
 
-    // The default block state used for out-of-bounds access
+    // Empty block state.
     private static final IBlockState EMPTY_BLOCK_STATE = Blocks.AIR.getDefaultState();
 
-    // The array size for the section lookup table.
+    // Entries of the section tables.
     private static final int SECTION_TABLE_ARRAY_SIZE = TABLE_LENGTH * TABLE_LENGTH * TABLE_LENGTH;
 
-    // The world this slice has copied data from
+    // World the slice copies from.
     private final World world;
+    // World type.
     private final WorldType worldType;
+    // Has sky light.
     private final boolean hasSkyLight;
+    // Default sky light value.
     private final int defaultSkyLightValue;
 
-    // Fulgor's face-aware neighbour brightness, snapshotted per slice since the option needs a restart anyway
+    // Flag set when Fulgor render lighting fixes are on.
     private final boolean fixRenderLighting = FulgorRenderBridge.fixRenderLighting();
 
-    // Local Section->BlockState table.
+    // Block states of each section.
     private final IBlockState[][] blockStatesArrays;
 
-    // Local Section->FluidState table.
+    // Fluid states of each section.
     private final Object[][] fluidStatesArrays;
 
-    // Local section copies. Read-only.
+    // Cloned sections of the slice.
     private ClonedChunkSection[] sections;
 
-    // Biome caches for each chunk section
+    // Biomes of each section.
     private final Biome[][] biomeCaches;
 
-    // The biome blend caches for each color resolver type
+    // Biome color cache.
     private final BiomeColorCache biomeColorCache;
 
-    // The starting point from which this slice captures blocks
+    // Origin of the slice in blocks.
     private int baseX, baseY, baseZ;
 
-    // The chunk origin of this slice
+    // Section at the center of the slice.
     private SectionPos origin;
 
-    // The volume that this slice contains
+    // Block volume the slice covers.
     private StructureBoundingBox volume;
 
-    // A fallback BlockPos object to use when retrieving data from the level directly
+    // Reusable position for fallback reads.
     private final BlockPos.MutableBlockPos fallbackPos = new BlockPos.MutableBlockPos();
 
-    // Extra cloned chunk sections that the slice needed
+    // Sections cloned on demand outside the slice.
     private final Long2ReferenceMap<ClonedChunkSection> extraClonedSections = new Long2ReferenceOpenHashMap<>();
 
-    // Throwaway tile entities for blocks whose clone lacked one, keyed by BlockPos#toLong; see standInBlockEntity
+    // Block entities made for blocks that have none stored.
     private final Long2ReferenceMap<TileEntity> standInBlockEntities = new Long2ReferenceOpenHashMap<>();
 
-    // Clones the 3x3x3 sections around a render section on the main thread, so the builder thread never touches the world
+    // Clones the sections around a section and returns null for an empty section.
     public static ChunkRenderContext prepare(World world, SectionPos origin, ClonedChunkSectionCache sectionCache) {
-        // Fulgor defers light propagation until something reads light, and the copies below read section arrays directly rather than via Chunk#getLightFor, so resolve what is pending or the mesh bakes in an earlier tick's light
         FulgorRenderBridge.flushPendingLightUpdates(world);
 
-        // The guess depends on the connection, which only the main thread should inspect
         if (FluidloggedCompat.IS_LOADED) {
             FluidloggingInference.refresh();
         }
@@ -126,7 +127,6 @@ public class WorldSlice implements ImpetusBlockAccess {
         Chunk chunk = world.getChunk(origin.x(), origin.z());
         ExtendedBlockStorage section = chunk.getBlockStorageArray()[origin.y()];
 
-        // An absent or empty section will never have anything to render, so signal that no build task should be created; this greatly accelerates world load
         if (section == null || FulgorRenderBridge.isEmptyOfBlocks(section)) {
             return null;
         }
@@ -138,7 +138,6 @@ public class WorldSlice implements ImpetusBlockAccess {
                 origin.maxY() + NEIGHBOR_BLOCK_RADIUS,
                 origin.maxZ() + NEIGHBOR_BLOCK_RADIUS);
 
-        // The min/max bounds of the chunks copied by this slice
         final int minChunkX = origin.x() - NEIGHBOR_CHUNK_RADIUS;
         final int minChunkY = origin.y() - NEIGHBOR_CHUNK_RADIUS;
         final int minChunkZ = origin.z() - NEIGHBOR_CHUNK_RADIUS;
@@ -161,19 +160,18 @@ public class WorldSlice implements ImpetusBlockAccess {
         return new ChunkRenderContext(origin, sections, volume);
     }
 
+    // Creates a world slice from its world.
     public WorldSlice(World world) {
         this.world = world;
         this.worldType = world.getWorldType();
-        // Nether and End have no skylight; a snapshot of the provider's answer saves the virtual call per light read
         this.hasSkyLight = world.provider.hasSkyLight();
         this.defaultSkyLightValue = this.hasSkyLight ? EnumSkyBlock.SKY.defaultLightValue : 0;
 
         this.sections = new ClonedChunkSection[SECTION_TABLE_ARRAY_SIZE];
         this.blockStatesArrays = new IBlockState[SECTION_TABLE_ARRAY_SIZE][];
-        this.biomeCaches = new Biome[SECTION_TABLE_ARRAY_SIZE][16 * 16];
+        this.biomeCaches = new Biome[SECTION_TABLE_ARRAY_SIZE][];
         this.biomeColorCache = new BiomeColorCache(this, ImpetusVintage.options().quality.legacyBiomeBlendRadius);
-        if(!FluidloggedCompat.IS_LOADED) this.fluidStatesArrays = null;
-        else this.fluidStatesArrays = new Object[SECTION_TABLE_ARRAY_SIZE][];
+        this.fluidStatesArrays = FluidloggedCompat.IS_LOADED ? new Object[SECTION_TABLE_ARRAY_SIZE][] : null;
 
         for (int x = 0; x < SECTION_LENGTH; x++) {
             for (int y = 0; y < SECTION_LENGTH; y++) {
@@ -192,7 +190,7 @@ public class WorldSlice implements ImpetusBlockAccess {
         }
     }
 
-    // Unpacks the cloned sections into flat arrays for the builder thread
+    // Copies the data.
     public void copyData(ChunkRenderContext context) {
         this.origin = context.getOrigin();
         this.sections = context.getSections();
@@ -222,7 +220,6 @@ public class WorldSlice implements ImpetusBlockAccess {
             }
         }
 
-        // Servers without the mod leave every slot empty; the guess runs over the raw copy and only touches empty slots
         if (FluidloggedCompat.IS_LOADED && FluidloggingInference.isActive()) {
             FluidloggingInference.apply(this, this.baseX, this.baseY, this.baseZ,
                     this.volume.minX - this.baseX, this.volume.minY - this.baseY, this.volume.minZ - this.baseZ,
@@ -230,22 +227,23 @@ public class WorldSlice implements ImpetusBlockAccess {
         }
     }
 
-    // Slice-relative fluid slot, typed as Object so nothing here links against Fluidlogged when it is absent
+    // Returns the fluid state at slice coordinates.
     public Object getFluidStateRelative(int x, int y, int z) {
         return this.fluidStatesArrays[getLocalSectionIndex(x >> 4, y >> 4, z >> 4)][getLocalBlockIndex(x & 15, y & 15, z & 15)];
     }
 
+    // Stores the fluid state relative.
     public void setFluidStateRelative(int x, int y, int z, Object state) {
         this.fluidStatesArrays[getLocalSectionIndex(x >> 4, y >> 4, z >> 4)][getLocalBlockIndex(x & 15, y & 15, z & 15)] = state;
     }
 
-    // Drops references so a pooled slice does not pin chunk data between builds
+    // Forgets the extra sections and the stand in block entities.
     public void reset() {
         this.extraClonedSections.clear();
         this.standInBlockEntities.clear();
     }
 
-    // Copies the part of a section the slice's box covers; the origin section is covered whole, so the clamp is a no-op for it and there is no separate path
+    // Copies the block states of a cloned section.
     private static void unpackBlockData(IBlockState[] states, ClonedChunkSection section, StructureBoundingBox box) {
         SectionPos pos = section.getPosition();
 
@@ -267,7 +265,7 @@ public class WorldSlice implements ImpetusBlockAccess {
         }
     }
 
-    // Fluidlogged API's second state layer, copied alongside blocks when that mod is present
+    // Copies the fluid states of a cloned section.
     private void unpackFluidData(Object[] states, ClonedChunkSection section, StructureBoundingBox box) {
         var storage = section.getFluidData();
         if (storage.isEmpty()) {
@@ -283,7 +281,7 @@ public class WorldSlice implements ImpetusBlockAccess {
         }
     }
 
-    // Inclusive bounds test
+    // Returns whether a box holds a position.
     private static boolean blockBoxContains(StructureBoundingBox box, int x, int y, int z) {
         return x >= box.minX &&
                 x <= box.maxX &&
@@ -293,20 +291,20 @@ public class WorldSlice implements ImpetusBlockAccess {
                 z <= box.maxZ;
     }
 
-    // IBlockAccess entry point; unpacks to the int overload
+    // Returns the block state.
     @Override
     public IBlockState getBlockState(BlockPos pos) {
         return this.getBlockState(pos.getX(), pos.getY(), pos.getZ());
     }
 
-    // IBlockAccess entry point
+    // Returns whether air block.
     @Override
     public boolean isAirBlock(BlockPos pos) {
         IBlockState state = this.getBlockState(pos);
         return state.getBlock().isAir(state, this, pos);
     }
 
-    // Reads from the flat arrays; positions outside the slice fall back to the cloned section cache
+    // Returns the block state.
     public IBlockState getBlockState(int x, int y, int z) {
         if (!blockBoxContains(this.volume, x, y, z)) {
             return this.getBlockStateFallback(x, y, z);
@@ -320,20 +318,19 @@ public class WorldSlice implements ImpetusBlockAccess {
                 [getLocalBlockIndex(relX & 15, relY & 15, relZ & 15)];
     }
 
-    // Slice-relative read, the hot path for the block renderer
+    // Returns the block state at slice coordinates.
     public IBlockState getBlockStateRelative(int x, int y, int z) {
-        // NOTE: Not bounds checked. We assume ChunkRenderRebuildTask is the only function using this
         return this.blockStatesArrays[getLocalSectionIndex(x >> 4, y >> 4, z >> 4)]
                 [getLocalBlockIndex(x & 15, y & 15, z & 15)];
     }
 
-    // IBlockAccess entry point
+    // Returns the tile entity.
     @Override
     public TileEntity getTileEntity(BlockPos pos) {
         return this.getBlockEntity(pos.getX(), pos.getY(), pos.getZ());
     }
 
-    // From the cloned section's tile entity map, never the live world
+    // Returns the block entity.
     public TileEntity getBlockEntity(int x, int y, int z) {
         if (!blockBoxContains(this.volume, x, y, z)) {
             return null;
@@ -349,7 +346,6 @@ public class WorldSlice implements ImpetusBlockAccess {
             return entity;
         }
 
-        // A block that declares a tile entity but has none on the client (servers behind proxies/ViaVersion can send a chunk without the tag) is dereferenced anyway by block code such as BlockShulkerBox#getBlockFaceShape, which Fluidlogged reaches from any neighbouring fluid; vanilla's ChunkCache would also hand back null here and crash the same way
         IBlockState state = this.blockStatesArrays[sectionIdx][getLocalBlockIndex(relX & 15, relY & 15, relZ & 15)];
         if (!state.getBlock().hasTileEntity(state)) {
             return null;
@@ -357,7 +353,7 @@ public class WorldSlice implements ImpetusBlockAccess {
         return this.standInBlockEntity(x, y, z, state);
     }
 
-    // Vanilla creates a missing tile entity lazily on the main thread (World#getTileEntity); the builder thread must not touch the world, so it gets a throwaway built the same way but never registered, and the real one is created on the main thread with the section re-rendered around it, as Chunk#onTick does for its queued positions
+    // Returns a block entity made for a block or null.
     private TileEntity standInBlockEntity(int x, int y, int z, IBlockState state) {
         BlockPos pos = new BlockPos(x, y, z);
         long key = pos.toLong();
@@ -374,7 +370,6 @@ public class WorldSlice implements ImpetusBlockAccess {
             standIn.setWorld(this.world);
             standIn.setPos(pos);
         }
-        // Cached even when null so a section full of the same block schedules one main-thread task per position, not one per neighbour probe
         this.standInBlockEntities.put(key, standIn);
 
         World world = this.world;
@@ -387,7 +382,6 @@ public class WorldSlice implements ImpetusBlockAccess {
             if (!liveState.getBlock().hasTileEntity(liveState) || chunk.getTileEntity(pos, Chunk.EnumCreateEntityType.CHECK) != null) {
                 return;
             }
-            // IMMEDIATE mode constructs and registers it; the rebuild only follows a successful creation so a block whose factory returns null cannot loop
             if (world.getTileEntity(pos) != null) {
                 world.markBlockRangeForRenderUpdate(pos, pos);
             }
@@ -395,7 +389,7 @@ public class WorldSlice implements ImpetusBlockAccess {
         return standIn;
     }
 
-    // Packed sky and block light as vanilla's lightmap expects, from the cloned light arrays
+    // Returns the combined light.
     @Override
     public int getCombinedLight(BlockPos pos, int ambientLight) {
         if (!blockBoxContains(this.volume, pos.getX(), pos.getY(), pos.getZ())) {
@@ -413,14 +407,14 @@ public class WorldSlice implements ImpetusBlockAccess {
         return i << 20 | j << 4;
     }
 
-    // Single-type light read from the cloned arrays
+    // Returns the light of one type at slice coordinates.
     private int getLightFor(EnumSkyBlock type, int relX, int relY, int relZ) {
         ClonedChunkSection section = this.sections[getLocalSectionIndex(relX >> 4, relY >> 4, relZ >> 4)];
 
         return section.getLightLevel(relX & 15, relY & 15, relZ & 15, type);
     }
 
-    // Vanilla's neighbour-max rule for translucent blocks, over cloned data; with Fulgor's render fix a block is lit through its open faces only
+    // Returns the light of a block from its brightest neighbour.
     private int getLightFromNeighborsFor(EnumSkyBlock type, BlockPos pos) {
         if(!this.hasSkyLight && type == EnumSkyBlock.SKY) {
             return this.defaultSkyLightValue;
@@ -460,7 +454,7 @@ public class WorldSlice implements ImpetusBlockAccess {
         return Math.max(level, getLightFor(type, relX, relY, relZ - 1));
     }
 
-    // IBlockAccess entry point
+    // Returns the biome.
     @Override
     public Biome getBiome(BlockPos pos) {
         int x2 = (pos.getX() - this.baseX) >> 4;
@@ -475,7 +469,7 @@ public class WorldSlice implements ImpetusBlockAccess {
         return Biomes.PLAINS;
     }
 
-    // Biome colour through the slice's own biome data, so smooth blending stays off-thread
+    // Returns the tint of a block from the biome color cache.
     @Override
     public int getBlockTint(BlockPos pos, BiomeColorHelper.ColorResolver resolver) {
         if(!blockBoxContains(this.volume, pos.getX(), pos.getY(), pos.getZ())) {
@@ -485,7 +479,7 @@ public class WorldSlice implements ImpetusBlockAccess {
         return this.biomeColorCache.getColor(resolver, pos.getX(), pos.getY(), pos.getZ());
     }
 
-    // Asked by a few block models at render time (comparators, redstone dust colour); answered against the slice
+    // Returns the strong power.
     @Override
     @SuppressWarnings("deprecation")
     public int getStrongPower(BlockPos pos, EnumFacing direction) {
@@ -493,19 +487,19 @@ public class WorldSlice implements ImpetusBlockAccess {
         return state.getBlock().getStrongPower(state, this, pos, direction);
     }
 
-    // Forwarded from the world captured at prepare time
+    // Returns the world type.
     @Override
     public WorldType getWorldType() {
         return this.worldType;
     }
 
-    // Asks the block state directly against this slice
+    // Returns whether side solid.
     @Override
     public boolean isSideSolid(BlockPos pos, EnumFacing side, boolean _default) {
         return getBlockState(pos).isSideSolid(this, pos, side);
     }
 
-    // From the cloned biome array; y is ignored on 1.12.2
+    // Returns the biome.
     public Biome getBiome(int x, int y, int z) {
         int relX = x - this.baseX;
         int relY = y - this.baseY;
@@ -520,12 +514,12 @@ public class WorldSlice implements ImpetusBlockAccess {
         return this.biomeCaches[idx][((z & 15) << 4) | (x & 15)];
     }
 
-    // The render section this slice was prepared for
+    // Returns the origin.
     public SectionPos getOrigin() {
         return this.origin;
     }
 
-    // Vanilla's per-face diffuse factors
+    // Returns the face shade of a direction.
     public float getBrightness(EnumFacing direction, boolean shaded) {
         if (!shaded) {
             return this.hasSkyLight ? 1.0f : 0.9f;
@@ -533,7 +527,7 @@ public class WorldSlice implements ImpetusBlockAccess {
         return LightUtil.diffuseLight(direction);
     }
 
-    // For reads just outside the slice, e.g. a neighbour needed for culling; goes through the cache
+    // Returns a cloned section for a position outside the slice.
     @Nullable
     private ClonedChunkSection fetchFallbackSectionForPos(int x, int y, int z) {
         int sX = PositionUtil.posToSectionCoord(x);
@@ -553,14 +547,17 @@ public class WorldSlice implements ImpetusBlockAccess {
             return null;
         }
         var sectionFuture = CompletableFuture.supplyAsync(() -> manager.getSectionCache().acquire(sX, sY, sZ), manager::scheduleAsyncTask);
-        // The game will discard the future if the player disconnects, so we need to check that they are still connected.
         while (Minecraft.getMinecraft().world == this.world) {
             try {
                 section = sectionFuture.get(500, TimeUnit.MILLISECONDS);
                 break;
             } catch (ExecutionException e) {
                 throw new RuntimeException("Failed to fetch fallback section", e);
-            } catch (InterruptedException | TimeoutException ignored) {
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                sectionFuture.cancel(true);
+                return null;
+            } catch (TimeoutException ignored) {
             }
         }
         if (section != null) {
@@ -569,7 +566,7 @@ public class WorldSlice implements ImpetusBlockAccess {
         return section;
     }
 
-    // Reads the block state safely off the main thread by cloning the needed section
+    // Returns a block state outside the slice.
     private IBlockState getBlockStateFallback(int x, int y, int z) {
         if (Minecraft.getMinecraft().isCallingFromMinecraftThread()) {
             this.fallbackPos.setPos(x, y, z);
@@ -579,8 +576,7 @@ public class WorldSlice implements ImpetusBlockAccess {
         return sectionSnapshot != null ? sectionSnapshot.getBlockState(x & 15, y & 15, z & 15) : EMPTY_BLOCK_STATE;
     }
 
-    // Fluidlogged compat
-
+    // Returns the fluid state.
     @Override
     @Optional.Method(modid = FluidloggedCompat.MODID)
     public FluidState getFluidState(int x, int y, int z) {
@@ -596,14 +592,14 @@ public class WorldSlice implements ImpetusBlockAccess {
                 [getLocalBlockIndex(relX & 15, relY & 15, relZ & 15)];
     }
 
-    // The live world, for callers that need it; never read from the builder thread
+    // Returns the world.
     @Override
     @Optional.Method(modid = FluidloggedCompat.MODID)
     public World getWorld() {
         return world;
     }
 
-    // The live chunk behind one of the copied columns, captured on the main thread when the section was cloned. Fluidlogged's FluidCache resolves tile entities only through this (see FluidloggedBlockAccess), so without it every one it looks up is null; its block and fluid state reads, and Fluidlogged's static fluid lookups, are sent back to the slice by FluidCacheMixin and FluidloggedUtilsMixin so the mesh and the fluid renderer see one snapshot, guesses included. Columns outside the 3x3 are null and FluidCache falls back to the slice for them
+    // Returns the chunk.
     @Override
     @Optional.Method(modid = FluidloggedCompat.MODID)
     public Chunk getChunk(int chunkX, int chunkZ) {
@@ -619,17 +615,17 @@ public class WorldSlice implements ImpetusBlockAccess {
         return section != null ? section.getChunk() : null;
     }
 
-    // [VanillaCopy] PalettedContainer#toIndex
+    // Returns the index of a block in a section.
     public static int getLocalBlockIndex(int x, int y, int z) {
         return y << 8 | z << 4 | x;
     }
 
-    // Index into the 3x3x3 section array
+    // Returns the index of a section in the slice.
     public static int getLocalSectionIndex(int x, int y, int z) {
         return y << TABLE_BITS << TABLE_BITS | z << TABLE_BITS | x;
     }
 
-    // Index into the 3x3 chunk array
+    // Returns the index of a chunk in the slice.
     public static int getLocalChunkIndex(int x, int z) {
         return z << TABLE_BITS | x;
     }

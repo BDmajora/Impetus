@@ -5,18 +5,20 @@ import com.bdmajora.impetus.umbra.shaderpack.option.OptionSet;
 import java.util.HashMap;
 import java.util.Map;
 
-// Values equal to the pack default are dropped, so only genuine overrides persist to <pack>.txt; from Umbra with plain HashMaps
+// Editable option values.
 public class MutableOptionValues extends AbstractOptionValues {
+    // Creates a mutable option values from its options and boolean values and string values.
     MutableOptionValues(OptionSet options, Map<String, Boolean> booleanValues, Map<String, String> stringValues) {
         this(options, stringify(booleanValues, stringValues));
     }
 
+    // Creates a mutable option values from its options and values.
     public MutableOptionValues(OptionSet options, Map<String, String> values) {
         super(options, new HashMap<>(), new HashMap<>());
         this.addAll(values);
     }
 
-    // Both maps as one string map, the form addAll validates against the option set
+    // Returns the values of a boolean map as text.
     private static Map<String, String> stringify(Map<String, Boolean> booleanValues, Map<String, String> stringValues) {
         Map<String, String> values = new HashMap<>();
         booleanValues.forEach((k, v) -> values.put(k, Boolean.toString(v)));
@@ -24,22 +26,22 @@ public class MutableOptionValues extends AbstractOptionValues {
         return values;
     }
 
-    // The set these values belong to
+    // Returns the options.
     public OptionSet getOptions() {
         return options;
     }
 
-    // Changed booleans only
+    // Returns the boolean values.
     public Map<String, Boolean> getBooleanValues() {
         return booleanValues;
     }
 
-    // Changed valued options only
+    // Returns the string values.
     public Map<String, String> getStringValues() {
         return stringValues;
     }
 
-    // Applies a saved config, ignoring names the set does not declare
+    // Stores every known value of a map.
     public void addAll(Map<String, String> values) {
         options.getBooleanOptions().forEach((name, option) -> {
             String value = values.get(name);
@@ -48,11 +50,9 @@ public class MutableOptionValues extends AbstractOptionValues {
             }
 
             boolean defaultValue = option.getOption().getDefaultValue();
-            // Anything but true/false is invalid and reads as the default
             boolean actualValue = "true".equals(value) || (!"false".equals(value) && defaultValue);
 
             if (actualValue == defaultValue) {
-                // Just set it to default by removing it from the map
                 booleanValues.remove(name);
                 return;
             }
@@ -67,8 +67,6 @@ public class MutableOptionValues extends AbstractOptionValues {
                 return;
             }
 
-            // NB: allowed values are not checked here, matching OptiFine: they only constrain the GUI, while profiles and hand-typed config values are unchecked
-
             if (value.equals(option.getOption().getDefaultValue())) {
                 stringValues.remove(name);
                 return;
@@ -78,7 +76,7 @@ public class MutableOptionValues extends AbstractOptionValues {
         });
     }
 
-    // Snapshot
+    // Returns a frozen copy.
     @Override
     public ImmutableOptionValues toImmutable() {
         return new ImmutableOptionValues(options, booleanValues, stringValues);

@@ -11,18 +11,22 @@ import org.apache.logging.log4j.Logger;
 
 import java.io.File;
 
-// Dynamic Lights subsystem, LambDynLights' glowing entities and items on 1.12.2; sources are tracked client-side and folded into the lightmap, and mixins read options() at call time so the mode switch is live
+// Entry points of the dynamic lights module.
 public final class DynamicLights {
+    // Logger of the module.
     public static final Logger LOGGER = LogManager.getLogger("Impetus/DynamicLights");
 
+    // Name of the configuration file.
     private static final String FILE_NAME = "impetus-dynamiclights.cfg";
 
+    // Loaded settings or null before first use.
     private static volatile DynamicLightsConfig config;
 
+    // Prevents instantiation
     private DynamicLights() {
     }
 
-    // Live options loaded on first use; called from mixin bodies on client, render and chunk-builder threads, though ImpetusVintage warms it during construction well before any run
+    // Returns the settings and loads them on first use.
     public static DynamicLightsConfig options() {
         DynamicLightsConfig loaded = config;
         if (loaded == null) {
@@ -37,29 +41,29 @@ public final class DynamicLights {
         return loaded;
     }
 
-    // The tracked light sources and the lightmap maths over them.
+    // Returns the engine that tracks light sources.
     public static DynamicLightsEngine engine() {
         return DynamicLightsEngine.get();
     }
 
-    // Loads the config now rather than on the first mixin that asks for it.
+    // Loads the settings.
     public static void initialize() {
         options();
     }
 
-    // Registers the default handlers and the item light reload listener at client init, not construction: registerReloadListener fires immediately and the item registry is empty until then, so every definition would be dropped
+    // Registers the handlers and listeners of the client.
     public static void onClientInit() {
         DynamicLightHandlers.registerDefaultHandlers();
         ItemLightSources.registerReloadListener();
         MinecraftForge.EVENT_BUS.register(TileEntityLightTicker.instance());
     }
 
-    // Persists the current options. Safe to call before #initialize().
+    // Writes the settings to the file.
     public static void save() {
         options().writeChanges();
     }
 
-    // config/<FILE_NAME> under the game directory
+    // Returns the configuration file.
     private static File configFile() {
         return PropertiesConfig.configFile(LOGGER, FILE_NAME);
     }

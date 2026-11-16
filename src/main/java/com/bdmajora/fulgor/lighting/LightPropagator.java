@@ -14,43 +14,53 @@ import net.minecraft.world.World;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 
-// One pass's worth of state (Phosphor's cursor, neighbour scratch and the 34 level queues), split out of the engine so several can run at once on chunks far enough apart; a pass settles everything reachable from the positions it was handed, and the light field it leaves is the same fixpoint whatever order the passes ran in
+// Breadth first light propagator that drains darkening and brightening queues by light level.
 final class LightPropagator {
+    // Highest light level.
     private static final int MAX_LIGHT = LightKey.MAX_LIGHT;
 
+    // World the light is written to.
     private final World world;
+    // Profiler of the world.
     private final Profiler profiler;
 
-    // Positions to spread from, bucketed by the light level they were set to
+    // Brightening queues by light level.
     private final DeduplicatedLongQueue[] brighteningQueues = new DeduplicatedLongQueue[MAX_LIGHT + 1];
-    // Positions to clear, bucketed by the light level they held
+    // Darkening queues by light level.
     private final DeduplicatedLongQueue[] darkeningQueues = new DeduplicatedLongQueue[MAX_LIGHT + 1];
 
-    // Scheduled positions found brighter than stored; new level carried in bits 60-63
+    // Positions found brighter than their stored light.
     private final DeduplicatedLongQueue initialBrightenings;
-    // Scheduled positions found darker than stored
+    // Positions found darker than their stored light.
     private final DeduplicatedLongQueue initialDarkenings;
 
-    // The pass is single-threaded per propagator, so the cursor lives in fields rather than being threaded through every call
+    // Position of the current item.
     private final MutableBlockPos currentPos = new MutableBlockPos();
+    // Data of the six neighbors of the current item.
     private final NeighborInfo[] neighborInfos = new NeighborInfo[6];
 
+    // Queue being drained or null.
     private DeduplicatedLongQueue currentQueue;
+    // Chunk of the current item or null when unloaded.
     private Chunk currentChunk;
+    // Chunk bits of the current key.
     private long currentChunkIdentifier;
+    // Key of the current item.
     private long currentData;
 
+    // Valid state of the neighbor data for the current item.
     private boolean isNeighborDataValid;
 
-    // Positions dequeued during the current pass, published to Fulgor when it ends
+    // Number of items handled in the current run.
     private long processedThisPass;
 
-    // Render notifications are collected here when the pass runs off the owning thread, and replayed by it afterwards
+    // Positions whose light change is reported later or null.
     private LongArrayList deferredNotifications;
 
-    // Scratch queue a partitioned batch is loaded into before a pass, since the pass drains a queue
+    // Queue that callers fill before a run.
     private final DeduplicatedLongQueue scratch;
 
+    // Creates a propagator whose queues share one segment pool.
     LightPropagator(World world, boolean deduplicate, int queueCapacity) {
         this.world = world;
         this.profiler = world.profiler;
@@ -71,7 +81,7 @@ final class LightPropagator {
         }
     }
 
-    // Runs one full pass over a queue of scheduled positions; deferNotifications is set when the caller is not the thread allowed to poke the renderer
+    // Updates the light of every queued position and records the handled count.
     void run(EnumSkyBlock lightType, DeduplicatedLongQueue queue, boolean deferNotifications) {
         this.currentChunkIdentifier = -1;
         this.currentChunk = null;
@@ -81,12 +91,11 @@ final class LightPropagator {
         try {
             propagate(lightType, queue);
         } finally {
-            // The pass reaches foreign code via notifyLightSet and block light values and can throw; the counter is still published so the statistics stay honest
             Fulgor.recordProcessed(this.processedThisPass);
         }
     }
 
-    // Loads a partitioned batch into the scratch queue; the keys are already unique, so no dedup set is kept for it
+    // Adds keys to the scratch queue and returns it.
     DeduplicatedLongQueue fill(LongArrayList keys) {
         for (int i = 0; i < keys.size(); i++) {
             this.scratch.enqueue(keys.getLong(i));
@@ -94,24 +103,34 @@ final class LightPropagator {
         return this.scratch;
     }
 
-    // The scratch queue, for a caller that filled it in several steps
+    // Returns the scratch queue.
     DeduplicatedLongQueue scratchQueue() {
         return this.scratch;
     }
 
-    // Notifications collected during an off-thread pass, or null when there were none to defer
+    // Returns and forgets the deferred notifications.
     LongArrayList takeDeferredNotifications() {
         LongArrayList notifications = this.deferredNotifications;
         this.deferredNotifications = null;
         return notifications;
     }
 
-    // The pass itself: sort scheduled positions into brighten/darken, then settle each level in lockstep
+    // Sorts the queued positions into brighter and darker ones and spreads both from the highest level down.
     private void propagate(EnumSkyBlock lightType, DeduplicatedLongQueue queue) {
         this.profiler.startSection("fulgor");
         this.profiler.startSection("sort");
+        // Ends both profiler sections on every path
+        try {
+            this.drain(lightType, queue);
+        } finally {
+            this.profiler.endSection();
+            this.profiler.endSection();
+        }
+    }
 
-        // Sort scheduled positions into "brighter" and "darker" without acting yet; a position can be reached by both, and scheduling from here would enqueue it once per neighbour that noticed
+    // Runs the sort and seed and propagate stages.
+    private void drain(EnumSkyBlock lightType, DeduplicatedLongQueue queue) {
+
         beginDraining(queue);
 
         while (nextItem()) {
@@ -134,10 +153,13 @@ final class LightPropagator {
         beginDraining(this.initialBrightenings);
 
         while (nextItem()) {
+            if (this.currentChunk == null) {
+                continue;
+            }
+
             int newLight = (int) (this.currentData >> LightKey.S_L & LightKey.M_L);
 
             if (newLight > getCursorCachedLight(lightType)) {
-                // Setting the light here as well as queueing is what stops a position being scheduled twice: the second visit sees the new value and stops. M_POS strips the light field off the key
                 enqueueBrightening(this.currentPos, this.currentData & LightKey.M_POS, newLight, this.currentChunk, lightType);
             }
         }
@@ -145,6 +167,10 @@ final class LightPropagator {
         beginDraining(this.initialDarkenings);
 
         while (nextItem()) {
+            if (this.currentChunk == null) {
+                continue;
+            }
+
             int oldLight = getCursorCachedLight(lightType);
 
             if (oldLight != 0) {
@@ -154,12 +180,14 @@ final class LightPropagator {
 
         this.profiler.endStartSection("propagate");
 
-        // Brightest to darkest, darkening then brightening at each level; a position can only be enqueued below the level being processed, so nothing is revisited
         for (int currentLight = MAX_LIGHT; currentLight >= 0; currentLight--) {
             beginDraining(this.darkeningQueues[currentLight]);
 
             while (nextItem()) {
-                // Something else brightened this position after it was queued; nothing to clear.
+                if (this.currentChunk == null) {
+                    continue;
+                }
+
                 if (getCursorCachedLight(lightType) >= currentLight) {
                     continue;
                 }
@@ -167,11 +195,10 @@ final class LightPropagator {
                 IBlockState state = LightUtil.posToState(this.currentPos, this.currentChunk);
                 int luminosity = getCursorLuminosity(state, lightType);
                 int opacity = luminosity >= MAX_LIGHT - 1
-                        ? 1 // Irrelevant: nothing this bright can be darkened by its own opacity.
+                        ? 1
                         : getPosOpacity(this.currentPos, state, this.currentChunk);
 
                 if (calculateNewLightFromCursor(luminosity, opacity, lightType) < currentLight) {
-                    // We got darker, so anything we were lighting must be reconsidered, ignoring neighbours about to be darkened themselves or they would prop each other up
                     int newLight = luminosity;
 
                     fetchNeighborDataFromCursor(lightType);
@@ -187,17 +214,14 @@ final class LightPropagator {
                         IBlockState neighborState = LightUtil.posToState(neighborPos, info.section);
 
                         if (currentLight - getPosOpacity(neighborPos, neighborState, neighborChunk) >= info.light) {
-                            // We could have been its light source, so it has to be re-derived too.
                             enqueueDarkening(neighborPos, info.key, info.light, neighborChunk, lightType);
                         } else {
-                            // Brighter than we can account for, so it has an independent source; processing order guarantees nobody darkens it later, so it is safe to be lit by
                             newLight = Math.max(newLight, info.light - opacity);
                         }
                     }
 
                     enqueueBrighteningFromCursor(newLight, lightType);
                 } else {
-                    // A false alarm, still as bright as before; the value was zeroed when queued so it must be put back, queued rather than spread so neighbours are not scheduled twice
                     enqueueBrighteningFromCursor(currentLight, lightType);
                 }
             }
@@ -205,7 +229,10 @@ final class LightPropagator {
             beginDraining(this.brighteningQueues[currentLight]);
 
             while (nextItem()) {
-                // Anything but an exact match means the position moved on after being queued, and whatever moved it queued its own follow-up
+                if (this.currentChunk == null) {
+                    continue;
+                }
+
                 if (getCursorCachedLight(lightType) != currentLight) {
                     continue;
                 }
@@ -217,12 +244,9 @@ final class LightPropagator {
                 }
             }
         }
-
-        this.profiler.endSection();
-        this.profiler.endSection();
     }
 
-    // Straight through on the owning thread; collected for later on any other, since the renderer's light hooks are not written for a worker
+    // Reports a light change now or records it for later.
     private void notifyLightSet(BlockPos pos, long key) {
         if (this.deferredNotifications != null) {
             this.deferredNotifications.add(key & LightKey.M_POS);
@@ -231,13 +255,13 @@ final class LightPropagator {
         this.world.notifyLightSet(pos);
     }
 
-    // Points the cursor at a queue and clears its dedup set; safe because every queue is fully filled before it is drained
+    // Starts draining a queue and forgets its seen values.
     private void beginDraining(DeduplicatedLongQueue queue) {
         this.currentQueue = queue;
         queue.resetDeduplication();
     }
 
-    // Advances the cursor; returns whether there was anything left
+    // Moves to the next item of the queue and returns false when it is empty.
     private boolean nextItem() {
         if (this.currentQueue.isEmpty()) {
             this.currentQueue = null;
@@ -261,7 +285,7 @@ final class LightPropagator {
         return true;
     }
 
-    // Fills neighborInfos for the cursor position if it moved since the last fill; an unloaded neighbour gets a null chunk (skipped by every caller) with its other fields left stale on purpose
+    // Reads the chunk and section and light of every neighbor once per item.
     private void fetchNeighborDataFromCursor(EnumSkyBlock lightType) {
         if (this.isNeighborDataValid) {
             return;
@@ -300,7 +324,7 @@ final class LightPropagator {
         }
     }
 
-    // The brightest a position could legitimately be, given its own luminosity and its neighbours'
+    // Returns the light the current item gets from its own emission and its neighbors.
     private int calculateNewLightFromCursor(EnumSkyBlock lightType) {
         IBlockState state = LightUtil.posToState(this.currentPos, this.currentChunk);
 
@@ -312,9 +336,8 @@ final class LightPropagator {
         return calculateNewLightFromCursor(luminosity, opacity, lightType);
     }
 
-    // Light a block should have given its own emission and the brightest neighbour minus opacity
+    // Returns the larger of the emission and the brightest neighbor less the opacity.
     private int calculateNewLightFromCursor(int luminosity, int opacity, EnumSkyBlock lightType) {
-        // Already at least as bright as anything could make it, so the neighbours cannot matter.
         if (luminosity >= MAX_LIGHT - opacity) {
             return luminosity;
         }
@@ -334,14 +357,13 @@ final class LightPropagator {
         return newLight;
     }
 
-    // Queues every neighbour that would get brighter from the cursor's new value
+    // Queues every neighbor that becomes brighter through the current item.
     private void spreadLightFromCursor(int currentLight, EnumSkyBlock lightType) {
         fetchNeighborDataFromCursor(lightType);
 
         for (NeighborInfo info : this.neighborInfos) {
             Chunk neighborChunk = info.chunk;
 
-            // Opacity is at least 1, so a neighbour at or above our level can never be brightened.
             if (neighborChunk == null || currentLight <= info.light) {
                 continue;
             }
@@ -357,31 +379,31 @@ final class LightPropagator {
         }
     }
 
-    // Cursor-relative overload so the hot loop avoids re-fetching chunk and data
+    // Queues the current item as brightened.
     private void enqueueBrighteningFromCursor(int newLight, EnumSkyBlock lightType) {
         enqueueBrightening(this.currentPos, this.currentData, newLight, this.currentChunk, lightType);
     }
 
-    // Queues the position for spreading and writes the new level, so a second visit is a no-op
+    // Queues a brightened position and stores its light.
     private void enqueueBrightening(BlockPos pos, long key, int newLight, Chunk chunk, EnumSkyBlock lightType) {
         this.brighteningQueues[newLight].enqueue(key);
 
         chunk.setLightFor(lightType, pos, newLight);
     }
 
-    // Queues the position for clearing and zeroes it, so a second visit is a no-op
+    // Queues a darkened position and clears its light.
     private void enqueueDarkening(BlockPos pos, long key, int oldLight, Chunk chunk, EnumSkyBlock lightType) {
         this.darkeningQueues[oldLight].enqueue(key);
 
         chunk.setLightFor(lightType, pos, 0);
     }
 
-    // Reads the chunk's cached level for the cursor without a world lookup
+    // Returns the stored light of the current item.
     private int getCursorCachedLight(EnumSkyBlock lightType) {
         return ((ChunkLightingData) this.currentChunk).fulgor$getCachedLightFor(lightType, this.currentPos);
     }
 
-    // Same read as ChunkLightingData.fulgor$getCachedLightFor for an already-resolved section; fetchNeighborDataFromCursor needs the section anyway
+    // Returns the stored light of a position in a section.
     private int getCachedLightFor(Chunk chunk, ExtendedBlockStorage section, BlockPos pos, EnumSkyBlock type) {
         if (section == Chunk.NULL_BLOCK_STORAGE) {
             return type == EnumSkyBlock.SKY && chunk.canSeeSky(pos) ? type.defaultLightValue : 0;
@@ -392,14 +414,13 @@ final class LightPropagator {
         int z = pos.getZ() & 15;
 
         if (type == EnumSkyBlock.SKY) {
-            // Asked live rather than cached: WorldProvider.hasSkyLight() is only populated by registerWorld, after the World constructor this engine is built in
             return this.world.provider.hasSkyLight() ? section.getSkyLight(x, y, z) : 0;
         }
 
         return type == EnumSkyBlock.BLOCK ? section.getBlockLight(x, y, z) : type.defaultLightValue;
     }
 
-    // For skylight, luminosity is a heightmap property: open sky above means a full-strength source, otherwise not a source at all
+    // Returns the light the current item emits.
     private int getCursorLuminosity(IBlockState state, EnumSkyBlock lightType) {
         if (lightType == EnumSkyBlock.SKY) {
             return this.currentChunk.canSeeSky(this.currentPos) ? EnumSkyBlock.SKY.defaultLightValue : 0;
@@ -409,24 +430,29 @@ final class LightPropagator {
                 0, MAX_LIGHT);
     }
 
-    // Clamped to at least 1: a zero-opacity step would let light travel unattenuated forever
+    // Returns the opacity of a position between 1 and the highest light.
     private int getPosOpacity(BlockPos pos, IBlockState state, Chunk chunk) {
         return MathHelper.clamp(LightUtil.getLightOpacity(state, this.world, pos, chunk), 1, MAX_LIGHT);
     }
 
-    // Loaded-only lookup; null for an unloaded chunk, which callers treat as a hard boundary
+    // Returns the loaded chunk of a position or null.
     private Chunk getChunk(BlockPos pos) {
         return this.world.getChunkProvider().getLoadedChunk(pos.getX() >> 4, pos.getZ() >> 4);
     }
 
-    // Scratch space for one neighbour, reused across the whole pass
+    // Data of one neighbor of the current item.
     private static final class NeighborInfo {
+        // Position of the neighbor.
         final MutableBlockPos pos = new MutableBlockPos();
 
+        // Chunk of the neighbor or null when unloaded or out of height.
         Chunk chunk;
+        // Section of the neighbor or null.
         ExtendedBlockStorage section;
 
+        // Stored light of the neighbor.
         int light;
+        // Key of the neighbor.
         long key;
     }
 }

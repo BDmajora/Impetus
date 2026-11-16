@@ -24,33 +24,40 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-// Rewrites the block-damage half of an explosion to skip re-reading a block when consecutive ray steps land in it, using a ChunkSectionCursor; the entity half is transcribed unchanged since no injection point between them survives other mods' reordering
+// Mixin that changes Explosion.
 @Mixin(Explosion.class)
 public abstract class ExplosionMixin {
+    // Reference to the field world of the target.
     @Shadow
     @Final
     private World world;
 
+    // Reference to the field exploder of the target.
     @Shadow
     @Final
     private Entity exploder;
 
+    // Reference to the field size of the target.
     @Shadow
     @Final
     private float size;
 
+    // Reference to the field x of the target.
     @Shadow
     @Final
     private double x;
 
+    // Reference to the field y of the target.
     @Shadow
     @Final
     private double y;
 
+    // Reference to the field z of the target.
     @Shadow
     @Final
     private double z;
 
+    // Reference to the field affected block positions of the target.
     @Shadow
     @Final
     private List<BlockPos> affectedBlockPositions;
@@ -59,18 +66,16 @@ public abstract class ExplosionMixin {
     @Final
     private Map<EntityPlayer, Vec3d> playerKnockbackMap;
 
-    // Read each block along a ray once, through a cached chunk section
+    // Replaces the whole method doExplosionA.
     @Overwrite
     public void doExplosionA() {
         Set<BlockPos> affected = new HashSet<>();
 
-        // Loading, because vanilla's getBlockState loads: a blast at the loaded edge really pulls terrain in, and declining would let it punch straight through
         ChunkSectionCursor cursor = new ChunkSectionCursor(this.world, true);
 
         for (int rayX = 0; rayX < 16; ++rayX) {
             for (int rayY = 0; rayY < 16; ++rayY) {
                 for (int rayZ = 0; rayZ < 16; ++rayZ) {
-                    // Only the surface of the grid; the interior would produce duplicate directions.
                     if (rayX != 0 && rayX != 15 && rayY != 0 && rayY != 15 && rayZ != 0 && rayZ != 15) {
                         continue;
                     }
@@ -84,7 +89,6 @@ public abstract class ExplosionMixin {
                     dirY /= length;
                     dirZ /= length;
 
-                    // Drawn from the world's random rather than the explosion's own, exactly as vanilla; swapping generators would change which blocks a blast destroys
                     float energy = this.size * (0.7F + this.world.rand.nextFloat() * 0.6F);
 
                     double stepX = this.x;
@@ -141,7 +145,6 @@ public abstract class ExplosionMixin {
 
         this.affectedBlockPositions.addAll(affected);
 
-        // [VanillaCopy] Explosion#doExplosionA second half (entity damage), unchanged; see the class comment for why it is transcribed
         float radius = this.size * 2.0F;
 
         int minX = MathHelper.floor(this.x - radius - 1.0D);

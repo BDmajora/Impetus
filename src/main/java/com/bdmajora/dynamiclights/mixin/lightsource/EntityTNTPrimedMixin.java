@@ -15,30 +15,36 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Brightens primed TNT as the fuse burns; in FANCY the ramp is quadratic in remaining fuse, barely there when lit and flooding just before it goes off
+// Mixin that changes EntityTNTPrimed.
 @Mixin(EntityTNTPrimed.class)
 public abstract class EntityTNTPrimedMixin extends Entity implements DynamicLightSource {
+    // Reference to the method get fuse of the target.
     @Shadow
     public abstract int getFuse();
 
-    // The fuse this TNT started with so the ramp is a fraction of its own life; defaults to vanilla's 80 for already-primed arrivals (command, chunk load) that skip the constructor hook
+    // Field start fuse added to the target.
     @Unique
     private int impetus$startFuse = 80;
 
+    // Field tnt luminance added to the target.
     @Unique
     private int impetus$tntLuminance;
 
+    // Creates an entity tnt primed mixin from its world.
     private EntityTNTPrimedMixin(World world) {
         super(world);
     }
 
+    // Runs at the end of constructor.
     @Inject(method = "<init>(Lnet/minecraft/world/World;DDDLnet/minecraft/entity/EntityLivingBase;)V",
             at = @At("TAIL"))
     private void impetus$captureStartFuse(World world, double x, double y, double z,
+                                          // Entity that lit the TNT.
                                           EntityLivingBase igniter, CallbackInfo ci) {
         this.impetus$startFuse = this.getFuse();
     }
 
+    // Runs at the end of onUpdate.
     @Inject(method = "onUpdate", at = @At("TAIL"))
     private void impetus$onTntTick(CallbackInfo ci) {
         if (!this.world.isRemote || !DynamicLights.options().tntLighting.isEnabled()) {
@@ -48,6 +54,7 @@ public abstract class EntityTNTPrimedMixin extends Entity implements DynamicLigh
         this.impetus$tickDynamicLight(this.isDead);
     }
 
+    // Handles dynamic light tick.
     @Override
     public void impetus$dynamicLightTick() {
         Entity self = (Entity) (Object) this;
@@ -63,7 +70,6 @@ public abstract class EntityTNTPrimedMixin extends Entity implements DynamicLigh
         }
 
         if (DynamicLights.options().tntLighting == ExplosiveLightingMode.FANCY) {
-            // Guard against a zero start fuse, which would divide by zero and hand the falloff a NaN
             int start = this.impetus$startFuse > 0 ? this.impetus$startFuse : 80;
             float remaining = (float) this.getFuse() / (float) start;
             this.impetus$tntLuminance = (int) (-(remaining * remaining) * 10.0F) + 10;
@@ -72,6 +78,7 @@ public abstract class EntityTNTPrimedMixin extends Entity implements DynamicLigh
         }
     }
 
+    // Returns the luminance.
     @Override
     public int impetus$getLuminance() {
         return this.impetus$tntLuminance;

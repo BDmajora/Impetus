@@ -56,7 +56,7 @@ class AllocatorsTest {
         allocator.free(a);
         allocator.free(e);
         assertEquals(0, allocator.getTotalSize());
-        assertThrows(java.util.NoSuchElementException.class, () -> allocator.free(0));
+        assertThrows(IllegalStateException.class, () -> allocator.free(0));
 
         long x = allocator.alloc(10);
         long y0 = allocator.alloc(10);

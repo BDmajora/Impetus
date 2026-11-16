@@ -7,9 +7,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Forge's copy of the same probe, used while the splash screen owns the context. remap = false, Forge class
+// Mixin that changes SplashProgress.
 @Mixin(value = SplashProgress.class, remap = false)
 public abstract class SplashProgressTextureSizeMixin {
+    // Runs at the start of getMaxTextureSize and can cancel it.
     @Inject(method = "getMaxTextureSize", at = @At("HEAD"), cancellable = true)
     private static void impetus$queryDriverLimit(CallbackInfoReturnable<Integer> cir) {
         int size = DriverLimits.maxTextureSize();

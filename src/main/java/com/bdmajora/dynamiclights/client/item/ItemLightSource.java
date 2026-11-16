@@ -17,34 +17,38 @@ import net.minecraftforge.fml.common.registry.ForgeRegistries;
 
 import java.util.Optional;
 
-// How brightly one item glows when held, worn or dropped; declared in assets/impetus/dynamiclights/item/*.json so a resource pack can cover modded items
+// Light level of one item.
 public abstract class ItemLightSource {
+    // Identifier of the definition.
     private final ResourceLocation id;
+    // Item that emits light.
     private final Item item;
+    // Whether the light goes out in a fluid.
     private final boolean waterSensitive;
 
+    // Creates a light source.
     protected ItemLightSource(ResourceLocation id, Item item, boolean waterSensitive) {
         this.id = id;
         this.item = item;
         this.waterSensitive = waterSensitive;
     }
 
-    // The json file this was loaded from, used for logging and overrides
+    // Returns the identifier of the definition.
     public ResourceLocation id() {
         return this.id;
     }
 
-    // The item this applies to
+    // Returns the item.
     public Item item() {
         return this.item;
     }
 
-    // Whether the light goes out underwater, e.g. a torch
+    // Returns whether the light goes out in a fluid.
     public boolean waterSensitive() {
         return this.waterSensitive;
     }
 
-    // The luminance of this stack, or zero if it is water-sensitive and currently submerged.
+    // Returns the light level and zero for a submerged water sensitive item.
     public int getLuminance(ItemStack stack, boolean submergedInWater) {
         if (this.waterSensitive() && DynamicLights.options().waterSensitiveCheck && submergedInWater) {
             return 0;
@@ -52,16 +56,17 @@ public abstract class ItemLightSource {
         return this.getLuminance(stack);
     }
 
+    // Returns the light level of the stack.
     public abstract int getLuminance(ItemStack stack);
 
-    // For log lines when a definition is rejected or overridden
+    // Returns the definition as text.
     @Override
     public String toString() {
         return "ItemLightSource{id=" + this.id + ", item=" + this.item
                 + ", water_sensitive=" + this.waterSensitive + '}';
     }
 
-    // Parses one definition; luminance is a number, the literal "block" (the block this item places), or a block id to mimic
+    // Returns the light source read from a definition or empty when it is invalid.
     public static Optional<ItemLightSource> fromJson(ResourceLocation id, JsonObject json) {
         if (!json.has("item") || !json.has("luminance")) {
             DynamicLights.LOGGER.warn("Item light source \"{}\" is missing a required field", id);
@@ -76,7 +81,6 @@ public abstract class ItemLightSource {
             return Optional.empty();
         }
 
-        // Not an error: a pack may declare sources for items whose mod is not installed.
         if (item == null || item == Items.AIR) {
             return Optional.empty();
         }
@@ -118,39 +122,42 @@ public abstract class ItemLightSource {
         return Optional.empty();
     }
 
-    // A fixed luminance, regardless of the stack.
+    // Light source with a fixed level.
     public static class StaticItemLightSource extends ItemLightSource {
+        // Fixed light level.
         private final int luminance;
 
+        // Creates a light source.
         public StaticItemLightSource(ResourceLocation id, Item item, int luminance, boolean waterSensitive) {
             super(id, item, waterSensitive);
             this.luminance = luminance;
         }
 
-        // Fixed brightness regardless of stack state; reads the mimicked block's luminance so a glowstone item glows like glowstone
+        // Returns the fixed level.
         @Override
         public int getLuminance(ItemStack stack) {
             return this.luminance;
         }
     }
 
-    // Mirrors a block's light value, so a redstone torch item is as bright as a placed one.
+    // Light source that copies the level of a block.
     public static class BlockItemLightSource extends ItemLightSource {
+        // Block state whose level is copied.
         private final IBlockState mimic;
 
+        // Creates a light source.
         public BlockItemLightSource(ResourceLocation id, Item item, IBlockState block, boolean waterSensitive) {
             super(id, item, waterSensitive);
             this.mimic = block;
         }
 
-        // Reads the luminance of the block this item mimics, so a glowstone item glows like glowstone
+        // Returns the level of the block state of the stack.
         @Override
         public int getLuminance(ItemStack stack) {
             return getLuminance(stack, this.mimic);
         }
 
-        // Light value of state with any BlockStateTag on the stack applied first, since that tag is how a stack carries a non-default state (lit vs unlit redstone torch)
-        // An item has no world position, so the state's own light value is the one to ask
+        // Returns the level of the state with the properties stored in the stack.
         @SuppressWarnings("deprecation")
         public static int getLuminance(ItemStack stack, IBlockState state) {
             NBTTagCompound nbt = stack.getTagCompound();
@@ -171,6 +178,7 @@ public abstract class ItemLightSource {
             return state.getLightValue();
         }
 
+        // Returns the state with the property set from text or the same state when no value matches.
         private static <T extends Comparable<T>> IBlockState withValue(IBlockState state,
                                                                       IProperty<T> property, String value) {
             for (T allowed : property.getAllowedValues()) {

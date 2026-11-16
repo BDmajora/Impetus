@@ -119,18 +119,21 @@ class CompatMixinsTest {
         cache.invalidateAll();
         assertEquals(0, cache.size());
 
-        // A key whose parent cannot be read fails the load rather than the caller
-        assertThrows(ExecutionException.class, () -> cache.get("not a key", () -> tool));
+        // A key without a parent is cached in the shared partition
+        assertSame(tool, cache.get("not a key", () -> tool));
+        assertSame(tool, cache.getIfPresent("not a key"));
 
-        // TConstruct only ever calls get(key, loader), so the rest is refused
-        assertThrows(UnsupportedOperationException.class, () -> cache.getIfPresent(key));
-        assertThrows(UnsupportedOperationException.class, () -> cache.getAllPresent(List.of(key)));
-        assertThrows(UnsupportedOperationException.class, () -> cache.put(key, tool));
-        assertThrows(UnsupportedOperationException.class, () -> cache.putAll(Map.of(key, tool)));
-        assertThrows(UnsupportedOperationException.class, () -> cache.invalidate(key));
-        assertThrows(UnsupportedOperationException.class, () -> cache.invalidateAll(List.of(key)));
-        assertThrows(UnsupportedOperationException.class, cache::stats);
-        assertThrows(UnsupportedOperationException.class, cache::asMap);
+        // Every cache operation works on the partition of its key
+        cache.put(key, tool);
+        assertSame(tool, cache.getIfPresent(key));
+        assertEquals(Map.of(key, tool), cache.getAllPresent(List.of(key, key)));
+        assertSame(tool, cache.asMap().get(key));
+        cache.invalidate(key);
+        assertNull(cache.getIfPresent(key));
+        cache.putAll(Map.of(key, tool));
+        cache.invalidateAll(List.of(key));
+        assertNull(cache.getIfPresent(key));
+        assertNotNull(cache.stats());
     }
 
     @Test

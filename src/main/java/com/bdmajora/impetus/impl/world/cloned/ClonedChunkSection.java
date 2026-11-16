@@ -19,25 +19,33 @@ import com.bdmajora.impetus.impl.compat.fluidlogged.FluidloggedCompat;
 
 import java.util.Map;
 
-// Immutable snapshot of a chunk section's blocks/biomes/light, taken off-thread so render code isn't touching live chunk data
+// Copy of one chunk section for meshing off thread.
 public class ClonedChunkSection {
+    // Storage used for a missing section.
     private static final ExtendedBlockStorage EMPTY_SECTION = new ExtendedBlockStorage(0, false);
 
+    // Block entities by packed local position.
     private final Short2ObjectMap<TileEntity> blockEntities;
 
+    // Copied block storage.
     private final ExtendedBlockStorage data;
+    // Fluid states or null.
     @Getter
     private final FluidStateStorage fluidData;
 
+    // Biomes of the columns.
     private final Biome[] biomeData;
 
+    // Time of the last use.
     private long lastUsedTimestamp = Long.MAX_VALUE;
 
+    // Position of the section.
     private final SectionPos sectionPos;
 
-    // The live chunk this copy came from, for callers that must reach it (Fluidlogged resolves tile entities through the chunk, not the block access)
+    // Chunk of the section.
     private final Chunk chunk;
 
+    // Creates a cloned chunk section from its world and chunk and x and y and z.
     ClonedChunkSection(World world, Chunk chunk, int x, int y, int z) {
         this.blockEntities = new Short2ObjectOpenHashMap<>();
         this.sectionPos = new SectionPos(x, y, z);
@@ -73,7 +81,7 @@ public class ClonedChunkSection {
         populateBiomeData(chunk, x, z, world);
     }
 
-    // Resolves the chunk's biome array so biome colour never touches the live chunk; through the chunk in hand rather than World#getBiome, which re-looks the chunk up per column
+    // Copies the biomes of a chunk.
     private void populateBiomeData(Chunk chunk, int chunkX, int chunkZ, World world) {
         BlockPos.MutableBlockPos biomePos = new BlockPos.MutableBlockPos();
         var provider = world.getBiomeProvider();
@@ -88,43 +96,43 @@ public class ClonedChunkSection {
         }
     }
 
-    // Section-local read
+    // Returns the block state.
     public IBlockState getBlockState(int x, int y, int z) {
         return data.get(x, y, z);
     }
 
-    // Column-local biome read
+    // Returns the biome of a column.
     public Biome getBiomeForNoiseGen(int x, int z) {
         return this.biomeData[x | z << 4];
     }
 
-    // The copied biome array
+    // Returns the biome data.
     public Biome[] getBiomeData() {
         return this.biomeData;
     }
 
-    // From the copied tile entity map
+    // Returns the block entity.
     public TileEntity getBlockEntity(int x, int y, int z) {
         return this.blockEntities.get(packLocal(x, y, z));
     }
 
-    // Which section this is a copy of
+    // Returns the position.
     public SectionPos getPosition() {
         return this.sectionPos;
     }
 
-    // The live chunk behind the copy; only its identity is safe to rely on off the main thread
+    // Returns the chunk.
     public Chunk getChunk() {
         return this.chunk;
     }
 
-    // From the copied light arrays
+    // Returns the light level.
     public int getLightLevel(int x, int y, int z, EnumSkyBlock type) {
         NibbleArray lightArray = type == EnumSkyBlock.BLOCK ? this.data.getBlockLight() : this.data.getSkyLight();
         return lightArray != null ? lightArray.get(x, y, z) : type.defaultLightValue;
     }
 
-    // Null for an empty section, which callers treat as all air
+    // Returns a section of a chunk or the empty storage.
     private static ExtendedBlockStorage getChunkSection(Chunk chunk, int y) {
         ExtendedBlockStorage section = null;
 
@@ -137,17 +145,17 @@ public class ClonedChunkSection {
         return section;
     }
 
-    // For the cache's eviction
+    // Returns the last used timestamp.
     public long getLastUsedTimestamp() {
         return this.lastUsedTimestamp;
     }
 
-    // Touched on every acquire
+    // Stores the last used timestamp.
     public void setLastUsedTimestamp(long timestamp) {
         this.lastUsedTimestamp = timestamp;
     }
 
-    // Packs local (0-15) x/y/z into one short to key the block entity map
+    // Packs a local position into a short.
     private static short packLocal(int x, int y, int z) {
         return (short) (x << 8 | z << 4 | y);
     }

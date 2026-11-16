@@ -2,21 +2,22 @@ package com.bdmajora.impetus.umbra.gl.uniform;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// A scalar float uniform, pulled from a supplier every update
+// Float uniform that uploads on change.
 public class FloatUniform extends Uniform {
-    // Read fresh each update rather than pushed in, so the pipeline never has to know when the value moved
+    // Supplier of the value.
     private final FloatSupplier value;
-    // Last value actually uploaded, so an unchanged uniform costs a supplier call instead of a GL call
+    // Last uploaded value.
     private float cachedValue;
-    // Separate from cachedValue because 0.0f is a legitimate value; otherwise the first upload of a zero is skipped and the uniform keeps its linked default
+    // Flag set after the first upload.
     private boolean initialized;
 
+    // Creates a float uniform from its location and value.
     public FloatUniform(int location, FloatSupplier value) {
         super(location);
         this.value = value;
     }
 
-    // Uploads into the currently bound program, so the caller must have bound it already
+    // Uploads the value when it changed.
     @Override
     public void update() {
         float newValue = this.value.getAsFloat();

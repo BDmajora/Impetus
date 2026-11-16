@@ -26,29 +26,35 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.nio.IntBuffer;
 
-// Two things about F2 (Chibi's releaseScreenshotCache and asyncScreenshot): the pixel readback buffers, two copies of the framebuffer, are kept as statics forever after the first screenshot, and the PNG encode runs on the render thread, a visible hitch at high resolutions. The buffers are dropped once the image is built, and the encode moves to a background thread while the chat line is posted immediately
+// Mixin that changes ScreenShotHelper.
 @Mixin(ScreenShotHelper.class)
 public abstract class ScreenShotHelperMixin {
+    // Reference to the field logger of the target.
     @Shadow
     @Final
     private static Logger LOGGER;
 
+    // Reference to the field pixel buffer of the target.
     @Shadow
     private static IntBuffer pixelBuffer;
 
+    // Reference to the field pixel values of the target.
     @Shadow
     private static int[] pixelValues;
 
+    // Reference to the method create screenshot of the target.
     @Shadow
     public static BufferedImage createScreenshot(int width, int height, Framebuffer framebuffer) {
         throw new AssertionError();
     }
 
+    // Reference to the method get timestamped png file for directory of the target.
     @Shadow
     private static File getTimestampedPNGFileForDirectory(File directory) {
         throw new AssertionError();
     }
 
+    // Runs before every return of createScreenshot.
     @Inject(method = "createScreenshot", at = @At("RETURN"))
     private static void impetus$releaseReadbackBuffers(int width, int height, Framebuffer framebuffer, CallbackInfoReturnable<BufferedImage> cir) {
         if (Extras.options().loading.releaseScreenshotBuffers) {
@@ -57,6 +63,7 @@ public abstract class ScreenShotHelperMixin {
         }
     }
 
+    // Runs at the start of saveScreenshot and can cancel it.
     @Inject(method = "saveScreenshot(Ljava/io/File;Ljava/lang/String;IILnet/minecraft/client/shader/Framebuffer;)Lnet/minecraft/util/text/ITextComponent;", at = @At("HEAD"), cancellable = true)
     private static void impetus$saveAsync(File gameDirectory, @Nullable String screenshotName, int width, int height, Framebuffer framebuffer, CallbackInfoReturnable<ITextComponent> cir) {
         ExtrasConfig.LoadingSettings settings = Extras.options().loading;

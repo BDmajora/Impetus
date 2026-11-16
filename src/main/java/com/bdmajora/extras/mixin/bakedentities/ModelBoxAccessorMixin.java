@@ -7,13 +7,15 @@ import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 
-// Exposes the six quads a box holds so the baker can read geometry instead of guessing it from the box bounds
+// Mixin that changes ModelBox.
 @Mixin(ModelBox.class)
 public abstract class ModelBoxAccessorMixin implements ModelBoxAccess {
+    // Reference to the field quad list of the target.
     @Shadow
     @Final
     private TexturedQuad[] quadList;
 
+    // Returns the quads.
     @Override
     public TexturedQuad[] impetus$getQuads() {
         return this.quadList;

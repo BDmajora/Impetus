@@ -2,40 +2,61 @@ package com.bdmajora.impetus.umbra.shaderpack;
 
 import java.util.Optional;
 
-// The flattened GLSL for one program: mandatory vertex + fragment plus optional geometry/tessellation; IncludeProcessor has resolved every #include, but #version normalisation and #define injection happen later at GL build since they depend on the driver and options
+// Stage sources of one program.
 public final class ProgramSource {
-    // Iris's compute-variant limit: the unsuffixed .csh plus _a through _z, so 1 + 26
+    // Most compute variants of a program.
     public static final int MAX_COMPUTE_VARIANTS = 27;
 
+    // Name of the program.
     private final String name;
+    // Vertex source.
     private final String vertexSource;
+    // Geometry source.
     private final String geometrySource;
+    // Tessellation control source.
     private final String tessControlSource;
+    // Tessellation evaluation source.
     private final String tessEvalSource;
+    // Fragment source.
     private final String fragmentSource;
-    // The program's compute stages: index 0 is <name>.csh, 1..26 are _a through _z (an Iris extension, Photon's deferred4_a.csh generates the skylight SH); empty when none, and entries may be null since a pack can ship _a and _c without _b
+    // Compute sources.
     private final String[] computeSources;
-    // The Nvidium port's stages, <name>.mesh and <name>.mesh.fsh, which a port in nvidium_shaderpacks/ carries beside its OpenGL ones
+    // Mesh source.
     private final String meshSource;
+    // Mesh fragment source.
     private final String meshFragmentSource;
 
+    // Creates a program source from its name.
     public ProgramSource(String name,
+                         // Vertex source.
                          String vertexSource,
+                         // Geometry source.
                          String geometrySource,
+                         // Tess control source.
                          String tessControlSource,
+                         // Tess eval source.
                          String tessEvalSource,
+                         // Fragment source.
                          String fragmentSource,
                          String[] computeSources) {
         this(name, vertexSource, geometrySource, tessControlSource, tessEvalSource, fragmentSource, computeSources, null, null);
     }
 
+    // Creates a program source from its name.
     public ProgramSource(String name,
+                         // Vertex source.
                          String vertexSource,
+                         // Geometry source.
                          String geometrySource,
+                         // Tess control source.
                          String tessControlSource,
+                         // Tess eval source.
                          String tessEvalSource,
+                         // Fragment source.
                          String fragmentSource,
+                         // Compute sources.
                          String[] computeSources,
+                         // Mesh source.
                          String meshSource,
                          String meshFragmentSource) {
         this.name = name;
@@ -49,67 +70,67 @@ public final class ProgramSource {
         this.meshFragmentSource = meshFragmentSource;
     }
 
-    // The name a compute variant is compiled and logged under: variant 0 is unsuffixed, 1..26 append _a through _z
+    // Returns the name of a compute variant.
     public static String computeVariantName(String programName, int variant) {
         return variant == 0 ? programName : programName + "_" + (char) ('a' + variant - 1);
     }
 
-    // Program id, e.g. gbuffers_terrain
+    // Returns the name.
     public String getName() {
         return this.name;
     }
 
-    // .vsh, if present
+    // Returns the vertex source.
     public Optional<String> getVertexSource() {
         return Optional.ofNullable(this.vertexSource);
     }
 
-    // .gsh, if present
+    // Returns the geometry source.
     public Optional<String> getGeometrySource() {
         return Optional.ofNullable(this.geometrySource);
     }
 
-    // .tcs, if present
+    // Returns the tess control source.
     public Optional<String> getTessControlSource() {
         return Optional.ofNullable(this.tessControlSource);
     }
 
-    // .tes, if present
+    // Returns the tess eval source.
     public Optional<String> getTessEvalSource() {
         return Optional.ofNullable(this.tessEvalSource);
     }
 
-    // .fsh, if present
+    // Returns the fragment source.
     public Optional<String> getFragmentSource() {
         return Optional.ofNullable(this.fragmentSource);
     }
 
-    // .mesh, the Nvidium port of the vertex stage, if present
+    // Returns the mesh source.
     public Optional<String> getMeshSource() {
         return Optional.ofNullable(this.meshSource);
     }
 
-    // .mesh.fsh, the fragment stage paired with it, if present
+    // Returns the mesh fragment source.
     public Optional<String> getMeshFragmentSource() {
         return Optional.ofNullable(this.meshFragmentSource);
     }
 
-    // Whether the program carries both ported stages, i.e. the mesh backend can draw it as shipped
+    // Returns whether mesh stages.
     public boolean hasMeshStages() {
         return this.meshSource != null && this.meshFragmentSource != null;
     }
 
-    // The unsuffixed compute stage alone, which is what the shadowcomp and composite compute passes run
+    // Returns the compute source.
     public Optional<String> getComputeSource() {
         return Optional.ofNullable(this.computeSources.length == 0 ? null : this.computeSources[0]);
     }
 
-    // Every compute stage indexed by variant (0 unsuffixed, 1..26 for _a.._z); may be empty and contain nulls, so index defensively
+    // Returns the compute sources.
     public String[] getComputeSources() {
         return this.computeSources.clone();
     }
 
-    // True when at least one compute stage exists, suffixed or not
+    // Returns whether compute source.
     public boolean hasComputeSource() {
         for (String source : this.computeSources) {
             if (source != null) {
@@ -119,13 +140,12 @@ public final class ProgramSource {
         return false;
     }
 
-    // A program needs BOTH vertex and fragment stages; OptiFine treats one without the other as malformed and falls back to the parent, which ProgramSet.get reproduces
+    // Returns whether valid.
     public boolean isValid() {
-        // A compute-only program (shadowcomp.csh, deferred4_a.csh) is valid without vertex/fragment stages.
         return (this.vertexSource != null && this.fragmentSource != null) || hasComputeSource();
     }
 
-    // True when the vertex+fragment pair needed to raster is present; distinct from isValid in intent, since a compute-only program legitimately cannot draw
+    // Returns whether raster stages.
     public boolean hasRasterStages() {
         return this.vertexSource != null && this.fragmentSource != null;
     }

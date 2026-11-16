@@ -8,9 +8,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// OptiFine's Held Item Tooltips switch: hides the item name that pops up above the hotbar on a slot change
+// Mixin that changes GuiIngame.
 @Mixin(GuiIngame.class)
 public class GuiIngameMixin {
+    // Runs at the start of renderSelectedItem and can cancel it.
     @Inject(method = "renderSelectedItem", at = @At("HEAD"), cancellable = true)
     private void impetus$renderSelectedItem(ScaledResolution resolution, CallbackInfo ci) {
         if (!Extras.options().detail.heldItemTooltips) {

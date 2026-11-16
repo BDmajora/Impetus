@@ -7,19 +7,23 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
-// The two value stores share their shape, a boolean map and a string map holding only what differs from the pack default; only mutability differs
+// Base of option values over an option set.
 abstract class AbstractOptionValues implements OptionValues {
+    // Options the values belong to.
     protected final OptionSet options;
+    // Stored boolean values by option name.
     protected final Map<String, Boolean> booleanValues;
+    // Stored string values by option name.
     protected final Map<String, String> stringValues;
 
+    // Creates values over stored maps.
     AbstractOptionValues(OptionSet options, Map<String, Boolean> booleanValues, Map<String, String> stringValues) {
         this.options = options;
         this.booleanValues = booleanValues;
         this.stringValues = stringValues;
     }
 
-    // Changed value, or DEFAULT when at default
+    // Returns the stored value of a boolean option.
     @Override
     public OptionalBoolean getBooleanValue(String name) {
         Boolean value = booleanValues.get(name);
@@ -29,25 +33,25 @@ abstract class AbstractOptionValues implements OptionValues {
         return value ? OptionalBoolean.TRUE : OptionalBoolean.FALSE;
     }
 
-    // Changed value, or empty when at default
+    // Returns the stored value of a string option.
     @Override
     public Optional<String> getStringValue(String name) {
         return Optional.ofNullable(stringValues.get(name));
     }
 
-    // How many differ from default
+    // Returns the number of stored values.
     @Override
     public int getOptionsChanged() {
         return this.stringValues.size() + this.booleanValues.size();
     }
 
-    // Independent editable copy
+    // Returns an editable copy.
     @Override
     public MutableOptionValues mutableCopy() {
         return new MutableOptionValues(options, new HashMap<>(booleanValues), new HashMap<>(stringValues));
     }
 
-    // The set these values belong to
+    // Returns the option set.
     @Override
     public OptionSet getOptionSet() {
         return options;

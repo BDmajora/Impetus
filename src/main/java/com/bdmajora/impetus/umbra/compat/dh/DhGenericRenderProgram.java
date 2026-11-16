@@ -21,20 +21,28 @@ import org.joml.Matrix4f;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// A pack's dh_generic (falling back to dh_terrain) program for DH's generic objects, the instanced boxes behind its beacon beams and clouds (Iris's IrisGenericRenderProgram): registered with DH as the IDhApiGenericObjectShaderProgram override, so DH calls back here to bind and fill uniforms while keeping its own instance buffers and draw calls. DH's instanced attribute layout is fixed (0 position, 1 colour, 2 scale, 3 chunk translation, 4 sub-chunk translation, 5 material), and only that path is supported: DH's non-instanced fallback (Macs, GPUs without vertexAttribDivisor) has per-box uniforms this program does not carry, the same limit Iris has
+// Distant Horizons program of instanced generic boxes with a shader pack.
 public final class DhGenericRenderProgram extends DhRenderProgram implements IDhApiGenericObjectShaderProgram {
-    // DH's own VAO would carry its default program's layout; ours keeps the generic pointers DH sets in bindVertexBuffer and the instanced ones it sets per group
+    // Vertex array of the boxes.
     private final int vertexArray;
+    // Location of the chunk part of the group origin.
     private final int uOffsetChunk;
+    // Location of the block part of the group origin.
     private final int uOffsetSubChunk;
+    // Location of the chunk part of the camera.
     private final int uCameraPosChunk;
+    // Location of the block part of the camera.
     private final int uCameraPosSubChunk;
+    // Location of the block light.
     private final int uBlockLight;
+    // Location of the sky light.
     private final int uSkyLight;
-    // DH hands its matrices over as row-major arrays each pass; converted into these rather than fresh objects
+    // Scratch of the model view matrix.
     private final Matrix4f modelView = new Matrix4f();
+    // Scratch of the projection matrix.
     private final Matrix4f projection = new Matrix4f();
 
+    // Creates a program with its vertex array and uniform locations.
     private DhGenericRenderProgram(GlProgram program, int[] drawBuffers, ProgramBlendState blendState,
                                    ProgramUniforms uniforms) {
         super(program, drawBuffers, blendState, uniforms);
@@ -47,7 +55,7 @@ public final class DhGenericRenderProgram extends DhRenderProgram implements IDh
         this.uSkyLight = program.getUniformLocation("uSkyLight");
     }
 
-    // Same build as DhLodRenderProgram with the generic bridge; the attribute locations are DH's GlGenericObjectRenderer's
+    // Transforms and links the generic program of a pack and deletes it when its setup fails.
     static DhGenericRenderProgram create(UmbraRenderingPipeline pipeline, ShaderPack pack, ProgramSource source) {
         Stage stage = transform(pack, source, true);
         String label = "dh_" + stage.name + "_generic";
@@ -60,27 +68,39 @@ public final class DhGenericRenderProgram extends DhRenderProgram implements IDh
                         .bindAttributeLocation(4, "aTranslateSubChunk")
                         .bindAttributeLocation(5, "aMaterial"),
                 linked -> assignSamplerUnit(linked, 1, "lightmap", "texLightmap"));
-        return new DhGenericRenderProgram(program, stage.drawBuffers,
-                ProgramBlendState.from(pack.getProperties(), stage.name), buildUniforms(label, stage.name, program));
+        // Deletes the program when its uniforms or vertex array cannot be created
+        try {
+            return new DhGenericRenderProgram(program, stage.drawBuffers,
+                    ProgramBlendState.from(pack.getProperties(), stage.name), buildUniforms(label, stage.name, program));
+        } catch (RuntimeException | Error e) {
+            program.destroy();
+            throw e;
+        }
     }
 
+    // Returns whether a shader pack is active.
     @Override
     public boolean overrideThisFrame() {
         return Umbra.getRenderingPipeline() != null;
     }
 
+    // Returns the GL name of the program.
     @Override
     public int getId() {
         return this.program.getGlId();
     }
 
+    // Deletes the vertex array and the program.
     @Override
     public void free() {
-        LWJGL.glDeleteVertexArrays(this.vertexArray);
-        this.program.destroy();
+        try {
+            LWJGL.glDeleteVertexArrays(this.vertexArray);
+        } finally {
+            this.program.destroy();
+        }
     }
 
-    // DH calls this once per generic pass with the pass's matrices, then bindVertexBuffer and one fillIndirectUniformData per box group
+    // Binds the vertex array and the program and uploads the matrices and uniforms.
     @Override
     public void bind(DhApiRenderParam renderParam) {
         LWJGL.glBindVertexArray(this.vertexArray);
@@ -89,13 +109,14 @@ public final class DhGenericRenderProgram extends DhRenderProgram implements IDh
         this.uniforms.update();
     }
 
+    // Unbinds the vertex array and the program.
     @Override
     public void unbind() {
         LWJGL.glBindVertexArray(0);
         LWJGL.glUseProgram(0);
     }
 
-    // The shared unit-box vertex buffer at attribute 0, as DH's own program lays it out
+    // Binds a vertex buffer as the position attribute.
     @Override
     public void bindVertexBuffer(int vbo) {
         LWJGL.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
@@ -103,7 +124,7 @@ public final class DhGenericRenderProgram extends DhRenderProgram implements IDh
         LWJGL.glEnableVertexAttribArray(0);
     }
 
-    // Per box group: where the group's instances sit relative to the camera, split into chunk and sub-chunk parts for precision far from the origin, plus its light levels
+    // Uploads the uniforms of an instanced box group.
     @Override
     public void fillIndirectUniformData(DhApiRenderParam renderParam, DhApiRenderableBoxGroupShading shading,
                                         IDhApiRenderableBoxGroup boxGroup, DhApiVec3d camPos) {
@@ -123,37 +144,43 @@ public final class DhGenericRenderProgram extends DhRenderProgram implements IDh
         }
     }
 
+    // Rejects direct rendering.
     @Override
     public void fillSharedDirectUniformData(DhApiRenderParam renderParam, DhApiRenderableBoxGroupShading shading,
                                             IDhApiRenderableBoxGroup boxGroup, DhApiVec3d camPos) {
         throw new IllegalStateException("Only instanced generic rendering is supported with shaders active.");
     }
 
+    // Rejects direct rendering.
     @Override
     public void fillDirectUniformData(DhApiRenderParam renderParam, IDhApiRenderableBoxGroup boxGroup,
                                       DhApiRenderableBox box, DhApiVec3d camPos) {
         throw new IllegalStateException("Only instanced generic rendering is supported with shaders active.");
     }
 
+    // Returns the chunk of a coordinate.
     private static int chunkPos(double value) {
         return (int) Math.floor(value / 16);
     }
 
+    // Returns the offset of a coordinate inside its chunk.
     private static float subChunkPos(double value) {
         return (float) (value - Math.floor(value / 16) * 16);
     }
 
-    // DH's matrices are row-major arrays, so a transposed set yields JOML's column-major form
+    // Writes a Distant Horizons matrix into a JOML matrix.
     private static Matrix4f toJoml(DhApiMat4f matrix, Matrix4f into) {
         return into.setTransposed(matrix.getValuesAsArray());
     }
 
+    // Uploads three ints when the location exists.
     private void setUniform(int location, int x, int y, int z) {
         if (location != -1) {
             LWJGL.glUniform3i(location, x, y, z);
         }
     }
 
+    // Uploads three floats when the location exists.
     private void setUniform(int location, float x, float y, float z) {
         if (location != -1) {
             LWJGL.glUniform3f(location, x, y, z);

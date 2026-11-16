@@ -7,24 +7,28 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Arrays;
 import java.util.Objects;
 
-// What a finished build produced for one render section; extended per game version so a version-specific renderer can hang its own data off it
+// Data a finished build produced for one section.
 public class BuiltRenderSectionData {
+    // Whether the section has block geometry.
     public boolean hasBlockGeometry;
+    // Visibility between the faces of the section.
     public long visibilityData;
 
+    // Boxes that occlude other sections or null.
     public int @Nullable [] occluderBoxes;
 
+    // Returns the bit mask of the visual contents of the section.
     public int getVisualBitmaskForSection() {
         return this.hasBlockGeometry ? (1 << RenderVisualsService.HAS_BLOCK_GEOMETRY) : 0;
     }
 
-    // Freezes collections after building
+    // Makes the collections of the data unmodifiable.
     @MustBeInvokedByOverriders
     public void bake() {
 
     }
 
-    // By contents
+    // Compares the contents.
     @Override
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
@@ -33,7 +37,7 @@ public class BuiltRenderSectionData {
                 && Arrays.equals(occluderBoxes, that.occluderBoxes);
     }
 
-    // By contents
+    // Combines the contents.
     @Override
     public int hashCode() {
         return (Objects.hash(hasBlockGeometry, visibilityData) * 31) + Arrays.hashCode(occluderBoxes);

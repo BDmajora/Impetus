@@ -10,16 +10,19 @@ import net.minecraft.world.World;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 
-// Lights living entities from what they hold and wear; targets EntityLivingBase rather than Celeritas' EntityLiving because EntityArmorStand skips EntityLiving and an armor stand holding a torch must glow
+// Mixin that changes EntityLivingBase.
 @Mixin(EntityLivingBase.class)
 public abstract class EntityLivingBaseMixin extends Entity implements DynamicLightSource {
+    // Field living luminance added to the target.
     @Unique
     private int impetus$livingLuminance;
 
+    // Creates an entity living base mixin from its world.
     private EntityLivingBaseMixin(World world) {
         super(world);
     }
 
+    // Handles dynamic light tick.
     @Override
     public void impetus$dynamicLightTick() {
         EntityLivingBase self = (EntityLivingBase) (Object) this;
@@ -39,6 +42,7 @@ public abstract class EntityLivingBaseMixin extends Entity implements DynamicLig
                 DynamicLightHandlers.getLuminanceFrom(self));
     }
 
+    // Returns the luminance.
     @Override
     public int impetus$getLuminance() {
         return this.impetus$livingLuminance;

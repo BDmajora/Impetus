@@ -13,14 +13,16 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.Set;
 
-// Swaps the eligible-chunk set for an open-addressed one, rebuilt every spawn cycle over 17x17 chunks per player; iteration order differs but the spawner copies and shuffles before use
+// Mixin that changes WorldEntitySpawner.
 @Mixin(WorldEntitySpawner.class)
 public class WorldEntitySpawnerMixin {
+    // Reference to the field eligible chunks for spawning of the target.
     @Shadow
     @Final
     @Mutable
     private Set<ChunkPos> eligibleChunksForSpawning;
 
+    // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void equilibrium$useFastutilSet(CallbackInfo ci) {
         this.eligibleChunksForSpawning = new ObjectOpenHashSet<>();

@@ -10,12 +10,14 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// The shulker lid, at rest only when the status machine says closed and both progress samples are zero
+// Mixin that changes TileEntityShulkerBox.
 @Mixin(TileEntityShulkerBox.class)
 public abstract class TileEntityShulkerBoxAnimationMixin extends TileEntity implements AnimatedBlockEntity {
+    // Field lid added to the target.
     @Unique
     private int impetus$lid = LidTracking.INITIAL;
 
+    // Returns whether settled.
     @Override
     public boolean impetus$isSettled() {
         TileEntityShulkerBox self = (TileEntityShulkerBox) (Object) this;
@@ -23,11 +25,13 @@ public abstract class TileEntityShulkerBoxAnimationMixin extends TileEntity impl
                 && self.getProgress(0.0F) == 0.0F && self.getProgress(1.0F) == 0.0F;
     }
 
+    // Returns whether renderer.
     @Override
     public boolean impetus$needsRenderer() {
         return LidTracking.needsRenderer(this.impetus$lid, impetus$isSettled());
     }
 
+    // Runs at the end of update.
     @Inject(method = "update", at = @At("TAIL"))
     private void impetus$trackLid(CallbackInfo ci) {
         if (this.world == null || !this.world.isRemote) {

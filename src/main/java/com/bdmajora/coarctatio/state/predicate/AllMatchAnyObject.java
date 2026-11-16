@@ -7,22 +7,24 @@ import net.minecraft.block.state.IBlockState;
 import java.util.Arrays;
 import java.util.List;
 
-// A flattened AND of ORs, the shape of {"facing": "north|south", "half": "top|bottom"} (from Hydrogen): two arrays and a nested loop instead of a composite of N SingleMatchAny objects
+// Predicate that needs each property to hold one of several values.
 public final class AllMatchAnyObject implements Predicate<IBlockState> {
-    // properties[i] is tested against the allowed set values[i]; same length, never handed out, treated as immutable
+    // Properties to test.
     private final IProperty<?>[] properties;
+    // Allowed values of each property.
     private final Object[][] values;
 
-    // Precomputed because interned predicates are hashed far more than applied; deepHashCode since values is an array of arrays
+    // Hash computed once at construction.
     private final int hash;
 
+    // Creates a predicate from its parts.
     private AllMatchAnyObject(IProperty<?>[] properties, Object[][] values) {
         this.properties = properties;
         this.values = values;
         this.hash = 31 * Arrays.hashCode(properties) + Arrays.deepHashCode(values);
     }
 
-    // Flattens conditions into this form, or null if any is not a SingleMatchAny so the caller can try the next shape and fall back to CompositePredicate
+    // Returns a combined predicate or null when a member is not a multi value match.
     public static AllMatchAnyObject tryFlatten(List<Predicate<IBlockState>> predicates) {
         int size = predicates.size();
 
@@ -44,14 +46,13 @@ public final class AllMatchAnyObject implements Predicate<IBlockState> {
         return new AllMatchAnyObject(properties, values);
     }
 
-    // Every property must match one of its accepted values; fields are hoisted so the loop reads them once
+    // Returns whether every property holds an allowed value.
     @Override
     public boolean apply(IBlockState state) {
         if (state == null) {
             return false;
         }
 
-        // Hoisted into locals so the loop reads the fields once instead of on every iteration
         IProperty<?>[] properties = this.properties;
         Object[][] values = this.values;
 
@@ -66,7 +67,7 @@ public final class AllMatchAnyObject implements Predicate<IBlockState> {
         return true;
     }
 
-    // Linear scan; allowed sets are two or three interned enum constants or Boolean singletons, so the identity check almost always ends it
+    // Returns whether the value is one of the candidates.
     private static boolean contains(Object[] candidates, Object actual) {
         for (Object candidate : candidates) {
             if (actual == candidate || actual.equals(candidate)) {
@@ -77,7 +78,7 @@ public final class AllMatchAnyObject implements Predicate<IBlockState> {
         return false;
     }
 
-    // Structural equality over both arrays, which is what lets the canonicalizer intern these
+    // Returns whether the object tests the same properties and values.
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -91,7 +92,7 @@ public final class AllMatchAnyObject implements Predicate<IBlockState> {
         return Arrays.equals(this.properties, other.properties) && Arrays.deepEquals(this.values, other.values);
     }
 
-    // Precomputed at construction; the predicate is immutable
+    // Returns the stored hash.
     @Override
     public int hashCode() {
         return this.hash;

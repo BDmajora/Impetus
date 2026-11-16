@@ -2,13 +2,16 @@ package com.bdmajora.impetus.umbra.shaderpack;
 
 import java.util.function.BooleanSupplier;
 
-// A tri-state boolean for pack directives (from Iris); an unwritten directive is DEFAULT, NOT `false`, since the fallback is often true (back-face culling) and collapsing them would silently change rendering
+// Choices of the optional boolean setting.
 public enum OptionalBoolean {
+    // Value that selects default.
     DEFAULT,
+    // Value that selects false.
     FALSE,
+    // Value that selects true.
     TRUE;
 
-    // Resolves against a constant fallback
+    // Ors the else.
     public boolean orElse(boolean defaultValue) {
         if (this == DEFAULT) {
             return defaultValue;
@@ -17,7 +20,7 @@ public enum OptionalBoolean {
         return this == TRUE;
     }
 
-    // Resolves against a computed fallback evaluated only when unset; callers whose default depends on a GL query or pack scan need the laziness
+    // Ors the else get.
     public boolean orElseGet(BooleanSupplier defaultValue) {
         if (this == DEFAULT) {
             return defaultValue.getAsBoolean();

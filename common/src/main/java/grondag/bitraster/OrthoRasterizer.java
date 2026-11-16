@@ -23,20 +23,25 @@ import static grondag.bitraster.Constants.PV_PY;
 import static grondag.bitraster.Constants.PV_X;
 import static grondag.bitraster.Constants.PV_Y;
 
+// Rasterizer for orthographic projections.
 public final class OrthoRasterizer extends AbstractRasterizer {
+	// Creates a rasterizer with the default size.
 	public OrthoRasterizer() {
 		this(DEFAULT_SIZE_TILES, DEFAULT_SIZE_TILES);
 	}
 
+	// Creates a rasterizer with a size in tiles.
 	public OrthoRasterizer(int tileWidth, int tileHeight) {
 		super(tileWidth, tileHeight);
 	}
 
+	// Calculates the bounds of a quad without clipping.
 	@Override
 	int prepareBounds(int v0, int v1, int v2, int v3) {
 		return prepareBoundsNoClip(v0, v1, v2, v3);
 	}
 
+	// Projects the corners of a box and returns true.
 	@Override
 	boolean setupBoxVertices(int[] corners, int x0, int y0, int z0, int x1, int y1, int z1) {
 		transformBoxCorners(x0, y0, z0, x1, y1, z1);
@@ -58,6 +63,7 @@ public final class OrthoRasterizer extends AbstractRasterizer {
 		return true;
 	}
 
+	// Returns whether a point is not covered.
 	@Override
 	boolean isPointClear(float x, float y, float z) {
 		final float fx = x + offsetX;
@@ -70,6 +76,7 @@ public final class OrthoRasterizer extends AbstractRasterizer {
 		return isProjectedPointClear(tx, ty, 1f);
 	}
 
+	// Projects one vertex.
 	@Override void setupVertex(final int baseIndex, final int x, final int y, final int z) {
 		final int[] data = vertexData;
 

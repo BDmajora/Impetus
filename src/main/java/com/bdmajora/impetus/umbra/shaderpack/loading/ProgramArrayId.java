@@ -1,34 +1,42 @@
 package com.bdmajora.impetus.umbra.shaderpack.loading;
 
-// The numbered program families (begin, prepare, shadowcomp, deferred, composite): <base> then <base>1..N, index 0 unsuffixed; capped at 100 like Iris rather than OptiFine's 16, since Photon ships composite16/17 and lost FXAA and its AO history under the old cap. Declaration order is frame order
+// Choices of the program array id setting.
 public enum ProgramArrayId {
-    // Compute-only and run ONCE at pack load rather than per frame — Photon's LPV initialisation is the example
+    // Sets up.
     Setup("setup", 100),
+    // Programs that run at the start of a frame.
     Begin("begin", 100),
+    // Programs that run after the shadow pass.
     ShadowComposite("shadowcomp", 100),
+    // Programs that run before the translucent pass.
     Prepare("prepare", 100),
+    // Programs that run after the opaque pass.
     Deferred("deferred", 100),
+    // Programs that run after the translucent pass.
     Composite("composite", 100);
 
+    // Base file name.
     private final String baseName;
+    // Number of numbered programs.
     private final int numPrograms;
 
+    // Creates a program array id from its base name and num programs.
     ProgramArrayId(String baseName, int numPrograms) {
         this.baseName = baseName;
         this.numPrograms = numPrograms;
     }
 
-    // composite, deferred or final
+    // Returns the base name.
     public String getBaseName() {
         return this.baseName;
     }
 
-    // How many numbered passes the family allows
+    // Returns the num programs.
     public int getNumPrograms() {
         return this.numPrograms;
     }
 
-    // Turns a 0-based index into the source base name: 0 gives `composite`, 3 gives `composite3`; the suffix-less 0 is an OptiFine convention
+    // Returns the file name of a numbered program.
     public String getSourceName(int index) {
         if (index < 0 || index >= this.numPrograms) {
             throw new IndexOutOfBoundsException("Program index " + index + " out of range for " + this.baseName);

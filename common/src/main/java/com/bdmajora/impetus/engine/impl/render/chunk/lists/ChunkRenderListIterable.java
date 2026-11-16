@@ -4,16 +4,20 @@ import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 
 import java.util.Iterator;
 
+// Render lists that can be walked in either order.
 public interface ChunkRenderListIterable {
+    // Returns an iterator in forward or reverse order.
     Iterator<ChunkRenderList> iterator(boolean reverse);
 
+    // Returns the number of regions.
     int getNumRegions();
 
+    // Returns an iterator in forward order.
     default Iterator<ChunkRenderList> iterator() {
         return this.iterator(false);
     }
 
-    // Whether any section needs this pass, so the caller can skip binding its program, framebuffer and state for zero draws
+    // Returns whether any section needs the pass.
     default boolean hasPass(TerrainRenderPass pass) {
         return true;
     }

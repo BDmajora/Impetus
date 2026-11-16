@@ -14,14 +14,19 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-// Bakes every registered item model on a low-priority thread after a reload and pins the results, so opening an inventory does not bake on the render thread; blocks stay on demand since only what is in view is ever needed
+// Thread that bakes item models in the background.
 public final class ItemModelPrebake extends Thread {
+    // Thread that is running or null.
     private static volatile ItemModelPrebake running;
 
+    // Item model locations to bake.
     private final List<ModelResourceLocation> locations;
+    // Provider that bakes and stores the models.
     private final BakedModelProvider provider;
+    // Whether the thread must stop.
     private volatile boolean stop;
 
+    // Creates the thread.
     private ItemModelPrebake(List<ModelResourceLocation> locations, BakedModelProvider provider) {
         this.locations = locations;
         this.provider = provider;
@@ -30,7 +35,7 @@ public final class ItemModelPrebake extends Thread {
         this.setDaemon(true);
     }
 
-    // Skipped in-world, where a reload is a pack change and baking everything would compete with the game
+    // Stops the running thread and starts a new one when conditions allow.
     public static void restart() {
         stopAndJoin();
         BakedModelProvider provider = DynamicModels.baked();
@@ -47,22 +52,28 @@ public final class ItemModelPrebake extends Thread {
         prebake.start();
     }
 
+    // Stops the running thread and waits for it.
     public static void stopAndJoin() {
         ItemModelPrebake prebake = running;
         if (prebake == null) {
             return;
         }
         prebake.stop = true;
+        boolean interrupted = false;
         while (prebake.isAlive()) {
             try {
                 prebake.join();
-            } catch (InterruptedException ignored) {
-                // Keep waiting; the reload must not race the baker
+            } catch (InterruptedException e) {
+                interrupted = true;
             }
         }
         running = null;
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
     }
 
+    // Bakes every location until finished or stopped.
     @Override
     public void run() {
         long start = System.nanoTime();

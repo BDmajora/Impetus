@@ -7,12 +7,14 @@ import net.minecraft.block.state.IBlockState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 
-// Memoises the packed light info on every block state (Starlight's per-state opacity cache); the racy lazy init is deliberate, since compute is pure and an int store is atomic, and Coarctatio's states inherit the field
+// Mixin that changes StateImplementation.
 @Mixin(BlockStateContainer.StateImplementation.class)
 public abstract class BlockStateMixin implements LightCachedState {
+    // Field light info added to the target.
     @Unique
     private int fulgor$lightInfo;
 
+    // Handles light info.
     @Override
     public int fulgor$lightInfo() {
         int info = this.fulgor$lightInfo;

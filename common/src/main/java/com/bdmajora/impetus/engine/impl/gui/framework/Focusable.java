@@ -2,17 +2,19 @@ package com.bdmajora.impetus.engine.impl.gui.framework;
 
 import com.bdmajora.impetus.engine.impl.util.Dim2i;
 
-// A control that can hold keyboard focus; the flag lives on the control, so containers find the focus by asking their children and a rebuilt control handed the flag keeps it
+// Control that can hold keyboard focus.
 public interface Focusable extends Interactable {
-    // Whether Tab stops here now; a hidden, disabled or unavailable control is passed over
+    // Returns whether Tab can stop at the control.
     default boolean canFocus() {
         return true;
     }
 
+    // Returns whether the control holds focus.
     boolean isFocused();
 
+    // Stores whether the control holds focus.
     void setFocused(boolean focused);
 
-    // Bounds, so a scrolling frame can bring the focused control into view
+    // Returns the bounds of the control.
     Dim2i getDimensions();
 }

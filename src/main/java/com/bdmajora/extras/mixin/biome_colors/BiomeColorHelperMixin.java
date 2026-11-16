@@ -8,16 +8,20 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Replaces biome grass, foliage and water tint with fixed colours; the saving is the blend (up to 225 samples per face across the radius), at the cost of every biome looking like plains. 1.20's BiomeColors is BiomeColorHelper here
+// Mixin that changes BiomeColorHelper.
 @Mixin(BiomeColorHelper.class)
 public class BiomeColorHelperMixin {
+    // Field default grass color added to the target.
     @Unique
     private static final int IMPETUS$DEFAULT_GRASS_COLOR = 0x91BD59;
+    // Field default water color added to the target.
     @Unique
     private static final int IMPETUS$DEFAULT_WATER_COLOR = 0xFFFFFF;
+    // Field default foliage color added to the target.
     @Unique
     private static final int IMPETUS$DEFAULT_FOLIAGE_COLOR = 0x59AE30;
 
+    // Runs at the start of getGrassColorAtPos and can cancel it.
     @Inject(method = "getGrassColorAtPos", at = @At("HEAD"), cancellable = true)
     private static void impetus$grassColor(CallbackInfoReturnable<Integer> cir) {
         if (!Extras.options().detail.biomeColors) {
@@ -25,6 +29,7 @@ public class BiomeColorHelperMixin {
         }
     }
 
+    // Runs at the start of getWaterColorAtPos and can cancel it.
     @Inject(method = "getWaterColorAtPos", at = @At("HEAD"), cancellable = true)
     private static void impetus$waterColor(CallbackInfoReturnable<Integer> cir) {
         if (!Extras.options().detail.biomeColors) {
@@ -32,6 +37,7 @@ public class BiomeColorHelperMixin {
         }
     }
 
+    // Runs at the start of getFoliageColorAtPos and can cancel it.
     @Inject(method = "getFoliageColorAtPos", at = @At("HEAD"), cancellable = true)
     private static void impetus$foliageColor(CallbackInfoReturnable<Integer> cir) {
         if (!Extras.options().detail.biomeColors) {

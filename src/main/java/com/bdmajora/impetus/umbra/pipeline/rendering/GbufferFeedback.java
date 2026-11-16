@@ -14,24 +14,27 @@ import java.util.BitSet;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// colortex4..7 (gaux1..4) for the gbuffer stage on OptiFine's aux units 7..10, plus the copies that keep a program that both writes and samples one of them from reading the target it is drawing into (undefined in GL)
+// Copies gbuffer targets that a program samples while writing them so it reads the previous contents.
 public final class GbufferFeedback {
-    // GL_CURRENT_PROGRAM, a literal because the generated GL constant classes do not carry it
+    // GL enum of the current program.
     static final int GL_CURRENT_PROGRAM = 0x8B8D;
+    // Marker of a program not inspected yet.
     private static final int UNKNOWN = -1;
 
+    // Color targets of the pack.
     private final UmbraRenderTargets targets;
-    // Per linked program, which of colortex4..7 it declares a sampler for as a bit mask, resolved once since glGetUniformLocation is a driver call; program ids are per pipeline and the map dies with it
+    // Bits of the gaux targets each program samples.
     private final Int2IntOpenHashMap sampledByProgram = new Int2IntOpenHashMap();
-    // Scratch read FBO used to snapshot a gbuffer colour target before a program reads and writes it
+    // Framebuffer that reads the copied target or null.
     private UmbraFramebuffer copyFramebuffer;
 
+    // Creates feedback for the targets of a pack.
     public GbufferFeedback(UmbraRenderTargets targets) {
         this.targets = targets;
         this.sampledByProgram.defaultReturnValue(UNKNOWN);
     }
 
-    // The flips to bind colortex4..7 with for a program writing drawBuffers: a target the BOUND program both writes and samples is copied front->back and read from the copy; the copy is a full-size glCopyTexSubImage2D, so it is skipped for targets the program never samples (dozens of full-screen copies a frame on a pack writing colortex6 everywhere)
+    // Copies each written target the program samples and returns the flips with those targets flipped.
     public BitSet prepare(int[] drawBuffers, BitSet activeFlips) {
         BitSet flips = null;
         int sampled = sampledGaux();
@@ -49,7 +52,7 @@ public final class GbufferFeedback {
         return flips == null ? activeFlips : flips;
     }
 
-    // Which of colortex4..7 (by either name) the bound program samples, as bits 4..7; every bit with no program bound, keeping the copy-everything behaviour for that caller
+    // Returns the bits of the gaux targets the bound program samples and inspects each program once.
     int sampledGaux() {
         int program = LWJGL.glGetInteger(GL_CURRENT_PROGRAM);
         if (program == 0) {
@@ -69,7 +72,7 @@ public final class GbufferFeedback {
         return sampled;
     }
 
-    // Copies the front side into the back at the target's own size; a size.buffer target copied at the screen size was an invalid region
+    // Copies the read texture of a target into its write texture.
     private void copyFrontToBack(int index, boolean flipped) {
         if (this.copyFramebuffer == null) {
             this.copyFramebuffer = new UmbraFramebuffer();
@@ -86,7 +89,7 @@ public final class GbufferFeedback {
         }
     }
 
-    // Binds colortex4..7 for the gbuffer phase (MakeUp reads gaux4 in gbuffers_terrain as the fog colour; a stale unit 7 blew the horizon out and dragged auto-exposure down); units 0..3 (atlas, lightmap, PBR) are left alone
+    // Binds the gaux textures under the current flips to their units.
     public void bindColorSamplers(BitSet flips) {
         for (int i = SamplerLayout.GAUX_FIRST; i <= SamplerLayout.GAUX_LAST; i++) {
             UmbraRenderTarget target = this.targets.get(i);
@@ -103,11 +106,10 @@ public final class GbufferFeedback {
                 LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, texture);
             }
         }
-        // A bare setActiveTexture here can be swallowed after the raw branch; resetToUnit0 steps through unit 1
         GlTextureUnits.resetToUnit0();
     }
 
-    // Frees the copy FBO and forgets the per-program masks
+    // Forgets the inspected programs and destroys the copy framebuffer.
     public void destroy() {
         this.sampledByProgram.clear();
         if (this.copyFramebuffer != null) {

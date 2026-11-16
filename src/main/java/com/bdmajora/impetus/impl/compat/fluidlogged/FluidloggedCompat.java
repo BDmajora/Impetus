@@ -11,20 +11,21 @@ import net.minecraftforge.fml.common.Loader;
 import com.bdmajora.impetus.impl.render.terrain.compile.VintageChunkBuildContext;
 import com.bdmajora.impetus.impl.world.cloned.ImpetusBlockAccess;
 
+// Compatibility with Fluidlogged API.
 public class FluidloggedCompat {
-    // Mod ID of Fluidlogged API
+    // Mod id of Fluidlogged API.
     public static final String MODID = "fluidlogged_api";
+    // Is loaded.
     public static final boolean IS_LOADED = Loader.isModLoaded(MODID);
 
-    // Fluidlogged's sentinel for no fluid
+    // Returns the empty fluid state.
     public static FluidState getEmptyFluidState() {
         return FluidState.EMPTY;
     }
 
-    // Renders the fluid layer of a fluidlogged block through vanilla's dispatcher into the vintage buffers
+    // Draws the fluid state of a block.
     public static void renderFluidState(ImpetusBlockAccess blockAccess, BlockPos pos, IBlockState state, VintageChunkBuildContext context, BlockRendererDispatcher dispatcher) {
         FluidState fluidState = blockAccess.getFluidState(pos);
-        // only render the fluid if the block isn't fluidloggable, or if it explicitly opts in to rendering the fluid underneath it
         if (fluidState != FluidState.EMPTY && (!(state.getBlock() instanceof IFluidloggable) || ((IFluidloggable)state.getBlock()).shouldFluidRender(blockAccess, pos, state, fluidState))) {
             IBlockState renderState = fluidState.getState().getActualState(blockAccess, pos);
             var block = renderState.getBlock();
@@ -34,7 +35,6 @@ public class FluidloggedCompat {
                     ForgeHooksClient.setRenderLayer(layer);
                     var buffer = context.getBufferForLayer(layer);
                     dispatcher.renderBlock(renderState, pos, blockAccess, buffer);
-                    // The shader material of these quads is the fluid's (water, lava), not the block's it sits inside; attributing them to the fence or trapdoor drew the water as a plain textured block
                     context.recordVanillaBlockAttribution(layer, renderState, pos);
                 }
             }

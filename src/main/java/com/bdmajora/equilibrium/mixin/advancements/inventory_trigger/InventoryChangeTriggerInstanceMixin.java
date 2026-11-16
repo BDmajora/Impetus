@@ -14,31 +14,35 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Vanilla's test walks the whole inventory and matches every predicate against every stack, per advancement, per change; here the precomputed tallies are checked first, then the changed stack must match at least one predicate before any full walk, and a single-predicate criterion (the common shape) never walks at all
+// Mixin that changes Instance.
 @Mixin(InventoryChangeTrigger.Instance.class)
 public abstract class InventoryChangeTriggerInstanceMixin {
+    // Reference to the field full of the target.
     @Shadow
     @Final
     private MinMaxBounds full;
 
+    // Reference to the field empty of the target.
     @Shadow
     @Final
     private MinMaxBounds empty;
 
+    // Reference to the field occupied of the target.
     @Shadow
     @Final
     private MinMaxBounds occupied;
 
+    // Reference to the field items of the target.
     @Shadow
     @Final
     private ItemPredicate[] items;
 
+    // Runs at the start of test and can cancel it.
     @Inject(method = "test", at = @At("HEAD"), cancellable = true)
     private void equilibrium$fastTest(InventoryPlayer inventory, CallbackInfoReturnable<Boolean> cir) {
         SlotChangeContext context = (SlotChangeContext) inventory;
         SlotChangeContext.SlotCounts counts = context.equilibrium$slotCounts();
         if (counts == null) {
-            // Called outside trigger(), nothing was prepared: vanilla's test
             return;
         }
         if (!counts.matches(this.full, this.empty, this.occupied)) {
@@ -47,7 +51,6 @@ public abstract class InventoryChangeTriggerInstanceMixin {
         }
         ItemStack changed = context.equilibrium$changedStack();
         if (changed == null) {
-            // No stack context: vanilla's scan, but at least the tallies above were shared
             return;
         }
         int count = this.items.length;

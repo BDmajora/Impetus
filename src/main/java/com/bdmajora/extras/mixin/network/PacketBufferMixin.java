@@ -8,22 +8,22 @@ import org.spongepowered.asm.mixin.injection.Constant;
 import org.spongepowered.asm.mixin.injection.ModifyConstant;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 
-// NBT and string caps on the buffer itself: the 2 MB NBT tracker behind "Tried to read NBT tag that was too big", the 32767-byte string encoder, and the generic 32767 that nearly every reader passes to readString
+// Mixin that changes PacketBuffer.
 @Mixin(PacketBuffer.class)
 public abstract class PacketBufferMixin {
-    // LittleTiles' coremod has already swapped this tracker for NBTSizeTracker.INFINITE by the time Mixin runs, taking the constant with it
+    // Changes a constant in readCompoundTag.
     @ModifyConstant(method = "readCompoundTag", constant = @Constant(longValue = 2097152L), require = 0)
     private long impetus$nbtLimit(long vanilla) {
         return NetworkLimits.nbtLimit();
     }
 
+    // Changes a constant in writeString.
     @ModifyConstant(method = "writeString", constant = @Constant(intValue = 32767))
     private int impetus$writeStringLimit(int vanilla) {
         return NetworkLimits.stringLimit();
     }
 
-    // Only the generic cap is widened; a caller that asked for a small explicit limit (channel names, player names) keeps it.
-    // Described in full because Netty 4.2's ByteBuf.readString(int, Charset) makes the bare name ambiguous to the remapper
+    // Changes a local variable in readString.
     @ModifyVariable(method = "readString(I)Ljava/lang/String;", at = @At("HEAD"), argsOnly = true, ordinal = 0)
     private int impetus$readStringLimit(int maxLength) {
         return maxLength == NetworkLimits.VANILLA_STRING ? NetworkLimits.stringLimit() : maxLength;

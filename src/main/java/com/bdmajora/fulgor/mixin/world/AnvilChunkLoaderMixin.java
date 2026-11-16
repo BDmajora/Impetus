@@ -13,15 +13,16 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Persists the two lighting-state pieces Fulgor adds to a chunk (pending boundary checks, whether it was ever fully lit), reusing vanilla's LightPopulated tag so a world stays consistent moving between Fulgor and vanilla
+// Mixin that changes AnvilChunkLoader.
 @Mixin(AnvilChunkLoader.class)
 public abstract class AnvilChunkLoaderMixin {
-    // A second flush after ChunkProviderServer's; not redundant since autosave, world unload and mods calling the loader directly bypass the provider
+    // Runs at the start of saveChunk.
     @Inject(method = "saveChunk", at = @At("HEAD"))
     private void fulgor$flushBeforeSave(World world, Chunk chunk, CallbackInfo ci) {
         ((LightingEngineProvider) world).fulgor$getLightingEngine().processLightUpdates();
     }
 
+    // Runs before every return of readChunkFromNBT.
     @Inject(method = "readChunkFromNBT", at = @At("RETURN"))
     private void fulgor$readLightingState(World world, NBTTagCompound compound,
                                           CallbackInfoReturnable<Chunk> cir) {
@@ -32,6 +33,7 @@ public abstract class AnvilChunkLoaderMixin {
         ((ChunkLightingData) chunk).fulgor$setLightInitialized(compound.getBoolean("LightPopulated"));
     }
 
+    // Runs before every return of writeChunkToNBT.
     @Inject(method = "writeChunkToNBT", at = @At("RETURN"))
     private void fulgor$writeLightingState(Chunk chunk, World world, NBTTagCompound compound, CallbackInfo ci) {
         NeighborLightFlags.write(chunk, compound);

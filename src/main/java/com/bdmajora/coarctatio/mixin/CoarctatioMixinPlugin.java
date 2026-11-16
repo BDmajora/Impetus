@@ -10,13 +10,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Predicate;
 
-// Gates each Coarctatio mixin on its config switch; off means never loaded, so a suspect feature can be disabled without a rebuild
+// Class coarctatio mixin plugin.
 public class CoarctatioMixinPlugin extends SimpleMixinPlugin {
-    // A feature whose mixins getMixins lists instead of the json, and the targets that must still be unloaded for them to apply
+    // Record guarded.
     private record Guarded(Predicate<CoarctatioConfig> enabled, String feature, List<String> mixins, List<String> targets) {
     }
 
-    // Classes another coremod may load before Mixin prepares: FML's discovery types (ModCandidate already is on some Cleanroom packs) and the event plumbing
+    // Value guarded.
     private static final List<Guarded> GUARDED = List.of(
             new Guarded(config -> config.recycleEvents, "event recycling",
                     List.of("events.TickEventMixin", "events.PlayerTickEventMixin", "events.WorldTickEventMixin",
@@ -32,17 +32,19 @@ public class CoarctatioMixinPlugin extends SimpleMixinPlugin {
             new Guarded(config -> config.modScanCache, "the mod scan cache",
                     List.of("forge.JarDiscovererMixin"), List.of("net.minecraftforge.fml.common.discovery.JarDiscoverer")));
 
+    // Package of the Coarctatio mixins.
     private static final String PACKAGE = "com.bdmajora.coarctatio.mixin.";
 
+    // Loaded config.
     private CoarctatioConfig config;
 
-    // Reads the config once; it is a Properties file precisely so this is safe during coremod setup
+    // Handles on load.
     @Override
     public void onLoad(String mixinPackage) {
         this.config = CoarctatioConfig.get();
     }
 
-    // Maps the mixin's simple name to its switch; anything unlisted is refused
+    // Returns whether apply mixin.
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
         String name = mixinClassName.startsWith(PACKAGE)
@@ -106,7 +108,6 @@ public class CoarctatioMixinPlugin extends SimpleMixinPlugin {
             case "client.resources.FallbackResourceManagerMixin":
                 return this.config.stacklessResourceExceptions;
             case "client.resources.SimpleReloadableResourceManagerMixin":
-                // Carries the reload generation the existence caches key on as well as its own throw
                 return this.config.stacklessResourceExceptions || this.config.resourceExistenceCache;
             case "client.texture.StitcherMixin":
                 return this.config.fastAtlasStitching;
@@ -116,7 +117,6 @@ public class CoarctatioMixinPlugin extends SimpleMixinPlugin {
             case "client.model.ModelLoaderPrefetchMixin":
             case "client.model.ModelBakeryPrefetchMixin":
             case "client.model.ModelBlockAnimationPrefetchMixin":
-                // The dynamic reload never runs the eager loader pass the prefetch feeds
                 return this.config.parallelModelLoad && !this.config.dynamicModels;
             case "forge.OreDictionaryMixin":
                 return this.config.primitiveOreDictionary;
@@ -148,7 +148,6 @@ public class CoarctatioMixinPlugin extends SimpleMixinPlugin {
             case "forge.JarDiscovererMixin":
                 return this.config.modScanCache;
             case "client.ModelManagerMixin":
-                // Drives the pool lifecycle and the statistics dump; pointless with nothing pooling, and the dynamic reload opens the pools itself
                 return (this.config.poolQuadVertexData || this.config.canonicalizeMultipartConditions) && !this.config.dynamicModels;
             case "client.model.bake.ItemLayerModelQuadMixin":
             case "client.model.bake.ItemLayerFaceDataMixin":
@@ -161,14 +160,11 @@ public class CoarctatioMixinPlugin extends SimpleMixinPlugin {
             case "client.model.dynamic.SimpleReloadableResourceManagerAccessor":
             case "client.model.dynamic.FallbackResourceManagerAccessor":
             case "client.model.dynamic.LegacyV2AdapterAccessor":
-                // PackPathLister's pack walk, which the model prefetch shares with the dynamic reload's texture scan
                 return this.config.dynamicModels || this.config.parallelModelLoad;
             case "client.model.dynamic.FileResourcePackAccessor":
             case "client.model.dynamic.AbstractResourcePackAccessor":
-                // Only needed to list packs the existence index has not already indexed
                 return (this.config.dynamicModels || this.config.parallelModelLoad) && !this.config.resourceExistenceCache;
             default:
-                // The dynamic-model mixins and their compat pseudo-mixins all hang off the one switch
                 if (name.startsWith("client.model.dynamic.")) {
                     return this.config.dynamicModels;
                 }
@@ -177,7 +173,7 @@ public class CoarctatioMixinPlugin extends SimpleMixinPlugin {
         }
     }
 
-    // Mixin checks every listed target at prepare time, before the plugin is asked, and fails the whole config over one already loaded; listing these here instead turns just that feature off. Null means the json's list alone
+    // Returns the mixins.
     @Override
     public List<String> getMixins() {
         IClassTracker tracker = MixinService.getService().getClassTracker();

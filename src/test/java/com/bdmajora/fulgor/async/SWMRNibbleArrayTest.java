@@ -167,4 +167,26 @@ class SWMRNibbleArrayTest {
         SWMRNibbleArray nothing = new SWMRNibbleArray(null, true);
         assertThrows(IllegalArgumentException.class, () -> target.extrudeLower(nothing));
     }
+
+    // Keeps a value above fifteen out of the neighbouring nibble.
+    @Test
+    void oversizedValuesKeepTheirNeighbour() {
+        SWMRNibbleArray array = new SWMRNibbleArray(new byte[SWMRNibbleArray.ARRAY_SIZE]);
+        array.set(1, 7);
+        array.set(0, 0x1F);
+        assertEquals(15, array.getUpdating(0));
+        assertEquals(7, array.getUpdating(1));
+        array.set(1, -1);
+        assertEquals(15, array.getUpdating(0));
+        assertEquals(15, array.getUpdating(1));
+    }
+
+    // Rejects a null source with a message.
+    @Test
+    void extrudingANullSourceNamesTheProblem() {
+        SWMRNibbleArray array = new SWMRNibbleArray();
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> array.extrudeLower(new SWMRNibbleArray(null, true)));
+        assertEquals("Cannot extrude a null nibble", e.getMessage());
+    }
 }

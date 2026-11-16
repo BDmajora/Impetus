@@ -2,13 +2,13 @@ package com.bdmajora.coarctatio.collections;
 
 import java.util.List;
 
-// Helpers for compacting collections that are finished being built
+// Helpers for building compact collections.
 public final class CollectionHelper {
-    // Static-only
+    // Prevents instantiation
     private CollectionHelper() {
     }
 
-    // Compacts a never-modified list into a FixedArrayList; null and already-fixed lists pass through so in-place re-baking is harmless
+    // Returns a fixed size copy of the list or the same list when it is null or already fixed.
     public static <T> List<T> fixed(List<T> src) {
         if (src == null || src instanceof FixedArrayList) {
             return src;

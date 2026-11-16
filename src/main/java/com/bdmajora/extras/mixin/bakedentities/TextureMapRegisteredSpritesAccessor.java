@@ -7,9 +7,10 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 
 import java.util.Map;
 
-// Exposes the pre-stitch registry so an entity sheet can replace a plain registration of the same name; setTextureEntry refuses a name already present
+// Mixin that changes TextureMap.
 @Mixin(TextureMap.class)
 public interface TextureMapRegisteredSpritesAccessor {
+    // Gives access to the field get registered sprites.
     @Accessor("mapRegisteredSprites")
     Map<String, TextureAtlasSprite> impetus$getRegisteredSprites();
 }

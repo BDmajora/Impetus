@@ -11,15 +11,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-// The bakery's item variant table and the built-in sprite list, which the dynamic reload reads without running the bakery's load
+// Mixin that changes ModelBakery.
 @Mixin(ModelBakery.class)
 public interface ModelBakeryAccessor {
+    // Calls the method register variant names.
     @Invoker("registerVariantNames")
     void coarctatio$registerVariantNames();
 
+    // Gives access to the field variant names.
     @Accessor("variantNames")
     Map<Item, List<String>> coarctatio$variantNames();
 
+    // Gives access to the field builtin textures.
     @Accessor("LOCATIONS_BUILTIN_TEXTURES")
     static Set<ResourceLocation> coarctatio$builtinTextures() {
         throw new AssertionError();

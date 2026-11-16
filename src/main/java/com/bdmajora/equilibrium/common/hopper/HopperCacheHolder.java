@@ -1,10 +1,10 @@
 package com.bdmajora.equilibrium.common.hopper;
 
-// A hopper caching the inventories on either side, implemented on TileEntityHopper by mixin so getSourceInventory can ask whether its IHopper has caches (minecarts do not)
+// Hopper that keeps one inventory cache per side.
 public interface HopperCacheHolder {
-    // The block above the hopper, which it pulls from.
+    // Returns the cache of the inventory above.
     HopperInventoryCache equilibrium$sourceCache();
 
-    // The block the hopper faces, which it pushes into.
+    // Returns the cache of the inventory that receives items.
     HopperInventoryCache equilibrium$destinationCache();
 }

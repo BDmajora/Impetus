@@ -8,14 +8,15 @@ import net.minecraft.block.state.IBlockState;
 import net.minecraft.util.BlockRenderLayer;
 import org.spongepowered.asm.mixin.Mixin;
 
-// Baked shulker boxes go in the cutout layer, as the renderer alpha-tests them: the sheet makes the lid's lower rows see-through exactly where the base's teeth fill in, and the solid layer would paint those transparent texels over the teeth
+// Mixin that changes BlockShulkerBox.
 @Mixin(BlockShulkerBox.class)
 public abstract class BlockShulkerBoxLayerMixin extends BlockContainer {
+    // Creates a block shulker box layer mixin from its material.
     private BlockShulkerBoxLayerMixin(Material material) {
         super(material);
     }
 
-    // Forge's per-layer query the chunk mesher asks for every layer, added to BlockShulkerBox as an override so no other block pays for the check
+    // Returns whether render in layer.
     @Override
     public boolean canRenderInLayer(IBlockState state, BlockRenderLayer layer) {
         if (BakedEntities.isBaked(state.getBlock())) {

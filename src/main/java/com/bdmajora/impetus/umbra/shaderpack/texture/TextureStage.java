@@ -2,24 +2,24 @@ package com.bdmajora.impetus.umbra.shaderpack.texture;
 
 import java.util.Optional;
 
-// The pipeline stage a `texture.<stage>.<sampler>` override applies to (verbatim port of Iris's TextureStage); only gbuffers+shadow, deferred and composite+final are bound here, the rest parse cleanly but bind nothing
+// Choices of the texture stage setting.
 public enum TextureStage {
-    // The setup passes; Iris 1.6 exclusive
+    // Value that selects setup.
     SETUP,
-    // The begin pass; Iris 1.6 exclusive
+    // Value that selects begin.
     BEGIN,
-    // The shadowcomp passes — undocumented in shaders.txt but a valid stage that packs do use
+    // Value that selects shadowcomp.
     SHADOWCOMP,
-    // The prepare passes; likewise undocumented but valid
+    // Value that selects prepare.
     PREPARE,
-    // Every gbuffer pass AND the shadow passes — one stage, because OptiFine treats them together
+    // Value that selects gbuffers and shadow.
     GBUFFERS_AND_SHADOW,
-    // The deferred passes
+    // Value that selects deferred.
     DEFERRED,
-    // The composite passes and the final pass, again grouped as OptiFine groups them
+    // Value that selects composite and final.
     COMPOSITE_AND_FINAL;
 
-    // gbuffers, deferred, composite or final; empty for anything else
+    // Returns the stage of a name or empty.
     public static Optional<TextureStage> parse(String name) {
         switch (name) {
             case "setup":

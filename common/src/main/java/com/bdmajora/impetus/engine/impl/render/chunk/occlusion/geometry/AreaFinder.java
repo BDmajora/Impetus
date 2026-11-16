@@ -7,22 +7,23 @@ package com.bdmajora.impetus.engine.impl.render.chunk.occlusion.geometry;
 
 import java.util.function.IntConsumer;
 
+// Finds the largest rectangles of set cells in a sixteen by sixteen grid.
 public class AreaFinder {
+    // Working copy of the grid.
     final long[] bits = new long[4];
 
-    // based on approach described here:
-    //  https://stackoverflow.com/a/7497967
-    //  https://stackoverflow.com/a/7773870
-    //  https://www.drdobbs.com/database/the-maximal-rectangle-problem/184410529
+    // Returns the key of the largest rectangle of set cells and rejects a null or short array.
     public static int findLargest(long[] bitsIn) {
+        if (bitsIn.length < 4) {
+            throw new IllegalArgumentException("Grid needs four longs");
+        }
         int bestX0 = 0;
         int bestY0 = 0;
         int bestX1 = -1;
         int bestY1 = -1;
         int bestArea = 0;
 
-        // height of prior rows
-        // four bits per position, values 0-15
+        // Heights of the previous row
         long heights = 0;
 
         for (int y = 0; y < 16; ++y) {
@@ -33,42 +34,39 @@ public class AreaFinder {
                 continue;
             }
 
-            // track start of runs up to current height
-            long stackX15 = 0; // 0-15
-            long stackH16 = 0; // 1-16
+            // Tracks the start and height of open runs
+            long stackX15 = 0;
+            long stackH16 = 0;
             int stackSize = 0;
 
-            // height of first column is zero if closed, otherwise 1 + previous row first column height
+            // Calculates the height of the first column
             int runHeight = (rowBits & 1) == 0 ? 0 : (1 + getVal15(heights, 0));
             int runStart = 0;
 
-            // save height for use by next row, unless at top row
+            // Stores the height for the next row
             if (y != 15) heights = setVal15(heights, 0, runHeight);
 
-            // NB: inclusive of 16. The height @ 16 will always be zero, closing off last column
+            // Includes column sixteen to close the last run
             for (int x = 1; x <= 16; ++x) {
-                // height here is 0 if closed, otherwise 1 + height of row below
+                // Calculates the height of this column
                 final int h = (rowBits & (1 << x)) == 0 ? 0 : (1 + getVal15(heights, x));
 
-                // if higher than last start new run
+                // Starts a new run when the column is higher
                 if (h > runHeight) {
-                    // push current run onto stack
+                    // Pushes the current run
                     if (runHeight != 0) {
                         stackX15 = setVal15(stackX15, stackSize, runStart);
                         stackH16 = setVal16(stackH16, stackSize, runHeight);
                         ++stackSize;
                     }
 
-                    // new run starts here
+                    // Starts the run here
                     runStart = x;
                     runHeight = h;
                 } else {
-                    // if reduction in height, close out current run and
-                    // also runs on stack until revert to a sustainable run
-                    // or the stack is empty
-
+                    // Closes the runs that are higher than the column
                     while (h < runHeight) {
-                        // check for largest area on current run
+                        // Checks the area of the run
                         final int a = (x - runStart) * runHeight;
 
                         if (a > bestArea) {
@@ -80,29 +78,24 @@ public class AreaFinder {
                         }
 
                         if (stackSize == 0) {
-                            // if we have an empty stack but non-zero height,
-                            // then run at current height effectively starts
-                            // where the just-closed prior run started
+                            // Continues the run at the lower height
                             runHeight = h;
-                            // NB: no change to run start - continue from prior
                         } else { // stackSize > 0
                             --stackSize;
                             final int stackStart = getVal15(stackX15, stackSize);
                             final int stackHeight = getVal16(stackH16, stackSize);
 
                             if (stackHeight == h) {
-                                // if stack run height is same as current, resume run, leave stack popped
+                                // Resumes the run of the stack
                                 runHeight = h;
                                 runStart = stackStart;
                             } else if (stackHeight < h) {
-                                // if stack run height is less new height, leave on the stack
+                                // Keeps the run on the stack
                                 ++stackSize;
-                                // and new run starts from current position
+                                // Continues at the new height
                                 runHeight = h;
-                                // NB: no change to run start - continue from prior
                             } else {
-                                // stack area is higher than new height
-                                // leave stack popped and loop to close out area on the stack
+                                // Closes the run of the stack next
                                 runHeight = stackHeight;
                                 runStart = stackStart;
                             }
@@ -110,7 +103,7 @@ public class AreaFinder {
                     }
                 }
 
-                // track height of this column but don't overflow on last row/column
+                // Stores the height of this column
                 if (y != 15 && x < 16) heights = setVal15(heights, x, h);
             }
         }
@@ -118,24 +111,29 @@ public class AreaFinder {
         return Area.areaKey(bestX0, bestY0, bestX1, bestY1);
     }
 
+    // Returns a value from one to sixteen of a packed position.
     private static int getVal16(long packed, int x) {
         return 1 + getVal15(packed, x);
     }
 
+    // Stores a value from one to sixteen at a packed position.
     private static long setVal16(long packed, int x, int val) {
         return setVal15(packed, x, val - 1);
     }
 
+    // Returns a value from zero to fifteen of a packed position.
     private static int getVal15(long packed, int x) {
         return (int) ((packed >>> (x << 2)) & 0xF);
     }
 
+    // Stores a value from zero to fifteen at a packed position.
     private static long setVal15(long packed, int x, int val) {
         final int shift = x << 2;
         final long mask = 0xFL << shift;
         return (packed & ~mask) | (((long) val) << shift);
     }
 
+    // Returns the cells of a rectangle in the shared working array.
     public long[] bitsFromIndex(int areaIndex) {
         final long[] result = bits;
 
@@ -147,7 +145,10 @@ public class AreaFinder {
         return result;
     }
 
+    // Reports the largest rectangles until no cell is left.
     public void find(long[] bitsIn, int sourceIndex, IntConsumer areaIndexConsumer) {
+        java.util.Objects.requireNonNull(areaIndexConsumer, "areaIndexConsumer");
+        java.util.Objects.checkFromIndexSize(sourceIndex, 4, bitsIn.length);
         final long[] bits = this.bits;
         System.arraycopy(bitsIn, sourceIndex, bits, 0, 4);
 
@@ -162,7 +163,10 @@ public class AreaFinder {
         }
     }
 
+    // Reports the section rectangles that the grid fully holds.
     public void findSections(long[] bitsIn, int sourceIndex, IntConsumer areaIndexConsumer) {
+        java.util.Objects.requireNonNull(areaIndexConsumer, "areaIndexConsumer");
+        java.util.Objects.checkFromIndexSize(sourceIndex, 4, bitsIn.length);
         final long[] bits = this.bits;
         System.arraycopy(bitsIn, sourceIndex, bits, 0, 4);
 

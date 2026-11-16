@@ -7,9 +7,10 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 
 import java.util.Map;
 
-// The per-domain managers, the only route to the pack list
+// Mixin that changes SimpleReloadableResourceManager.
 @Mixin(SimpleReloadableResourceManager.class)
 public interface SimpleReloadableResourceManagerAccessor {
+    // Gives access to the field domain managers.
     @Accessor("domainResourceManagers")
     Map<String, FallbackResourceManager> coarctatio$domainManagers();
 }

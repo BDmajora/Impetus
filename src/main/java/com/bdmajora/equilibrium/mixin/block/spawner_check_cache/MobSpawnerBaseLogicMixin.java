@@ -7,15 +7,20 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// A spawner asks every tick whether a player is within 16 blocks, which walks the whole player list per spawner (FoamFix's mobSpawnerCheckSpeed); the answer is held for ten ticks, jittered by one so a farm's spawners do not all re-check on the same tick, and dropped early if the player count changes so a fake player added for a fraction of a tick cannot pin a stale answer
+// Mixin that changes MobSpawnerBaseLogic.
 @Mixin(MobSpawnerBaseLogic.class)
 public abstract class MobSpawnerBaseLogicMixin {
+    // Ticks between player checks.
     private static final int CHECK_INTERVAL = 10;
 
+    // Cached result of the player check.
     private boolean equilibrium$cachedActive;
+    // Player count at the last check.
     private int equilibrium$cachedPlayerCount = -1;
+    // World time of the next check.
     private long equilibrium$recheckAt;
 
+    // Runs at the start of isActivated and can cancel it.
     @Inject(method = "isActivated", at = @At("HEAD"), cancellable = true)
     private void equilibrium$answerFromCache(CallbackInfoReturnable<Boolean> cir) {
         World world = ((MobSpawnerBaseLogic) (Object) this).getSpawnerWorld();
@@ -29,6 +34,7 @@ public abstract class MobSpawnerBaseLogicMixin {
         }
     }
 
+    // Runs before every return of isActivated.
     @Inject(method = "isActivated", at = @At("RETURN"))
     private void equilibrium$remember(CallbackInfoReturnable<Boolean> cir) {
         World world = ((MobSpawnerBaseLogic) (Object) this).getSpawnerWorld();

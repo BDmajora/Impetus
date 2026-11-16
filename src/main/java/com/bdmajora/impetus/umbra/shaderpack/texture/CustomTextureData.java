@@ -1,78 +1,94 @@
 package com.bdmajora.impetus.umbra.shaderpack.texture;
 
-// A custom texture parsed but not yet uploaded, from texture.<stage>.<sampler>, texture.noise or customTexture.<name> (port of Iris's CustomTextureData including raw typed 3D definitions); touches neither Minecraft nor GL, so parsing is off-thread and CustomTextureManager uploads later
+// Source of a custom texture of a shader pack.
 public abstract class CustomTextureData {
+    // Prevents instantiation outside the nested kinds
     private CustomTextureData() {
     }
 
-    // A PNG shipped inside the pack, carrying its .mcmeta blur/clamp flags alongside the bytes
+    // Encoded image file with its filtering.
     public static final class PngData extends CustomTextureData {
+        // Filtering of the texture.
         private final TextureFilteringData filteringData;
+        // Bytes of the image file.
         private final byte[] content;
 
+        // Creates image data.
         public PngData(TextureFilteringData filteringData, byte[] content) {
             this.filteringData = filteringData;
             this.content = content;
         }
 
-        // blur and clamp from the .mcmeta sidecar
+        // Returns the filtering of the texture.
         public TextureFilteringData getFilteringData() {
             return this.filteringData;
         }
 
-        // Raw file bytes
+        // Returns the bytes of the image file.
         public byte[] getContent() {
             return this.content;
         }
     }
 
-    // The special minecraft:dynamic/lightmap_1 location meaning the live lightmap; a marker rather than a stored id since the lightmap object is recreated on reloads and brightness changes
+    // Marker of the game lightmap.
     public static final class LightmapMarker extends CustomTextureData {
-        // By content, so identical textures share one GL object
+        // Returns whether the other object is also a lightmap marker.
         @Override
         public boolean equals(Object obj) {
             return obj != null && obj.getClass() == this.getClass();
         }
 
-        // Consistent with equals
+        // Returns the same hash for every marker.
         @Override
         public int hashCode() {
             return 33;
         }
     }
 
-    // A namespace:path resource location resolved through TextureManager at bind time, since the resource pack it comes from can change
+    // Texture loaded by the game from a resource location.
     public static final class ResourceData extends CustomTextureData {
+        // Namespace of the location.
         private final String namespace;
+        // Path of the location.
         private final String location;
 
+        // Creates resource data.
         public ResourceData(String namespace, String location) {
             this.namespace = namespace;
             this.location = location;
         }
 
-        // Unvalidated: a namespace no mod provides is a skipped texture, not a load failure, and the caller that can log the affected sampler decides
+        // Returns the namespace of the location.
         public String getNamespace() {
             return this.namespace;
         }
 
-        // Likewise unvalidated
+        // Returns the path of the location.
         public String getLocation() {
             return this.location;
         }
     }
 
-    // A raw binary texture (`image/foo.dat TEXTURE_3D RGB16F 32 64 32 RGB HALF_FLOAT`); every field is explicit since the file is bare pixel data with no container
+    // Raw pixel data with its layout.
     public static final class RawData extends CustomTextureData {
+        // Name of the texture target.
         private final String textureType;
+        // Name of the internal format.
         private final String internalFormat;
+        // Width in pixels.
         private final int width;
+        // Height in pixels.
         private final int height;
+        // Depth in pixels.
         private final int depth;
+        // Name of the pixel format.
         private final String pixelFormat;
+        // Name of the pixel type.
         private final String pixelType;
+        // Bytes of the pixels.
         private final byte[] content;
 
+        // Creates raw data.
         public RawData(String textureType, String internalFormat, int width, int height, int depth,
                        String pixelFormat, String pixelType, byte[] content) {
             this.textureType = textureType;
@@ -85,42 +101,42 @@ public abstract class CustomTextureData {
             this.content = content;
         }
 
-        // 1D, 2D or 3D
+        // Returns the name of the texture target.
         public String getTextureType() {
             return this.textureType;
         }
 
-        // Pack format name
+        // Returns the name of the internal format.
         public String getInternalFormat() {
             return this.internalFormat;
         }
 
-        // Declared width
+        // Returns the width in pixels.
         public int getWidth() {
             return this.width;
         }
 
-        // Declared height
+        // Returns the height in pixels.
         public int getHeight() {
             return this.height;
         }
 
-        // Declared depth, for 3D
+        // Returns the depth in pixels.
         public int getDepth() {
             return this.depth;
         }
 
-        // Pack client format name
+        // Returns the name of the pixel format.
         public String getPixelFormat() {
             return this.pixelFormat;
         }
 
-        // Pack client type name
+        // Returns the name of the pixel type.
         public String getPixelType() {
             return this.pixelType;
         }
 
-        // Raw file bytes
+        // Returns the bytes of the pixels.
         public byte[] getContent() {
             return this.content;
         }

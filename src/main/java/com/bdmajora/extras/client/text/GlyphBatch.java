@@ -8,18 +8,27 @@ import org.lwjgl.opengl.GL11;
 
 import java.util.function.Consumer;
 
-// Collects a string's glyph quads and submits them in one draw (ImmediatelyFast's text batching, on 1.12.2 where every glyph is its own glBegin/glEnd): a line of chat is ~40 glyphs, the F3 screen several hundred, each costing four immediate-mode vertex calls plus a texture bind. Owned per FontRenderer, with its own BufferBuilder so the strikethrough and underline draws, which use the shared Tessellator, cannot collide with it; binds through the renderer's own bindTexture hook since Forge's splash font has no texture manager at all
+// Collects glyph quads and draws them together.
 public final class GlyphBatch {
+    // Uploader of the vertex data.
     private static final WorldVertexBufferUploader UPLOADER = new WorldVertexBufferUploader();
 
+    // Vertex data of the batch.
     private final BufferBuilder buffer = new BufferBuilder(4096);
+    // Texture of the batch.
     private ResourceLocation texture;
+    // Whether the batch holds a drawing.
     private boolean open;
+    // Red part of the color.
     private float red = 1.0F;
+    // Green part of the color.
     private float green = 1.0F;
+    // Blue part of the color.
     private float blue = 1.0F;
+    // Alpha part of the color.
     private float alpha = 1.0F;
 
+    // Stores the color of the next quads.
     public void setColor(float red, float green, float blue, float alpha) {
         this.red = red;
         this.green = green;
@@ -27,7 +36,7 @@ public final class GlyphBatch {
         this.alpha = alpha;
     }
 
-    // Begins or continues the batch on `texture`, flushing first if a different page is bound
+    // Opens the batch and flushes it first when the texture differs.
     public void prepare(Consumer<ResourceLocation> binder, ResourceLocation texture) {
         if (this.open && this.texture != texture) {
             this.flush(binder);
@@ -39,7 +48,7 @@ public final class GlyphBatch {
         }
     }
 
-    // One glyph as a quad in vanilla's strip order (top-left, bottom-left, bottom-right, top-right); `skew` is the italic shear
+    // Adds one glyph quad.
     public void quad(float x, float y, float width, float height, float skew, float u0, float v0, float u1, float v1) {
         BufferBuilder b = this.buffer;
         b.pos(x + skew, y, 0.0D).tex(u0, v0).color(this.red, this.green, this.blue, this.alpha).endVertex();
@@ -48,6 +57,7 @@ public final class GlyphBatch {
         b.pos(x + width + skew, y, 0.0D).tex(u1, v0).color(this.red, this.green, this.blue, this.alpha).endVertex();
     }
 
+    // Draws the collected quads.
     public void flush(Consumer<ResourceLocation> binder) {
         if (!this.open) {
             return;
@@ -58,6 +68,7 @@ public final class GlyphBatch {
         UPLOADER.draw(this.buffer);
     }
 
+    // Returns whether the batch holds a drawing.
     public boolean isOpen() {
         return this.open;
     }

@@ -12,23 +12,28 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
-// Removes sprites between stitch attempts and resets what a failed vanilla attempt left in the slot list; a dropped sprite ends up on the missing texture, which is what an overflowing atlas cost before too
+// Mixin that changes Stitcher.
 @Mixin(Stitcher.class)
 public abstract class StitcherDropMixin implements DroppingStitcher {
+    // Reference to the field set stitch holders of the target.
     @Shadow
     @Final
     private Set<Stitcher.Holder> setStitchHolders;
 
+    // Reference to the field stitch slots of the target.
     @Shadow
     @Final
     private List<Stitcher.Slot> stitchSlots;
 
+    // Reference to the field current width of the target.
     @Shadow
     private int currentWidth;
 
+    // Reference to the field current height of the target.
     @Shadow
     private int currentHeight;
 
+    // Handles retain sprites.
     @Override
     public void coarctatio$retainSprites(Set<String> referencedNames) {
         this.coarctatio$resetAttempt();
@@ -44,6 +49,7 @@ public abstract class StitcherDropMixin implements DroppingStitcher {
         Coarctatio.LOGGER.warn("Dropped {} unreferenced sprites from the atlas", dropped);
     }
 
+    // Handles drop largest sprite.
     @Override
     public boolean coarctatio$dropLargestSprite() {
         this.coarctatio$resetAttempt();
@@ -61,6 +67,7 @@ public abstract class StitcherDropMixin implements DroppingStitcher {
         return true;
     }
 
+    // Handles reset attempt.
     private void coarctatio$resetAttempt() {
         this.stitchSlots.clear();
         this.currentWidth = 0;

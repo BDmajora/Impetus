@@ -7,19 +7,22 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
-// One block match from a `block.<id>` line, an identifier plus optional blockstate predicates (`double_plant:half=lower`); predicates are a FILTER, unnamed properties match any value. Port of Iris's BlockEntry
+// Block name with optional state properties.
 public final class BlockEntry implements Entry {
+    // Logger of this class.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
 
+    // Name of the block.
     private final NamespacedId id;
     private final Map<String, String> propertyPredicates;
 
+    // Creates a block entry from its id and property predicates.
     public BlockEntry(NamespacedId id, Map<String, String> propertyPredicates) {
         this.id = id;
         this.propertyPredicates = propertyPredicates;
     }
 
-    // Parses one entry token exactly like Iris: `name`, `namespace:name`, `name:key=value:...`, `namespace:name:key=value:...`; a % prefix is a tag reference yielding a TagEntry, hence the Entry return type. Never empty, the caller skips blanks
+    // Parses a block entry.
     public static Entry parse(String entry) {
         if (entry.isEmpty()) {
             throw new IllegalArgumentException("Called BlockEntry::parse with an empty string");
@@ -29,32 +32,26 @@ public final class BlockEntry implements Entry {
         if (isTag) {
             entry = entry.replace("%", "");
         }
-        // Some OptiFine-era packs write mod IDs as "namespace::block"; without this tolerance the empty segment parses as the block name and the real name is misreported as a malformed predicate
         entry = entry.replaceAll(":{2,}", ":");
 
         String[] splitStates = entry.split(":");
 
-        // Trivial case: no states, no namespace.
         if (splitStates.length == 1) {
             NamespacedId id = new NamespacedId("minecraft", entry);
             return isTag ? new TagEntry(id, Collections.emptyMap()) : new BlockEntry(id, Collections.emptyMap());
         }
 
-        // No states involved, just a namespace.
         if (splitStates.length == 2 && !splitStates[1].contains("=")) {
             NamespacedId id = new NamespacedId(splitStates[0], splitStates[1]);
             return isTag ? new TagEntry(id, Collections.emptyMap()) : new BlockEntry(id, Collections.emptyMap());
         }
 
-        // One or more state predicates involved.
         int statesStart;
         NamespacedId id;
         if (splitStates[1].contains("=")) {
-            // Form: "tall_grass:half=upper"
             statesStart = 1;
             id = new NamespacedId("minecraft", splitStates[0]);
         } else {
-            // Form: "minecraft:tall_grass:half=upper"
             statesStart = 2;
             id = new NamespacedId(splitStates[0], splitStates[1]);
         }
@@ -73,12 +70,12 @@ public final class BlockEntry implements Entry {
         return isTag ? new TagEntry(id, map) : new BlockEntry(id, map);
     }
 
-    // The block
+    // Returns the id.
     public NamespacedId getId() {
         return this.id;
     }
 
-    // property=value conditions, empty for any state
+    // Returns the property predicates.
     public Map<String, String> getPropertyPredicates() {
         return this.propertyPredicates;
     }

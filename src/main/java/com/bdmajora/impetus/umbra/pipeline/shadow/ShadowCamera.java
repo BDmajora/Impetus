@@ -6,29 +6,29 @@ import org.joml.Vector3d;
 
 import java.util.Objects;
 
-// Shadow projection and model view matrices of the sun or moon camera snapped to a world grid
+// View and projection of the shadow pass.
 public final class ShadowCamera {
-    // Rotation by a quarter turn around the X axis that tips the camera to look straight down
+    // Rotation of a quarter turn about x.
     private static final Matrix4fc QUARTER_TURN = new Matrix4f().rotationX((float) Math.toRadians(90.0f));
 
-    // Near plane distance in blocks
+    // Near plane.
     private final float nearPlane;
-    // Far plane distance in blocks
+    // Far plane.
     private final float farPlane;
-    // Grid step in blocks that the camera position snaps to or 0 for no snapping
+    // Interval size.
     private final float intervalSize;
-    // Field of view in degrees for a perspective projection or null for an orthographic one
+    // Field of view of a perspective shadow or null.
     private final Float fov;
-    // Tilt of the daily sun path in radians
+    // Sun path rotation in radians.
     private final float sunPathRadians;
-    // Projection built once from the settings
+    // Projection before snapping.
     private final Matrix4f projectionTemplate;
-    // Projection of the current pass
+    // Projection matrix.
     private final Matrix4f projection = new Matrix4f();
-    // Model view of the current pass
+    // Model view matrix.
     private final Matrix4f modelView = new Matrix4f();
 
-    // Creates the camera and builds its projection
+    // Creates a shadow camera from its half plane length and near plane and far plane and interval size and fov.
     public ShadowCamera(float halfPlaneLength, float nearPlane, float farPlane, float intervalSize, Float fov,
                         float sunPathRotation) {
         this.nearPlane = nearPlane;
@@ -42,7 +42,7 @@ public final class ShadowCamera {
                         nearPlane, farPlane);
     }
 
-    // Returns the perspective projection with the field of view in degrees and the given planes
+    // Returns a perspective projection.
     static Matrix4f perspective(float fov, float nearPlane, float farPlane) {
         float yScale = (float) (1.0f / Math.tan(Math.toRadians(fov) * 0.5f));
         return new Matrix4f(
@@ -52,17 +52,17 @@ public final class ShadowCamera {
                 0.0f, 0.0f, 2.0f * farPlane * nearPlane / (nearPlane - farPlane), 1.0f);
     }
 
-    // Returns the sky angle that the light rotation uses for a shadow angle
+    // Skies the angle.
     static float skyAngle(float shadowAngle) {
         return shadowAngle < 0.25f ? shadowAngle + 0.75f : shadowAngle - 0.25f;
     }
 
-    // Returns the translation along one axis that snaps the camera to the grid cell centre
+    // Returns the offset that snaps a coordinate to the interval.
     static float snapOffset(double coordinate, float intervalSize) {
         return (float) coordinate % intervalSize - intervalSize / 2.0f;
     }
 
-    // Rebuilds both matrices for a shadow angle and a camera position
+    // Rebuilds the matrices for a sun angle and camera position.
     public void update(float shadowAngle, Vector3d camera) {
         Objects.requireNonNull(camera, "camera");
         this.projection.set(this.projectionTemplate);
@@ -75,27 +75,27 @@ public final class ShadowCamera {
         }
     }
 
-    // Returns the live projection matrix which stays identity until the first update
+    // Returns the projection matrix.
     public Matrix4f projection() {
         return this.projection;
     }
 
-    // Returns the live model view matrix which stays identity until the first update
+    // Returns the model view matrix.
     public Matrix4f modelView() {
         return this.modelView;
     }
 
-    // Returns the near plane distance in blocks
+    // Returns the near plane.
     public float nearPlane() {
         return this.nearPlane;
     }
 
-    // Returns the far plane distance in blocks
+    // Returns the far plane.
     public float farPlane() {
         return this.farPlane;
     }
 
-    // Returns the field of view in degrees or null for an orthographic projection
+    // Returns the field of view or null.
     public Float fov() {
         return this.fov;
     }

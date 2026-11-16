@@ -6,9 +6,10 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
-// Stops redstone wire cloning the facing array when notifying neighbours; the calculateCurrentChanges call site is deliberately NOT listed since mixin.block.redstone_wire replaces that whole method and Mixin crashes on a double merge, so with that option off the copy remains there
+// Mixin that changes BlockRedstoneWire.
 @Mixin(BlockRedstoneWire.class)
 public class BlockRedstoneWireMixin {
+    // Replaces the call of EnumFacing.values in notifyWireNeighborsOfStateChange and breakBlock.
     @Redirect(
             method = {"notifyWireNeighborsOfStateChange", "breakBlock"},
             at = @At(value = "INVOKE", target = "Lnet/minecraft/util/EnumFacing;values()[Lnet/minecraft/util/EnumFacing;")

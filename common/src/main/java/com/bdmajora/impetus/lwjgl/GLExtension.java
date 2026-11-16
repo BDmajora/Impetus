@@ -1,60 +1,60 @@
 package com.bdmajora.impetus.lwjgl;
 
-// Every GL extension the engine asks about, named as in the GL_ string minus the prefix
+// Extensions of OpenGL that the engine asks about.
 public enum GLExtension {
-    // Immutable buffer allocation; the backing store for persistently mapped streaming buffers
+    // Immutable buffer storage.
     ARB_buffer_storage,
-    // Clearing a buffer object without a CPU-side staging array
+    // Clearing buffers without a staging array.
     ARB_clear_buffer_object,
-    // One draw call for many chunk sections, the basis of the indirect multidraw path
+    // Multi draw calls from a command buffer.
     ARB_multi_draw_indirect,
-    // Base-vertex offsets so sections can share one index buffer instead of one each
+    // Draw calls with a base vertex.
     ARB_draw_elements_base_vertex,
-    // Bind-free object access; lets state changes skip the bind/modify/unbind dance
+    // Access to objects without binding.
     ARB_direct_state_access,
-    // SSBOs, needed for shader packs that declare bufferObject.<n>
+    // Shader storage buffers.
     ARB_shader_storage_buffer_object,
-    // Fences, used to know when the GPU is done with a region before the CPU rewrites it
+    // Extension of sync fences.
     ARB_sync,
-    // GPU-side timing for the frame profiler
+    // Timer queries.
     ARB_timer_query,
-    // UBOs for the shared per-frame uniform block
+    // Uniform buffers.
     ARB_uniform_buffer_object,
-    // VAOs, so vertex attribute layout is set once per format rather than per draw
+    // Vertex arrays.
     ARB_vertex_array_object,
-    // Mapping a sub-range of a buffer, with explicit flush, for streaming uploads
+    // Mapping of buffer ranges.
     ARB_map_buffer_range,
-    // Pixel-pack buffers, so a readback lands in a buffer the CPU maps a frame later instead of stalling on glReadPixels
+    // Pixel buffers.
     ARB_pixel_buffer_object,
-    // GPU-to-GPU buffer copies, no CPU round trip
+    // Copies between buffers.
     ARB_copy_buffer,
-    // Immutable texture storage for render targets
+    // Immutable texture storage.
     ARB_texture_storage,
-    // Instanced draws starting at a non-zero instance
+    // Draw calls with a base instance.
     ARB_base_instance,
-    // Presence of the compatibility profile, which decides whether fixed-function state is still usable
+    // Compatibility profile.
     ARB_compatibility,
-    // Object labels and debug groups for frame captures (GLDebug)
+    // Debug labels and groups.
     KHR_debug,
-    // NVIDIA-only free-VRAM query; Umbra refuses oversized SSBO allocations when present and hopes for the best when not
+    // Free video memory query.
     NVX_gpu_memory_info,
 
-    // Mesh-shader terrain backend extensions, queried only by MeshShaderSupport
+    // Mesh and task shaders.
     NV_mesh_shader,
-    // Buffer GPU addresses and residency, so shaders reach buffers through raw 64-bit pointers instead of bindings
+    // Buffer addresses and residency.
     NV_shader_buffer_load,
-    // glBufferAddressRangeNV, used to bind the indirect command buffer by address
+    // Buffer binding by address for vertices.
     NV_vertex_buffer_unified_memory,
-    // The same, for the scene uniform block, which survives shader changes because it is bound by address
+    // Buffer binding by address for uniforms.
     NV_uniform_buffer_unified_memory,
-    // One representative fragment per primitive is enough for the occlusion rasterizer to record "this box was visible"
+    // One fragment per primitive.
     NV_representative_fragment_test,
-    // Indirect mesh draws sourced from a GPU-written command buffer, which is what removes the CPU from the loop
+    // Indirect draws from a GPU written buffer.
     NV_bindless_multi_draw_indirect,
-    // 8/16-bit scalar types and 64-bit ints in GLSL; the section and region metadata packing depends on them
+    // Extra scalar types in shaders.
     NV_gpu_shader5,
-    // gl_BaryCoordNV, so the fragment shader interpolates vertex attributes it fetched itself
+    // Barycentric coordinates in fragment shaders.
     NV_fragment_shader_barycentric,
-    // Sparse virtual allocation, so terrain geometry lives in one enormous buffer with pages committed on demand
+    // Sparse buffers with committed pages.
     ARB_sparse_buffer
 }

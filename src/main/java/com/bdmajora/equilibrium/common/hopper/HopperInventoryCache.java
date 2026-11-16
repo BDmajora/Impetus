@@ -13,18 +13,18 @@ import net.minecraft.world.World;
 
 import javax.annotation.Nullable;
 
-// One hopper's memory of the inventory on one side, keyed on the block state singleton (identity answers "changed?"); chests are never cached since a double chest's other half changes no state, nor is the entity fallback
+// Remembers the inventory next to a hopper.
 public final class HopperInventoryCache {
-    // The state that was at the cached position when it was last resolved. Null means unresolved.
+    // State of the block when the inventory was found.
     private IBlockState state;
 
-    // The tile entity found at that position, or null if there was none.
+    // Block entity that holds the inventory.
     private TileEntity tileEntity;
 
-    // The inventory derived from #tileEntity. Null when the tile entity was not one.
+    // Inventory that was found.
     private IInventory inventory;
 
-    // Resolves the inventory at a position, mirroring TileEntityHopper.getInventoryAtPosition exactly (order, random pick, flooring) except the tile entity may come from cache and the entity query is skipped when provably empty
+    // Returns the inventory at the position or null.
     @Nullable
     public IInventory get(World world, double x, double y, double z) {
         int blockX = MathHelper.floor(x);
@@ -42,13 +42,12 @@ public final class HopperInventoryCache {
         return HopperEntityLookup.findInventoryEntity(world, x, y, z);
     }
 
-    // Resolves the inventory at a position, handling chests separately so they never enter the cache
+    // Returns the block entity inventory and reuses the last result while the state is unchanged.
     @Nullable
     private IInventory resolveTileEntityInventory(World world, BlockPos pos) {
         IBlockState state = world.getBlockState(pos);
         Block block = state.getBlock();
 
-        // Chests are re-resolved every time, checked before the cache so the cache never holds a chest and no stale entry exists if a chest replaces something here
         if (block instanceof BlockChest) {
             TileEntity tileEntity = this.lookup(world, pos);
 
@@ -60,7 +59,6 @@ public final class HopperInventoryCache {
         }
 
         if (this.state == state) {
-            // Block unchanged, but the tile entity is only valid if not invalidated: breaking and replacing the same kind of machine yields the same state and a different tile entity
             if (this.tileEntity == null) {
                 return null;
             }
@@ -74,7 +72,6 @@ public final class HopperInventoryCache {
         this.tileEntity = null;
         this.inventory = null;
 
-        // Vanilla asks hasTileEntity before looking one up, and mods rely on that being asked.
         if (block.hasTileEntity(state)) {
             TileEntity tileEntity = this.lookup(world, pos);
 
@@ -87,7 +84,7 @@ public final class HopperInventoryCache {
         return this.inventory;
     }
 
-    // Prefers the non-creating lookup, so probing an empty position cannot force a tile entity into being
+    // Returns the existing block entity at the position.
     @Nullable
     private TileEntity lookup(World world, BlockPos pos) {
         if (world instanceof TileEntityAccess) {
@@ -97,7 +94,7 @@ public final class HopperInventoryCache {
         return world.getTileEntity(pos);
     }
 
-    // Drops the cached entry. Called when the hopper is invalidated or moves.
+    // Forgets the remembered inventory.
     public void clear() {
         this.state = null;
         this.tileEntity = null;

@@ -4,7 +4,7 @@ import com.google.gson.FieldNamingPolicy;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.annotations.SerializedName;
-import com.google.gson.JsonSyntaxException;
+import com.google.gson.JsonParseException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import com.bdmajora.impetus.api.options.structure.OptionStorage;
@@ -12,39 +12,55 @@ import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.engine.impl.gui.options.TextProvider;
 import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.AsyncOcclusionMode;
 
-import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
+import java.util.Objects;
 
+// Options of the engine stored in a json file.
 public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
+    // Logger of config problems.
     private static final Logger LOGGER = LogManager.getLogger();
 
+    // Name of the default config file.
     private static final String DEFAULT_FILE_NAME = "impetus-options.json";
 
+    // Quality options.
     public final QualitySettings quality = new QualitySettings();
+    // Advanced options.
     public final AdvancedSettings advanced = new AdvancedSettings();
+    // Performance options.
     public final PerformanceSettings performance = new PerformanceSettings();
+    // Notification options.
     public final NotificationSettings notifications = new NotificationSettings();
+    // Mesh terrain options.
     public final MeshTerrainSettings meshTerrain = new MeshTerrainSettings();
 
-    // Index into the monitor's available modes; 0 = current/desktop
+    // Index of the fullscreen resolution where zero is the desktop mode.
     public int fullscreenResolution = 0;
 
+    // Fullscreen mode.
     public FullscreenMode fullscreenMode = FullscreenMode.OFF;
 
-    // OpenGL unless the player switches to Nvidium; older configs' mesh_terrain.enabled is dropped, so nobody lands on mesh shaders without choosing them
+    // Terrain backend in use.
     public GraphicsApi graphicsApi = GraphicsApi.OPENGL;
 
+    // Read only state of the config.
     private boolean readOnly;
 
+    // Path of the config file.
     private Path configPath;
 
-    // Fresh defaults, used when no file exists
+    // Creates options with default values.
     public static ImpetusGameOptions defaults() {
         var options = new ImpetusGameOptions();
         options.configPath = getConfigPath(DEFAULT_FILE_NAME);
@@ -52,13 +68,13 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
         return options;
     }
 
-    // The options screen edits this object directly
+    // Returns the options themselves.
     @Override
     public ImpetusGameOptions getData() {
         return this;
     }
 
-    // Writes changes back to disk
+    // Writes the options to the config file.
     @Override
     public void save() {
         try {
@@ -69,106 +85,147 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
 
     }
 
+    // Options that trade quality for speed.
     public static class PerformanceSettings {
+        // Number of chunk builder threads where zero means automatic.
         public int chunkBuilderThreads = 0;
-        @SerializedName("always_defer_chunk_updates_v2") // this will reset the option in older configs
+        // Whether chunk updates are always deferred.
+        @SerializedName("always_defer_chunk_updates_v2")
         public boolean alwaysDeferChunkUpdates = true;
 
+        // Whether only visible textures animate.
         public boolean animateOnlyVisibleTextures = true;
+        // Whether hidden entities are culled.
         public boolean useEntityCulling = true;
+        // Whether terrain hidden by fog is skipped.
         public boolean useFogOcclusion = true;
+        // Whether hidden block faces are culled.
         public boolean useBlockFaceCulling = true;
+        // Whether terrain uses the compact vertex format.
         public boolean useCompactVertexFormat = false;
+        // Whether translucent faces are sorted.
         @SerializedName("use_translucent_face_sorting_v2")
         public boolean useTranslucentFaceSorting = true;
+        // Whether quads move to cheaper render passes.
         public boolean useRenderPassOptimization = true;
+        // Whether render passes are merged.
         public boolean useRenderPassConsolidation = true;
+        // Whether clouds use the faster renderer.
         public boolean useFasterClouds = true;
+        // Whether the GL context skips error checks.
         public boolean useNoErrorGLContext = true;
-        // Terrain draws from a GPU-visible command ring with glMultiDrawElementsIndirect when the driver has GL 4.3 and 4.4 buffer storage
+        // Whether terrain uses multi draw indirect.
         public boolean useMultiDrawIndirect = true;
 
+        // Mode of asynchronous occlusion.
         public AsyncOcclusionMode asyncOcclusionMode = AsyncOcclusionMode.ONLY_SHADOW;
 
-        // Software-rasterised occlusion of hidden terrain (Celeritas, grondag bitraster); adaptive, so its cost follows what it culls
+        // Whether hidden terrain is culled by a software rasterizer.
         public boolean useRasterOcclusionCulling = false;
 
-        // Matches modern Sodium's Performance page.
+        // Mode that defers chunk updates.
         public DeferChunkUpdatesMode deferChunkUpdatesMode = DeferChunkUpdatesMode.ONE_FRAME;
+        // Frame rate limit while inactive.
         public InactivityFpsLimit inactivityFpsLimit = InactivityFpsLimit.AFK;
+        // Mode of quad splitting.
         public QuadSplittingMode quadSplittingMode = QuadSplittingMode.ENABLED;
     }
 
+    // Options for troubleshooting.
     public static class AdvancedSettings {
+        // Whether memory use is traced.
         public boolean enableMemoryTracing = false;
+        // Whether staging buffers use advanced mapping.
         public boolean useAdvancedStagingBuffers = true;
+        // Whether warnings about incompatible mods are hidden.
         public boolean disableIncompatibleModWarnings = false;
 
+        // Number of frames the CPU may run ahead.
         public int cpuRenderAheadLimit = 3;
     }
 
+    // Options that change how the world looks.
     public static class QualitySettings {
+        // Quality of weather.
         public GraphicsQuality weatherQuality = GraphicsQuality.DEFAULT;
+        // Quality of leaves.
         public GraphicsQuality leavesQuality = GraphicsQuality.DEFAULT;
 
+        // Whether the vignette is drawn.
         public boolean enableVignette = true;
 
+        // Whether shading uses the quad normals.
         @SerializedName("use_quad_normals_for_shading_v2")
         public boolean useQuadNormalsForShading = true;
 
+        // Milliseconds a new section takes to fade in.
         public int chunkFadeInDuration = 0;
 
+        // Radius of the biome blend.
         public int legacyBiomeBlendRadius = 0;
 
+        // Height of the clouds.
         public int cloudHeight = 128;
+        // Distance of the clouds.
         public int cloudDistance = 64;
+        // Radius of weather effects.
         public int weatherEffectRadius = 10;
+        // Distance entities are drawn at.
         public int entityDistance = 100;
 
-        // Matches modern Sodium's Quality page.
+        // Whether translucent geometry is sorted more accurately.
         public boolean improvedTransparency = false;
+        // Filter of the block atlas.
         public PixelFilteringMode pixelFiltering = PixelFilteringMode.NEAREST;
+        // Whether hidden fluid faces are culled.
         public boolean hiddenFluidCulling = true;
+        // Whether fluid shapes are improved.
         public boolean improvedFluidShaping = false;
+        // Whether entities sort by their closest point.
         public boolean closestPointEntitySort = false;
 
-        // Visual-only guess at fluidlogging on servers that cannot report it; see FluidloggingInference. Touching by default since pool and fountain rims, the common case, only touch water on one side
+        // How blocks are drawn as fluidlogged when the server does not report it.
         public FluidloggingGuess inferredFluidlogging = FluidloggingGuess.TOUCHING;
     }
 
-    // The NV_mesh_shader terrain backend (Nvidium's design); every field is read when the section manager is built, so changes take a renderer reload
+    // Settings of the mesh shader terrain backend.
     public static class MeshTerrainSettings {
-        // Draws sections that became visible this frame in a second pass, so the one-frame command lag never shows as holes when turning
+        // Whether newly visible sections are drawn in a second pass.
         public boolean temporalCoherence = true;
+        // Sorting of translucent geometry.
         public MeshTranslucencySorting translucencySorting = MeshTranslucencySorting.QUADS;
-        // Sizes the geometry budget from free VRAM (NVX_gpu_memory_info) instead of maxGeometryMemory
+        // Whether the geometry budget follows the free video memory.
         public boolean automaticMemory = true;
+        // Geometry budget in megabytes.
         public int maxGeometryMemory = 2048;
-        // Chunks of terrain kept on the GPU past the render distance; 0 keeps exactly the render distance, MeshTerrainConfig.MAX_KEEP_DISTANCE keeps everything until memory runs short
+        // Chunks kept on the GPU past the render distance.
         public int regionKeepDistance = 0;
+        // Level of statistics.
         public MeshStatistics statistics = MeshStatistics.NONE;
     }
 
-    // How the mesh backend orders translucent geometry: build-time quad order only, plus a per-region section sort on the GPU, plus a per-frame quad swap pass on the GPU
+    // Ways the mesh backend orders translucent geometry.
     public enum MeshTranslucencySorting implements TextProvider {
         NONE("impetus.options.mesh_terrain.sorting.none"),
         SECTIONS("impetus.options.mesh_terrain.sorting.sections"),
         QUADS("impetus.options.mesh_terrain.sorting.quads");
 
+        // Display name.
         private final TextComponent name;
 
+        // Creates a mode with a language key.
         MeshTranslucencySorting(String key) {
             this.name = TextComponent.translatable(key);
         }
 
-        // Display name for the cycler
+        // Returns the display name.
         @Override
         public TextComponent getLocalizedName() {
             return this.name;
         }
     }
 
-    // How much of the mesh backend's GPU-side counting reaches the F3 screen; each level adds atomics to the shaders, so NONE compiles them out
+    // Levels of statistics counted by the mesh backend.
     public enum MeshStatistics implements TextProvider {
         NONE("impetus.options.mesh_terrain.statistics.none"),
         FRUSTUM("impetus.options.mesh_terrain.statistics.frustum"),
@@ -176,241 +233,276 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
         SECTIONS("impetus.options.mesh_terrain.statistics.sections"),
         QUADS("impetus.options.mesh_terrain.statistics.quads");
 
+        // Display name.
         private final TextComponent name;
 
+        // Creates a constant with a language key.
         MeshStatistics(String key) {
             this.name = TextComponent.translatable(key);
         }
 
-        // Display name for the cycler
+        // Returns the display name.
         @Override
         public TextComponent getLocalizedName() {
             return this.name;
         }
 
-        // Whether this level counts at least as much as another
+        // Returns whether this level counts at least as much as another.
         public boolean includes(MeshStatistics level) {
             return this.ordinal() >= level.ordinal();
         }
     }
 
+    // Options of notifications.
     public static class NotificationSettings {
+        // Whether toasts are shown.
         public boolean showToasts = true;
+        // Whether the autosave indicator is shown.
         public boolean autosaveIndicator = true;
+        // Whether donation prompts are disabled.
         public boolean forceDisableDonationPrompts = false;
 
+        // Whether the donation button was cleared.
         public boolean hasClearedDonationButton = false;
+        // Whether the donation prompt was seen.
         public boolean hasSeenDonationPrompt = false;
     }
 
+    // Quality levels of clouds and weather.
     public enum GraphicsQuality implements TextProvider {
         DEFAULT(List.of("options.gamma.default", "generator.default")),
         FANCY("options.clouds.fancy"),
         FAST("options.clouds.fast");
 
+        // Display name.
         private final TextComponent name;
 
+        // Creates a quality with a language key.
         GraphicsQuality(String name) {
             this.name = TextComponent.translatable(name);
         }
 
+        // Creates a quality with fallback language keys.
         GraphicsQuality(List<String> names) {
             this.name = TextComponent.translatable(names);
         }
 
-        // Display name for the cycler
+        // Returns the display name.
         @Override
         public TextComponent getLocalizedName() {
             return this.name;
         }
 
-        // Resolves DEFAULT against the global fancy toggle
+        // Returns whether the quality is fancy for the global setting.
         public boolean isFancy(boolean fancyGraphics) {
             return (this == FANCY) || (this == DEFAULT && fancyGraphics);
         }
     }
 
-    // Deferral policy for chunk mesh uploads, mirrors modern Sodium's DeferMode
+    // Policies for deferring chunk mesh uploads.
     public enum DeferChunkUpdatesMode implements TextProvider {
         ZERO_FRAMES("impetus.options.defer_chunk_updates.zero"),
         ONE_FRAME("impetus.options.defer_chunk_updates.one"),
         ALWAYS("impetus.options.defer_chunk_updates.always");
 
+        // Display name.
         private final TextComponent name;
 
+        // Creates a constant with a language key.
         DeferChunkUpdatesMode(String key) {
             this.name = TextComponent.translatable(key);
         }
 
-        // Display name for the cycler
+        // Returns the display name.
         @Override
         public TextComponent getLocalizedName() {
             return this.name;
         }
 
-        // Whether a section not visible last frame should still be deferred
+        // Returns whether invisible sections are deferred.
         public boolean defersInvisible() {
             return this != ZERO_FRAMES;
         }
 
-        // Whether even visible sections should be deferred (never block the frame)
+        // Returns whether visible sections are deferred.
         public boolean defersVisible() {
             return this == ALWAYS;
         }
     }
 
-    // Frame-rate limiting behavior while the window is unfocused/idle
+    // Frame rate limits while the window is idle.
     public enum InactivityFpsLimit implements TextProvider {
         NO_LIMIT("impetus.options.inactivity_fps_limit.no_limit"),
         AFK("impetus.options.inactivity_fps_limit.afk"),
         MINIMIZED("impetus.options.inactivity_fps_limit.minimized");
 
+        // Display name.
         private final TextComponent name;
 
+        // Creates a constant with a language key.
         InactivityFpsLimit(String key) {
             this.name = TextComponent.translatable(key);
         }
 
-        // Display name for the cycler
+        // Returns the display name.
         @Override
         public TextComponent getLocalizedName() {
             return this.name;
         }
     }
 
-    // Terrain quad-splitting mode used by the translucency sorter
+    // Modes of quad splitting.
     public enum QuadSplittingMode implements TextProvider {
         DISABLED("impetus.options.quad_splitting.disabled"),
         ENABLED("impetus.options.quad_splitting.enabled");
 
+        // Display name.
         private final TextComponent name;
 
+        // Creates a constant with a language key.
         QuadSplittingMode(String key) {
             this.name = TextComponent.translatable(key);
         }
 
-        // Display name for the cycler
+        // Returns the display name.
         @Override
         public TextComponent getLocalizedName() {
             return this.name;
         }
 
-        // Anything but OFF
+        // Returns whether quad splitting is on.
         public boolean isEnabled() {
             return this == ENABLED;
         }
     }
 
-    // Magnification filtering applied to the block atlas (per-pixel look)
+    // Magnification filters of the block atlas.
     public enum PixelFilteringMode implements TextProvider {
         NEAREST("impetus.options.pixel_filtering.nearest"),
         LINEAR("impetus.options.pixel_filtering.linear");
 
+        // Display name.
         private final TextComponent name;
 
+        // Creates a constant with a language key.
         PixelFilteringMode(String key) {
             this.name = TextComponent.translatable(key);
         }
 
-        // Display name for the cycler
+        // Returns the display name.
         @Override
         public TextComponent getLocalizedName() {
             return this.name;
         }
     }
 
-    // Which neighbourhood makes a fluidloggable block render as holding the fluid next to it: a fluid directly above always counts once enabled, the side count is the number of horizontal neighbours holding fluid that is not falling
+    // Rules that decide when a block is drawn as holding fluid.
     public enum FluidloggingGuess implements TextProvider {
         OFF("impetus.options.inferred_fluidlogging.off", Integer.MAX_VALUE),
         SUBMERGED("impetus.options.inferred_fluidlogging.submerged", Integer.MAX_VALUE),
         SURROUNDED("impetus.options.inferred_fluidlogging.surrounded", 2),
         TOUCHING("impetus.options.inferred_fluidlogging.touching", 1);
 
+        // Display name.
         private final TextComponent name;
+        // Number of fluid sides that triggers the guess.
         public final int minSides;
 
+        // Creates a rule with a language key and a side count.
         FluidloggingGuess(String key, int minSides) {
             this.name = TextComponent.translatable(key);
             this.minSides = minSides;
         }
 
+        // Returns the display name.
         @Override
         public TextComponent getLocalizedName() {
             return this.name;
         }
     }
 
-    // The terrain backend: OPENGL is the raster renderer every GPU runs, NVIDIUM is the NV_mesh_shader backend, used only while the GPU has it and no shader pack is active
+    // Terrain backends.
     public enum GraphicsApi implements TextProvider {
         OPENGL("impetus.options.graphics_api.opengl"),
         NVIDIUM("impetus.options.graphics_api.nvidium");
 
+        // Display name.
         private final TextComponent name;
 
+        // Creates a constant with a language key.
         GraphicsApi(String key) {
             this.name = TextComponent.translatable(key);
         }
 
-        // Display name for the cycler
+        // Returns the display name.
         @Override
         public TextComponent getLocalizedName() {
             return this.name;
         }
     }
 
-    // The window mode, applied by WindowModes in the mod: EXCLUSIVE owns the monitor at the chosen resolution, BORDERLESS is an undecorated monitor-sized window at the desktop mode
+    // Window modes.
     public enum FullscreenMode implements TextProvider {
         OFF("impetus.options.fullscreen_mode.off"),
         BORDERLESS("impetus.options.fullscreen_mode.borderless"),
         EXCLUSIVE("impetus.options.fullscreen_mode.exclusive");
 
+        // Display name.
         private final TextComponent name;
 
+        // Creates a constant with a language key.
         FullscreenMode(String key) {
             this.name = TextComponent.translatable(key);
         }
 
-        // Display name for the cycler
+        // Returns the display name.
         @Override
         public TextComponent getLocalizedName() {
             return this.name;
         }
     }
 
+    // Json reader and writer of the config.
     private static final Gson GSON = new GsonBuilder()
             .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
             .setPrettyPrinting()
             .excludeFieldsWithModifiers(Modifier.PRIVATE)
             .create();
 
-    // Loads the default file name
+    // Loads the options from the default file.
     public static ImpetusGameOptions load() {
         return load(DEFAULT_FILE_NAME);
     }
 
-    // Reads the json, falling back to defaults and marking read-only if it cannot be parsed
+    // Loads the options from a file and uses the defaults for a missing or unreadable or empty file.
     public static ImpetusGameOptions load(String name) {
+        Objects.requireNonNull(name, "name");
         Path path = getConfigPath(name);
-        ImpetusGameOptions config;
+        ImpetusGameOptions config = null;
         boolean resaveConfig = true;
 
         if (Files.exists(path)) {
-            try (FileReader reader = new FileReader(path.toFile())) {
+            try (Reader reader = new InputStreamReader(Files.newInputStream(path), StandardCharsets.UTF_8)) {
                 config = GSON.fromJson(reader, ImpetusGameOptions.class);
             } catch (IOException e) {
                 throw new RuntimeException("Could not parse config", e);
-            } catch (JsonSyntaxException e) {
+            } catch (JsonParseException e) {
                 LOGGER.error("Could not parse config, will fallback to default settings", e);
-                config = new ImpetusGameOptions();
                 resaveConfig = false;
             }
+        }
+
+        ImpetusGameOptions defaults = new ImpetusGameOptions();
+
+        if (config == null) {
+            config = defaults;
         } else {
-            config = new ImpetusGameOptions();
+            restoreNulls(config, defaults);
         }
 
         config.configPath = path;
 
-        // TODO Impetus: Remove the field completely in 0.4
+        // Clears the donation prompt override
         config.notifications.forceDisableDonationPrompts = false;
 
         if (resaveConfig) {
@@ -424,18 +516,50 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
         return config;
     }
 
-    // Under the config directory
+    // Replaces every null field of the loaded options with the default and recurses into the settings groups.
+    private static void restoreNulls(Object loaded, Object defaults) {
+        for (Field field : loaded.getClass().getDeclaredFields()) {
+            int modifiers = field.getModifiers();
+            Class<?> type = field.getType();
+
+            if (Modifier.isStatic(modifiers) || Modifier.isPrivate(modifiers) || type.isPrimitive()) {
+                continue;
+            }
+
+            try {
+                field.setAccessible(true);
+                Object value = field.get(loaded);
+                Object fallback = field.get(defaults);
+
+                if (value == null) {
+                    field.set(loaded, fallback);
+                } else if (!type.isEnum() && type.getEnclosingClass() == ImpetusGameOptions.class && fallback != null) {
+                    restoreNulls(value, fallback);
+                }
+            } catch (ReflectiveOperationException | RuntimeException e) {
+                LOGGER.warn("Could not validate option {}", field.getName(), e);
+            }
+        }
+    }
+
+    // Returns the path of a config file under the config directory.
     private static Path getConfigPath(String name) {
         return Paths.get("config", name);
     }
 
-    // Serialises to json, via a temp file so a crash mid-write cannot truncate the config
+    // Writes the options to a temporary file and moves it over the config and rejects a read only config or a config without a file.
     public static void writeToDisk(ImpetusGameOptions config) throws IOException {
+        Objects.requireNonNull(config, "config");
+
         if (config.isReadOnly()) {
             throw new IllegalStateException("Config file is read-only");
         }
 
-        Path dir = config.configPath.getParent();
+        if (config.configPath == null) {
+            throw new IllegalStateException("Config has no file");
+        }
+
+        Path dir = config.configPath.toAbsolutePath().getParent();
 
         if (!Files.exists(dir)) {
             Files.createDirectories(dir);
@@ -443,28 +567,41 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
             throw new IOException("Not a directory: " + dir);
         }
 
-        // Use a temporary location next to the config's final destination
         Path tempPath = config.configPath.resolveSibling(config.configPath.getFileName() + ".tmp");
+        // Moved state of the temporary file.
+        boolean moved = false;
 
-        // Write the file to our temporary location
-        Files.writeString(tempPath, GSON.toJson(config));
+        try {
+            Files.writeString(tempPath, GSON.toJson(config));
 
-        // Atomically replace the old config file (if it exists) with the temporary file
-        Files.move(tempPath, config.configPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            try {
+                Files.move(tempPath, config.configPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(tempPath, config.configPath, StandardCopyOption.REPLACE_EXISTING);
+            }
+            moved = true;
+        } finally {
+            if (!moved) {
+                Files.deleteIfExists(tempPath);
+            }
+        }
     }
 
-    // Set by the host when the config must not be written (a failed early startup); a file that merely failed to parse is rewritten with defaults on the next save
+    // Returns whether the config must not be written.
     public boolean isReadOnly() {
         return this.readOnly;
     }
 
-    // Marks read-only
+    // Marks the config as read only.
     public void setReadOnly() {
         this.readOnly = true;
     }
 
-    // The file this was loaded from
+    // Returns the name of the config file.
     public String getFileName() {
+        if (this.configPath == null) {
+            throw new IllegalStateException("Config has no file");
+        }
         return this.configPath.getFileName().toString();
     }
 }

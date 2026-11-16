@@ -205,4 +205,64 @@ class ShaderPackOptionsTest {
         cycle.put("B", List.of("profile.A"));
         assertThrows(IllegalArgumentException.class, () -> ProfileSet.fromTree(cycle, set));
     }
+
+    @Test
+    void sharedParentsAreNotMistakenForCycles() {
+        OptionSet set = twoFiles(Map.of()).getOptionSet();
+        Map<String, List<String>> diamond = new LinkedHashMap<>();
+        diamond.put("TOP", List.of("profile.LEFT", "profile.RIGHT"));
+        diamond.put("LEFT", List.of("profile.BASE"));
+        diamond.put("RIGHT", List.of("profile.BASE"));
+        diamond.put("BASE", List.of("LEVEL=1"));
+        assertEquals(4, ProfileSet.fromTree(diamond, set).size());
+        Map<String, List<String>> twice = new LinkedHashMap<>();
+        twice.put("A", List.of("profile.B", "profile.B"));
+        twice.put("B", List.of("LEVEL=2"));
+        assertEquals(2, ProfileSet.fromTree(twice, set).size());
+        Map<String, List<String>> cycle = new LinkedHashMap<>();
+        cycle.put("A", List.of("profile.B"));
+        cycle.put("B", List.of("profile.A"));
+        assertThrows(IllegalArgumentException.class, () -> ProfileSet.fromTree(cycle, set));
+        assertThrows(IllegalArgumentException.class, () -> ProfileSet.fromTree(Map.of("S", List.of("profile.S")), set));
+    }
+
+    // Parses a deep diamond of includes quickly and merges every level once.
+    @Test
+    void diamondIncludesParseOncePerProfile() {
+        OptionSet set = twoFiles(Map.of()).getOptionSet();
+        Map<String, List<String>> tree = new LinkedHashMap<>();
+        int levels = 40;
+        tree.put("P0", List.of("LEVEL=0"));
+        for (int i = 1; i < levels; i++) {
+            tree.put("A" + i, List.of("profile.P" + (i - 1), "A" + i + "=1"));
+            tree.put("B" + i, List.of("profile.P" + (i - 1), "B" + i + "=1"));
+            tree.put("P" + i, List.of("profile.A" + i, "profile.B" + i));
+        }
+        long start = System.nanoTime();
+        ProfileSet profiles = ProfileSet.fromTree(tree, set);
+        assertTrue(System.nanoTime() - start < 5_000_000_000L);
+        assertEquals(tree.size(), profiles.size());
+        Profile[] top = new Profile[1];
+        profiles.forEach((name, profile) -> {
+            if (name.equals("P" + (levels - 1))) {
+                top[0] = profile;
+            }
+        });
+        assertEquals("0", top[0].optionValues.get("LEVEL"));
+        assertEquals(1 + 2 * (levels - 1), top[0].optionValues.size());
+        Map<String, List<String>> cycle = Map.of("X", List.of("profile.Y"), "Y", List.of("profile.X"));
+        assertThrows(IllegalArgumentException.class, () -> ProfileSet.fromTree(cycle, set));
+    }
+
+    // Leaves a commented define alone when its option stays off.
+    @Test
+    void disabledDefinesAreNotCommentedTwice() {
+        OptionAnnotatedSource source = new OptionAnnotatedSource("//#define SOFT // Soft shadows\n#ifdef SOFT\n#endif");
+        com.bdmajora.impetus.umbra.shaderpack.option.values.MutableOptionValues values =
+                new com.bdmajora.impetus.umbra.shaderpack.option.values.MutableOptionValues(
+                        source.getOptionSet(com.bdmajora.impetus.umbra.shaderpack.include.AbsolutePackPath.fromAbsolutePath("/a.glsl"), java.util.Set.of("SOFT")),
+                        java.util.Map.of("SOFT", "false"));
+        String edited = source.apply(values);
+        assertTrue(edited.startsWith("//#define SOFT // Soft shadows\n"), edited);
+    }
 }

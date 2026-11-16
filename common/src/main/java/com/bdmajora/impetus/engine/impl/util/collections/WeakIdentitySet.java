@@ -7,47 +7,52 @@ import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 
-// Weakly held set compared by identity, so an element's own equals and hashCode are never called and an element held nowhere else can be collected
+// Set that holds its elements weakly and compares them by identity.
 public final class WeakIdentitySet<E> {
+    // Queue of the cleared references.
     private final ReferenceQueue<E> cleared = new ReferenceQueue<>();
+    // Held references.
     private final Set<Entry<E>> entries = new HashSet<>();
 
-    // Adds the element and returns whether it was not held before
+    // Adds an element and returns whether it was new and rejects null.
     public synchronized boolean add(E element) {
         Objects.requireNonNull(element, "Element must not be null");
         this.expunge();
         return this.entries.add(new Entry<>(element, this.cleared));
     }
 
-    // Returns whether the element is held
+    // Returns whether an element is held and rejects null.
     public synchronized boolean contains(E element) {
         Objects.requireNonNull(element, "Element must not be null");
         this.expunge();
         return this.entries.contains(new Entry<>(element, null));
     }
 
-    // Drops the entries whose elements were collected
+    // Removes the references that were cleared.
     private void expunge() {
         for (Reference<? extends E> entry; (entry = this.cleared.poll()) != null; ) {
             this.entries.remove(entry);
         }
     }
 
-    // Weak reference hashed by the identity of its element, equal only to itself once cleared
+    // Weak reference that hashes by the identity of its element.
     private static final class Entry<E> extends WeakReference<E> {
+        // Identity hash of the element.
         private final int hash;
 
+        // Creates a reference.
         Entry(E element, ReferenceQueue<? super E> queue) {
             super(element, queue);
             this.hash = System.identityHashCode(element);
         }
 
+        // Returns the identity hash of the element.
         @Override
         public int hashCode() {
             return this.hash;
         }
 
-        // The set compares hashes before asking, so only the elements themselves are compared here
+        // Returns whether both references hold the same element.
         @Override
         public boolean equals(Object other) {
             E element = this.get();

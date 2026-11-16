@@ -6,12 +6,15 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 
 import javax.annotation.Nullable;
 
+// Mixin that changes MinMaxBounds.
 @Mixin(MinMaxBounds.class)
 public interface MinMaxBoundsAccessor {
+    // Gives access to the field min.
     @Accessor("min")
     @Nullable
     Float equilibrium$min();
 
+    // Gives access to the field max.
     @Accessor("max")
     @Nullable
     Float equilibrium$max();

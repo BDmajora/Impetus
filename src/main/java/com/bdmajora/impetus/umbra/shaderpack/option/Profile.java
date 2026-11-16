@@ -8,13 +8,18 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-// A named preset from shaders.properties (the Low/Medium/High/Ultra presets): a bundle of option values plus the programs the preset switches off, since presets drop whole passes rather than zeroing options. From Iris
+// Named set of option values and disabled programs of a shader pack.
 public final class Profile {
+    // Name of the profile.
     public final String name;
-    public final int precedence; // Used for prioritizing during matching
+    // Number of option values used to rank matching profiles.
+    public final int precedence;
+    // Option values by option name.
     public final Map<String, String> optionValues;
+    // Programs the profile turns off.
     public final List<String> disabledPrograms;
 
+    // Creates a profile from frozen values.
     private Profile(String name, Map<String, String> optionValues, List<String> disabledPrograms) {
         this.name = name;
         this.optionValues = optionValues;
@@ -22,7 +27,7 @@ public final class Profile {
         this.disabledPrograms = disabledPrograms;
     }
 
-    // Whether every option the profile sets holds its value
+    // Returns whether every known option of the profile has its current value.
     public boolean matches(OptionSet options, OptionValues values) {
         for (Map.Entry<String, String> entry : this.optionValues.entrySet()) {
             String option = entry.getKey();
@@ -47,30 +52,35 @@ public final class Profile {
         return true;
     }
 
+    // Builder of a profile.
     public static class Builder {
+        // Name of the profile.
         private final String name;
+        // Option values by option name.
         private final Map<String, String> optionValues = new HashMap<>();
+        // Programs the profile turns off.
         private final List<String> disabledPrograms = new ArrayList<>();
 
+        // Creates an empty builder.
         public Builder(String name) {
             this.name = name;
         }
 
-        // Sets one option
+        // Sets the value of an option.
         public Builder option(String optionId, String value) {
             this.optionValues.put(optionId, value);
 
             return this;
         }
 
-        // Turns one program off
+        // Adds a program to turn off.
         public Builder disableProgram(String programId) {
             this.disabledPrograms.add(programId);
 
             return this;
         }
 
-        // Inherits a parent profile
+        // Copies the values and disabled programs of another profile.
         public Builder addAll(Profile other) {
             this.optionValues.putAll(other.optionValues);
             this.disabledPrograms.addAll(other.disabledPrograms);
@@ -78,7 +88,7 @@ public final class Profile {
             return this;
         }
 
-        // Finalises
+        // Returns a profile with copies of the values.
         public Profile build() {
             return new Profile(name,
                     Collections.unmodifiableMap(new HashMap<>(optionValues)),

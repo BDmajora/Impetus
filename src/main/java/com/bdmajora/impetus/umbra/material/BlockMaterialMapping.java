@@ -17,17 +17,19 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
-// Resolves a pack's block.properties against the 1.12.2 block registry (port of Umbra's BlockMaterialMapping) into a flat array so the mesher does one read; first mapping wins (OptiFine behaviour, Umbra #1327), predicates naming a missing property are ignored, unresolved ids skipped
+// Mapping of blocks to pack material ids.
 public final class BlockMaterialMapping {
+    // Logger of this class.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
 
-    // 1.12.2 global state ids are blockId | meta << 12: 12 + 4 bits.
+    // Size of the block state id space.
     private static final int STATE_ID_SPACE = 1 << 16;
 
+    // Prevents instantiation
     private BlockMaterialMapping() {
     }
 
-    // Resolves the pack's layer.<rendertype> overrides to concrete blocks; unknown ids are skipped with a warning since packs commonly list blocks from mods the user lacks
+    // Returns the render layer overrides by block.
     public static Map<Block, BlockRenderLayer> createBlockRenderLayerTable(IdMap idMap) {
         Map<NamespacedId, BlockRenderLayer> declared = idMap.getBlockRenderLayerMap();
         if (declared.isEmpty()) {
@@ -45,7 +47,7 @@ public final class BlockMaterialMapping {
         return resolved;
     }
 
-    // Returns the state-id -> pack-id table, or null when the pack has no block.properties (raw 1.12.2 ids stay the contract then).
+    // Returns the material id of every block state id.
     public static int[] createBlockStateIdTable(IdMap idMap) {
         if (!idMap.hasBlockProperties()) {
             return null;
@@ -63,11 +65,10 @@ public final class BlockMaterialMapping {
         return table;
     }
 
-    // Assigns the pack id to every state matching the entry's predicates; first mapping wins
+    // Writes the material id of the states that match an entry.
     private static void addBlockStates(BlockEntry entry, int[] table, int intId) {
         ResourceLocation location = new ResourceLocation(entry.getId().getNamespace(), entry.getId().getName());
         if (!Block.REGISTRY.containsKey(location)) {
-            // Normal and expected: modern-only names behind the pack's own MC_VERSION guards, or absent mods.
             return;
         }
 
@@ -79,14 +80,13 @@ public final class BlockMaterialMapping {
                 continue;
             }
             int stateId = Block.getStateId(state) & (STATE_ID_SPACE - 1);
-            // First mapping wins (Umbra putIfAbsent / OptiFine parity).
             if (table[stateId] == -1) {
                 table[stateId] = intId;
             }
         }
     }
 
-    // All named properties must match; properties the block lacks are ignored
+    // Returns whether a state has the given property values.
     private static boolean matches(IBlockState state, Map<String, String> predicates, int intId) {
         if (predicates.isEmpty()) {
             return true;
@@ -94,7 +94,6 @@ public final class BlockMaterialMapping {
         for (Map.Entry<String, String> predicate : predicates.entrySet()) {
             IProperty<?> property = findProperty(state, predicate.getKey());
             if (property == null) {
-                // Umbra parity: a predicate naming a property the block lacks is dropped, not treated as a mismatch.
                 continue;
             }
             if (!valueName(state, property).equals(predicate.getValue())) {
@@ -104,7 +103,7 @@ public final class BlockMaterialMapping {
         return true;
     }
 
-    // Property by name on this block, or null
+    // Returns the property of a state by name or null.
     private static IProperty<?> findProperty(IBlockState state, String name) {
         for (IProperty<?> property : state.getPropertyKeys()) {
             if (property.getName().equals(name)) {
@@ -114,7 +113,7 @@ public final class BlockMaterialMapping {
         return null;
     }
 
-    // The property's string form of the current value, as block.properties spells it
+    // Values the name.
     private static <T extends Comparable<T>> String valueName(IBlockState state, IProperty<T> property) {
         return property.getName(state.getValue(property));
     }

@@ -15,34 +15,42 @@ import net.minecraftforge.fml.relauncher.SideOnly;
 
 import java.util.concurrent.locks.ReentrantLock;
 
-// Batched light propagator replacing vanilla's recursive checkLightFor, one per World (from Phosphor); positions are recorded until something reads light, then the batch runs brightest-to-darkest, and a large batch is split by chunk across a pool (ScalableLux's idea) with the same result
+// Light update engine of a world that batches positions and runs them inline or in parallel.
 public final class LightingEngine {
-    // Starting capacity of each queue's dedup set, kept small since 34 queues x up to 4 engines means every doubling costs megabytes of empty table before a block is placed
+    // Starting capacity of each queue.
     private static final int QUEUE_CAPACITY = 512;
 
+    // World the light is written to.
     private final World world;
 
-    // The thread that constructed the world, kept only to name the offender in lock()'s warning
+    // Thread that created the engine.
     private final Thread ownerThread = Thread.currentThread();
 
+    // Lock of the queues.
     private final ReentrantLock lock = new ReentrantLock();
 
-    // Positions handed to checkLightFor, one queue per light type
+    // Scheduled positions by light type.
     private final DeduplicatedLongQueue[] scheduledUpdates = new DeduplicatedLongQueue[EnumSkyBlock.values().length];
 
-    // The pass state for the calling thread; extra ones live in the scheduler for its workers
+    // Propagator of the calling thread.
     private final LightPropagator inline;
 
-    // Null when parallel passes are off for this world
+    // Parallel scheduler or null.
     private final ParallelLightScheduler scheduler;
+    // Fewest positions that try the parallel path.
     private final int parallelMinPositions;
+    // Fewest chunks that use the parallel path.
     private final int parallelMinChunks;
 
+    // Queue size that forces a flush.
     private final int maxScheduledUpdates;
+    // Warning state of access from foreign threads.
     private final boolean warnOnIllegalThreadAccess;
 
+    // Processing state of the engine.
     private boolean updating;
 
+    // Creates an engine with the configured queues and scheduler.
     public LightingEngine(World world) {
         this.world = world;
 
@@ -68,7 +76,7 @@ public final class LightingEngine {
         this.parallelMinChunks = config.parallelMinChunks;
     }
 
-    // Records that a position's light may be stale, resolved on next read; Fulgor's whole replacement for World.checkLightFor
+    // Queues a position and flushes its type when the queue is full.
     public void scheduleLightUpdate(EnumSkyBlock lightType, BlockPos pos) {
         lock();
 
@@ -82,7 +90,6 @@ public final class LightingEngine {
                 return;
             }
 
-            // Deferral is a memory trade and a producer that never reads light (generator, world-edit) would grow this unbounded, so flush and give up batching for one pass; skipped while a pass is running since re-entry is invalid
             if (!this.updating && queue.size() >= this.maxScheduledUpdates) {
                 processLightUpdatesForType(lightType);
             }
@@ -91,22 +98,20 @@ public final class LightingEngine {
         }
     }
 
-    // Resolves everything pending, for both light types
+    // Processes the sky and block light queues.
     public void processLightUpdates() {
         processLightUpdatesForType(EnumSkyBlock.SKY);
         processLightUpdatesForType(EnumSkyBlock.BLOCK);
     }
 
-    // Resolves everything pending for one light type
+    // Processes the queue of one light type from the main thread.
     public void processLightUpdatesForType(EnumSkyBlock lightType) {
-        // The client reaches this from off-thread callers (chunk builders, sound engine, mod render hooks) that must not mutate the world; unlike the server there is a tick that will do the work shortly, so they are turned away
         if (this.world.isRemote && !isCallingFromMainThread()) {
             return;
         }
 
         DeduplicatedLongQueue queue = this.scheduledUpdates[lightType.ordinal()];
 
-        // Cheap volatile read before the lock; every light read goes through here and almost none have anything to do
         if (queue.isEmpty()) {
             return;
         }
@@ -120,13 +125,13 @@ public final class LightingEngine {
         }
     }
 
-    // Guards the render-thread-only cache reads
+    // Returns whether the client thread is calling.
     @SideOnly(Side.CLIENT)
     private boolean isCallingFromMainThread() {
         return Minecraft.getMinecraft().isCallingFromMinecraftThread();
     }
 
-    // Contention means another mod is touching the world from the wrong thread; blocking stalls but beats the corruption of proceeding, so warn and block
+    // Takes the lock and warns about a foreign thread that has to wait.
     private void lock() {
         if (this.lock.tryLock()) {
             return;
@@ -135,7 +140,6 @@ public final class LightingEngine {
         if (this.warnOnIllegalThreadAccess) {
             Thread current = Thread.currentThread();
 
-            // Impetus' own parallel workers read light legitimately and contend on purpose; only a foreign thread is worth a warning
             if (current != this.ownerThread && !ParallelWorkerThread.isCurrent()) {
                 IllegalAccessException trace = new IllegalAccessException(String.format(
                         "World is owned by '%s' (ID: %s), but was accessed from thread '%s' (ID: %s)",
@@ -152,7 +156,7 @@ public final class LightingEngine {
         this.lock.lock();
     }
 
-    // Runs one full pass; re-entry is a bug, so it throws rather than corrupting the queues. A batch big enough and spread over enough chunks goes to the scheduler, anything smaller runs on this thread
+    // Runs a queue in parallel when it spans enough chunks and inline otherwise and rejects reentry.
     private void processLightUpdatesForTypeInner(EnumSkyBlock lightType, DeduplicatedLongQueue queue) {
         if (this.updating) {
             throw new IllegalStateException("Already processing light updates");
@@ -167,7 +171,6 @@ public final class LightingEngine {
                     this.scheduler.run(lightType, buckets, this.inline);
                     return;
                 }
-                // Too few chunks to spread; the queue was drained by the partition, so the positions go back through the scratch queue
                 for (LongArrayList bucket : buckets.values()) {
                     this.inline.fill(bucket);
                 }

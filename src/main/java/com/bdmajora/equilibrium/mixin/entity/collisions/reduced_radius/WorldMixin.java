@@ -12,9 +12,10 @@ import org.spongepowered.asm.mixin.injection.At;
 
 import java.util.List;
 
-// getEntitiesWithinAABBExcludingEntity is the movement-collision query (Entity.move and the item/orb merge scans go through it), the other hot caller of the padded search
+// Mixin that changes World.
 @Mixin(World.class)
 public abstract class WorldMixin {
+    // Wraps the call of World.getEntitiesInAABBexcluding in getEntitiesWithinAABBExcludingEntity.
     @WrapOperation(method = "getEntitiesWithinAABBExcludingEntity", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/World;getEntitiesInAABBexcluding(Lnet/minecraft/entity/Entity;Lnet/minecraft/util/math/AxisAlignedBB;Lcom/google/common/base/Predicate;)Ljava/util/List;"))
     private List<Entity> equilibrium$excludingWithVanillaRadius(World world, Entity entity, AxisAlignedBB box, Predicate<? super Entity> predicate, Operation<List<Entity>> original) {
         if (entity != null && ReducedRadiusQuery.applies() && ReducedRadiusQuery.isEligible(entity)) {

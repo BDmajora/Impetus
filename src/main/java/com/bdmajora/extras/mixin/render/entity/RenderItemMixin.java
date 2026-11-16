@@ -12,9 +12,10 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 
 import java.util.List;
 
-// Item quads on the vanilla item path: coplanar faces resolved by ItemFaceCache, then item-frame LOD scoped by ItemFrameLodState.active; with allowEmissiveItems on, items go through ForgeHooksClientMixin instead
+// Mixin that changes RenderItem.
 @Mixin(RenderItem.class)
 public class RenderItemMixin {
+    // Replaces the call of IBakedModel.getQuads in renderModel.
     @Redirect(
             method = "renderModel(Lnet/minecraft/client/renderer/block/model/IBakedModel;ILnet/minecraft/item/ItemStack;)V",
             at = @At(value = "INVOKE",

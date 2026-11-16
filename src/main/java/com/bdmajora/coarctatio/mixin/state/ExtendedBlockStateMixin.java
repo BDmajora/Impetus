@@ -17,20 +17,19 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.Optional;
 
-// Unlisted-property counterpart to BlockStateContainerMixin: ExtendedBlockState overrides createState, so the base mixin only fires when Forge delegates upward on an empty unlisted map, and that case is left to fall through; the mapper lives on the container via MappedStateOwner
+// Mixin that changes ExtendedBlockState.
 @Mixin(ExtendedBlockState.class)
 public abstract class ExtendedBlockStateMixin {
+    // Runs at the start of createState and can cancel it.
     @Inject(method = "createState", at = @At("HEAD"), cancellable = true, remap = false)
     private void coarctatio$createPackedExtendedState(Block block,
                                                      ImmutableMap<IProperty<?>, Comparable<?>> properties,
                                                      ImmutableMap<IUnlistedProperty<?>, Optional<?>> unlistedProperties,
                                                      CallbackInfoReturnable<BlockStateContainer.StateImplementation> cir) {
         if (unlistedProperties == null || unlistedProperties.isEmpty()) {
-            // Forge delegates to super here; BlockStateContainerMixin handles it.
             return;
         }
 
-        // Forge's override means the base mixin's createState never runs here, so the mapper is resolved on first use
         PropertyValueMapper mapper = ((MappedStateOwner) this).coarctatio$mapper(block);
 
         if (mapper == null) {
@@ -41,7 +40,7 @@ public abstract class ExtendedBlockStateMixin {
                 coarctatio$hasPresentValue(unlistedProperties)));
     }
 
-    // Whether any unlisted value is already set, the state's initial dirty flag; a mod may seed one, and such a state must start dirty or the next listed change hands its unlisted values to the shared clean instance
+    // Helper method has present value added to the target.
     @Unique
     private static boolean coarctatio$hasPresentValue(ImmutableMap<IUnlistedProperty<?>, Optional<?>> unlisted) {
         for (Optional<?> value : unlisted.values()) {

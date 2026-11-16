@@ -6,7 +6,7 @@ import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions.MeshStatistics;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions.MeshTranslucencySorting;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.impl.MeshChunkVertex;
 
-// The mesh backend's settings frozen for one section manager's lifetime, since several of them are compiled into the shaders
+// Settings of the mesh backend that stay fixed for a section manager.
 public record MeshTerrainConfig(boolean temporalCoherence,
                                 MeshTranslucencySorting sorting,
                                 MeshStatistics statistics,
@@ -14,26 +14,33 @@ public record MeshTerrainConfig(boolean temporalCoherence,
                                 int maxGeometryMemoryMB,
                                 int regionKeepDistance,
                                 int renderDistance) {
-    // The keep distance at which nothing is evicted for distance at all; kept here because the options class serialises every non-private field
-    public static final int MAX_KEEP_DISTANCE = 256;
-
-    // Snapshots the options for a renderer built at the given render distance
-    public static MeshTerrainConfig from(ImpetusGameOptions.MeshTerrainSettings settings, int renderDistance) {
-        return new MeshTerrainConfig(settings.temporalCoherence, settings.translucencySorting, settings.statistics,
-                settings.automaticMemory, settings.maxGeometryMemory, settings.regionKeepDistance, renderDistance);
+    // Rejects a null sorting or statistics level.
+    public MeshTerrainConfig {
+        java.util.Objects.requireNonNull(sorting, "sorting");
+        java.util.Objects.requireNonNull(statistics, "statistics");
     }
 
-    // Whether geometry outlives its CPU section, i.e. sections removed for distance stay drawn until the keep distance or memory evicts them
+    // Keep distance at which nothing is evicted for distance.
+    public static final int MAX_KEEP_DISTANCE = 256;
+
+    // Copies the settings and limits negative numbers to zero.
+    public static MeshTerrainConfig from(ImpetusGameOptions.MeshTerrainSettings settings, int renderDistance) {
+        java.util.Objects.requireNonNull(settings, "settings");
+        return new MeshTerrainConfig(settings.temporalCoherence, settings.translucencySorting, settings.statistics,
+                settings.automaticMemory, Math.max(0, settings.maxGeometryMemory), Math.max(0, settings.regionKeepDistance), Math.max(0, renderDistance));
+    }
+
+    // Returns whether geometry stays drawn past the render distance.
     public boolean keepsBeyondRenderDistance() {
         return this.regionKeepDistance > this.renderDistance;
     }
 
-    // Whether regions are never evicted for distance at all, only for memory
+    // Returns whether regions are only evicted for memory.
     public boolean keepsEverything() {
         return this.regionKeepDistance >= MAX_KEEP_DISTANCE;
     }
 
-    // Defines every mesh program shares: the vertex decode scale, the statistics counters and the sorting variants
+    // Returns the definitions that every mesh program shares.
     public ShaderConstants.Builder shaderConstants() {
         ShaderConstants.Builder builder = ShaderConstants.builder()
                 .add("TEXTURE_MAX_SCALE", String.valueOf(MeshChunkVertex.TEXTURE_MAX_VALUE));

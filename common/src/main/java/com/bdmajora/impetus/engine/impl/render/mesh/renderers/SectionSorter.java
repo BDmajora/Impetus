@@ -6,10 +6,12 @@ import com.bdmajora.impetus.engine.impl.render.mesh.gl.MeshProgram;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Reorders the sections of each queued region farthest first for the translucent pass, one compute workgroup per region (Nvidium's region section sorter)
+// Orders the sections of each queued region from the farthest.
 public class SectionSorter {
+    // Program of the sort.
     private final MeshProgram program;
 
+    // Creates the program.
     public SectionSorter(ShaderConstants constants) {
         this.program = MeshProgram.builder("mesh/section_sort")
                 .constants(constants)
@@ -17,13 +19,16 @@ public class SectionSorter {
                 .link();
     }
 
-    // Sorts the regions listed at the front of the scene block's sorting list
+    // Sorts the regions at the front of the sorting list and rejects a negative count.
     public void dispatch(int regionCount) {
+        if (regionCount < 0) {
+            throw new IllegalArgumentException("Negative region count " + regionCount);
+        }
         this.program.bind();
         LWJGL.glDispatchCompute(regionCount, 1, 1);
     }
 
-    // Frees the program
+    // Deletes the program.
     public void delete() {
         this.program.delete();
     }

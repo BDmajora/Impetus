@@ -15,34 +15,52 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.InvocationTargetException;
 
-// The DH-free face of the Distant Horizons compat (Iris's DHCompat): presence detection, the per-frame statics the uniform providers and shadow pass read, and each pipeline's handle to its DhCompatInternal. Every DH-typed class is reached through method handles resolved in run(), so this class (and everything that references it) loads with the DH API absent from the classpath; the API is compileOnly
+// Bridge to the Distant Horizons support classes that only load when the mod is present.
 public final class DhCompat {
+    // Logger of load failures.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
+    // Class of the internal bridge.
     private static final String INTERNAL = "com.bdmajora.impetus.umbra.compat.dh.DhCompatInternal";
+    // Class of the render event handlers.
     private static final String EVENTS = "com.bdmajora.impetus.umbra.compat.dh.LodRendererEvents";
+    // Class of the shader accessor.
     private static final String ACCESSOR = "com.bdmajora.impetus.umbra.compat.dh.DhIrisAccessor";
 
-    // False until run() finds DH's API and mod id, and again after any failure binding to it
+    // Loaded state of the bridge.
     private static boolean dhPresent;
+    // Incompatible state of the last loaded pack.
     private static boolean lastIncompatible;
+    // Constructor of the internal bridge.
     private static MethodHandle newInternal;
+    // Handle that releases the bridge.
     private static MethodHandle clearPipeline;
+    // Handle of the pack compatibility check.
     private static MethodHandle incompatible;
+    // Handle of the stored depth texture.
     private static MethodHandle getDepthTex;
+    // Handle of the depth texture without translucents.
     private static MethodHandle getDepthTexNoTranslucent;
+    // Handle of the far plane.
     private static MethodHandle getFarPlane;
+    // Handle of the near plane.
     private static MethodHandle getNearPlane;
+    // Handle of the LOD render distance.
     private static MethodHandle getRenderDistance;
+    // Handle of the frame check.
     private static MethodHandle checkFrame;
+    // Handle of the rendering switch.
     private static MethodHandle isRenderingEnabled;
+    // Handle of the solid shadow LOD draw.
     private static MethodHandle renderShadowSolid;
+    // Handle of the deferred LOD draw.
     private static MethodHandle renderDeferredLods;
+    // Handle of the shadow override check.
     private static MethodHandle shadowsOverridden;
 
-    // The DhCompatInternal for one pipeline, or null without DH or when the pack has no dh_* programs
+    // Internal bridge of a pipeline or null.
     private final Object internal;
 
-    // Built with the pipeline once its gbuffer schedule exists, since the LOD framebuffers attach the same colour targets; a shader compile failure in a dh_* program propagates like any other program's so the pack fails as a whole
+    // Creates the bridge of a pipeline and releases it when the load fails.
     public DhCompat(UmbraRenderingPipeline pipeline, ShaderPack pack, boolean renderDhShadow) {
         Object instance = null;
         if (dhPresent) {
@@ -51,6 +69,14 @@ public final class DhCompat {
                 lastIncompatible = (boolean) incompatible.invoke(instance);
             } catch (Throwable e) {
                 lastIncompatible = false;
+                // Releases a bridge that was created before the failure
+                if (instance != null) {
+                    try {
+                        clearPipeline.invoke(instance);
+                    } catch (Throwable suppressed) {
+                        e.addSuppressed(suppressed);
+                    }
+                }
                 Throwable cause = e instanceof InvocationTargetException ? e.getCause() : e;
                 if (cause instanceof ShaderCompileException) {
                     throw (ShaderCompileException) cause;
@@ -61,7 +87,7 @@ public final class DhCompat {
         this.internal = instance;
     }
 
-    // Mod-init hook: binds to DH when its mod id and API are present, and queues the DH event handlers; any failure logs and leaves DH treated as absent
+    // Looks up the bridge methods when the mod is present and installs the event handlers.
     public static void run() {
         boolean modLoaded = Loader.isModLoaded("distanthorizons");
         try {
@@ -88,7 +114,6 @@ public final class DhCompat {
             renderShadowSolid = lookup.findStatic(internalClass, "renderShadowSolid", MethodType.methodType(void.class));
             renderDeferredLods = lookup.findStatic(internalClass, "renderDeferredLods", MethodType.methodType(void.class));
             MethodHandle setupEventHandlers = lookup.findStatic(eventsClass, "setupEventHandlers", MethodType.methodType(void.class));
-            // Set before the handlers bind, since their DhApiAfterDhInitEvent reads it
             dhPresent = true;
             setupEventHandlers.invoke();
             LOGGER.info("[Umbra] Distant Horizons found; LOD shader support armed.");
@@ -97,13 +122,12 @@ public final class DhCompat {
             if (e instanceof ExceptionInInitializerError) {
                 LOGGER.error("[Umbra] Failure loading Distant Horizons compat; LOD shader support disabled", e.getCause());
             } else {
-                // A missing API member means an older DH than the API this was built against (7.0.0)
                 LOGGER.error("[Umbra] Distant Horizons found, but one or more API methods are missing; Impetus needs DH API 7.0.0 or newer. LOD shader support disabled", e);
             }
         }
     }
 
-    // Construction hook: DH reads its shader mod accessor during its own init, which runs before Impetus's, so Impetus's is queued from here; a failure logs and leaves DH treating every frame as unshaded
+    // Registers the shader accessor with Distant Horizons.
     public static void registerIrisAccessor() {
         if (!Loader.isModLoaded("distanthorizons")) {
             return;
@@ -115,17 +139,17 @@ public final class DhCompat {
         }
     }
 
-    // Whether DH is installed with a usable API
+    // Returns whether the bridge loaded.
     public static boolean isPresent() {
         return dhPresent;
     }
 
-    // Whether the active pack compiled without any dh_* program while DH was rendering; the pack still runs, LODs just draw with DH's own shaders into the gbuffer
+    // Returns whether the last pack is incompatible while LODs render.
     public static boolean lastPackIncompatible() {
         return dhPresent && hasRenderingEnabled() && lastIncompatible;
     }
 
-    // DH's far clip plane in blocks (the dhFarPlane uniform)
+    // Returns the LOD far plane or a small default.
     public static float getFarPlane() {
         if (!dhPresent) {
             return 0.01f;
@@ -137,7 +161,7 @@ public final class DhCompat {
         }
     }
 
-    // DH's near clip plane in blocks (the dhNearPlane uniform)
+    // Returns the LOD near plane or a small default.
     public static float getNearPlane() {
         if (!dhPresent) {
             return 0.01f;
@@ -149,7 +173,7 @@ public final class DhCompat {
         }
     }
 
-    // DH's render distance in BLOCKS (the dhRenderDistance uniform); the player's render distance in blocks without DH, like Iris
+    // Returns the LOD render distance or the vanilla one in blocks.
     public static int getRenderDistance() {
         if (!dhPresent) {
             return Minecraft.getMinecraft().gameSettings.renderDistanceChunks * 16;
@@ -161,7 +185,7 @@ public final class DhCompat {
         }
     }
 
-    // Per-frame: tracks DH's rendering toggle and asks for a pipeline rebuild when it flips, since the DISTANT_HORIZONS define and the LOD programs are baked at pack load; returns whether DH is rendering
+    // Returns whether the frame draws LODs.
     public static boolean checkFrame() {
         if (!dhPresent) {
             return false;
@@ -173,7 +197,7 @@ public final class DhCompat {
         }
     }
 
-    // Whether DH is installed and currently rendering LODs, as of the last checkFrame: gates the DISTANT_HORIZONS define and every DH-dependent uniform, and is a plain read so the macro environment can ask mid pack-load without triggering the reload checkFrame does
+    // Returns whether LOD rendering is on.
     public static boolean hasRenderingEnabled() {
         if (!dhPresent) {
             return false;
@@ -185,7 +209,7 @@ public final class DhCompat {
         }
     }
 
-    // The LOD projection: the camera's field of view and aspect with DH's near and far planes, exactly how Iris builds dhProjection, so a pack's position reconstruction from dhDepthTex0 matches what dh_terrain rendered with
+    // Returns the LOD projection matrix.
     public static Matrix4f getProjection() {
         Matrix4f projection = new Matrix4f(CapturedRenderingState.INSTANCE.getGbufferProjection());
         if (!dhPresent) {
@@ -195,7 +219,7 @@ public final class DhCompat {
                 getNearPlane(), getFarPlane());
     }
 
-    // Draws DH's opaque LODs into the shadow map; called by the shadow pass after its terrain, since Impetus's shadow pass never goes through RenderGlobal where DH's own hook lives
+    // Draws the solid LODs into the shadow map.
     public static void renderShadowSolid() {
         if (!dhPresent) {
             return;
@@ -207,7 +231,7 @@ public final class DhCompat {
         }
     }
 
-    // DH's deferred translucent LODs (water): after the shadow pass's translucent terrain, and at the start of the main translucent layer, where DH's own call never runs because Impetus's renderBlockLayer overwrite skips the method DH hooks
+    // Draws the LODs that wait for the deferred passes.
     public static void renderDeferredLods() {
         if (!dhPresent) {
             return;
@@ -219,7 +243,7 @@ public final class DhCompat {
         }
     }
 
-    // Whether this pipeline's pack shades LOD shadows (a dh_shadow program with dhShadow.enabled not false), so the shadow pass knows to draw them and to size its frustum for the LOD distance
+    // Returns whether the pack draws LOD shadows.
     public boolean shouldRenderShadows() {
         if (this.internal == null) {
             return false;
@@ -231,7 +255,7 @@ public final class DhCompat {
         }
     }
 
-    // Frees the LOD programs and framebuffers; pipeline teardown
+    // Releases the bridge of the pipeline.
     public void clearPipeline() {
         if (this.internal == null) {
             return;
@@ -243,7 +267,7 @@ public final class DhCompat {
         }
     }
 
-    // DH's depth texture (dhDepthTex0), the depth the LOD passes wrote this frame; -1 before the first LOD frame
+    // Returns the stored LOD depth texture.
     public int getDepthTex() {
         if (this.internal == null) {
             return -1;
@@ -255,7 +279,7 @@ public final class DhCompat {
         }
     }
 
-    // DH's depth before its translucent pass (dhDepthTex1); 0 before the first LOD frame
+    // Returns the LOD depth texture without translucents.
     public int getDepthTexNoTranslucent() {
         if (this.internal == null) {
             return -1;
@@ -267,7 +291,7 @@ public final class DhCompat {
         }
     }
 
-    // The DhCompatInternal, typed as Object for the DH-free callers; the event handlers cast it
+    // Returns the internal bridge.
     public Object getInstance() {
         return this.internal;
     }

@@ -10,44 +10,48 @@ import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 import java.nio.ByteBuffer;
 import org.lwjgl.system.MemoryUtil;
 
+// Quad primitive type that draws as triangles or as quads.
 public final class QuadPrimitiveType implements ChunkPrimitiveType {
-    /**
-     * Generates index buffers that decompose quads into two triangles (suitable for core profile rendering).
-     */
+    // Type that splits each quad into two triangles.
     public static final QuadPrimitiveType TRIANGULATED = new QuadPrimitiveType(true);
-    /**
-     * Generates index buffers suited for working with quad(-like) primitives directly.
-     */
+    // Type that draws each quad as one quad primitive.
     public static final QuadPrimitiveType DIRECT = new QuadPrimitiveType(false);
 
+    // Triangle split state of the type.
     private final boolean triangulating;
 
+    // Number of vertices of a quad.
     private static final int VERTICES_PER_PRIMITIVE = 4;
 
+    // Creates a type that splits quads into triangles or keeps them whole.
     public QuadPrimitiveType(boolean triangulating) {
         this.triangulating = triangulating;
     }
 
+    // Returns six indices for triangles and four for quads.
     @Override
     public int getIndexBufferElementsPerPrimitive() {
         return triangulating ? 6 : 4;
     }
 
+    // Returns the GL primitive of the draw call.
     @Override
     public GlPrimitiveType getGlPrimitiveType() {
         return triangulating ? GlPrimitiveType.TRIANGLES : GlPrimitiveType.QUADS;
     }
 
+    // Returns four.
     @Override
     public int getVerticesPerPrimitive() {
         return VERTICES_PER_PRIMITIVE;
     }
 
+    // Writes indices in vertex order from the buffer position and rejects a buffer with too few remaining bytes.
     @Override
     public void generateSimpleIndexBuffer(ByteBuffer indexBuffer, int numPrimitives) {
         int minimumRequiredBufferSize = getIndexBufferSize(numPrimitives);
-        if(indexBuffer.capacity() < minimumRequiredBufferSize) {
-            throw new IllegalStateException("Given index buffer has length " + indexBuffer.capacity() + " but we need " + minimumRequiredBufferSize);
+        if (indexBuffer.remaining() < minimumRequiredBufferSize) {
+            throw new IllegalStateException("Given index buffer has " + indexBuffer.remaining() + " remaining bytes but we need " + minimumRequiredBufferSize);
         }
         long ptr = MemoryUtil.memAddress(indexBuffer);
 
@@ -56,7 +60,7 @@ public final class QuadPrimitiveType implements ChunkPrimitiveType {
         }
     }
 
-    /** writes the indices of the given quad as the primitive at the given position */
+    // Writes the indices of a quad as the primitive at a position.
     private void writePrimitive(long ptr, int primitiveIndex, int quad) {
         int indexOffset = primitiveIndex * this.getIndexBufferElementsPerPrimitive();
         int vertexOffset = quad * VERTICES_PER_PRIMITIVE;
@@ -74,10 +78,11 @@ public final class QuadPrimitiveType implements ChunkPrimitiveType {
         }
     }
 
+    // Writes the indices of quads in a given order and rejects a buffer whose remaining bytes differ from the size.
     private void generateIndexBuffer(ByteBuffer indexBuffer, int[] primitiveMapping) {
         int bufferSize = getIndexBufferSize(primitiveMapping.length);
-        if(indexBuffer.capacity() != bufferSize) {
-            throw new IllegalStateException("Given index buffer has length " + indexBuffer.capacity() + " but we expected " + bufferSize);
+        if (indexBuffer.remaining() != bufferSize) {
+            throw new IllegalStateException("Given index buffer has " + indexBuffer.remaining() + " remaining bytes but we expected " + bufferSize);
         }
         long ptr = MemoryUtil.memAddress(indexBuffer);
 
@@ -86,15 +91,19 @@ public final class QuadPrimitiveType implements ChunkPrimitiveType {
         }
     }
 
-    /** streams a partition tree's readout straight into the index buffer */
+    // Sink that writes the quads of a partition tree into the index buffer.
     private final class BufferSink implements PartitionTree.Sink {
+        // Address of the index buffer.
         private final long ptr;
+        // Position of the next primitive.
         private int primitiveIndex;
 
+        // Creates a sink at an address.
         private BufferSink(long ptr) {
             this.ptr = ptr;
         }
 
+        // Writes each quad of a batch.
         @Override
         public void accept(int[] quads) {
             for (int quad : quads) {
@@ -103,12 +112,13 @@ public final class QuadPrimitiveType implements ChunkPrimitiveType {
         }
     }
 
+    // Writes indices ordered for the camera and rejects a buffer or sort state that does not match the quad count.
     @Override
     public void generateSortedIndexBuffer(ByteBuffer indexBuffer, int quadCount, @Nullable SortState chunkData, float x, float y, float z) {
         if (chunkData instanceof PartitionTree tree) {
             int bufferSize = getIndexBufferSize(quadCount);
-            if (indexBuffer.capacity() != bufferSize) {
-                throw new IllegalStateException("Given index buffer has length " + indexBuffer.capacity() + " but we expected " + bufferSize);
+            if (indexBuffer.remaining() != bufferSize) {
+                throw new IllegalStateException("Given index buffer has " + indexBuffer.remaining() + " remaining bytes but we expected " + bufferSize);
             }
             if (quadCount != tree.quadCount()) {
                 throw new IllegalStateException(String.format("Mismatched SortState (%d) vs given quad count (%d)", tree.quadCount(), quadCount));

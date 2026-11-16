@@ -16,253 +16,272 @@ import com.bdmajora.impetus.umbra.pipeline.rendering.TerrainHooks;
 import com.bdmajora.impetus.umbra.shaderpack.ShaderPack;
 import com.bdmajora.impetus.umbra.shaderpack.loading.ProgramId;
 
-// The frame pipeline's entry points for the render mixins: beginWorldRendering binds the gbuffer, captureRenderingState copies camera matrices, finishWorldRendering runs the passes ping-ponging targets like OptiFine then final into vanilla's framebuffer; the work lives in the rendering package, render thread only
+// Facade of a loaded shader pack that the render hooks call into.
 public class UmbraRenderingPipeline {
+    // Resources of the pack.
     private final PipelineState state;
+    // Read only queries of the state.
     private final PipelineView view;
+    // Program phase selection.
     private final PhaseController phases;
+    // Begin and end of each frame.
     private final FrameLifecycle frame;
+    // Hand pass.
     private final HandPass hand;
+    // Terrain draw hooks.
     private final TerrainHooks terrain;
+    // Sky horizon renderer.
     private final SkyHorizon horizon = new SkyHorizon();
 
+    // Loads a pack and releases its resources when loading fails.
     public UmbraRenderingPipeline(ShaderPack pack) {
         this.state = new PipelineState(this, pack);
-        this.view = new PipelineView(this.state);
-        this.phases = new PhaseController(this.state);
-        this.frame = new FrameLifecycle(this.state, new PassRunner(this.state), this.phases);
-        this.hand = new HandPass(this.state, this.phases);
-        this.terrain = new TerrainHooks(this.state, this.phases);
+        // Releases the state when a later part fails
+        try {
+            this.view = new PipelineView(this.state);
+            this.phases = new PhaseController(this.state);
+            this.frame = new FrameLifecycle(this.state, new PassRunner(this.state), this.phases);
+            this.hand = new HandPass(this.state, this.phases);
+            this.terrain = new TerrainHooks(this.state, this.phases);
+        } catch (RuntimeException | Error e) {
+            try {
+                this.state.destroy();
+            } catch (RuntimeException suppressed) {
+                e.addSuppressed(suppressed);
+            }
+            throw e;
+        }
     }
 
-    // renderWorld HEAD: the frame goes into the gbuffer
+    // Starts a frame.
     public void beginWorldRendering(float partialTicks) {
         this.frame.begin(partialTicks);
     }
 
-    // True when the pack supplies a program for this phase; callers suppressing vanilla GL state use it to leave the fixed-function path alone
+    // Returns whether a phase has a gbuffer program or a fallback.
     public boolean hasGbufferProgram(ProgramId phase) {
         return this.phases.has(phase);
     }
 
-    // Whether the pack ships this phase's program itself rather than through the fallback chain
+    // Returns whether a phase has its own gbuffer program.
     public boolean hasDirectGbufferProgram(ProgramId phase) {
         return this.phases.hasDirect(phase);
     }
 
-    // Whether the frame is between the deferred and composite stages
+    // Returns whether translucents draw after the deferred passes.
     public boolean isRenderingPostDeferredTranslucents() {
         return this.view.isPostDeferred();
     }
 
-    // gbuffers_entities_translucent, else gbuffers_entities
+    // Returns the phase of translucent entities.
     public ProgramId getTranslucentEntityPhase() {
         return this.phases.translucentEntityPhase();
     }
 
-    // The gbuffer phase currently bound, or null when none is
+    // Returns the selected phase.
     public ProgramId getCurrentPhase() {
         return this.phases.current();
     }
 
-    // Whether the camera pass is drawing right now; narrower than isWorldRenderingActive(), since the shadow pass renders entities through the same vanilla renderers and runs first
+    // Returns whether the camera pass is drawing.
     public boolean isCameraPassActive() {
         return this.view.isCameraPassActive();
     }
 
-    // Switches the gbuffer program for a fixed-function phase with its default render stage
+    // Selects a phase at its default render stage.
     public void setPhase(ProgramId phase) {
         setPhase(phase, PhaseController.defaultRenderStage(phase));
     }
 
-    // Mirrors OptiFine's enableLightmap()/disableLightmap() swap of gbuffers_textured and gbuffers_textured_lit
+    // Records a lightmap toggle.
     public void setLightmapEnabled(boolean enabled) {
         this.phases.lightmapToggled(enabled);
     }
 
-    // For callers that know a finer phase than ProgramId can express (sky basic covers sky/stars/void)
+    // Selects a phase at a render stage.
     public void setPhase(ProgramId phase, int renderStage) {
         this.phases.select(phase, renderStage);
     }
 
-    // Re-uploads the bound phase program's per-object uniforms between draws of a batch
+    // Uploads the dynamic uniforms of the bound program.
     public void refreshDynamicUniforms() {
         this.phases.refreshDynamicUniforms();
     }
 
-    // The glowing-eyes layers through gbuffers_spidereyes, selected through setPhase(ProgramId) so its hooks see the switch
+    // Selects the spider eyes phase when entering it.
     public void beginEyes() {
         if (this.phases.enterEyes()) {
             setPhase(ProgramId.SpiderEyes);
         }
     }
 
-    // Back to the phase bound before the eyes
+    // Leaves the spider eyes phase.
     public void endEyes() {
         this.phases.exitEyes();
     }
 
-    // The enchantment glint through gbuffers_armor_glint
+    // Selects the armor glint phase when entering it.
     public void beginArmorGlint() {
         if (this.phases.enterGlint()) {
             setPhase(ProgramId.ArmorGlint);
         }
     }
 
-    // Back to the phase bound before the glint
+    // Leaves the armor glint phase.
     public void endArmorGlint() {
         this.phases.exitGlint();
     }
 
-    // OptiFine's horizon ring, right before the sky disc
+    // Draws the sky horizon while the world renders.
     public void drawSkyHorizon() {
         if (this.view.isActive()) {
             this.horizon.draw();
         }
     }
 
-    // The Impetus terrain override program just bound (UmbraTerrainShaderInterface.setupState)
+    // Prepares a terrain draw without an alpha test override.
     public void onTerrainDraw(int[] drawBuffers, ProgramBlendState blendState) {
         onTerrainDraw(drawBuffers, blendState, ProgramAlphaTest.empty(), false);
     }
 
+    // Prepares a terrain draw.
     public void onTerrainDraw(int[] drawBuffers, ProgramBlendState blendState, ProgramAlphaTest alphaTest,
                               boolean translucentPass) {
         this.terrain.onTerrainDraw(drawBuffers, blendState, alphaTest, translucentPass);
     }
 
-    // After a terrain pass
+    // Restores the state after a terrain draw.
     public void afterTerrainDraw(int drawBufferSlots) {
         this.terrain.afterTerrainDraw(drawBufferSlots);
     }
 
-    // The Distant Horizons compat for this pipeline
+    // Returns the Distant Horizons bridge or null.
     public DhCompat getDhCompat() {
         return this.view.dhCompat();
     }
 
-    // The shadow renderer, or null when the pack draws no shadow map
+    // Returns the shadow renderer or null.
     public UmbraShadowRenderer getShadowRenderer() {
         return this.view.shadowRenderer();
     }
 
-    // A framebuffer for a Distant Horizons LOD pass, owned by the caller
+    // Creates a framebuffer of a Distant Horizons pass.
     public UmbraFramebuffer createDhFramebuffer(int[] drawBuffers, boolean translucent) {
         return this.terrain.createDhFramebuffer(drawBuffers, translucent);
     }
 
-    // Right before DH draws a LOD pass
+    // Prepares a Distant Horizons draw.
     public void onDhLodDraw(UmbraFramebuffer framebuffer, int[] drawBuffers, ProgramBlendState blendState,
                             boolean translucentPass) {
         this.terrain.onDhLodDraw(framebuffer, drawBuffers, blendState, translucentPass);
     }
 
-    // After a LOD pass
+    // Restores the state after a Distant Horizons draw.
     public void afterDhLodDraw(int drawBufferSlots) {
         this.terrain.afterDhLodDraw(drawBufferSlots);
     }
 
-    // Right after setupCameraTransform: the camera matrices for the uniform providers
+    // Records the camera and matrices of the frame.
     public void captureRenderingState() {
         this.frame.captureRenderingState();
     }
 
-    // The shadow map and the prepare family, before any gbuffer geometry
+    // Draws the shadow pass.
     public void renderShadowMap() {
         this.frame.renderShadowMap();
     }
 
-    // The translucent anchor: depthtex1, the deferred chain, then the post-deferred gbuffer
+    // Runs the deferred passes before the translucents.
     public void beginTranslucents() {
         this.frame.beginTranslucents();
     }
 
-    // Right before the solid hand draws: depthtex2
+    // Prepares the hand pass.
     public void beginHand() {
         this.frame.beginHand();
     }
 
-    // The solid first-person hand into the pre-deferred gbuffer; true means call endHandRendering()
+    // Starts the solid hand pass and returns whether it runs.
     public boolean beginHandRendering() {
         return this.hand.begin(ProgramId.Hand, HandPass.SOLID_STAGE);
     }
 
-    // OptiFine's late hand pass, after translucent geometry and before the composite chain
+    // Starts the translucent hand pass and returns whether it runs.
     public boolean beginHandTranslucentRendering() {
         return this.hand.begin(ProgramId.HandWater, HandPass.TRANSLUCENT_STAGE);
     }
 
-    // Restores state after the hand
+    // Ends a hand pass.
     public void endHandRendering() {
         this.hand.end();
     }
 
-    // renderWorld RETURN: the composite chain and final pass, then a clean GL state for vanilla
+    // Runs the composite passes and ends the frame.
     public void finishWorldRendering() {
         this.frame.finish();
     }
 
-    // Whether the pipeline is between beginWorldRendering and its end
+    // Returns whether the world is rendering.
     public boolean isWorldRenderingActive() {
         return this.view.isActive();
     }
 
-    // rain.depth
+    // Returns whether weather writes depth.
     public boolean shouldWriteRainAndSnowToDepthBuffer() {
         return this.view.switches().rainDepth;
     }
 
-    // beacon.beam.depth
+    // Returns whether beacon beams write depth.
     public boolean shouldWriteBeaconBeamToDepthBuffer() {
         return this.view.switches().beaconBeamDepth;
     }
 
-    // frustum.culling = false: the pack needs off-screen geometry drawn
+    // Returns whether the pack disables frustum culling.
     public boolean shouldDisableFrustumCulling() {
         return !this.view.switches().frustumCulling;
     }
 
-    // occlusion.culling = false: the pack needs occluded geometry drawn
+    // Returns whether the pack disables occlusion culling.
     public boolean shouldDisableOcclusionCulling() {
         return !this.view.switches().occlusionCulling;
     }
 
-    // skipAllRendering: no world geometry; the composite chain still runs
+    // Returns whether the pack skips every vanilla draw.
     public boolean skipAllRendering() {
         return this.view.switches().skipAllRendering;
     }
 
-    // separateEntityDraws: entities in their own pass after the deferred chain
+    // Returns whether entities draw one at a time.
     public boolean shouldSeparateEntityDraws() {
         return this.view.switches().separateEntityDraws;
     }
 
-    // particles.ordering: mixed, after or before the deferred chain
+    // Returns the particle ordering of the pack.
     public String getParticleOrdering() {
         return this.view.switches().particleOrdering;
     }
 
-    // backFace.<layer>: false when the pack wants that layer's back faces drawn; layerOrdinal is BlockRenderLayer#ordinal()
+    // Returns whether a layer culls back faces.
     public boolean shouldCullBackFaces(int layerOrdinal) {
         return this.view.switches().cullsBackFaces(layerOrdinal);
     }
 
-    // Packs with a shadow pass replace vanilla's blob shadows
+    // Returns whether the pack draws its own shadows.
     public boolean shouldDisableVanillaEntityShadows() {
         return this.view.shadowRenderer() != null;
     }
 
-    // Puts the raw-depth or comparison sampler on the shadow units to match how the program about to draw declared them
+    // Binds the shadow samplers of a program.
     public void applyShadowSamplerKinds(ShadowSamplerKinds kinds, boolean gbufferStage) {
         this.view.applyShadowSamplerKinds(kinds, gbufferStage);
     }
 
-    // The pack's custom textures and images for the current program
+    // Binds the pack textures and images.
     public void bindCustomImages() {
         this.view.bindPackResources();
     }
 
-    // Frees all GL resources; render thread only, safe more than once
+    // Releases every resource of the pack.
     public void destroy() {
         this.state.destroy();
     }

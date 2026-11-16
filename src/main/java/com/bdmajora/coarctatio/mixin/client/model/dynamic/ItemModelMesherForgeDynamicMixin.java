@@ -17,23 +17,22 @@ import org.spongepowered.asm.mixin.Shadow;
 
 import java.util.Map;
 
-// The mesher keeps locations only; models come from the registry through an identity-keyed cache, since each item's location object is unique; the overwritten methods are vanilla overrides and remap, the field is Forge's and does not
+// Mixin that changes ItemModelMesherForge.
 @Mixin(ItemModelMesherForge.class)
 public abstract class ItemModelMesherForgeDynamicMixin extends ItemModelMesher {
     @Shadow(remap = false)
     @Final
     Map<IRegistryDelegate<Item>, Int2ObjectMap<ModelResourceLocation>> locations;
 
+    // Item models baked on demand.
     private final ModelLookupCache<ModelResourceLocation> coarctatio$models = new ModelLookupCache<>(location -> this.getModelManager().getModel(location), true);
 
+    // Creates an item model mesher forge dynamic mixin from its model manager.
     protected ItemModelMesherForgeDynamicMixin(ModelManager modelManager) {
         super(modelManager);
     }
 
-    /**
-     * @author embeddedt, Runemoro, bdmajora
-     * @reason Resolve the location through the dynamic registry instead of a table filled at registration
-     */
+    // Replaces the whole method getItemModel.
     @Overwrite
     @Override
     protected IBakedModel getItemModel(Item item, int meta) {
@@ -45,10 +44,7 @@ public abstract class ItemModelMesherForgeDynamicMixin extends ItemModelMesher {
         return location != null ? this.coarctatio$models.get(location) : null;
     }
 
-    /**
-     * @author embeddedt, Runemoro, bdmajora
-     * @reason Registration must not fetch the model, which would bake it
-     */
+    // Replaces the whole method register.
     @Overwrite
     @Override
     public void register(Item item, int meta, ModelResourceLocation location) {
@@ -61,10 +57,7 @@ public abstract class ItemModelMesherForgeDynamicMixin extends ItemModelMesher {
         byMeta.put(meta, location);
     }
 
-    /**
-     * @author embeddedt, bdmajora
-     * @reason Rebuilding the table would bake every item model
-     */
+    // Replaces the whole method rebuildCache.
     @Overwrite
     @Override
     public void rebuildCache() {

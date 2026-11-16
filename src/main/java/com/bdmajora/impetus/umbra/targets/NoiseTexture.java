@@ -11,20 +11,18 @@ import com.bdmajora.impetus.umbra.gl.texture.TextureParameters;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// The `noisetex` sampler, OptiFine's generated tiling RGBA noise; packs lean on it for dithering, cloud shapes and wave offsets
+// Random noise texture for packs without their own.
 public class NoiseTexture extends GlResource {
-    // OptiFine's default; a pack overrides it with noiseTextureResolution
+    // Size used without a pack value.
     public static final int DEFAULT_RESOLUTION = 256;
 
-    // LINEAR since packs sample at non-integer coordinates and expect blending; REPEAT is what makes a small noise texture tile
+    // Creates a noise texture from its resolution.
     public NoiseTexture(int resolution) {
         setHandle(LWJGL.glGenTextures());
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, getGlId());
         TextureParameters.set2D(GL11.GL_LINEAR, GL11.GL_REPEAT);
 
-        // Direct and native-ordered because it goes straight to glTexImage2D; a heap buffer would be copied
         ByteBuffer data = ByteBuffer.allocateDirect(resolution * resolution * 4).order(ByteOrder.nativeOrder());
-        // Fixed seed, deliberately: the noise must be identical across pipeline rebuilds or switching packs makes every dither pattern jump
         Random random = new Random(0);
         byte[] pixels = new byte[resolution * resolution * 4];
         random.nextBytes(pixels);
@@ -36,12 +34,12 @@ public class NoiseTexture extends GlResource {
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, 0);
     }
 
-    // For binding as the noisetex sampler
+    // Returns the texture id.
     public int getTextureId() {
         return getGlId();
     }
 
-    // Frees the texture
+    // Deletes the texture.
     @Override
     protected void destroyInternal() {
         LWJGL.glDeleteTextures(getGlId());

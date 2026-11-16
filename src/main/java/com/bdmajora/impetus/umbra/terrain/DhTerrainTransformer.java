@@ -4,19 +4,24 @@ import com.bdmajora.impetus.umbra.gl.program.DrawBuffers;
 
 import java.util.regex.Pattern;
 
-// Lifts a pack's dh_terrain/dh_water/dh_shadow (and dh_generic) program onto Distant Horizons' LOD vertex format, the 1.12.2 analogue of Iris's DHTerrainTransformer/DHGenericTransformer: the pack keeps writing gl_Vertex/gl_Color/gl_Normal/gl_MultiTexCoord1 and reads dhMaterialId, and a generated _vert_init decodes DH's packed vertex (uvec4 vPosition, vec4 iris_color, uvec4 irisExtra) into those. The GLSL below is Iris's verbatim where it matters (light coord scaling, normal table, texture id packing) since packs are written against it
+// Rewriter of pack shaders for Distant Horizons terrain.
 public final class DhTerrainTransformer {
+    // Prevents instantiation
     private DhTerrainTransformer() {
     }
 
-    // The matrix uniforms DhLodRenderProgram fills per pass; named apart from MatrixUniforms' iris_* set, which carries the CAMERA matrices, so a program's uniform update cannot overwrite the LOD projection (DH near/far) or the shadow matrices
+    // Name of the LOD model view uniform.
     public static final String MODEL_VIEW = "umbra_dhModelView";
+    // Name of the inverse LOD model view uniform.
     public static final String MODEL_VIEW_INVERSE = "umbra_dhModelViewInverse";
+    // Name of the LOD projection uniform.
     public static final String PROJECTION = "umbra_dhProjection";
+    // Name of the inverse LOD projection uniform.
     public static final String PROJECTION_INVERSE = "umbra_dhProjectionInverse";
+    // Name of the LOD normal matrix uniform.
     public static final String NORMAL_MATRIX = "umbra_dhNormalMatrix";
 
-    // Iris's DHTerrainTransformer: gl_TextureMatrix[0..1] become identity for DH programs, the lightmap coord is already 0..1
+    // Matrix aliases.
     private static final String MATRIX_ALIASES = String.join("\n",
             "uniform mat4 " + MODEL_VIEW + ";",
             "uniform mat4 " + MODEL_VIEW_INVERSE + ";",
@@ -34,16 +39,16 @@ public final class DhTerrainTransformer {
             ""
     ) + "\n";
 
-    // gl_Fog.* stand-ins are the same per-frame uniforms the terrain bridge uses (FogParameters), fed by CommonUniforms
+    // Fog uniforms.
     private static final String FOG_UNIFORMS = String.join("\n", FogParameters.DECLARATIONS) + "\n";
 
-    // Vertex prologue for the LOD programs: DH's vertex attributes at the locations DhLodRenderProgram binds (0/1/2, DH's own VAO layout), the per-draw uniforms, and the gl_* aliases onto the decoded globals
+    // Lod vertex prologue.
     private static final String LOD_VERTEX_PROLOGUE = String.join("\n",
             "#version 330 core",
             "// ---- Impetus/Umbra Distant Horizons LOD bridge (generated) ----",
-            "in uvec4 vPosition;",     // x, y, z block position in the buffer's section + meta (skylight/blocklight byte, micro offset byte)
-            "in vec4 iris_color;",     // normalized RGBA
-            "in uvec4 irisExtra;",     // x: DH material id, y: face normal index, zw: block texture tile id (little endian)
+            "in uvec4 vPosition;",
+            "in vec4 iris_color;",
+            "in uvec4 irisExtra;",
             "uniform vec3 modelOffset;",
             "uniform float mircoOffset;",
             "uniform float worldYOffset;",
@@ -78,7 +83,7 @@ public final class DhTerrainTransformer {
             ""
     ) + "\n";
 
-    // Vertex prologue for dh_generic (DH's beacon beams and clouds): unit-cube vertices placed by per-instance scale/translation attributes, at the locations DH's GlGenericObjectRenderer uses; the normal comes from the vertex index since a box has 4 vertices per face in DH's face order
+    // Generic vertex prologue.
     private static final String GENERIC_VERTEX_PROLOGUE = String.join("\n",
             "#version 330 core",
             "// ---- Impetus/Umbra Distant Horizons generic object bridge (generated) ----",
@@ -122,7 +127,7 @@ public final class DhTerrainTransformer {
             ""
     ) + "\n";
 
-    // The rest of the vertex-stage aliases, shared by both programs: DH has no texture coordinates, the lightmap coord is 0..1 in unit 1 (unit 2 aliases it like OptiFine 1.15+), higher units are empty
+    // Vertex aliases.
     private static final String VERTEX_ALIASES = String.join("\n",
             "#define gl_Color _vert_color",
             "#define gl_Normal _vert_normal",
@@ -143,7 +148,7 @@ public final class DhTerrainTransformer {
             ""
     ) + "\n";
 
-    // Fragment prologue for the LOD programs: the varyings the vertex prologue emits plus Iris's dh_hasTexture/dh_sampleTexture helpers over DH's block texture atlas (DISTANT_HORIZONS_TEXTURES)
+    // Lod fragment prologue.
     private static final String LOD_FRAGMENT_PROLOGUE = String.join("\n",
             "#version 330 core",
             "// ---- Impetus/Umbra Distant Horizons LOD bridge (generated) ----",
@@ -172,7 +177,7 @@ public final class DhTerrainTransformer {
             ""
     ) + "\n";
 
-    // Fragment prologue for dh_generic: no textures, the helpers answer "untextured" like Iris's DHGenericTransformer
+    // Generic fragment prologue.
     private static final String GENERIC_FRAGMENT_PROLOGUE = String.join("\n",
             "#version 330 core",
             "// ---- Impetus/Umbra Distant Horizons generic object bridge (generated) ----",
@@ -181,7 +186,7 @@ public final class DhTerrainTransformer {
             ""
     ) + "\n";
 
-    // The fragment-stage aliases shared by both programs
+    // Fragment aliases.
     private static final String FRAGMENT_ALIASES = String.join("\n",
             "in float iris_FogFragCoord;",
             "#define gl_FogFragCoord iris_FogFragCoord",
@@ -191,9 +196,10 @@ public final class DhTerrainTransformer {
             ""
     ) + "\n";
 
+    // Frag data use.
     private static final Pattern FRAG_DATA_USE = Pattern.compile("\\bgl_Frag(?:Data|Color)\\b");
 
-    // The vertex stage, modern (#version 130+) or legacy source alike; every pack shipping dh_* programs is modern in practice, the legacy branch only keeps a GLSL-120 pack from failing outright
+    // Rewrites a vertex stage for LODs.
     public static String transformVertexShader(String source, boolean generic) {
         boolean modern = ModernPackTransformer.isModernSource(source);
         String body = ImpetusTerrainTransformer.stripVersion(source);
@@ -211,7 +217,7 @@ public final class DhTerrainTransformer {
                 + "\nvoid main() {\n    _vert_init();\n    irisMain();\n}\n";
     }
 
-    // The fragment stage with gl_FragData routed to the program's DRAWBUFFERS; the alpha snippet is only the pack's own alphaTest.<program> directive, since Iris injects no default discard into DH programs
+    // Rewrites a fragment stage for LODs.
     public static String transformFragmentShader(String source, int[] drawBuffers, String alphaTestSnippet,
                                                  boolean generic) {
         boolean modern = ModernPackTransformer.isModernSource(source);
@@ -225,7 +231,6 @@ public final class DhTerrainTransformer {
             body = ImpetusTerrainTransformer.modernizeCommon(body);
         }
         body = DrawBuffers.rewriteFragmentOutputs(body, drawBuffers == null ? DrawBuffers.DEFAULT : drawBuffers);
-        // Packs writing gl_FragData/gl_FragColor get the generated output array; packs with named layout(location) outputs keep their declarations
         boolean usesFragData = FRAG_DATA_USE.matcher(body).find();
         String prologue = (generic ? GENERIC_FRAGMENT_PROLOGUE : LOD_FRAGMENT_PROLOGUE)
                 + MATRIX_ALIASES + FOG_UNIFORMS + FRAGMENT_ALIASES;

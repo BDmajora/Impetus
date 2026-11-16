@@ -15,16 +15,16 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.Map;
 
-// Releases static sprites' raw pixel data (full mipmap chain) after GPU upload since nothing reads it again; animated sprites are skipped, and it is config-gated because some CTM/custom-atlas mods read pixels post-build
+// Mixin that changes TextureMap.
 @Mixin(TextureMap.class)
 public abstract class TextureMapMixin {
     @Shadow
     @Final
     private Map<String, TextureAtlasSprite> mapUploadedSprites;
 
+    // Runs before every return of loadTextureAtlas.
     @Inject(method = "loadTextureAtlas", at = @At("RETURN"))
     private void coarctatio$releaseStaticSpriteData(IResourceManager resourceManager, CallbackInfo ci) {
-        // Distant Horizons colours and textures its LODs from these pixels, reading them on its own threads whenever a block first appears in a LOD
         if (Loader.isModLoaded("distanthorizons")) {
             return;
         }
@@ -37,7 +37,6 @@ public abstract class TextureMapMixin {
                 continue;
             }
 
-            // Measured before the release so the report quotes a real figure; one of only two places Coarctatio knows exactly what it freed
             for (int frame = 0; frame < sprite.getFrameCount(); frame++) {
                 int[][] mipmaps = sprite.getFrameTextureData(frame);
 

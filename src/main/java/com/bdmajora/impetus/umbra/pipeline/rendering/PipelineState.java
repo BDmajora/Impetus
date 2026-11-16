@@ -40,55 +40,83 @@ import java.util.Map;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Everything one pack's pipeline owns, built in the order the pieces depend on each other and freed together; every program compiles up front and a failure skips its pass, render thread only
+// Every resource of an active shader pack pipeline from its creation to its release.
 public final class PipelineState {
+    // Logger of release failures.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
+    // GL enum of the texture image unit limit.
     private static final int GL_MAX_TEXTURE_IMAGE_UNITS = 0x8872;
-    // The GL 3.3 floor, for a driver whose GL_MAX_DRAW_BUFFERS query fails
+    // Draw buffer count used when the driver reports none.
     private static final int MIN_DRAW_BUFFERS = 8;
 
+    // Color and depth targets of the pack.
     final UmbraRenderTargets targets;
+    // Macros passed to every program.
     final Map<String, String> defines;
+    // Notifier of per frame uniform updates.
     final FrameUpdateNotifier frameUpdateNotifier = new FrameUpdateNotifier();
+    // Sampler of the depth at the screen center.
     final CenterDepthSampler centerDepth = new CenterDepthSampler();
-    // Optional wide-gamut output conversion, user-configured, sRGB = off
+    // Converter of the final color space.
     final ColorSpaceConverter colorSpace = new ColorSpaceConverter();
+    // Passes in draw order.
     final PassSchedule schedule = new PassSchedule();
+    // Buffer swaps and clears.
     final FrameCopies copies = new FrameCopies();
+    // Image units of the pack.
     final ImageUnits images = new ImageUnits();
-    // Colour targets flipped by at least one pass while the schedule is built, for custom-texture override deactivation
+    // Targets flipped by at least one pass.
     private final BitSet flippedAtLeastOnce = new BitSet();
-    // The merged sampler overrides per stage, built once instead of per compiled program
+    // Sampler overrides by texture stage.
     private final Map<TextureStage, Map<String, CustomTextureManager.Override>> stageOverrides = new EnumMap<>(TextureStage.class);
+    // Number of draw buffers the driver allows.
     final int maxDrawBuffers;
+    // Renderer of the fullscreen quad.
     final FullscreenQuadRenderer quad;
+    // Samplers of the shadow maps.
     final ShadowSamplers shadowSamplers;
+    // Scalar directives of the pack.
     final ScalarDirectives scalars;
+    // Noise texture of the pack.
     final NoiseTexture noise;
+    // Custom textures of the pack.
     final CustomTextureManager customTextures;
+    // Custom images of the pack.
     final CustomImageManager customImages;
+    // Shader storage buffers of the pack.
     final ShaderStorageBufferHolder storageBuffers;
+    // Feature switches of the pack.
     final PackSwitches switches;
+    // Programs of the gbuffer passes.
     final GbufferPrograms gbufferPrograms;
+    // Gbuffer target sets.
     final GbufferTargets gbuffers;
+    // Feedback copies of the gbuffers.
     final GbufferFeedback feedback;
+    // Binder of the pack textures.
     final TextureBinder binder;
+    // Renderer of the shadow pass.
     final UmbraShadowRenderer shadowRenderer;
+    // Cache of the composite programs.
     final ProgramCache programs;
-    // Distant Horizons: the pack's dh_* programs and the LOD framebuffers over this gbuffer
+    // Distant Horizons bridge or null.
     DhCompat dhCompat;
+    // Active state of the pipeline.
     boolean active;
+    // Released state of the pipeline.
     boolean destroyed;
+    // Full clear state of the next frame.
     boolean fullClearRequired = true;
+    // Dispatched state of the setup programs.
     boolean setupDispatched;
-    // The flip snapshot colortex4..7 are bound with for gbuffer programs, before or after the deferred chain
+    // Gbuffer flips of the current frame.
     BitSet activeGbufferFlips = new BitSet();
 
+    // Creates every resource of a pack and releases them all when one fails.
     public PipelineState(UmbraRenderingPipeline owner, ShaderPack pack) {
         Minecraft mc = Minecraft.getMinecraft();
         this.targets = new UmbraRenderTargets(mc.displayWidth, mc.displayHeight);
         this.defines = pack.getEnvironmentDefines();
-        // The GPU identity macros need a live context, so they join here rather than the pack's baked environment; without them every hardware-workaround gate took its "unknown vendor" branch (Clarity's `immut` expanded to nothing)
         ShaderMacros.withGpuIdentity(this.defines, LWJGL.glGetString(GL11.GL_VENDOR), LWJGL.glGetString(GL11.GL_RENDERER));
         CameraUniforms.attach(this.frameUpdateNotifier);
         try {
@@ -102,9 +130,7 @@ public final class PipelineState {
             targetDirectives.apply(sources, this.targets);
             this.scalars = new ScalarDirectives(new ConstDirectives(activeStages(sources)));
             this.scalars.publish();
-            // After the scan: `const int noiseTextureResolution` sizes this, and guessing 256 gives a pack sampling at its own resolution the wrong frequency
             this.noise = new NoiseTexture(this.scalars.noiseResolution());
-            // size.buffer.colortexN lands before any target materialises; Photon's sky map is authored against a 192x108 colortex4 indexed by absolute texel
             properties.getBufferSizes().forEach((index, size) -> {
                 if (index >= 0 && index < UmbraRenderTargets.MAX_COLOR_BUFFERS) {
                     this.targets.setColorSize(index, size[0], size[1], properties.getBufferSizeRelative(index));
@@ -115,7 +141,6 @@ public final class PipelineState {
                 this.targets.getOrCreate(index);
             }
             PackSwitches.publishWorldSettings(pack, mc.gameSettings.renderDistanceChunks);
-            // Custom textures and images exist before any program compiles, since sampler assignment consults their overrides
             int firstCustomUnit = this.shadowSamplers.separateHardwareSamplers()
                     ? SamplerLayout.SHADOW_TEX_1_HW_UNIT + 1 : SamplerLayout.CUSTOM_TEX_FIRST_UNIT;
             int lastCustomUnit = lastProgrammableUnit();
@@ -125,9 +150,7 @@ public final class PipelineState {
                     this.customTextures.getNextAvailableUnit(), lastCustomUnit, mc.displayWidth, mc.displayHeight);
             this.images.allocateRenderTargets(sources.renderTargetImages(), this.customImages, this.targets);
             SamplerAssignment.publish(this, overrides(TextureStage.GBUFFERS_AND_SHADOW));
-            // Custom uniforms exist before any program compiles, so every compile path can register them
             ActiveCustomUniforms.set(properties.getCustomUniforms().build());
-            // Pack-declared SSBOs (bufferObject.<index>), zero-filled and bound at fixed indices
             this.storageBuffers = new ShaderStorageBufferHolder(
                     ShaderStorageBufferHolder.parseDefinitions(properties.getRaw()), mc.displayWidth, mc.displayHeight);
             this.switches = new PackSwitches(pack);
@@ -140,7 +163,6 @@ public final class PipelineState {
                     gbufferOverrideUnits(), this.binder::bindPackResources);
             this.binder.setShadowRenderer(this.shadowRenderer);
             this.images.allocateShadowColors(sources.shadowColorImages(), this.customImages, this.shadowRenderer);
-            // The shadowcolorimg units join the overrides, so the terrain and DH programs built from here on see them too
             this.stageOverrides.clear();
             SamplerAssignment.publish(this, overrides(TextureStage.GBUFFERS_AND_SHADOW));
             this.programs = new ProgramCache(this.defines, this::overrides, this.flippedAtLeastOnce);
@@ -149,14 +171,10 @@ public final class PipelineState {
                     this.customImages.getFirst3DImageSize());
             PassFactory factory = new PassFactory(properties, sources, this.programs, this.targets, this.shadowRenderer,
                     this.flippedAtLeastOnce);
-            // One schedule from the reset flip state, then the copy-back for whatever it leaves odd-flipped, so next frame's baked FBOs and snapshots hold without per-frame parity
             this.schedule.build(pack.getProgramSet(), properties, factory, computes, this.gbuffers, this.targets.getBufferFlipper());
-            // A clear FBO groups at most what the driver draws and attaches; the copies treat a failed query as one at a time
             this.copies.build(this.targets, targetDirectives, this.targets.getBufferFlipper(),
                     Math.min(this.maxDrawBuffers, LWJGL.glGetInteger(GL30.GL_MAX_COLOR_ATTACHMENTS)));
-            // After the schedule, since the LOD framebuffers attach the gbuffer's baked front textures; dhShadow.enabled defaults on like Iris
             this.dhCompat = new DhCompat(owner, pack, properties.getDhShadowEnabled().orElse(Boolean.TRUE));
-            // Building creates and checks FBOs as a side effect; give Minecraft its main target back before vanilla's next GL check
             LWJGL.glUseProgram(0);
             GlState.bindMainRenderTarget(mc);
             GlState.restoreMainDrawReadBuffers();
@@ -167,7 +185,7 @@ public final class PipelineState {
         }
     }
 
-    // Every program's resolved vertex and fragment stage in scan order, for the pack-wide scalar consts
+    // Returns the active stages of every program source.
     private static List<String> activeStages(PackSources sources) {
         List<String> stages = new ArrayList<>();
         for (ProgramSource source : sources.all()) {
@@ -176,13 +194,13 @@ public final class PipelineState {
         return stages;
     }
 
-    // The highest unit a pack texture may take: the driver's limit, below the pipeline's own fixed high units
+    // Returns the last texture unit custom textures may use.
     private static int lastProgrammableUnit() {
         int driver = LWJGL.glGetInteger(GL_MAX_TEXTURE_IMAGE_UNITS) - 1;
         return Math.min(SamplerLayout.CUSTOM_TEX_LAST_UNIT, Math.max(SamplerLayout.CUSTOM_TEX_FIRST_UNIT - 1, driver));
     }
 
-    // The stage's custom-texture overrides plus the stage-independent image assignments, which never deactivate (colorTarget -1); read-only, shared by every compile of the stage
+    // Returns the cached sampler overrides of a stage.
     Map<String, CustomTextureManager.Override> overrides(TextureStage stage) {
         return this.stageOverrides.computeIfAbsent(stage, s -> {
             Map<String, CustomTextureManager.Override> merged = new LinkedHashMap<>(this.customTextures.getOverrides(s));
@@ -193,7 +211,7 @@ public final class PipelineState {
         });
     }
 
-    // The gbuffers-stage overrides flattened to name -> unit, for the gbuffer and shadow programs' sampler tables
+    // Returns the units of the custom textures and images of the gbuffer passes.
     private Map<String, Integer> gbufferOverrideUnits() {
         Map<String, Integer> units = new LinkedHashMap<>();
         this.customTextures.getOverrides(TextureStage.GBUFFERS_AND_SHADOW).forEach((name, override) -> units.put(name, override.unit));
@@ -201,72 +219,91 @@ public final class PipelineState {
         return units;
     }
 
-    // Whether the frame has run the deferred chain and renders into its post-deferred gbuffer
+    // Returns whether the translucent gbuffer comes after the deferred passes.
     boolean isPostDeferred() {
         return !this.schedule.deferred.isEmpty() && this.gbuffers.current == this.schedule.translucentGbuffer;
     }
 
-    // Frees every GL resource and resets what was published for the chunk meshers; render thread only, safe twice and on a half-built state
+    // Releases every resource once and rethrows the first failure after the rest were released.
     public void destroy() {
         if (this.destroyed) {
             return;
         }
         this.destroyed = true;
         this.active = false;
-        this.centerDepth.destroy();
-        this.colorSpace.destroy();
+        // First failure of a release step
+        Throwable[] failure = new Throwable[1];
+        release(failure, this.centerDepth::destroy);
+        release(failure, this.colorSpace::destroy);
         if (this.storageBuffers != null) {
-            this.storageBuffers.destroy();
+            release(failure, this.storageBuffers::destroy);
         }
-        // Umbra sweeps the same registry: a holder replaced without destroy() strands hundreds of megabytes of VRAM per reload
-        ShaderStorageBufferHolder.forceDeleteBuffers();
-        ActiveCustomUniforms.clear();
-        UmbraTerrainProgramOverride.destroyShadowPrograms();
+        release(failure, ShaderStorageBufferHolder::forceDeleteBuffers);
+        release(failure, ActiveCustomUniforms::clear);
+        release(failure, UmbraTerrainProgramOverride::destroyShadowPrograms);
         if (this.shadowRenderer != null) {
-            this.shadowRenderer.destroy();
+            release(failure, this.shadowRenderer::destroy);
         }
         if (this.gbufferPrograms != null) {
-            this.gbufferPrograms.destroy();
+            release(failure, this.gbufferPrograms::destroy);
         }
-        SamplerAssignment.withdraw(this);
-        PackSwitches.resetWorldSettings();
-        ScalarDirectives.reset();
-        this.schedule.destroy();
-        this.copies.destroy();
+        release(failure, () -> SamplerAssignment.withdraw(this));
+        release(failure, PackSwitches::resetWorldSettings);
+        release(failure, ScalarDirectives::reset);
+        release(failure, this.schedule::destroy);
+        release(failure, this.copies::destroy);
         if (this.programs != null) {
-            this.programs.destroy();
+            release(failure, this.programs::destroy);
         }
         if (this.customTextures != null) {
-            this.customTextures.destroy();
+            release(failure, this.customTextures::destroy);
         }
         if (this.customImages != null) {
-            this.customImages.destroy();
+            release(failure, this.customImages::destroy);
         }
         if (this.dhCompat != null) {
             try {
                 this.dhCompat.clearPipeline();
             } catch (RuntimeException e) {
-                // A broken DH bridge must not stop the rest of the teardown and leak the pipeline's VRAM
                 LOGGER.error("[Umbra] Distant Horizons compat failed to release its pipeline", e);
             }
             this.dhCompat = null;
         }
         if (this.feedback != null) {
-            this.feedback.destroy();
+            release(failure, this.feedback::destroy);
         }
         if (this.binder != null) {
-            this.binder.destroy();
+            release(failure, this.binder::destroy);
         }
         if (this.quad != null) {
-            this.quad.destroy();
+            release(failure, this.quad::destroy);
         }
         if (this.noise != null) {
-            this.noise.destroy();
+            release(failure, this.noise::destroy);
         }
-        ImmediateTessellation.reset();
+        release(failure, ImmediateTessellation::reset);
         if (this.shadowSamplers != null) {
-            this.shadowSamplers.destroy();
+            release(failure, this.shadowSamplers::destroy);
         }
-        this.targets.destroy();
+        release(failure, this.targets::destroy);
+        if (failure[0] instanceof RuntimeException runtime) {
+            throw runtime;
+        }
+        if (failure[0] instanceof Error error) {
+            throw error;
+        }
+    }
+
+    // Runs one release step and keeps its failure when it is the first.
+    private static void release(Throwable[] failure, Runnable step) {
+        try {
+            step.run();
+        } catch (RuntimeException | Error e) {
+            if (failure[0] == null) {
+                failure[0] = e;
+            } else if (e != failure[0]) {
+                failure[0].addSuppressed(e);
+            }
+        }
     }
 }

@@ -5,31 +5,32 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
 
-// Finds the global-scope statements of a GLSL source and lets a caller rewrite the declarations among them, leaving comments, directives, function bodies and parameters alone; statements stay inside whatever #if branch they sat in, so the driver still picks the same one
+// Parser of global GLSL declarations.
 public final class GlslDeclarations {
-    // Storage qualifiers a rewrite can be keyed on
+    // Storage qualifiers.
     static final Set<String> STORAGE = Set.of("in", "out", "varying", "attribute", "uniform", "buffer", "shared", "const");
-    // Qualifiers that may sit around the storage qualifier
+    // Interpolation and other qualifiers.
     static final Set<String> QUALIFIERS = Set.of("flat", "smooth", "noperspective", "centroid", "sample", "patch", "invariant",
             "precise", "highp", "mediump", "lowp", "coherent", "volatile", "restrict", "readonly", "writeonly");
 
+    // Prevents instantiation
     private GlslDeclarations() {
     }
 
-    // One parsed global declaration; layout is the raw layout(...) text or empty, declarators keep any array suffix and initializer verbatim
+    // Data of the declaration.
     public record Declaration(String layout, List<String> qualifiers, String storage, String type, List<Declarator> declarators,
+                              // Block body and statement text.
                               String blockBody, String text) {
-        // Whether this declares an interface block rather than variables
         public boolean isBlock() {
             return this.blockBody != null;
         }
     }
 
-    // A name with its array suffix ("[4]" or "") and initializer ("= ..." or "")
+    // Data of the declarator.
     public record Declarator(String name, String arraySuffix, String initializer) {
     }
 
-    // Rewrites every global statement the function answers non-null for; a statement a directive interrupts is passed through untouched, and the rewrite keeps the original's line count so driver errors still point at the right lines
+    // Rewrites each global declaration with a function.
     public static String rewrite(String source, Function<Declaration, String> rewriter) {
         StringBuilder out = new StringBuilder(source.length() + 256);
         int length = source.length();
@@ -112,7 +113,7 @@ public final class GlslDeclarations {
         return out.append(source, copied, length).toString();
     }
 
-    // Every declaration the source holds at global scope, in order
+    // Returns the global declarations of a source.
     public static List<Declaration> collect(String source) {
         List<Declaration> found = new ArrayList<>();
         rewrite(source, declaration -> {
@@ -122,7 +123,7 @@ public final class GlslDeclarations {
         return found;
     }
 
-    // Parses a statement that declares variables or an interface block under a storage qualifier; null for anything else (functions, structs, plain globals, invariant redeclarations)
+    // Parses one declaration statement or returns null.
     static Declaration parse(String statement) {
         List<String> tokens = tokenize(statement.substring(0, statement.length() - 1));
         int index = 0;
@@ -152,7 +153,6 @@ public final class GlslDeclarations {
 
         String type = tokens.get(index++);
 
-        // An interface block: storage Name { members } instance[array];
         if (index < tokens.size() && tokens.get(index).startsWith("{")) {
             String body = tokens.get(index++);
             String instance = index < tokens.size() && isIdentifier(tokens.get(index)) ? tokens.get(index++) : "";
@@ -161,7 +161,6 @@ public final class GlslDeclarations {
                     body.substring(1, body.length() - 1), statement);
         }
 
-        // A type array suffix (vec4[4] name) folds onto every declarator
         String typeArray = "";
         if (index < tokens.size() && tokens.get(index).startsWith("[")) {
             typeArray = tokens.get(index++);
@@ -200,7 +199,7 @@ public final class GlslDeclarations {
         return new Declaration(layout.toString(), qualifiers, storage, type, declarators, null, statement);
     }
 
-    // Splits a statement into identifiers, numbers, single punctuation and whole bracketed groups ((...), [...], {...}), comments dropped
+    // Splits text into tokens.
     static List<String> tokenize(String text) {
         List<String> tokens = new ArrayList<>();
         int length = text.length();
@@ -235,7 +234,7 @@ public final class GlslDeclarations {
         return tokens;
     }
 
-    // Whether a token is a plain GLSL identifier
+    // Returns whether a token is an identifier.
     static boolean isIdentifier(String token) {
         if (token.isEmpty() || !(Character.isLetter(token.charAt(0)) || token.charAt(0) == '_')) {
             return false;
@@ -249,7 +248,7 @@ public final class GlslDeclarations {
         return true;
     }
 
-    // One past the bracket that closes the one at index, skipping comments; the end of the text when it never closes
+    // Returns the index of the bracket that closes one at an index.
     private static int matching(String text, int index) {
         int depth = 0;
         for (int i = index; i < text.length(); i++) {
@@ -270,12 +269,12 @@ public final class GlslDeclarations {
         return text.length();
     }
 
-    // The text with its comments blanked out, for bracketed groups copied into generated code
+    // Returns text without comments.
     static String stripComments(String text) {
         return text.replaceAll("(?s)/\\*.*?\\*/", " ").replaceAll("//[^\\n]*", "");
     }
 
-    // Whether the last real character before the brace is a closing parenthesis, which marks a function body
+    // Returns whether text before an index ends with a closing bracket.
     private static boolean endsWithParenthesis(String source, int start, int brace) {
         for (int i = brace - 1; i >= start; i--) {
             char c = source.charAt(i);
@@ -286,13 +285,13 @@ public final class GlslDeclarations {
         return false;
     }
 
-    // Index of the newline ending this line, or the end of the text
+    // Returns the index of the end of a line.
     private static int endOfLine(String text, int from) {
         int newline = text.indexOf('\n', from);
         return newline < 0 ? text.length() : newline;
     }
 
-    // Index of the newline ending a directive, following backslash continuations
+    // Returns the index of the end of a directive with continuations.
     private static int endOfDirective(String text, int from) {
         int end = endOfLine(text, from);
         while (end < text.length() && end > 0 && (text.charAt(end - 1) == '\\' || (text.charAt(end - 1) == '\r' && end > 1 && text.charAt(end - 2) == '\\'))) {
@@ -301,13 +300,13 @@ public final class GlslDeclarations {
         return end;
     }
 
-    // The newlines a rewrite dropped, so the lines after it keep their numbers
+    // Returns the newlines a replacement needs to keep the line count.
     private static String newlinesOf(String original, String replacement) {
         int missing = count(original) - count(replacement);
         return missing > 0 ? "\n".repeat(missing) : "";
     }
 
-    // Newlines in a string
+    // Returns the number of newlines in text.
     private static int count(String text) {
         int lines = 0;
         for (int i = 0; i < text.length(); i++) {

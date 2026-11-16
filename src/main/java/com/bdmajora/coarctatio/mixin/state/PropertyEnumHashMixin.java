@@ -6,12 +6,15 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// PropertyEnum.hashCode folds in the hash of its whole allowed-value set and its name map on every call, and every property-keyed map lookup (getValue, withProperty, the model selectors) calls it (StellarCore's propertyEnumHashCodeCache); the property is immutable, so the first answer is kept
+// Mixin that changes PropertyEnum.
 @Mixin(PropertyEnum.class)
 public abstract class PropertyEnumHashMixin {
+    // Cached hash.
     private int coarctatio$hash;
+    // Flag set once the hash is cached.
     private boolean coarctatio$hashed;
 
+    // Runs at the start of hashCode and can cancel it.
     @Inject(method = "hashCode", at = @At("HEAD"), cancellable = true)
     private void coarctatio$cachedHash(CallbackInfoReturnable<Integer> cir) {
         if (this.coarctatio$hashed) {
@@ -19,6 +22,7 @@ public abstract class PropertyEnumHashMixin {
         }
     }
 
+    // Runs before every return of hashCode.
     @Inject(method = "hashCode", at = @At("RETURN"))
     private void coarctatio$rememberHash(CallbackInfoReturnable<Integer> cir) {
         this.coarctatio$hash = cir.getReturnValue();

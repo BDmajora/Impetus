@@ -8,21 +8,32 @@ import java.io.File;
 import java.util.Arrays;
 import java.util.List;
 
-// Every Dynamic Lights setting, persisted to config/impetus-dynamiclights.cfg; everything lives in one declarative table so load/save cannot drift, enums are stored by ordinal so never reorder them
+// Settings of the dynamic lights loaded from the configuration file.
 public final class DynamicLightsConfig {
+    // Category of the general settings.
     private static final String CAT_GENERAL = "general";
+    // Category of the light source switches.
     private static final String CAT_SOURCES = "light_sources";
 
+    // Update rate of the lights.
     public DynamicLightsMode mode = DynamicLightsMode.REALTIME;
+    // Lighting mode of creepers.
     public ExplosiveLightingMode creeperLighting = ExplosiveLightingMode.FANCY;
+    // Lighting mode of primed explosives.
     public ExplosiveLightingMode tntLighting = ExplosiveLightingMode.FANCY;
 
+    // Whether the player lights the world.
     public boolean selfLightSource = true;
+    // Whether other entities light the world.
     public boolean entitiesLightSource = true;
+    // Whether block entities light the world.
     public boolean blockEntitiesLightSource = true;
+    // Whether water sensitive sources go out when submerged.
     public boolean waterSensitiveCheck = true;
+    // Whether the debug overlay shows the source count.
     public boolean showDebugInfo = false;
 
+    // Properties that are read from and written to the file.
     private final List<ConfigProperty> properties = Arrays.asList(
             ConfigProperty.bool(CAT_GENERAL, "selfLightSource", true,
                     "Light the world from what the player themselves is holding or wearing",
@@ -50,9 +61,10 @@ public final class DynamicLightsConfig {
                     v -> tntLighting = v, () -> tntLighting)
     );
 
+    // File backed configuration or null before loading.
     private Configuration config;
 
-    // Reads the file, adding missing keys; a read failure yields defaults that are NOT written back, since overwriting an unparseable config would destroy the user's settings
+    // Returns the settings read from the file or the defaults when it cannot be read.
     public static DynamicLightsConfig load(File file) {
         DynamicLightsConfig options = new DynamicLightsConfig();
         Configuration config = new Configuration(file);
@@ -73,7 +85,7 @@ public final class DynamicLightsConfig {
         }
     }
 
-    // Reads every property, falling back to defaults for anything missing or out of range
+    // Reads every property and the disabled source lists.
     private void loadFrom(Configuration config) {
         properties.forEach(property -> property.load(config));
 
@@ -84,7 +96,7 @@ public final class DynamicLightsConfig {
                 new String[0], "Block entity types the user has switched off"));
     }
 
-    // Flushes every setting back to disk.
+    // Writes every property and the disabled source lists to the file.
     public void writeChanges() {
         if (config == null) {
             return;

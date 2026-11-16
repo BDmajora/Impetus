@@ -2,51 +2,66 @@ package com.bdmajora.impetus.engine.impl.gl.shader;
 
 import java.util.*;
 
+// Stores immutable shader constant definitions in insertion order.
 public class ShaderConstants {
-    public static final ShaderConstants EMPTY = ShaderConstants.builder().build();
+    // Shared constants with no definitions.
+    public static final ShaderConstants EMPTY = new ShaderConstants(List.of());
 
+    // Immutable shader definition lines.
     private final List<String> defines;
 
+    // Stores immutable shader definition lines.
     private ShaderConstants(List<String> defines) {
         this.defines = defines;
     }
 
-    // The #define lines
+    // Returns immutable shader definition lines.
     public List<String> getDefineStrings() {
         return this.defines;
     }
 
-    // Starts an empty set
+    // Creates an empty constant builder.
     public static ShaderConstants.Builder builder() {
         return new Builder();
     }
 
+    // Collects shader constants in insertion order.
     public static class Builder {
+        // Value of a constant without replacement text.
         private static final String EMPTY_VALUE = "";
 
-        // Insertion-ordered so the emitted #define block, and anything hashing it, is stable across runs
+        // Constant names and values in insertion order.
         private final Map<String, String> constants = new LinkedHashMap<>();
 
-        private Builder() {
+        // Snapshot of the current constants or null after an addition.
+        private ShaderConstants snapshot = EMPTY;
 
+        // Creates an empty constant builder.
+        private Builder() {
         }
 
-        // #define NAME
+        // Adds a constant without replacement text and rejects duplicate names.
         public ShaderConstants.Builder add(String name) {
             return this.add(name, EMPTY_VALUE);
         }
 
-        // #define NAME value
+        // Adds a constant with replacement text and rejects null values or duplicate names.
         public ShaderConstants.Builder add(String name, String value) {
+            Objects.requireNonNull(value, "value");
             String prev = this.constants.putIfAbsent(name, value);
             if (prev != null) {
                 throw new IllegalArgumentException("Constant " + name + " is already defined with value " + prev);
             }
+            this.snapshot = null;
             return this;
         }
 
-        // Finalises
+        // Returns an immutable snapshot of the current constants.
         public ShaderConstants build() {
+            if (this.snapshot != null) {
+                return this.snapshot;
+            }
+
             List<String> defines = new ArrayList<>(this.constants.size());
 
             for (Map.Entry<String, String> entry : this.constants.entrySet()) {
@@ -60,10 +75,11 @@ public class ShaderConstants {
                 }
             }
 
-            return new ShaderConstants(Collections.unmodifiableList(defines));
+            this.snapshot = new ShaderConstants(Collections.unmodifiableList(defines));
+            return this.snapshot;
         }
 
-        // Bulk value-less defines
+        // Adds constants without replacement text in collection traversal order.
         public ShaderConstants.Builder addAll(Collection<String> defines) {
             for (String value : defines) {
                 this.add(value);
@@ -71,7 +87,7 @@ public class ShaderConstants {
             return this;
         }
 
-        // Bulk valued defines
+        // Adds constants with replacement text in map traversal order.
         public ShaderConstants.Builder addAll(Map<String, String> defines) {
             defines.forEach(this::add);
             return this;

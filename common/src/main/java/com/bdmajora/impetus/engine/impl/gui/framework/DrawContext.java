@@ -4,51 +4,59 @@ import com.bdmajora.impetus.engine.impl.gui.theme.DefaultColors;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+// Drawing surface for GUI elements.
 public interface DrawContext extends FontMetricsProvider {
+    // Fills a rectangle with a color.
     void fill(int x1, int y1, int x2, int y2, int color);
 
-    // Plain string without shadow
+    // Draws a string without a shadow and returns the end position.
     default int drawString(String str, int x, int y, int color) {
         return drawString(TextComponent.literal(str), x, y, color);
     }
 
-    // Component without shadow
+    // Draws a component without a shadow and returns the end position.
     default int drawString(TextComponent str, int x, int y, int color) {
         return drawString(str, x, y, color, false);
     }
 
+    // Draws a component with an optional shadow and returns the end position.
     int drawString(TextComponent str, int x, int y, int color, boolean shadow);
 
-    // Changes whenever text may translate or measure differently than before, such as after a language reload, so text kept from earlier frames is fitted again; constant for a context whose fonts and translations never change
+    // Returns a number that changes whenever text may translate or measure differently.
     default long textVersion() {
         return 0L;
     }
 
+    // Draws a whole image into a rectangle.
     void blitWholeImage(@NotNull String icon, int x, int y, int width, int height);
 
+    // Saves the current transform.
     void pushMatrix();
 
+    // Moves the origin of later drawing.
     void translate(double x, double y, double z);
 
+    // Restores the last saved transform.
     void popMatrix();
 
+    // Clips later drawing to a rectangle.
     void enableScissor(int x1, int y1, int x2, int y2);
 
+    // Removes the last clip.
     void disableScissor();
 
-    // Transforms pushed and not yet popped; a context that does not count them reports none, so nothing is ever unwound on it
+    // Returns the number of saved transforms or zero when not counted.
     default int matrixDepth() {
         return 0;
     }
 
-    // Scissors enabled and not yet disabled, counted like the transforms
+    // Returns the number of active clips or zero when not counted.
     default int scissorDepth() {
         return 0;
     }
 
-    // Pops whatever was pushed beyond the given depths, so a draw that failed partway leaves no transform or clipping behind
+    // Pops transforms and clips beyond the given depths.
     default void unwindTo(int matrixDepth, int scissorDepth) {
-        // Counted once up front, so a context whose pops do not lower its count cannot loop
         for (int i = this.matrixDepth() - matrixDepth; i > 0; i--) {
             this.popMatrix();
         }
@@ -57,7 +65,7 @@ public interface DrawContext extends FontMetricsProvider {
         }
     }
 
-    // One-pixel outline from four fills
+    // Draws a one pixel outline with four fills.
     default void drawBorder(int x1, int y1, int x2, int y2, int color) {
         fill(x1, y1, x2, y1 + 1, color);
         fill(x1, y2 - 1, x2, y2, color);
@@ -65,16 +73,17 @@ public interface DrawContext extends FontMetricsProvider {
         fill(x2 - 1, y1, x2, y2, color);
     }
 
+    // Returns the logo path of a mod or null.
     default @Nullable String getModLogoPath(String modId) {
         return null;
     }
 
-    // Defaults to the id; platforms override with the display name
+    // Returns the display name of a mod.
     default TextComponent getFriendlyModName(String modId) {
         return TextComponent.literal(modId);
     }
 
-    // Defaults to the theme's per-mod colour; rows cache it per context until a theme is registered, so it must depend only on the id and the registered themes
+    // Returns the accent color of a mod.
     default int getModAccentColor(String modId) {
         return DefaultColors.getModAccentColor(modId);
     }

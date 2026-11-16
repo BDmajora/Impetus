@@ -15,11 +15,14 @@ import java.nio.ByteOrder;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// A GL texture from a pack's PNG bytes (Iris's NativeImageBackedCustomTexture); filtering and wrapping follow the .mcmeta sidecar exactly (NEAREST/REPEAT default, `blur` LINEAR, `clamp` CLAMP_TO_EDGE), decoded through ImageIO like vanilla
+// Texture made from a PNG file.
 public class PngTexture extends GlResource {
+    // Width in pixels.
     private final int width;
+    // Height in pixels.
     private final int height;
 
+    // Creates a png texture from its data.
     public PngTexture(CustomTextureData.PngData data) throws IOException {
         BufferedImage image = ImageIO.read(new ByteArrayInputStream(data.getContent()));
         if (image == null) {
@@ -50,22 +53,22 @@ public class PngTexture extends GlResource {
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, 0);
     }
 
-    // For binding as a custom sampler
+    // Returns the texture id.
     public int getTextureId() {
         return getGlId();
     }
 
-    // Decoded width
+    // Returns the width.
     public int getWidth() {
         return this.width;
     }
 
-    // Decoded height
+    // Returns the height.
     public int getHeight() {
         return this.height;
     }
 
-    // Frees the texture
+    // Deletes the texture.
     @Override
     protected void destroyInternal() {
         LWJGL.glDeleteTextures(getGlId());

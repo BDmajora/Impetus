@@ -2,7 +2,8 @@ package com.bdmajora.coarctatio.client.model.dynamic;
 
 import net.minecraft.util.ResourceLocation;
 
-// Implemented on TextureMap by mixin; a weak registration is one the texture scan made, which a mod's own registerSprite or setTextureEntry for the same name may still replace
+// Texture map that can register sprites it may release.
 public interface WeakSpriteTextureMap {
+    // Registers the sprite location without keeping the sprite.
     void coarctatio$registerSpriteWeak(ResourceLocation location);
 }

@@ -2,11 +2,16 @@ package com.bdmajora.impetus.umbra.shaderpack.option;
 
 import java.util.Optional;
 
+// Base of a shader pack option.
 public abstract class BaseOption {
+    // Kind of declaration.
     private final OptionType type;
+    // Name of the option.
     private final String name;
+    // Comment of the option or null.
     private final String comment;
 
+    // Creates an option and drops an empty comment.
     BaseOption(OptionType type, String name, String comment) {
         this.type = type;
         this.name = name;
@@ -18,17 +23,17 @@ public abstract class BaseOption {
         }
     }
 
-    // DEFINE or CONST
+    // Returns the kind of declaration.
     public OptionType getType() {
         return type;
     }
 
-    // The identifier
+    // Returns the name.
     public String getName() {
         return name;
     }
 
-    // Trailing comment, used as the tooltip
+    // Returns the comment or empty.
     public Optional<String> getComment() {
         return Optional.ofNullable(comment);
     }

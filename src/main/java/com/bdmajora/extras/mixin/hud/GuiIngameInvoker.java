@@ -5,8 +5,10 @@ import net.minecraft.client.gui.ScaledResolution;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Invoker;
 
+// Mixin that changes GuiIngame.
 @Mixin(GuiIngame.class)
 public interface GuiIngameInvoker {
+    // Calls the method render vignette.
     @Invoker("renderVignette")
     void impetus$renderVignette(float lightLevel, ScaledResolution resolution);
 }

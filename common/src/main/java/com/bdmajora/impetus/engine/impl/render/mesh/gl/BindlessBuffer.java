@@ -6,55 +6,79 @@ import org.lwjgl.opengl.GL30;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Immutable resident device-local storage reached by raw 64-bit pointer; never CPU-mapped, writes arrive via UploadStream staging so the driver keeps it in its fastest memory
+// Device local buffer that shaders reach by a GPU address.
 public class BindlessBuffer implements DeviceBuffer {
+    // GL name.
     private final int id;
+    // Size in bytes.
     private final long size;
+    // GPU address.
     private final long deviceAddress;
+    // Whether the buffer was deleted.
     private boolean deleted;
 
+    // Rejects a deleted buffer.
+    private void checkLive() {
+        if (this.deleted) {
+            throw new IllegalStateException("Buffer was deleted");
+        }
+    }
+
+    // Creates a resident buffer and rejects a size that is not positive.
     public BindlessBuffer(long size) {
+        if (size <= 0) {
+            throw new IllegalArgumentException("Buffer size must be positive");
+        }
         this.size = size;
         this.id = LWJGL.glCreateBuffers();
-        // No storage flags at all: no client access of any kind, the strongest hint the driver gets
         LWJGL.glNamedBufferStorage(this.id, size, 0);
         LWJGL.glMakeNamedBufferResidentNV(this.id, GL15.GL_READ_WRITE);
         this.deviceAddress = LWJGL.glGetNamedBufferGpuAddressNV(this.id);
 
         if (this.deviceAddress == 0L) {
+            LWJGL.glMakeNamedBufferNonResidentNV(this.id);
+            LWJGL.glDeleteBuffers(this.id);
             throw new IllegalStateException("Driver returned a null GPU address for a resident buffer");
         }
     }
 
-    // GL name
+    // Returns the GL name.
     @Override
     public int getId() {
         return this.id;
     }
 
-    // Bytes
+    // Returns the size in bytes.
     @Override
     public long getSize() {
         return this.size;
     }
 
-    // GPU virtual address, for the NV bindless path
+    // Returns the GPU address.
     @Override
     public long getDeviceAddress() {
         return this.deviceAddress;
     }
 
-    // Zeroes the whole buffer on the GPU; no staging copy and no CPU-side array
+    // Zeroes the whole buffer on the GPU.
     public void clear() {
+        this.checkLive();
         LWJGL.glClearNamedBufferDataZero(this.id, GL30.GL_R8UI, GL30.GL_RED_INTEGER, GL11.GL_UNSIGNED_BYTE);
     }
 
-    // Zeroes a byte range; wipes a region's visibility bytes the frame it leaves the frustum so stale flags cannot resurrect it
+    // Zeroes a byte range and rejects a range outside the buffer.
     public void clearRange(long offset, long length) {
+        this.checkLive();
+        if (offset < 0 || length < 0 || length > this.size - offset) {
+            throw new IllegalArgumentException("Range outside the buffer " + offset + " " + length);
+        }
+        if (length == 0) {
+            return;
+        }
         LWJGL.glClearNamedBufferSubDataZero(this.id, GL30.GL_R8UI, offset, length, GL30.GL_RED_INTEGER, GL11.GL_UNSIGNED_BYTE);
     }
 
-    // Makes non-resident, then deletes
+    // Makes the buffer non resident and deletes it once.
     @Override
     public void delete() {
         if (this.deleted) {

@@ -7,9 +7,10 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
 
+// Mixin that changes Builder.
 @Mixin(SimpleBakedModel.Builder.class)
 public class SimpleBakedModelBuilderMixin {
-    // Flags quads built by vanilla's model builder so the light pipeline applies vanilla's shading rules
+    // Changes an argument of the call of List.add in addFaceQuad and addGeneralQuad.
     @ModifyArg(method = { "addFaceQuad", "addGeneralQuad" }, at = @At(value = "INVOKE", target = "Ljava/util/List;add(Ljava/lang/Object;)Z", remap = false), require = 0)
     private Object setVanillaShadingFlag(Object quad) {
         BakedQuadView view = (BakedQuadView)quad;

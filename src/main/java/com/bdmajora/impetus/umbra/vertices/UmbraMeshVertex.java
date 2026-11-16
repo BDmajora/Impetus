@@ -7,49 +7,52 @@ import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.impl.MeshChun
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.impl.MeshVertexLayout;
 import org.lwjgl.system.MemoryUtil;
 
-// The terrain vertex while a shader pack draws through the mesh backend: every attribute UmbraChunkVertexType carries, in 32 bytes the mesh shader fetches as two uvec4s, so a quad is one 128-byte cache line; mc_midTexCoord is not stored at all, the mesh shader averages the quad's four UVs itself
+// Mesh shader vertex layout of pack terrain.
 public class UmbraMeshVertex implements MeshVertexLayout {
+    // Shared instance.
     public static final UmbraMeshVertex INSTANCE = new UmbraMeshVertex();
 
+    // Bytes of one vertex.
     public static final int STRIDE = 32;
 
-    // UVs as 16-bit fractions of the atlas
+    // Scale of texture coordinates.
     public static final int TEXTURE_SCALE = 65536;
 
-    // Two uvec4s; the format only exists because ChunkVertexType demands one, nothing binds it as attributes
+    // Vertex format.
     public static final GlVertexFormat VERTEX_FORMAT = GlVertexFormat.builder(STRIDE)
             .addElement("a_PackedA", 0, GlVertexAttributeFormat.UNSIGNED_INT, 4, false, true)
             .addElement("a_PackedB", 16, GlVertexAttributeFormat.UNSIGNED_INT, 4, false, true)
             .build();
 
+    // Prevents instantiation
     private UmbraMeshVertex() {
     }
 
-    // Positions share MeshChunkVertex's 16-bit encoding
+    // Returns the position scale.
     @Override
     public float getPositionScale() {
         return MeshChunkVertex.INSTANCE.getPositionScale();
     }
 
-    // The same small negative margin
+    // Returns the position offset.
     @Override
     public float getPositionOffset() {
         return MeshChunkVertex.INSTANCE.getPositionOffset();
     }
 
-    // UVs are 16-bit fractions
+    // Returns the texture scale.
     @Override
     public float getTextureScale() {
         return 1.0f / TEXTURE_SCALE;
     }
 
-    // The two-uvec4 layout
+    // Returns the vertex format.
     @Override
     public GlVertexFormat getVertexFormat() {
         return VERTEX_FORMAT;
     }
 
-    // Words in mesh-shader order: position and material with block light, colour, UV, then normal with sky light, tangent, mc_Entity and at_midBlock
+    // Returns a vertex encoder.
     @Override
     public ChunkVertexEncoder createEncoder() {
         return (ptr, material, vertex, sectionIndex) -> {
@@ -71,22 +74,22 @@ public class UmbraMeshVertex implements MeshVertexLayout {
         };
     }
 
-    // A UV in 0..1 to 16 bits, the top value standing in for 1.0
+    // Returns a texture coordinate in fixed point.
     static int encodeTexture(float value) {
         return Math.clamp(Math.round(value * TEXTURE_SCALE), 0, TEXTURE_SCALE - 1);
     }
 
-    // at_midBlock's rounding and range, as UmbraChunkVertexType writes it
+    // Returns a unit value as a signed byte.
     private static int signedByte(float value) {
         return clampByte(Math.round(value));
     }
 
-    // -128..127
+    // Limits the byte.
     private static int clampByte(int value) {
         return Math.clamp(value, Byte.MIN_VALUE, Byte.MAX_VALUE);
     }
 
-    // Short range
+    // Limits the short.
     private static int clampShort(int value) {
         return Math.clamp(value, Short.MIN_VALUE, Short.MAX_VALUE);
     }

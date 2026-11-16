@@ -14,7 +14,7 @@ import com.bdmajora.impetus.umbra.terrain.UmbraTerrainProgramOverride;
 
 import java.util.Map;
 
-// Swaps terrain programs while shader packs are active.
+// Mixin that changes ShaderChunkRenderer.
 @Mixin(ShaderChunkRenderer.class)
 public class MixinShaderChunkRenderer {
 
@@ -22,6 +22,7 @@ public class MixinShaderChunkRenderer {
     @Final
     private Map<ChunkShaderOptions, GlProgram<ChunkShaderInterface>> programs;
 
+    // Runs at the start of compileProgram and can cancel it.
     @Inject(method = "compileProgram", at = @At("HEAD"), cancellable = true)
     private void impetus$overrideTerrainProgram(ChunkShaderOptions options,
                                                   CallbackInfoReturnable<GlProgram<ChunkShaderInterface>> cir) {
@@ -29,12 +30,10 @@ public class MixinShaderChunkRenderer {
             return;
         }
         if (com.bdmajora.impetus.umbra.pipeline.UmbraShadowRenderer.isShadowPass()) {
-            // Shadow programs use their own cache.
             cir.setReturnValue(UmbraTerrainProgramOverride.getShadowProgramOverride(options));
             return;
         }
         if (this.programs.containsKey(options)) {
-            // Reuse already resolved overrides.
             cir.setReturnValue(this.programs.get(options));
             return;
         }

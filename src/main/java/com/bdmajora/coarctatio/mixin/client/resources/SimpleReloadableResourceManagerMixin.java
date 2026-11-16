@@ -12,14 +12,16 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.io.FileNotFoundException;
 import java.util.List;
 
-// The unknown-domain throws, and the reload that bumps the lookup caches' generation before any pack is asked anything
+// Mixin that changes SimpleReloadableResourceManager.
 @Mixin(SimpleReloadableResourceManager.class)
 public abstract class SimpleReloadableResourceManagerMixin {
+    // Replaces the missing resource exception with one without a stack trace.
     @Redirect(method = {"getResource", "getAllResources"}, at = @At(value = "NEW", target = "(Ljava/lang/String;)Ljava/io/FileNotFoundException;", remap = false))
     private FileNotFoundException coarctatio$stackless(String message) {
         return new StacklessFileNotFoundException(message);
     }
 
+    // Runs at the start of reloadResources.
     @Inject(method = "reloadResources", at = @At("HEAD"))
     private void coarctatio$newGeneration(List<net.minecraft.client.resources.IResourcePack> packs, CallbackInfo ci) {
         ResourceLookupCaches.onReload();

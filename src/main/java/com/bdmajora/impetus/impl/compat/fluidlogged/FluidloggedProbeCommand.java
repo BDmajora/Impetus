@@ -27,29 +27,30 @@ import org.apache.logging.log4j.Logger;
 import java.util.ArrayList;
 import java.util.List;
 
-// /impetus_fluidlog: copies the looked-at block's section and runs the fluidlogging guess exactly as the chunk builder does, then prints each check and what the fluid renderer reads there; lines also go to the log so they can be attached
+// Command that prints the fluid state guesses at a block.
 public class FluidloggedProbeCommand extends CommandBase {
+    // Logger of this class.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Fluidlogged");
 
-    // Command name
+    // Returns the name.
     @Override
     public String getName() {
         return "impetus_fluidlog";
     }
 
-    // Shown by /help
+    // Returns the usage text.
     @Override
     public String getUsage(ICommandSender sender) {
         return "/impetus_fluidlog [x y z] - explain the fluidlogging guess at the looked-at block";
     }
 
-    // Zero so any player can run it; it only reads
+    // Returns the required permission level.
     @Override
     public int getRequiredPermissionLevel() {
         return 0;
     }
 
-    // The block under the crosshair unless coordinates are given
+    // Prints the report of the targeted block.
     @Override
     public void execute(MinecraftServer server, ICommandSender sender, String[] args) throws CommandException {
         Minecraft client = Minecraft.getMinecraft();
@@ -58,7 +59,6 @@ public class FluidloggedProbeCommand extends CommandBase {
             pos = parseBlockPos(sender, args, 0, false);
         } else if (client.objectMouseOver != null && client.objectMouseOver.typeOfHit == RayTraceResult.Type.BLOCK) {
             pos = client.objectMouseOver.getBlockPos();
-            // A full solid block never holds fluid, and the ray slips past a thin post onto the floor under it, so the probe steps out of the face that was hit
             if (client.world.getBlockState(pos).isOpaqueCube()) {
                 pos = pos.offset(client.objectMouseOver.sideHit);
             }
@@ -72,7 +72,7 @@ public class FluidloggedProbeCommand extends CommandBase {
         }
     }
 
-    // One line per check, in the order the guess and then the fluid renderer make them
+    // Returns the report lines of a block.
     static List<String> report(World world, BlockPos pos) {
         List<String> lines = new ArrayList<>();
         IBlockState state = world.getBlockState(pos);
@@ -111,7 +111,6 @@ public class FluidloggedProbeCommand extends CommandBase {
         }
         lines.add(" guessed into the slice: " + describe(slice.getFluidState(pos.getX(), pos.getY(), pos.getZ())));
 
-        // What the fluid renderer sees: the cell itself, and whether each neighbouring fluid draws a face into it
         lines.add(" fluid renderer reads here: " + FluidloggedUtils.getFluidOrReal(slice, pos));
         for (EnumFacing side : EnumFacing.VALUES) {
             BlockPos next = pos.offset(side);
@@ -123,13 +122,13 @@ public class FluidloggedProbeCommand extends CommandBase {
         return lines;
     }
 
-    // What the guess reads from the raw copy: a fluid block is its own fluid, anything else only counts through the server's data
+    // Returns the stored fluid state of a block.
     private static FluidState raw(World world, BlockPos pos) {
         IBlockState state = world.getBlockState(pos);
         return FluidloggedUtils.isFluid(state) ? FluidState.of(state) : FluidloggedUtils.getFluidState(world, pos);
     }
 
-    // The fluid's block state, or none
+    // Returns the text of a fluid state.
     private static String describe(FluidState fluid) {
         return fluid.isEmpty() ? "none" : String.valueOf(fluid.getState());
     }

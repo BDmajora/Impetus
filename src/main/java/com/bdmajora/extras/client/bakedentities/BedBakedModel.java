@@ -14,14 +14,17 @@ import org.joml.Matrix4f;
 
 import java.util.List;
 
-// Beds never animate, so both halves are always static; the colour lives on the block entity and is read through the pinned context
+// Baked model of beds.
 public final class BedBakedModel extends BakedEntityModel {
+    // Base model of beds.
     private final ModelBed model = new ModelBed();
 
+    // Returns the texture of the color.
     static ResourceLocation texture(EnumDyeColor color) {
         return new ResourceLocation("minecraft", "entity/bed/" + color.getDyeColorName());
     }
 
+    // Returns the quads of the bed state.
     @Override
     protected List<BakedQuad> quadsFor(IBlockState state, BakedEntityContext context) {
         if (!(state.getBlock() instanceof BlockBed)) {
@@ -41,7 +44,7 @@ public final class BedBakedModel extends BakedEntityModel {
         return variant(key, k -> bake(facing, head, finalColor));
     }
 
-    // TileEntityBedRenderer.renderPiece: a per-facing corner offset, lay the model flat, spin it, then the piece's own parts
+    // Returns the quads of one bed variant.
     private List<BakedQuad> bake(EnumFacing facing, boolean head, EnumDyeColor color) {
         float degrees = 0.0F;
         float offsetX = 0.0F;
@@ -80,6 +83,7 @@ public final class BedBakedModel extends BakedEntityModel {
         }
     }
 
+    // Returns the sprite of the particles.
     @Override
     protected TextureAtlasSprite particleSprite() {
         return BakedEntities.sprite(texture(EnumDyeColor.RED));

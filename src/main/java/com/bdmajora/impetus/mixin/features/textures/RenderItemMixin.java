@@ -7,9 +7,10 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import com.bdmajora.impetus.impl.render.terrain.sprite.SpriteUtil;
 
+// Mixin that changes RenderItem.
 @Mixin(RenderItem.class)
 public class RenderItemMixin {
-    // Marks the sprite of every quad drawn for an item, so only visible textures animate
+    // Changes an expression value in renderQuads.
     @ModifyExpressionValue(method = "renderQuads", at = @At(value = "INVOKE", target = "Ljava/util/List;get(I)Ljava/lang/Object;", remap = false))
     private Object markSpriteActive(Object o) {
         if (o instanceof BakedQuad quad) {

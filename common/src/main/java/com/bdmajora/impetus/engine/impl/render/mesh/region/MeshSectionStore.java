@@ -10,38 +10,43 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.system.MemoryUtil;
 
-
-// Where a finished build lands: geometry into the quad arena, a 32-byte header into the region store so the section rasteriser decides visibility from one cache line
+// Stores the geometry and the header of each section.
 public class MeshSectionStore {
+    // Logger of the backend.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/MeshBackend");
 
+    // Table of the regions.
     private final MeshRegionStore regions;
+    // Arena of the quads.
     private final QuadArena arena;
+    // Stream that copies the geometry.
     private final UploadStream uploadStream;
 
-    // Section key -> region store id, and -> first quad of its geometry; two maps rather than one object because both are hit per build result and neither wants a pointer chase
+    // Table id of each section.
     private final Long2IntOpenHashMap sectionIds = new Long2IntOpenHashMap();
+    // First quad of each section.
     private final Long2IntOpenHashMap sectionQuads = new Long2IntOpenHashMap();
 
+    // Creates the store and rejects null parts.
     public MeshSectionStore(MeshRegionStore regions, QuadArena arena, UploadStream uploadStream) {
-        this.regions = regions;
-        this.arena = arena;
-        this.uploadStream = uploadStream;
+        this.regions = java.util.Objects.requireNonNull(regions, "regions");
+        this.arena = java.util.Objects.requireNonNull(arena, "arena");
+        this.uploadStream = java.util.Objects.requireNonNull(uploadStream, "uploadStream");
         this.sectionIds.defaultReturnValue(-1);
         this.sectionQuads.defaultReturnValue(-1);
     }
 
-    // The region table
+    // Returns the region table.
     public MeshRegionStore getRegions() {
         return this.regions;
     }
 
-    // Where section geometry lives
+    // Returns the quad arena.
     public QuadArena getArena() {
         return this.arena;
     }
 
-    // Uploads one section's geometry and metadata; null geometry means the section built to nothing and should be dropped
+    // Uploads the geometry and header of a section and removes the section for null geometry and rejects geometry larger than its allocation.
     public void upload(int sectionX, int sectionY, int sectionZ, SectionGeometry geometry) {
         long key = PositionUtil.packSection(sectionX, sectionY, sectionZ);
 
@@ -50,9 +55,12 @@ public class MeshSectionStore {
             return;
         }
 
+        if (geometry.geometry().getLength() > (long) geometry.quadCount() * this.arena.bytesPerQuad()) {
+            throw new IllegalArgumentException("Geometry of " + geometry.quadCount() + " quads has " + geometry.geometry().getLength() + " bytes which exceeds its allocation");
+        }
+
         int quadAddress = this.sectionQuads.get(key);
 
-        // A rebuild with exactly as many quads as before keeps its allocation (the common block-change case), saving an arena round trip and a sparse page recommit
         if (quadAddress != -1 && !this.arena.canReuse(quadAddress, geometry.quadCount())) {
             this.sectionQuads.remove(key);
             this.arena.free(quadAddress);
@@ -85,7 +93,7 @@ public class MeshSectionStore {
         writeHeader(sectionId, sectionX, sectionY, sectionZ, quadAddress, geometry);
     }
 
-    // Frees a section's geometry and clears its table entry
+    // Frees the geometry of a section and clears its table entry.
     public void remove(int sectionX, int sectionY, int sectionZ) {
         long key = PositionUtil.packSection(sectionX, sectionY, sectionZ);
 
@@ -101,7 +109,7 @@ public class MeshSectionStore {
         }
     }
 
-    // Drops every section in a region, when it is evicted for range or the arena needs its memory back
+    // Removes every section of a region.
     public void removeRegion(int regionId) {
         if (!this.regions.regionExists(regionId)) {
             return;
@@ -121,24 +129,23 @@ public class MeshSectionStore {
         }
     }
 
-    // Uploads every dirty table entry
+    // Uploads the changed table entries.
     public void commit() {
         this.regions.commit();
     }
 
+    // Writes the header of a section into the region table.
     private void writeHeader(int sectionId, int sectionX, int sectionY, int sectionZ, int quadAddress,
                              SectionGeometry geometry) {
         long ptr = this.regions.beginSectionUpdate(sectionId);
         int sectionIndex = this.regions.getSectionIndex(sectionId);
 
-        // Chunk Y is masked to 9 bits and sign-extended in the shader, covering every build height the game has had while leaving the top bits for the section index
         MemoryUtil.memPutInt(ptr, (sectionX << 8) | (geometry.sizeX() << 4) | geometry.minX());
         MemoryUtil.memPutInt(ptr + 4, ((sectionY & 0x1FF) << 8) | (geometry.sizeY() << 4) | geometry.minY()
                 | (sectionIndex << 18));
         MemoryUtil.memPutInt(ptr + 8, (sectionZ << 8) | (geometry.sizeZ() << 4) | geometry.minZ());
         MemoryUtil.memPutInt(ptr + 12, quadAddress);
 
-        // Eight uint16s: six directional quad counts, the unassigned count, then the base quad; the task shader accumulates them into absolute offsets so a section can exceed a 16-bit offset
         short[] counts = geometry.quadsPerFacing();
         long ranges = ptr + 16;
 

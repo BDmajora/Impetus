@@ -6,31 +6,37 @@ import com.cleanroommc.client.sdl.video.DisplayMode;
 import org.lwjgl.sdl.SDLVideo;
 import org.lwjgl.system.MemoryStack;
 
-// Cleanroom owns the SDL window and its state; all renderer window operations go through this seam
+// Access to the native game window.
 public final class GameWindow {
+    // Prevents instantiation
     private GameWindow() {
     }
 
+    // Returns the native window handle.
     public static long handle() {
         Window window = SDL.window();
         return window == null ? 0L : window.handle();
     }
 
+    // Returns whether minimized.
     public static boolean isMinimized() {
         Window window = SDL.window();
         return window != null && (window.minimized() || window.hidden());
     }
 
+    // Returns whether focused.
     public static boolean isFocused() {
         Window window = SDL.window();
         return window != null && window.focused();
     }
 
+    // Returns whether context current.
     public static boolean isContextCurrent() {
         long window = handle();
         return window != 0L && SDLVideo.SDL_GL_GetCurrentWindow() == window;
     }
 
+    // Stores the vsync.
     public static void setVsync(boolean enabled) {
         Window window = SDL.window();
         if (window != null) {
@@ -38,11 +44,12 @@ public final class GameWindow {
         }
     }
 
+    // Stores the swap interval.
     public static boolean setSwapInterval(int interval) {
         return isContextCurrent() && SDLVideo.SDL_GL_SetSwapInterval(interval);
     }
 
-    // SDL reports adaptive support by accepting -1; put the previous interval back after the probe
+    // Returns whether adaptive sync.
     public static boolean supportsAdaptiveSync() {
         if (!isContextCurrent()) {
             return false;
@@ -58,18 +65,20 @@ public final class GameWindow {
         }
     }
 
+    // Returns the fullscreen display modes.
     public static DisplayMode[] fullscreenModes() {
         Window window = SDL.window();
         var display = window == null ? null : window.display();
         return display == null ? new DisplayMode[0] : display.modes().toArray(DisplayMode[]::new);
     }
 
+    // Returns whether fullscreen.
     public static boolean isFullscreen() {
         Window window = SDL.window();
         return window != null && window.fullscreen();
     }
 
-    // Resolve on the current display, since a saved resolution may have come from another monitor
+    // Stores the fullscreen mode.
     public static boolean setFullscreenMode(DisplayMode mode) {
         Window window = SDL.window();
         if (mode == null || window == null || !window.fullscreen() || isBorderless()) {
@@ -87,19 +96,21 @@ public final class GameWindow {
         return false;
     }
 
+    // Returns the desktop display mode.
     public static DisplayMode desktopMode() {
         Window window = SDL.window();
         var display = window == null ? null : window.display();
         return display == null ? null : display.desktopMode();
     }
 
-    // SDL desktop fullscreen has no exclusive mode; coverDisplay is Cleanroom's Windows compatibility path
+    // Returns whether borderless.
     public static boolean isBorderless() {
         Window window = SDL.window();
         return window != null && window.fullscreen()
                 && (window.borderless() || SDLVideo.SDL_GetWindowFullscreenMode(window.handle()) == null);
     }
 
+    // Stores the borderless.
     public static void setBorderless(boolean borderless) {
         Window window = SDL.window();
         if (window != null) {

@@ -7,6 +7,7 @@ import com.bdmajora.impetus.umbra.shaderpack.loading.ProgramArrayId;
 import com.bdmajora.impetus.umbra.shaderpack.loading.ProgramId;
 import com.bdmajora.impetus.umbra.shaderpack.preprocessor.GlslPreprocessor;
 import com.bdmajora.impetus.umbra.targets.UmbraRenderTargets;
+import com.bdmajora.impetus.umbra.util.SafeInt;
 
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -16,28 +17,37 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-// The pack's program sources for directive scanning, collected once per pipeline with each stage's conditional-resolved text cached, since the format, shadow and mipmap scans all read the same stages
+// Program sources of a pack with their active stages and the targets and images they reference.
 public final class PackSources {
-    // The numbered families that render full-screen quads into the colour targets, in run order; Setup is compute-only, so it samples and writes no targets
+    // Program arrays of the fullscreen passes.
     private static final ProgramArrayId[] FULLSCREEN_FAMILIES = {
             ProgramArrayId.Begin, ProgramArrayId.Prepare, ProgramArrayId.Deferred, ProgramArrayId.Composite
     };
-    // colorimgN, shadowcolorN and shadowcolorimgN in one pass over every stage
+    // Pattern of a shadow color or color image reference.
     private static final Pattern REFERENCE = Pattern.compile("\\b(shadowcolor(img)?|colorimg)(\\d{1,2})\\b");
+    // Pattern of a 2D sampler declaration.
     private static final Pattern SAMPLED = Pattern.compile("\\b[iu]?sampler2D\\s+(\\w+)");
-    // The rest of a `sampler2D a, b, c;` declaration list
+    // Pattern of a further name in a declaration list.
     private static final Pattern LIST_TAIL = Pattern.compile("\\s*,\\s*(\\w+)");
+    // Number of shadow color targets.
     private static final int SHADOW_COLOR_INDICES = 8;
 
+    // Environment defines of the pack.
     private final Map<String, String> defines;
+    // Every program source.
     private final List<ProgramSource> all;
+    // Sources of the fullscreen passes and the final pass.
     private final List<ProgramSource> fullscreen;
-    // Per source, {vertex, fragment} with conditionals resolved, null for an absent stage
+    // Vertex and fragment stages after conditionals by source.
     private final Map<ProgramSource, String[]> active = new IdentityHashMap<>();
+    // Color targets used as images.
     private final BitSet renderTargetImages = new BitSet();
+    // Shadow color targets referenced by any stage.
     private final BitSet shadowColorReferences = new BitSet();
+    // Shadow color targets used as images.
     private final BitSet shadowColorImages = new BitSet();
 
+    // Collects the sources of a program set and scans every stage for references.
     public PackSources(ProgramSet programs, Map<String, String> defines) {
         this.defines = defines;
         this.all = collectAll(programs);
@@ -49,7 +59,7 @@ public final class PackSources {
         }
     }
 
-    // Every present program (all gbuffer ids through their fallbacks, then every numbered family) in a fixed order; duplicates from the fallback chain are kept, since directives are applied in this order and the last one wins
+    // Returns every source of a program set.
     static List<ProgramSource> collectAll(ProgramSet programs) {
         List<ProgramSource> sources = new ArrayList<>();
         for (ProgramId id : ProgramId.VALUES) {
@@ -61,7 +71,7 @@ public final class PackSources {
         return sources;
     }
 
-    // Every begin, prepare, deferred, composite and final program, in pass order
+    // Returns the sources of the fullscreen passes and the final pass.
     static List<ProgramSource> collectFullscreen(ProgramSet programs) {
         List<ProgramSource> sources = new ArrayList<>();
         for (ProgramArrayId id : FULLSCREEN_FAMILIES) {
@@ -71,13 +81,14 @@ public final class PackSources {
         return sources;
     }
 
+    // Adds the present sources of a program array.
     private static void collectFamily(ProgramSet programs, ProgramArrayId id, List<ProgramSource> sources) {
         for (int i = 0; i < id.getNumPrograms(); i++) {
             programs.get(id, i).ifPresent(sources::add);
         }
     }
 
-    // Every stage of a program that has source, compute included
+    // Returns every present stage of a source.
     public static List<String> allStages(ProgramSource source) {
         List<String> stages = new ArrayList<>();
         source.getVertexSource().ifPresent(stages::add);
@@ -93,30 +104,32 @@ public final class PackSources {
         return stages;
     }
 
+    // Returns every source.
     public List<ProgramSource> all() {
         return this.all;
     }
 
+    // Returns the fullscreen sources.
     public List<ProgramSource> fullscreen() {
         return this.fullscreen;
     }
 
-    // The macro set one program compiles with (a pass in impetus.umbra.legacyPrograms has no IS_IRIS)
+    // Returns the macros of a source.
     public Map<String, String> macros(ProgramSource source) {
         return ShaderMacros.forProgram(this.defines, source.getName());
     }
 
-    // The vertex stage with conditionals resolved, or null
+    // Returns the vertex stage after conditionals or null.
     public String activeVertex(ProgramSource source) {
         return resolved(source)[0];
     }
 
-    // The fragment stage with conditionals resolved, or null
+    // Returns the fragment stage after conditionals or null.
     public String activeFragment(ProgramSource source) {
         return resolved(source)[1];
     }
 
-    // The stages a directive may be declared in, vertex first and fragment last since Umbra trusts the fragment stage; raw scans took the LAST textual match, so a directive under a disabled #if won (Body Camera whited the screen)
+    // Returns the present vertex and fragment stages after conditionals.
     public List<String> activeStages(ProgramSource source) {
         String[] stages = resolved(source);
         List<String> present = new ArrayList<>(2);
@@ -128,6 +141,7 @@ public final class PackSources {
         return present;
     }
 
+    // Returns the stages after conditionals and resolves each source once.
     private String[] resolved(ProgramSource source) {
         return this.active.computeIfAbsent(source, s -> {
             Map<String, String> macros = macros(s);
@@ -138,28 +152,28 @@ public final class PackSources {
         });
     }
 
-    // colorimgN anywhere: a buffer a compute writes through the image API must exist even if nothing samples it
+    // Returns the color targets used as images.
     public BitSet renderTargetImages() {
         return this.renderTargetImages;
     }
 
-    // shadowcolorN or shadowcolorimgN anywhere
+    // Returns the referenced shadow color targets.
     public BitSet shadowColorReferences() {
         return this.shadowColorReferences;
     }
 
-    // shadowcolorimgN anywhere
+    // Returns the shadow color targets used as images.
     public BitSet shadowColorImages() {
         return this.shadowColorImages;
     }
 
+    // Records the shadow color and image references of a stage.
     private void scanReferences(String stage) {
         Matcher matcher = REFERENCE.matcher(stage);
         while (matcher.find()) {
             String digits = matcher.group(3);
-            int index = Integer.parseInt(digits);
+            int index = SafeInt.parse(digits);
             if (matcher.group(1).startsWith("shadow")) {
-                // Only single digits name a shadowcolor buffer
                 if (digits.length() == 1 && index < SHADOW_COLOR_INDICES) {
                     this.shadowColorReferences.set(index);
                     if (matcher.group(2) != null) {
@@ -172,7 +186,7 @@ public final class PackSources {
         }
     }
 
-    // Every colour target the fullscreen programs declare a sampler for, comma lists and integer samplers included, so per-pass snapshots can bind them even when the writing pass comes later
+    // Returns the color targets the fullscreen stages declare samplers for.
     public BitSet sampledColorTargets() {
         BitSet sampled = new BitSet();
         Map<String, Integer> names = SamplerLayout.colorTargetsByName();
@@ -183,6 +197,7 @@ public final class PackSources {
         return sampled;
     }
 
+    // Records every sampler of every declaration list of a stage.
     private static void markSampled(String stage, Map<String, Integer> names, BitSet sampled) {
         Matcher declaration = SAMPLED.matcher(stage);
         Matcher tail = LIST_TAIL.matcher(stage);
@@ -196,6 +211,7 @@ public final class PackSources {
         }
     }
 
+    // Records a color target sampler name.
     private static void mark(String name, Map<String, Integer> names, BitSet sampled) {
         Integer index = names.get(name);
         if (index != null) {

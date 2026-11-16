@@ -16,28 +16,38 @@ import java.awt.Desktop;
 import java.util.ArrayList;
 import java.util.List;
 
-// The shader-pack picker in Sodium/Iris style: a toggle then every pack in shaderpacks/; only Apply loads the pack AND reloads chunk renderers, since the terrain vertex format changes with a pack, and Shader Pack Settings opens ShaderPackConfigScreen
+// Screen that lists shader packs to pick from.
 public class ShaderPackSelectScreen extends GuiScreen {
+    // Top of the pack list.
     private static final int LIST_TOP = 44;
+    // Height of a row.
     private static final int ROW_HEIGHT = 22;
+    // Width of a row.
     private static final int ROW_WIDTH = 420;
 
+    // Screen to return to.
     private final GuiScreen parent;
 
+    // Names of the installed packs.
     private List<String> packs = new ArrayList<>();
+    // Pack picked but not applied.
     private String stagedSelection;
+    // Shader switch picked but not applied.
     private boolean stagedEnabled;
+    // Index of the shown page.
     private int page;
 
+    // Widgets of the screen.
     private final List<AbstractWidget> widgets = new ArrayList<>();
-    // One context for the screen's lifetime, so its finished text survives between frames
+    // Draw context of the screen.
     private final DrawContext drawContext = new VintageDrawContext();
 
+    // Creates a shader pack select screen from its parent.
     public ShaderPackSelectScreen(GuiScreen parent) {
         this.parent = parent;
     }
 
-    // Scans the shaderpacks folder and builds the list
+    // Initializes the gui.
     @Override
     public void initGui() {
         this.widgets.clear();
@@ -50,14 +60,13 @@ public class ShaderPackSelectScreen extends GuiScreen {
         this.packs = new ArrayList<>();
         this.packs.addAll(Umbra.listAvailablePacks());
 
-        int rowsPerPage = Math.max(1, (this.height - LIST_TOP - 80) / ROW_HEIGHT) - 1; // reserve the toggle row
+        int rowsPerPage = Math.max(1, (this.height - LIST_TOP - 80) / ROW_HEIGHT) - 1;
         int totalPages = Math.max(1, (int) Math.ceil(this.packs.size() / (double) rowsPerPage));
         this.page = Math.max(0, Math.min(this.page, totalPages - 1));
 
         int rowLeft = (this.width - ROW_WIDTH) / 2;
         int y = LIST_TOP;
 
-        // Enable/disable toggle row
         addRow(rowLeft, y, "Shaders: " + (this.stagedEnabled ? "§aEnabled" : "§cDisabled"), true, () -> {
             this.stagedEnabled = !this.stagedEnabled;
             initGui();
@@ -92,14 +101,12 @@ public class ShaderPackSelectScreen extends GuiScreen {
             next.setEnabled(this.page < totalPages - 1);
         }
 
-        // Utility row
         int utilY = this.height - 52;
         addButton(this.width / 2 - 154, utilY, 150, 20, "Open Shader Pack Folder...", this::openPackFolder);
         FlatButtonWidget settings = addButton(this.width / 2 + 4, utilY, 150, 20, "Shader Pack Settings...",
                 () -> this.mc.displayGuiScreen(new ShaderPackConfigScreen(this)));
         settings.setEnabled(Umbra.isShaderPackInUse());
 
-        // Action row
         int actY = this.height - 28;
         addButton(this.width / 2 - 154, actY, 100, 20, "Cancel", () -> this.mc.displayGuiScreen(this.parent));
         addButton(this.width / 2 - 50, actY, 100, 20, "Apply", this::applySelection);
@@ -109,7 +116,7 @@ public class ShaderPackSelectScreen extends GuiScreen {
         });
     }
 
-    // One list row, highlighted when it is the selection
+    // Adds a pack row.
     private FlatButtonWidget addRow(int x, int y, String label, boolean enabled, Runnable action) {
         FlatButtonWidget button = new FlatButtonWidget(new Dim2i(x, y, ROW_WIDTH, 20), TextComponent.literal(label), action);
         button.setEnabled(enabled);
@@ -117,14 +124,14 @@ public class ShaderPackSelectScreen extends GuiScreen {
         return button;
     }
 
-    // Bottom-bar button
+    // Adds a button.
     private FlatButtonWidget addButton(int x, int y, int w, int h, String label, Runnable action) {
         FlatButtonWidget button = new FlatButtonWidget(new Dim2i(x, y, w, h), TextComponent.literal(label), action);
         this.widgets.add(button);
         return button;
     }
 
-    // Loads the selected pack and reloads chunk renderers, since the vertex format changes
+    // Applies the selection.
     private void applySelection() {
         String target = this.stagedEnabled ? this.stagedSelection : UmbraConfig.NO_PACK;
         if (target.equals(Umbra.getSelectedPackName())) {
@@ -138,7 +145,7 @@ public class ShaderPackSelectScreen extends GuiScreen {
         initGui();
     }
 
-    // Opens shaderpacks/ in the system file browser
+    // Opens the pack folder in the file manager.
     private void openPackFolder() {
         if (Umbra.getConfig() == null) {
             return;
@@ -152,7 +159,7 @@ public class ShaderPackSelectScreen extends GuiScreen {
         }
     }
 
-    // Forwards to the widgets
+    // Forwards a click to the widgets.
     @Override
     protected void mouseClicked(int mouseX, int mouseY, int mouseButton) {
         for (AbstractWidget widget : new ArrayList<>(this.widgets)) {
@@ -162,7 +169,7 @@ public class ShaderPackSelectScreen extends GuiScreen {
         }
     }
 
-    // Draws the list and buttons
+    // Draws the screen.
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         this.drawDefaultBackground();
@@ -176,7 +183,7 @@ public class ShaderPackSelectScreen extends GuiScreen {
         }
     }
 
-    // In a world the frame behind the screen is blurred and darkened, the same backdrop as the video options screen
+    // Draws the blurred backdrop.
     @Override
     public void drawWorldBackground(int tint) {
         if (this.mc.world != null) {

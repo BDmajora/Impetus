@@ -5,9 +5,9 @@ import com.bdmajora.extras.ExtrasConfig.DetailSettings;
 import com.bdmajora.extras.ExtrasConfig.LeafSettings;
 import com.bdmajora.extras.ExtrasConfig.ParticleSettings;
 
-// Settings of texture animations and particles and world detail and leaf culling
+// Schema of the visual settings.
 final class VisualSchema {
-    // Texture animation switches
+    // Schema of the animation settings.
     static final SettingGroup<AnimationSettings> ANIMATION = SettingGroup.builder("animation", c -> c.animation, AnimationSettings::new)
             .bool("animation", "Master switch for all texture animations", s -> s.all, (s, v) -> s.all = v)
             .bool("water", "Animate water textures", s -> s.water, (s, v) -> s.water = v)
@@ -23,7 +23,7 @@ final class VisualSchema {
                     s -> s.sculkSensor, (s, v) -> s.sculkSensor = v)
             .build();
 
-    // Particle switches and particle ticking options
+    // Schema of the particle settings.
     static final SettingGroup<ParticleSettings> PARTICLE = SettingGroup.builder("particle", c -> c.particle, ParticleSettings::new)
             .bool("particles", "Master switch for all particles", s -> s.all, (s, v) -> s.all = v)
             .bool("rainSplash", "Rain splash particles", s -> s.rainSplash, (s, v) -> s.rainSplash = v)
@@ -49,7 +49,7 @@ final class VisualSchema {
                     s -> s.collisionCache, (s, v) -> s.collisionCache = v)
             .build();
 
-    // Sky and weather and colour detail switches with the star count
+    // Schema of the detail settings.
     static final SettingGroup<DetailSettings> DETAIL = SettingGroup.builder("detail", c -> c.detail, DetailSettings::new)
             .bool("sky", "Render the sky box", s -> s.sky, (s, v) -> s.sky = v)
             .bool("stars", "Render stars", s -> s.stars, (s, v) -> s.stars = v)
@@ -67,7 +67,7 @@ final class VisualSchema {
                     s -> s.totalStars, (s, v) -> s.totalStars = v)
             .build();
 
-    // Fancy leaf face culling mode and depth
+    // Schema of the leaves settings.
     static final SettingGroup<LeafSettings> LEAVES = SettingGroup.builder("leaves", c -> c.leaves, LeafSettings::new)
             .integer("cullingDepth", LeafSettings.DEPTH_MIN, LeafSettings.DEPTH_MAX,
                     "Depth mode: how many solid blocks must lie behind a leaf face before it is dropped",

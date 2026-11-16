@@ -10,9 +10,10 @@ import net.minecraft.world.WorldServer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
-// Keeps a chunk out of the spawn pass while its initial pass is pending, so peaceful mobs do not appear in caves that are momentarily unlit; matters only when chunks are sent before their light
+// Mixin that changes WorldEntitySpawner.
 @Mixin(WorldEntitySpawner.class)
 public abstract class WorldEntitySpawnerMixin {
+    // Wraps the call of PlayerChunkMapEntry.isSentToPlayers in findChunksForSpawning.
     @WrapOperation(method = "findChunksForSpawning",
             at = @At(value = "INVOKE", target = "Lnet/minecraft/server/management/PlayerChunkMapEntry;isSentToPlayers()Z"))
     private boolean fulgor$skipPendingLightChunks(PlayerChunkMapEntry entry, Operation<Boolean> original,

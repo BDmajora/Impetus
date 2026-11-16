@@ -26,70 +26,92 @@ import org.jetbrains.annotations.Nullable;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 
+// Controller of the video options screen.
 public class ImpetusVideoOptionsController implements Renderable {
+    // Logger of save failures.
     private static final Logger LOGGER = LogManager.getLogger();
+    // Widest shape of the screen.
     private static final float ASPECT_RATIO = 5f / 4f;
+    // Narrowest width that is not clamped.
     private static final int MINIMUM_WIDTH = 550;
-    // The search field sits in the top-right corner of the frame, Sodium 0.6 style, rather than spanning the width; wide enough for a few words, never more than a third of the frame
+    // Widest search field.
     private static final int SEARCH_BAR_MAX_WIDTH = 190;
+    // Height of the search field.
     private static final int SEARCH_BAR_HEIGHT = 18;
+    // Space between the title and the search field.
     private static final int HEADER_GAP = 6;
 
+    // Title of the selected tab shared by all screens.
     private static final AtomicReference<TextComponent> tabFrameSelectedTab = new AtomicReference<>(null);
+    // Scroll offset of the sidebar.
     private final AtomicReference<Integer> tabFrameScrollBarOffset = new AtomicReference<>(0);
+    // Scroll offset of the page.
     private final AtomicReference<Integer> optionPageScrollBarOffset = new AtomicReference<>(0);
 
+    // Pages of the screen.
     private final List<OptionPage> pages = new ArrayList<>();
+    // Action that closes the screen.
     private final Runnable onClose;
+    // Font used for measuring and searching.
     private final DrawContext font;
 
+    // Root frame.
     @Getter
     private AbstractFrame frame;
+    // Buttons of the screen.
     private FlatButtonWidget applyButton, closeButton, undoButton;
 
-    // Title/id of the synthesized search-results page
+    // Title of the search results page.
     private static final TextComponent SEARCH_RESULTS_TITLE = TextComponent.translatable("impetus.search_results");
+    // Title of the screen.
     private static final TextComponent SCREEN_TITLE = TextComponent.translatable("impetus.options.title");
 
+    // Search field.
     private SearchBarWidget searchBar;
+    // Title caption.
     private TitleWidget title;
+    // Current search text.
     private String searchQuery = "";
+    // Tab selected before the search started.
     private @Nullable TextComponent preSearchTabTitle;
 
+    // Unapplied change state of the options.
     @Getter
     private boolean hasPendingChanges;
 
+    // Size of the screen.
     private int width, height;
 
-    // Every option across every page, flattened once since the page list is fixed after the construction event and the per-frame change scan walks it; an option whose own code throws is taken out
+    // Every option of every page.
     private final List<Option<?>> allOptions = new ArrayList<>();
-    // Options taken out after their own code threw, by identity, so a search passes them over too
+    // Options that were removed after they threw.
     private final Set<Option<?>> dropped = Collections.newSetFromMap(new IdentityHashMap<>());
-    // Set when an option was dropped, so the next frame rebuilds the rows with its placeholder
+    // Pending rebuild state of the rows.
     private boolean rebuildPending;
 
+    // Creates the controller and rejects null arguments.
     public ImpetusVideoOptionsController(Runnable onClose, List<OptionPage> pages, DrawContext font) {
-        this.onClose = onClose;
+        this.onClose = Objects.requireNonNull(onClose, "onClose");
+        this.font = Objects.requireNonNull(font, "font");
         this.pages.addAll(pages);
         OptionGUIConstructionEvent.BUS.post(new OptionGUIConstructionEvent(this.pages));
         for (OptionPage page : this.pages) {
             this.allOptions.addAll(page.getOptions());
         }
-        this.font = font;
     }
 
-    // Rebuilds the whole frame tree for a new size
+    // Rebuilds the frames for a new size.
     public void init(int width, int height) {
         this.width = width;
         this.height = height;
         this.frame = this.parentFrameBuilder().build();
     }
 
-    // The root frame: tab area plus the button bar
+    // Creates the builder of the root frame.
     protected BasicFrame.Builder parentFrameBuilder() {
         BasicFrame.Builder basicFrameBuilder;
 
-        // Apply aspect ratio clamping on wide enough screens
+        // Limits the width of wide screens
         int newWidth = this.width;
         if (newWidth > MINIMUM_WIDTH && (float) this.width / (float) this.height > ASPECT_RATIO) {
             newWidth = Math.max(MINIMUM_WIDTH, (int) (this.height * ASPECT_RATIO));
@@ -102,7 +124,7 @@ public class ImpetusVideoOptionsController implements Renderable {
         Dim2i applyButtonDim = new Dim2i(tabFrameDim.getLimitX() - 134, tabFrameDim.getLimitY() + 5, 65, 20);
         Dim2i closeButtonDim = new Dim2i(tabFrameDim.getLimitX() - 65, tabFrameDim.getLimitY() + 5, 65, 20);
 
-        // Header row above the tab frame: the screen title on the left, the search field right-aligned; recreated on rebuild but preserving query and focus
+        // Creates the header with the title and the search field
         int headerY = Math.max(2, tabFrameDim.y() - SEARCH_BAR_HEIGHT - HEADER_GAP);
         int searchWidth = Math.min(SEARCH_BAR_MAX_WIDTH, tabFrameDim.width() / 3);
         Dim2i searchBarDim = new Dim2i(tabFrameDim.getLimitX() - searchWidth, headerY, searchWidth, SEARCH_BAR_HEIGHT);
@@ -119,9 +141,12 @@ public class ImpetusVideoOptionsController implements Renderable {
         return basicFrameBuilder;
     }
 
-    // Draws the root frame, first rebuilding it when an option was dropped since the last frame
+    // Draws the root frame and rebuilds it first when an option was dropped.
     @Override
     public void render(DrawContext drawContext, int mouseX, int mouseY, float partialTicks) {
+        if (this.frame == null) {
+            throw new IllegalStateException("Screen is not initialised");
+        }
         this.updateControls();
         if (this.rebuildPending) {
             this.rebuildPending = false;
@@ -130,12 +155,12 @@ public class ImpetusVideoOptionsController implements Renderable {
         this.frame.render(drawContext, mouseX, mouseY, partialTicks);
     }
 
-    // Enables Apply and Undo only when something changed
+    // Enables the buttons that depend on pending changes.
     private void updateControls() {
         boolean hasChanges = false;
-        // By index with no copy, since this runs every frame; a dropped option restarts the scan, which only ever shortens the list
-        for (int i = 0; i < this.allOptions.size(); i++) {
-            Option<?> option = this.allOptions.get(i);
+        List<Option<?>> options = this.allOptions;
+        for (int i = 0; i < options.size(); i++) {
+            Option<?> option = options.get(i);
             try {
                 if (option.hasChanged()) {
                     hasChanges = true;
@@ -144,8 +169,16 @@ public class ImpetusVideoOptionsController implements Renderable {
             } catch (VirtualMachineError fatal) {
                 throw fatal;
             } catch (Throwable broken) {
+                // Counts the earlier copies of the option that the drop removes
+                int earlier = 0;
+                for (int j = 0; j < i; j++) {
+                    if (options.get(j) == option) {
+                        earlier++;
+                    }
+                }
                 this.drop(option, broken, "checking for changes");
-                i = -1;
+                // Resumes at the option that moved into the dropped position
+                i -= earlier + 1;
             }
         }
 
@@ -156,15 +189,15 @@ public class ImpetusVideoOptionsController implements Renderable {
         this.hasPendingChanges = hasChanges;
     }
 
-    // Writes each changed option, saves every storage, then runs flag side effects
+    // Writes every changed option and saves the storages and runs the flag effects.
     private void applyChanges() {
-        // By identity, so each storage object is saved once and its own equals and hashCode are never asked
+        // Storages with changes
         final Set<OptionStorage<?>> dirtyStorages = Collections.newSetFromMap(new IdentityHashMap<>());
         final EnumSet<OptionFlag> flags = EnumSet.noneOf(OptionFlag.class);
-        // One option's flags, copied out before it writes so that flags it cannot give leave nothing behind
+        // Flags of the option being written
         final EnumSet<OptionFlag> optionFlags = EnumSet.noneOf(OptionFlag.class);
 
-        // Over a copy, as an option that throws is dropped from the list as the loop goes
+        // Walks a copy of the options
         for (Option<?> option : new ArrayList<>(this.allOptions)) {
             if (this.dropped.contains(option)) {
                 continue;
@@ -173,12 +206,12 @@ public class ImpetusVideoOptionsController implements Renderable {
                 if (!option.hasChanged()) {
                     continue;
                 }
-                // Read before writing, so an option that fails here or answers null is left as it was
+                // Reads the flags and storage before writing
                 optionFlags.clear();
                 optionFlags.addAll(Objects.requireNonNull(option.getFlags(), "Option has no flags"));
                 OptionStorage<?> storage = Objects.requireNonNull(option.getStorage(), "Option has no storage");
                 option.applyChanges();
-                // Neither can throw, so a written option always has its flags and storage counted
+                // Counts the written option
                 flags.addAll(optionFlags);
                 dirtyStorages.add(storage);
             } catch (VirtualMachineError fatal) {
@@ -188,7 +221,7 @@ public class ImpetusVideoOptionsController implements Renderable {
             }
         }
 
-        // Read-only, so a storage cannot change what the others and the side effects are given
+        // Shares the flags read only
         Set<OptionFlag> applied = Collections.unmodifiableSet(flags);
         for (OptionStorage<?> storage : dirtyStorages) {
             try {
@@ -196,7 +229,7 @@ public class ImpetusVideoOptionsController implements Renderable {
             } catch (VirtualMachineError fatal) {
                 throw fatal;
             } catch (Throwable broken) {
-                // A storage that cannot save leaves the others to save theirs, and is tried again on the next Apply
+                // Continues with the other storages
                 LOGGER.error("Saving options to {} failed", storage.getClass().getName(), broken);
                 ImpetusNotifications.error("Saving options failed", noteFailure(broken));
             }
@@ -205,17 +238,16 @@ public class ImpetusVideoOptionsController implements Renderable {
         applyFlagSideEffects(applied);
     }
 
-    // Platform hook: reload renderer, textures or world as flagged; overrides call this first, which says when only a restart can apply a change
+    // Runs the effects of the applied flags and warns when a restart is needed.
     protected void applyFlagSideEffects(Set<OptionFlag> flags) {
-        // The same title and line each time, so a later Apply refreshes this toast rather than stacking another
         if (flags.contains(OptionFlag.REQUIRES_GAME_RESTART)) {
             ImpetusNotifications.warn("Restart required", "The game must be restarted to apply one or more video settings.");
         }
     }
 
-    // Resets every option to its stored value
+    // Resets every option to its stored value.
     private void undoChanges() {
-        // Over a copy, as an option that throws is dropped from the list as the loop goes
+        // Walks a copy of the options
         for (Option<?> option : new ArrayList<>(this.allOptions)) {
             if (this.dropped.contains(option)) {
                 continue;
@@ -230,18 +262,18 @@ public class ImpetusVideoOptionsController implements Renderable {
         }
     }
 
-    // Takes an option whose own code threw out of every later scan, search, Apply and Undo, reports it once and has its rows rebuilt as placeholders on the next frame
+    // Removes a failed option from later scans and reports it once.
     private void drop(Option<?> option, Throwable failure, String during) {
         if (!this.dropped.add(option)) {
             return;
         }
-        // Every occurrence, as one option can sit on more than one page
+        // Removes every occurrence
         this.allOptions.removeIf(listed -> listed == option);
         Control.reportBroken(option, during, failure);
         this.rebuildPending = true;
     }
 
-    // Restores the interrupt flag after an interruption and returns the first line of the failure for a toast, cut to its limit
+    // Returns the text of a failure and restores the interrupt flag.
     private static String noteFailure(Throwable failure) {
         if (failure instanceof InterruptedException) {
             Thread.currentThread().interrupt();
@@ -249,19 +281,18 @@ public class ImpetusVideoOptionsController implements Renderable {
         return FailureText.of(failure);
     }
 
-    // Hides pages with no visible options
+    // Returns whether the page has groups.
     private boolean canShowPage(OptionPage page) {
         return !page.getGroups().isEmpty();
     }
 
-    // Platform hook for pages that are not option pages
+    // Adds tabs that are not option pages.
     protected void createExtraTabs(Map<String, List<Tab<?>>> tabs) {
 
     }
 
-    // One tab per page, grouped by owning mod
+    // Creates the frame with one tab per page.
     private AbstractFrame createTabFrame(Dim2i tabFrameDim) {
-        // TabFrame will automatically expand its height to fit all tabs, so the scrollable frame can handle it
         return TabFrame.createBuilder()
                 .setDimension(tabFrameDim)
                 .shouldRenderOutline(false)
@@ -286,12 +317,12 @@ public class ImpetusVideoOptionsController implements Renderable {
                 .build(this.font);
     }
 
-    // Assembles search bar, tabs and buttons
+    // Creates the builder of the root frame with the search field and tabs and buttons.
     public BasicFrame.Builder parentBasicFrameBuilder(Dim2i parentBasicFrameDim, Dim2i tabFrameDim) {
         return BasicFrame.createBuilder()
                 .setDimension(parentBasicFrameDim)
                 .shouldRenderOutline(false)
-                // First child, so Tab reaches it before the sidebar and the rows
+                // Adds the search field before the other children
                 .addChild(dim -> this.searchBar)
                 .addChild(dim -> this.title)
                 .addChild(parentDim -> this.createTabFrame(tabFrameDim))
@@ -300,9 +331,9 @@ public class ImpetusVideoOptionsController implements Renderable {
                 .addChild(dim -> this.closeButton);
     }
 
-    // Live search: while query is non-empty, shows a synthesized "Search Results" tab with matching live option instances (editable in place); clearing restores the previous tab
+    // Applies a search query and shows or hides the search results tab.
     private void setSearchQuery(String query) {
-        var trimmed = query.trim();
+        var trimmed = query == null ? "" : query.trim();
 
         if (trimmed.equals(this.searchQuery)) {
             return;
@@ -326,7 +357,7 @@ public class ImpetusVideoOptionsController implements Renderable {
         this.frame = this.parentFrameBuilder().build();
     }
 
-    // A synthetic page of every option matching the query, one group per page the matches came from and headed with that page's name, so a hit for "fog" says which Fog it is
+    // Creates a page of the options that match the query with one group per source page.
     private OptionPage buildSearchResultsPage() {
         var needle = this.searchQuery.toLowerCase(Locale.ROOT);
         List<OptionGroup> groups = new ArrayList<>();
@@ -352,29 +383,34 @@ public class ImpetusVideoOptionsController implements Renderable {
         return new OptionPage(OptionIdentifier.create("impetus", "search_results"), SEARCH_RESULTS_TITLE, groups);
     }
 
-    // A static caption in the header row; the mod accent colour so it pairs with the sidebar headings
+    // Caption in the header row.
     private static final class TitleWidget extends com.bdmajora.impetus.engine.impl.gui.widgets.AbstractWidget {
+        // Bounds of the caption.
         private final Dim2i dim;
+        // Text of the caption.
         private final TextComponent text;
 
+        // Creates a caption.
         TitleWidget(Dim2i dim, TextComponent text) {
             this.dim = dim;
             this.text = text;
         }
 
+        // Draws the caption.
         @Override
         public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
             drawContext.drawString(this.text, this.dim.x(), this.dim.getCenterY() - drawContext.lineHeight() / 2,
                     drawContext.getModAccentColor("impetus"));
         }
 
+        // Returns false for every point.
         @Override
         public boolean isMouseOver(double mouseX, double mouseY) {
             return false;
         }
     }
 
-    // Case-insensitive match on name and tooltip; an option that cannot be read is no match, and is dropped like any broken option
+    // Returns whether the name or tooltip of an option contains the text and drops an unreadable option.
     private boolean matchesQuery(Option<?> option, String needle) {
         if (this.dropped.contains(option)) {
             return false;

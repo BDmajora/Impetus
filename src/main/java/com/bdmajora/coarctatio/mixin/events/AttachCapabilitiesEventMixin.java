@@ -16,15 +16,16 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.Map;
 
-// The object changes per post and the providers gathered last time are cleared; the dispatcher copied them out before the event was released. remap = false, Forge class
+// Mixin that changes AttachCapabilitiesEvent.
 @Mixin(value = AttachCapabilitiesEvent.class, remap = false)
 public abstract class AttachCapabilitiesEventMixin<T> extends GenericEvent<T> implements RecyclableEvent {
-    // Never invoked; a mixin extending its target's superclass has to satisfy the constructor
+    // Creates an attach capabilities event mixin from its type.
     private AttachCapabilitiesEventMixin(Class<T> type) {
         super(type);
         throw new AssertionError();
     }
 
+    // Reference to the field obj of the target.
     @Shadow
     @Final
     @Mutable
@@ -34,25 +35,30 @@ public abstract class AttachCapabilitiesEventMixin<T> extends GenericEvent<T> im
     @Final
     private Map<ResourceLocation, ICapabilityProvider> caps;
 
+    // Field phase added to the target.
     @Unique
     private EventPriority coarctatio$phase;
 
+    // Returns the phase.
     @Nullable
     @Override
     public EventPriority getPhase() {
         return this.coarctatio$phase;
     }
 
+    // Handles set phase.
     @Override
     public void setPhase(@Nonnull EventPriority value) {
         this.coarctatio$phase = RecyclableEvent.advancePhase(this.coarctatio$phase, value);
     }
 
+    // Handles reset phase.
     @Override
     public void coarctatio$resetPhase() {
         this.coarctatio$phase = null;
     }
 
+    // Handles refresh object.
     @Override
     @SuppressWarnings("unchecked")
     public void coarctatio$refreshObject(Object object) {

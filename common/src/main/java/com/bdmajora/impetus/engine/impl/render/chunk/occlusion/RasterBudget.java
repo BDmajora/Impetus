@@ -1,79 +1,73 @@
 package com.bdmajora.impetus.engine.impl.render.chunk.occlusion;
 
-/**
- * Limits how far from the camera the raster tests and draws sections, so its per-frame cost tracks how much it
- * is culling. Sections beyond the limit are treated as visible, which is always conservative.
- *
- * <p>The limit is a squared chunk distance. Each frame the yield of the tests inside it (fraction not visible)
- * feeds a moving average: above {@link #HIGH_YIELD} the limit doubles, below {@link #LOW_YIELD} it halves, in
- * between it holds. It never drops below {@link #FLOOR}, which acts as a standing probe, and stops at the ceiling
- * the search supplies, at which point the search is a full, unbudgeted pass.
- *
- * <p>Limiting by distance rather than by count matters: the search runs roughly front to back, so everything
- * inside the limit is drawn before anything it could hide, and the yield measured there is representative.
- *
- * <p>Representative of the inside, that is: an occluder beyond the limit is never drawn, so whatever it hides is
- * never seen to be hidden, and a cliff a few chunks off would hold the limit at the floor for as long as the
- * camera stood there. So every {@link #PROBE_PERIOD} frames one frame runs unbudgeted, and when that pass pays
- * for itself the limit jumps straight to it.
- *
- * <p>Yield cannot say whether it pays: a hidden section also stops the search behind it, so one cull removes a
- * single section from the frame on gentle hills and dozens on cave-riddled terrain, at a similar yield. The probe
- * instead compares the frame's visible count against the average of the frames before it, which, the camera
- * having barely moved, is what the pass removed, and charges that against the tests it added.
- */
+// Limits how far from the camera sections are tested by the rasterizer.
 public final class RasterBudget {
-    /** Smallest squared chunk distance the limit can take. */
+    // Smallest squared chunk distance of the limit.
     public static final int FLOOR = 12;
 
+    // Yield above which the limit doubles.
     public static final int HIGH_YIELD = percent(15);
+    // Yield below which the limit halves.
     public static final int LOW_YIELD = percent(5);
 
-    /** Below this many tests in a frame the average is not updated. */
+    // Fewest tests of a frame that update the average.
     public static final int MIN_SAMPLE = 16;
 
-    /** The first this many far sections are tested regardless of the limit, so enclosed spaces get a full pass. */
+    // Number of far sections that are tested regardless of the limit.
     public static final int CHEAP_PASS = 32;
 
-    /** Every this many frames one runs unbudgeted, to find occlusion the limit cannot reach. */
+    // Frames between two probe frames.
     public static final int PROBE_PERIOD = 64;
 
-    /** A probe pays when it removes at least one section from the frame for every this many tests it adds. */
+    // Tests a probe may add for every section it removes.
     public static final int TESTS_PER_REMOVED = 2;
 
+    // Shift of the weight of a new sample.
     private static final int EMA_SHIFT = 2;
+    // Bits of the fixed point yield.
     private static final int Q = 16;
 
+    // Limit that tests every section.
     public static final int UNBOUNDED = Integer.MAX_VALUE;
 
+    // Current limit.
     private int limit = FLOOR;
+    // Moving average of the yield.
     private int yieldEma;
+    // Largest reachable squared distance.
     private int ceiling = UNBOUNDED;
 
+    // Limit of the current frame.
     private int frameLimit = FLOOR;
 
-    /** Nothing beyond this is tested this frame; twice the limit's distance, or unbounded on a full pass. */
+    // Squared distance beyond which nothing is tested in the frame.
     private int testable = UNBOUNDED;
 
-    /** Non-zero holds the limit fixed; for benchmarks. */
+    // Fixed limit or zero.
     private int pinned;
 
+    // Frame counter.
     private int frames;
+    // Whether the frame is a probe.
     private boolean probing;
 
-    /** Moving averages, in 1/16ths, of the visible count and the tests of non-probe frames; -1 before the first. */
+    // Moving averages of the visible count and the tests.
     private int visibleEma = -1;
     private int testedEma;
 
+    // Far sections reached this frame.
     private int farReached;
+    // Largest squared distance reached this frame.
     private int farthest;
+    // Sections tested this frame.
     private int tested;
+    // Sections culled this frame.
     private int culled;
 
-    /** @param ceiling squared chunk distance no reachable section exceeds */
+    // Starts a frame with the largest reachable squared distance.
     public void beginFrame(int ceiling) {
         this.ceiling = Math.max(FLOOR, ceiling);
-        this.probing = this.pinned == 0 && this.limit < this.ceiling && ++this.frames % PROBE_PERIOD == 0
+        this.probing = this.pinned == 0 && this.limit < this.ceiling && (++this.frames & (PROBE_PERIOD - 1)) == 0
                 && this.visibleEma >= 0;
         this.frameLimit = this.probing ? UNBOUNDED : this.limit();
         this.testable = this.frameLimit >= this.ceiling ? UNBOUNDED
@@ -84,7 +78,7 @@ public final class RasterBudget {
         this.culled = 0;
     }
 
-    /** Called once per far section with occluder data; true if it should be tested and drawn. */
+    // Returns whether a far section at a squared distance is tested.
     public boolean shouldTest(int squaredChunkDist) {
         this.farReached++;
 
@@ -100,11 +94,12 @@ public final class RasterBudget {
         return true;
     }
 
+    // Counts a culled section.
     public void recordCulled() {
         this.culled++;
     }
 
-    /** @param visible sections the search found visible this frame */
+    // Ends a frame with the number of visible sections and adapts the limit.
     public void endFrame(int visible) {
         if (!this.probing) {
             if (this.visibleEma < 0) {
@@ -147,8 +142,11 @@ public final class RasterBudget {
         }
     }
 
-    /** Holds the limit at a fixed value ({@link #UNBOUNDED} for a full pass); zero restores adaptive behaviour. */
+    // Holds the limit at a value and restores adaptive behavior for zero and rejects a negative value.
     public void pin(int limit) {
+        if (limit < 0) {
+            throw new IllegalArgumentException("Negative limit " + limit);
+        }
         this.pinned = limit;
 
         if (limit != 0) {
@@ -156,47 +154,56 @@ public final class RasterBudget {
         }
     }
 
+    // Copies the adaptive state of another budget.
     public void copyFrom(RasterBudget other) {
+        java.util.Objects.requireNonNull(other, "other");
         this.limit = other.limit;
         this.yieldEma = other.yieldEma;
         this.visibleEma = other.visibleEma;
         this.testedEma = other.testedEma;
     }
 
+    // Returns the limit.
     public int limit() {
         return this.pinned != 0 ? this.pinned : this.limit;
     }
 
-    /** Squared chunk distance beyond which nothing is tested this frame; the coverage buffer is sized to it. */
+    // Returns the squared distance beyond which nothing is tested.
     public int testableLimit() {
         return this.testable;
     }
 
+    // Returns the far sections reached.
     public int farReached() {
         return this.farReached;
     }
 
+    // Returns the sections tested.
     public int tested() {
         return this.tested;
     }
 
+    // Returns the sections culled.
     public int culled() {
         return this.culled;
     }
 
-    /** Moving-average yield in [0, 1]. */
+    // Returns the moving average of the yield.
     public float yield() {
         return this.yieldEma / (float) (1 << Q);
     }
 
+    // Returns whether every reached section was tested.
     public boolean wasFullPass() {
         return this.tested == this.farReached;
     }
 
+    // Returns whether the frame was a probe.
     public boolean wasProbe() {
         return this.probing;
     }
 
+    // Returns the state as text.
     @Override
     public String toString() {
         return String.format("limit=%s%s yield=%.1f%% far=%d farthest=%d tested=%d culled=%d",
@@ -204,10 +211,12 @@ public final class RasterBudget {
                 this.yield() * 100.0f, this.farReached, this.farthest, this.tested, this.culled);
     }
 
+    // Returns a percentage as a fixed point value.
     private static int percent(int value) {
         return (int) (((long) value << Q) / 100);
     }
 
+    // Returns twice a value or the largest int.
     private static int saturatingDouble(int value) {
         return value >= (1 << 30) ? Integer.MAX_VALUE : value << 1;
     }

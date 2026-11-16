@@ -8,12 +8,13 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.chunk.Chunk;
 
-// Folds Fluidlogged API's second state per position into the packed light info (max of both, as the mod patches into vanilla); the fluid lives in a per-chunk capability the state cache cannot see, and its classes are only touched behind Fulgor.hasFluidloggedApi()
+// Bridge that adds fluid light to block light.
 public final class FluidLightBridge {
+    // Prevents instantiation
     private FluidLightBridge() {
     }
 
-    // The chunk's fluid capability as an opaque handle, or null
+    // Capabilities the of.
     public static Object capabilityOf(Chunk chunk) {
         if (!Fulgor.hasFluidloggedApi() || chunk == null) {
             return null;
@@ -21,7 +22,7 @@ public final class FluidLightBridge {
         return IFluidStateCapability.get(chunk);
     }
 
-    // Maxes the fluid's opacity and emission into the info; the fluid fills the block space, so the cell becomes a plain uniform absorber with no face bits
+    // Returns the light info joined with the light of a fluid capability.
     public static int merge(int info, Object capability, int x, int y, int z, IBlockAccess access, BlockPos.MutableBlockPos lookupPos) {
         FluidState fluid = ((IFluidStateCapability) capability).getContainer(y).getFluidState(x, y, z, FluidState.EMPTY);
         if (fluid.isEmpty()) {
@@ -34,7 +35,7 @@ public final class FluidLightBridge {
         return LightInfo.COMPUTED | opacity | (emission << LightInfo.EMISSION_SHIFT);
     }
 
-    // Scalar opacity with the fluid layer maxed in, for the heightmap walks in the chunk mixin
+    // Returns the larger of the block and fluid opacity.
     public static int maxOpacityAt(Chunk chunk, int blockOpacity, int x, int y, int z, BlockPos.MutableBlockPos lookupPos) {
         IFluidStateCapability cap = IFluidStateCapability.get(chunk);
         if (cap == null) {

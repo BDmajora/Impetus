@@ -287,4 +287,16 @@ class MeshShaderTranslatorTest {
         assertTrue(mesh.contains("#ifdef A\nvec3 a;\n#define UMBRA_FED_1 1\nlayout(location = 1) out umbra_v1 { vec3 a; } umbra_o1[];\n"));
         assertTrue(mesh.contains("#else\nvec4 a;\n#define UMBRA_FED_1 1\nlayout(location = 1) out umbra_v1 { vec4 a; } umbra_o1[];\n"));
     }
+
+    // Rejects array sizes whose element count overflows and arrays that push the locations past the int range.
+    @Test
+    void overflowingArraysAreUnsupported() {
+        assertThrows(MeshShaderTranslator.UnsupportedProgramException.class,
+                () -> MeshShaderTranslator.arrayLength("x", "[65536][65536]"));
+        assertEquals(2147483647, MeshShaderTranslator.arrayLength("x", "[2147483647]"));
+        String fragment = "#version 330\nin vec4 huge[2147483647];\nin mat4 more[600000000];\nvoid main() {}\n";
+        assertThrows(MeshShaderTranslator.UnsupportedProgramException.class, () -> MeshShaderTranslator.assignLocations(fragment));
+        String many = "#version 330\nin vec4 wide[40];\nvoid main() { gl_FragColor = wide[0]; }\n";
+        assertThrows(MeshShaderTranslator.UnsupportedProgramException.class, () -> MeshShaderTranslator.assignLocations(many));
+    }
 }

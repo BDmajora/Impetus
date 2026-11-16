@@ -1378,9 +1378,9 @@ class StagingBufferTest {
             // Flag set when the fence was deleted before it signalled
             private boolean deletedEarly;
 
-            // Creates a fence without a GL sync object
+            // Creates a fence with a placeholder sync name
             private ModelFence() {
-                super(0L);
+                super(1L);
             }
 
             // Returns whether the test signalled the fence and rejects a query after delete

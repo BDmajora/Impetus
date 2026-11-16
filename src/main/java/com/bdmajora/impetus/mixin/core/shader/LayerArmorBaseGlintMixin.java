@@ -10,20 +10,26 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Routes the armour enchantment glint through gbuffers_armor_glint (see UmbraRenderingPipeline#beginArmorGlint); HEAD/RETURN mirror OptiFine's renderEnchantedGlintBegin/End span, and both vanilla call sites go through this public static method
+// Mixin that changes LayerArmorBase.
 @Mixin(LayerArmorBase.class)
 public class LayerArmorBaseGlintMixin {
+    // Runs at the start of renderEnchantedGlint.
     @Inject(method = "renderEnchantedGlint", at = @At("HEAD"), require = 0)
     private static void impetus$beginArmorGlint(RenderLivingBase<?> renderer, EntityLivingBase entity, ModelBase model,
+                                                // Limb swing and partial ticks.
                                                 float limbSwing, float limbSwingAmount, float partialTicks,
+                                                // Age and head angles and scale.
                                                 float ageInTicks, float netHeadYaw, float headPitch, float scale,
                                                 CallbackInfo ci) {
         Umbra.beginArmorGlint();
     }
 
+    // Runs before every return of renderEnchantedGlint.
     @Inject(method = "renderEnchantedGlint", at = @At("RETURN"), require = 0)
     private static void impetus$endArmorGlint(RenderLivingBase<?> renderer, EntityLivingBase entity, ModelBase model,
+                                              // Limb swing and partial ticks.
                                               float limbSwing, float limbSwingAmount, float partialTicks,
+                                              // Age and head angles and scale.
                                               float ageInTicks, float netHeadYaw, float headPitch, float scale,
                                               CallbackInfo ci) {
         Umbra.endArmorGlint();

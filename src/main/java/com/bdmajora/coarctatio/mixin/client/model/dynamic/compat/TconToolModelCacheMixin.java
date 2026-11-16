@@ -1,11 +1,7 @@
 package com.bdmajora.coarctatio.mixin.client.model.dynamic.compat;
 
+import com.bdmajora.coarctatio.collections.ParentPartitionedCache;
 import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
-import com.google.common.cache.CacheStats;
-import com.google.common.cache.LoadingCache;
-import com.google.common.collect.ImmutableMap;
 import net.minecraft.client.renderer.block.model.IBakedModel;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
@@ -14,124 +10,59 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import javax.annotation.Nullable;
-import java.time.Duration;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Field;
-import java.util.Map;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ExecutionException;
+import java.time.Duration;
 
-// TConstruct caches every assembled tool model forever, keyed by parent model and modifiers, which with dynamic loading would also pin every parent; the cache becomes one soft, expiring cache per parent, weakly keyed so a parent the registry let go takes its tools with it. Applied only when TConstruct is present
+// Replaces the tool model cache of Tinkers Construct with one that is partitioned by parent model and reclaimed under memory pressure.
 @Pseudo
 @Mixin(targets = "slimeknights/tconstruct/library/client/model/BakedToolModel$ToolItemOverrideList", remap = false)
 public abstract class TconToolModelCacheMixin {
+    // Tool model cache of the override list.
     @Shadow
     private Cache<?, IBakedModel> bakedModelCache;
 
+    // Getter of the parent field of a cache key or null when the field is missing.
     private static final MethodHandle coarctatio$PARENT = coarctatio$parentGetter();
+    // Largest number of parent models with cached tools.
+    private static final int coarctatio$MAX_PARENTS = 70;
+    // Largest number of cached tools of one parent.
+    private static final int coarctatio$MAX_TOOLS_PER_PARENT = 50;
+    // Time after which a cached tool expires.
+    private static final Duration coarctatio$EXPIRY = Duration.ofMinutes(3);
 
-    private final LoadingCache<IBakedModel, Cache<Object, IBakedModel>> coarctatio$byParent = CacheBuilder.newBuilder()
-            .maximumSize(70)
-            .expireAfterWrite(Duration.ofMinutes(3))
-            .weakKeys()
-            .softValues()
-            .build(new CacheLoader<IBakedModel, Cache<Object, IBakedModel>>() {
-                @Override
-                public Cache<Object, IBakedModel> load(IBakedModel parent) {
-                    return CacheBuilder.newBuilder()
-                            .expireAfterWrite(Duration.ofMinutes(3))
-                            .maximumSize(50)
-                            .build();
-                }
-            });
-
-    private IBakedModel coarctatio$modelFor(Object key, Callable<? extends IBakedModel> loader) throws ExecutionException {
-        IBakedModel parent;
-        try {
-            parent = (IBakedModel) coarctatio$PARENT.invoke(key);
-        } catch (Throwable e) {
-            throw new ExecutionException(e);
-        }
-        return this.coarctatio$byParent.get(parent).get(key, loader);
+    // Installs the partitioned cache after construction.
+    @Inject(method = "<init>", at = @At("RETURN"))
+    private void coarctatio$useSoftCache(CallbackInfo ci) {
+        this.bakedModelCache = new ParentPartitionedCache<IBakedModel, Object, IBakedModel>(
+                TconToolModelCacheMixin::coarctatio$parentOf, coarctatio$MAX_PARENTS, coarctatio$MAX_TOOLS_PER_PARENT,
+                coarctatio$EXPIRY);
     }
 
+    // Returns the parent model of a cache key or null for a key without one.
+    private static IBakedModel coarctatio$parentOf(Object key) {
+        if (coarctatio$PARENT == null) {
+            return null;
+        }
+        try {
+            Object parent = coarctatio$PARENT.invoke(key);
+            return parent instanceof IBakedModel model ? model : null;
+        } catch (ClassCastException e) {
+            return null;
+        } catch (Throwable e) {
+            throw new IllegalStateException("Could not read the parent of a tool model key", e);
+        }
+    }
+
+    // Returns the getter of the parent field of a cache key or null when the class or field is missing.
     private static MethodHandle coarctatio$parentGetter() {
         try {
             Field parent = Class.forName("slimeknights.tconstruct.library.client.model.BakedToolModel$CacheKey").getDeclaredField("parent");
             parent.setAccessible(true);
             return MethodHandles.lookup().unreflectGetter(parent);
         } catch (ReflectiveOperationException e) {
-            throw new RuntimeException(e);
+            return null;
         }
-    }
-
-    // TConstruct only ever calls get(key, loader) on its cache
-    @Inject(method = "<init>", at = @At("RETURN"))
-    private void coarctatio$useSoftCache(CallbackInfo ci) {
-        this.bakedModelCache = new Cache<Object, IBakedModel>() {
-            @Nullable
-            @Override
-            public IBakedModel getIfPresent(Object key) {
-                throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public IBakedModel get(Object key, Callable<? extends IBakedModel> loader) throws ExecutionException {
-                return coarctatio$modelFor(key, loader);
-            }
-
-            @Override
-            public ImmutableMap<Object, IBakedModel> getAllPresent(Iterable<?> keys) {
-                throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public void put(Object key, IBakedModel value) {
-                throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public void putAll(Map<?, ? extends IBakedModel> map) {
-                throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public void invalidate(Object key) {
-                throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public void invalidateAll(Iterable<?> keys) {
-                throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public void invalidateAll() {
-                coarctatio$byParent.invalidateAll();
-            }
-
-            @Override
-            public long size() {
-                return coarctatio$byParent.size();
-            }
-
-            @Override
-            public CacheStats stats() {
-                throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public ConcurrentMap<Object, IBakedModel> asMap() {
-                throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public void cleanUp() {
-                coarctatio$byParent.cleanUp();
-            }
-        };
     }
 }

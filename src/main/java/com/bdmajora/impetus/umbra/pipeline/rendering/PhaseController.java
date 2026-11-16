@@ -9,39 +9,45 @@ import net.minecraft.client.renderer.OpenGlHelper;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// The fixed-function gbuffer phases (sky, entities, particles, weather, clouds, hand) anchored on vanilla's profiler sections: binds the phase's program and points the draw-buffer mask at its DRAWBUFFERS, colortex0 only with no program
+// Tracker of the program phase that draws are routed to.
 public final class PhaseController {
-    // 1.12 signals full-bright eyes with the raw 61680 sentinel, which is arithmetically 240.97 and overflows HDR targets into a halo, so vec4(240, 240, 0, 1) is substituted like Umbra's VanillaTransformer
+    // Lightmap coordinate of full brightness.
     private static final float FULL_BRIGHT_LIGHTMAP_COORD = 240.0f;
 
+    // Pipeline state shared by the passes.
     private final PipelineState state;
-    // The phase last selected, null when none is
+    // Phase in use or null.
     ProgramId current;
-    // The alphaTest.<program> override currently forced on the GL state, so it can be undone
+    // Alpha test in use.
     private ProgramAlphaTest activeAlphaTest;
-    // Sky phases render at the far plane: LIGHT writes BLACK from gbuffers_skybasic and repaints the sky in composite, which only works if the vanilla dome never reaches depthtex0; glDepthRange(1,1) emulates OptiFine and survives vanilla's depthMask toggling
+    // Flag set when the sky draws at the far plane.
     private boolean skyAtFarPlane;
+    // Phase before the eyes phase.
     private ProgramId beforeEyes;
+    // Render stage before the eyes phase.
     private int beforeEyesStage;
+    // Flag set during the eyes phase.
     private boolean eyesActive;
+    // Phase before the glint phase.
     private ProgramId beforeGlint;
+    // Render stage before the glint phase.
     private int beforeGlintStage;
+    // Flag set during the glint phase.
     private boolean glintActive;
 
+    // Creates a phase controller from its state.
     public PhaseController(PipelineState state) {
         this.state = state;
     }
 
-    // Umbra's WorldRenderingPhase ordinals for identifiable phases, published as renderStage (Clarity's stars gate on MC_RENDER_STAGE_STARS); ambiguous phases report NONE
+    // Returns the default render stage of a phase.
     public static int defaultRenderStage(ProgramId phase) {
         if (phase == null) {
             return 0;
         }
         return switch (phase) {
             case SkyBasic -> 1;
-            // Vanilla draws sun then moon under one anchor, reported as SUN
             case SkyTextured -> 4;
-            // The eyes overlay draws inside the entity pass, which Umbra gives no phase of its own
             case Entities, SpiderEyes -> 11;
             case DamagedBlock -> 13;
             case Line -> 14;
@@ -52,38 +58,36 @@ public final class PhaseController {
         };
     }
 
-    // The phase last selected, null when none is
+    // Returns the current phase.
     public ProgramId current() {
         return this.current;
     }
 
-    // Whether the pack supplies a program for this phase, so a draw lands in its DRAWBUFFERS
+    // Returns the has.
     public boolean has(ProgramId phase) {
         return this.state.active && this.state.gbufferPrograms.get(phase) != null;
     }
 
-    // Whether the pack ships this phase's program itself, rather than through OptiFine's fallback chain onto a program never written for this geometry
+    // Returns whether a phase has its own program.
     public boolean hasDirect(ProgramId phase) {
         return this.state.active && this.state.gbufferPrograms.hasDirect(phase);
     }
 
-    // Umbra's chain gbuffers_entities_translucent -> gbuffers_entities -> gbuffers_textured_lit; skipping the middle link lost entityColor, normals and diffuse lighting
+    // Returns the phase of translucent entities.
     public ProgramId translucentEntityPhase() {
         return has(ProgramId.EntitiesTrans) ? ProgramId.EntitiesTrans : ProgramId.Entities;
     }
 
-    // Selects a phase; the shadow pass owns its GL state and renders entities through the same vanilla renderers, so a gbuffer phase there would re-point the draw buffers at the gbuffer and shred the shadow map
+    // Switches to a phase and render stage.
     public void select(ProgramId phase, int renderStage) {
         if (!this.state.active || UmbraShadowRenderer.isShadowPass()) {
             return;
         }
         this.current = phase;
         CapturedRenderingState.INSTANCE.setRenderStage(renderStage);
-        // Every phase here is fixed-function geometry through client arrays aliasing generic slots, and a leftover generic array flattens the attribute
         GlState.resetVanillaVertexArrayState();
         setSkyAtFarPlane(phase == ProgramId.SkyBasic || phase == ProgramId.SkyTextured);
         GbufferPrograms.Entry entry = phase == null ? null : this.state.gbufferPrograms.get(phase);
-        // The previous phase may have overridden the alpha test; vanilla's goes back before this phase decides
         restoreAlphaTest();
         if (entry == null) {
             LWJGL.glUseProgram(0);
@@ -93,20 +97,18 @@ public final class PhaseController {
         entry.getProgram().bind();
         this.state.binder.bindPackResources();
         int[] drawBuffers = entry.drawBuffersReadOnly();
-        // Sky/entity/hand phases sample gaux buffers and the prior phase may have disturbed the units; a program writing a target it samples reads a copied side
         this.state.feedback.bindColorSamplers(this.state.feedback.prepare(drawBuffers, this.state.activeGbufferFlips));
         entry.getUniforms().update();
         this.state.shadowSamplers.apply(entry.getShadowSamplerKinds(), true);
         this.state.gbuffers.drawBuffers(this.state.gbuffers.current, drawBuffers);
         entry.getBlendState().apply(drawBuffers);
-        // alphaTest.<program>: Photon turns the fixed-function test off, Complementary tightens it to GREATER 0.0001; held until the next phase
         if (entry.getAlphaTest().hasDirectives()) {
             entry.getAlphaTest().apply();
             this.activeAlphaTest = entry.getAlphaTest();
         }
     }
 
-    // glDepthRange only on a change of sky/not-sky
+    // Stores the sky at far plane.
     void setSkyAtFarPlane(boolean sky) {
         if (sky != this.skyAtFarPlane) {
             LWJGL.glDepthRange(sky ? 1.0 : 0.0, 1.0);
@@ -114,19 +116,19 @@ public final class PhaseController {
         }
     }
 
-    // The full depth range again, unconditionally, for a pass that must not inherit whatever another hook left
+    // Restores the full depth range.
     void resetDepthRange() {
         LWJGL.glDepthRange(0.0, 1.0);
         this.skyAtFarPlane = false;
     }
 
-    // Records an alpha-test override a terrain draw forced, so the next phase restores vanilla's
+    // Applies an alpha test.
     void forceAlphaTest(ProgramAlphaTest alphaTest) {
         alphaTest.apply();
         this.activeAlphaTest = alphaTest;
     }
 
-    // Puts vanilla's alpha test back if an override is in force
+    // Restores the alpha test of the phase.
     void restoreAlphaTest() {
         if (this.activeAlphaTest != null) {
             this.activeAlphaTest.restore();
@@ -134,7 +136,7 @@ public final class PhaseController {
         }
     }
 
-    // OptiFine's enableLightmap()/disableLightmap() swap of gbuffers_textured and gbuffers_textured_lit when vanilla toggles unit 1, or items (no lightmap element in ITEM format) render fullbright; the render stage carries over since only the call site knows it
+    // Updates the lightmap state of the phase.
     public void lightmapToggled(boolean enabled) {
         if (!this.state.active) {
             return;
@@ -145,7 +147,7 @@ public final class PhaseController {
         }
     }
 
-    // Re-uploads only the per-object uniforms (entityColor, entityId, blockEntityId, currentRenderedItemId) between draws of a batch, since 1.12's vertex formats cannot carry Umbra's per-draw ids; glUniform writes into whatever program is bound NOW, and these hooks fire from renderers unaware of the phase, so GL is asked rather than the bookkeeping
+    // Recomputes the uniforms that change each frame.
     public void refreshDynamicUniforms() {
         if (!this.state.active || UmbraShadowRenderer.isShadowPass() || this.current == null) {
             return;
@@ -156,12 +158,11 @@ public final class PhaseController {
         }
     }
 
-    // The eyes bracket (OptiFine's beginSpiderEyes): true when the caller should now select gbuffers_spidereyes through the hooked entry point
+    // Switches to the eyes phase and returns whether it did.
     public boolean enterEyes() {
         if (!this.state.active || UmbraShadowRenderer.isShadowPass()) {
             return false;
         }
-        // A nested begin keeps the outer phase, so the end lands back on the entity program rather than on the eyes
         if (!this.eyesActive) {
             this.beforeEyes = this.current;
             this.beforeEyesStage = CapturedRenderingState.INSTANCE.getRenderStage();
@@ -171,7 +172,7 @@ public final class PhaseController {
         return true;
     }
 
-    // Back to what was bound before the eyes, since they also run in the translucent-entity batch; an end with no begin (one that bailed) used to restore a stale phase and unbind the entity program
+    // Returns from the eyes phase.
     public void exitEyes() {
         if (!this.eyesActive || !this.state.active || UmbraShadowRenderer.isShadowPass()) {
             return;
@@ -180,7 +181,7 @@ public final class PhaseController {
         select(this.beforeEyes, this.beforeEyesStage);
     }
 
-    // The glint bracket (OptiFine's renderEnchantedGlintBegin), gated on the world pass so GUI items skip it; true when the caller should select gbuffers_armor_glint
+    // Switches to the glint phase and returns whether it did.
     public boolean enterGlint() {
         if (!this.state.active || UmbraShadowRenderer.isShadowPass()) {
             return false;
@@ -193,7 +194,7 @@ public final class PhaseController {
         return true;
     }
 
-    // Restores whatever was bound before the glint, which runs in both the entity and the hand batch
+    // Returns from the glint phase.
     public void exitGlint() {
         if (!this.glintActive) {
             return;
@@ -202,7 +203,7 @@ public final class PhaseController {
         select(this.beforeGlint, this.beforeGlintStage);
     }
 
-    // Forgets the brackets at frame end, so a bracket left open by a crashed renderer cannot restore into the next frame
+    // Clears the phase at the end of a frame.
     void endFrame() {
         restoreAlphaTest();
         this.eyesActive = false;

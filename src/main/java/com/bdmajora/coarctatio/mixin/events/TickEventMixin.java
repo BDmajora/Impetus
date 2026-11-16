@@ -14,34 +14,39 @@ import org.spongepowered.asm.mixin.Unique;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
-// The side is the one field a recycled player tick event has to change between posts; the phase lives here because Event's own is private and Event is loaded before mixins apply. remap = false, Forge class
+// Mixin that changes TickEvent.
 @Mixin(value = TickEvent.class, remap = false)
 public abstract class TickEventMixin extends Event implements RecyclableEvent {
+    // Reference to the field side of the target.
     @Shadow
     @Final
     @Mutable
     public Side side;
 
+    // Field phase added to the target.
     @Unique
     private EventPriority coarctatio$phase;
 
+    // Returns the phase.
     @Nullable
     @Override
     public EventPriority getPhase() {
         return this.coarctatio$phase;
     }
 
-    // Vanilla's ordering check, against the recycled phase
+    // Handles set phase.
     @Override
     public void setPhase(@Nonnull EventPriority value) {
         this.coarctatio$phase = RecyclableEvent.advancePhase(this.coarctatio$phase, value);
     }
 
+    // Handles reset phase.
     @Override
     public void coarctatio$resetPhase() {
         this.coarctatio$phase = null;
     }
 
+    // Handles refresh side.
     @Override
     public void coarctatio$refreshSide(Side side) {
         this.side = side;

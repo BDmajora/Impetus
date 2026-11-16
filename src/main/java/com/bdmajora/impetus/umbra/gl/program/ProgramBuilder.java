@@ -12,20 +12,27 @@ import java.util.Locale;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Assembles a GlProgram from compiled stages: attach, bind OptiFine attribute slots (mc_Entity 10, mc_midTexCoord 11, at_tangent 12), link, validate, detach (OptiFine's setupProgram); a builder because attribute binding must precede linking
+// Builder that attaches shaders to a new program and links it once.
 public class ProgramBuilder {
+    // Logger of link warnings.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
 
+    // Name of the program.
     private final String name;
+    // GL name of the program.
     private final int program;
+    // Shaders attached so far.
     private final List<GlShader> attached = new ArrayList<>();
+    // Linked state of the builder.
+    private boolean linked;
 
+    // Creates a builder for a program.
     private ProgramBuilder(String name, int program) {
         this.name = name;
         this.program = program;
     }
 
-    // Creates the program object
+    // Creates a program and rejects a zero GL name.
     public static ProgramBuilder begin(String name) {
         int program = LWJGL.glCreateProgram();
         if (program == 0) {
@@ -34,31 +41,36 @@ public class ProgramBuilder {
         return new ProgramBuilder(name, program);
     }
 
-    // glAttachShader
+    // Attaches a shader.
     public ProgramBuilder attach(GlShader shader) {
         LWJGL.glAttachShader(this.program, shader.getGlId());
         this.attached.add(shader);
         return this;
     }
 
-    // Binds a vertex attribute name to a fixed location; must precede link(), since glBindAttribLocation only takes effect at the next link
+    // Binds an attribute to an index.
     public ProgramBuilder bindAttributeLocation(int index, CharSequence attributeName) {
         LWJGL.glBindAttribLocation(this.program, index, attributeName);
         return this;
     }
 
-    // Binds a fragment output to a draw buffer index (GL 3.0+). Before link(), for the same reason
+    // Binds a fragment output to a color number.
     public ProgramBuilder bindFragmentDataLocation(int colorNumber, CharSequence outputName) {
         LWJGL.glBindFragDataLocation(this.program, colorNumber, outputName);
         return this;
     }
 
-    // Links and validates; on success the stages are DETACHED but not deleted (the caller owns them, one stage often serves several programs), on failure the program is deleted before throwing
+    // Links the program once and deletes it when linking fails and detaches every shader.
     public GlProgram link() {
+        if (this.linked) {
+            throw new IllegalStateException("Program '" + this.name + "' was already linked");
+        }
+        this.linked = true;
         LWJGL.glLinkProgram(this.program);
 
         int linkStatus = LWJGL.glGetProgrami(this.program, GL20.GL_LINK_STATUS);
-        String log = LWJGL.glGetProgramInfoLog(this.program, 32768);
+        String reported = LWJGL.glGetProgramInfoLog(this.program, 32768);
+        String log = reported == null ? "" : reported;
 
         if (linkStatus != GL20.GL_TRUE) {
             detachAll();
@@ -67,17 +79,22 @@ public class ProgramBuilder {
                     + (log.isEmpty() ? "(no info log)" : log.trim()));
         }
 
-        // NVIDIA returns a wall of deprecation warnings for legacy #version 120 packs; only surface the log when it actually reports an error
         if (!log.isEmpty() && log.toLowerCase(Locale.ROOT).contains("error")) {
             LOGGER.warn("Program link log for '{}': {}", this.name, log.trim());
         }
 
-        boolean tessellated = this.attached.stream().anyMatch(shader -> shader.getType() == ShaderType.TESS_EVALUATION);
+        boolean tessellated = false;
+        for (GlShader shader : this.attached) {
+            if (shader.getType() == ShaderType.TESS_EVALUATION) {
+                tessellated = true;
+                break;
+            }
+        }
         detachAll();
         return new GlProgram(this.program, this.name, tessellated);
     }
 
-    // Detaches every stage after linking, so the shader objects can be deleted
+    // Detaches every shader that still exists.
     private void detachAll() {
         for (GlShader shader : this.attached) {
             if (!shader.isDestroyed()) {

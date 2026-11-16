@@ -9,9 +9,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Drops the two cosmetic look tasks at registration (Universal Tweaks' and AI Improvements' "watching AI removal"): EntityAIWatchClosest runs an entity search around every idle mob each tick to find a face to stare at, and EntityAILookIdle only picks a random heading. Off by default since mobs stop turning their heads toward the player
+// Mixin that changes EntityAITasks.
 @Mixin(EntityAITasks.class)
 public abstract class EntityAITasksMixin {
+    // Runs at the start of addTask and can cancel it.
     @Inject(method = "addTask", at = @At("HEAD"), cancellable = true)
     private void equilibrium$dropLookTasks(int priority, EntityAIBase task, CallbackInfo ci) {
         if (task instanceof EntityAIWatchClosest || task instanceof EntityAILookIdle) {

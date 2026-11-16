@@ -17,28 +17,28 @@ import org.joml.Vector3d;
 
 import java.util.Objects;
 
-// Selects the terrain sections of the shadow pass and draws their layers
+// Selector and drawer of the terrain of the shadow pass.
 public final class ShadowTerrain {
-    // Culling mode and terrain switches of the pack
+    // Settings of what the shadow pass draws.
     private final ShadowContentSettings content;
-    // Distance in blocks that the section filter culls against
+    // Distance within which terrain draws.
     private final float cullDistance;
-    // Radius in blocks of the always drawn zone under reversed culling
+    // Distance of voxelized terrain.
     private final float voxelDistance;
-    // Flag set when the pack voxelizes during the shadow pass
+    // Flag set when the pack voxelizes terrain.
     private final boolean packVoxelizes;
-    // Tilt of the daily sun path in degrees
+    // Sun path rotation.
     private final float sunPathRotation;
-    // Scratch position of the player viewport
+    // Player position of the frame.
     private final Vector3d playerPosition = new Vector3d();
-    // Scratch product of the captured projection and model view
+    // Player view projection of the frame.
     private final Matrix4f playerViewProjection = new Matrix4f();
-    // Section filter of the latest pass or null before the first one
+    // Frustum of the shadow selection.
     private Frustum cullingFrustum;
-    // Stamp passed to the section search and incremented on each pass
+    // Frame counter of the selection.
     private int frame;
 
-    // Creates the terrain stage from the pack culling settings
+    // Creates a shadow terrain from its content and cull distance and voxel distance and pack voxelizes.
     public ShadowTerrain(ShadowContentSettings content, float cullDistance, float voxelDistance, boolean packVoxelizes,
                          float sunPathRotation) {
         this.content = Objects.requireNonNull(content, "content");
@@ -48,7 +48,7 @@ public final class ShadowTerrain {
         this.sunPathRotation = sunPathRotation;
     }
 
-    // Builds the section filter for this pass and runs the player and shadow section searches
+    // Selects the sections visible to the shadow camera.
     public void select(ImpetusWorldRenderer renderer, Minecraft mc, Vector3d camera, Matrix4fc viewProjection) {
         this.cullingFrustum = ShadowFrustums.create(this.content.getCulling(), this.cullDistance, this.voxelDistance,
                 this.packVoxelizes, mc.gameSettings.renderDistanceChunks * 16, this.sunPathRotation, viewProjection);
@@ -60,7 +60,7 @@ public final class ShadowTerrain {
                 mc.player != null && mc.player.isSpectator());
     }
 
-    // Returns the player view from the captured matrices at the camera plus the third person offset
+    // Returns the viewport of the player camera.
     public Viewport playerViewport(Vector3d camera) {
         Vector3d position = this.playerPosition.set(camera).add(CameraHelper.getThirdPersonOffset());
         UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
@@ -68,25 +68,24 @@ public final class ShadowTerrain {
             return new Viewport(ShadowFrustums.NON_CULLING, position);
         }
         CapturedRenderingState state = CapturedRenderingState.INSTANCE;
-        // Creates a new intersection on each pass and reuses only the scratch matrix
         FrustumIntersection frustum = new FrustumIntersection().set(
                 this.playerViewProjection.set(state.getGbufferProjection()).mul(state.getGbufferModelView()), true);
         return new Viewport(frustum::testAab, position);
     }
 
-    // Draws the solid and cutout layers
+    // Draws the opaque terrain.
     public void drawOpaque(ImpetusWorldRenderer renderer, Vector3d camera) {
         renderer.drawChunkLayer(BlockRenderLayer.SOLID, camera.x, camera.y, camera.z);
         renderer.drawChunkLayer(BlockRenderLayer.CUTOUT_MIPPED, camera.x, camera.y, camera.z);
         renderer.drawChunkLayer(BlockRenderLayer.CUTOUT, camera.x, camera.y, camera.z);
     }
 
-    // Draws the translucent layer
+    // Draws the translucent terrain.
     public void drawTranslucent(ImpetusWorldRenderer renderer, Vector3d camera) {
         renderer.drawChunkLayer(BlockRenderLayer.TRANSLUCENT, camera.x, camera.y, camera.z);
     }
 
-    // Returns the section filter of the latest pass or null before the first one
+    // Returns the shadow culling frustum.
     public Frustum cullingFrustum() {
         return this.cullingFrustum;
     }

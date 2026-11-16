@@ -5,14 +5,16 @@ import com.bdmajora.extras.ExtrasConfig;
 import com.bdmajora.impetus.impl.platform.GameWindow;
 import net.minecraft.client.Minecraft;
 
-// Adaptive VSync through SDL: synchronized above the refresh rate, immediate below it
+// Adaptive vertical sync support.
 public final class AdaptiveSync {
+    // Whether the driver supports adaptive sync or null before the first check.
     private static Boolean supported;
 
+    // Prevents instantiation
     private AdaptiveSync() {
     }
 
-    // Whether the driver advertises tear control, i.e. whether -1 means anything; resolved once since a driver gaining it mid-session is not worth a lookup per frame
+    // Returns whether the driver supports adaptive sync.
     public static boolean isSupported() {
         Boolean cached = supported;
         if (cached != null) {
@@ -33,7 +35,7 @@ public final class AdaptiveSync {
         return result;
     }
 
-    // The mode currently in effect, derived from the vanilla VSync flag and the adaptive switch.
+    // Returns the active vertical sync mode.
     public static ExtrasConfig.VerticalSync current() {
         ExtrasConfig options = Extras.options();
 
@@ -46,7 +48,7 @@ public final class AdaptiveSync {
                 : ExtrasConfig.VerticalSync.OFF;
     }
 
-    // Applies a mode and updates the vanilla setting so the two never disagree; ADAPTIVE turns vanilla VSync on then overrides the interval, and falls back to plain ON without driver support
+    // Applies the vertical sync mode and saves the options.
     public static void apply(ExtrasConfig.VerticalSync mode) {
         ExtrasConfig options = Extras.options();
         Minecraft minecraft = Minecraft.getMinecraft();
@@ -65,14 +67,14 @@ public final class AdaptiveSync {
         minecraft.gameSettings.saveOptions();
     }
 
-    // Re-asserts the adaptive interval, since anything toggling vanilla vsync (vanilla video settings, Impetus' VSync tickbox) resets it behind our back
+    // Sets the adaptive swap interval again when adaptive sync is on.
     public static void reapply() {
         if (Extras.options().extra.useAdaptiveSync && isSupported()) {
             setSwapInterval(-1);
         }
     }
 
-    // Sets the interval on the current context; a failure is logged and adaptive sync switched off
+    // Sets the swap interval and turns adaptive sync off on failure.
     private static void setSwapInterval(int interval) {
         try {
             if (!GameWindow.setSwapInterval(interval)) {

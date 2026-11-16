@@ -10,15 +10,16 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// loadWorld forces a full garbage collection on every world load and unload, which on a large heap is a multi-second stop-the-world pause the JVM would otherwise never need (VanillaFix, later Chibi's removeExcessiveGCCalls)
+// Mixin that changes Minecraft.
 @Mixin(Minecraft.class)
 public abstract class MinecraftLoadWorldGcMixin {
+    // Wraps the call of System.gc in loadWorld.
     @WrapWithCondition(method = "loadWorld(Lnet/minecraft/client/multiplayer/WorldClient;Ljava/lang/String;)V", at = @At(value = "INVOKE", target = "Ljava/lang/System;gc()V", remap = false))
     private boolean impetus$skipForcedGc() {
         return !Extras.options().loading.skipWorldLoadGc;
     }
 
-    // Leaving a world is also when the HUD cache's framebuffer can go
+    // Runs at the start of loadWorld.
     @Inject(method = "loadWorld(Lnet/minecraft/client/multiplayer/WorldClient;Ljava/lang/String;)V", at = @At("HEAD"))
     private void impetus$releaseHudCache(WorldClient world, String message, CallbackInfo ci) {
         if (world == null) {

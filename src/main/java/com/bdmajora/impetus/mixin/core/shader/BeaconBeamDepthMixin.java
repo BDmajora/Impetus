@@ -14,30 +14,35 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// The "beacon.beam.depth" shaders.properties toggle; vanilla draws the beam without depth writes, and a pack reconstructing world position from depth (Complementary) needs it in depthtex
+// Mixin that changes TileEntityBeaconRenderer.
 @Mixin(TileEntityBeaconRenderer.class)
 public class BeaconBeamDepthMixin {
-    // GL_DEPTH_WRITEMASK — captured so the restore puts back whatever vanilla had, rather than assuming.
+    // GL enum of the depth write mask.
     private static final int GL_DEPTH_WRITEMASK = 0x0B72;
 
+    // Field saved depth mask added to the target.
     @Unique
     private boolean impetus$savedDepthMask;
+    // Field depth mask overridden added to the target.
     @Unique
     private boolean impetus$depthMaskOverridden;
 
-    // Umbra parity (MixinBeaconRenderer#umbra$noLightBeamInShadowPass): the beam is a tall unlit column that would cast a full-height shadow pillar, so it is cancelled at HEAD in the shadow pass, which also skips the depth-mask override below
+    // Runs at the start of render and can cancel it.
     @Inject(method = "render(Lnet/minecraft/tileentity/TileEntityBeacon;DDDFIF)V",
             at = @At("HEAD"), cancellable = true, require = 0)
     private void impetus$noBeamInShadowPass(TileEntityBeacon beacon, double x, double y, double z,
+                                            // Partial ticks and destroy stage and alpha.
                                             float partialTicks, int destroyStage, float alpha, CallbackInfo ci) {
         if (Umbra.getRenderingPipeline() != null && UmbraShadowRenderer.isShadowPass()) {
             ci.cancel();
         }
     }
 
+    // Runs at the start of render.
     @Inject(method = "render(Lnet/minecraft/tileentity/TileEntityBeacon;DDDFIF)V",
             at = @At("HEAD"), require = 0)
     private void impetus$beaconBeamDepthOn(TileEntityBeacon beacon, double x, double y, double z,
+                                           // Partial ticks and destroy stage and alpha.
                                            float partialTicks, int destroyStage, float alpha, CallbackInfo ci) {
         if (impetus$wantsBeamDepth()) {
             this.impetus$savedDepthMask = LWJGL.glGetBoolean(GL_DEPTH_WRITEMASK);
@@ -46,9 +51,11 @@ public class BeaconBeamDepthMixin {
         }
     }
 
+    // Runs before every return of render.
     @Inject(method = "render(Lnet/minecraft/tileentity/TileEntityBeacon;DDDFIF)V",
             at = @At("RETURN"), require = 0)
     private void impetus$beaconBeamDepthOff(TileEntityBeacon beacon, double x, double y, double z,
+                                            // Partial ticks and destroy stage and alpha.
                                             float partialTicks, int destroyStage, float alpha, CallbackInfo ci) {
         if (this.impetus$depthMaskOverridden) {
             this.impetus$depthMaskOverridden = false;
@@ -56,6 +63,7 @@ public class BeaconBeamDepthMixin {
         }
     }
 
+    // Handles wants beam depth.
     private static boolean impetus$wantsBeamDepth() {
         UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
         return pipeline != null && pipeline.shouldWriteBeaconBeamToDepthBuffer();

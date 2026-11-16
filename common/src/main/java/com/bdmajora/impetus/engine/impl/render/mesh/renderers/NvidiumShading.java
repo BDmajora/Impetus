@@ -11,14 +11,18 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
-// Nvidium's own terrain programs, which read everything from the scene block and so need no per-draw state
+// Terrain programs of the mesh backend that read everything from the scene block.
 public class NvidiumShading implements MeshTerrainShading {
+    // Program of the main draw.
     private final TerrainRasterizer terrain;
+    // Program of the temporal draw or null.
     private final @Nullable TerrainRasterizer temporal;
+    // Program of the translucent draw.
     private final TranslucentRasterizer translucent;
 
-    // Temporal is only built when the temporal pass is on; a program the driver rejects frees the ones already built
+    // Creates the programs and frees the built ones when a program fails.
     public NvidiumShading(ShaderConstants constants, @Nullable ShaderConstants temporalConstants) {
+        java.util.Objects.requireNonNull(constants, "constants");
         List<Runnable> built = new ArrayList<>();
         try {
             this.terrain = new TerrainRasterizer("mesh/terrain", constants);
@@ -34,13 +38,13 @@ public class NvidiumShading implements MeshTerrainShading {
         }
     }
 
-    // The packed sixteen-byte terrain vertex
+    // Returns the bytes of one vertex.
     @Override
     public int vertexStride() {
         return MeshChunkVertex.STRIDE;
     }
 
-    // The main or temporal program; the shadow phase never reaches here, as there is no shadow program
+    // Binds the temporal or the main program and returns true.
     @Override
     public boolean bindOpaque(MeshDrawPhase phase, @Nullable TerrainRenderPass pass, ChunkRenderMatrices matrices) {
         TerrainRasterizer program = phase == MeshDrawPhase.TEMPORAL && this.temporal != null ? this.temporal : this.terrain;
@@ -48,31 +52,37 @@ public class NvidiumShading implements MeshTerrainShading {
         return true;
     }
 
-    // The translucent program
+    // Binds the translucent program and returns true.
     @Override
     public boolean bindTranslucent(MeshDrawPhase phase, @Nullable TerrainRenderPass pass, ChunkRenderMatrices matrices) {
         this.translucent.bind();
         return true;
     }
 
-    // Nothing beyond the program to undo
+    // Does nothing because only the program was bound.
     @Override
     public void finish() {
     }
 
-    // Only a shader pack has a shadow pass
+    // Returns false because there is no shadow program.
     @Override
     public boolean hasShadowPrograms() {
         return false;
     }
 
-    // Frees every program
+    // Deletes every program even when one delete throws.
     @Override
     public void delete() {
-        this.terrain.delete();
-        if (this.temporal != null) {
-            this.temporal.delete();
+        try {
+            this.terrain.delete();
+        } finally {
+            try {
+                if (this.temporal != null) {
+                    this.temporal.delete();
+                }
+            } finally {
+                this.translucent.delete();
+            }
         }
-        this.translucent.delete();
     }
 }

@@ -4,29 +4,32 @@ import com.bdmajora.impetus.core.PropertiesConfig;
 
 import java.util.Map;
 
-// Linux Extras' switches, read before SDL video initialization
+// Settings of the Linux Extras module.
 public final class LinuxExtrasConfig {
+    // Name of the config file.
     private static final String FILE_NAME = "impetus-linuxextras.cfg";
 
+    // Loaded config or null before the first read.
     private static LinuxExtrasConfig instance;
 
-    // The backing file; set by load before the instance is published
+    // Properties file of the config.
     private PropertiesConfig file;
 
-    // Starts SDL on the preferred primary monitor on Wayland
+    // Flag that picks the fullscreen monitor.
     public boolean waylandFullscreenMonitor;
-    // Wayland output names (DP-1, HDMI-A-1) to treat as primary, first connected one wins; empty asks the compositor, which only KDE answers
+    // Monitor names in order.
     public String[] waylandMonitors;
-    // Opens links and folders with xdg-open, since AWT's Desktop API is unsupported on most Linux desktops and links could only be copied
+    // Flag that opens links with the desktop handler.
     public boolean xdgOpen;
 
+    // Creates a linux extras config from its props.
     private LinuxExtrasConfig(PropertiesConfig props) {
         this.waylandFullscreenMonitor = props.bool("waylandFullscreenMonitor", true);
         this.waylandMonitors = props.list("waylandMonitors", "");
         this.xdgOpen = props.bool("xdgOpen", true);
     }
 
-    // Loads on first use and caches; every reader shares the one instance
+    // Returns the value.
     public static LinuxExtrasConfig get() {
         if (instance == null) {
             instance = load();
@@ -34,7 +37,7 @@ public final class LinuxExtrasConfig {
         return instance;
     }
 
-    // Reads the file if present, otherwise starts from defaults and writes them out
+    // Reads the config file and fills missing values with defaults.
     private static LinuxExtrasConfig load() {
         PropertiesConfig props = new PropertiesConfig(LinuxExtras.LOGGER, FILE_NAME, "Impetus / Linux Extras. Delete a line to restore its default.");
         props.load();
@@ -44,11 +47,12 @@ public final class LinuxExtrasConfig {
         return config;
     }
 
+    // Writes every value to the config file.
     public void save() {
         this.file.save(values());
     }
 
-    // Every key in declaration order, so a rewritten file lists every switch
+    // Returns every setting as text by key.
     private Map<String, String> values() {
         Map<String, String> values = PropertiesConfig.values();
         values.put("waylandFullscreenMonitor", Boolean.toString(this.waylandFullscreenMonitor));

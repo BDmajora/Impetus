@@ -13,9 +13,10 @@ import org.spongepowered.asm.mixin.Mixin;
 
 import java.util.Collection;
 
-// One reentrant lock, the world monitor, around every mutation of world-level state: block writes and the notify chain they start, entity and block-entity registration; reads stay lock-free, which is why the chunk provider and explosions take this same monitor rather than their own
+// Mixin that changes World.
 @Mixin(World.class)
 public abstract class WorldWriteLockMixin implements ParallelWorld {
+    // Handles locked set block state.
     @WrapMethod(method = "setBlockState(Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/block/state/IBlockState;I)Z")
     private boolean impetus$lockedSetBlockState(BlockPos pos, IBlockState state, int flags, Operation<Boolean> original) {
         if (!this.impetus$isParallel()) {
@@ -26,6 +27,7 @@ public abstract class WorldWriteLockMixin implements ParallelWorld {
         }
     }
 
+    // Handles locked mark and notify.
     @WrapMethod(method = "markAndNotifyBlock", remap = false)
     private void impetus$lockedMarkAndNotify(BlockPos pos, Chunk chunk, IBlockState oldState, IBlockState newState, int flags, Operation<Void> original) {
         if (!this.impetus$isParallel()) {
@@ -37,7 +39,7 @@ public abstract class WorldWriteLockMixin implements ParallelWorld {
         }
     }
 
-    // The id table lives on World and is rewritten by WorldServer's add/remove hooks under this same monitor
+    // Handles locked get entity by id.
     @WrapMethod(method = "getEntityByID")
     private Entity impetus$lockedGetEntityByID(int id, Operation<Entity> original) {
         if (!this.impetus$isParallel()) {
@@ -48,6 +50,7 @@ public abstract class WorldWriteLockMixin implements ParallelWorld {
         }
     }
 
+    // Handles locked spawn entity.
     @WrapMethod(method = "spawnEntity")
     private boolean impetus$lockedSpawnEntity(Entity entity, Operation<Boolean> original) {
         if (!this.impetus$isParallel()) {
@@ -58,6 +61,7 @@ public abstract class WorldWriteLockMixin implements ParallelWorld {
         }
     }
 
+    // Handles locked remove entity.
     @WrapMethod(method = "removeEntity")
     private void impetus$lockedRemoveEntity(Entity entity, Operation<Void> original) {
         if (!this.impetus$isParallel()) {
@@ -69,6 +73,7 @@ public abstract class WorldWriteLockMixin implements ParallelWorld {
         }
     }
 
+    // Handles locked remove entity dangerously.
     @WrapMethod(method = "removeEntityDangerously")
     private void impetus$lockedRemoveEntityDangerously(Entity entity, Operation<Void> original) {
         if (!this.impetus$isParallel()) {
@@ -80,6 +85,7 @@ public abstract class WorldWriteLockMixin implements ParallelWorld {
         }
     }
 
+    // Handles locked load entities.
     @WrapMethod(method = "loadEntities")
     private void impetus$lockedLoadEntities(Collection<Entity> entities, Operation<Void> original) {
         if (!this.impetus$isParallel()) {
@@ -91,6 +97,7 @@ public abstract class WorldWriteLockMixin implements ParallelWorld {
         }
     }
 
+    // Handles locked unload entities.
     @WrapMethod(method = "unloadEntities")
     private void impetus$lockedUnloadEntities(Collection<Entity> entities, Operation<Void> original) {
         if (!this.impetus$isParallel()) {
@@ -102,6 +109,7 @@ public abstract class WorldWriteLockMixin implements ParallelWorld {
         }
     }
 
+    // Handles locked add tile entity.
     @WrapMethod(method = "addTileEntity")
     private boolean impetus$lockedAddTileEntity(TileEntity tile, Operation<Boolean> original) {
         if (!this.impetus$isParallel()) {
@@ -112,6 +120,7 @@ public abstract class WorldWriteLockMixin implements ParallelWorld {
         }
     }
 
+    // Handles locked add tile entities.
     @WrapMethod(method = "addTileEntities")
     private void impetus$lockedAddTileEntities(Collection<TileEntity> tiles, Operation<Void> original) {
         if (!this.impetus$isParallel()) {
@@ -123,6 +132,7 @@ public abstract class WorldWriteLockMixin implements ParallelWorld {
         }
     }
 
+    // Handles locked set tile entity.
     @WrapMethod(method = "setTileEntity")
     private void impetus$lockedSetTileEntity(BlockPos pos, TileEntity tile, Operation<Void> original) {
         if (!this.impetus$isParallel()) {
@@ -134,6 +144,7 @@ public abstract class WorldWriteLockMixin implements ParallelWorld {
         }
     }
 
+    // Handles locked remove tile entity.
     @WrapMethod(method = "removeTileEntity")
     private void impetus$lockedRemoveTileEntity(BlockPos pos, Operation<Void> original) {
         if (!this.impetus$isParallel()) {

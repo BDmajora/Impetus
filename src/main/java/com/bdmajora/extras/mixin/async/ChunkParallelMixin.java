@@ -29,7 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-// Per-chunk shared state: the section entity lists get their own lock (never the chunk monitor, since block-entity creation below takes the world monitor and the two orders would cross), and the block-entity map becomes concurrent so off-thread lookups need no lock at all
+// Mixin that changes Chunk.
 @Mixin(Chunk.class)
 public abstract class ChunkParallelMixin {
     @Shadow
@@ -37,20 +37,24 @@ public abstract class ChunkParallelMixin {
     @Mutable
     private Map<BlockPos, TileEntity> tileEntities;
 
+    // Reference to the field world of the target.
     @Shadow
     @Final
     private World world;
 
-    // Guards entityLists; a dedicated object so the lock order is always world monitor -> entity lock and never the reverse
+    // Field entity lock added to the target.
     @Unique
     private final Object impetus$entityLock = new Object();
 
+    // Field parallel added to the target.
     @Unique
     private boolean impetus$parallel;
 
+    // Reference to the method get block storage array of the target.
     @Shadow
     public abstract ExtendedBlockStorage[] getBlockStorageArray();
 
+    // Runs before every return of constructor.
     @Inject(method = "<init>(Lnet/minecraft/world/World;II)V", at = @At("RETURN"))
     private void impetus$installConcurrentMap(World world, int x, int z, CallbackInfo ci) {
         if (!ParallelProcessor.INSTALLED || world == null || world.isRemote || !((ParallelWorld) world).impetus$isParallel()) {
@@ -60,17 +64,19 @@ public abstract class ChunkParallelMixin {
         this.tileEntities = new ConcurrentHashMap<>(this.tileEntities);
     }
 
-    // The sections a parallel world's chunks carry get their palette lock here, the places a section comes into being: the generator's primer copy, the loader's setStorageArrays, and setBlockState or setLightFor filling an empty one. The section has no world of its own to ask (see ParallelBlockStateContainer)
+    // Runs before every return of constructor.
     @Inject(method = "<init>(Lnet/minecraft/world/World;Lnet/minecraft/world/chunk/ChunkPrimer;II)V", at = @At("RETURN"))
     private void impetus$lockGeneratedSections(World world, ChunkPrimer primer, int x, int z, CallbackInfo ci) {
         this.impetus$lockSections();
     }
 
+    // Runs before every return of setStorageArrays.
     @Inject(method = "setStorageArrays", at = @At("RETURN"))
     private void impetus$lockLoadedSections(ExtendedBlockStorage[] sections, CallbackInfo ci) {
         this.impetus$lockSections();
     }
 
+    // Turns on the parallel lock of a new section in a parallel chunk.
     @WrapOperation(method = {"setBlockState", "setLightFor"}, at = @At(value = "NEW", target = "(IZ)Lnet/minecraft/world/chunk/storage/ExtendedBlockStorage;", remap = false))
     private ExtendedBlockStorage impetus$lockNewSection(int y, boolean storeSkylight, Operation<ExtendedBlockStorage> original) {
         ExtendedBlockStorage section = original.call(y, storeSkylight);
@@ -80,6 +86,7 @@ public abstract class ChunkParallelMixin {
         return section;
     }
 
+    // Helper method lock sections added to the target.
     @Unique
     private void impetus$lockSections() {
         if (!this.impetus$parallel) {
@@ -92,6 +99,7 @@ public abstract class ChunkParallelMixin {
         }
     }
 
+    // Wraps the call of ClassInheritanceMultiMap.add in addEntity.
     @WrapOperation(method = "addEntity", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/util/ClassInheritanceMultiMap;add(Ljava/lang/Object;)Z"))
     private boolean impetus$lockedAdd(ClassInheritanceMultiMap<Entity> list, Object entity, Operation<Boolean> original) {
@@ -103,6 +111,7 @@ public abstract class ChunkParallelMixin {
         }
     }
 
+    // Wraps the call of ClassInheritanceMultiMap.remove in removeEntityAtIndex.
     @WrapOperation(method = "removeEntityAtIndex", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/util/ClassInheritanceMultiMap;remove(Ljava/lang/Object;)Z"))
     private boolean impetus$lockedRemove(ClassInheritanceMultiMap<Entity> list, Object entity, Operation<Boolean> original) {
@@ -114,6 +123,7 @@ public abstract class ChunkParallelMixin {
         }
     }
 
+    // Handles locked get entities.
     @WrapMethod(method = "getEntitiesWithinAABBForEntity")
     private void impetus$lockedGetEntities(Entity except, AxisAlignedBB box, List<Entity> out, Predicate<? super Entity> filter, Operation<Void> original) {
         if (!this.impetus$parallel) {
@@ -125,6 +135,7 @@ public abstract class ChunkParallelMixin {
         }
     }
 
+    // Handles locked get entities of type.
     @WrapMethod(method = "getEntitiesOfTypeWithinAABB")
     private <T extends Entity> void impetus$lockedGetEntitiesOfType(Class<? extends T> type, AxisAlignedBB box, List<T> out, Predicate<? super T> filter, Operation<Void> original) {
         if (!this.impetus$parallel) {
@@ -136,7 +147,7 @@ public abstract class ChunkParallelMixin {
         }
     }
 
-    // Lookups are lock-free on the concurrent map; only the create-on-miss path, which registers with the world, goes through the world monitor so two threads cannot both build the same block entity
+    // Handles locked get tile entity.
     @WrapMethod(method = "getTileEntity")
     private TileEntity impetus$lockedGetTileEntity(BlockPos pos, Chunk.EnumCreateEntityType mode, Operation<TileEntity> original) {
         if (!this.impetus$parallel) {

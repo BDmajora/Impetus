@@ -21,34 +21,36 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
-// The Memory page in Impetus' video options, one OptionStorage writing straight through to the config; nearly everything is REQUIRES_GAME_RESTART since the mixin plugin reads the config before the window exists
+// Option pages of the memory features.
 public final class CoarctatioOptionPages {
+    // Identifier of the module.
     private static final String MOD_ID = "coarctatio";
 
-    // Reads and writes the live config singleton so a toggle is immediately visible via CoarctatioConfig.get(); save() on every apply is fine for a seventeen-line file
+    // Storage that reads and writes the configuration.
     private static final OptionStorage<CoarctatioConfig> STORAGE = new OptionStorage<CoarctatioConfig>() {
-        // The options screen edits the live config directly
+        // Returns the loaded configuration.
         @Override
         public CoarctatioConfig getData() {
             return CoarctatioConfig.get();
         }
 
-        // Writes the file once the screen is dismissed
+        // Writes the configuration to its file.
         @Override
         public void save() {
             CoarctatioConfig.get().save();
         }
     };
-    // Ids sit directly under the mod id and the lang keys are spelled out per option
+    // Factory of the options of the module.
     private static final ModuleOptions<CoarctatioConfig> OPTIONS = new ModuleOptions<>(MOD_ID, "", "", STORAGE);
 
+    // Prevents instantiation
     private CoarctatioOptionPages() {
     }
 
-    // Group ids that make up the loading-side page; everything else lands on the data page
+    // Groups shown on the loading page.
     private static final Set<String> LOADING_PAGE_GROUPS = ImmutableSet.of("deduplication", "loading", "system");
 
-    // The two pages: what happens while resources and models load, and what is kept smaller at runtime; one list of groups is built in on-screen order and split by id so each helper stays where it was
+    // Returns the loading page and the data page.
     public static List<OptionPage> pages() {
         List<OptionGroup> loading = new ArrayList<>();
         List<OptionGroup> data = new ArrayList<>();
@@ -56,7 +58,6 @@ public final class CoarctatioOptionPages {
             (LOADING_PAGE_GROUPS.contains(group.getId().getPath()) ? loading : data).add(group);
         }
         List<OptionPage> pages = new ArrayList<>();
-        // "page." keeps the ids clear of the group ids, which are the bare names split on above
         pages.add(new OptionPage(OptionIdentifier.create(MOD_ID, "page.loading"),
                 TextComponent.translatable("impetus.options.pages.coarctatio.loading"), ImmutableList.copyOf(loading)));
         pages.add(new OptionPage(OptionIdentifier.create(MOD_ID, "page.data"),
@@ -64,16 +65,15 @@ public final class CoarctatioOptionPages {
         return pages;
     }
 
-    // A group heading from impetus.options.coarctatio.group.<id>
+    // Returns the translated name of a group.
     private static TextComponent groupName(String id) {
         return TextComponent.translatable("impetus.options.coarctatio.group." + id);
     }
 
-    // Every group in on-screen order
+    // Returns every option group.
     private static List<OptionGroup> groups() {
         List<OptionGroup> groups = new ArrayList<>();
 
-        // Interning passes over data the resource loader produces once at startup
         groups.add(OptionGroup.createBuilder()
                 .setId(OptionIdentifier.create(MOD_ID, "deduplication"))
                 .setName(groupName("deduplication"))
@@ -99,7 +99,6 @@ public final class CoarctatioOptionPages {
                         config -> config.canonicalizeMultipartConditions))
                 .build());
 
-        // The block state representation itself — highest impact of the lot, since it touches every state object
         groups.add(OptionGroup.createBuilder()
                 .setId(OptionIdentifier.create(MOD_ID, "block_states"))
                 .setName(groupName("block_states"))
@@ -115,7 +114,6 @@ public final class CoarctatioOptionPages {
                         config -> config.compactStateProperties))
                 .build());
 
-        // Backing-collection swaps for NBT compounds and baked models
         groups.add(OptionGroup.createBuilder()
                 .setId(OptionIdentifier.create(MOD_ID, "collections"))
                 .setName(groupName("collections"))
@@ -124,11 +122,9 @@ public final class CoarctatioOptionPages {
                         OptionImpact.HIGH,
                         (config, value) -> config.compactNbtBackingMap = value,
                         config -> config.compactNbtBackingMap))
-                // Consulted every time a compound is built, so it applies without restart and is spelled out instead of using restartToggle
                 .add(OPTIONS.toggle("intern_nbt_keys", "impetus.options.coarctatio.nbt_keys",
                         (config, value) -> config.internNbtKeys = value, config -> config.internNbtKeys,
                         OptionImpact.MEDIUM, null, null))
-                // Entry count below which a compound uses the array-backed map instead of a HashMap, read per compound; slider 0..64 in steps of 2, 0 meaning never
                 .add(OPTIONS.builder("nbt_array_map_threshold", "impetus.options.coarctatio.nbt_threshold", int.class,
                                 (config, value) -> config.nbtArrayMapThreshold = value, config -> config.nbtArrayMapThreshold,
                                 null, null, null)
@@ -146,7 +142,6 @@ public final class CoarctatioOptionPages {
                         config -> config.compactModelGraph))
                 .build());
 
-        // Chunk storage: what gets dropped on load rather than kept resident
         groups.add(OptionGroup.createBuilder()
                 .setId(OptionIdentifier.create(MOD_ID, "world"))
                 .setName(groupName("world"))
@@ -162,7 +157,6 @@ public final class CoarctatioOptionPages {
                         config -> config.dropEmptyChunkSections))
                 .build());
 
-        // Everything else: loader caches, sprite and bake scratch data, search trees, pool lifetime
         groups.add(OptionGroup.createBuilder()
                 .setId(OptionIdentifier.create(MOD_ID, "system"))
                 .setName(groupName("system"))
@@ -191,7 +185,6 @@ public final class CoarctatioOptionPages {
                         OptionImpact.MEDIUM,
                         (config, value) -> config.lazySearchTrees = value,
                         config -> config.lazySearchTrees))
-                // Checked at world teardown, not at mixin-apply time, so no restart is needed
                 .add(OPTIONS.toggle("clear_pools_on_world_leave", "impetus.options.coarctatio.clear_on_leave",
                         (config, value) -> config.clearPoolsOnWorldLeave = value, config -> config.clearPoolsOnWorldLeave,
                         OptionImpact.LOW, null, null))
@@ -202,7 +195,6 @@ public final class CoarctatioOptionPages {
                         config -> config.compactRuntimeCollections))
                 .build());
 
-        // The model and resource loader: what is loaded when, and what the loader keeps
         groups.add(OptionGroup.createBuilder()
                 .setId(OptionIdentifier.create(MOD_ID, "loading"))
                 .setName(groupName("loading"))
@@ -283,7 +275,6 @@ public final class CoarctatioOptionPages {
                         config -> config.canonicalizeModelParts))
                 .build());
 
-        // Per-object caches and pools on the game's hot paths
         groups.add(OptionGroup.createBuilder()
                 .setId(OptionIdentifier.create(MOD_ID, "runtime"))
                 .setName(groupName("runtime"))
@@ -324,7 +315,6 @@ public final class CoarctatioOptionPages {
                         config -> config.softStructureTemplates))
                 .build());
 
-        // Read live every frame, so no restart flag and no impact; an F3 line costs nothing worth warning about
         groups.add(OptionGroup.createBuilder()
                 .setId(OptionIdentifier.create(MOD_ID, "diagnostics"))
                 .setName(groupName("diagnostics"))
@@ -336,7 +326,7 @@ public final class CoarctatioOptionPages {
         return groups;
     }
 
-    // Every mixin-gated switch is the same restart-flagged tickbox; langKey gets ".name"/".tooltip" appended, the setter writes on apply and the getter seeds the control and detects change
+    // Returns a toggle that needs a game restart.
     private static OptionImpl<CoarctatioConfig, Boolean> restartToggle(
             String path,
             String langKey,

@@ -9,30 +9,34 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-// Every program declared by one dimension folder of a pack (world0/ plus the root for the base set, world-1/ or world1/ alone for those dimensions): flattened ProgramSources by ProgramId, numbered families by ProgramArrayId, and ShaderProperties; lookups walk OptiFine's fallback chain (terrain -> textured_lit -> textured -> basic), which is why three files can shade the world
+// Programs of a pack folder by id.
 public final class ProgramSet {
     private final Map<ProgramId, ProgramSource> programs = new EnumMap<>(ProgramId.class);
     private final Map<ProgramArrayId, ProgramSource[]> programArrays = new EnumMap<>(ProgramArrayId.class);
+    // Pack properties.
     private final ShaderProperties properties;
 
+    // Creates a program set from its properties.
     public ProgramSet(ShaderProperties properties) {
         this.properties = properties;
     }
 
+    // Stores a program source.
     void put(ProgramId id, ProgramSource source) {
         this.programs.put(id, source);
     }
 
+    // Stores the array.
     void putArray(ProgramArrayId id, ProgramSource[] sources) {
         this.programArrays.put(id, sources);
     }
 
-    // The pack's properties
+    // Returns the properties.
     public ShaderProperties getProperties() {
         return this.properties;
     }
 
-    // Resolves a program by id, walking the fallback chain when the requested one is absent OR invalid, so one bad file does not kill a phase
+    // Returns the value.
     public Optional<ProgramSource> get(ProgramId id) {
         ProgramId current = id;
         while (current != null) {
@@ -45,13 +49,13 @@ public final class ProgramSet {
         return Optional.empty();
     }
 
-    // The source declared for that id specifically with no fallback; for "did the pack ship this?" rather than "what runs for this phase?"
+    // Returns a program without fallback.
     public Optional<ProgramSource> getDirect(ProgramId id) {
         ProgramSource source = this.programs.get(id);
         return (source != null && source.isValid()) ? Optional.of(source) : Optional.empty();
     }
 
-    // The program at that index within a numbered family (composite, deferred, shadowcomp) or empty; no fallback, a missing composite3 stops the chain
+    // Returns the value.
     public Optional<ProgramSource> get(ProgramArrayId id, int index) {
         ProgramSource[] arr = this.programArrays.get(id);
         if (arr == null || index < 0 || index >= arr.length) {
@@ -61,12 +65,12 @@ public final class ProgramSet {
         return (source != null && source.isValid()) ? Optional.of(source) : Optional.empty();
     }
 
-    // The composite/deferred/final family, indexed by pass number
+    // Returns the programs of an array id.
     public ProgramSource[] getArray(ProgramArrayId id) {
         return this.programArrays.get(id);
     }
 
-    // Every directly-declared valid program keyed by source name (gbuffers_terrain, composite2); non-fallback since this drives compilation and a fallback under its own name would build the same source repeatedly
+    // Returns every program by name.
     public Map<String, ProgramSource> collectDeclaredPrograms() {
         Map<String, ProgramSource> result = new java.util.LinkedHashMap<>();
         for (Map.Entry<ProgramId, ProgramSource> e : this.programs.entrySet()) {
@@ -88,7 +92,7 @@ public final class ProgramSet {
         return result;
     }
 
-    // The directly-declared program names, for reporting what a pack actually ships
+    // Returns the names of every program.
     public List<String> listDeclaredPrograms() {
         List<String> names = new ArrayList<>();
         for (Map.Entry<ProgramId, ProgramSource> e : this.programs.entrySet()) {

@@ -10,10 +10,11 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import com.bdmajora.impetus.impl.gui.ImpetusVideoOptionsScreen;
 
+// Mixin that changes GuiOptions.
 @Mixin(GuiOptions.class)
 public class MixinGuiOptions extends GuiScreen {
 
-    // Replaces the Video Settings button's screen with Impetus' own
+    // Runs at the start of actionPerformed and can cancel it.
     @Dynamic
     @Inject(method = "actionPerformed", at = @At("HEAD"), cancellable = true)
     private void open(GuiButton button, CallbackInfo ci) {

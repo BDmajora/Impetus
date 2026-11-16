@@ -37,12 +37,15 @@ import com.bdmajora.impetus.engine.impl.render.chunk.fog.FogService;
 import com.bdmajora.impetus.impl.render.terrain.fog.GLStateManagerFogService;
 import java.util.List;
 
+// Section manager of the vintage world.
 public class VintageRenderSectionManager extends RenderSectionManager {
+    // World of the manager.
     private final WorldClient world;
+    // Cache of cloned sections.
     @Getter
     private final ClonedChunkSectionCache sectionCache;
 
-    // A mesh config switches the mesh-shader backend on; a shader pack's mesh shading rides along with it, and the backend owns it from here
+    // Creates a vintage render section manager from its configuration and world and render distance and command list and min section and max section.
     public VintageRenderSectionManager(RenderPassConfiguration<?> configuration, WorldClient world, int renderDistance, CommandList commandList, int minSection, int maxSection,
                                        @Nullable MeshTerrainConfig meshTerrain, @Nullable MeshTerrainShading meshShading) {
         super(configuration, () -> new VintageChunkBuildContext(world, configuration), ChunkRenderer::new, renderDistance, commandList, minSection, maxSection, ImpetusVintage.options().performance.chunkBuilderThreads, true, meshTerrain, meshShading);
@@ -50,75 +53,75 @@ public class VintageRenderSectionManager extends RenderSectionManager {
         this.sectionCache = new ClonedChunkSectionCache(world);
     }
 
-    // The Umbra shadow pass re-drives this path from the sun; routing it onto the dedicated shadow lists lets it draw every section in range regardless of player-view culling, the stability Complementary's shadow.culling = reversed needs
+    // Returns whether in shadow pass.
     @Override
     public boolean isInShadowPass() {
         return com.bdmajora.impetus.umbra.pipeline.UmbraShadowRenderer.isShadowPass();
     }
 
-    // Factory, since the base class needs the vertex type before construction; a mesh config switches the mesh-shader backend on
+    // Creates a manager with the default command list.
     public static VintageRenderSectionManager create(ChunkVertexType vertexType, WorldClient world, int renderDistance, CommandList commandList,
                                                      @Nullable MeshTerrainConfig meshTerrain) {
         return create(vertexType, world, renderDistance, commandList, meshTerrain, null);
     }
 
-    // The same with a shader pack's programs translated for the mesh backend
+    // Creates a manager with a command list.
     public static VintageRenderSectionManager create(ChunkVertexType vertexType, WorldClient world, int renderDistance, CommandList commandList,
                                                      @Nullable MeshTerrainConfig meshTerrain, @Nullable MeshTerrainShading meshShading) {
         return new VintageRenderSectionManager(VintageRenderPassConfigurationBuilder.build(vertexType), world, renderDistance, commandList, 0, 16,
                 meshTerrain, meshShading);
     }
 
-    // The window's framebuffer, which the mesh backend culls sub-pixel triangles against
+    // Returns the framebuffer width.
     @Override
     protected int getFramebufferWidth() {
         return Minecraft.getMinecraft().displayWidth;
     }
 
-    // Framebuffer height
+    // Returns the framebuffer height.
     @Override
     protected int getFramebufferHeight() {
         return Minecraft.getMinecraft().displayHeight;
     }
 
+    // Returns whether raster occlusion culling is on.
     @Override
     protected boolean useRasterOcclusionCulling() {
         return ImpetusVintage.options().performance.useRasterOcclusionCulling;
     }
 
+    // Returns the fog service.
     @Override
     public FogService getFogService() {
         return GLStateManagerFogService.INSTANCE;
     }
 
-    // From the Impetus option
+    // Returns the async occlusion mode.
     @Override
     protected AsyncOcclusionMode getAsyncOcclusionMode() {
         return ImpetusVintage.options().performance.asyncOcclusionMode;
     }
 
-    // Always; 1.12.2 has no reason to let the queue grow unbounded
+    // Returns whether respect update task queue size limit.
     @Override
     protected boolean shouldRespectUpdateTaskQueueSizeLimit() {
         return true;
     }
 
-    // From the Impetus option
+    // Returns whether fog occlusion is on.
     @Override
     protected boolean useFogOcclusion() {
         return ImpetusVintage.options().performance.useFogOcclusion;
     }
 
-    // Off inside opaque blocks or in spectator, matching vanilla; only the player-view search asks (the shadow pass runs it too), the shadow search is a frustum-only scan that keeps voxelization's section set frame-stable on its own
+    // Returns whether use occlusion culling.
     @Override
     protected boolean shouldUseOcclusionCulling(Viewport positionedViewport, boolean spectator) {
-        // `occlusion.culling = false`: the pack needs geometry the player cannot see, since it samples the gbuffer from another angle (reflections, its own shadow logic)
         com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline pipeline =
                 com.bdmajora.impetus.umbra.Umbra.getRenderingPipeline();
         if (pipeline != null && pipeline.shouldDisableOcclusionCulling()) {
             return false;
         }
-        // A spectator inside an opaque block sees nothing with culling on, so it is switched off there like vanilla does
         if (spectator) {
             var camBlockPos = positionedViewport.getBlockCoord();
 
@@ -130,7 +133,7 @@ public class VintageRenderSectionManager extends RenderSectionManager {
         return Minecraft.getMinecraft().renderChunksMany;
     }
 
-    // Empty sections skip building entirely
+    // Returns whether a section has nothing to draw.
     @Override
     protected boolean isSectionVisuallyEmpty(int x, int y, int z) {
         Chunk chunk = this.world.getChunk(x, z);
@@ -141,10 +144,10 @@ public class VintageRenderSectionManager extends RenderSectionManager {
         if (y < 0 || y >= array.length) {
             return true;
         }
-        // Deliberately not isEmpty(): Fulgor widens that to "nothing worth sending to the client", and the visibility graph wants the narrower question of whether there is any geometry
         return array[y] == Chunk.NULL_BLOCK_STORAGE || FulgorRenderBridge.isEmptyOfBlocks(array[y]);
     }
 
+    // Returns a rebuild task for a section or null.
     @Override
     protected @Nullable ChunkBuilderTask<ChunkBuildOutput> createRebuildTask(RenderSection render, int frame) {
         ChunkRenderContext context = WorldSlice.prepare(this.world, new SectionPos(render.getChunkX(), render.getChunkY(), render.getChunkZ()), this.sectionCache);
@@ -156,27 +159,27 @@ public class VintageRenderSectionManager extends RenderSectionManager {
         return new ChunkBuilderMeshingTask(render, context, frame, this.cameraPosition);
     }
 
-    // From the Impetus option
+    // Returns whether rebuilds may run at once.
     @Override
     protected boolean allowImportantRebuilds() {
         return !ImpetusVintage.options().performance.alwaysDeferChunkUpdates;
     }
 
-    // Forwards to the base scheduler with the importance flag
+    // Schedules the section for rebuild.
     @Override
     protected void scheduleSectionForRebuild(int x, int y, int z, boolean important) {
         this.sectionCache.invalidate(x, y, z);
         super.scheduleSectionForRebuild(x, y, z, important);
     }
 
-    // Runs the build queue, immediately when requested by a block change
+    // Updates the chunks.
     @Override
     public void updateChunks(boolean updateImmediately) {
         this.sectionCache.cleanup();
         super.updateChunks(updateImmediately);
     }
 
-    // Ridiculous workaround: some mods rely on getRenderBoundingBox's side effects to initialise tile entity state; removable if we use it for TE rendering again
+    // Adds the render boxes of block entities to a list.
     @SuppressWarnings("unchecked")
     private static void retrieveBBForList(List<?> blockEntities) {
         if (!blockEntities.isEmpty()) {
@@ -186,7 +189,7 @@ public class VintageRenderSectionManager extends RenderSectionManager {
         }
     }
 
-    // Installs a build result and records its tile entities for the block entity pass
+    // Updates the info of a section and returns whether it changed.
     @Override
     protected boolean updateSectionInfo(RenderSection render, @Nullable BuiltRenderSectionData info) {
         if (info instanceof MinecraftBuiltRenderSectionData<?,?> mcData) {
@@ -196,18 +199,21 @@ public class VintageRenderSectionManager extends RenderSectionManager {
         return super.updateSectionInfo(render, info);
     }
 
+    // Returns the ticker of a section or null.
     @Override
     protected @Nullable SectionTicker createSectionTicker() {
         return new GenericSectionSpriteTicker<>(SpriteUtil::markSpriteActive);
     }
 
+    // Chunk renderer that applies the vintage pass state.
     private static class ChunkRenderer extends DefaultChunkRenderer {
 
+        // Creates a chunk renderer from its device and render pass configuration.
         public ChunkRenderer(RenderDevice device, RenderPassConfiguration<?> renderPassConfiguration) {
             super(device, renderPassConfiguration, GLStateManagerFogService.INSTANCE);
         }
 
-        // Never in the shadow pass (Umbra does the same in MixinDefaultChunkRenderer): getVisibleFaces culls by facing relative to the player's occlusion camera, which from underground drops every upward block top above the player, so the ground never reaches the shadow map and sunlight leaks into caves
+        // Returns whether block face culling is on.
         @Override
         public boolean useBlockFaceCulling(){
             if (com.bdmajora.impetus.umbra.pipeline.UmbraShadowRenderer.isShadowPass()) {
@@ -216,7 +222,7 @@ public class VintageRenderSectionManager extends RenderSectionManager {
             return ImpetusVintage.options().performance.useBlockFaceCulling;
         }
 
-        // Uploads fog and texture state before drawing
+        // Sets the per pass uniforms of a shader interface.
         @Override
         protected void configureShaderInterface(ChunkShaderInterface shader) {
             shader.setTextureSlot(ChunkShaderTextureSlot.BLOCK, 0);

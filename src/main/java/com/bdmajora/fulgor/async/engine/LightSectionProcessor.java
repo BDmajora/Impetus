@@ -4,17 +4,21 @@ import com.bdmajora.fulgor.async.SWMRNibbleArray;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.world.chunk.Chunk;
 
-// Maintains section-nibble topology and reconciles the four horizontal chunk edges for one engine; shares the engine's window and queues, so it lives and dies with it
+// Processor of the light changes of one section.
 final class LightSectionProcessor {
+    // Engine that owns the processor.
     private final BfsLightEngine engine;
+    // Delayed updates of the center section.
     private final int[] centerDelayedUpdates = new int[16 * 16];
+    // Delayed updates of the neighbour section.
     private final int[] neighbourDelayedUpdates = new int[16 * 16];
 
+    // Creates a light section processor from its engine.
     LightSectionProcessor(BfsLightEngine engine) {
         this.engine = engine;
     }
 
-    // Applies sparse emptiness changes and initialises the 3x3x3 nibble neighbourhood of any section that became non-empty; returns the new emptiness map when one was created
+    // Updates nibbles for section emptiness changes.
     boolean[] handleEmptySectionChanges(Chunk chunk, Boolean[] emptinessChanges, boolean unlit) {
         BfsLightEngine engine = this.engine;
         int chunkX = chunk.x;
@@ -60,7 +64,7 @@ final class LightSectionProcessor {
         return initializedMap;
     }
 
-    // Nulls a section whose whole 3x3x3 neighbourhood is empty (once all its neighbours are known) and initialises any that is not
+    // Creates or drops nibbles around changed sections.
     private void refreshLazyNibbles(int chunkX, int chunkZ, boolean unlit) {
         BfsLightEngine engine = this.engine;
         for (int deltaZ = -1; deltaZ <= 1; ++deltaZ) {
@@ -89,6 +93,7 @@ final class LightSectionProcessor {
         }
     }
 
+    // Returns whether a section and its neighbours are empty.
     private boolean isNeighbourhoodEmpty(int chunkX, int sectionY, int chunkZ) {
         BfsLightEngine engine = this.engine;
         for (int deltaY = -1; deltaY <= 1; ++deltaY) {
@@ -114,6 +119,7 @@ final class LightSectionProcessor {
         return true;
     }
 
+    // Checks the edges of a section range.
     void checkChunkEdges(Chunk chunk, int fromSection, int toSection) {
         for (int sectionY = toSection; sectionY >= fromSection; --sectionY) {
             this.engine.checkChunkEdge(chunk.x, sectionY, chunk.z);
@@ -121,7 +127,7 @@ final class LightSectionProcessor {
         this.engine.performLightDecrease();
     }
 
-    // Compares both sides of each horizontal edge of one section against what they should be, skipping pairs that are both full or both empty
+    // Checks one section edge against its neighbours.
     void checkChunkEdge(int chunkX, int chunkY, int chunkZ) {
         BfsLightEngine engine = this.engine;
         int currentCacheIndex = chunkX + 5 * chunkZ + (5 * 5) * chunkY + engine.chunkSectionIndexOffset;
@@ -150,7 +156,9 @@ final class LightSectionProcessor {
         }
     }
 
+    // Queues fixes where light across an edge disagrees.
     private void reconcileEdge(int chunkX, int chunkY, int chunkZ, BfsLightEngine.AxisDirection direction,
+                               // Cache indices of the two sections.
                                int currentCacheIndex, int neighbourCacheIndex) {
         BfsLightEngine engine = this.engine;
         int neighbourOffsetX = direction.x;
@@ -175,7 +183,6 @@ final class LightSectionProcessor {
                     continue;
                 }
 
-                // No consistency shortcut: it is invalid for a seam opacity above one
                 if (engine.calculateLightValue(worldX, worldY, worldZ, currentLevel) != currentLevel) {
                     this.centerDelayedUpdates[centerDelayedCount++] = currentIndex;
                 }
@@ -188,7 +195,9 @@ final class LightSectionProcessor {
         enqueueMismatches(chunkX, chunkY, chunkZ, direction, centerDelayedCount, neighbourDelayedCount);
     }
 
+    // Adds the mismatches.
     private void enqueueMismatches(int chunkX, int chunkY, int chunkZ, BfsLightEngine.AxisDirection direction,
+                                   // Counts of delayed updates.
                                    int centerCount, int neighbourCount) {
         int currentChunkOffsetX = chunkX << 4;
         int currentChunkOffsetZ = chunkZ << 4;
@@ -208,7 +217,7 @@ final class LightSectionProcessor {
         }
     }
 
-    // Seeds the increase queue from every lit neighbour edge column, so a freshly lit chunk receives its neighbours' light without a full edge check
+    // Spreads neighbour light into a section range.
     void propagateNeighbourLevels(Chunk chunk, int fromSection, int toSection) {
         BfsLightEngine engine = this.engine;
         int chunkX = chunk.x;

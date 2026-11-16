@@ -10,16 +10,23 @@ import com.bdmajora.impetus.umbra.gl.texture.TextureParameters;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// A depth texture programs sample (depthtex0/1/2, shadowtex0/1); several because OptiFine snapshots depth at different points (0 everything, 1 excludes translucents, 2 also excludes the hand) and packs subtract them to find water and hand pixels
+// Depth texture of a render target set.
 public class DepthTexture extends GlResource {
+    // Null pixel data for allocation.
     private static final ByteBuffer NULL_BUFFER = null;
 
+    // Internal format.
     private final int internalFormat;
+    // Pixel format.
     private final int pixelFormat;
+    // Pixel type.
     private final int pixelType;
+    // Width in pixels.
     private int width;
+    // Height in pixels.
     private int height;
 
+    // Creates a depth texture from its width and height and internal format and pixel format and pixel type.
     public DepthTexture(int width, int height, int internalFormat, int pixelFormat, int pixelType) {
         this.internalFormat = internalFormat;
         this.pixelFormat = pixelFormat;
@@ -31,7 +38,7 @@ public class DepthTexture extends GlResource {
         allocate();
     }
 
-    // Creates the storage at the current size
+    // Allocates the texture storage.
     private void allocate() {
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, getGlId());
         TextureParameters.set2D(GL11.GL_NEAREST, GL12.GL_CLAMP_TO_EDGE);
@@ -40,19 +47,19 @@ public class DepthTexture extends GlResource {
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, 0);
     }
 
-    // Reallocates; contents are lost
+    // Reallocates the texture at a new size.
     public void resize(int newWidth, int newHeight) {
         this.width = newWidth;
         this.height = newHeight;
         allocate();
     }
 
-    // For binding as a sampler
+    // Returns the texture id.
     public int getTextureId() {
         return getGlId();
     }
 
-    // Frees the texture
+    // Deletes the texture.
     @Override
     protected void destroyInternal() {
         LWJGL.glDeleteTextures(getGlId());

@@ -7,14 +7,16 @@ import com.bdmajora.impetus.impl.gui.FullscreenResolutions;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.common.ForgeEarlyConfig;
 
-// Impetus's three window modes on Cleanroom's SDL window
+// Switcher of fullscreen and windowed modes.
 public final class WindowModes {
+    // Flag set after the saved mode is restored.
     private static boolean restored;
 
+    // Prevents instantiation
     private WindowModes() {
     }
 
-    // The mode the window is in right now
+    // Returns the current window mode.
     public static FullscreenMode current(Minecraft client) {
         if (GameWindow.isBorderless()) {
             return FullscreenMode.BORDERLESS;
@@ -25,9 +27,8 @@ public final class WindowModes {
         return FullscreenMode.OFF;
     }
 
-    // Moves the window out of whichever mode it is in and into the requested one; answers where it ended up, OFF when the window refused
+    // Switches to a mode and returns the mode applied.
     public static FullscreenMode apply(Minecraft client, FullscreenMode target) {
-        // Cleanroom's borderless override also sets vanilla's fullscreen flag; leave through vanilla to clear it
         if (GameWindow.isBorderless() && client.isFullScreen()) {
             toggleExclusive(client);
         } else if (target != FullscreenMode.BORDERLESS && GameWindow.isBorderless()) {
@@ -42,7 +43,7 @@ public final class WindowModes {
         return current(client);
     }
 
-    // Every caller of vanilla's toggle, F11 included: a borderless window leaves borderless rather than stacking exclusive fullscreen on top, an exclusive one gets the chosen resolution, and the option follows whatever happened
+    // Toggles fullscreen with the configured mode.
     public static void toggle(Minecraft client, Runnable vanilla) {
         ImpetusGameOptions options = ImpetusVintage.options();
         if (GameWindow.isBorderless() && !ForgeEarlyConfig.WINDOW_BORDERLESS_REPLACES_FULLSCREEN) {
@@ -60,7 +61,7 @@ public final class WindowModes {
         options.fullscreenMode = current(client);
     }
 
-    // Once, on the first frame: vanilla's options do not remember borderless, and Cleanroom always enters fullscreen at the desktop mode
+    // Restores the saved window mode once.
     public static void restoreOnce(Minecraft client, ImpetusGameOptions options) {
         if (restored) {
             return;
@@ -77,7 +78,7 @@ public final class WindowModes {
         options.fullscreenMode = current(client);
     }
 
-    // Vanilla's toggle with Cleanroom's own borderless override held off for the call, since with it on the toggle switches borderless instead
+    // Toggles exclusive fullscreen.
     private static void toggleExclusive(Minecraft client) {
         boolean override = ForgeEarlyConfig.WINDOW_BORDERLESS_REPLACES_FULLSCREEN;
         ForgeEarlyConfig.WINDOW_BORDERLESS_REPLACES_FULLSCREEN = false;

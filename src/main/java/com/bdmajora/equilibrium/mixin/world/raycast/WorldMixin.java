@@ -9,13 +9,14 @@ import org.spongepowered.asm.mixin.Overwrite;
 
 import javax.annotation.Nullable;
 
-// Only the five-arg rayTraceBlocks is overwritten; the shorter overloads delegate to it so they inherit FastRayCaster for free
+// Mixin that changes World.
 @Mixin(World.class)
 public abstract class WorldMixin {
-    // Trace without allocating a vector and a block position per step
+    // Replaces the whole method rayTraceBlocks.
     @Nullable
     @Overwrite
     public RayTraceResult rayTraceBlocks(Vec3d start, Vec3d end, boolean stopOnLiquid,
+                                         // Flag that skips blocks without a bounding box.
                                          boolean ignoreBlockWithoutBoundingBox,
                                          boolean returnLastUncollidableBlock) {
         return FastRayCaster.rayTraceBlocks((World) (Object) this, start, end, stopOnLiquid,

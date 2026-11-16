@@ -10,9 +10,10 @@ import org.spongepowered.asm.mixin.injection.At;
 
 import java.util.List;
 
-// Adds a tracked-source count to F3; hooks the call() CALL SITE in renderDebugInfoLeft because Extras' steady_debug_hud mixin adds a second RETURN to call(), and the call site exists exactly once per frame regardless of mixin order
+// Mixin that changes GuiOverlayDebug.
 @Mixin(GuiOverlayDebug.class)
 public abstract class GuiOverlayDebugMixin {
+    // Changes an expression value in renderDebugInfoLeft.
     @ModifyExpressionValue(
             method = "renderDebugInfoLeft",
             at = @At(value = "INVOKE",

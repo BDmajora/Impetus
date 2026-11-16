@@ -8,32 +8,33 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-// Bake-scoped pools, opened and closed around a resource reload by Coarctatio
+// Pools for data shared between baked models.
 public final class ModelCaches {
-    // The largest saving: every full block face bakes to a 28-int array and most are byte-identical, so IntArrays.HASH_STRATEGY (contents, not references) collapses millions into tens of thousands; arrays handed out are immutable, see CoarctatioBakedQuadMixin
+    // Pool of quad vertex arrays.
     public static final DeduplicationCache<int[]> QUADS =
             new DeduplicationCache<>("Quad vertex data", CoarctatioConfig.get().poolSizeLimit,
                     IntArrays.HASH_STRATEGY);
 
-    // The variant string of a ModelResourceLocation ("normal", "inventory", "facing=north,half=bottom"); the first two alone are a large fraction of all instances
+    // Pool of model variant names.
     public static final DeduplicationCache<String> VARIANTS =
             new DeduplicationCache<>("Model variants", CoarctatioConfig.get().poolSizeLimit);
 
-    // A face's four UV floats, read by the baker and never written after construction; nearly every face of every model uses one of a few dozen (StellarCore's BlockFaceUV canonicalization)
+    // Pool of face coordinate arrays.
     public static final DeduplicationCache<float[]> FACE_UVS =
             new DeduplicationCache<>("Face UVs", CoarctatioConfig.get().poolSizeLimit, FloatArrays.HASH_STRATEGY);
 
-    // The texture variable names and paths of an unbaked model ("particle", "#all", "blocks/stone"), repeated by every model that uses them
+    // Pool of texture names.
     public static final DeduplicationCache<String> MODEL_TEXTURES =
             new DeduplicationCache<>("Model texture names", CoarctatioConfig.get().poolSizeLimit);
 
-    // Quads the immutability rule refused, per class; instrumentation that tells "pool is empty" apart from "injection never fired" and "every quad was a subclass"
+    // Count of skipped quads by the class that produced them.
     private static final Map<String, Integer> SKIPPED_BY_CLASS = new HashMap<>();
 
+    // Prevents instantiation
     private ModelCaches() {
     }
 
-    // Called from the quad mixin's reject path; synchronised because quad construction is not thread-confined once mods are involved
+    // Counts one skipped quad of the type.
     public static void recordSkippedQuad(Class<?> type) {
         String name = type.getName();
 
@@ -42,7 +43,7 @@ public final class ModelCaches {
         }
     }
 
-    // One memory report line: the five commonest rejected classes, most frequent first; capped because a broken mod produces a long tail
+    // Returns the five most frequent skipped quad classes.
     public static String skippedSummary() {
         synchronized (SKIPPED_BY_CLASS) {
             if (SKIPPED_BY_CLASS.isEmpty()) {
@@ -57,7 +58,7 @@ public final class ModelCaches {
         }
     }
 
-    // Called at the start of a resource reload, so each bake is measured on its own
+    // Opens every pool and clears the skipped counts.
     public static void open() {
         QUADS.open();
         VARIANTS.open();
@@ -69,11 +70,10 @@ public final class ModelCaches {
         }
     }
 
-    // Drops the quad pool after a bake; variants stay open since ModelResourceLocations are built all session
+    // Closes every pool except the variant names that stay open for the session.
     public static void close() {
         QUADS.close();
         FACE_UVS.close();
         MODEL_TEXTURES.close();
-        // Variants are not closed with the bake: ModelResourceLocation is constructed all session by item rendering and mods, and the pool is small enough to keep
     }
 }

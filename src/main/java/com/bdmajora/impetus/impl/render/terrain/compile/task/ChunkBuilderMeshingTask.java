@@ -43,14 +43,21 @@ import com.bdmajora.impetus.impl.world.cloned.ChunkRenderContext;
 
 import java.util.*;
 
+// Task that meshes one section.
 public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> {
-    public static boolean USE_NEW_BLOCK_RENDERER = (Boolean)Launch.blackboard.get("fml.deobfuscatedEnvironment") || Boolean.getBoolean("impetus.useVintageFastBlockRenderer");
+    // Use new block renderer.
+    public static boolean USE_NEW_BLOCK_RENDERER = Boolean.TRUE.equals(Launch.blackboard.get("fml.deobfuscatedEnvironment")) || Boolean.getBoolean("impetus.useVintageFastBlockRenderer");
     private static final ProxyClassGenerator<WorldSlice, ImpetusBlockAccess> WORLD_SLICE_LOCAL_GENERATOR = new ProxyClassGenerator<>(WorldSlice.class, "WorldSliceLocal", ImpetusBlockAccess.class);
+    // Section being meshed.
     private final RenderSection render;
+    // Frame of the build request.
     private final int buildTime;
+    // Camera position for translucent sorting.
     private final Vector3d camera;
+    // Render context.
     private final ChunkRenderContext renderContext;
 
+    // Creates a chunk builder meshing task from its render and context and time and camera.
     public ChunkBuilderMeshingTask(RenderSection render, ChunkRenderContext context, int time, Vector3d camera) {
         this.render = render;
         this.buildTime = time;
@@ -58,7 +65,7 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
         this.renderContext = context;
     }
 
-    // Meshes one section: blocks, fluids, tile entities and the visibility graph
+    // Meshes the section and returns its output.
     @Override
     public ChunkBuildOutput execute(ChunkBuildContext context, CancellationToken cancellationToken) {
         VintageChunkBuildContext buildContext = (VintageChunkBuildContext)context;
@@ -76,7 +83,6 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
         int maxY = minY + 16;
         int maxZ = minZ + 16;
 
-        // Initialise with minX/minY/minZ so initial getBlockState crash context is correct
         BlockPos.MutableBlockPos blockPos = new BlockPos.MutableBlockPos(minX, minY, minZ);
 
         buildContext.getWorldSlice().copyData(this.renderContext);
@@ -87,7 +93,6 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
 
         buildContext.setupTranslation(minX, minY, minZ);
 
-        // Pack-wide switches read once per section rather than per block
         boolean voxelizeLightBlocks = com.bdmajora.impetus.umbra.material.WorldRenderingSettings.isVoxelizeLightBlocks();
         var blockRenderer = buildContext.getBlockRenderer();
 
@@ -122,11 +127,9 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
 
                         blockRenderer.resetSharedState();
 
-                        // block.properties `layer.<rendertype>`: the pack can move a block to a different chunk render layer than it reports (OptiFine's render layer override)
                         BlockRenderLayer forcedLayer =
                                 com.bdmajora.impetus.umbra.material.WorldRenderingSettings.getForcedRenderLayer(block);
 
-                        // `voxelizeLightBlocks`: a block emitting light but drawing nothing is invisible to shadow-pass voxelization, so any INVISIBLE block with a light value (the 1.12.2 stand-in for `minecraft:light`) is attributed to the solid layer
                         if (voxelizeLightBlocks
                                 && blockState.getRenderType() == EnumBlockRenderType.INVISIBLE
                                 && blockState.getLightValue(slice, blockPos) > 0) {
@@ -134,36 +137,34 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                                     BlockRenderLayer.SOLID, blockState, blockPos);
                         }
 
-                        // Baked block entity models (chests, signs, beds, shulker boxes) need the world and position behind the state, which getQuads cannot carry
                         boolean bakedEntity = com.bdmajora.extras.client.bakedentities.BakedEntities.isBaked(block);
                         if (bakedEntity) {
                             com.bdmajora.extras.client.bakedentities.BakedEntityContext.set(slice, blockPos);
                         }
 
-                        for (BlockRenderLayer layer : VintageChunkBuildContext.LAYERS) {
-                            boolean renderHere = forcedLayer != null
-                                    ? layer == forcedLayer
-                                    : block.canRenderInLayer(blockState, layer);
-                            if (renderHere) {
-                                ForgeHooksClient.setRenderLayer(layer);
-                                // Model rendering is redirected to the fast block renderer by BlockRendererDispatcherMixin when it is on
-                                var buffer = buildContext.getBufferForLayer(layer);
-                                dispatcher.renderBlock(blockState, blockPos, slice, buffer);
-                                // Attributes whatever reached the vanilla buffer to this block for Umbra terrain attributes
-                                buildContext.recordVanillaBlockAttribution(layer, blockState, blockPos);
+                        try {
+                            for (BlockRenderLayer layer : VintageChunkBuildContext.LAYERS) {
+                                boolean renderHere = forcedLayer != null
+                                        ? layer == forcedLayer
+                                        : block.canRenderInLayer(blockState, layer);
+                                if (renderHere) {
+                                    ForgeHooksClient.setRenderLayer(layer);
+                                    var buffer = buildContext.getBufferForLayer(layer);
+                                    dispatcher.renderBlock(blockState, blockPos, slice, buffer);
+                                    buildContext.recordVanillaBlockAttribution(layer, blockState, blockPos);
+                                }
+                            }
+                        } finally {
+                            ForgeHooksClient.setRenderLayer(null);
+                            if (bakedEntity) {
+                                com.bdmajora.extras.client.bakedentities.BakedEntityContext.clear();
                             }
                         }
 
-                        if (bakedEntity) {
-                            com.bdmajora.extras.client.bakedentities.BakedEntityContext.clear();
-                        }
-
-                        // LittleTiles meshes its tiles on its own threads, and their buffers follow the block's empty model
                         if (tileEntity != null && LittleTilesCompat.IS_LOADED) {
                             LittleTilesCompat.renderTiles(tileEntity, slice, blockPos, blockState, buildContext, this.render);
                         }
 
-                        // The compat hook renders the contained fluid and attributes its quads to the fluid's own state
                         if (FluidloggedCompat.IS_LOADED) {
                             FluidloggedCompat.renderFluidState(slice, blockPos, blockState, buildContext, dispatcher);
                         }
@@ -175,10 +176,8 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
                 }
             }
         } catch (ReportedException ex) {
-            // Propagate existing crashes (add context)
             throw fillCrashInfo(ex.getCrashReport(), slice, blockPos);
         } catch (Throwable ex) {
-            // Create a new crash report for other exceptions (e.g. thrown in getQuads)
             throw fillCrashInfo(CrashReport.makeCrashReport(ex, "Encountered exception while building chunk meshes"), slice, blockPos);
         }
 
@@ -192,14 +191,13 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
 
         encodeVisibilityData(occluder, renderData);
 
-        // The mesh backend draws one merged blob per section; packing here keeps that copy and the translucent sort off the render thread, and the passes' own vertex layout says whether this build is for it
         SectionGeometry meshGeometry = SectionGeometryPacker.packForMeshBackend(meshes,
                 (float) camera.x - minX, (float) camera.y - minY, (float) camera.z - minZ);
 
         return new ChunkBuildOutput(this.render, renderData, meshes, meshGeometry, this.buildTime);
     }
 
-    // Attaches the offending block and position to a rendering crash
+    // Returns a crash report with the section details.
     private ReportedException fillCrashInfo(CrashReport report, IBlockAccess slice, BlockPos pos) {
         CrashReportCategory crashReportSection = report.makeCategory("Block being rendered");
 
@@ -213,6 +211,7 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
         return new ReportedException(report);
     }
 
+    // Facings by graph direction.
     private static final EnumFacing[] FACINGS = new EnumFacing[GraphDirection.COUNT];
 
     static {
@@ -224,7 +223,7 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
         FACINGS[GraphDirection.SOUTH] = EnumFacing.SOUTH;
     }
 
-    // Packs vanilla's VisGraph result into the section's occlusion data
+    // Writes the visibility graph of a section into its output.
     private static void encodeVisibilityData(VisGraph occluder, MinecraftBuiltRenderSectionData<TextureAtlasSprite, TileEntity> renderData) {
         var data = occluder.computeVisibility();
         renderData.visibilityData = VisibilityEncoding.encode((from, to) -> data.isVisible(FACINGS[from], FACINGS[to]));

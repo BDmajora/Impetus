@@ -43,23 +43,32 @@ import java.util.function.Supplier;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Every uniform bound to one program plus the driver uploading them at Iris's cadence (DYNAMIC every bind, ONCE on first use, PER_TICK/PER_FRAME on change); cadence matters since previous-frame suppliers advance when sampled
+// Uniforms of one program grouped by how often they upload.
 public class ProgramUniforms {
-    // The uniforms that change per rendered OBJECT rather than per phase, re-uploaded from the per-object hooks; deliberately tiny rather than the whole DYNAMIC set, see updatePerObject for why
+    // Names of the uniforms that also upload for each object.
     private static final Set<String> PER_OBJECT_UNIFORMS = new HashSet<>(Arrays.asList(
             "entityId", "blockEntityId", "currentRenderedItemId", "entityColor"));
 
+    // Uniforms that upload on every update.
     private final List<Uniform> dynamic;
+    // Uniforms that upload on the first update.
     private final List<Uniform> once;
+    // Uniforms that upload once per world tick.
     private final List<Uniform> perTick;
+    // Uniforms that upload once per frame.
     private final List<Uniform> perFrame;
+    // Uniforms that upload for each object.
     private final List<Uniform> perObject;
+    // World tick of the last tick upload.
     private long lastTick = -1L;
+    // Frame of the last frame upload.
     private int lastFrame = -1;
+    // First update state of the program.
     private boolean firstUpdate = true;
-    // Bumped before every DYNAMIC walk so suppliers that read GL state (MatrixUniforms' live modelview) can share one readback across the walk instead of querying per uniform; render thread only
+    // Counter of updates across every program.
     private static int dynamicPass;
 
+    // Creates the uniform groups.
     private ProgramUniforms(List<Uniform> dynamic, List<Uniform> once, List<Uniform> perTick, List<Uniform> perFrame,
                             List<Uniform> perObject) {
         this.dynamic = dynamic;
@@ -69,29 +78,29 @@ public class ProgramUniforms {
         this.perObject = perObject;
     }
 
-    // Re-uploads only the uniforms that vary per object (material ids, hurt-flash colour); calling update() here walked the whole DYNAMIC list, and MatrixUniform uploads unconditionally with five suppliers each doing a glGetFloat(GL_MODELVIEW_MATRIX) query, tens of thousands of stalls per frame across a few thousand objects
+    // Uploads the per object uniforms.
     public void updatePerObject() {
         updateStage(this.perObject);
     }
 
-    // World tick, or zero with no world
+    // Returns the world tick or zero without a world.
     private static long currentTick() {
         return Minecraft.getMinecraft().world == null ? 0L : Minecraft.getMinecraft().world.getTotalWorldTime();
     }
 
-    // The current DYNAMIC walk's number; equal across every supplier of one update() call
+    // Returns the update counter across every program.
     public static int dynamicPass() {
         return dynamicPass;
     }
 
-    // Uploads one cadence bucket
+    // Uploads every uniform of a group.
     private static void updateStage(List<Uniform> uniforms) {
         for (int i = 0; i < uniforms.size(); i++) {
             uniforms.get(i).update();
         }
     }
 
-    // Uploads whichever buckets are due this bind
+    // Uploads the dynamic uniforms and the tick and frame groups that changed.
     public void update() {
         long currentTick = currentTick();
         int currentFrame = SystemTimeUniforms.COUNTER.getFrameCounter();
@@ -116,50 +125,80 @@ public class ProgramUniforms {
         }
     }
 
-    // Starts registration for one program
+    // Creates a builder for a program.
     public static Builder builder(String name, int program) {
         return new Builder(name, program);
     }
 
+    // Collector of the uniforms a program uses.
     public static class Builder implements UniformCollector {
+        // Logger of type mismatches.
         private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
-        // GL uniform type enums (glGetActiveUniform), used for provided-vs-declared validation.
+        // GL enum of the active uniform count.
         private static final int GL_ACTIVE_UNIFORMS = 0x8B86;
+        // GL type of a float.
         private static final int GL_FLOAT_T = 0x1406;
+        // GL type of an int.
         private static final int GL_INT_T = 0x1404;
+        // GL type of a bool.
         private static final int GL_BOOL_T = 0x8B56;
+        // GL type of a float vec2.
         private static final int GL_FLOAT_VEC2_T = 0x8B50;
+        // GL type of a float vec3.
         private static final int GL_FLOAT_VEC3_T = 0x8B51;
+        // GL type of a float vec4.
         private static final int GL_FLOAT_VEC4_T = 0x8B52;
+        // GL type of an int vec2.
         private static final int GL_INT_VEC2_T = 0x8B53;
+        // GL type of an int vec3.
         private static final int GL_INT_VEC3_T = 0x8B54;
+        // GL type of an int vec4.
         private static final int GL_INT_VEC4_T = 0x8B55;
+        // GL type of a 3 by 3 matrix.
         private static final int GL_FLOAT_MAT3_T = 0x8B5B;
+        // GL type of a 4 by 4 matrix.
         private static final int GL_FLOAT_MAT4_T = 0x8B5C;
+        // GL type of a 1D sampler.
         private static final int GL_SAMPLER_1D_T = 0x8B5D;
+        // GL type of a 2D sampler.
         private static final int GL_SAMPLER_2D_T = 0x8B5E;
+        // GL type of a 3D sampler.
         private static final int GL_SAMPLER_3D_T = 0x8B5F;
+        // GL type of a cube sampler.
         private static final int GL_SAMPLER_CUBE_T = 0x8B60;
+        // GL type of a 1D shadow sampler.
         private static final int GL_SAMPLER_1D_SHADOW_T = 0x8B61;
+        // GL type of a 2D shadow sampler.
         private static final int GL_SAMPLER_2D_SHADOW_T = 0x8B62;
+        // GL type of an unsigned 2D sampler.
         private static final int GL_UNSIGNED_INT_SAMPLER_2D_T = 0x8DD2;
+        // GL type of an unsigned 3D sampler.
         private static final int GL_UNSIGNED_INT_SAMPLER_3D_T = 0x8DD3;
 
-        // The GL type family a builder setter uploads with, compared against what the program declared; see declaredTypes for what a mismatch costs
+        // Value types a uniform supplier provides.
         private enum ProvidedType {
+            // Scalar and vector and matrix kinds.
             FLOAT, INT, VEC2, VEC2I, VEC3, VEC3I, VEC4, VEC4I, MAT3, MAT4
         }
 
+        // Uniform found in the program and not yet grouped.
         private static final class PendingUniform {
+            // Name in the program.
             final String uniformName;
+            // Type the supplier provides.
             final ProvidedType provided;
+            // Upload frequency.
             final UniformUpdateFrequency frequency;
+            // Uniform that uploads the value.
             final Uniform uniform;
-            // Scalar suppliers + location are retained so a FLOAT/INT mismatch against the declared type can be adapted through the other family instead of dropped; null/-1 for non-scalars
+            // Location in the program or minus one.
             final int location;
+            // Float supplier or null.
             final FloatSupplier floatSupplier;
+            // Int supplier or null.
             final IntSupplier intSupplier;
 
+            // Creates a pending uniform.
             PendingUniform(String uniformName, ProvidedType provided, UniformUpdateFrequency frequency, Uniform uniform,
                     int location, FloatSupplier floatSupplier, IntSupplier intSupplier) {
                 this.uniformName = uniformName;
@@ -172,37 +211,40 @@ public class ProgramUniforms {
             }
         }
 
+        // Name of the program.
         private final String name;
+        // GL name of the program.
         private final int program;
-        // Keyed by uniform NAME so a later registration REPLACES an earlier one: addCommonUniforms runs before ActiveCustomUniforms.assignTo, so a pack-declared custom uniform wins over a built-in of the same name (Iris's rule, e.g. Sildur's framemod8); linked so the layout report keeps insertion order
+        // Pending uniforms by name in registration order.
         private final LinkedHashMap<String, PendingUniform> pending = new LinkedHashMap<>();
 
+        // Creates a builder for a program.
         private Builder(String name, int program) {
             this.name = name;
             this.program = program;
         }
 
-        // Program name, for log lines
+        // Returns the name of the program.
         public String getName() {
             return this.name;
         }
 
-        // glGetUniformLocation; -1 means the program does not declare it
+        // Returns the location of a uniform or minus one.
         private int location(CharSequence uniformName) {
             return LWJGL.glGetUniformLocation(this.program, uniformName);
         }
 
-        // Queues a uniform until build resolves its location
+        // Replaces the pending uniform of the same name.
         private void put(PendingUniform uniform) {
             this.pending.put(uniform.uniformName, uniform);
         }
 
-        // Records a resolved uniform under its cadence, or drops it when the location is -1
+        // Stores a pending uniform without a scalar supplier.
         private void add(String uniformName, ProvidedType provided, UniformUpdateFrequency frequency, Uniform uniform) {
             put(new PendingUniform(uniformName, provided, frequency, uniform, -1, null, null));
         }
 
-        // float
+        // Registers a float uniform the program uses.
         public Builder uniform1f(UniformUpdateFrequency frequency, String uniformName, FloatSupplier value) {
             int location = location(uniformName);
             if (location != -1) {
@@ -212,7 +254,7 @@ public class ProgramUniforms {
             return this;
         }
 
-        // vec2
+        // Registers a float vec2 uniform the program uses.
         public Builder uniform2f(UniformUpdateFrequency frequency, String uniformName, Supplier<Vector2f> value) {
             int location = location(uniformName);
             if (location != -1) {
@@ -221,7 +263,7 @@ public class ProgramUniforms {
             return this;
         }
 
-        // int
+        // Registers an int uniform the program uses.
         public Builder uniform1i(UniformUpdateFrequency frequency, String uniformName, IntSupplier value) {
             int location = location(uniformName);
             if (location != -1) {
@@ -231,7 +273,7 @@ public class ProgramUniforms {
             return this;
         }
 
-        // ivec2
+        // Registers an int vec2 uniform the program uses.
         public Builder uniform2i(UniformUpdateFrequency frequency, String uniformName, Supplier<Vector2i> value) {
             int location = location(uniformName);
             if (location != -1) {
@@ -240,7 +282,7 @@ public class ProgramUniforms {
             return this;
         }
 
-        // vec3
+        // Registers a float vec3 uniform the program uses.
         public Builder uniform3f(UniformUpdateFrequency frequency, String uniformName, Supplier<Vector3f> value) {
             int location = location(uniformName);
             if (location != -1) {
@@ -249,7 +291,7 @@ public class ProgramUniforms {
             return this;
         }
 
-        // ivec3
+        // Registers an int vec3 uniform the program uses.
         public Builder uniform3i(UniformUpdateFrequency frequency, String uniformName, Supplier<Vector3i> value) {
             int location = location(uniformName);
             if (location != -1) {
@@ -258,7 +300,7 @@ public class ProgramUniforms {
             return this;
         }
 
-        // vec4
+        // Registers a float vec4 uniform the program uses.
         public Builder uniform4f(UniformUpdateFrequency frequency, String uniformName, Supplier<Vector4f> value) {
             int location = location(uniformName);
             if (location != -1) {
@@ -267,7 +309,7 @@ public class ProgramUniforms {
             return this;
         }
 
-        // ivec4
+        // Registers an int vec4 uniform the program uses.
         public Builder uniform4i(UniformUpdateFrequency frequency, String uniformName, Supplier<Vector4i> value) {
             int location = location(uniformName);
             if (location != -1) {
@@ -276,7 +318,7 @@ public class ProgramUniforms {
             return this;
         }
 
-        // mat3
+        // Registers a 3 by 3 matrix uniform the program uses.
         public Builder uniformMatrix3(UniformUpdateFrequency frequency, String uniformName, Supplier<Matrix3fc> value) {
             int location = location(uniformName);
             if (location != -1) {
@@ -285,7 +327,7 @@ public class ProgramUniforms {
             return this;
         }
 
-        // mat4
+        // Registers a 4 by 4 matrix uniform the program uses.
         public Builder uniformMatrix(UniformUpdateFrequency frequency, String uniformName, Supplier<Matrix4fc> value) {
             int location = location(uniformName);
             if (location != -1) {
@@ -294,7 +336,7 @@ public class ProgramUniforms {
             return this;
         }
 
-        // The provider family a declared GL type needs, or null for types this port cannot supply; matches Iris's mapping
+        // Returns the supplier type of a GL type or null for an unlisted one.
         private static ProvidedType expectedType(int glType) {
             return switch (glType) {
                 case GL_FLOAT_T -> ProvidedType.FLOAT;
@@ -313,7 +355,7 @@ public class ProgramUniforms {
             };
         }
 
-        // Reads every ACTIVE uniform's declared type so a mismatched provider is disabled with a log line rather than raising GL_INVALID_OPERATION on EVERY upload (the "1282 @ Post render" spam); packs disagree on int vs float for worldTime, isEyeInWater etc. Same as Iris's buildUniforms
+        // Returns the declared supplier type of every active uniform.
         private Map<String, ProvidedType> declaredTypes() {
             Map<String, ProvidedType> declared = new HashMap<>();
             int activeUniforms = LWJGL.glGetProgrami(this.program, GL_ACTIVE_UNIFORMS);
@@ -331,7 +373,7 @@ public class ProgramUniforms {
             return declared;
         }
 
-        // Resolves every pending location and returns the finished set
+        // Groups the pending uniforms and converts or disables those whose declared type differs.
         public ProgramUniforms buildUniforms() {
             Map<String, ProvidedType> declared = declaredTypes();
             List<Uniform> dynamic = new ArrayList<>();
@@ -342,8 +384,8 @@ public class ProgramUniforms {
             for (PendingUniform entry : this.pending.values()) {
                 Uniform uniform = entry.uniform;
                 ProvidedType declaredType = declared.get(entry.uniformName);
-                if (declared.containsKey(entry.uniformName) && declaredType != entry.provided) {
-                    // Packs disagree on whether OptiFine scalars (framemod8, worldTime, isEyeInWater) are int or float; rather than drop the uniform and leave GLSL's default 0 (Sildur's `uniform int framemod8` breaking TAA jitter), re-upload through the declared family
+                // Checks only declarations of a known GL type
+                if (declaredType != null && declaredType != entry.provided) {
                     if (entry.provided == ProvidedType.FLOAT && declaredType == ProvidedType.INT
                             && entry.floatSupplier != null) {
                         FloatSupplier fs = entry.floatSupplier;
@@ -365,7 +407,6 @@ public class ProgramUniforms {
                     case PER_TICK -> perTick.add(uniform);
                     default -> perFrame.add(uniform);
                 }
-                // Also indexed separately while staying in its frequency list: the per-object hooks re-upload just these between draws, and the phase-level update still covers them
                 if (PER_OBJECT_UNIFORMS.contains(entry.uniformName)) {
                     perObject.add(uniform);
                 }

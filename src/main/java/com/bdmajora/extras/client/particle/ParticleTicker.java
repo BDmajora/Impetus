@@ -19,29 +19,39 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
-// Client particle ticking spread over a small pool, after Harvey_Husky's AsyncParticles: the client thread is blocked while the batch runs, so the client world is quiescent and the only shared state particles reach is the spawn queue, which is made concurrent; the light each particle will render with is sampled here so the render pass does no lookups
+// Ticks particles on worker threads.
 public final class ParticleTicker {
-    // Hardly worth a hand-off below this many particles in one layer
+    // Smallest layer that is ticked in parallel.
     private static final int MIN_PARALLEL = 256;
+    // Largest number of workers.
     private static final int MAX_THREADS = 8;
 
-    // Live switches, applied whenever the Extras config loads or saves
+    // Whether particles tick in parallel.
     public static volatile boolean enabled;
+    // Whether modded particles tick in parallel.
     public static volatile boolean moddedParticles;
+    // Whether particles cache their light.
     public static volatile boolean lightCache;
+    // Whether particles outside the view are skipped.
     public static volatile boolean cullOffscreen;
+    // Whether particles cache collisions.
     public static volatile boolean collisionCache;
 
-    // Bumped once per updateEffects; a particle's cached light is only trusted when it was sampled this tick
+    // Number of ticks started.
     public static volatile int tickCounter;
 
+    // Whether each particle class comes from a mod.
     private static final Map<Class<?>, Boolean> MODDED_BY_CLASS = new ConcurrentHashMap<>();
+    // Counter for worker names.
     private static final AtomicInteger THREAD_ID = new AtomicInteger();
+    // Worker pool or null.
     private static volatile ThreadPoolExecutor pool;
 
+    // Prevents instantiation
     private ParticleTicker() {
     }
 
+    // Applies the settings.
     public static void apply(ExtrasConfig.ParticleSettings settings) {
         enabled = settings.parallelTick;
         moddedParticles = settings.parallelModded;
@@ -50,21 +60,23 @@ public final class ParticleTicker {
         collisionCache = settings.collisionCache;
     }
 
-    // Marks the start of a tick so stale light samples from a previous one are not reused
+    // Counts a new tick.
     public static void beginTick() {
         tickCounter++;
     }
 
-    // Whether this layer should go through the pool at all
+    // Returns whether the layer is large enough to tick in parallel.
     public static boolean shouldParallelize(Queue<Particle> layer) {
         return enabled && layer.size() >= MIN_PARALLEL;
     }
 
+    // Returns the worker count.
     private static int desiredThreads() {
         int cores = Runtime.getRuntime().availableProcessors();
         return Math.max(1, Math.min(MAX_THREADS, cores / 2));
     }
 
+    // Returns the pool and starts it when needed.
     private static ThreadPoolExecutor ensurePool() {
         ThreadPoolExecutor current = pool;
         if (current != null) {
@@ -92,7 +104,7 @@ public final class ParticleTicker {
         }
     }
 
-    // Ticks one layer: modded particles stay on the client thread unless opted in, vanilla ones are sliced across the pool, and the dead are dropped afterwards the way vanilla's iterator would have
+    // Ticks every particle of the layer and removes the dead ones.
     public static void tickLayer(Queue<Particle> layer, Consumer<Particle> tickOne) {
         Particle[] all = layer.toArray(new Particle[0]);
         List<Particle> sync = new ArrayList<>();
@@ -133,7 +145,6 @@ public final class ParticleTicker {
         for (Particle particle : sync) {
             tickOne.accept(particle);
         }
-        // The client thread joins in rather than idling behind the latch
         drain(queue, done);
         boolean interrupted = false;
         while (done.getCount() > 0L) {
@@ -163,7 +174,7 @@ public final class ParticleTicker {
         }
     }
 
-    // Runs queued slices until none are left, counting each down whether or not it threw
+    // Runs queued tasks until the queue is empty.
     private static void drain(Queue<Runnable> queue, CountDownLatch done) {
         Runnable task;
         while ((task = queue.poll()) != null) {
@@ -175,7 +186,7 @@ public final class ParticleTicker {
         }
     }
 
-    // Vanilla's particles all live under net.minecraft; anything else was written without this pool in mind
+    // Returns whether the particle comes from a mod.
     public static boolean isModded(Particle particle) {
         Class<?> type = particle.getClass();
         Boolean cached = MODDED_BY_CLASS.get(type);

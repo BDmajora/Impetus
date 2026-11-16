@@ -1,14 +1,16 @@
 package com.bdmajora.impetus.umbra.shaderpack.parsing;
 
-// Tiny consuming parser over a single line, each takeX pulling a token off the front; ported verbatim from Umbra since the option parser depends on its exact whitespace/word/number semantics
+// Cursor over a line of text.
 public class ParsedString {
+    // Text not yet consumed.
     private String text;
 
+    // Creates a parsed string from its text.
     public ParsedString(String text) {
         this.text = text;
     }
 
-    // Consumes the token if it is next
+    // Consumes a token and returns whether it was there.
     public boolean takeLiteral(String token) {
         if (!text.startsWith(token)) {
             return false;
@@ -19,28 +21,25 @@ public class ParsedString {
         return true;
     }
 
-    // Consumes at least one whitespace character
+    // Consumes leading whitespace and returns whether there was any.
     public boolean takeSomeWhitespace() {
         if (text.isEmpty() || !Character.isWhitespace(text.charAt(0))) {
             return false;
         }
 
-        // TODO: We do a double sided trim
         text = text.trim();
 
         return true;
     }
 
-    // Consumes a leading // and the spaces after it
+    // Consumes leading line comment markers and returns whether there were any.
     public boolean takeComments() {
         if (!text.startsWith("//")) {
             return false;
         }
 
-        // Remove the initial two comment slashes
         text = text.substring(2);
 
-        // Remove any additional comment slashes
         while (text.startsWith("/")) {
             text = text.substring(1);
         }
@@ -48,22 +47,22 @@ public class ParsedString {
         return true;
     }
 
-    // Whether the remainder contains the text
+    // Currentlies the contains.
     public boolean currentlyContains(String text) {
         return this.text.contains(text);
     }
 
-    // Nothing left
+    // Returns whether end.
     public boolean isEnd() {
         return text.isEmpty();
     }
 
-    // Everything remaining
+    // Consumes and returns the remaining text.
     public String takeRest() {
         return text;
     }
 
-    // Consumes a fixed count
+    // Consumes and returns a number of characters.
     private String takeCharacters(int numChars) {
         String result = text.substring(0, numChars);
         text = text.substring(numChars);
@@ -71,7 +70,7 @@ public class ParsedString {
         return result;
     }
 
-    // An identifier, or null
+    // Consumes and returns an identifier or null.
     public String takeWord() {
         if (isEnd()) {
             return null;
@@ -96,7 +95,7 @@ public class ParsedString {
         return takeCharacters(position);
     }
 
-    // A numeric literal, or null
+    // Consumes and returns a number or null.
     public String takeNumber() {
         if (isEnd()) {
             return null;
@@ -150,7 +149,7 @@ public class ParsedString {
         return takeCharacters(position);
     }
 
-    // Either, or null
+    // Consumes and returns an identifier or number or null.
     public String takeWordOrNumber() {
         String number = takeNumber();
 

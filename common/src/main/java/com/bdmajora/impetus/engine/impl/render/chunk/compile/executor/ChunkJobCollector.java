@@ -9,19 +9,25 @@ import java.util.concurrent.Semaphore;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
+// Collects the results of jobs submitted within a frame budget.
 public class ChunkJobCollector {
+    // Counts finished jobs.
     private final Semaphore semaphore = new Semaphore(0);
+    // Receiver of the results.
     private final Consumer<ChunkJobResult<? extends ChunkTaskOutput>> collector;
+    // Jobs submitted and not yet awaited.
     private final List<ChunkJob> submitted = new ArrayList<>();
 
+    // Number of jobs that may be submitted.
     private final int budget;
 
+    // Creates a collector and rejects a null receiver.
     public ChunkJobCollector(int budget, Consumer<ChunkJobResult<? extends ChunkTaskOutput>> collector) {
         this.budget = budget;
-        this.collector = collector;
+        this.collector = java.util.Objects.requireNonNull(collector, "collector");
     }
 
-    // Counts a completion and stores the result; a cancelled job finishes with none
+    // Counts a finished job and passes its result on unless it was cancelled.
     public void onJobFinished(@Nullable ChunkJobResult<? extends ChunkTaskOutput> result) {
         this.semaphore.release(1);
         if (result != null) {
@@ -29,13 +35,15 @@ public class ChunkJobCollector {
         }
     }
 
-    // Blocks until every submitted job finished, stealing work meanwhile
+    // Waits until every submitted job finished and clears the submitted jobs.
     public void awaitCompletion(ChunkBuilder builder) {
         if (this.submitted.isEmpty()) {
             return;
         }
 
-        // A started job is a worker's; a cancelled one is harmless to steal and finishes at once
+        java.util.Objects.requireNonNull(builder, "builder");
+
+        // Steals the jobs no worker started
         for (var job : this.submitted) {
             if (job.isStarted()) {
                 continue;
@@ -44,7 +52,7 @@ public class ChunkJobCollector {
             builder.tryStealTask(job);
         }
 
-        // Acquire all permits while running the managed block logic, to handle tasks needing input from the main thread
+        // Takes one permit per submitted job
         int remaining = this.submitted.size();
         BooleanSupplier isDone = () -> this.semaphore.availablePermits() > 0;
 
@@ -58,17 +66,19 @@ public class ChunkJobCollector {
                 }
             }
 
-            // otherwise, help by running a task
+            // Runs a task while waiting
             builder.managedBlock(isDone);
         }
+
+        this.submitted.clear();
     }
 
-    // Tracks a job so awaitCompletion knows what to wait for
+    // Adds a job to wait for and rejects null.
     public void addSubmittedJob(ChunkJob job) {
-        this.submitted.add(job);
+        this.submitted.add(java.util.Objects.requireNonNull(job, "job"));
     }
 
-    // Whether more jobs may be submitted this frame under the budget
+    // Returns whether the budget allows another job.
     public boolean canOffer() {
         return (this.budget - this.submitted.size()) > 0;
     }

@@ -13,9 +13,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Suppresses toasts by kind at add time so a suppressed toast never enters the queue; modded toasts only answer to the master switch
+// Mixin that changes GuiToast.
 @Mixin(GuiToast.class)
 public class GuiToastMixin {
+    // Runs at the start of add and can cancel it.
     @Inject(method = "add", at = @At("HEAD"), cancellable = true)
     private void impetus$filterToast(IToast toast, CallbackInfo ci) {
         ExtrasConfig.ExtraSettings settings = Extras.options().extra;

@@ -11,59 +11,64 @@ import java.util.Locale;
 import java.util.Properties;
 import java.util.stream.Stream;
 
-// Backed by OptiFine-style optionsshaders.txt plus shaderpacks/, with the Nvidium ports Umbra makes kept in nvidium_shaderpacks/; the game directory is injected rather than read from Minecraft so this stays Minecraft-free and testable
+// Settings of the Umbra shader loader.
 public final class UmbraConfig {
-    // OptiFine's sentinel value for "shaders disabled"; empty name also means this
+    // Name that selects no pack.
     public static final String NO_PACK = "(internal)";
 
+    // Shaderpacks directory.
     private final Path shaderpacksDirectory;
+    // Nvidium shaderpacks directory.
     private final Path nvidiumShaderpacksDirectory;
+    // Properties file.
     private final Path propertiesFile;
 
+    // Shader pack name.
     private String shaderPackName = NO_PACK;
 
+    // Creates an umbra config from its game directory.
     public UmbraConfig(Path gameDirectory) {
         this.shaderpacksDirectory = gameDirectory.resolve("shaderpacks");
         this.nvidiumShaderpacksDirectory = gameDirectory.resolve("nvidium_shaderpacks");
         this.propertiesFile = gameDirectory.resolve("optionsshaders.txt");
     }
 
-    // The shaderpacks folder under the game directory, created on first access
+    // Returns the shaderpacks directory.
     public Path getShaderpacksDirectory() {
         return this.shaderpacksDirectory;
     }
 
-    // The folder name a pack's port takes: the pack's own name without .zip, since a port is always a folder
+    // Returns the folder name of the mesh terrain port of a pack.
     public static String portName(String packName) {
         return packName.toLowerCase(Locale.ROOT).endsWith(".zip") ? packName.substring(0, packName.length() - 4) : packName;
     }
 
-    // Where a pack's Nvidium port goes, a complete pack folder in nvidium_shaderpacks/
+    // Returns the path of the mesh terrain port of a pack.
     public Path portPath(String packName) {
         return this.nvidiumShaderpacksDirectory.resolve(portName(packName));
     }
 
-    // Returns the currently selected pack name (file or folder name under shaderpacks/)
+    // Returns the shader pack name.
     public String getShaderPackName() {
         return this.shaderPackName;
     }
 
-    // Records the chosen pack; null means shaders off
+    // Stores the shader pack name.
     public void setShaderPackName(String name) {
         this.shaderPackName = (name == null || name.trim().isEmpty()) ? NO_PACK : name.trim();
     }
 
-    // True if a real pack is selected, i.e. not the NO_PACK sentinel
+    // Returns whether shader pack enabled.
     public boolean isShaderPackEnabled() {
         return !NO_PACK.equals(this.shaderPackName);
     }
 
-    // Resolved path to the selected pack (folder or zip); null if shaders are disabled
+    // Returns the selected pack path.
     public Path getSelectedPackPath() {
         return isShaderPackEnabled() ? this.shaderpacksDirectory.resolve(this.shaderPackName) : null;
     }
 
-    // Missing file is not an error, just means defaults
+    // Reads the settings file.
     public void load() throws IOException {
         if (!Files.exists(this.propertiesFile)) {
             return;
@@ -78,7 +83,7 @@ public final class UmbraConfig {
                         properties.getProperty("colorSpace", "SRGB")));
     }
 
-    // Persists the current selection, creating directories as needed
+    // Writes the settings file.
     public void save() throws IOException {
         Files.createDirectories(this.propertiesFile.getParent());
         Properties properties = new Properties();
@@ -90,12 +95,12 @@ public final class UmbraConfig {
         }
     }
 
-    // Ensures shaderpacks/ exists so users have somewhere to drop packs
+    // Creates the shader pack folder when missing.
     public void ensureShaderpacksDirectory() throws IOException {
         Files.createDirectories(this.shaderpacksDirectory);
     }
 
-    // Names of every selectable pack (sub-dirs and .zip files) sorted case-insensitively; an unreadable directory yields an empty list
+    // Returns the names of the installed packs.
     public List<String> listShaderpacks() {
         List<String> result = new ArrayList<>();
         if (!Files.isDirectory(this.shaderpacksDirectory)) {
@@ -109,7 +114,6 @@ public final class UmbraConfig {
                 }
             });
         } catch (IOException e) {
-            // Best-effort listing; return whatever we managed to collect.
         }
         result.sort(String.CASE_INSENSITIVE_ORDER);
         return Collections.unmodifiableList(result);

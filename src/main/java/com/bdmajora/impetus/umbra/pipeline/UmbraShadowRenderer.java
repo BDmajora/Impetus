@@ -30,47 +30,48 @@ import java.util.BitSet;
 import java.util.Map;
 import java.util.Objects;
 
-// Renders the shadow map from the sun or moon before the gbuffer pass samples it
+// Renderer of the shadow pass of a shader pack.
 public class UmbraShadowRenderer {
+    // Logger of repeated pass failures.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
-    // Near plane of the shadow projection in blocks when the pack declares none
+    // Near plane used when the pack sets none.
     public static final float DEFAULT_NEAR_PLANE = -100.05f;
-    // Far plane of the shadow projection in blocks when the pack declares none
+    // Far plane used when the pack sets none.
     public static final float DEFAULT_FAR_PLANE = 156.0f;
-    // Grid step in blocks that the shadow camera snaps to when the pack declares none
+    // Camera snapping interval used when the pack sets none.
     public static final float DEFAULT_INTERVAL_SIZE = 2.0f;
-    // Number of failed passes after which shadows stay off for the pack
+    // Failures after which the shadow pass is disabled.
     static final int MAX_FAILURES = 3;
 
-    // Flag set while the shadow pass is drawing
+    // Active state of the shadow pass on the render thread.
     private static boolean shadowPassActive;
 
-    // Shadow textures and framebuffer
+    // Depth and color targets of the shadow map.
     private final ShadowTargets targets;
-    // Sun or moon camera matrices
+    // Shadow camera.
     private final ShadowCamera camera;
-    // Section selection and terrain layer draws
+    // Terrain selection and drawing of the shadow pass.
     private final ShadowTerrain terrain;
-    // Fixed function programs of entities and block entities
+    // Programs of the shadow casters.
     private final ShadowCasterPrograms programs;
-    // Entity and block entity draws
+    // Entity and block entity casters.
     private final ShadowCasters casters;
-    // Culling and depth state saved around each pass
+    // GL state saved around the pass.
     private final ShadowPassState passState = new ShadowPassState();
-    // Switches for what the pass draws
+    // Content settings of the pass.
     private final ShadowContentSettings content;
-    // Draw buffer mask of the shadow program limited to allocated colour buffers
+    // Draw buffers the shadow program writes.
     private final int[] drawBuffers;
-    // Action that rebinds the pack textures and images to their units
+    // Action that rebinds the pack resources.
     private final Runnable shaderPackResourceRestorer;
-    // Number of passes that threw
+    // Number of failed passes.
     private int failureCount;
-    // Flag set once the pass gives up after repeated failures
+    // Disabled state after repeated failures.
     private boolean failed;
-    // Flag set once destroy has run
+    // Released state of the renderer.
     private boolean destroyed;
 
-    // Allocates the shadow targets and compiles the fixed function caster programs and frees everything again when any step throws
+    // Creates the shadow targets and programs and releases them when creation fails.
     public UmbraShadowRenderer(int resolution, float shadowDistance, float nearPlane, float farPlane,
                                float intervalSize, Float shadowMapFov, float sunPathRotation,
                                ProgramSource shadowSource,
@@ -89,75 +90,84 @@ public class UmbraShadowRenderer {
         this.terrain = new ShadowTerrain(content, cullDistance, voxelDistance, packVoxelizes, sunPathRotation);
         this.targets = new ShadowTargets(resolution, hardwareFiltering, mipmapDepth, nearestDepth,
                 separateHardwareSamplers, colorSettings, usedColorBuffers);
+        ShadowCasterPrograms programs = null;
         try {
             this.drawBuffers = this.targets.drawMask(shadowSource.getFragmentSource()
                     .map(source -> DrawBuffers.parseActive(source, shaderDefines))
                     .orElse(null));
-            this.programs = new ShadowCasterPrograms(shadowSource, shadowEntitiesSource, shadowBlockSource,
+            programs = new ShadowCasterPrograms(shadowSource, shadowEntitiesSource, shadowBlockSource,
                     source -> GbufferPrograms.compile(source, shaderDefines, samplerUnits), shaderPackResourceRestorer);
+            this.casters = new ShadowCasters(programs, content, shadowDistance);
         } catch (Throwable failure) {
-            this.targets.destroy();
+            // Releases the targets and the programs of a renderer that could not be created
+            try {
+                this.targets.destroy();
+            } finally {
+                if (programs != null) {
+                    programs.destroy();
+                }
+            }
             throw failure;
         }
-        this.casters = new ShadowCasters(this.programs, content, shadowDistance);
+        this.programs = programs;
     }
 
-    // Returns whether the shadow pass is drawing
+    // Returns whether the shadow pass is drawing.
     public static boolean isShadowPass() {
         return shadowPassActive;
     }
 
-    // Returns the shadowtex0 texture name and throws once destroyed
+    // Returns the GL name of the shadow depth texture.
     public int getDepthTextureId() {
         return this.targets.depthTextureId();
     }
 
-    // Returns the shadowtex1 texture name and throws once destroyed
+    // Returns the GL name of the shadow depth texture without translucents.
     public int getDepthTextureNoTranslucentsId() {
         return this.targets.depthNoTranslucentsTextureId();
     }
 
-    // Returns the texture name of a shadow colour buffer or 0 for a buffer that does not exist and throws once destroyed
+    // Returns the GL name of a shadow color texture.
     public int getColorTextureId(int index) {
         return this.targets.colorTextureId(index);
     }
 
-    // Returns the internal format of a shadow colour buffer or 0 for an index outside the addressable buffers
+    // Returns the internal format of a shadow color texture.
     public int getColorInternalFormat(int index) {
         return this.targets.colorInternalFormat(index);
     }
 
-    // Returns how many shadow colour buffers the pack may address
+    // Returns the number of shadow color textures.
     public int getColorBufferCount() {
         return this.targets.colorBufferCount();
     }
 
-    // Returns the width and height of the shadow map in pixels
+    // Returns the side of the shadow map in pixels.
     public int getResolution() {
         return this.targets.resolution();
     }
 
-    // Returns the framebuffer with every shadow colour buffer and shadowtex0 attached
+    // Returns the framebuffer of the shadow map.
     public UmbraFramebuffer getFramebuffer() {
         return this.targets.framebuffer();
     }
 
-    // Returns the camera relative section filter of the latest pass or null before the first one
+    // Returns the frustum of the shadow terrain culling.
     public Frustum getCullingFrustum() {
         return this.terrain.cullingFrustum();
     }
 
-    // Returns the live shadow model view matrix
+    // Returns the model view matrix of the shadow camera.
     public Matrix4f getShadowModelView() {
         return this.camera.modelView();
     }
 
-    // Returns the live shadow projection matrix
+    // Returns the projection matrix of the shadow camera.
     public Matrix4f getShadowProjection() {
         return this.camera.projection();
     }
 
-    // Draws terrain and entities and translucent terrain into the shadow map and leaves the shadow framebuffer bound
+    // Draws the shadow pass and disables it after repeated failures.
     public void render() {
         if (this.failed || this.destroyed) {
             return;
@@ -182,7 +192,7 @@ public class UmbraShadowRenderer {
         }
     }
 
-    // Runs every stage of one pass in order
+    // Draws terrain and casters and translucents into the shadow map.
     private void drawPass(ImpetusWorldRenderer worldRenderer) {
         CapturedRenderingState state = CapturedRenderingState.INSTANCE;
         Vector3d cameraPosition = state.getCameraPosition();
@@ -197,7 +207,6 @@ public class UmbraShadowRenderer {
         try {
             this.targets.clear(this.drawBuffers);
         } finally {
-            // Puts back the frame clear colour with alpha 0
             Vector3f fog = state.getFogColor();
             GlStateManager.clearColor(fog.x, fog.y, fog.z, 0.0f);
         }
@@ -225,7 +234,6 @@ public class UmbraShadowRenderer {
         this.targets.copyDepthWithoutTranslucents();
         this.shaderPackResourceRestorer.run();
 
-        // Translucent casters write tint and depth without blending
         if (terrainEnabled && this.content.shouldRenderTranslucent()) {
             bindBlockAtlas(mc);
             GlStateManager.disableBlend();
@@ -245,12 +253,12 @@ public class UmbraShadowRenderer {
         this.shaderPackResourceRestorer.run();
     }
 
-    // Binds the block atlas on the active unit
+    // Binds the block texture atlas.
     private static void bindBlockAtlas(Minecraft mc) {
         mc.getTextureManager().bindTexture(TextureMap.LOCATION_BLOCKS_TEXTURE);
     }
 
-    // Frees the shadow targets and the caster programs once
+    // Releases the targets and the programs once.
     public void destroy() {
         if (this.destroyed) {
             return;

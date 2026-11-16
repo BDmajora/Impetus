@@ -35,22 +35,34 @@ import java.util.function.Function;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// What the LOD and generic DH programs share: the pack-side transform and link of one DH stage, the five matrix uniforms every generated prologue declares, and the uniform upload helpers
+// Base of the programs that draw Distant Horizons terrain with a shader pack.
 abstract class DhRenderProgram {
+    // Linked program.
     protected final GlProgram program;
+    // Draw buffers of the program.
     protected final int[] drawBuffers;
+    // Blend override of the program.
     protected final ProgramBlendState blendState;
+    // Pack uniforms of the program.
     protected final ProgramUniforms uniforms;
+    // Location of the model view matrix.
     private final int uModelView;
+    // Location of the inverse model view matrix.
     private final int uModelViewInverse;
+    // Location of the projection matrix.
     private final int uProjection;
+    // Location of the inverse projection matrix.
     private final int uProjectionInverse;
+    // Location of the normal matrix.
     private final int uNormalMatrix;
-    // Reused per pass rather than allocated: the inverses and the normal matrix are derived each bind
+    // Scratch of the inverse model view.
     private final Matrix4f modelViewInverse = new Matrix4f();
+    // Scratch of the inverse projection.
     private final Matrix4f projectionInverse = new Matrix4f();
+    // Scratch of the normal matrix.
     private final Matrix3f normalMatrix = new Matrix3f();
 
+    // Creates a program and looks up its matrix uniforms.
     protected DhRenderProgram(GlProgram program, int[] drawBuffers, ProgramBlendState blendState, ProgramUniforms uniforms) {
         this.program = program;
         this.drawBuffers = drawBuffers;
@@ -63,30 +75,41 @@ abstract class DhRenderProgram {
         this.uNormalMatrix = program.getUniformLocation(DhTerrainTransformer.NORMAL_MATRIX);
     }
 
+    // Returns the draw buffers of the program.
     public int[] getDrawBuffers() {
         return this.drawBuffers;
     }
 
+    // Returns the blend override of the program.
     public ProgramBlendState getBlendState() {
         return this.blendState;
     }
 
-    // The pass matrices and everything derived from them, to the program currently bound
+    // Uploads the matrices and the inverses the program reads.
     protected final void uploadMatrices(Matrix4fc projection, Matrix4fc modelView) {
-        this.modelViewInverse.set(modelView).invert();
         setUniform(this.uModelView, modelView);
-        setUniform(this.uModelViewInverse, this.modelViewInverse);
         setUniform(this.uProjection, projection);
-        setUniform(this.uProjectionInverse, this.projectionInverse.set(projection).invert());
-        setUniform(this.uNormalMatrix, this.modelViewInverse.transpose3x3(this.normalMatrix));
+        // Inverts only the matrices the program reads
+        if (this.uModelViewInverse != -1 || this.uNormalMatrix != -1) {
+            this.modelViewInverse.set(modelView).invert();
+            setUniform(this.uModelViewInverse, this.modelViewInverse);
+            if (this.uNormalMatrix != -1) {
+                setUniform(this.uNormalMatrix, this.modelViewInverse.transpose3x3(this.normalMatrix));
+            }
+        }
+        if (this.uProjectionInverse != -1) {
+            setUniform(this.uProjectionInverse, this.projectionInverse.set(projection).invert());
+        }
     }
 
+    // Uploads a float when the location exists.
     protected static void setUniform(int location, float value) {
         if (location != -1) {
             LWJGL.glUniform1f(location, value);
         }
     }
 
+    // Uploads a 4 by 4 matrix when the location exists.
     protected static void setUniform(int location, Matrix4fc matrix) {
         if (location == -1) {
             return;
@@ -98,6 +121,7 @@ abstract class DhRenderProgram {
         }
     }
 
+    // Uploads a 3 by 3 matrix when the location exists.
     protected static void setUniform(int location, Matrix3f matrix) {
         if (location == -1) {
             return;
@@ -109,7 +133,7 @@ abstract class DhRenderProgram {
         }
     }
 
-    // Points every sampler named in names that the program declares at one texture unit; call with the program bound
+    // Points every declared sampler of a name list at a unit.
     protected static void assignSamplerUnit(GlProgram program, int unit, String... names) {
         for (String name : names) {
             int location = program.getUniformLocation(name);
@@ -119,13 +143,18 @@ abstract class DhRenderProgram {
         }
     }
 
-    // One DH stage after the pack-side transforms: custom texture renames, modern name rewrite, the pack's macro environment, then the DH bridge
+    // Transformed sources and draw buffers of a program.
     static final class Stage {
+        // Name of the program.
         final String name;
+        // Vertex source.
         final String vsh;
+        // Fragment source.
         final String fsh;
+        // Draw buffers of the fragment stage.
         final int[] drawBuffers;
 
+        // Creates a stage.
         private Stage(String name, String vsh, String fsh, int[] drawBuffers) {
             this.name = name;
             this.vsh = vsh;
@@ -134,7 +163,7 @@ abstract class DhRenderProgram {
         }
     }
 
-    // Transforms a program's sources the way UmbraTerrainProgramOverride builds the terrain programs; generic selects the instanced-box prologue over the LOD one
+    // Transforms the stages of a pack program for Distant Horizons and rejects a missing stage.
     static Stage transform(ShaderPack pack, ProgramSource source, boolean generic) {
         String name = source.getName();
         String vshSource = source.getVertexSource().orElseThrow(() ->
@@ -146,7 +175,6 @@ abstract class DhRenderProgram {
 
         Map<String, String> macros = ShaderMacros.forProgram(pack.getEnvironmentDefines(), name);
         int[] drawBuffers = GbufferTargets.sanitize(DrawBuffers.parseActive(fshSource, macros));
-        // Iris injects no default alpha test into DH programs; only the pack's own alphaTest.<program> directive discards
         ProgramAlphaTest packAlphaTest = ProgramAlphaTest.from(pack.getProperties(), name);
         String alphaTestSnippet = packAlphaTest.hasDirectives()
                 ? packAlphaTest.toGlslDiscard("iris_FragData[0].a", "    ") : "";
@@ -158,7 +186,7 @@ abstract class DhRenderProgram {
         return new Stage(name, vsh, fsh, drawBuffers);
     }
 
-    // The macro injection and stabilisation the terrain override applies around a stage transform, ordered per source style: modern sources get the defines stabilised BEFORE the bridge, legacy ones fold their conditionals AFTER it
+    // Transforms one stage before or after the macros depending on the source style.
     private static String transformStage(String name, String source, Map<String, String> macros, boolean modern,
                                          Function<String, String> bridge) {
         if (modern) {
@@ -168,7 +196,7 @@ abstract class DhRenderProgram {
         return ShaderSourceFixes.foldUncompilableConditionals(ShaderMacros.injectDefines(bridge.apply(source), macros));
     }
 
-    // Compiles and links a transformed stage under label (the GL object name): attributes binds the locations DH's VAO expects, whileBound runs sampler setup with the program bound; a compile failure propagates as a ShaderCompileException so the pack fails loudly rather than drawing with a half-built program
+    // Compiles and links a program and runs setup while bound and deletes every object that fails.
     static GlProgram link(String label, Stage stage, Consumer<ProgramBuilder> attributes, Consumer<GlProgram> whileBound) {
         GlShader vertex = null;
         GlShader fragment = null;
@@ -183,13 +211,22 @@ abstract class DhRenderProgram {
             GlProgram program = builder
                     .bindFragmentDataLocation(0, "iris_FragData")
                     .link();
-            GlState.reportGlError(label + " link");
+            // Unbinds and deletes the program when its setup fails
+            try {
+                GlState.reportGlError(label + " link");
 
-            program.bind();
-            SamplerAssignment.assignToBoundProgram(program.getGlId());
-            whileBound.accept(program);
-            program.unbind();
-            return program;
+                program.bind();
+                try {
+                    SamplerAssignment.assignToBoundProgram(program.getGlId());
+                    whileBound.accept(program);
+                } finally {
+                    program.unbind();
+                }
+                return program;
+            } catch (RuntimeException | Error e) {
+                program.destroy();
+                throw e;
+            }
         } finally {
             if (vertex != null) {
                 vertex.destroy();
@@ -200,7 +237,7 @@ abstract class DhRenderProgram {
         }
     }
 
-    // The pack's whole uniform set for a linked program: the common and matrix uniforms plus the pack's custom ones
+    // Builds the pack uniforms of a program.
     static ProgramUniforms buildUniforms(String label, String name, GlProgram program) {
         ProgramUniforms.Builder uniforms = ProgramUniforms.builder(name, program.getGlId());
         CommonUniforms.addCommonUniforms(uniforms);

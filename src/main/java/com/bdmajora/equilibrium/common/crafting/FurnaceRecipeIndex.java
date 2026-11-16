@@ -8,17 +8,21 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-// Per-item view over one of FurnaceRecipes' maps, rebuilt lazily when the map's size changes so mods editing getSmeltingList() directly are still honoured; entries are kept in the map's iteration order so the first-match-wins semantics of vanilla's scan are preserved for items with several overlapping entries
+// Index of smelting recipes by input item.
 public final class FurnaceRecipeIndex<V> {
+    // Recipes of the game.
     private final Map<ItemStack, V> source;
+    // Recipes by input item.
     private final Map<Item, List<Map.Entry<ItemStack, V>>> byItem = new HashMap<>();
+    // Size of the source when the index was built.
     private int builtForSize = -1;
 
+    // Creates an index and rejects a null source.
     public FurnaceRecipeIndex(Map<ItemStack, V> source) {
-        this.source = source;
+        this.source = java.util.Objects.requireNonNull(source, "source");
     }
 
-    // The candidate entries for a stack's item, or an empty list; the caller still runs vanilla's compareItemStacks so the wildcard rule is exactly vanilla's
+    // Returns the recipes whose input item matches the stack.
     public List<Map.Entry<ItemStack, V>> candidates(ItemStack stack) {
         if (this.builtForSize != this.source.size()) {
             this.rebuild();
@@ -27,11 +31,12 @@ public final class FurnaceRecipeIndex<V> {
         return entries == null ? java.util.Collections.emptyList() : entries;
     }
 
-    // Any put or remove goes through here so a value swap on an existing key, which leaves the size unchanged, still invalidates
+    // Forces a rebuild on the next lookup.
     public void invalidate() {
         this.builtForSize = -1;
     }
 
+    // Rebuilds the index from the source.
     private void rebuild() {
         this.byItem.clear();
         for (Map.Entry<ItemStack, V> entry : this.source.entrySet()) {

@@ -12,19 +12,22 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Vanilla LittleTiles remeshes by marking the RenderChunk a finished bake belongs to, which Impetus never draws, so a finished bake queues the Impetus section instead; the mesher's last light reading for the tile entity is kept here too. Applied only when LittleTiles is present
+// Mixin that changes TileEntityRenderManager.
 @Pseudo
 @Mixin(value = TileEntityRenderManager.class, remap = false)
 public abstract class LittleTilesRenderManagerMixin implements BakedLightTracker {
+    // Reference to the field te of the target.
     @Shadow
     private TileEntityLittleTiles te;
 
+    // Field light added to the target.
     @Unique
     private int impetus$light;
+    // Field light seen added to the target.
     @Unique
     private boolean impetus$lightSeen;
 
-    // A first sighting counts as a change, since the tile entity may have been baked before its section was ever meshed
+    // Handles light changed.
     @Override
     public boolean impetus$lightChanged(int fingerprint) {
         boolean changed = !this.impetus$lightSeen || this.impetus$light != fingerprint;
@@ -33,7 +36,7 @@ public abstract class LittleTilesRenderManagerMixin implements BakedLightTracker
         return changed;
     }
 
-    // False means a newer request is outstanding and the RenderingThread bakes again first; render state -1 is a failed or abandoned bake, which a remesh would only queue again
+    // Runs before every return of finishBuildingCache.
     @Inject(method = "finishBuildingCache", at = @At("RETURN"), remap = false)
     private void impetus$remeshSection(int index, int renderState, boolean force, CallbackInfoReturnable<Boolean> cir) {
         if (cir.getReturnValueZ() && renderState != -1) {

@@ -15,20 +15,24 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// The same rule for the vanilla chunk cache, which tile entity renderers and mod render code still light through; vanilla's version took the maximum over all six neighbours
+// Mixin that changes ChunkCache.
 @SideOnly(Side.CLIENT)
 @Mixin(ChunkCache.class)
 public abstract class ChunkCacheNeighborLightMixin {
+    // Reference to the field world of the target.
     @Shadow
     @Final
     protected World world;
 
+    // Reference to the method get light for of the target.
     @Shadow
     public abstract int getLightFor(EnumSkyBlock type, BlockPos pos);
 
+    // Reference to the method get block state of the target.
     @Shadow
     public abstract IBlockState getBlockState(BlockPos pos);
 
+    // Runs at the start of getLightForExt and can cancel it.
     @Inject(method = "getLightForExt", at = @At("HEAD"), cancellable = true)
     private void fulgor$faceAwareNeighborLight(EnumSkyBlock type, BlockPos pos, CallbackInfoReturnable<Integer> cir) {
         if (type == EnumSkyBlock.SKY && !this.world.provider.hasSkyLight()) {

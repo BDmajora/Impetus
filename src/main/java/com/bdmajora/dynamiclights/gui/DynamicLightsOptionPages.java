@@ -22,20 +22,22 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.function.BooleanSupplier;
 
-// The Dynamic Lights page, all on one page since the search bar keeps it navigable; sub-options are gated with setEnabledPredicate so Off greys them out rather than hiding them
+// Option pages of the dynamic lights.
 public final class DynamicLightsOptionPages {
-    // Filed under Umbra in the sidebar: held-light glow is a visual feature next to shader packs, not a renderer setting
+    // Identifier of the module.
     private static final String MOD_ID = "umbra";
+    // Prefix of the translation keys.
     private static final String LANG = "impetus.options.dynamiclights.";
 
+    // Factory of the options of the module.
     private static final ModuleOptions<DynamicLightsConfig> OPTIONS = new ModuleOptions<>(MOD_ID, "dynamiclights/", LANG, new DynamicLightsOptionsStorage());
 
+    // Prevents instantiation
     private DynamicLightsOptionPages() {
     }
 
-    // The settings page and, separately, the per-type source toggles, which run to hundreds of rows with a modded entity list; the mode supplier is created first so every group on both pages gates on the pending value
+    // Returns the settings page and the light source page.
     public static List<OptionPage> pages() {
-        // Built before the groups so every sub-option gates on the pending value, greying the page out immediately on Off without waiting for Apply
         OptionImpl<DynamicLightsConfig, DynamicLightsMode> mode = mode();
         BooleanSupplier enabled = () -> mode.getValue().isEnabled();
 
@@ -58,8 +60,7 @@ public final class DynamicLightsOptionPages {
         return pages;
     }
 
-    // Groups
-
+    // Returns the group of the general switches.
     private static OptionGroup general(OptionImpl<DynamicLightsConfig, DynamicLightsMode> mode,
                                        BooleanSupplier enabled) {
         return OptionGroup.createBuilder()
@@ -84,7 +85,7 @@ public final class DynamicLightsOptionPages {
                 .build();
     }
 
-    // TNT and creeper mode cyclers, greyed when dynamic lights are off
+    // Returns the group of the explosive modes.
     private static OptionGroup explosives(BooleanSupplier enabled) {
         return OptionGroup.createBuilder()
                 .setId(OPTIONS.group("explosives"))
@@ -98,16 +99,14 @@ public final class DynamicLightsOptionPages {
                 .build();
     }
 
-    // The master switch; its pending value is what gates every other control
+    // Returns the update rate option.
     private static OptionImpl<DynamicLightsConfig, DynamicLightsMode> mode() {
         return OPTIONS.cycling("mode", DynamicLightsMode.class, DynamicLightsMode.values(),
                 (config, value) -> config.mode = value, config -> config.mode,
                 OptionImpact.MEDIUM, null, null);
     }
 
-    // Per-type toggles
-
-    // One toggle per registered entity and block entity type grouped by owning mod, read straight from the registries; guarded so a malformed registry entry costs its own group, not the tab
+    // Adds the entity and block entity groups and logs a failure.
     private static void addTypeGroups(List<OptionGroup> groups, BooleanSupplier enabled) {
         try {
             addTypeGroups(groups, "entity", LightSourceSettings.listEntityTypes(), enabled,
@@ -126,6 +125,7 @@ public final class DynamicLightsOptionPages {
         }
     }
 
+    // Adds one group of toggles for each namespace.
     private static void addTypeGroups(List<OptionGroup> groups, String kind, Map<String, String> types,
                                       BooleanSupplier enabled,
                                       BiPredicate<LightSourceSettings, String> getter,
@@ -136,7 +136,6 @@ public final class DynamicLightsOptionPages {
 
         LightSourceSettings settings = LightSourceSettings.getInstance();
 
-        // Grouped by namespace so a pack with two hundred entity types does not produce one huge group; TreeMap keeps groups and rows stably ordered
         Map<String, Map<String, String>> byNamespace = new TreeMap<>();
         for (Map.Entry<String, String> type : types.entrySet()) {
             String id = type.getKey();
@@ -153,7 +152,6 @@ public final class DynamicLightsOptionPages {
                     .setId(OPTIONS.group(kind + "." + namespace))
                     .setName(TextComponent.translatable(LANG + "group." + kind, "minecraft".equals(namespace) ? "Minecraft" : namespace));
 
-            // Vanilla entries drop the namespace suffix since "(minecraft)" on hundreds of rows is noise; a modded namespace is kept because it is the only thing naming the mod
             boolean showNamespace = !"minecraft".equals(namespace);
 
             for (Map.Entry<String, String> type : namespaceEntry.getValue().entrySet()) {
@@ -176,9 +174,10 @@ public final class DynamicLightsOptionPages {
         }
     }
 
-    // LightSourceSettings::setEntityTypeEnabled and friends, as a target type.
+    // Setter of the enabled state of a type.
     @FunctionalInterface
     private interface TypeSetter {
+        // Stores the enabled state of the type.
         void set(LightSourceSettings settings, String id, boolean enabled);
     }
 }

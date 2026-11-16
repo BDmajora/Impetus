@@ -13,13 +13,15 @@ import net.minecraft.util.registry.IRegistry;
 import net.minecraftforge.client.model.ModelLoader;
 import org.spongepowered.asm.mixin.Mixin;
 
-// Reads every pack's model files in parallel before the loader's block and item passes ask for them one by one, and drops whatever nothing asked for once the registry is built, however that ends; setupModelRegistry is the vanilla override, so the selector remaps
+// Mixin that changes ModelLoader.
 @Mixin(ModelLoader.class)
 public abstract class ModelLoaderPrefetchMixin extends ModelBakery {
+    // Creates a model loader prefetch mixin from its manager and atlas and shapes.
     private ModelLoaderPrefetchMixin(IResourceManager manager, TextureMap atlas, BlockModelShapes shapes) {
         super(manager, atlas, shapes);
     }
 
+    // Handles prefetch models.
     @WrapMethod(method = "setupModelRegistry()Lnet/minecraft/util/registry/IRegistry;")
     private IRegistry<ModelResourceLocation, IBakedModel> coarctatio$prefetchModels(Operation<IRegistry<ModelResourceLocation, IBakedModel>> original) {
         ModelPrefetch.run(this.resourceManager, this::loadModel);

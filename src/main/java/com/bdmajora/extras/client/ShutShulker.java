@@ -11,19 +11,19 @@ import net.minecraft.client.renderer.BufferBuilder;
 import java.util.ArrayList;
 import java.util.List;
 
-// A shut shulker box drawn so lid and base meet without shimmer: over the lid's lower four rows their sides share a plane, and the sheet makes the lid see-through there exactly where the base's teeth are solid, so the band only looks whole when both quads pick the same texel at every pixel; cutting each part at the other's edges makes those rows one identical quad in both, every texel kept
+// Splits the shulker model so that the closed box has no overlapping faces.
 public final class ShutShulker {
+    // Prevents instantiation
     private ShutShulker() {
     }
 
-    // The part with each side cut where the other part's top or bottom edge crosses it, or the part itself unless both are plain unturned single boxes on one footprint
+    // Returns a renderer whose faces are cut at the edges of the other part or the same part when no cut applies.
     public static ModelRenderer split(ModelRenderer part, ModelRenderer other) {
         if (!plainBox(part) || !plainBox(other)) {
             return part;
         }
         ModelBox mine = part.cubeList.get(0);
         ModelBox theirs = other.cubeList.get(0);
-        // The other box in this part's frame; only a matching footprint puts its sides on this part's planes
         float dx = other.rotationPointX - part.rotationPointX;
         float dy = other.rotationPointY - part.rotationPointY;
         float dz = other.rotationPointZ - part.rotationPointZ;
@@ -46,18 +46,19 @@ public final class ShutShulker {
         }
         ModelRenderer shut = new ModelRenderer(new ModelBase() { }, 0, 0);
         shut.setRotationPoint(part.rotationPointX, part.rotationPointY, part.rotationPointZ);
+        // Creates a box from the quads.
         shut.cubeList.add(new QuadBox(shut, mine, pieces));
         return shut;
     }
 
-    // One box, no children, no turn and no offset, so the box bounds are the geometry in the part's own frame
+    // Returns whether the part is one box without rotation or children.
     private static boolean plainBox(ModelRenderer part) {
         return part.cubeList != null && part.cubeList.size() == 1 && part.childModels == null
                 && part.rotateAngleX == 0.0F && part.rotateAngleY == 0.0F && part.rotateAngleZ == 0.0F
                 && part.offsetX == 0.0F && part.offsetY == 0.0F && part.offsetZ == 0.0F;
     }
 
-    // The quad's slices between its own top and bottom and the cuts inside them, each in the quad's corner order with texture coordinates slid along the vertical edges; a flat face, or one without straight vertical edges, comes back whole
+    // Returns the quad cut at the heights.
     static List<TexturedQuad> slice(TexturedQuad quad, List<Float> cuts) {
         PositionTextureVertex[] corners = quad.vertexPositions;
         float top = Float.MAX_VALUE;
@@ -66,7 +67,6 @@ public final class ShutShulker {
             top = Math.min(top, (float) corner.vector3D.y);
             bottom = Math.max(bottom, (float) corner.vector3D.y);
         }
-        // Model y grows downward, so the levels run from the top edge down
         List<Float> levels = new ArrayList<>(cuts.size() + 2);
         levels.add(top);
         for (float cut : cuts) {
@@ -98,7 +98,7 @@ public final class ShutShulker {
         return slices;
     }
 
-    // The corner at the other end of this one's vertical edge: same x and z, another height
+    // Returns the corner above or below the corner or null.
     private static PositionTextureVertex partner(PositionTextureVertex[] corners, PositionTextureVertex corner) {
         for (PositionTextureVertex other : corners) {
             if (other.vector3D.x == corner.vector3D.x && other.vector3D.z == corner.vector3D.z && other.vector3D.y != corner.vector3D.y) {
@@ -108,7 +108,7 @@ public final class ShutShulker {
         return null;
     }
 
-    // The point at height y on the edge from this corner to its partner; the corner itself when it already sits there, so shared rows keep the exact original coordinates
+    // Returns the point of the edge at the height.
     private static PositionTextureVertex at(PositionTextureVertex corner, PositionTextureVertex partner, float y) {
         if ((float) corner.vector3D.y == y) {
             return corner;
@@ -119,10 +119,12 @@ public final class ShutShulker {
                 corner.texturePositionY + (partner.texturePositionY - corner.texturePositionY) * t);
     }
 
-    // A box drawing the given slices in place of the six faces it was built with
+    // Box that draws prepared quads.
     static final class QuadBox extends ModelBox {
+        // Quads to draw.
         private final List<TexturedQuad> quads;
 
+        // Returns the quads.
         QuadBox(ModelRenderer renderer, ModelBox shape, List<TexturedQuad> quads) {
             super(renderer, 0, 0, shape.posX1, shape.posY1, shape.posZ1, Math.round(shape.posX2 - shape.posX1),
                     Math.round(shape.posY2 - shape.posY1), Math.round(shape.posZ2 - shape.posZ1), 0.0F);
@@ -133,6 +135,7 @@ public final class ShutShulker {
             return this.quads;
         }
 
+        // Draws every quad.
         @Override
         public void render(BufferBuilder buffer, float scale) {
             for (TexturedQuad quad : this.quads) {

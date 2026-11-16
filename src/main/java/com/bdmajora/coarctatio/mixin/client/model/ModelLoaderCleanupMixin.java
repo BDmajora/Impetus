@@ -17,7 +17,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.Map;
 
-// Frees ModelLoader's intermediate bake state after baking (ModelLoaderMixin shrinks these, this drops them); hooked at onPostBakeEvent's RETURN since ModelBakeEvent fires inside it and mods read stateModels there, and every @Shadow is a Forge field so opts out of remapping
+// Mixin that changes ModelLoader.
 @Mixin(ModelLoader.class)
 public abstract class ModelLoaderCleanupMixin {
     @Shadow(remap = false)
@@ -36,6 +36,7 @@ public abstract class ModelLoaderCleanupMixin {
     @Final
     private Map<ModelBlockDefinition, IModel> multipartModels;
 
+    // Runs before every return of onPostBakeEvent.
     @Inject(method = "onPostBakeEvent", at = @At("RETURN"), remap = false)
     private void coarctatio$releaseBakeState(IRegistry<ModelResourceLocation, IBakedModel> registry,
                                             CallbackInfo ci) {
@@ -45,7 +46,6 @@ public abstract class ModelLoaderCleanupMixin {
         this.loadingExceptions.clear();
         this.multipartDefinitions.clear();
         this.multipartModels.clear();
-        // multipartVariantMap is private to ModelBakery, so it is cleared from the mixin that owns it.
         models += ((BakeStateReleasable) this).coarctatio$releaseBakeryState();
 
     }

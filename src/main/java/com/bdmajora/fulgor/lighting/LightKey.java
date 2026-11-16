@@ -5,36 +5,47 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.BlockPos.MutableBlockPos;
 import net.minecraft.util.math.Vec3i;
 
-// The packed position key shared by the engine's queues and every propagator: [light(4)][y(8)][x(26)][z(26)], x/z biased so a neighbour offset is a plain addition
+// Packed position and light type of a light update.
 final class LightKey {
+    // Brightest light level.
     static final int MAX_LIGHT = 15;
 
-    // Layout parameters: length of each bit segment.
+    // Bits of x.
     static final int L_X = 26;
+    // Bits of y.
     static final int L_Y = 8;
+    // Bits of z.
     static final int L_Z = 26;
+    // Bits of the light level.
     static final int L_L = 4;
 
-    // Bit segment shifts.
+    // Shift of z.
     static final int S_Z = 0;
+    // Shift of x.
     static final int S_X = S_Z + L_Z;
+    // Shift of y.
     static final int S_Y = S_X + L_X;
+    // Shift of the light level.
     static final int S_L = S_Y + L_Y;
 
-    // Bit segment masks.
+    // Mask of x.
     static final long M_X = (1L << L_X) - 1;
+    // Mask of y.
     static final long M_Y = (1L << L_Y) - 1;
+    // Mask of z.
     static final long M_Z = (1L << L_Z) - 1;
+    // Mask of the light level.
     static final long M_L = (1L << L_L) - 1;
+    // Mask of the position bits.
     static final long M_POS = (M_Y << S_Y) | (M_X << S_X) | (M_Z << S_Z);
 
-    // Set when a neighbour offset carried out of the y field, i.e. stepped outside the world
+    // Bit that flags a y outside the world.
     static final long Y_CHECK = 1L << (S_Y + L_Y);
 
-    // Isolates the chunk a position belongs to, so the chunk lookup can be skipped when it repeats
+    // Mask of the chunk bits.
     static final long M_CHUNK = ((M_X >> 4) << (4 + S_X)) | ((M_Z >> 4) << (4 + S_Z));
 
-    // Encoded offsets for the six neighbours, added directly to an encoded position
+    // Key offsets of the six neighbours.
     static final long[] NEIGHBOR_SHIFTS = new long[6];
 
     static {
@@ -46,10 +57,11 @@ final class LightKey {
         }
     }
 
+    // Prevents instantiation
     private LightKey() {
     }
 
-    // Unpacks a queue key back to a position, undoing the x/z bias
+    // Writes the position of a key into a mutable position.
     static MutableBlockPos decode(MutableBlockPos pos, long key) {
         return pos.setPos(
                 (int) (key >> S_X & M_X) - (1 << L_X - 1),
@@ -57,19 +69,19 @@ final class LightKey {
                 (int) (key >> S_Z & M_Z) - (1 << L_Z - 1));
     }
 
-    // Packs a position into a queue key; the bias keeps negative x/z from touching the sign bit
+    // Packs a position into a key.
     static long encode(BlockPos pos) {
         return ((long) pos.getY() << S_Y)
                 | ((long) pos.getX() + (1 << L_X - 1) << S_X)
                 | ((long) pos.getZ() + (1 << L_Z - 1) << S_Z);
     }
 
-    // Chunk x of a key's position
+    // Returns the chunk x of a key.
     static int chunkX(long key) {
         return ((int) (key >> S_X & M_X) - (1 << L_X - 1)) >> 4;
     }
 
-    // Chunk z of a key's position
+    // Returns the chunk z of a key.
     static int chunkZ(long key) {
         return ((int) (key >> S_Z & M_Z) - (1 << L_Z - 1)) >> 4;
     }

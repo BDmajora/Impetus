@@ -10,48 +10,68 @@ import java.lang.reflect.Constructor;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
-// Replaces each state's property ImmutableMap with a compact one sharing the block's key array; the map class is injected into com.google.common.collect (see ClassDefineTool), and a key-order mismatch just falls back to the original
+// Builds property maps that share one key array between states.
 public final class CompactPropertyMaps {
+    // Name of the injected map class.
     private static final String MAP_CLASS = "com.google.common.collect.CoarctatioPropertyMap";
 
+    // Count of maps that were compacted.
     private static final AtomicInteger COMPACTED = new AtomicInteger();
+    // Count of maps left unchanged.
     private static final AtomicInteger DECLINED = new AtomicInteger();
 
-    private static Constructor<?> constructor;
-    private static boolean initialised;
+    // Constructor of the injected map class or null when unavailable.
+    private static volatile Constructor<?> constructor;
+    // Finished state of the initialisation.
+    private static volatile boolean initialised;
 
+    // Prevents instantiation
     private CompactPropertyMaps() {
     }
 
-    // Attempts the class injection once; safe to call repeatedly, and a failure just makes compact() a no-op
-    private static synchronized void initialise() {
+    // Defines the injected map class once and skips the lock after the first call.
+    private static void initialise() {
         if (initialised) {
             return;
         }
-        initialised = true;
+        synchronized (CompactPropertyMaps.class) {
+            if (initialised) {
+                return;
+            }
+            try {
+                constructor = findConstructor();
+            } finally {
+                initialised = true;
+            }
+        }
+    }
 
+    // Returns the constructor of the injected map class or null when disabled or unavailable.
+    private static Constructor<?> findConstructor() {
         if (!CoarctatioConfig.get().compactStateProperties) {
-            return;
+            return null;
         }
 
         Class<?> defined = ClassDefineTool.defineClass(ImmutableMap.class, MAP_CLASS);
 
         if (defined == null) {
-            return;
+            return null;
         }
 
         try {
-            constructor = defined.getConstructor(Object[].class, Object[].class);
+            return defined.getConstructor(Object[].class, Object[].class);
         } catch (NoSuchMethodException e) {
             Coarctatio.LOGGER.warn("Injected {} has no usable constructor", MAP_CLASS, e);
+            return null;
         }
     }
 
-    // sharedKeys comes from PropertyValueMapper#sharedKeys; returns a compact equivalent of original, or original itself.
+    // Returns a compact copy of the map or the original when its keys differ from the shared keys.
     public static ImmutableMap<IProperty<?>, Comparable<?>> compact(
             Object[] sharedKeys,
             ImmutableMap<IProperty<?>, Comparable<?>> original) {
         initialise();
+        Constructor<?> constructor = CompactPropertyMaps.constructor;
 
         if (constructor == null || sharedKeys == null) {
             DECLINED.incrementAndGet();
@@ -62,7 +82,6 @@ public final class CompactPropertyMaps {
         int index = 0;
 
         for (Map.Entry<IProperty<?>, Comparable<?>> entry : original.entrySet()) {
-            // Guarded rather than assumed: if iteration order ever diverges from the shared key array, values would silently line up against the wrong properties
             if (index >= sharedKeys.length || entry.getKey() != sharedKeys[index]) {
                 DECLINED.incrementAndGet();
                 return original;
@@ -90,12 +109,12 @@ public final class CompactPropertyMaps {
         }
     }
 
-    // Property maps replaced with the compact implementation.
+    // Returns the number of compacted maps.
     public static long compacted() {
         return COMPACTED.get();
     }
 
-    // Shared versus fallen-back counts for /coarctatio
+    // Returns a one line report of the results.
     public static String statistics() {
         if (COMPACTED.get() == 0 && DECLINED.get() == 0) {
             return "unused";

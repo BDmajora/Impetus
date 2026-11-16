@@ -1,7 +1,8 @@
 package com.bdmajora.impetus.umbra.uniforms.custom;
 
-// A custom-uniform expression already parsed and ready to evaluate against a context; compiling once at pack load keeps the per-frame cost to a tree walk
+// Contract of the compiled expression.
 @FunctionalInterface
 public interface CompiledExpression {
+    // Returns the value of the expression.
     CustomUniformValue evaluate(CustomUniformContext context);
 }

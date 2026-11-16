@@ -208,4 +208,37 @@ class ShadowCasterProgramsTest {
         verifyNoInteractions(restorer);
         verify(restorer, never()).run();
     }
+
+    // Deletes the entity program when compiling the block program throws.
+    @Test
+    void aThrowingBlockCompileReleasesTheEntityProgram() {
+        GbufferPrograms.Entry entity = entry("entity");
+        IllegalStateException failure = new IllegalStateException("compile");
+        Function<ProgramSource, GbufferPrograms.Entry> compiler = source -> {
+            if (source == this.blocks) {
+                throw failure;
+            }
+            return entity;
+        };
+        assertSame(failure, assertThrows(IllegalStateException.class,
+                () -> new ShadowCasterPrograms(this.shadow, this.entities, this.blocks, compiler, this.restorer)));
+        UmbraProgram entityProgram = entity.getProgram();
+        verify(entityProgram).destroy();
+    }
+
+    // Deletes the entity program even when deleting the block program throws.
+    @Test
+    void aFailedBlockDeleteStillDeletesTheEntityProgram() {
+        GbufferPrograms.Entry entity = entry("entity");
+        GbufferPrograms.Entry block = entry("block");
+        UmbraProgram blockProgram = block.getProgram();
+        Mockito.doThrow(new IllegalStateException("delete")).when(blockProgram).destroy();
+        ShadowCasterPrograms programs = new ShadowCasterPrograms(this.shadow, this.entities, this.blocks,
+                source -> source == this.blocks ? block : entity, this.restorer);
+        assertThrows(IllegalStateException.class, programs::destroy);
+        UmbraProgram entityProgram = entity.getProgram();
+        verify(entityProgram).destroy();
+        programs.destroy();
+        verify(entityProgram, Mockito.times(1)).destroy();
+    }
 }

@@ -14,40 +14,48 @@ import java.util.function.IntConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-// Parses the directive a fragment shader uses to declare which attachments it writes: OptiFine's DRAWBUFFERS (one digit each, targets 0-9) or Iris's RENDERTARGETS (comma list, the only way to reach 10-15); neither means colortex0 alone
+// Parser of the draw buffer directives of a fragment shader.
 public final class DrawBuffers {
+    // Pattern of a DRAWBUFFERS directive.
     private static final Pattern DRAWBUFFERS = Pattern.compile("/\\*\\s*DRAWBUFFERS:([0-9]+)\\s*\\*/");
+    // Pattern of a RENDERTARGETS directive.
     private static final Pattern RENDERTARGETS = Pattern.compile("/\\*\\s*RENDERTARGETS:\\s*([0-9,\\s]+)\\*/");
+    // Frag color.
     private static final Pattern FRAG_COLOR = Pattern.compile("\\bgl_FragColor\\b");
+    // Named fragment output.
     private static final Pattern NAMED_FRAGMENT_OUTPUT = Pattern.compile(
             "(?m)^([\\t ]*)(?:layout\\s*\\((?s:.*?)\\)\\s*)?"
                     + "(?:(?:flat|smooth|noperspective|centroid|sample|invariant)\\s+)*"
                     + "out\\s+(?:(?:lowp|mediump|highp)\\s+)?(float|vec2|vec3|vec4)\\s+"
                     + "([A-Za-z_][A-Za-z0-9_]*)\\s*;\\s*(?://.*)?$");
+    // Define directive.
     private static final Pattern DEFINE_DIRECTIVE = Pattern.compile(
             "^(\\s*#\\s*define\\s+)([A-Za-z_][A-Za-z0-9_]*)(\\b.*)$");
+    // Layout location.
     private static final Pattern LAYOUT_LOCATION = Pattern.compile("\\blocation\\s*=\\s*(\\d+)\\b");
 
-    // The default for a shader with no directive. Shared, so every caller that keeps it must clone first
+    // Draw buffers when a shader names none.
     public static final int[] DEFAULT = new int[]{0};
 
+    // GL enum of the draw buffer limit.
     private static final int GL_MAX_DRAW_BUFFERS = 0x8824;
+    // Size of the fragment output array or minus one.
     private static int fragmentOutputArraySize = -1;
 
+    // Prevents instantiation
     private DrawBuffers() {
     }
 
-    // Length for `out vec4 iris_FragData[N]`, queried from the driver: an array output needs N CONTIGUOUS locations capped by GL_MAX_DRAW_BUFFERS (8), and the old hardcoded 16 linked on NVIDIA but failed on Mesa/Intel Arc; clamping loses nothing since directive indices are dense output slots
+    // Returns the size of the fragment output array.
     public static int fragmentOutputArraySize() {
         if (fragmentOutputArraySize < 0) {
             int reported = LWJGL.glGetInteger(GL_MAX_DRAW_BUFFERS);
-            // A failed query reports 0; 8 is the GL 3.3 floor and the universal real-world value.
             fragmentOutputArraySize = Math.min(reported > 0 ? reported : 8, UmbraRenderTargets.MAX_COLOR_BUFFERS);
         }
         return fragmentOutputArraySize;
     }
 
-    // Parses honouring #ifdef gates, so an option can change which targets a pass writes
+    // Returns the draw buffers of the active directive.
     public static int[] parseActive(String fragmentSource, Map<String, String> defines) {
         if (fragmentSource == null) {
             return DEFAULT.clone();
@@ -56,7 +64,6 @@ public final class DrawBuffers {
         try {
             String evaluated = PropertiesPreprocessor.preprocess(fragmentSource, defines == null ? ShaderMacros.standard() : defines);
             List<Directive> activeDirectives = directives(evaluated);
-            // The conditional evaluator cannot expand every macro shape; if evaluation removes every target directive, keep the source-order fallback rather than invent a default mask
             return activeDirectives.isEmpty()
                     ? raw
                     : activeDirectives.get(activeDirectives.size() - 1).buffers().clone();
@@ -65,17 +72,16 @@ public final class DrawBuffers {
         }
     }
 
-    // Drops out-of-range targets silently
+    // Returns the draw buffers below a limit.
     public static int[] sanitize(int[] drawBuffers, int maxExclusive) {
         return sanitize(drawBuffers, maxExclusive, null);
     }
 
-    // Drops out-of-range and repeated targets, reporting each invalid one; an already-clean array is returned as is, since this runs on every phase switch and the inputs are usually the sanitized arrays the programs were built with. Callers must treat the result as read-only
+    // Returns the draw buffers below a limit and reports the dropped ones.
     public static int[] sanitize(int[] drawBuffers, int maxExclusive, IntConsumer invalidBufferConsumer) {
         if (drawBuffers == null || drawBuffers.length == 0) {
             return DEFAULT.clone();
         }
-        // Targets are bounded by MAX_COLOR_BUFFERS, so a bitmask stands in for the seen table
         long seen = 0L;
         int valid = 0;
         for (int buffer : drawBuffers) {
@@ -106,7 +112,7 @@ public final class DrawBuffers {
         return result;
     }
 
-    // Render targets are packed into DENSE attachments like Iris: DRAWBUFFERS:03648 means slot 0 writes colortex0, slot 1 colortex3, with no holes; gl_FragData[N] and layout(location = N) already name dense slots, so only gl_FragColor and implicit named outputs are normalised
+    // Rewrites fragment outputs to match the draw buffers.
     public static String rewriteFragmentOutputs(String fragmentSource, int[] drawBuffers) {
         if (fragmentSource == null) {
             return fragmentSource;
@@ -115,7 +121,7 @@ public final class DrawBuffers {
         return rewriteNamedFragmentOutputs(rewritten);
     }
 
-    // gl_FragColor onto gl_FragData[0] so both spellings route the same way
+    // Rewrites gl_FragColor writes to gl_FragData.
     private static String rewriteFragColor(String source) {
         String[] lines = source.split("\n", -1);
         for (int i = 0; i < lines.length; i++) {
@@ -136,7 +142,7 @@ public final class DrawBuffers {
         return String.join("\n", lines);
     }
 
-    // Named fragment outputs stay as real `out` declarations like Iris: an explicit layout(location = N) passes through, one without gets the declaration order; the old `#define <name> gl_FragData[slot]` corrupted shaders reusing the name as a local (Photon's `result`)
+    // Assigns locations to named fragment outputs.
     private static String rewriteNamedFragmentOutputs(String source) {
         Matcher matcher = NAMED_FRAGMENT_OUTPUT.matcher(source);
         StringBuffer rewritten = new StringBuffer(source.length());
@@ -145,7 +151,7 @@ public final class DrawBuffers {
             String declaration = matcher.group(0);
             Matcher layout = LAYOUT_LOCATION.matcher(declaration);
             if (layout.find()) {
-                implicitSlot = Math.max(implicitSlot, Integer.parseInt(layout.group(1)) + 1);
+                implicitSlot = Math.max(implicitSlot, com.bdmajora.impetus.umbra.util.SafeInt.parse(layout.group(1)) + 1);
                 matcher.appendReplacement(rewritten, Matcher.quoteReplacement(declaration));
                 continue;
             }
@@ -163,7 +169,7 @@ public final class DrawBuffers {
         return rewritten.toString();
     }
 
-    // Preprocessed source can still hold several target directives under nested option gates (Complementary's water/lava); the LAST is right, since earlier ones are fallback declarations narrower than what the program actually writes
+    // Returns the draw buffers of the last directive.
     private static int[] parseLastDirective(String fragmentSource) {
         List<Directive> directives = directives(fragmentSource);
         if (directives.isEmpty()) {
@@ -172,7 +178,7 @@ public final class DrawBuffers {
         return directives.get(directives.size() - 1).buffers().clone();
     }
 
-    // Every DRAWBUFFERS and RENDERTARGETS comment with its enclosing conditional
+    // Returns every directive of a source in order.
     private static List<Directive> directives(String fragmentSource) {
         List<Directive> directives = new ArrayList<>();
 
@@ -199,7 +205,7 @@ public final class DrawBuffers {
         return directives;
     }
 
-    // Comma-separated form; any unparsable entry voids the whole directive
+    // Parses a RENDERTARGETS list.
     private static int[] parseRenderTargets(String value) {
         String trimmed = value.trim();
         if (trimmed.isEmpty()) {
@@ -217,7 +223,7 @@ public final class DrawBuffers {
         return buffers;
     }
 
-    // A target directive and where it sits in the source, so the last one in file order wins
+    // Data of the directive.
     private record Directive(int offset, int[] buffers) {
     }
 }

@@ -9,16 +9,21 @@ import com.bdmajora.impetus.engine.impl.render.chunk.terrain.material.Material;
 
 import java.util.List;
 
+// Decides which rendering optimizations apply to the quads of a block.
 public class BakedQuadGroupAnalyzer {
-    // Whether the MC-138211 quad reorienting fix applies to this group; switchable because reorienting superimposed modded quads differently per layer causes z-fighting
+    // Flag that allows reorienting the quads of a group.
     public static final int USE_REORIENTING = 0x1;
+    // Flag that allows moving quads to cheaper render passes.
     public static final int USE_RENDER_PASS_OPTIMIZATION = 0x2;
+    // Every flag.
     public static final int USE_ALL_THINGS = 0xFFFFFFFF;
 
+    // Flags of every face.
     private int defaultRenderingFlags = 0;
+    // Flags of the unassigned face.
     private int unassignedFaceRenderingFlags = 0;
 
-    // Which light features a quad needs, from its flags
+    // Returns a mask of the light features of a quad.
     private static int computeLightFlagMask(BakedQuadView quad) {
         int flag = 0;
 
@@ -33,7 +38,7 @@ public class BakedQuadGroupAnalyzer {
         return flag;
     }
 
-    // From the sprite, cached per sprite
+    // Returns the transparency level of the sprite of a quad.
     private static SpriteTransparencyLevel getQuadTransparencyLevel(BakedQuadView quad) {
         Object sprite = quad.impetus$getSprite();
 
@@ -44,21 +49,21 @@ public class BakedQuadGroupAnalyzer {
         return SpriteTransparencyLevel.Holder.getTransparencyLevel(sprite);
     }
 
-    // Baseline for a block before per-quad analysis
+    // Stores the flags every face starts with.
     public void setDefaultRenderingFlags(int flags) {
         this.defaultRenderingFlags = flags;
         this.unassignedFaceRenderingFlags = flags;
     }
 
-    // Unions the needs of every quad on a face
+    // Returns the rendering flags that every quad of a face allows.
     public int getFlagsForRendering(ModelQuadFacing facing, List<? extends BakedQuadView> quads) {
         int quadRenderingFlags = facing == ModelQuadFacing.UNASSIGNED ? this.unassignedFaceRenderingFlags : this.defaultRenderingFlags;
 
         int quadsSize = quads.size();
 
-        // By definition, singleton or empty lists of quads have a common config. Only check larger lists
+        // Checks only lists of two or more quads
         if (quadsSize >= 2) {
-            // Disable reorienting if quads use different light configurations, otherwise layered quads may triangulate differently and z-fight
+            // Compares the light features of the quads
             int flagMask = -1;
 
             SpriteTransparencyLevel highestSeenLevel = SpriteTransparencyLevel.OPAQUE;
@@ -71,14 +76,14 @@ public class BakedQuadGroupAnalyzer {
                 if (flagMask == -1) {
                     flagMask = newFlag;
                 } else if (newFlag != flagMask) {
-                    // Disable reorienting
+                    // Disables reorienting
                     quadRenderingFlags &= ~USE_REORIENTING;
                 }
 
                 SpriteTransparencyLevel level = getQuadTransparencyLevel(quad);
 
                 if (level.ordinal() < highestSeenLevel.ordinal()) {
-                    // Downgrading will result in the quads being rendered in the wrong order, disable
+                    // Disables the pass optimization
                     quadRenderingFlags &= ~USE_RENDER_PASS_OPTIMIZATION;
                 } else {
                     highestSeenLevel = level;
@@ -86,25 +91,25 @@ public class BakedQuadGroupAnalyzer {
             }
         }
 
-        // Disable any flags in the null cullface that were disabled in other cullfaces
+        // Applies the flags to the unassigned face
         this.unassignedFaceRenderingFlags &= quadRenderingFlags;
 
         return quadRenderingFlags;
     }
 
-    // Downgrades to a cheaper pass when the quad's sprite is opaque
+    // Returns the cheapest material that looks the same for a quad.
     public static Material chooseOptimalMaterial(int analyzerFlags, Material defaultMaterial, RenderPassConfiguration<?> renderPassConfiguration, BakedQuadView quad) {
         Object sprite = quad.impetus$getSprite();
 
         if (defaultMaterial == renderPassConfiguration.defaultSolidMaterial() || (analyzerFlags & USE_RENDER_PASS_OPTIMIZATION) == 0 || (quad.getFlags() & ModelQuadFlags.IS_PASS_OPTIMIZABLE) == 0 || sprite == null) {
-            // No improvement possible
+            // Keeps the material
             return defaultMaterial;
         }
 
         return switch (SpriteTransparencyLevel.Holder.getTransparencyLevel(sprite)) {
-            // Solid with no visual difference
+            // Uses the solid material
             case OPAQUE -> renderPassConfiguration.defaultSolidMaterial();
-            // Cutout_mipped with no visual difference, only when coming down from translucent
+            // Uses the cutout material for translucent quads
             case TRANSPARENT -> defaultMaterial == renderPassConfiguration.defaultTranslucentMaterial() ? renderPassConfiguration.defaultCutoutMippedMaterial() : defaultMaterial;
             default -> defaultMaterial;
         };

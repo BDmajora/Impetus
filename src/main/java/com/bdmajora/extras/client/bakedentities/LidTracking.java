@@ -1,16 +1,19 @@
 package com.bdmajora.extras.client.bakedentities;
 
-// The rest-tracking state machine shared by the lid animation mixins, packed into one int per block entity: bit 0 is whether the lid was at rest last tick, the bits above count the ticks the renderer is kept after rest so the mesh rebuild has landed before it stops
+// Tracks the lid animation of a block entity.
 public final class LidTracking {
+    // Ticks that the renderer stays after the lid settles.
     private static final int RENDERER_GRACE_TICKS = 4;
+    // State of a settled lid.
     private static final int SETTLED = 1;
-    // At rest with no grace outstanding
+    // State of a new block entity.
     public static final int INITIAL = SETTLED;
 
+    // Prevents instantiation
     private LidTracking() {
     }
 
-    // The state after one tick in which the lid is (or is not) at rest
+    // Returns the state after one tick.
     public static int tick(int state, boolean settled) {
         int grace = state >>> 1;
         if (!settled) {
@@ -21,12 +24,12 @@ public final class LidTracking {
         return (grace << 1) | (settled ? SETTLED : 0);
     }
 
-    // Whether the lid left or returned to rest between the two states, the moment the section must be rebuilt
+    // Returns whether the rest flag differs.
     public static boolean restChanged(int before, int after) {
         return ((before ^ after) & SETTLED) != 0;
     }
 
-    // True while the renderer must still draw it: mid-animation, or inside the grace after settling
+    // Returns whether the renderer is still needed.
     public static boolean needsRenderer(int state, boolean settled) {
         return !settled || (state >>> 1) > 0;
     }

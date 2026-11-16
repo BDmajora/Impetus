@@ -13,22 +13,25 @@ import java.util.function.IntSupplier;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// The images one program uses, each on a unit allocated for that program only when it declares the uniform; glUniform1i calls wait for the first update since they write to the bound program
+// Image units bound to one program.
 public class ProgramImages {
+    // Images in unit order.
     private final List<ImageBinding> imageBindings;
+    // Uniform writes of the image units or null after the first update.
     private List<Uniform1iCall> initializer;
 
+    // Creates the images of a program.
     private ProgramImages(List<ImageBinding> imageBindings, List<Uniform1iCall> initializer) {
         this.imageBindings = imageBindings;
         this.initializer = initializer;
     }
 
-    // Starts registration for one program
+    // Creates a builder for a program.
     public static Builder builder(int program) {
         return new Builder(program);
     }
 
-    // Must be called with this program bound; issues the deferred unit assignments on the first call, then rebinds every image since a render-target image's texture changes on flip
+    // Writes the unit uniforms once and binds every image.
     public void update() {
         if (this.initializer != null) {
             for (Uniform1iCall call : this.initializer) {
@@ -42,42 +45,48 @@ public class ProgramImages {
         }
     }
 
-    // Units consumed
+    // Returns the number of bound images.
     public int getActiveImages() {
         return this.imageBindings.size();
     }
 
+    // Collector of the images a program uses.
     public static final class Builder implements ImageHolder {
+        // Logger of exhausted image units.
         private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
 
+        // GL name of the program.
         private final int program;
+        // Images in unit order.
         private final List<ImageBinding> images = new ArrayList<>();
+        // Uniform writes of the units.
         private final List<Uniform1iCall> calls = new ArrayList<>();
+        // Number of image units the driver allows.
         private final int maxImageUnits;
+        // Next free image unit.
         private int nextImageUnit;
 
+        // Creates a builder for a program.
         private Builder(int program) {
             this.program = program;
             this.maxImageUnits = ImageLimits.get().getMaxImageUnits();
         }
 
-        // Whether the program declared this image uniform
+        // Returns whether the program declares an image of a name.
         @Override
         public boolean hasImage(String name) {
             return LWJGL.glGetUniformLocation(this.program, name) != -1;
         }
 
-        // Allocates a unit only if the uniform resolves
+        // Binds a texture image to the next unit when the program declares it and a unit is left.
         @Override
         public void addTextureImage(IntSupplier textureID, int internalFormat, String name) {
             int location = LWJGL.glGetUniformLocation(this.program, name);
             if (location == -1) {
-                // This program does not use this image. Costs nothing — this is the point of per-program allocation.
                 return;
             }
 
             if (this.nextImageUnit >= this.maxImageUnits) {
-                // Umbra throws here; this port logs and drops, so a pack overrunning the limit loses one effect rather than the whole pipeline mid-frame
                 LOGGER.error("[Umbra] No image units left for '{}' (driver reports {}); it will be unbound",
                         name, this.maxImageUnits);
                 return;
@@ -88,7 +97,7 @@ public class ProgramImages {
             this.nextImageUnit++;
         }
 
-        // Finalises; the glUniform1i calls wait for first update
+        // Creates the images of the program.
         public ProgramImages build() {
             return new ProgramImages(Collections.unmodifiableList(new ArrayList<>(this.images)),
                     new ArrayList<>(this.calls));

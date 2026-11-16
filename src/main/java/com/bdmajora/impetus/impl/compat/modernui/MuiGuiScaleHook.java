@@ -5,9 +5,9 @@ import net.minecraft.client.Minecraft;
 import java.lang.reflect.Method;
 import java.util.stream.Stream;
 
-// Hack to work around Modern UI overriding calculateScaleFactor and ignoring vanilla's "0 = auto" convention
+// Hook that reads the Modern UI gui scale.
 public class MuiGuiScaleHook {
-    // reflectively found across MUI's various package renames/versions; null if MUI isn't loaded or doesn't have it
+    // Gui scale method of Modern UI or null.
     private static final Method calcGuiScalesMethod;
 
     static {
@@ -33,32 +33,29 @@ public class MuiGuiScaleHook {
         }).findFirst().orElse(null);
     }
 
-    // Modern UI's scale ceiling when present, else vanilla's
+    // Returns the max gui scale.
     public static int getMaxGuiScale() {
         if (calcGuiScalesMethod != null) {
             try {
-                // low nibble of MUI's packed result is the actual scale value
                 return (int) calcGuiScalesMethod.invoke(null) & 0xf;
             } catch (Throwable e) {
-                e.printStackTrace();
+                org.apache.logging.log4j.LogManager.getLogger("Impetus").warn("Could not read the Modern UI gui scale", e);
             }
         }
         boolean forceUnicode = Minecraft.getMinecraft().gameSettings.forceUnicodeFont;
         return calculateScale(0, forceUnicode);
     }
 
-    // Modern UI's scale formula when present, else vanilla's
+    // Returns the gui scale from Modern UI or the vanilla value.
     public static int calculateScale(int guiScale, boolean forceUnicode) {
         var framebuffer = Minecraft.getMinecraft().getFramebuffer();
         int width = framebuffer.framebufferWidth;
         int height = framebuffer.framebufferHeight;
         int i = 1;
 
-        // vanilla's algorithm: grow the scale until the next step would shrink the scaled resolution below 320x240
         while (i != guiScale && i < width && i < height && width / (i + 1) >= 320 && height / (i + 1) >= 240) {
             i++;
         }
-
 
         if (forceUnicode && i % 2 != 0) {
             ++i;

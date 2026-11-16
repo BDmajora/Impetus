@@ -129,4 +129,17 @@ class WaylandProtocolTest {
         }
     }
 
+
+    // Frees the first lookup when globals runs again and frees everything once on repeated closes.
+    @Test
+    void repeatedLookupsAndClosesFreeEachObjectOnce() throws Throwable {
+        wayland.globals.put("wl_shm", 3);
+        try (Arena arena = Arena.ofConfined()) {
+            WaylandClient client = new WaylandClient(arena, wayland.display.address());
+            assertEquals(3, client.globals("wl_shm")[0]);
+            assertEquals(0, client.globals("missing")[0]);
+            client.close();
+            client.close();
+        }
+    }
 }

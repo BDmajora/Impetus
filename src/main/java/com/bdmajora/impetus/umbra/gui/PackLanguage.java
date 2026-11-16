@@ -6,12 +6,12 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 
-// The pack's shaders/lang/<locale>.lang strings, layering the active locale over en_us per key; every lookup falls back to the raw name so a pack with no lang still works
+// Translations of the active shader pack.
 public final class PackLanguage {
     private final Map<String, String> entries = new HashMap<>();
 
+    // Creates a pack language from its sources and locale.
     public PackLanguage(Map<AbsolutePackPath, String> sources, String locale) {
-        // Base locale first, then the active locale overrides it.
         loadLangFile(sources, "en_us");
         String normalized = locale == null ? "en_us" : locale.toLowerCase(Locale.ROOT);
         if (!normalized.equals("en_us")) {
@@ -19,7 +19,7 @@ public final class PackLanguage {
         }
     }
 
-    // Parses one lang file, converting &-codes; missing files are simply skipped
+    // Reads the lang file of a locale.
     private void loadLangFile(Map<AbsolutePackPath, String> sources, String localeName) {
         String contents = findLangFile(sources, localeName);
         if (contents == null) {
@@ -42,7 +42,7 @@ public final class PackLanguage {
         }
     }
 
-    // Case-insensitive lookup, because packs are inconsistent about en_us versus en_US and an exact match finds nothing for half of them
+    // Returns the lang file text of a locale or null.
     private static String findLangFile(Map<AbsolutePackPath, String> sources, String localeName) {
         String target = "/lang/" + localeName + ".lang";
         for (Map.Entry<AbsolutePackPath, String> entry : sources.entrySet()) {
@@ -53,7 +53,7 @@ public final class PackLanguage {
         return null;
     }
 
-    // Converts &-prefixed formatting codes to the section sign, leaving other ampersands alone ("Sun & Moon" keeps its)
+    // Replaces ampersand color codes with section signs.
     private static String translateColorCodes(String value) {
         StringBuilder sb = new StringBuilder(value.length());
         for (int i = 0; i < value.length(); i++) {
@@ -67,12 +67,12 @@ public final class PackLanguage {
         return sb.toString();
     }
 
-    // Active locale first, then en_us, then null
+    // Returns the value.
     private String get(String key) {
         return this.entries.get(key);
     }
 
-    // The display label for an option, falling back to the raw name when the pack provides none
+    // Returns the label of an option or a fallback.
     public String optionLabel(String name, String fallback) {
         String value = get("option." + name);
         if (value != null) {
@@ -81,36 +81,36 @@ public final class PackLanguage {
         return fallback != null ? fallback : name;
     }
 
-    // The display label for one specific VALUE of an option (RP_MODE's "1" -> "Integrated PBR+"), falling back to the raw value
+    // Values the label.
     public String valueLabel(String name, String value) {
         String label = get("value." + name + "." + value);
         return label != null ? label : value;
     }
 
-    // Optional text rendered before the value; rare, but a pack can use it for a leading symbol
+    // Returns the value prefix of an option.
     public String prefix(String name) {
         String value = get("prefix." + name);
         return value != null ? value : "";
     }
 
-    // Optional text rendered after the value, typically a unit like "%" or " blocks"
+    // Returns the value suffix of an option.
     public String suffix(String name) {
         String value = get("suffix." + name);
         return value != null ? value : "";
     }
 
-    // The button label for a sub-screen, falling back to the raw screen name
+    // Returns the label of a screen.
     public String screenLabel(String name) {
         String value = get("screen." + name);
         return value != null ? value : name;
     }
 
-    // The tooltip for an option, or null when the pack provides none, since a tooltip repeating the label is worse than none
+    // Returns the comment of an option.
     public String comment(String name) {
         return get("option." + name + ".comment");
     }
 
-    // The display label for a profile, falling back to the raw profile name
+    // Returns the label of a profile.
     public String profileLabel(String name) {
         String value = get("profile." + name);
         return value != null ? value : name;

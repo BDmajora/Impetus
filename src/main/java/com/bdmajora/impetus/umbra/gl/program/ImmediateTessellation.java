@@ -14,23 +14,26 @@ import java.nio.ByteOrder;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// A program with tessellation stages only accepts GL_PATCHES, so while one is bound, vanilla's immediate-mode quads and triangles are resubmitted as three-vertex patches (Iris does the same for triangles on modern versions; 1.12.2 draws quads, which go through a shared quad-to-triangle index buffer)
+// Shared vertex array for immediate pipeline draws.
 public final class ImmediateTessellation {
-    // GL_CURRENT_PROGRAM
+    // GL enum of the current program.
     static final int CURRENT_PROGRAM = 0x8B8D;
-    // Quads the shared index buffer holds at first; it doubles on demand
+    // Starting quad capacity of the index buffer.
     static final int INITIAL_QUADS = 1024;
 
-    // The tessellated program last bound through Umbra, 0 when none
+    // Name of the bound tessellated program or zero.
     private static int tessellatedProgram;
 
+    // Quad index buffer name.
     private static int quadIndexBuffer;
+    // Quads the index buffer holds.
     private static int quadCapacity;
 
+    // Prevents instantiation
     private ImmediateTessellation() {
     }
 
-    // Called on every Umbra program bind; a tessellated program also gets the three-vertex patch size its control stage expects
+    // Records the bound program and whether it tessellates.
     static void programBound(int handle, boolean tessellated) {
         tessellatedProgram = tessellated ? handle : 0;
 
@@ -39,12 +42,12 @@ public final class ImmediateTessellation {
         }
     }
 
-    // Whether the program GL has bound right now is a tessellated Umbra program; checked against GL itself, since the engine and vanilla bind programs Umbra never hears about, and only queried while a tessellated pack is active
+    // Returns whether active.
     public static boolean isActive() {
         return tessellatedProgram != 0 && LWJGL.glGetInteger(CURRENT_PROGRAM) == tessellatedProgram;
     }
 
-    // Draws an immediate-mode batch as patches when a tessellated program is bound; false leaves the draw to the caller unchanged, which is also the answer for lines and points
+    // Draws arrays as patches when a tessellated program is bound and returns whether it did.
     public static boolean drawArrays(int mode, int first, int count) {
         if (count <= 0 || (mode != GL11.GL_TRIANGLES && mode != GL11.GL_QUADS) || !isActive()) {
             return false;
@@ -58,14 +61,13 @@ public final class ImmediateTessellation {
         int quads = count >> 2;
         ensureQuadIndices(quads);
 
-        // Vanilla draws immediate mode without a VAO, so the element binding lives on the default one and goes back to 0 for whatever draws next
         LWJGL.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, quadIndexBuffer);
         LWJGL.glDrawElementsBaseVertex(GL40.GL_PATCHES, quads * 6, GL11.GL_UNSIGNED_INT, 0L, first);
         LWJGL.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
         return true;
     }
 
-    // Grows the shared (0,1,2)(2,3,0) index pattern to cover at least this many quads
+    // Grows the quad index buffer to a quad count.
     private static void ensureQuadIndices(int quads) {
         if (quads <= quadCapacity) {
             return;
@@ -89,7 +91,7 @@ public final class ImmediateTessellation {
         quadCapacity = capacity;
     }
 
-    // A model part's display list holds GL_QUADS a tessellated program cannot take, so while one is bound the part's boxes are drawn immediately instead, which routes them through drawArrays above
+    // Draws a model display list.
     public static void callModelList(ModelRenderer model, int displayList, float scale) {
         if (isActive()) {
             drawModelBoxes(model, scale);
@@ -98,7 +100,7 @@ public final class ImmediateTessellation {
         }
     }
 
-    // The boxes a model part's display list was compiled from, drawn through the Tessellator one quad at a time just as the list recorded them
+    // Draws the boxes of a model as patches.
     public static void drawModelBoxes(ModelRenderer model, float scale) {
         BufferBuilder buffer = Tessellator.getInstance().getBuffer();
         for (ModelBox box : model.cubeList) {
@@ -106,7 +108,7 @@ public final class ImmediateTessellation {
         }
     }
 
-    // Frees the index buffer when the pipeline goes away
+    // Deletes the shared vertex array.
     public static void reset() {
         if (quadIndexBuffer != 0) {
             LWJGL.glDeleteBuffers(quadIndexBuffer);

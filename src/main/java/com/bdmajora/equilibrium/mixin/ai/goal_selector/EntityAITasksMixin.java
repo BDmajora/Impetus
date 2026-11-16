@@ -12,19 +12,22 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.Set;
 
-// Swaps the AI task/running sets for open-addressed ones, iterated every tick and every third tick per mob; ObjectLinkedOpenHashSet keeps insertion order, which expresses task priority
+// Mixin that changes EntityAITasks.
 @Mixin(EntityAITasks.class)
 public class EntityAITasksMixin {
+    // Reference to the field task entries of the target.
     @Shadow
     @Final
     @Mutable
     public Set<EntityAITasks.EntityAITaskEntry> taskEntries;
 
+    // Reference to the field executing task entries of the target.
     @Shadow
     @Final
     @Mutable
     private Set<EntityAITasks.EntityAITaskEntry> executingTaskEntries;
 
+    // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void equilibrium$useFastutilSets(CallbackInfo ci) {
         this.taskEntries = new ObjectLinkedOpenHashSet<>();

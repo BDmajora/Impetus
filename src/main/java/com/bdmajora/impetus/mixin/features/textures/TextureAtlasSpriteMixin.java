@@ -6,15 +6,19 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import com.bdmajora.impetus.impl.extensions.SpriteExtension;
 
+// Mixin that changes TextureAtlasSprite.
 @Mixin(TextureAtlasSprite.class)
 public abstract class TextureAtlasSpriteMixin implements SpriteExtension {
+    // Value is active.
     private boolean impetus$isActive = false;
 
+    // Handles mark active.
     @Override
     public void impetus$markActive() {
         this.impetus$isActive = true;
     }
 
+    // Returns whether update.
     @Override
     public boolean impetus$shouldUpdate() {
         if (this.impetus$isActive) {
@@ -25,7 +29,7 @@ public abstract class TextureAtlasSpriteMixin implements SpriteExtension {
         }
     }
 
-    // Any UV read means the sprite is being drawn, which is what makes it eligible to animate
+    // Changes the return value of getMinU and getInterpolatedU.
     @ModifyReturnValue(method = { "getMinU", "getInterpolatedU" }, at = @At("RETURN"))
     private float markActiveWhenGettingCoords(float original) {
         this.impetus$isActive = true;

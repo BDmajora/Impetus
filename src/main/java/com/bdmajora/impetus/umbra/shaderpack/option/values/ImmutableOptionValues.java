@@ -6,13 +6,14 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
-// A frozen snapshot of the pack's option values once the user's choices are resolved, immutable since the compile path must see one consistent set for every program. From Iris with unmodifiable HashMaps
+// Frozen option values.
 public class ImmutableOptionValues extends AbstractOptionValues {
+    // Creates an immutable option values from its options and boolean values and string values.
     ImmutableOptionValues(OptionSet options, Map<String, Boolean> booleanValues, Map<String, String> stringValues) {
         super(options, Collections.unmodifiableMap(new HashMap<>(booleanValues)), Collections.unmodifiableMap(new HashMap<>(stringValues)));
     }
 
-    // Already immutable; returns this
+    // Returns this instance.
     @Override
     public ImmutableOptionValues toImmutable() {
         return this;

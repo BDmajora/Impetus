@@ -6,12 +6,12 @@ import org.spongepowered.asm.mixin.Overwrite;
 
 import static com.bdmajora.impetus.engine.impl.texture.MipmapHelper.weightedAverageColor;
 
+// Mixin that changes TextureUtil.
 @Mixin(value = TextureUtil.class, priority = 900)
 public class TextureUtilMixin {
-    // @author / @reason are Mixin's required metadata on an @Overwrite, not documentation
+    // Replaces the whole method blendColors.
     @Overwrite
     private static int blendColors(int one, int two, int three, int four, boolean checkAlpha) {
-        // Blend horizontally first, then vertically; works well where the change matters most (grass side overlays)
         return weightedAverageColor(weightedAverageColor(one, two), weightedAverageColor(three, four));
     }
 }

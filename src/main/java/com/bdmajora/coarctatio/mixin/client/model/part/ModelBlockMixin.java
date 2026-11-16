@@ -18,7 +18,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.List;
 import java.util.Map;
 
-// Interns the texture variable names and paths of every unbaked model through a map that keeps interning what mods put in later (StellarCore's ModelBlock string canonicalization)
+// Mixin that changes ModelBlock.
 @Mixin(ModelBlock.class)
 public abstract class ModelBlockMixin {
     @Shadow
@@ -26,9 +26,12 @@ public abstract class ModelBlockMixin {
     @Mutable
     public Map<String, String> textures;
 
+    // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void coarctatio$internTextures(ResourceLocation parent, List<BlockPart> elements, Map<String, String> textures,
+                                           // Flags and transforms of the model.
                                            boolean ambientOcclusion, boolean gui3d, ItemCameraTransforms transforms,
+                                           // Overrides of the model.
                                            List<ItemOverride> overrides, CallbackInfo ci) {
         if (this.textures != null && !(this.textures instanceof CanonicalStringMap)) {
             this.textures = new CanonicalStringMap(this.textures, ModelCaches.MODEL_TEXTURES);

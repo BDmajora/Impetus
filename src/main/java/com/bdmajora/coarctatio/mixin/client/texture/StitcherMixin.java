@@ -12,31 +12,38 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.List;
 import java.util.Set;
 
-// Hands doStitch to the shelf packer and expresses its layout as vanilla Slots, one exact-size slot per sprite, so getStichSlots and every mod reading the stitcher's output see the same structures they always did
+// Mixin that changes Stitcher.
 @Mixin(Stitcher.class)
 public abstract class StitcherMixin {
+    // Reference to the field set stitch holders of the target.
     @Shadow
     @Final
     private Set<Stitcher.Holder> setStitchHolders;
 
+    // Reference to the field stitch slots of the target.
     @Shadow
     @Final
     private List<Stitcher.Slot> stitchSlots;
 
+    // Reference to the field current width of the target.
     @Shadow
     private int currentWidth;
 
+    // Reference to the field current height of the target.
     @Shadow
     private int currentHeight;
 
+    // Reference to the field max width of the target.
     @Shadow
     @Final
     private int maxWidth;
 
+    // Reference to the field max height of the target.
     @Shadow
     @Final
     private int maxHeight;
 
+    // Runs at the start of doStitch and can cancel it.
     @Inject(method = "doStitch", at = @At("HEAD"), cancellable = true)
     private void coarctatio$shelfStitch(CallbackInfo ci) {
         Stitcher.Holder[] holders = this.setStitchHolders.toArray(new Stitcher.Holder[0]);
@@ -45,7 +52,6 @@ public abstract class StitcherMixin {
         for (ShelfStitcher.Placement placement : result.placements) {
             Stitcher.Holder holder = placement.holder;
             Stitcher.Slot slot = new Stitcher.Slot(placement.x, placement.y, holder.getWidth(), holder.getHeight());
-            // An exact-size slot takes the holder directly, no subdivision
             slot.addSlot(holder);
             this.stitchSlots.add(slot);
         }

@@ -1,39 +1,54 @@
 package com.bdmajora.extras.client.budget;
 
-// Which side of the frame holds it back, GpuShift 1.2.8's detector (MIT): EMAs of the CPU's frame time and the GPU's time for its share of a frame, compared once enough samples are in; a new verdict needs a run of agreeing frames, so one hitch cannot swing the budget. GpuShift ships this unplugged; here the render budget's GPU timer feeds it
+// Decides whether the processor or the graphics card limits the frame rate.
 public final class BottleneckDetector {
+    // Verdict of the detector.
     public enum State {
-        // No timer queries on this driver
+        // The graphics timing is not available.
         UNAVAILABLE,
-        // Not enough samples yet
+        // Not enough samples yet.
         UNKNOWN,
-        // Frames are at target, nothing to shift
+        // The frame time is within the target.
         HEADROOM,
+        // The processor limits the frame rate.
         CPU_BOUND,
+        // The graphics card limits the frame rate.
         GPU_BOUND,
+        // Both limit the frame rate.
         MIXED
     }
 
+    // Samples needed before a verdict.
     static final int MIN_VALID_SAMPLES = 20;
+    // Consecutive verdicts needed to change the state.
     static final int SWITCH_CONFIRMATIONS = 30;
+    // Weight of a new sample.
     private static final double EMA_ALPHA = 0.15;
-    // GPU time at or under this share of CPU time leaves the GPU idle waiting on the CPU; at or over the other, the GPU is the one behind
+    // Largest graphics to processor ratio of a processor limit.
     private static final double CPU_BOUND_RATIO = 0.65;
+    // Smallest graphics to processor ratio of a graphics limit.
     private static final double GPU_BOUND_RATIO = 0.85;
-    // CPU frames this close to target count as headroom whatever the split
+    // Factor over the target that still counts as headroom.
     private static final double HEADROOM_SLACK = 1.05;
-    // A GPU reading this long is a stall or a driver hiccup, not a frame
+    // Largest graphics time that counts as a valid sample.
     private static final double MAX_GPU_MILLIS = 250.0;
 
+    // Whether graphics timing works.
     private boolean available = true;
+    // Smoothed processor time.
     private double cpuEma;
+    // Smoothed graphics time.
     private double gpuEma;
+    // Number of valid samples.
     private int validSamples;
+    // Confirmed state.
     private State state = State.UNKNOWN;
+    // Verdict that waits for confirmation.
     private State candidate = State.UNKNOWN;
+    // Number of consecutive verdicts of the candidate.
     private int confirmations;
 
-    // One frame's CPU and GPU milliseconds against the profile's target; nonsense readings are ignored
+    // Adds a sample and returns the confirmed state.
     public State record(double cpuMillis, double gpuMillis, double targetMillis) {
         if (!this.available || !valid(cpuMillis) || !valid(gpuMillis) || gpuMillis > MAX_GPU_MILLIS || !valid(targetMillis)) {
             return this.state;
@@ -50,7 +65,7 @@ public final class BottleneckDetector {
             this.candidate = verdict;
             this.confirmations = 1;
         } else {
-            this.confirmations++;
+            this.confirmations = Math.min(this.confirmations + 1, SWITCH_CONFIRMATIONS);
         }
         if (this.confirmations >= SWITCH_CONFIRMATIONS) {
             this.state = this.candidate;
@@ -58,21 +73,23 @@ public final class BottleneckDetector {
         return this.state;
     }
 
+    // Returns the confirmed state.
     public State state() {
         return this.state;
     }
 
-    // The GPU time EMA, 0 until measured
+    // Returns the smoothed graphics time.
     public double gpuFrameMillis() {
         return this.gpuEma;
     }
 
-    // The driver has no timer queries; stays so until reset
+    // Marks the graphics timing as unavailable.
     public void markUnavailable() {
         this.available = false;
         this.state = State.UNAVAILABLE;
     }
 
+    // Forgets every sample.
     public void reset() {
         this.available = true;
         this.cpuEma = 0.0;
@@ -83,6 +100,7 @@ public final class BottleneckDetector {
         this.confirmations = 0;
     }
 
+    // Returns the verdict for the smoothed times.
     static State classify(double cpuMillis, double gpuMillis, double targetMillis) {
         if (cpuMillis <= targetMillis * HEADROOM_SLACK) {
             return State.HEADROOM;
@@ -94,10 +112,12 @@ public final class BottleneckDetector {
         return ratio >= GPU_BOUND_RATIO ? State.GPU_BOUND : State.MIXED;
     }
 
+    // Returns the smoothed value after a sample.
     private static double ema(double current, double sample) {
         return current <= 0.0 ? sample : current + EMA_ALPHA * (sample - current);
     }
 
+    // Returns whether the value is a positive finite number.
     private static boolean valid(double value) {
         return Double.isFinite(value) && value > 0.0;
     }

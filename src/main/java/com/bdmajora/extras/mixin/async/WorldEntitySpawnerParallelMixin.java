@@ -9,9 +9,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Hands the whole spawn pass to the parallel transcription when enabled; vanilla's runs untouched otherwise
+// Mixin that changes WorldEntitySpawner.
 @Mixin(WorldEntitySpawner.class)
 public abstract class WorldEntitySpawnerParallelMixin {
+    // Runs at the start of findChunksForSpawning and can cancel it.
     @Inject(method = "findChunksForSpawning", at = @At("HEAD"), cancellable = true)
     private void impetus$parallelSpawn(WorldServer world, boolean spawnHostile, boolean spawnPeaceful, boolean spawnAnimals, CallbackInfoReturnable<Integer> cir) {
         if (ParallelProcessor.isSpawningActive(world)) {

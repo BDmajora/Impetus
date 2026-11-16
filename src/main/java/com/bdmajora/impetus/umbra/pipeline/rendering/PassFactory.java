@@ -19,18 +19,25 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-// Builds the drawing passes of the schedule: a family entry's fullscreen pass, the final pass and a raster shadowcomp; each reads the front sides of the flip state it is built under and writes the back sides
+// Builds composite and final and shadow composite passes and advances the flip state.
 public final class PassFactory {
+    // Logger of passes that cannot be built.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
 
+    // Properties of the pack.
     private final ShaderProperties properties;
+    // Program sources of the pack.
     private final PackSources sources;
+    // Cache of compiled programs.
     private final ProgramCache programs;
+    // Color targets of the pack.
     private final UmbraRenderTargets targets;
+    // Shadow renderer or null.
     private final UmbraShadowRenderer shadow;
-    // Colour targets flipped by an earlier pass; a custom-texture override on a colortex deactivates once a pass has written it (Umbra parity)
+    // Targets flipped by at least one pass.
     private final BitSet flippedAtLeastOnce;
 
+    // Creates a factory.
     public PassFactory(ShaderProperties properties, PackSources sources, ProgramCache programs, UmbraRenderTargets targets,
                        UmbraShadowRenderer shadow, BitSet flippedAtLeastOnce) {
         this.properties = properties;
@@ -41,7 +48,7 @@ public final class PassFactory {
         this.flippedAtLeastOnce = flippedAtLeastOnce;
     }
 
-    // A family pass into its own colour framebuffer, flipping what it writes; null when its program cannot be built, leaving the flip state untouched
+    // Builds a composite pass and flips its draw buffers or returns null and logs a failure.
     FullscreenPass composite(ProgramSource source, BufferFlipper flipper, List<ComputePass> computes) {
         String name = source.getName();
         try {
@@ -58,7 +65,6 @@ public final class PassFactory {
                     drawBuffers, ProgramBlendState.from(this.properties, name), flipsBefore,
                     TargetDirectives.mipmappedBuffers(source, this.sources), computes, program.shadowSamplerKinds(),
                     program.modern(), viewportSize(name, drawBuffers), this.properties.getViewportScale(name));
-            // Flips last, once nothing can throw, so a skipped pass leaves the schedule's flip state as it was; a buffer both written and explicitly flipped flips twice, as Iris does
             for (int buffer : drawBuffers) {
                 if (!Boolean.FALSE.equals(explicitFlips.get(buffer))) {
                     flipper.flip(buffer);
@@ -78,7 +84,7 @@ public final class PassFactory {
         }
     }
 
-    // The final program, which writes the main framebuffer rather than a colortex; null falls back to the colortex0 blit
+    // Builds the final pass or returns null for the fallback blit.
     FullscreenPass finalPass(ProgramSource source, BufferFlipper flipper) {
         String name = source.getName();
         try {
@@ -96,7 +102,7 @@ public final class PassFactory {
         }
     }
 
-    // A raster shadowcomp: a full-screen quad into the shadow pass's own colour attachments at shadow-map resolution, which do not ping-pong; the pass owns its framebuffer
+    // Builds a shadow composite pass on the shadow color textures or returns null.
     FullscreenPass shadowComposite(ProgramSource source, BufferFlipper flipper, List<ComputePass> computes) {
         String name = source.getName();
         if (this.shadow == null) {
@@ -124,7 +130,6 @@ public final class PassFactory {
                 throw e;
             }
             int resolution = this.shadow.getResolution();
-            // The flip snapshot of its place in the chain, so its images and samplers hit the same sides as everything else
             return new FullscreenPass(name, program.program(), program.uniforms(), framebuffer,
                     snapshotFrontTextures(flipper), drawBuffers, ProgramBlendState.from(this.properties, name),
                     flipper.snapshot(), new BitSet(), computes, program.shadowSamplerKinds(), program.modern(),
@@ -135,7 +140,7 @@ public final class PassFactory {
         }
     }
 
-    // A shadowcomp DRAWBUFFERS index past the shadowcolor buffers that exist has nothing to attach to
+    // Returns the draw buffers that have a shadow color texture.
     private int[] shadowDrawBuffers(String name, int[] drawBuffers) {
         int[] kept = new int[drawBuffers.length];
         int count = 0;
@@ -149,7 +154,7 @@ public final class PassFactory {
         return Arrays.copyOf(kept, count);
     }
 
-    // The front texture of every existing colour target under the flip state
+    // Returns the texture each target reads from under the current flips.
     int[] snapshotFrontTextures(BufferFlipper flipper) {
         int[] samplers = new int[UmbraRenderTargets.MAX_COLOR_BUFFERS];
         for (int i = 0; i < samplers.length; i++) {
@@ -159,12 +164,12 @@ public final class PassFactory {
         return samplers;
     }
 
-    // The front texture of one colour target under the flip state, materialising it
+    // Returns the texture a target reads from under the current flips.
     int front(BufferFlipper flipper, int index) {
         return GbufferTargets.front(this.targets, flipper.isFlipped(index), index);
     }
 
-    // The size of the buffers a pass writes, zero for the render size; Umbra throws on mixed sizes, here the first size wins and the mismatch is logged rather than losing a stage
+    // Returns the size of the first custom sized draw buffer or zeros.
     int[] viewportSize(String name, int[] drawBuffers) {
         int[] size = new int[2];
         for (int buffer : drawBuffers) {
@@ -184,7 +189,7 @@ public final class PassFactory {
         return size;
     }
 
-    // flip.<pass>.colortexN keys outside the colour targets are dropped; colortex-1 used to throw out of the BitSet and skip the pass, or fail the whole pipeline for deferred_pre/composite_pre
+    // Returns the flips of existing targets and reports the rest.
     static Map<Integer, Boolean> validFlips(Map<Integer, Boolean> flips, String name) {
         boolean valid = true;
         for (Integer buffer : flips.keySet()) {
@@ -204,7 +209,7 @@ public final class PassFactory {
         return kept;
     }
 
-    // Honours a <name>_pre flip set (deferred_pre, composite_pre) before a family runs; these do not count as writes
+    // Applies the explicit flips that run before a pass family.
     static void applyPreFlips(Map<Integer, Boolean> flips, BufferFlipper flipper, String name) {
         validFlips(flips, name).forEach((buffer, flip) -> {
             if (flip) {

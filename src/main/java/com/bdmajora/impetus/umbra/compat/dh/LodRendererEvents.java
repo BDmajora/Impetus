@@ -38,20 +38,24 @@ import org.joml.Matrix4fc;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// The DH API event handlers that hijack DH's LOD passes for the active pack (Iris's LodRendererEvents): DH keeps culling, buffer management, draw calls and cleanup, and at each of its hooks these swap in the pipeline's framebuffer (gbuffer colours + DH depth), the pack's program with the pass's matrices, the shadow pass's frustum, and cancel what a pack takes over (DH's fog, SSAO, its composite onto MC's framebuffer). Bound once after DH initialises, they consult the live pipeline on every call, so a pack change or shaders off need no rebinding
+// Handlers of the Distant Horizons render events.
 public final class LodRendererEvents {
+    // Logger of this class.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
+    // Flag set once the handlers are registered.
     private static boolean eventHandlersBound;
-    // Whether the current DH pass is its deferred translucent one, so the per-buffer program bind picks dh_water
+    // Flag set during the translucent LOD pass.
     private static boolean atTranslucent;
-    // DH's colour/depth texture size, from its resize event; the pre-translucent depth copy is sized to it
+    // Width of the LOD textures.
     private static int textureWidth;
+    // Height of the LOD textures.
     private static int textureHeight;
 
+    // Prevents instantiation
     private LodRendererEvents() {
     }
 
-    // Queues everything on DH's after-init event, since DhApi.Delayed.* is null until then
+    // Sets up the event handlers.
     public static void setupEventHandlers() {
         if (eventHandlersBound) {
             return;
@@ -74,19 +78,18 @@ public final class LodRendererEvents {
                 setupBeforeRenderFramebufferBinding();
                 setupBeforeRenderPassEvent();
                 setupBeforeApplyShaderEvent();
-                // A pack parsed before this point compiled without DISTANT_HORIZONS (Iris's loadShaderpackWhenPossible); reload it with DH known
                 Umbra.loadCurrentShaderpack();
                 LOGGER.info("[Umbra] Distant Horizons LOD event handlers bound.");
             }
         });
     }
 
-    // Whether a pipeline is live this frame (Iris's isPackInUseQuick): a parsed pack whose pipeline failed to build must leave DH's own composite alone
+    // Returns whether a shader pack is active.
     private static boolean shadersActive() {
         return Umbra.getRenderingPipeline() != null;
     }
 
-    // The live pipeline's compat state, or the shaderless stand-in that leaves DH alone
+    // Returns the instance.
     private static DhCompatInternal getInstance() {
         UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
         if (pipeline == null || pipeline.getDhCompat() == null) {
@@ -96,7 +99,7 @@ public final class LodRendererEvents {
         return instance instanceof DhCompatInternal ? (DhCompatInternal) instance : DhCompatInternal.SHADERLESS;
     }
 
-    // Before DH prepares a frame: with a pack shading LODs, its water must render deferred (after MC's translucents, where dh_water samples the finished opaque gbuffer) and DH's own fog is off (the pack fogs in composite)
+    // Sets up the set deferred before rendering event.
     private static void setupSetDeferredBeforeRenderingEvent() {
         DhApi.events.bind(DhApiBeforeRenderEvent.class, new DhApiBeforeRenderEvent() {
             @Override
@@ -112,7 +115,7 @@ public final class LodRendererEvents {
         });
     }
 
-    // DH's depth texture id can change (it recreates on resize with a fresh id); attach the current one to the LOD framebuffers before every clear
+    // Sets up the reconnect depth texture event.
     private static void setupReconnectDepthTextureEvent() {
         DhApi.events.bind(DhApiBeforeTextureClearEvent.class, new DhApiBeforeTextureClearEvent() {
             @Override
@@ -125,7 +128,7 @@ public final class LodRendererEvents {
         });
     }
 
-    // DH's generic objects (beacon beams, clouds) draw into their own framebuffer with the pack's dh_generic; clouds are dropped when the pack turned vanilla clouds off, since it draws its own sky
+    // Sets up the generic events.
     private static void setupGenericEvents() {
         DhApi.events.bind(DhApiBeforeGenericRenderSetupEvent.class, new DhApiBeforeGenericRenderSetupEvent() {
             @Override
@@ -149,8 +152,8 @@ public final class LodRendererEvents {
         });
     }
 
+    // Sets up the create depth texture event.
     private static void setupCreateDepthTextureEvent() {
-        // Fired once DH's textures exist, with the sizes the deprecated DhApiColorDepthTextureCreatedEvent carries; they are only read at render time
         DhApi.events.bind(DhApiAfterColorDepthTextureCreatedEvent.class, new DhApiAfterColorDepthTextureCreatedEvent() {
             @Override
             public void onResize(DhApiEventParam<DhApiTextureCreatedParam> event) {
@@ -160,7 +163,7 @@ public final class LodRendererEvents {
         });
     }
 
-    // With no dh_shadow program (or dhShadow.enabled=false) the LODs stay out of the shadow map entirely
+    // Sets up the shadow pass cancelling.
     private static void setupShadowPassCancelling() {
         DhApi.events.bind(DhApiBeforeRenderEvent.class, new DhApiBeforeRenderEvent() {
             @Override
@@ -180,7 +183,7 @@ public final class LodRendererEvents {
         });
     }
 
-    // After DH's draws: drop the pack program (DH's own cleanup unbinds its VAO and restores the 1.12.2 GL state) and hand the gbuffer's blend state back
+    // Sets up the before render cleanup event.
     private static void setupBeforeRenderCleanupEvent() {
         DhApi.events.bind(DhApiBeforeRenderCleanupEvent.class, new DhApiBeforeRenderCleanupEvent() {
             @Override
@@ -189,7 +192,6 @@ public final class LodRendererEvents {
                 if (!instance.shouldOverride()) {
                     return;
                 }
-                // DH's cleanup, which follows this event, unbinds its atlas from unit 1 RAW; with the cache told the same, vanilla's next enableLightmap() sees a change and really rebinds the lightmap there
                 GlTextureUnits.forceBindTexture2D(1, 0);
                 if (UmbraShadowRenderer.isShadowPass()) {
                     if (instance.getShadowShader() != null) {
@@ -204,7 +206,7 @@ public final class LodRendererEvents {
         });
     }
 
-    // DH clears its colour and depth at the start of its opaque pass; with the gbuffer as the colour target only DH's depth may be cleared, and in the shadow pass nothing at all (the map is already cleared and mid-render)
+    // Sets up the before buffer clear event.
     private static void setupBeforeBufferClearEvent() {
         DhApi.events.bind(DhApiBeforeTextureClearEvent.class, new DhApiBeforeTextureClearEvent() {
             @Override
@@ -215,7 +217,6 @@ public final class LodRendererEvents {
                 if (UmbraShadowRenderer.isShadowPass()) {
                     event.cancelEvent();
                 } else if (getInstance().shouldOverride()) {
-                    // DH sets its clear depth inside the clear this cancels; with shaders it renders forward-Z, whose far value is 1
                     GlStateManager.clearDepth(1.0);
                     LWJGL.glClear(GL11.GL_DEPTH_BUFFER_BIT);
                     event.cancelEvent();
@@ -224,7 +225,7 @@ public final class LodRendererEvents {
         });
     }
 
-    // Per LOD buffer, after DH bound its own program and set its model offset: bind the pack's program for this pass and give it the same offset
+    // Sets up the before buffer render event.
     private static void setupBeforeBufferRenderEvent() {
         DhApi.events.bind(DhApiBeforeBufferRenderEvent.class, new DhApiBeforeBufferRenderEvent() {
             @Override
@@ -250,7 +251,7 @@ public final class LodRendererEvents {
         });
     }
 
-    // Before DH's render setup: the framebuffer override for this pass (the shadow map in the shadow pass, else the LOD gbuffer), the shadow frustum, and the generic program; rebound every pass since the pipeline can change between frames
+    // Sets up the before render framebuffer binding.
     private static void setupBeforeRenderFramebufferBinding() {
         DhApi.events.bind(DhApiBeforeRenderSetupEvent.class, new DhApiBeforeRenderSetupEvent() {
             @Override
@@ -273,7 +274,7 @@ public final class LodRendererEvents {
         });
     }
 
-    // Removes every override this compat may have bound; unbinding something never bound is a no-op
+    // Removes the framebuffer and program overrides.
     private static void unbindOverrides(DhCompatInternal instance) {
         if (instance.getShadowCullingFrustum() != null) {
             DhApi.overrides.unbind(IDhApiShadowCullingFrustum.class, instance.getShadowCullingFrustum());
@@ -289,7 +290,7 @@ public final class LodRendererEvents {
         }
     }
 
-    // Right before DH's draws of a pass, after it set its own GL state: the pack's program with the pass's matrices, the gbuffer draw-buffer/blend/sampler setup on the LOD framebuffer, and for the deferred pass the dhDepthTex1 snapshot
+    // Sets up the before render pass event.
     private static void setupBeforeRenderPassEvent() {
         DhApi.events.bind(DhApiBeforeRenderPassEvent.class, new DhApiBeforeRenderPassEvent() {
             @Override
@@ -297,7 +298,6 @@ public final class LodRendererEvents {
                 DhCompatInternal instance = getInstance();
                 boolean shadowPass = UmbraShadowRenderer.isShadowPass();
 
-                // Config overrides while a pack shades LODs: no DH SSAO (the pack's own), no DH fog
                 if (instance.shouldOverride()) {
                     DhApi.Delayed.configs.graphics().ambientOcclusion().enabled().setValue(false);
                     DhApi.Delayed.configs.graphics().fog().enableDhFog().setValue(false);
@@ -338,7 +338,6 @@ public final class LodRendererEvents {
                         if (instance.shouldOverrideShadow() && instance.getShadowShader() != null) {
                             instance.getShadowShader().bind();
                             instance.getShadowFBWrapper().bind();
-                            // The shadow pass writes translucent tint unblended (see UmbraShadowRenderer); DH just enabled blending for its water
                             GlStateManager.disableBlend();
                         }
                         return;
@@ -350,7 +349,6 @@ public final class LodRendererEvents {
                                 event.value.worldYOffset, event.value.partialTicks);
                         instance.getPipeline().onDhLodDraw(instance.getTranslucentFB(), water.getDrawBuffers(),
                                 water.getBlendState(), true);
-                        // Iris disables culling here for two-sided LOD water; DH re-enables it right after this event on purpose (its Iris issue 2582 workaround), so this is parity rather than effect
                         GlStateManager.disableCull();
                     }
                 }
@@ -358,19 +356,19 @@ public final class LodRendererEvents {
         });
     }
 
-    // The LOD projection for this pass: the camera's FOV and aspect with DH's near and far planes, the matrix DhCompat.getProjection reports as dhProjection
+    // Returns the LOD projection of a frame.
     private static Matrix4f lodProjection(DhApiRenderParam param) {
         Matrix4fc projection = CapturedRenderingState.INSTANCE.getGbufferProjection();
         return new Matrix4f().setPerspective(projection.perspectiveFov(), projection.m11() / projection.m00(),
                 param.nearClipPlane, param.farClipPlane);
     }
 
-    // DH's matrices are row-major arrays; a transposed set yields JOML's column-major form
+    // Returns a JOML copy of a Distant Horizons matrix.
     private static Matrix4f toJoml(DhApiMat4f matrix) {
         return new Matrix4f().setTransposed(matrix.getValuesAsArray());
     }
 
-    // DH's last step composites its colour texture onto MC's framebuffer with its own depth test; with a pack the LODs are already in the gbuffer, so that step is cancelled and the overrides dropped until the next pass binds them again
+    // Sets up the before apply shader event.
     private static void setupBeforeApplyShaderEvent() {
         DhApi.events.bind(DhApiBeforeApplyShaderRenderEvent.class, new DhApiBeforeApplyShaderRenderEvent() {
             @Override

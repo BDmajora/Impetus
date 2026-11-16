@@ -19,18 +19,20 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.List;
 
-// The frame splitter, on two switches: large packets widen vanilla's three-byte length scratch to five, and fast varints replace the whole decode with Krypton's, which reads the length in place instead of copying it through a fresh array, a wrapped buffer and a PacketBuffer per frame, hands the frame on as a retained slice rather than a copy, and skips runs of zero bytes at once rather than one empty frame each (Velocity's "nullping" fix)
+// Mixin that changes NettyVarint21FrameDecoder.
 @Mixin(NettyVarint21FrameDecoder.class)
 public abstract class NettyVarint21FrameDecoderMixin {
-    // No stack trace: a malformed length is the peer's fault and the trace would only ever point here
+    // Field impetus bad length added to the target.
     @Unique
     private static final DecoderException IMPETUS_BAD_LENGTH = new QuietDecoderException("Bad packet length");
 
+    // Changes a constant in decode.
     @ModifyConstant(method = "decode", constant = @Constant(intValue = 3))
     private int impetus$frameLengthBytes(int vanilla) {
         return NetworkLimits.frameLengthBytes();
     }
 
+    // Runs at the start of decode and can cancel it.
     @Inject(method = "decode", at = @At("HEAD"), cancellable = true)
     private void impetus$fastDecode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out, CallbackInfo ci) {
         if (!Extras.options().network.fastVarInts) {
@@ -55,7 +57,6 @@ public abstract class NettyVarint21FrameDecoderMixin {
         int readable = in.readableBytes();
         int length = 0;
         for (int i = 0; i < maxBytes; i++) {
-            // Not enough of the prefix has arrived yet; nothing was consumed, so the next read starts over here
             if (i >= readable) {
                 return;
             }

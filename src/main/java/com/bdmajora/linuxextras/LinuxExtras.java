@@ -11,21 +11,26 @@ import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.Map;
 
-// SDL handles native Wayland and icons; Linux Extras supplies KDE's primary display order before video starts
+// Entry point of the Linux Extras module.
 public final class LinuxExtras {
+    // Logger of this class.
     public static final Logger LOGGER = LogManager.getLogger("Impetus/LinuxExtras");
 
+    // Prevents instantiation
     private LinuxExtras() {
     }
 
+    // Returns the loaded settings.
     public static LinuxExtrasConfig options() {
         return LinuxExtrasConfig.get();
     }
 
+    // Applies the window settings before the window opens.
     public static void prepareWindow() {
         prepareWindow(OsKind.current(), System.getenv());
     }
 
+    // Applies the window settings for an OS and environment.
     static void prepareWindow(OsKind os, Map<String, String> env) {
         if (os != OsKind.LINUX || !options().waylandFullscreenMonitor || !WaylandSession.available(env)) {
             return;

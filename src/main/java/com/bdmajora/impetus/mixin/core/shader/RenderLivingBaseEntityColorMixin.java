@@ -12,12 +12,14 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// The hurt flash and creeper charge are the only entity tints vanilla draws with fixed-function combiners, which a bound program drops; published as OptiFine's entityColor uniform instead, and the combiner setup is skipped since setBrightness binds over unit 2, the gbuffer normals sampler
+// Mixin that changes RenderLivingBase.
 @Mixin(RenderLivingBase.class)
 public abstract class RenderLivingBaseEntityColorMixin {
+    // Reference to the method get color multiplier of the target.
     @Shadow
     protected abstract int getColorMultiplier(EntityLivingBase entity, float lightBrightness, float partialTicks);
 
+    // Runs at the start of setBrightness and can cancel it.
     @Inject(method = "setBrightness(Lnet/minecraft/entity/EntityLivingBase;FZ)Z", at = @At("HEAD"), cancellable = true)
     private void impetus$captureEntityColor(EntityLivingBase entity, float partialTicks, boolean combineTextures,
                                             CallbackInfoReturnable<Boolean> cir) {
@@ -30,7 +32,6 @@ public abstract class RenderLivingBaseEntityColorMixin {
         boolean hasMultiplier = (multiplier >> 24 & 255) > 0;
         boolean hurt = entity.hurtTime > 0 || entity.deathTime > 0;
 
-        // Mirrors vanilla's two early exits: nothing to tint at all, and a hurt flash that this pass does not own.
         if (!hasMultiplier && (!hurt || !combineTextures)) {
             cir.setReturnValue(false);
             return;
@@ -47,10 +48,10 @@ public abstract class RenderLivingBaseEntityColorMixin {
         }
         pipeline.refreshDynamicUniforms();
 
-        // Returning true still pairs us with the unsetBrightness call that clears the tint again.
         cir.setReturnValue(true);
     }
 
+    // Runs at the start of unsetBrightness and can cancel it.
     @Inject(method = "unsetBrightness", at = @At("HEAD"), cancellable = true)
     private void impetus$clearEntityColor(CallbackInfo ci) {
         UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
@@ -63,9 +64,10 @@ public abstract class RenderLivingBaseEntityColorMixin {
         ci.cancel();
     }
 
-    // doRender swallows exceptions thrown while rendering an entity, which would skip unsetBrightness and leave every later entity tinted red; the blend factor is zero on normal entities, so this is a float compare
+    // Runs before every return of doRender.
     @Inject(method = "doRender(Lnet/minecraft/entity/EntityLivingBase;DDDFF)V", at = @At("RETURN"))
     private void impetus$clearStrandedEntityColor(EntityLivingBase entity, double x, double y, double z,
+                                                  // Yaw and partial ticks.
                                                   float entityYaw, float partialTicks, CallbackInfo ci) {
         if (CapturedRenderingState.INSTANCE.getEntityColor().w == 0.0f) {
             return;

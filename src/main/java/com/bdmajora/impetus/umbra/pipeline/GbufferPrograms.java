@@ -17,21 +17,25 @@ import com.bdmajora.impetus.umbra.shaderpack.ShaderPack;
 import com.bdmajora.impetus.umbra.shaderpack.loading.ProgramId;
 import com.bdmajora.impetus.umbra.uniforms.CommonUniforms;
 import com.bdmajora.impetus.umbra.uniforms.MatrixUniforms;
+import com.bdmajora.impetus.umbra.uniforms.custom.ActiveCustomUniforms;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// The pack's fixed-function gbuffer programs (sky, entities, damage, particles, weather, clouds, hand), still immediate-mode so gl_Vertex remains the contract; OptiFine's fallback chain is honoured and phases with the same source share one program
+// Gbuffer programs of a pack by phase with programs shared between phases that use one source.
 public class GbufferPrograms {
+    // Logger of compile failures.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
 
-    // The phases driven from the vanilla render-loop anchors in EntityRendererMixin; this list IS the set of bind points, so a phase absent here is never selected however the pack declares it
+    // Phases that draw with a gbuffer program.
     private static final ProgramId[] PHASES = {
             ProgramId.SkyBasic, ProgramId.SkyTextured, ProgramId.Entities, ProgramId.EntitiesTrans,
             ProgramId.SpiderEyes, ProgramId.DamagedBlock,
@@ -39,17 +43,24 @@ public class GbufferPrograms {
             ProgramId.HandWater, ProgramId.Line, ProgramId.ArmorGlint
     };
 
-    // One compiled gbuffer program with everything needed to bind it: uniform driver, sanitised DRAWBUFFERS mask, alpha-test override
+    // Compiled gbuffer program with its uniforms and draw state.
     public static final class Entry {
+        // Compiled program.
         final UmbraProgram program;
+        // Uniforms of the program.
         final ProgramUniforms uniforms;
+        // Draw buffers of the program.
         final int[] drawBuffers;
+        // Blend override of the program.
         final ProgramBlendState blendState;
+        // Alpha test override of the program.
         final ProgramAlphaTest alphaTest;
+        // Location of the hand lightmap uniform or minus one.
         final int handLightmapLocation;
-        // How the program declared shadowtex0/1, so the bind path can put a raw-depth sampler on a unit it reads through a plain sampler2D
+        // Compare or raw kind of each shadow sampler.
         final ShadowSamplerKinds shadowSamplerKinds;
 
+        // Creates an entry with a copy of the draw buffers.
         Entry(UmbraProgram program, ProgramUniforms uniforms, int[] drawBuffers, ProgramBlendState blendState,
               ProgramAlphaTest alphaTest, int handLightmapLocation, ShadowSamplerKinds shadowSamplerKinds) {
             this.program = program;
@@ -61,42 +72,42 @@ public class GbufferPrograms {
             this.shadowSamplerKinds = shadowSamplerKinds;
         }
 
-        // Which shadow depth units this program samples as raw depth rather than a comparison
+        // Returns the kind of each shadow sampler.
         public ShadowSamplerKinds getShadowSamplerKinds() {
             return this.shadowSamplerKinds;
         }
 
-        // The linked program
+        // Returns the compiled program.
         public UmbraProgram getProgram() {
             return this.program;
         }
 
-        // Its uniform set
+        // Returns the uniforms of the program.
         public ProgramUniforms getUniforms() {
             return this.uniforms;
         }
 
-        // Its declared targets
+        // Returns a copy of the draw buffers.
         public int[] getDrawBuffers() {
             return this.drawBuffers.clone();
         }
 
-        // The array itself, already sanitized at construction; for the per-object phase switch, which must not allocate, and the caller never writes to it
+        // Returns the draw buffers without a copy.
         public int[] drawBuffersReadOnly() {
             return this.drawBuffers;
         }
 
-        // Its blend directives
+        // Returns the blend override.
         public ProgramBlendState getBlendState() {
             return this.blendState;
         }
 
-        // The pack's alphaTest.<program> override, or an empty one when undeclared, never null so the bind path applies and restores unconditionally
+        // Returns the alpha test override.
         public ProgramAlphaTest getAlphaTest() {
             return this.alphaTest;
         }
 
-        // Overrides the lightmap coordinates for the hand programs
+        // Uploads the hand lightmap when the program reads it.
         public void setHandLightmap(float blockLight, float skyLight) {
             if (this.handLightmapLocation != -1) {
                 LWJGL.glUniform2f(this.handLightmapLocation, blockLight, skyLight);
@@ -104,22 +115,22 @@ public class GbufferPrograms {
         }
     }
 
+    // Programs by phase.
     private final Map<ProgramId, Entry> byPhase = new EnumMap<>(ProgramId.class);
+    // Programs to delete.
     private final List<Entry> ownedEntries = new ArrayList<>();
-    // Phases the pack ships an actual file for, as opposed to ones resolved through the fallback chain; matters where a caller needs to know whether the pack MEANT to handle a phase
-    private final java.util.Set<ProgramId> directPhases = java.util.EnumSet.noneOf(ProgramId.class);
+    // Phases with their own program.
+    private final Set<ProgramId> directPhases = EnumSet.noneOf(ProgramId.class);
 
-    // samplerOverrides holds the gbuffers-stage custom-texture units as sampler name -> dedicated unit over the standard table, so `texture.gbuffers.gaux4` redirects one sampler while every other keeps its unit
+    // Compiles the gbuffer program of every enabled phase once per source.
     public GbufferPrograms(ShaderPack pack, Map<String, Integer> samplerUnits, Map<String, Integer> samplerOverrides) {
         Map<String, String> defines = pack.getEnvironmentDefines();
-        // Fixed-function stages sample the bound atlas/lightmap on the vanilla units, plus OptiFine's aux slots.
         Map<String, Integer> gbufferSamplers = new HashMap<>(samplerUnits);
         gbufferSamplers.put("texture", 0);
         gbufferSamplers.put("gtexture", 0);
         gbufferSamplers.put("lightmap", 1);
         gbufferSamplers.put("normals", 2);
         gbufferSamplers.put("specular", 3);
-        // Custom-texture overrides win over everything, including the vanilla-unit additions above.
         gbufferSamplers.putAll(samplerOverrides);
 
         Map<String, Entry> bySourceName = new HashMap<>();
@@ -138,9 +149,8 @@ public class GbufferPrograms {
             }
             Entry entry;
             if (bySourceName.containsKey(sourceName)) {
-                entry = bySourceName.get(sourceName); // may be null: a failed compile is not retried
+                entry = bySourceName.get(sourceName);
             } else {
-                // A ProgramId's default blend mode belongs to its own file; a phase resolved through the fallback chain uses some other program's source with its own directives (Umbra attaches the default at the direct read), and direct-only also means a phase with a default never shares an Entry
                 BlendMode defaultBlend = direct.isPresent() ? phase.getDefaultBlendMode() : null;
                 entry = compile(source.get(), defines, gbufferSamplers,
                         ProgramBlendState.from(pack.getProperties(), sourceName, defaultBlend),
@@ -159,15 +169,17 @@ public class GbufferPrograms {
         }
     }
 
-    // Package-visible because UmbraShadowRenderer compiles the fixed-function flavour of the shadow program through the same path, since entity and block-entity shadows go through vanilla's renderers
+    // Compiles a program without blend or alpha test overrides.
     static Entry compile(ProgramSource source, Map<String, String> defines, Map<String, Integer> samplerUnits) {
         return compile(source, defines, samplerUnits, ProgramBlendState.empty(), ProgramAlphaTest.empty());
     }
 
+    // Compiles a program and assigns its samplers and uniforms or returns null and deletes it after a failure.
     static Entry compile(ProgramSource source, Map<String, String> defines, Map<String, Integer> samplerUnits,
                          ProgramBlendState blendState, ProgramAlphaTest alphaTest) {
+        UmbraProgram program = null;
         try {
-            UmbraProgram program = ShaderProgramCompiler.compile(source.getName(), source, defines);
+            program = ShaderProgramCompiler.compile(source.getName(), source, defines);
 
             GlProgram glProgram = program.getProgram();
             glProgram.bind();
@@ -183,33 +195,41 @@ public class GbufferPrograms {
             ProgramUniforms.Builder builder = ProgramUniforms.builder(source.getName(), glProgram.getGlId());
             CommonUniforms.addCommonUniforms(builder);
             MatrixUniforms.addMatrixUniforms(builder);
-            com.bdmajora.impetus.umbra.uniforms.custom.ActiveCustomUniforms.assignTo(builder);
+            ActiveCustomUniforms.assignTo(builder);
             int[] drawBuffers = GbufferTargets.sanitize(program.getDrawBuffers());
             return new Entry(program, builder.buildUniforms(), drawBuffers, blendState, alphaTest, handLightmapLocation,
                     ShadowSamplerKinds.detect(glProgram.getGlId()));
         } catch (Exception e) {
-            LOGGER.error("[Umbra] Failed to compile gbuffer program '{}'; its phases render vanilla-style: {}",
+            // Deletes a program that compiled before a later step failed
+            if (program != null) {
+                try {
+                    program.destroy();
+                } catch (RuntimeException suppressed) {
+                    e.addSuppressed(suppressed);
+                }
+            }
+            LOGGER.error("[Umbra] Failed to compile gbuffer program '{}'; its phases render vanilla style: {}",
                     source.getName(), e.getMessage());
             return null;
         }
     }
 
-    // The compiled program for a phase, or null meaning "let vanilla's fixed-function path draw it", not an error
+    // Returns the program of a phase or null.
     public Entry get(ProgramId phase) {
         return this.byPhase.get(phase);
     }
 
-    // Whether the pack ships a file for this phase ITSELF rather than resolving through the fallback chain onto another program's source
+    // Returns whether a phase has its own program.
     public boolean hasDirect(ProgramId phase) {
         return this.directPhases.contains(phase);
     }
 
-    // Every DISTINCT compiled entry, since several phases share one program and the draw-buffer union and teardown must visit each once
+    // Returns the programs to delete.
     public List<Entry> entries() {
         return this.ownedEntries;
     }
 
-    // Frees every gbuffer program
+    // Deletes every program and forgets the phases.
     public void destroy() {
         for (Entry entry : this.ownedEntries) {
             entry.program.destroy();

@@ -7,28 +7,41 @@ import com.bdmajora.impetus.engine.impl.util.iterator.ByteArrayIterator;
 import com.bdmajora.impetus.engine.impl.render.chunk.region.RenderRegion;
 import org.jetbrains.annotations.Nullable;
 
+// Visible sections of one region grouped by what they contain.
 public class ChunkRenderList {
+    // Region of the sections.
     private final RenderRegion region;
 
+    // Sections with geometry and their count.
     private final byte[] sectionsWithGeometry = new byte[RenderRegion.REGION_SIZE];
     private int sectionsWithGeometryCount = 0;
 
+    // Sections with sprites and their count.
     private final byte[] sectionsWithSprites = new byte[RenderRegion.REGION_SIZE];
     private int sectionsWithSpritesCount = 0;
 
+    // Sections with block entities and their count.
     private final byte[] sectionsWithEntities = new byte[RenderRegion.REGION_SIZE];
     private int sectionsWithEntitiesCount = 0;
 
+    // Sections that need sorting and their count.
     private final byte[] sectionsNeedingDynamicSort = new byte[RenderRegion.REGION_SIZE];
     private int sectionsNeedingDynamicSortCount = 0;
 
+    // Number of sections listed.
     private int size;
 
+    // Creates a list for a region and rejects null.
     public ChunkRenderList(RenderRegion region) {
-        this.region = region;
+        this.region = java.util.Objects.requireNonNull(region, "region");
     }
 
+    // Adds a section with its content flags and rejects an index outside a byte or a full list.
     public void add(int index, int flags) {
+        if ((index & ~0xFF) != 0) {
+            throw new IllegalArgumentException("Section index out of range " + index);
+        }
+
         if (this.size >= RenderRegion.REGION_SIZE) {
             throw new ArrayIndexOutOfBoundsException("Render list is full");
         }
@@ -48,6 +61,7 @@ public class ChunkRenderList {
         this.sectionsNeedingDynamicSortCount += (flags >>> RenderVisualsService.NEEDS_DYNAMIC_SORT) & 1;
     }
 
+    // Returns an iterator over the sections that need sorting or null.
     public @Nullable ByteIterator sectionsNeedingDynamicSortIterator() {
         if (this.sectionsNeedingDynamicSortCount == 0) {
             return null;
@@ -56,6 +70,7 @@ public class ChunkRenderList {
         return new ByteArrayIterator(this.sectionsNeedingDynamicSort, this.sectionsNeedingDynamicSortCount);
     }
 
+    // Returns an iterator over the sections with geometry or null.
     public @Nullable ByteIterator sectionsWithGeometryIterator() {
         if (this.sectionsWithGeometryCount == 0) {
             return null;
@@ -64,6 +79,7 @@ public class ChunkRenderList {
         return new ByteArrayIterator(this.sectionsWithGeometry, this.sectionsWithGeometryCount);
     }
 
+    // Returns an iterator over the sections with sprites or null.
     public @Nullable ByteIterator sectionsWithSpritesIterator() {
         if (this.sectionsWithSpritesCount == 0) {
             return null;
@@ -72,6 +88,7 @@ public class ChunkRenderList {
         return new ByteArrayIterator(this.sectionsWithSprites, this.sectionsWithSpritesCount);
     }
 
+    // Returns an iterator over the sections with block entities or null.
     public @Nullable ByteIterator sectionsWithEntitiesIterator() {
         if (this.sectionsWithEntitiesCount == 0) {
             return null;
@@ -80,42 +97,37 @@ public class ChunkRenderList {
         return new ByteArrayIterator(this.sectionsWithEntities, this.sectionsWithEntitiesCount);
     }
 
-    /**
-     * {@return the backing array of local section indices which have block geometry}
-     * <p>
-     * Only the first {@link #getSectionsWithGeometryCount()} entries are meaningful, and each index is stored narrowed
-     * to a byte, so mask with {@code 0xFF} before use. Exposed so that draw-command assembly can walk the list without
-     * allocating a {@link ByteIterator} or paying a virtual call per section. Callers must not mutate it.
-     */
+    // Returns the array of the section indices with geometry where only the counted entries are valid and the array must not be changed.
     public byte[] getSectionsWithGeometry() {
         return this.sectionsWithGeometry;
     }
 
+    // Returns the number of sections with geometry.
     public int getSectionsWithGeometryCount() {
         return this.sectionsWithGeometryCount;
     }
 
-    // For sprite animation
+    // Returns the number of sections with sprites.
     public int getSectionsWithSpritesCount() {
         return this.sectionsWithSpritesCount;
     }
 
-    // For the block entity pass
+    // Returns the number of sections with block entities.
     public int getSectionsWithEntitiesCount() {
         return this.sectionsWithEntitiesCount;
     }
 
-    // The region every listed section belongs to
+    // Returns the region of the sections.
     public RenderRegion getRegion() {
         return this.region;
     }
 
-    // Sections listed
+    // Returns the number of sections listed.
     public int size() {
         return this.size;
     }
 
-    // For debugging
+    // Returns the chunk coordinates of the sections with geometry as text.
     @Override
     public String toString() {
         var iterator = this.sectionsWithGeometryIterator();

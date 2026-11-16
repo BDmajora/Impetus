@@ -13,15 +13,16 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.Set;
 
-// Swaps the tracked-player set for an open-addressed one, one per tracked entity iterated every tick it moves; ReferenceOpenHashSet since EntityPlayerMP does not override equals
+// Mixin that changes EntityTrackerEntry.
 @Mixin(EntityTrackerEntry.class)
 public class EntityTrackerEntryMixin {
+    // Reference to the field tracking players of the target.
     @Shadow
     @Final
     @Mutable
     public Set<EntityPlayerMP> trackingPlayers;
 
-    // Replaced at ctor return rather than redirecting Sets.newHashSet() so a Forge patch reordering that call can't silently no-op this
+    // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void equilibrium$useFastutilSet(CallbackInfo ci) {
         this.trackingPlayers = new ReferenceOpenHashSet<>();

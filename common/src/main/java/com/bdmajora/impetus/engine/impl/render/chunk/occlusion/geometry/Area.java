@@ -9,13 +9,21 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntArrays;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 
+// Rectangles inside a sixteen by sixteen grid and their bit masks.
 public class Area {
+    // Number of rectangles.
     public static final int AREA_COUNT;
+    // Number of rectangles that span a full row or column.
     public static final int SECTION_COUNT;
+    // Index of each key.
     private static final int[] AREA_KEY_TO_INDEX = new int[0x10000];
+    // Key of each index.
     private static final int[] AREA_INDEX_TO_KEY;
+    // Keys of the section rectangles.
     private static final int[] SECTION_KEYS;
+    // Indices of the section rectangles.
     private static final int[] SECTION_INDEX;
+    // Four bit rows of each rectangle.
     private static final long[] AREA_BITS;
 
     static {
@@ -51,7 +59,7 @@ public class Area {
         IntArrays.quickSort(AREA_INDEX_TO_KEY, (a, b) -> {
             final int result = Integer.compare(Area.size(b), Area.size(a));
 
-            // within same area size, prefer more compact rectangles
+            // Prefers compact rectangles of the same size
             return result == 0 ? Integer.compare(Area.edgeCount(a), Area.edgeCount(b)) : result;
         });
 
@@ -117,18 +125,22 @@ public class Area {
         }
     }
 
+    // Returns the index of a key.
     public static int keyToIndex(int key) {
         return AREA_KEY_TO_INDEX[key];
     }
 
+    // Returns the key of an index.
     public static int indexToKey(int index) {
         return AREA_INDEX_TO_KEY[index];
     }
 
+    // Returns the area index of a section rectangle.
     public static int sectionToAreaIndex(int sectionIndex) {
         return SECTION_INDEX[sectionIndex];
     }
 
+    // Returns whether the sample holds every cell of the rectangle.
     public static boolean isIncludedBySample(long[] sample, int sampleStart, int areaIndex) {
         areaIndex <<= 2;
 
@@ -143,6 +155,7 @@ public class Area {
                 && (template3 & sample[sampleStart + 3]) == template3;
     }
 
+    // Returns whether the sample holds any cell of the rectangle.
     public static boolean intersectsWithSample(long[] sample, int sampleStart, int areaIndex) {
         areaIndex <<= 2;
 
@@ -152,6 +165,7 @@ public class Area {
                 || (AREA_BITS[++areaIndex] & sample[++sampleStart]) != 0;
     }
 
+    // Returns whether the rectangle has a cell that the sample lacks.
     public static boolean isAdditive(long[] sample, int sampleStart, int areaIndex) {
         areaIndex <<= 2;
 
@@ -161,6 +175,7 @@ public class Area {
                 || (AREA_BITS[++areaIndex] | sample[++sampleStart]) != sample[sampleStart];
     }
 
+    // Clears the cells of the rectangle.
     public static void clearBits(long[] targetBits, int startIndex, int areaIndex) {
         areaIndex <<= 2;
 
@@ -170,30 +185,37 @@ public class Area {
         targetBits[++startIndex] &= ~AREA_BITS[++areaIndex];
     }
 
+    // Returns one row of the cells of a rectangle.
     public static long bitsFromIndex(int areaIndex, int y) {
         return AREA_BITS[(areaIndex << 2) + y];
     }
 
+    // Returns the key of a rectangle.
     public static int areaKey(int x0, int y0, int x1, int y1) {
         return x0 | (x1 << 4) | (y0 << 8) | (y1 << 12);
     }
 
+    // Returns the first column of a key.
     public static int x0(int areaKey) {
         return areaKey & 15;
     }
 
+    // Returns the first row of a key.
     public static int y0(int areaKey) {
         return (areaKey >> 8) & 15;
     }
 
+    // Returns the last column of a key.
     public static int x1(int areaKey) {
         return (areaKey >> 4) & 15;
     }
 
+    // Returns the last row of a key.
     public static int y1(int areaKey) {
         return (areaKey >> 12) & 15;
     }
 
+    // Returns the number of cells of a key.
     public static int size(int areaKey) {
         final int x0 = x0(areaKey);
         final int y0 = y0(areaKey);
@@ -203,6 +225,7 @@ public class Area {
         return (x1 - x0 + 1) * (y1 - y0 + 1);
     }
 
+    // Returns the sum of the width and height of a key.
     public static int edgeCount(int areaKey) {
         final int x0 = x0(areaKey);
         final int y0 = y0(areaKey);

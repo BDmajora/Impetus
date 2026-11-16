@@ -9,40 +9,52 @@ import net.minecraft.world.chunk.Chunk;
 
 import java.util.concurrent.Future;
 
-// Coordinates the two phases of a chunk's initial lighting across the sky and block lanes: usable once both have propagated, published as light-ready only once both have also reconciled its edges for the same generation
+// Tracks the first light of each chunk across the sky and block lanes until it is published.
 final class InitialLightCoordinator {
+    // Largest number of edge recovery attempts of a chunk.
     static final int MAX_RELIGHT_ATTEMPTS = 2;
 
+    // Bit of the sky lane.
     static final int LANE_SKY = 1;
+    // Bit of the block lane.
     static final int LANE_BLOCK = 1 << 1;
 
+    // Chunks the world holds now.
     private final LoadedChunkMap loadedChunks;
+    // Queue of the sky lane or null.
     private final LightQueue skyQueue;
+    // Queue of the block lane or null.
     private final LightQueue blockQueue;
 
+    // Lock of the completion table.
     private final Object lock = new Object();
+    // Pending completions by chunk coordinate.
     private final Long2ObjectOpenHashMap<Completion> completions = new Long2ObjectOpenHashMap<>();
+    // Last generation handed out.
     private long nextGeneration;
 
+    // Creates a coordinator over the loaded chunks and the lane queues.
     InitialLightCoordinator(LoadedChunkMap loadedChunks, LightQueue skyQueue, LightQueue blockQueue) {
         this.loadedChunks = loadedChunks;
         this.skyQueue = skyQueue;
         this.blockQueue = blockQueue;
     }
 
+    // Queues the first light of a chunk and finishes a superseded completion as unpublished.
     Completion queue(int chunkX, int chunkZ, Chunk chunk, Boolean[] emptySections) {
         return queue(chunkX, chunkZ, chunk, emptySections, 0, false);
     }
 
-    // Starts a replacement generation after an overflow, chaining the old completion to the new one so existing waiters see its result
+    // Queues a relight of a chunk that hands its result to the superseded completion.
     Completion queueRecovery(int chunkX, int chunkZ, Chunk chunk, Boolean[] emptySections, int edgeRecoveryAttempts) {
         return queue(chunkX, chunkZ, chunk, emptySections, edgeRecoveryAttempts, true);
     }
 
+    // Queues the light of a chunk in every lane under a new generation and rejects an attempt count out of range.
     private Completion queue(int chunkX, int chunkZ, Chunk chunk, Boolean[] emptySections,
                              int edgeRecoveryAttempts, boolean handoffSupersededCompletion) {
         if (edgeRecoveryAttempts < 0 || edgeRecoveryAttempts > MAX_RELIGHT_ATTEMPTS) {
-            throw new IllegalArgumentException("Invalid edge-recovery attempt: " + edgeRecoveryAttempts);
+            throw new IllegalArgumentException("Invalid edge recovery attempt: " + edgeRecoveryAttempts);
         }
 
         long key = ChunkPos.asLong(chunkX, chunkZ);
@@ -55,7 +67,6 @@ final class InitialLightCoordinator {
             completion = new Completion(generation, requiredLanes, chunk, edgeRecoveryAttempts);
             superseded = this.completions.put(key, completion);
 
-            // Both lanes are queued under the generation lock so a newer request can never be followed by an older insertion
             AsyncLitChunk lit = (AsyncLitChunk) chunk;
             lit.fulgor$setLightReady(false);
             lit.fulgor$setLightUsable(false);
@@ -77,6 +88,7 @@ final class InitialLightCoordinator {
         return completion;
     }
 
+    // Forgets a chunk in every lane and finishes its completion as unpublished.
     void removeChunk(int chunkX, int chunkZ) {
         long key = ChunkPos.asLong(chunkX, chunkZ);
         Completion removed;
@@ -94,7 +106,7 @@ final class InitialLightCoordinator {
         }
     }
 
-    // Restarts coordinated lighting when the final edge pass overflowed; an edge-only retry cannot recover updates dropped away from the seam
+    // Requeues a chunk whose edge check overflowed and returns whether the task should stop.
     boolean restartAfterEdgeOverflow(ChunkTasks task, int chunkX, int chunkZ, String laneName) {
         if (task.initialLightEdgeGeneration <= 0L) {
             return false;
@@ -107,7 +119,6 @@ final class InitialLightCoordinator {
 
         synchronized (this.lock) {
             Completion completion = this.completions.get(task.chunkCoordinate);
-            // A newer generation already superseded this edge pass
             if (completion == null || completion.generation != task.initialLightEdgeGeneration) {
                 return true;
             }
@@ -120,7 +131,7 @@ final class InitialLightCoordinator {
         }
     }
 
-    // Records one lane's initial propagation; once every lane is in, the chunk becomes usable and the generation-tagged edge passes are queued
+    // Records the first pass of a lane and starts the edge checks once every lane finished.
     void completeInitial(ChunkTasks task, int lane) {
         if (task.initialLightGeneration <= 0L) {
             return;
@@ -176,7 +187,7 @@ final class InitialLightCoordinator {
         }
     }
 
-    // Records one lane's generation-tagged edge pass; the last lane copies the reconciled light into vanilla storage and publishes the chunk
+    // Records the edge pass of a lane and publishes the light once every lane finished.
     void completeEdges(ChunkTasks task, int lane) {
         if (task.initialLightEdgeGeneration <= 0L) {
             return;
@@ -198,7 +209,6 @@ final class InitialLightCoordinator {
         boolean published = false;
         Throwable publishFailure = null;
         AsyncLitChunk lit = (AsyncLitChunk) completion.chunk;
-        // Publication is serialised only against another generation of the same chunk; the generation checks around the copy stop a stale one landing
         synchronized (completion.chunk) {
             boolean currentGeneration;
             synchronized (this.lock) {
@@ -236,12 +246,14 @@ final class InitialLightCoordinator {
         }
     }
 
+    // Returns whether a chunk has a pending completion.
     boolean hasPending(long chunkCoordinate) {
         synchronized (this.lock) {
             return this.completions.containsKey(chunkCoordinate);
         }
     }
 
+    // Returns the future of the pending completion of a chunk or null.
     Future<Void> getPendingFuture(long chunkCoordinate) {
         synchronized (this.lock) {
             Completion completion = this.completions.get(chunkCoordinate);
@@ -249,24 +261,38 @@ final class InitialLightCoordinator {
         }
     }
 
+    // Outcomes of recording a lane.
     enum Result {
+        // Lane result of an old generation or a repeated lane.
         IGNORED,
+        // Lane recorded while other lanes are missing.
         WAITING,
+        // Every lane finished the first pass.
         INITIAL_COMPLETE,
+        // Every lane finished the edge pass.
         COMPLETE
     }
 
-    // One generation of a chunk's initial lighting, with the exactly-once lane bookkeeping folded in
+    // Progress of one generation of the light of a chunk.
     static final class Completion {
+        // Generation of the completion.
         final long generation;
+        // Number of edge recovery attempts so far.
         final int edgeRecoveryAttempts;
+        // Bits of the lanes that must finish.
         final int requiredLanes;
+        // Future that finishes with the completion.
         final SettableFuture<Void> future = SettableFuture.create();
+        // Chunk being lit.
         final Chunk chunk;
+        // Published state of the light.
         volatile boolean published;
+        // Bits of the lanes that finished the first pass.
         private int initialCompletedLanes;
+        // Bits of the lanes that finished the edge pass.
         private int edgeCompletedLanes;
 
+        // Creates a completion.
         Completion(long generation, int requiredLanes, Chunk chunk, int edgeRecoveryAttempts) {
             this.generation = generation;
             this.requiredLanes = requiredLanes;
@@ -274,6 +300,7 @@ final class InitialLightCoordinator {
             this.edgeRecoveryAttempts = edgeRecoveryAttempts;
         }
 
+        // Records the first pass of a lane and returns the outcome.
         synchronized Result completeInitial(long taskGeneration, int lane) {
             if (taskGeneration != this.generation || (lane & this.requiredLanes) == 0 || (this.initialCompletedLanes & lane) != 0) {
                 return Result.IGNORED;
@@ -282,6 +309,7 @@ final class InitialLightCoordinator {
             return this.initialCompletedLanes == this.requiredLanes ? Result.INITIAL_COMPLETE : Result.WAITING;
         }
 
+        // Records the edge pass of a lane and returns the outcome.
         synchronized Result completeEdges(long taskGeneration, int lane) {
             if (taskGeneration != this.generation || (lane & this.requiredLanes) == 0
                     || this.initialCompletedLanes != this.requiredLanes || (this.edgeCompletedLanes & lane) != 0) {
@@ -291,6 +319,7 @@ final class InitialLightCoordinator {
             return this.edgeCompletedLanes == this.requiredLanes ? Result.COMPLETE : Result.WAITING;
         }
 
+        // Finishes the future once with the published state.
         synchronized void finish(boolean published) {
             if (this.future.isDone()) {
                 return;

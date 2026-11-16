@@ -5,36 +5,37 @@ import com.bdmajora.impetus.engine.impl.model.quad.BakedQuadView;
 import com.bdmajora.impetus.engine.impl.model.quad.ModelQuadView;
 import com.bdmajora.impetus.engine.api.util.ColorABGR;
 
+// Bit flags and the calculation of the properties of a quad.
 public class ModelQuadFlags {
-    // the quad does not fully cover the given face for the model
+    // Flag of a quad that does not fully cover its face.
     public static final int IS_PARTIAL = 0b001;
 
-    // the quad is parallel to its light face
+    // Flag of a quad that is parallel to its light face.
     public static final int IS_PARALLEL = 0b010;
 
-    // the quad is aligned to the block grid; only set when IS_PARALLEL is also set
+    // Flag of a quad on the block grid that is also parallel.
     public static final int IS_ALIGNED = 0b100;
 
-    // The quad should be shaded using vanilla's getShade logic and the light face rather than per-vertex normals
+    // Flag of a quad that is shaded by its light face.
     public static final int IS_VANILLA_SHADED = 0b1000;
-    // the particle sprite on this quad can be trusted to be the only sprite it shows
+    // Flag of a quad whose particle sprite is its only sprite.
     public static final int IS_TRUSTED_SPRITE = (1 << 4);
-    // this quad can use a more optimal terrain render pass based on its sprite
+    // Flag of a quad that can use a cheaper render pass.
     public static final int IS_PASS_OPTIMIZABLE = (1 << 5);
-    // the flags are populated for the quad
+    // Flag of a quad whose flags were calculated.
     public static final int IS_POPULATED = (1 << 31);
 
-    // true if the bit-flag set contains the given flag
+    // Returns whether the flags contain any bit of the mask.
     public static boolean contains(int flags, int mask) {
         return (flags & mask) != 0;
     }
 
-    // Classifies a quad as aligned, partial or parallel to its face, from its vertex positions
+    // Calculates the flags of a quad without earlier flags.
     public static int getQuadFlags(ModelQuadView quad, ModelQuadFacing face) {
         return getQuadFlags(quad, face, 0);
     }
 
-    // Checks the quad's vertex order is Minecraft's canonical CCW-from-outside baked order for the face, which AO, lighting interpolation and culling all assume; compares against expected coordinates without allocating
+    // Returns whether the vertices of a quad follow the baked order of its face.
     private static boolean canonicalVertexOrder(ModelQuadView quad, ModelQuadFacing face, float minX, float minY, float minZ,
                                                 float maxX, float maxY, float maxZ) {
         return switch (face) {
@@ -66,8 +67,12 @@ public class ModelQuadFlags {
         };
     }
 
-    // Calculates the quad's properties, used later by the light pipeline for certain optimizations
+    // Calculates the flags of a quad and keeps unrelated earlier flags and rejects an unassigned face.
     public static int getQuadFlags(ModelQuadView quad, ModelQuadFacing face, int existingFlags) {
+        if (face == ModelQuadFacing.UNASSIGNED) {
+            throw new IllegalArgumentException("Quad flags need an assigned face");
+        }
+
         float minX = 32.0F;
         float minY = 32.0F;
         float minZ = 32.0F;
@@ -95,7 +100,7 @@ public class ModelQuadFlags {
             maxY = Math.max(maxY, y);
             maxZ = Math.max(maxZ, z);
 
-            for (int j = 0; j < i; ++j) {
+            for (int j = 0; !degenerate && j < i; ++j) {
                 float px = quad.getX(j);
                 float py = quad.getY(j);
                 float pz = quad.getZ(j);
@@ -108,13 +113,13 @@ public class ModelQuadFlags {
                 }
             }
 
-            if(ColorABGR.unpackAlpha(quad.getColor(i)) != 255) {
+            if (ColorABGR.unpackAlpha(quad.getColor(i)) != 255) {
                 nonOpaqueColor = true;
             }
         }
 
-        // Only set the partial flag when the vertices are in the expected order, since the optimization maps them directly onto corners
-        boolean partial = degenerate || (switch (face.getAxis()) {
+        // Marks the quad partial when it has fewer than four vertices or does not cover the face or its vertices are out of order
+        boolean partial = degenerate || numVertices < 4 || (switch (face.getAxis()) {
             case X -> minY >= 0.0001f || minZ >= 0.0001f || maxY <= 0.9999F || maxZ <= 0.9999F;
             case Y -> minX >= 0.0001f || minZ >= 0.0001f || maxX <= 0.9999F || maxZ <= 0.9999F;
             case Z -> minX >= 0.0001f || minY >= 0.0001f || maxX <= 0.9999F || maxY <= 0.9999F;

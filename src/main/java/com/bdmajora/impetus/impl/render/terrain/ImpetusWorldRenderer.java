@@ -29,54 +29,53 @@ import com.bdmajora.impetus.umbra.vertices.UmbraMeshVertex;
 
 import java.util.*;
 
-// extends vanilla's RenderGlobal with the Impetus terrain renderer's own draw and visibility entry points
+// World renderer of Impetus terrain.
 public class ImpetusWorldRenderer extends SimpleWorldRenderer<WorldClient, VintageRenderSectionManager, BlockRenderLayer, TileEntity, ImpetusWorldRenderer.TileEntityRenderContext>  {
-    // What the block entity pass needs from RenderGlobal
+    // Data of the tile entity render context.
     public record TileEntityRenderContext(Map<Integer, DestroyBlockProgress> damagedBlocks, float partialTicks) {}
 
-    // the ImpetusWorldRenderer for the current dimension
+    // Returns the renderer and fails when there is none.
     public static ImpetusWorldRenderer instance() {
         return SimpleWorldRenderer.Provider.getWorldRenderer(Minecraft.getMinecraft().renderGlobal);
     }
 
-    // the ImpetusWorldRenderer for the current dimension, or null if none is attached
+    // Returns the renderer or null.
     public static ImpetusWorldRenderer instanceNullable() {
         return SimpleWorldRenderer.Provider.getWorldRendererNullable(Minecraft.getMinecraft().renderGlobal);
     }
 
-    // Zero on 1.12.2
+    // Returns the minimum build height.
     @Override
     public int getMinimumBuildHeight() {
         return 0;
     }
 
-    // 256 on 1.12.2
+    // Returns the maximum build height.
     @Override
     public int getMaximumBuildHeight() {
         return this.world.getHeight();
     }
 
-    // From game settings
+    // Returns the effective render distance.
     @Override
     public int getEffectiveRenderDistance() {
         return Minecraft.getMinecraft().gameSettings.renderDistanceChunks;
     }
 
-    // Captures vanilla's current projection and model-view for the chunk shader
+    // Creates the chunk render matrices.
     @Override
     protected ChunkRenderMatrices createChunkRenderMatrices() {
         if (com.bdmajora.impetus.umbra.pipeline.UmbraShadowRenderer.isShadowPass()) {
-            // The Umbra shadow pass re-drives this render path from the sun's point of view.
             var state = com.bdmajora.impetus.umbra.uniforms.CapturedRenderingState.INSTANCE;
             return new ChunkRenderMatrices(state.getShadowProjection(), state.getShadowModelView());
         }
         return new ChunkRenderMatrices(ActiveRenderInfoAccessor.getProjectionMatrix(), ActiveRenderInfoAccessor.getModelViewMatrix());
     }
 
-    // The shader pack's mesh programs the current section manager draws with, watched so a pack they cannot carry rebuilds the renderer on OpenGL
+    // Mesh shader terrain shading.
     private UmbraMeshShading meshShading;
 
-    // Factory hook for the 1.12.2 section manager; the mesh backend is decided once here, since it fixes the vertex layout every build uses
+    // Creates the render section manager.
     @Override
     protected VintageRenderSectionManager createRenderSectionManager(CommandList commandList) {
         int renderDistance = this.getEffectiveRenderDistance();
@@ -94,7 +93,6 @@ public class ImpetusWorldRenderer extends SimpleWorldRenderer<WorldClient, Vinta
                 this.meshShading = shading;
                 return manager;
             } catch (RuntimeException e) {
-                // A driver that advertises the extensions but rejects the programs gets the raster renderer instead of a crash
                 ImpetusVintage.logger().error("Mesh-shader terrain failed to start; using the standard renderer", e);
                 MeshShaderSupport.markBroken(String.valueOf(e.getMessage()));
             }
@@ -103,13 +101,13 @@ public class ImpetusWorldRenderer extends SimpleWorldRenderer<WorldClient, Vinta
         return VintageRenderSectionManager.create(chooseVertexType(), this.world, renderDistance, commandList, null);
     }
 
-    // A ported pack whose programs the mesh backend could not build goes back to OpenGL on the next frame
+    // Returns whether rebuild.
     @Override
     protected boolean needsRebuild() {
         return this.meshShading != null && this.meshShading.hasFailed();
     }
 
-    // F3: which backend draws the terrain first, and with Nvidium chosen but OpenGL drawing, why
+    // Returns the debug strings.
     @Override
     public Collection<String> getDebugStrings() {
         List<String> lines = new ArrayList<>();
@@ -119,7 +117,7 @@ public class ImpetusWorldRenderer extends SimpleWorldRenderer<WorldClient, Vinta
         return lines;
     }
 
-    // The F3 line naming the terrain backend
+    // Returns the name of the terrain backend.
     static String terrainBackend(boolean meshTerrain) {
         if (meshTerrain) {
             return "Terrain: Nvidium" + (UmbraTerrainProgramOverride.areShadersActive() ? " (shader pack port)" : "");
@@ -138,16 +136,15 @@ public class ImpetusWorldRenderer extends SimpleWorldRenderer<WorldClient, Vinta
         return "Terrain: OpenGL, Nvidium off: " + (reason.isEmpty() ? "waiting for the renderer to reload" : reason);
     }
 
-    // Nvidium draws the terrain when it is the chosen Graphics API and the GPU has NV_mesh_shader and friends; with a shader pack only when the pack is an Nvidium port that has not already failed to build, so an unported pack's terrain stays on OpenGL
+    // Returns whether use mesh terrain.
     static boolean shouldUseMeshTerrain() {
         return ImpetusVintage.options().graphicsApi == ImpetusGameOptions.GraphicsApi.NVIDIUM
                 && MeshShaderSupport.isSupported()
                 && (!UmbraTerrainProgramOverride.areShadersActive() || UmbraMeshShading.canRun(Umbra.getCurrentPack()));
     }
 
-    // performs a render pass for the given BlockRenderLayer, drawing every visible chunk for it
+    // Draws one block layer.
     public void drawChunkLayer(BlockRenderLayer renderLayer, double x, double y, double z) {
-        // Umbra renderStage uniform: packs gate voxelization on MC_RENDER_STAGE_TERRAIN_* (ordinals 8/9/10/17).
         int stage = switch (renderLayer) {
             case SOLID -> 8;
             case CUTOUT_MIPPED -> 9;
@@ -164,7 +161,7 @@ public class ImpetusWorldRenderer extends SimpleWorldRenderer<WorldClient, Vinta
         GlStateManager.resetColor();
     }
 
-    // Interpolated camera position and rotation for this frame
+    // Returns the camera state of a frame.
     public static CameraState captureCameraState(double ticks) {
         Entity viewEntity = Objects.requireNonNull(Minecraft.getMinecraft().getRenderViewEntity(), "Client must have view entity");
 
@@ -179,8 +176,7 @@ public class ImpetusWorldRenderer extends SimpleWorldRenderer<WorldClient, Vinta
         return new CameraState(x, y, z, pitch, yaw, fogDistance);
     }
 
-
-    // Draws each tile entity through vanilla's dispatcher, applying block damage overlays
+    // Draws a list of block entities.
     @Override
     protected void renderBlockEntityList(List<TileEntity> list, TileEntityRenderContext tileEntityRenderContext) {
         int pass = MinecraftForgeClient.getRenderPass();
@@ -202,7 +198,7 @@ public class ImpetusWorldRenderer extends SimpleWorldRenderer<WorldClient, Vinta
         }
     }
 
-    // Draws tile entities in every visible section; returns the count for the debug screen
+    // Draws the visible block entities and returns the count.
     @Override
     public int renderBlockEntities(TileEntityRenderContext tileEntityRenderContext) {
         int pass = MinecraftForgeClient.getRenderPass();
@@ -212,13 +208,12 @@ public class ImpetusWorldRenderer extends SimpleWorldRenderer<WorldClient, Vinta
         return count;
     }
 
-    // whether the entity intersects any visible chunk in the graph
+    // Returns whether entity visible.
     public boolean isEntityVisible(Entity entity) {
         if (!ImpetusVintage.options().performance.useEntityCulling || this.renderSectionManager.isInShadowPass()) {
             return true;
         }
 
-        // Ensure entities with outlines or nametags are always visible
         if (entity.isGlowing() || entity.getAlwaysRenderNameTagForRender()) {
             return true;
         }
@@ -228,9 +223,8 @@ public class ImpetusWorldRenderer extends SimpleWorldRenderer<WorldClient, Vinta
         return this.isBoxVisible(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
     }
 
-    // Compact vertices unless the shader pipeline needs the full format
+    // Returns the vertex type for the current pipeline.
     private ChunkVertexType chooseVertexType() {
-        // With a shader pack active, terrain is drawn by the pack's transformed gbuffers_terrain, which reads the vanilla-like float layout plus the OptiFine extended attributes UmbraChunkVertexType appends
         if (com.bdmajora.impetus.umbra.terrain.UmbraTerrainProgramOverride.areShadersActive()) {
             return com.bdmajora.impetus.umbra.vertices.UmbraChunkVertexType.INSTANCE;
         }

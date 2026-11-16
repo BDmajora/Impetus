@@ -6,28 +6,30 @@ import net.minecraft.world.World;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-// Names profiler sections after the renderer so the F3 pie chart splits entity/block-entity rendering by type; push/pop run the identical shouldProfile check to stay balanced
+// Adds profiler sections around entity rendering.
 public final class ProfilerHelper {
+    // Section name of each renderer class.
     private static final Map<Class<?>, String> NAME_CACHE = new WeakHashMap<>();
 
+    // Prevents instantiation
     private ProfilerHelper() {
     }
 
-    // Pushes a section named after the renderer's simple class name
+    // Starts a profiler section for the renderer.
     public static void startSection(World world, Object renderer) {
         if (shouldProfile(world, renderer)) {
             world.profiler.startSection(sectionName(renderer));
         }
     }
 
-    // Pops the section startSection pushed for this renderer
+    // Ends the profiler section of the renderer.
     public static void endSection(World world, Object renderer) {
         if (shouldProfile(world, renderer)) {
             world.profiler.endSection();
         }
     }
 
-    // Identical check at push and pop, so the two can never go out of balance
+    // Returns whether the renderer is profiled.
     private static boolean shouldProfile(World world, Object renderer) {
         return world != null
                 && renderer != null
@@ -35,7 +37,7 @@ public final class ProfilerHelper {
                 && !sectionName(renderer).isEmpty();
     }
 
-    // Simple class name, memoised per renderer class
+    // Returns the section name of the renderer class.
     private static String sectionName(Object renderer) {
         return NAME_CACHE.computeIfAbsent(renderer.getClass(), Class::getSimpleName);
     }

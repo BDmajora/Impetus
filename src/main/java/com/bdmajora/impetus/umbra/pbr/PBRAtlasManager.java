@@ -14,44 +14,57 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.Map;
 
-// Builds the normals and specular PBR atlases with the block atlas's exact layout so base UVs address them directly; sprites without _n/_s keep the flat-normal and no-reflectance defaults, rebuilt every stitch, animated sprites contribute their first frame
+// Owner of the normal and specular atlases.
 public final class PBRAtlasManager {
+    // Logger of this class.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
 
-    // Spelled out rather than pulled from an LWJGL binding so this file stays independent of the GL wrapper split.
+    // Gl texture 2 d.
     private static final int GL_TEXTURE_2D = 0x0DE1;
+    // GL enum of the magnify filter.
     private static final int GL_TEXTURE_MAG_FILTER = 0x2800;
+    // GL enum of the minify filter.
     private static final int GL_TEXTURE_MIN_FILTER = 0x2801;
+    // GL enum of the s wrap.
     private static final int GL_TEXTURE_WRAP_S = 0x2802;
+    // GL enum of the t wrap.
     private static final int GL_TEXTURE_WRAP_T = 0x2803;
+    // GL enum of nearest filtering.
     private static final int GL_NEAREST = 0x2600;
+    // GL enum of nearest mipmap filtering.
     private static final int GL_NEAREST_MIPMAP_NEAREST = 0x2700;
+    // GL enum of edge clamping.
     private static final int GL_CLAMP_TO_EDGE = 0x812F;
 
+    // Normal atlas name or minus one.
     private static int normalsAtlas = -1;
+    // Specular atlas name or minus one.
     private static int specularAtlas = -1;
+    // Number of sprites with normals.
     private static int normalsCount;
+    // Number of sprites with specular data.
     private static int specularCount;
 
+    // Prevents instantiation
     private PBRAtlasManager() {
     }
 
-    // The normals atlas GL id, or the caller's fallback (the neutral 1x1) when no resource pack shipped a normal map, so the sampler is bound either way
+    // Returns the normal atlas or a fallback.
     public static int getNormalsAtlas(int fallback) {
         return normalsCount > 0 ? normalsAtlas : fallback;
     }
 
-    // The specular atlas GL id, same fallback rule
+    // Returns the specular atlas or a fallback.
     public static int getSpecularAtlas(int fallback) {
         return specularCount > 0 ? specularAtlas : fallback;
     }
 
-    // Allocates both atlases at the base size and uploads every companion it can find
+    // Rebuilds both atlases from the sprites.
     public static void rebuild(Map<String, TextureAtlasSprite> sprites, int atlasWidth, int atlasHeight, int mipmapLevels) {
         try {
             destroy();
 
-            normalsAtlas = allocateAtlas(atlasWidth, atlasHeight, mipmapLevels, 0xFF7F7FFF); // ARGB: flat +Z normal (127,127,255,255)
+            normalsAtlas = allocateAtlas(atlasWidth, atlasHeight, mipmapLevels, 0xFF7F7FFF);
             specularAtlas = allocateAtlas(atlasWidth, atlasHeight, mipmapLevels, 0x00000000);
             normalsCount = 0;
             specularCount = 0;
@@ -68,7 +81,6 @@ public final class PBRAtlasManager {
                 }
             }
 
-            // AFTER every upload, not in allocateAtlas: TextureUtil.uploadTextureMipmap re-applies filter and wrap modes on each call, so anything set at allocation is overwritten by the first companion sprite
             GlStateManager.bindTexture(normalsAtlas);
             applyPbrSampling(mipmapLevels);
             GlStateManager.bindTexture(specularAtlas);
@@ -76,13 +88,12 @@ public final class PBRAtlasManager {
 
             GlStateManager.bindTexture(0);
         } catch (Throwable t) {
-            // PBR is an enhancement; a failure here must never break the atlas reload.
             LOGGER.error("[Umbra] Failed to build PBR atlases; packs will see flat surfaces", t);
             destroy();
         }
     }
 
-    // Frees both GL textures, e.g. before a resource reload
+    // Deletes the atlases.
     public static void destroy() {
         if (normalsAtlas != -1) {
             TextureUtil.deleteTexture(normalsAtlas);
@@ -96,21 +107,19 @@ public final class PBRAtlasManager {
         specularCount = 0;
     }
 
-    // Creates one atlas texture with every mip level filled with the neutral value
+    // Creates an atlas texture with its mip levels.
     private static int allocateAtlas(int width, int height, int mipmapLevels, int fillArgb) {
         int texture = TextureUtil.glGenTextures();
         TextureUtil.allocateTextureImpl(texture, mipmapLevels, width, height);
 
-        // Fill level 0 (and mips) with the neutral value so unmapped sprites read as flat/non-reflective.
         GlStateManager.bindTexture(texture);
         TextureUtil.uploadTextureMipmap(neutralMipLevels(width, height, mipmapLevels, fillArgb),
                 width, height, 0, 0, false, false);
         return texture;
     }
 
-    // Pins the PBR atlas sampler to nearest filtering plus clamp-to-edge like Iris; uploadTextureMipmap leaves NEAREST_MIPMAP_LINEAR and REPEAT, and the level blend averages neighbouring sprites' labPBR emissiveness into sprites that should never glow, view-angle dependent, which is what servers with custom item-model scenery hit
+    // Applies the pbr sampling.
     private static void applyPbrSampling(int mipmapLevels) {
-        // Nearest in both directions; with mipmaps present minification must be NEAREST_MIPMAP_NEAREST, since the "_LINEAR" level blend is the whole bug
         GlStateManager.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         GlStateManager.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
                 mipmapLevels > 0 ? GL_NEAREST_MIPMAP_NEAREST : GL_NEAREST);
@@ -118,7 +127,7 @@ public final class PBRAtlasManager {
         GlStateManager.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
 
-    // One flat array per mip level, halving each time
+    // Returns neutral data for every mip level.
     private static int[][] neutralMipLevels(int width, int height, int mipmapLevels, int fillArgb) {
         int levelCount = Math.max(1, mipmapLevels + 1);
         int[][] levels = new int[levelCount][];
@@ -132,7 +141,7 @@ public final class PBRAtlasManager {
         return levels;
     }
 
-    // Loads a companion, mipmaps it and copies it into the sprite's rect; false when the file is absent
+    // Uploads the normal or specular companion of a sprite and returns whether it existed.
     private static boolean uploadCompanion(TextureAtlasSprite sprite, String suffix, int atlasTexture, int mipmapLevels) {
         BufferedImage image = readCompanion(sprite.getIconName(), suffix);
         if (image == null) {
@@ -147,7 +156,6 @@ public final class PBRAtlasManager {
             return false;
         }
 
-        // Sprite sizes are already constrained by the atlas's mip level count, so the base atlas's generator is safe here
         int[][] levels;
         try {
             levels = mipmapLevels > 0
@@ -162,7 +170,7 @@ public final class PBRAtlasManager {
         return true;
     }
 
-    // Scales the companion image to the sprite's base resolution and crops to the first frame, nearest-neighbour specifically since smoothing would blend LabPBR's ENCODED channel values (averaging two material ids gives an unrelated third)
+    // Returns the pixels of one animation frame.
     private static int[] extractFrame(BufferedImage image, int iconWidth, int iconHeight) {
         int srcWidth = image.getWidth();
         int srcHeight = image.getHeight();
@@ -172,7 +180,7 @@ public final class PBRAtlasManager {
 
         int[] out = new int[iconWidth * iconHeight];
         for (int y = 0; y < iconHeight; y++) {
-            int srcY = y * srcWidth / iconWidth; // scale by width ratio; crops to frame 0 of animation strips
+            int srcY = y * srcWidth / iconWidth;
             if (srcY >= srcHeight) {
                 srcY = srcHeight - 1;
             }
@@ -184,7 +192,7 @@ public final class PBRAtlasManager {
         return out;
     }
 
-    // Resolves <name>_n or _s next to the sprite; null when missing
+    // Reads the companion image of a sprite or returns null.
     private static BufferedImage readCompanion(String iconName, String suffix) {
         ResourceLocation icon = new ResourceLocation(iconName);
         ResourceLocation location = new ResourceLocation(icon.getNamespace(),
@@ -193,7 +201,7 @@ public final class PBRAtlasManager {
         try (IResource resource = Minecraft.getMinecraft().getResourceManager().getResource(location)) {
             return ImageIO.read(resource.getInputStream());
         } catch (IOException e) {
-            return null; // the overwhelmingly common case: no companion texture
+            return null;
         }
     }
 }

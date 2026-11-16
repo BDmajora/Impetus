@@ -9,9 +9,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.net.URI;
 
-// Chat links after the confirm screen, and the screenshot link, open through xdg-open instead of AWT's browse, which Linux desktops mostly refuse
+// Mixin that changes GuiScreen.
 @Mixin(GuiScreen.class)
 public abstract class GuiScreenLinkMixin {
+    // Runs at the start of openWebLink and can cancel it.
     @Inject(method = "openWebLink(Ljava/net/URI;)V", at = @At("HEAD"), cancellable = true)
     private void linuxextras$openWithXdg(URI url, CallbackInfo ci) {
         if (XdgOpen.open(url.toString())) {

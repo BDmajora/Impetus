@@ -7,9 +7,10 @@ import org.spongepowered.asm.mixin.Mixin;
 
 import java.util.List;
 
-// The server's connection list, iterated once per tick to flush deferred writes
+// Mixin that changes NetworkSystem.
 @Mixin(NetworkSystem.class)
 public interface NetworkSystemAccessor {
+    // Gives access to the field network managers.
     @Accessor("networkManagers")
     List<NetworkManager> impetus$networkManagers();
 }

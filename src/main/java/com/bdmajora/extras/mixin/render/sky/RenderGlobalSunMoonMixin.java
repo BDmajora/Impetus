@@ -10,16 +10,20 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Slice;
 
-// Separate sun and moon switches like Sodium Extra; both draw through the same code, told apart by slicing renderSky between the SUN_TEXTURES/MOON_PHASES_TEXTURES references, and suppression finishes+resets the already-filled Tessellator
+// Mixin that changes RenderGlobal.
 @Mixin(RenderGlobal.class)
 public class RenderGlobalSunMoonMixin {
+    // Target of the sun texture bind.
     private static final String SUN_TEXTURES =
             "Lnet/minecraft/client/renderer/RenderGlobal;SUN_TEXTURES:Lnet/minecraft/util/ResourceLocation;";
+    // Target of the moon texture bind.
     private static final String MOON_TEXTURES =
             "Lnet/minecraft/client/renderer/RenderGlobal;MOON_PHASES_TEXTURES:Lnet/minecraft/util/ResourceLocation;";
+    // Target of the star brightness read.
     private static final String STAR_BRIGHTNESS =
             "Lnet/minecraft/client/multiplayer/WorldClient;getStarBrightness(F)F";
 
+    // Wraps the call of Tessellator.draw in renderSky.
     @WrapOperation(
             method = "renderSky(FI)V",
             slice = @Slice(
@@ -32,6 +36,7 @@ public class RenderGlobalSunMoonMixin {
         impetus$drawOrDiscard(tessellator, original, Extras.options().detail.sun);
     }
 
+    // Wraps the call of Tessellator.draw in renderSky.
     @WrapOperation(
             method = "renderSky(FI)V",
             slice = @Slice(
@@ -44,6 +49,7 @@ public class RenderGlobalSunMoonMixin {
         impetus$drawOrDiscard(tessellator, original, Extras.options().detail.moon);
     }
 
+    // Helper method draw or discard added to the target.
     @Unique
     private static void impetus$drawOrDiscard(Tessellator tessellator, Operation<Void> original, boolean enabled) {
         if (enabled) {

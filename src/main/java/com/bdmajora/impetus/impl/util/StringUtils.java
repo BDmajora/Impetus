@@ -6,10 +6,12 @@ import java.util.Locale;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
+// Helpers for strings.
 public class StringUtils {
+    // Pattern of a whitespace run.
     private static final Pattern WHITESPACE = Pattern.compile("\\s+");
 
-    // Levenshtein distance: the number of edits (insertion, deletion, substitution) needed to transform one string into another; two rolling rows rather than the full m x n table
+    // Returns the edit distance of two strings.
     public static int levenshteinDistance(String s1, String s2) {
         int m = s1.length();
         int n = s2.length();
@@ -36,7 +38,7 @@ public class StringUtils {
         return previous[n];
     }
 
-    // Options whose name carries every word of the input (by prefix or within maxDistance edits), for the options screen search
+    // Fuzzies the search.
     public static <T> List<T> fuzzySearch(Iterable<T> options, String userInput, int maxDistance, Function<T, String> toStringFn) {
         List<T> result = new ArrayList<>();
         String[] targetWords = WHITESPACE.split(userInput.toLowerCase(Locale.ROOT));
@@ -59,7 +61,7 @@ public class StringUtils {
         return result;
     }
 
-    // A prefix match is the cheap test, so it runs before the edit distance
+    // Returns whether it contains the word.
     private static boolean containsWord(String[] sentenceWords, String word, int maxDistance) {
         for (String sentenceWord : sentenceWords) {
             if (sentenceWord.startsWith(word) || levenshteinDistance(word, sentenceWord) <= maxDistance) {

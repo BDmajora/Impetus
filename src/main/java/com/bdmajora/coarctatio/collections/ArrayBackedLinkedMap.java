@@ -8,13 +8,14 @@ import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Set;
 
-// Immutable insertion-ordered map over two parallel arrays for MultipartBakedModel.selectors; linear lookup beats hashing at single-digit sizes
+// Read only map that keeps its entries in two arrays in insertion order.
 public class ArrayBackedLinkedMap<K, V> extends AbstractMap<K, V> {
-    // Array order is insertion order, which is what makes iteration match a LinkedHashMap
+    // Keys in insertion order.
     private final K[] keys;
+    // Values in the order of the keys.
     private final V[] values;
 
-    // Copies out of the source once and drops it; arrays are exactly sized, so no growth slack
+    // Creates a map holding a copy of the source entries.
     @SuppressWarnings("unchecked")
     public ArrayBackedLinkedMap(Map<K, V> src) {
         int size = src.size();
@@ -30,32 +31,32 @@ public class ArrayBackedLinkedMap<K, V> extends AbstractMap<K, V> {
         }
     }
 
-    // Fixed at construction, so the array length is the size
+    // Returns the number of entries.
     @Override
     public int size() {
         return this.keys.length;
     }
 
-    // Only empty when constructed from an empty source
+    // Returns whether the map holds no entries.
     @Override
     public boolean isEmpty() {
         return this.keys.length == 0;
     }
 
-    // Presence is just a successful scan
+    // Returns whether the key is present.
     @Override
     public boolean containsKey(Object key) {
         return indexOf(key) >= 0;
     }
 
-    // Null return is ambiguous with a stored null, matching Map's contract
+    // Returns the value of the key or null when absent.
     @Override
     public V get(Object key) {
         int index = indexOf(key);
         return index < 0 ? null : this.values[index];
     }
 
-    // Objects.equals rather than a bare equals so a null key is handled like any other value
+    // Returns the position of the key or minus one when absent.
     private int indexOf(Object key) {
         K[] keys = this.keys;
 
@@ -68,44 +69,43 @@ public class ArrayBackedLinkedMap<K, V> extends AbstractMap<K, V> {
         return -1;
     }
 
-    // Mutators throw rather than no-op so a mod editing a baked model fails at bake time with a stack trace, not as a rendering bug later
+    // Rejects modification.
     @Override
     public V put(K key, V value) {
         throw new UnsupportedOperationException();
     }
 
-    // Immutable; see put
+    // Rejects modification.
     @Override
     public V remove(Object key) {
         throw new UnsupportedOperationException();
     }
 
-    // Immutable; see put
+    // Rejects modification.
     @Override
     public void clear() {
         throw new UnsupportedOperationException();
     }
 
-    // AbstractMap routes keySet, values, forEach and toString through this
+    // Returns a read only view of the entries.
     @Override
     public Set<Map.Entry<K, V>> entrySet() {
         return new EntrySet();
     }
 
+    // Entry view over the arrays.
     private final class EntrySet extends AbstractSet<Map.Entry<K, V>> {
-        // Walks the arrays by index; no allocation beyond the entry handed out per step
+        // Returns an iterator over the entries in insertion order.
         @Override
         public Iterator<Map.Entry<K, V>> iterator() {
             return new Iterator<Map.Entry<K, V>>() {
                 private int index;
 
-                // Bounds check against the backing array, which never resizes
                 @Override
                 public boolean hasNext() {
                     return this.index < ArrayBackedLinkedMap.this.keys.length;
                 }
 
-                // A fresh entry per step, unlike Hydrogen's recycled mutable entry, since recycling breaks callers that collect the entry set (Forge's model pipeline, model-wrapping mods)
                 @Override
                 public Map.Entry<K, V> next() {
                     if (!hasNext()) {
@@ -119,7 +119,7 @@ public class ArrayBackedLinkedMap<K, V> extends AbstractMap<K, V> {
             };
         }
 
-        // Mirrors the map's size; AbstractSet would otherwise count by iterating
+        // Returns the number of entries.
         @Override
         public int size() {
             return ArrayBackedLinkedMap.this.keys.length;

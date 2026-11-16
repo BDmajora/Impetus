@@ -11,18 +11,23 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Throttles the F3 overlay rebuild to once a tick (vanilla recomputes every line per frame, some hitting the world), which also makes the numbers readable; both cached lists share one rebuild decision so the columns never mix ticks
+// Mixin that changes GuiOverlayDebug.
 @Mixin(GuiOverlayDebug.class)
 public abstract class GuiOverlayDebugMixin {
+    // Field left cache added to the target.
     @Unique
     private final java.util.List<String> impetus$leftCache = new java.util.ArrayList<>();
+    // Field right cache added to the target.
     @Unique
     private final java.util.List<String> impetus$rightCache = new java.util.ArrayList<>();
+    // Field next update nanos added to the target.
     @Unique
     private long impetus$nextUpdateNanos;
+    // Field rebuild added to the target.
     @Unique
     private boolean impetus$rebuild = true;
 
+    // Runs at the start of renderDebugInfo.
     @Inject(method = "renderDebugInfo", at = @At("HEAD"))
     private void impetus$decideRebuild(ScaledResolution resolution, CallbackInfo ci) {
         ExtrasConfig.ExtraSettings settings = Extras.options().extra;
@@ -41,7 +46,7 @@ public abstract class GuiOverlayDebugMixin {
         }
     }
 
-    // Returns a copy, not the cache; renderDebugInfoLeft appends 3 lines to the result, so the live cache would grow every frame until the next rebuild
+    // Runs at the start of call and can cancel it.
     @Inject(method = "call()Ljava/util/List;", at = @At("HEAD"), cancellable = true)
     private void impetus$leftFromCache(CallbackInfoReturnable<java.util.List<String>> cir) {
         if (!this.impetus$rebuild) {
@@ -49,6 +54,7 @@ public abstract class GuiOverlayDebugMixin {
         }
     }
 
+    // Runs before every return of call.
     @Inject(method = "call()Ljava/util/List;", at = @At("RETURN"))
     private void impetus$cacheLeft(CallbackInfoReturnable<java.util.List<String>> cir) {
         if (this.impetus$rebuild) {
@@ -57,7 +63,7 @@ public abstract class GuiOverlayDebugMixin {
         }
     }
 
-    // Copied for the same reason as the left column, and because a mod may append to this one too
+    // Runs at the start of getDebugInfoRight and can cancel it.
     @Inject(method = "getDebugInfoRight()Ljava/util/List;", at = @At("HEAD"), cancellable = true)
     private void impetus$rightFromCache(CallbackInfoReturnable<java.util.List<String>> cir) {
         if (!this.impetus$rebuild) {
@@ -65,6 +71,7 @@ public abstract class GuiOverlayDebugMixin {
         }
     }
 
+    // Runs before every return of getDebugInfoRight.
     @Inject(method = "getDebugInfoRight()Ljava/util/List;", at = @At("RETURN"))
     private void impetus$cacheRight(CallbackInfoReturnable<java.util.List<String>> cir) {
         if (this.impetus$rebuild) {

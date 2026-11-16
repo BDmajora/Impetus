@@ -20,27 +20,37 @@ import java.util.function.Supplier;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// The textures that ride along the frame on fixed units (depth, shadow, noise, overlay, PBR fallbacks, the pack's custom textures and images) and the end-of-frame unit cleanup that hands vanilla a coherent GlStateManager cache
+// Binds the frame and pack textures of a pipeline to their units.
 public final class TextureBinder {
-    // Pack image writes must be visible to later fetches, framebuffer reads and texture updates
+    // Barriers that make image writes visible to the next pass.
     private static final int PACK_RESOURCE_BARRIERS = 0x00000020 | 0x00000008 | 0x00002000;
 
+    // Color targets of the pack.
     private final UmbraRenderTargets targets;
+    // Noise texture of the pack.
     private final NoiseTexture noise;
-    // Fallback PBR inputs for the gbuffer stage: flat up-normal and black specular (OptiFine's defaults)
+    // Flat normal map used without a resource pack normal map.
     private final PlainTexture defaultNormals;
+    // Empty specular map used without a resource pack specular map.
     private final PlainTexture defaultSpecular;
-    // Transparent, so a pack doing `mix(color, overlay.rgb, overlay.a)` gets its colour back unchanged
+    // Empty overlay texture.
     private final PlainTexture noOverlay;
-    // "Always lit" 1x1 on the shadowtex units when the pack has no shadow pass
+    // Depth texture bound when the pack has no shadow pass.
     private final StubShadowMap stubShadowMap;
+    // Custom textures of the pack.
     private final CustomTextureManager customTextures;
+    // Custom images of the pack.
     private final CustomImageManager customImages;
+    // Samplers of the shadow maps.
     private final ShadowSamplers shadowSamplers;
+    // Source of the Distant Horizons bridge.
     private final Supplier<DhCompat> dhCompat;
+    // Shadow renderer or null.
     private UmbraShadowRenderer shadowRenderer;
+    // Released state of the binder.
     private boolean destroyed;
 
+    // Creates the default textures and deletes them when one fails.
     public TextureBinder(UmbraRenderTargets targets, NoiseTexture noise, CustomTextureManager customTextures,
                          CustomImageManager customImages, ShadowSamplers shadowSamplers, Supplier<DhCompat> dhCompat) {
         this.targets = targets;
@@ -58,7 +68,6 @@ public final class TextureBinder {
             overlay = new PlainTexture(0, 0, 0, 0);
             this.stubShadowMap = new StubShadowMap();
         } catch (RuntimeException e) {
-            // The caller never gets this object to destroy, so free what was made before failing
             for (PlainTexture made : new PlainTexture[]{normals, specular, overlay}) {
                 if (made != null) {
                     made.destroy();
@@ -71,17 +80,17 @@ public final class TextureBinder {
         this.noOverlay = overlay;
     }
 
-    // The shadow pass, once built; null keeps the stub on the shadow units
+    // Stores the shadow renderer.
     public void setShadowRenderer(UmbraShadowRenderer shadowRenderer) {
         this.shadowRenderer = shadowRenderer;
     }
 
-    // Binds one 2D texture leaving the selector on that unit; callers batch several and reset once, which is load-bearing for units past the cached range
+    // Binds a texture to a unit.
     static void bindUnit(int unit, int texture) {
         GlTextureUnits.bindTextureInRun(unit, GL11.GL_TEXTURE_2D, texture);
     }
 
-    // noisetex, the overlay dummy and the stub shadow maps for the whole frame, on units vanilla never binds
+    // Binds the textures that change each frame.
     public void bindFrameTextures() {
         bindNoise();
         bindUnit(SamplerLayout.OVERLAY_TEX_UNIT, this.noOverlay.getTextureId());
@@ -91,7 +100,7 @@ public final class TextureBinder {
         GlTextureUnits.resetToUnit0();
     }
 
-    // noisetex; a pack-supplied texture.noise replaces the generated noise (Umbra parity)
+    // Binds the noise texture.
     public void bindNoise() {
         int custom = this.customTextures.getNoiseTextureId();
         int texture = custom != -1 ? custom : this.noise.getTextureId();
@@ -100,14 +109,13 @@ public final class TextureBinder {
         GlTextureUnits.resetToUnit0();
     }
 
-    // depthtex0/1/2 on the fullscreen units and the OptiFine 1.12 gbuffer ones (6/12), plus DH's LOD depth
+    // Binds the depth textures.
     public void bindDepth() {
         bindDepthUnit(SamplerLayout.DEPTH_TEX_0_UNIT, this.targets.getDepthTexture().getTextureId());
         bindDepthUnit(SamplerLayout.DEPTH_TEX_1_UNIT, this.targets.getDepthTextureNoTranslucents().getTextureId());
         bindDepthUnit(SamplerLayout.DEPTH_TEX_2_UNIT, this.targets.getDepthTextureNoHand().getTextureId());
         bindDepthUnit(SamplerLayout.GBUFFER_DEPTH_TEX_0_UNIT, this.targets.getDepthTexture().getTextureId());
         bindDepthUnit(SamplerLayout.GBUFFER_DEPTH_TEX_1_UNIT, this.targets.getDepthTextureNoTranslucents().getTextureId());
-        // dhDepthTex0/1: DH's LOD depth once it has rendered a frame, else the terrain depth so a DH-aware pack without DH reads sane depth
         DhCompat dh = this.dhCompat.get();
         int lodDepth = dh == null ? -1 : dh.getDepthTex();
         int lodDepthNoTranslucent = dh == null ? -1 : dh.getDepthTexNoTranslucent();
@@ -117,12 +125,13 @@ public final class TextureBinder {
         GlTextureUnits.resetToUnit0();
     }
 
+    // Binds a depth texture to a unit.
     private static void bindDepthUnit(int unit, int texture) {
         LWJGL.glBindSampler(unit, 0);
         bindUnit(unit, texture);
     }
 
-    // PBR maps on the gbuffer-stage normals/specular units 2/3 through GlStateManager; fullscreen passes overwrite them with colortex2/3, so water and hand need them back
+    // Binds the normal and specular atlases or the defaults.
     public void bindPbr() {
         GlStateManager.setActiveTexture(GL13.GL_TEXTURE0 + 2);
         GlStateManager.bindTexture(PBRAtlasManager.getNormalsAtlas(this.defaultNormals.getTextureId()));
@@ -131,7 +140,7 @@ public final class TextureBinder {
         GlStateManager.setActiveTexture(OpenGlHelper.defaultTexUnit);
     }
 
-    // shadowtex and shadowcolor, or the stub without a shadow pass; OptiFine 1.12 packs declare sampler2DShadow shadowtex0/1 directly, so the plain names get the comparison sampler and only SEPARATE_HARDWARE_SAMPLERS packs expect raw depth there with comparison on the *HW aliases (a plain-sampler2D program gets the raw flavour from ShadowSamplers.apply)
+    // Binds the shadow maps and their samplers.
     public void bindShadow() {
         UmbraShadowRenderer shadow = this.shadowRenderer;
         int depth0 = shadow == null ? this.stubShadowMap.getTextureId() : shadow.getDepthTextureId();
@@ -143,7 +152,6 @@ public final class TextureBinder {
         int plain1 = separate ? 0 : compare1;
         bindShadowDepth(SamplerLayout.SHADOW_TEX_0_UNIT, depth0, plain0);
         bindShadowDepth(SamplerLayout.SHADOW_TEX_1_UNIT, depth1, plain1);
-        // The *HW aliases exist only for SEPARATE_HARDWARE_SAMPLERS packs; holding two units for everyone else starved Complementary's wsr samplers onto unit 0
         if (separate) {
             bindShadowDepth(SamplerLayout.SHADOW_TEX_0_HW_UNIT, depth0, compare0);
             bindShadowDepth(SamplerLayout.SHADOW_TEX_1_HW_UNIT, depth1, compare1);
@@ -162,12 +170,13 @@ public final class TextureBinder {
         GlTextureUnits.resetToUnit0();
     }
 
+    // Binds a shadow depth texture to a unit.
     private static void bindShadowDepth(int unit, int texture, int sampler) {
         LWJGL.glBindSampler(unit, sampler);
         bindUnit(unit, texture);
     }
 
-    // The pack's custom textures and images; Umbra binds images at every program use, and the barrier makes the previous program's image writes visible
+    // Binds the custom textures and images and makes earlier image writes visible.
     public void bindPackResources() {
         if (this.destroyed) {
             return;
@@ -179,7 +188,7 @@ public final class TextureBinder {
         this.customImages.bindAll();
     }
 
-    // Binds each colortex a fullscreen pass samples; units 0..7 through GlStateManager so vanilla's cache stays coherent, colortex8..15 raw since the cache cannot index them and vanilla never touches those units
+    // Binds the color targets under the current flips.
     public static void bindColorSamplers(int[] samplers) {
         for (int i = samplers.length - 1; i >= 0; i--) {
             if (samplers[i] != 0) {
@@ -187,11 +196,10 @@ public final class TextureBinder {
                 bindUnit(i, samplers[i]);
             }
         }
-        // Not a bare setActiveTexture(GL_TEXTURE0): after a raw bind real GL is on a high unit while the cache reads 0, so the cached call would no-op and strand the selector
         GlTextureUnits.resetToUnit0();
     }
 
-    // Unbinds every unit the frame used and returns to unit 0 with the cache agreeing with real GL
+    // Unbinds the pack units and restores the default unit.
     public void restoreUnits() {
         this.customTextures.unbindAll();
         this.customImages.unbindAll();
@@ -203,13 +211,11 @@ public final class TextureBinder {
             LWJGL.glBindSampler(unit, 0);
             bindUnit(unit, 0);
         }
-        // colortex8..15 sit beyond GlStateManager's 8-slot cache, so they are unbound raw; units 0..7 go through it
         for (int i = UmbraRenderTargets.MAX_COLOR_BUFFERS - 1; i >= GlTextureUnits.CACHED_UNITS; i--) {
             LWJGL.glBindSampler(i, 0);
             GlTextureUnits.selectScratch(i);
             LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, 0);
         }
-        // Step through unit 1 so the active-unit cache agrees with real GL before touching 0..7; a bare glActiveTexture desynced it and the screenshot path's cached bind no-op'd forever, a white screen until reload
         GlStateManager.setActiveTexture(GL13.GL_TEXTURE0 + 1);
         GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
         for (int i = GlTextureUnits.CACHED_UNITS - 1; i >= 0; i--) {
@@ -220,12 +226,24 @@ public final class TextureBinder {
         GlStateManager.setActiveTexture(OpenGlHelper.defaultTexUnit);
     }
 
-    // Frees the fallback textures; the noise texture and the managers belong to the pipeline state
+    // Deletes the default textures once and continues after a failure.
     public void destroy() {
+        if (this.destroyed) {
+            return;
+        }
         this.destroyed = true;
-        this.defaultNormals.destroy();
-        this.defaultSpecular.destroy();
-        this.noOverlay.destroy();
-        this.stubShadowMap.destroy();
+        try {
+            this.defaultNormals.destroy();
+        } finally {
+            try {
+                this.defaultSpecular.destroy();
+            } finally {
+                try {
+                    this.noOverlay.destroy();
+                } finally {
+                    this.stubShadowMap.destroy();
+                }
+            }
+        }
     }
 }

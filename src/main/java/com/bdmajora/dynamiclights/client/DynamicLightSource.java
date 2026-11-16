@@ -4,24 +4,27 @@ import com.bdmajora.dynamiclights.DynamicLights;
 import net.minecraft.client.renderer.RenderGlobal;
 import net.minecraft.world.World;
 
-// Something that emits light the world does not know about; implemented by mixin on Entity and TileEntity, with getLuminance() returning zero as the opt-out
+// Object that can emit a moving light.
 public interface DynamicLightSource {
+    // Returns the east position of the light.
     double impetus$getDynamicLightX();
 
+    // Returns the height of the light.
     double impetus$getDynamicLightY();
 
+    // Returns the south position of the light.
     double impetus$getDynamicLightZ();
 
-    // World this source lives in, or null for a block entity that has not been placed
+    // Returns the world of the light.
     World impetus$getDynamicLightWorld();
 
-    // Whether the engine is currently tracking this source
+    // Returns whether the source is tracked by the engine.
     default boolean impetus$isDynamicLightEnabled() {
         return DynamicLights.options().mode.isEnabled()
                 && DynamicLights.engine().containsLightSource(this);
     }
 
-    // Starts or stops tracking; called internally by DynamicLightsEngine#updateTracking as luminance crosses zero, and calling directly desynchronises the tracked set
+    // Starts or stops tracking the source.
     default void impetus$setDynamicLightEnabled(boolean enabled) {
         this.impetus$resetDynamicLight();
         if (enabled) {
@@ -31,16 +34,16 @@ public interface DynamicLightSource {
         }
     }
 
-    // Forgets the last luminance, so the next update is treated as a change
+    // Forgets the last light level.
     void impetus$resetDynamicLight();
 
-    // Luminance in the vanilla 0-15 scale; values below 1 are ignored
+    // Returns the current light level.
     int impetus$getLuminance();
 
-    // Recomputes getLuminance(); called once per tick while the source is alive
+    // Recomputes the light level.
     void impetus$dynamicLightTick();
 
-    // The client-tick tail every entity hook shares: a removed source stops being tracked, a live one recomputes its luminance and is tracked or dropped as it crosses zero
+    // Recomputes the light level and updates tracking.
     default void impetus$tickDynamicLight(boolean removed) {
         if (removed) {
             impetus$setDynamicLightEnabled(false);
@@ -50,12 +53,12 @@ public interface DynamicLightSource {
         DynamicLightsEngine.updateTracking(this);
     }
 
-    // Whether the configured update delay has elapsed for this source
+    // Returns whether enough time passed for an update.
     boolean impetus$shouldUpdateDynamicLight();
 
-    // Re-lights the chunks around this source if it has moved or changed brightness; returns true if a rebuild was scheduled
+    // Applies a changed light and returns whether anything changed.
     boolean impetus$updateDynamicLight(RenderGlobal renderer);
 
-    // Queues a rebuild of every chunk this source is currently lighting
+    // Marks the lit chunks for a rebuild.
     void impetus$scheduleTrackedChunksRebuild(RenderGlobal renderer);
 }

@@ -4,113 +4,116 @@ import com.bdmajora.impetus.core.PropertiesConfig;
 
 import java.util.Map;
 
-// Plain Properties file (see PropertiesConfig) because CoarctatioMixinPlugin reads it during coremod setup before Forge/MC classes are safe
+// Settings of the memory features loaded from the configuration file.
 public final class CoarctatioConfig {
+    // Name of the configuration file.
     private static final String FILE_NAME = "impetus-coarctatio.cfg";
 
-    // BiblioCraft assumes the vanilla block state table exists; inherited from FoamFix, same wall.
+    // Default class prefixes excluded from state packing.
     private static final String DEFAULT_BLOCK_STATE_BLACKLIST = "jds.bibliocraft";
-    // Betweenlands and Dynamic Trees walk every one of their models at ModelBakeEvent (VintageFix's list).
+    // Default namespaces whose models load eagerly.
     private static final String DEFAULT_EAGER_NAMESPACES = "thebetweenlands,dynamictrees";
 
+    // Loaded settings or null before the first use.
     private static CoarctatioConfig instance;
 
-    // The backing file; set by load before the instance is published
+    // File that backs the settings.
     private PropertiesConfig file;
 
-    // Interns the domain and path strings of every ResourceLocation.
+    // Switch of the deduplicateResourceLocations feature.
     public boolean deduplicateResourceLocations;
-    // Interns the variant string of every ModelResourceLocation.
+    // Switch of the deduplicateModelVariants feature.
     public boolean deduplicateModelVariants;
-    // Replaces NBTTagCompound's HashMap with a compact array/hash hybrid.
+    // Switch of the compactNbtBackingMap feature.
     public boolean compactNbtBackingMap;
-    // Interns NBT keys through a shared string pool. Requires compactNbtBackingMap.
+    // Switch of the internNbtKeys feature.
     public boolean internNbtKeys;
-    // Entry count at which an NBT compound switches from array storage to hash storage.
+    // Value of the nbtArrayMapThreshold setting.
     public int nbtArrayMapThreshold;
-    // Pools BakedQuad.vertexData arrays so identical geometry shares one array.
+    // Switch of the poolQuadVertexData feature.
     public boolean poolQuadVertexData;
-    // Replaces the model classes' growable collections with exact-sized immutable ones.
+    // Switch of the compactBakedModels feature.
     public boolean compactBakedModels;
-    // Flattens and interns the predicates produced by multipart blockstate conditions.
+    // Switch of the canonicalizeMultipartConditions feature.
     public boolean canonicalizeMultipartConditions;
-    // Replaces each state's property-value table with a packed int index into a shared per-block array; largest single saving, and a declined block falls back to vanilla states rather than crashing
+    // Switch of the optimizeBlockStates feature.
     public boolean optimizeBlockStates;
-    // Block implementation class prefixes that keep vanilla states regardless of the above.
+    // List value of the blockStateBlacklist setting.
     public String[] blockStateBlacklist;
-    // Replaces each state's property ImmutableMap with a compact one sharing its key array; needs optimizeBlockStates and a JVM that allows defining into Guava's package, else degrades silently
+    // Switch of the compactStateProperties feature.
     public boolean compactStateProperties;
-    // Swaps the model graph's unordered hash maps for fastutil equivalents.
+    // Switch of the compactModelGraph feature.
     public boolean compactModelGraph;
-    // Strips a loaded chunk's NBT down to the tags entity loading still reads.
+    // Switch of the stripChunkNbt feature.
     public boolean stripChunkNbt;
-    // Drops chunk sections holding no blocks and no light that could not be recomputed.
+    // Switch of the dropEmptyChunkSections feature.
     public boolean dropEmptyChunkSections;
-    // Swaps LaunchClassLoader's resource cache for one the GC can reclaim.
+    // Switch of the weakenClassLoaderCache feature.
     public boolean weakenClassLoaderCache;
-    // Releases the pixel data of static sprites once the atlas is on the GPU.
+    // Switch of the releaseSpriteData feature.
     public boolean releaseSpriteData;
-    // Shares the camera transforms and override lists that every baked model carries.
+    // Switch of the deduplicateModelTransforms feature.
     public boolean deduplicateModelTransforms;
-    // Frees the model loader's unbaked models and load errors after baking.
+    // Switch of the releaseBakeState feature.
     public boolean releaseBakeState;
-    // Frees the play-scoped string pools when the player leaves a world or server.
+    // Switch of the clearPoolsOnWorldLeave feature.
     public boolean clearPoolsOnWorldLeave;
-    // Defers building the creative search index until something actually searches.
+    // Switch of the lazySearchTrees feature.
     public boolean lazySearchTrees;
-    // Compacts registry, entity data and chunk entity-lookup collections.
+    // Switch of the compactRuntimeCollections feature.
     public boolean compactRuntimeCollections;
-    // Upper bound on any single deduplication pool, after which it stops accepting new entries.
+    // Value of the poolSizeLimit setting.
     public int poolSizeLimit;
-    // Adds a Coarctatio line to the F3 debug overlay.
+    // Switch of the showDebugOverlay feature.
     public boolean showDebugOverlay;
-    // Builds an ItemStack's capability dispatcher on the first capability query instead of in every constructor.
+    // Switch of the lazyItemStackCapabilities feature.
     public boolean lazyItemStackCapabilities;
-    // Shares one instance per small numeric NBT value across every compound and list.
+    // Switch of the poolNbtPrimitives feature.
     public boolean poolNbtPrimitives;
-    // Caches the hash of enum and integer block properties, which vanilla recomputes from their value sets on every call.
+    // Switch of the cachePropertyHashes feature.
     public boolean cachePropertyHashes;
-    // Caches each block state's hash, which vanilla recomputes from its property map on every call.
+    // Switch of the cacheStateHashes feature.
     public boolean cacheStateHashes;
-    // Indexes resource packs once per reload instead of a native or filesystem lookup per probe.
+    // Switch of the resourceExistenceCache feature.
     public boolean resourceExistenceCache;
-    // Throws the resource manager's file-not-found without filling a stack trace, and opens resources without the debug leak tracker.
+    // Switch of the stacklessResourceExceptions feature.
     public boolean stacklessResourceExceptions;
-    // Packs the texture atlas with a shelf algorithm instead of vanilla's recursive slot search.
+    // Switch of the fastAtlasStitching feature.
     public boolean fastAtlasStitching;
-    // Lets the collector reclaim structure templates that world generation has moved past.
+    // Switch of the softStructureTemplates feature.
     public boolean softStructureTemplates;
-    // Interns the class, package and annotation names Forge's mod scan keeps for the session.
+    // Switch of the internLoaderStrings feature.
     public boolean internLoaderStrings;
-    // Keeps each mod jar's annotation scan between launches, keyed by the jar's size and modification time.
+    // Switch of the modScanCache feature.
     public boolean modScanCache;
-    // Loads and bakes models on first use instead of all of them at startup, with the atlas built from a scan of the packs; opt-in as the README states, since it changes what mods see at ModelBakeEvent, moves every first bake onto whichever thread asks (the mesher, the item renderer), and holds the baked models softly so a tight heap re-bakes them
+    // Switch of the dynamicModels feature.
     public boolean dynamicModels;
-    // With dynamic models, bakes every item model on a background thread after a reload so the inventory never bakes on the render thread.
+    // Switch of the dynamicModelsPrebakeItems feature.
     public boolean dynamicModelsPrebakeItems;
-    // Namespaces whose models are still loaded up front under dynamic models, for mods that expect all of theirs to exist at ModelBakeEvent.
+    // List value of the dynamicModelsEagerNamespaces setting.
     public String[] dynamicModelsEagerNamespaces;
-    // Writes item-model quads directly in the default vertex format instead of through Forge's unpacking builder.
+    // Switch of the fastItemLayerBaking feature.
     public boolean fastItemLayerBaking;
-    // Decodes every atlas sprite's PNG across the common pool before the atlas loop, which otherwise decodes them one at a time on the client thread (StellarCore).
+    // Switch of the parallelTextureLoad feature.
     public boolean parallelTextureLoad;
-    // Reads and parses every model file the packs hold across all cores before the model loader asks for them one at a time on the client thread.
+    // Switch of the parallelModelLoad feature.
     public boolean parallelModelLoad;
-    // Backs the ore dictionary's two lookup maps with primitive collections instead of boxed Integers and List<Integer> (StellarCore).
+    // Switch of the primitiveOreDictionary feature.
     public boolean primitiveOreDictionary;
-    // Pools the UV arrays and texture-name strings of unbaked model parts, and stores each element's faces in an EnumMap (StellarCore).
+    // Switch of the canonicalizeModelParts feature.
     public boolean canonicalizeModelParts;
-    // Shares the runtime deobfuscator's per-class member maps between classes with identical ones and drops the empty ones (Chibi's optimizeFMLRemapper).
+    // Switch of the compactRemapperCaches feature.
     public boolean compactRemapperCaches;
-    // Reuses one instance per thread of the tick, capability-attach and neighbour-notify events instead of constructing one per post (Chibi's makeEventsSingletons); experimental, off by default.
+    // Switch of the recycleEvents feature.
     public boolean recycleEvents;
-    // Skips the sound handler's two debug walks over the whole sound registry after every resource reload (UniversalTweaks).
+    // Switch of the skipSoundDebugChecks feature.
     public boolean skipSoundDebugChecks;
-    // Uses the shared plain missing model for models that fail to load instead of a per-model one rendering the location as text (UniversalTweaks); off by default since a few mods rely on the fancy one.
+    // Switch of the plainMissingModels feature.
     public boolean plainMissingModels;
-    // Returns a registry name that already carries a namespace as given, without the per-name "alternative prefix" warning (UniversalTweaks).
+    // Switch of the quietPrefixWarnings feature.
     public boolean quietPrefixWarnings;
 
+    // Creates settings from the properties and applies the defaults.
     private CoarctatioConfig(PropertiesConfig props) {
         this.deduplicateResourceLocations = props.bool("deduplicateResourceLocations", true);
         this.deduplicateModelVariants = props.bool("deduplicateModelVariants", true);
@@ -160,7 +163,7 @@ public final class CoarctatioConfig {
         this.quietPrefixWarnings = props.bool("quietPrefixWarnings", true);
     }
 
-    // Loads on first use and caches; every reader shares the one instance
+    // Returns the settings and loads them on first use.
     public static CoarctatioConfig get() {
         if (instance == null) {
             instance = load();
@@ -168,7 +171,7 @@ public final class CoarctatioConfig {
         return instance;
     }
 
-    // Reads the file if present, otherwise starts from defaults and writes them out
+    // Reads the file and writes it back with every setting present.
     private static CoarctatioConfig load() {
         PropertiesConfig props = new PropertiesConfig(Coarctatio.LOGGER, FILE_NAME, "Impetus / Coarctatio memory subsystem. Delete a line to restore its default.");
         props.load();
@@ -178,12 +181,12 @@ public final class CoarctatioConfig {
         return config;
     }
 
-    // Most switches take effect on next launch (read once by CoarctatioMixinPlugin); showDebugOverlay and the NBT map settings are read live
+    // Writes the settings to the file.
     public void save() {
         this.file.save(values());
     }
 
-    // Every key in declaration order, so a rewritten file lists every switch; user-set values are preserved verbatim
+    // Returns every setting as text by name.
     private Map<String, String> values() {
         Map<String, String> values = PropertiesConfig.values();
         values.put("deduplicateResourceLocations", Boolean.toString(this.deduplicateResourceLocations));

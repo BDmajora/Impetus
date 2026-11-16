@@ -14,18 +14,22 @@ import com.bdmajora.impetus.impl.extensions.SpriteExtension;
 
 import java.util.List;
 
+// Mixin that changes TextureAtlasSprite.
 @Mixin(TextureAtlasSprite.class)
 public abstract class TextureAtlasSpriteMixin implements SpriteExtension, SpriteTransparencyLevel.Holder {
+    // Reference to the field frames texture data of the target.
     @Shadow
     protected List<int[][]> framesTextureData;
 
+    // Reference to the field icon name of the target.
     @Shadow
     @Final
     private String iconName;
 
+    // Transparency level of the sprite.
     private SpriteTransparencyLevel impetus$transparencyLevel = SpriteTransparencyLevel.TRANSLUCENT;
 
-    // Classifies the sprite's transparency and, for block textures, fixes transparent-pixel colours before mipmapping
+    // Runs at the start of generateMipmaps.
     @Inject(method = "generateMipmaps", at = @At("HEAD"))
     private void processSprite(int mipLevel, CallbackInfo ci) {
         if (this.framesTextureData == null) {
@@ -41,13 +45,13 @@ public abstract class TextureAtlasSpriteMixin implements SpriteExtension, Sprite
         this.impetus$transparencyLevel = level;
     }
 
-    // Path starts with block after the namespace; the colour rewrite is only safe for those
+    // Returns whether a sprite name is a block texture.
     private static boolean isBlockTexture(String iconName) {
         return iconName.startsWith("block", iconName.indexOf(':') + 1);
     }
 
+    // Handles process transparent images.
     private SpriteTransparencyLevel impetus$processTransparentImages(SpriteTransparencyLevel prevLevel, int[] nativeImage, boolean shouldRewriteColors) {
-        // Average colour of all not-fully-transparent pixels, weighted by their (non-zero) alpha
         float r = 0.0f;
         float g = 0.0f;
         float b = 0.0f;
@@ -60,7 +64,6 @@ public abstract class TextureAtlasSpriteMixin implements SpriteExtension, Sprite
             int color = nativeImage[y];
             int alpha = ColorARGB.unpackAlpha(color);
 
-            // Ignore all fully-transparent pixels for the purposes of computing an average color.
             if (alpha > 0) {
                 if(alpha < 255) {
                     level = level.chooseNextLevel(SpriteTransparencyLevel.TRANSLUCENT);
@@ -71,7 +74,6 @@ public abstract class TextureAtlasSpriteMixin implements SpriteExtension, Sprite
                 if (shouldRewriteColors) {
                     float weight = (float) alpha;
 
-                    // Make sure to convert to linear space so that we don't lose brightness.
                     r += ColorSRGB.srgbToLinear(ColorARGB.unpackRed(color)) * weight;
                     g += ColorSRGB.srgbToLinear(ColorARGB.unpackGreen(color)) * weight;
                     b += ColorSRGB.srgbToLinear(ColorARGB.unpackBlue(color)) * weight;
@@ -83,7 +85,6 @@ public abstract class TextureAtlasSpriteMixin implements SpriteExtension, Sprite
             }
         }
 
-        // Bail if none of the pixels are semi-transparent or we aren't supposed to rewrite colors.
         if (!shouldRewriteColors || totalWeight == 0.0f) {
             return level;
         }
@@ -92,14 +93,12 @@ public abstract class TextureAtlasSpriteMixin implements SpriteExtension, Sprite
         g /= totalWeight;
         b /= totalWeight;
 
-        // Convert the linear-space colour back to sRGB with alpha zero, which works since only alpha-0 pixels are replaced
         int averageColor = ColorSRGB.linearToSrgb(r, g, b, 0);
 
         for (int y = 0; y < nativeImage.length; y++) {
             int color = nativeImage[y];
             int alpha = ColorARGB.unpackAlpha(color);
 
-            // Replace the color values of pixels which are fully transparent, since they have no color data.
             if (alpha == 0) {
                 nativeImage[y] = averageColor;
             }
@@ -108,6 +107,7 @@ public abstract class TextureAtlasSpriteMixin implements SpriteExtension, Sprite
         return level;
     }
 
+    // Returns the transparency level.
     @Override
     public SpriteTransparencyLevel impetus$getTransparencyLevel() {
         return this.impetus$transparencyLevel;

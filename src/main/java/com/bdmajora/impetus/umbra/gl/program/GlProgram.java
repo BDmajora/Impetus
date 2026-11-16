@@ -4,49 +4,48 @@ import com.bdmajora.impetus.umbra.gl.GlResource;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// A linked GL program (.vsh/.fsh, optionally geometry or tessellation) owning only the handle and bind/unbind/destroy; uniforms and samplers layer on top, so this serves the engine's own programs too
+// Linked GL program of a shader pack.
 public class GlProgram extends GlResource {
-    // Only for log messages and debugging; GL never sees it
+    // Name of the program.
     private final String name;
-    // Linked with tessellation stages, so draws made while it is bound must be patches
+    // Tessellation state of the program.
     private final boolean tessellated;
 
-    // Package-private: ProgramBuilder is the only way to get one, since an unchecked handle is indistinguishable from a working one until the first draw renders nothing
+    // Wraps a linked program.
     GlProgram(int handle, String name, boolean tessellated) {
         this.name = name;
         this.tessellated = tessellated;
         setHandle(handle);
     }
 
-    // glUseProgram, telling the immediate-mode patch conversion whether it now applies
+    // Uses the program and records its tessellation state.
     public void bind() {
         LWJGL.glUseProgram(getGlId());
         ImmediateTessellation.programBound(getGlId(), this.tessellated);
     }
 
-    // Binds program 0; deliberately does NOT restore what was bound before, so the caller rebinds if it had something
+    // Uses no program.
     public void unbind() {
         LWJGL.glUseProgram(0);
         ImmediateTessellation.programBound(0, false);
     }
 
-
-    // -1 when the name is not in the linked program, including uniforms the compiler optimised out; callers treat that as "skip", not an error
+    // Returns the location of a uniform or minus one.
     public int getUniformLocation(CharSequence name) {
         return LWJGL.glGetUniformLocation(getGlId(), name);
     }
 
-    // glGetAttribLocation
+    // Returns the location of an attribute or minus one.
     public int getAttributeLocation(CharSequence name) {
         return LWJGL.glGetAttribLocation(getGlId(), name);
     }
 
-    // For log lines
+    // Returns the name of the program.
     public String getName() {
         return this.name;
     }
 
-    // glDeleteProgram
+    // Deletes the program.
     @Override
     protected void destroyInternal() {
         LWJGL.glDeleteProgram(getGlId());

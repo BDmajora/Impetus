@@ -1,25 +1,35 @@
 package com.bdmajora.impetus.engine.impl.util.sorting;
 
-public class InsertionSort {
-    // In-place on a range; the base case for merge sort on small runs
-    public static void insertionSort(final int[] indices, final int fromIndex, final int toIndex, final float[] keys) {
-        int index = fromIndex;
+import java.util.Objects;
 
-        while (++index < toIndex) {
+// Insertion sort of index arrays by float keys.
+public class InsertionSort {
+    // Sorts a range of indices by descending key and keeps the order of equal keys.
+    public static void insertionSort(final int[] indices, final int fromIndex, final int toIndex, final float[] keys) {
+        Objects.requireNonNull(indices, "indices");
+        Objects.requireNonNull(keys, "keys");
+
+        // Ranges of fewer than two elements stay unchanged
+        if ((long) toIndex - fromIndex < 2) {
+            return;
+        }
+
+        Objects.checkFromToIndex(fromIndex, toIndex, indices.length);
+
+        for (int index = fromIndex + 1; index < toIndex; index++) {
             int t = indices[index];
+            float key = keys[t];
             int j = index;
 
-            int u = indices[j - 1];
+            while (j > fromIndex) {
+                int u = indices[j - 1];
 
-            while (keys[u] < keys[t]) {
-                indices[j] = u;
-
-                if (fromIndex == j - 1) {
-                    --j;
+                if (!(keys[u] < key)) {
                     break;
                 }
 
-                u = indices[--j - 1];
+                indices[j] = u;
+                j--;
             }
 
             indices[j] = t;

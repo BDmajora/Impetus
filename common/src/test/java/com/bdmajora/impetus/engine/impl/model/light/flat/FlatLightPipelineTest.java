@@ -9,12 +9,16 @@ import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFacing;
 import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFlags;
 import com.bdmajora.testing.FakeLightData;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+// Tests flat lighting of quads.
 class FlatLightPipelineTest {
+    // Diffuse provider that halves shaded faces.
     private static final DiffuseProvider HALF = (nx, ny, nz, shade) -> shade ? 0.5f : 1.0f;
 
+    // Takes light from the block in front of the face.
     @Test
     void takesLightFromTheBlockInFrontOfTheFace() {
         FakeLightData data = new FakeLightData();
@@ -48,6 +52,7 @@ class FlatLightPipelineTest {
         assertThrows(IllegalStateException.class, () -> pipeline.calculate(quad, 0, 0, 0, out, ModelQuadFacing.POS_Y, ModelQuadFacing.UNASSIGNED, false, false));
     }
 
+    // Shades by the quad normal when enabled.
     @Test
     void quadNormalsShadeWhenEnabled() {
         FakeLightData data = new FakeLightData();
@@ -60,5 +65,32 @@ class FlatLightPipelineTest {
         pipeline.calculate(quad, 0, 0, 0, out, ModelQuadFacing.POS_X, ModelQuadFacing.POS_X, true, false);
         assertEquals(0f, out.br[0], 0.01f);
         pipeline.reset();
+    }
+
+    // Reads the light word of the block once per quad on every path.
+    @Test
+    void readsTheOwnLightWordOnce() {
+        FakeLightData data = Mockito.spy(new FakeLightData());
+        data.put(0, 0, 0, FakeLightData.stone());
+        FlatLightPipeline pipeline = new FlatLightPipeline(data, HALF, false);
+        ModelQuad quad = ModelQuadTest.top();
+        QuadLightData out = new QuadLightData();
+        int[] flags = {0, ModelQuadFlags.IS_ALIGNED, ModelQuadFlags.IS_PARALLEL};
+        ModelQuadFacing[] culls = {ModelQuadFacing.UNASSIGNED, ModelQuadFacing.POS_Y};
+        for (int flag : flags) {
+            for (ModelQuadFacing cull : culls) {
+                Mockito.clearInvocations(data);
+                quad.setFlags(flag);
+                pipeline.calculate(quad, 0, 0, 0, out, cull, ModelQuadFacing.POS_Y, false, false);
+                Mockito.verify(data, Mockito.times(1)).get(0, 0, 0);
+            }
+        }
+    }
+
+    // Rejects a null cache or provider.
+    @Test
+    void rejectsNulls() {
+        assertThrows(NullPointerException.class, () -> new FlatLightPipeline(null, HALF, false));
+        assertThrows(NullPointerException.class, () -> new FlatLightPipeline(new FakeLightData(), null, false));
     }
 }

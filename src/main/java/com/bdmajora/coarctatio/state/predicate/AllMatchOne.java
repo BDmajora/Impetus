@@ -7,20 +7,24 @@ import net.minecraft.block.state.IBlockState;
 import java.util.Arrays;
 import java.util.List;
 
-// A flattened AND over plain property=value tests, one object and two arrays where vanilla builds five or six per selector (from Hydrogen); AllMatchOneBoolean handles the commoner all-boolean case
+// Predicate that needs each property to hold one value.
 public final class AllMatchOne implements Predicate<IBlockState> {
+    // Properties to test.
     private final IProperty<?>[] properties;
+    // Required value of each property.
     private final Object[] values;
 
+    // Hash computed once at construction.
     private final int hash;
 
+    // Creates a predicate from its parts.
     private AllMatchOne(IProperty<?>[] properties, Object[] values) {
         this.properties = properties;
         this.values = values;
         this.hash = 31 * Arrays.hashCode(properties) + Arrays.hashCode(values);
     }
 
-    // Flattens a list of conditions into this form, or returns null unless every one is a SingleMatchOne
+    // Returns a combined predicate or null when a member is not a single value match.
     public static AllMatchOne tryFlatten(List<Predicate<IBlockState>> predicates) {
         int size = predicates.size();
 
@@ -42,21 +46,19 @@ public final class AllMatchOne implements Predicate<IBlockState> {
         return new AllMatchOne(properties, values);
     }
 
-    // Every property must equal its expected value; fields are hoisted so the loop reads them once
+    // Returns whether every property holds its required value.
     @Override
     public boolean apply(IBlockState state) {
         if (state == null) {
             return false;
         }
 
-        // Hoisted into locals so the loop does not re-read the fields each iteration
         IProperty<?>[] properties = this.properties;
         Object[] values = this.values;
 
         for (int i = 0; i < properties.length; i++) {
             Object actual = state.getValue(properties[i]);
 
-            // Identity first: property values are interned enum constants and Boolean singletons, so equals is kept only for odd mod-added property types
             if (actual != values[i] && !actual.equals(values[i])) {
                 return false;
             }
@@ -65,7 +67,7 @@ public final class AllMatchOne implements Predicate<IBlockState> {
         return true;
     }
 
-    // Structural equality over both arrays, which is what lets the canonicalizer intern these
+    // Returns whether the object tests the same properties and values.
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -79,7 +81,7 @@ public final class AllMatchOne implements Predicate<IBlockState> {
         return Arrays.equals(this.properties, other.properties) && Arrays.equals(this.values, other.values);
     }
 
-    // Precomputed at construction; the predicate is immutable
+    // Returns the stored hash.
     @Override
     public int hashCode() {
         return this.hash;

@@ -18,22 +18,25 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 
+// Builder of the terrain render pass configuration.
 public class VintageRenderPassConfigurationBuilder {
 
-    // Forces the atlas filter state per pass (mods corrupt it); allowMipmaps matters because vanilla renders CUTOUT unmipmapped and this port's -4.0 LOD bias only shifts the level, so distant torches (opaque in two of sixteen columns) gained a one-pixel halo from mip-1 texels passing the alpha test
+    // Pipeline state that turns atlas mipmaps on or off.
     private static final class AtlasMipmapState implements TerrainRenderPass.PipelineState {
+        // Flag set when the pass uses mipmaps.
         private final boolean allowMipmaps;
 
+        // Creates an atlas mipmap state from its allow mipmaps.
         AtlasMipmapState(boolean allowMipmaps) {
             this.allowMipmaps = allowMipmaps;
         }
 
-        // From game settings
+        // Returns whether mipmaps are on.
         private static boolean mipmapsEnabled() {
             return Minecraft.getMinecraft().gameSettings.mipmapLevels > 0;
         }
 
-        // Binds the block atlas with the right filtering
+        // Sets the atlas filtering for a mipped or unmipped pass.
         private static void apply(boolean mipped) {
             var textureManager = Minecraft.getMinecraft().getTextureManager();
             textureManager.bindTexture(TextureMap.LOCATION_BLOCKS_TEXTURE);
@@ -42,26 +45,27 @@ public class VintageRenderPassConfigurationBuilder {
             }
         }
 
-        // Applies texture state for the pass
+        // Sets up.
         @Override
         public void setup() {
             apply(this.allowMipmaps && mipmapsEnabled());
         }
 
-        // Restores default texture state
+        // Restores the atlas filtering.
         @Override
         public void clear() {
-            // Mirrors vanilla's restoreLastBlurMipmap(): everything drawn after this pass (entities, particles, held item) expects the atlas back in its mipmapped state
             if (!this.allowMipmaps) {
                 apply(mipmapsEnabled());
             }
         }
     }
 
+    // State of a mipped pass.
     private static final TerrainRenderPass.PipelineState MIPMAPPED_STATE = new AtlasMipmapState(true);
+    // State of an unmipped pass.
     private static final TerrainRenderPass.PipelineState UNMIPMAPPED_STATE = new AtlasMipmapState(false);
 
-    // One pass per vanilla render layer, with cutout and translucent handled by their own flags
+    // Returns the passes of a block layer.
     private static TerrainRenderPass.TerrainRenderPassBuilder builderForRenderType(BlockRenderLayer chunkRenderType, ChunkVertexType vertexType) {
         var extraDefines = new HashMap<String, String>();
 
@@ -74,9 +78,8 @@ public class VintageRenderPassConfigurationBuilder {
         return TerrainRenderPass.builder().extraDefines(extraDefines).pipelineState(pipelineState).vertexType(vertexType).primitiveType(QuadPrimitiveType.TRIANGULATED);
     }
 
-    // The full pass set, in vanilla's layer order
+    // Returns the passes of every block layer.
     public static RenderPassConfiguration<BlockRenderLayer> build(ChunkVertexType vertexType) {
-        // First, build the main passes
         TerrainRenderPass solidPass, cutoutMippedPass, translucentPass;
 
         solidPass = builderForRenderType(BlockRenderLayer.SOLID, vertexType)
@@ -98,7 +101,6 @@ public class VintageRenderPassConfigurationBuilder {
 
         ImmutableListMultimap.Builder<BlockRenderLayer, TerrainRenderPass> vanillaRenderStages = ImmutableListMultimap.builder();
 
-        // Build the materials for the vanilla render passes
         Material solidMaterial, cutoutMaterial, cutoutMippedMaterial, translucentMaterial;
         solidMaterial = new Material(solidPass, AlphaCutoffParameter.ZERO, true);
         translucentMaterial = new Material(translucentPass, AlphaCutoffParameter.ZERO, true);
@@ -107,7 +109,6 @@ public class VintageRenderPassConfigurationBuilder {
         vanillaRenderStages.put(BlockRenderLayer.SOLID, solidPass);
         vanillaRenderStages.put(BlockRenderLayer.TRANSLUCENT, translucentPass);
 
-        // CUTOUT always keeps its own pass: mipmapping is per-pass texture state and vanilla renders it unmipmapped, so folding it into a mipmapped pass reintroduces the torch halo; CUTOUT_MIPPED still shares the SOLID stage
         TerrainRenderPass cutoutPass = builderForRenderType(BlockRenderLayer.CUTOUT, vertexType)
                 .name("cutout")
                 .fragmentDiscard(true)
@@ -118,13 +119,11 @@ public class VintageRenderPassConfigurationBuilder {
         vanillaRenderStages.put(BlockRenderLayer.CUTOUT, cutoutPass);
 
         if (ImpetusVintage.options().performance.useRenderPassConsolidation) {
-            // Both are mipmapped, so CUTOUT_MIPPED can ride along with the SOLID stage.
             vanillaRenderStages.put(BlockRenderLayer.SOLID, cutoutMippedPass);
         } else {
             vanillaRenderStages.put(BlockRenderLayer.CUTOUT_MIPPED, cutoutMippedPass);
         }
 
-        // Now build the material map
         Map<BlockRenderLayer, Material> renderTypeToMaterialMap = new Reference2ReferenceOpenHashMap<>(4,
                 Reference2ReferenceOpenHashMap.VERY_FAST_LOAD_FACTOR);
 

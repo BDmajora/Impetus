@@ -17,26 +17,41 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-// Starlight's BFS engine (via Pulsar's port of SuperNova): a queue entry is a long with x in bits 0-5, z in 6-11, y in 12-27 (all relative to the window), level in 28-31, a direction bitset in 32-37 and three flags in 61-63
+// Breadth first light engine over a chunk cache.
 public abstract class BfsLightEngine extends LightEngineCache {
+    // Axis directions.
     protected static final AxisDirection[] AXIS_DIRECTIONS = AxisDirection.values();
+    // Horizontal directions.
     protected static final AxisDirection[] ONLY_HORIZONTAL_DIRECTIONS = {
             AxisDirection.POSITIVE_X, AxisDirection.NEGATIVE_X, AxisDirection.POSITIVE_Z, AxisDirection.NEGATIVE_Z
     };
+    // Bits of the x part of a queue entry.
     protected static final int COORD_X_BITS = 6;
+    // Bits of the z part of a queue entry.
     protected static final int COORD_Z_BITS = 6;
+    // Bits of the y part of a queue entry.
     protected static final int COORD_Y_BITS = 16;
+    // Mask of the y part.
     protected static final int COORD_Y_MASK = (1 << COORD_Y_BITS) - 1;
+    // Shift of the light level in a queue entry.
     protected static final int LIGHT_LEVEL_SHIFT = COORD_X_BITS + COORD_Z_BITS + COORD_Y_BITS;
+    // Shift of the direction set in a queue entry.
     protected static final int DIRECTION_SHIFT = LIGHT_LEVEL_SHIFT + 4;
+    // Mask of the packed coordinates.
     protected static final long COORD_MASK = (1L << LIGHT_LEVEL_SHIFT) - 1;
+    // Flag of an entry whose level is written on dequeue.
     protected static final long FLAG_WRITE_LEVEL = Long.MIN_VALUE >>> 2;
+    // Flag of an entry whose level is rechecked on dequeue.
     protected static final long FLAG_RECHECK_LEVEL = Long.MIN_VALUE >>> 1;
+    // Flag has sided transparent blocks.
     protected static final long FLAG_HAS_SIDED_TRANSPARENT_BLOCKS = Long.MIN_VALUE;
-    // Queues start at one section's worth and double on demand up to 8 MB each; past that a task reports overflow and the chunk is relit
+    // Starting capacity of the queues.
     protected static final int INITIAL_QUEUE_SIZE = 1 << 12;
+    // Largest capacity of the queues.
     protected static final int MAX_QUEUE_SIZE = 1 << 20;
+    // Direction lists by direction bit set.
     protected static final AxisDirection[][] OLD_CHECK_DIRECTIONS = new AxisDirection[1 << 6][];
+    // Bit set of all six directions.
     protected static final int ALL_DIRECTIONS_BITSET = (1 << 6) - 1;
 
     static {
@@ -49,38 +64,52 @@ public abstract class BfsLightEngine extends LightEngineCache {
         }
     }
 
+    // Flag set for the sky light engine.
     protected final boolean skylightPropagator;
+    // Processor of section emptiness and edges.
     private final LightSectionProcessor sectionProcessor;
-    // Diagnostics accumulated across one task
+    // Increase entries of the last task.
     public int lastBfsIncreaseTotal;
+    // Decrease entries of the last task.
     public int lastBfsDecreaseTotal;
+    // Positions processed by the last task.
     public int lastPositionsProcessed;
+    // Queue of light increases.
     protected long[] increaseQueue = new long[INITIAL_QUEUE_SIZE];
+    // Length of the increase queue before propagation.
     protected int increaseQueueInitialLength;
+    // Queue of light decreases.
     protected long[] decreaseQueue = new long[INITIAL_QUEUE_SIZE];
+    // Length of the decrease queue before propagation.
     protected int decreaseQueueInitialLength;
+    // Flag set after an overflow warning.
     protected boolean queueOverflowWarned;
+    // Flag set when a queue overflowed this task.
     protected boolean queueOverflowed;
 
+    // Creates a bfs light engine from its skylight propagator and world.
     protected BfsLightEngine(boolean skylightPropagator, World world) {
         super(world);
         this.skylightPropagator = skylightPropagator;
         this.sectionProcessor = new LightSectionProcessor(this);
     }
 
+    // Packs block coordinates into a queue entry.
     protected static long encodeCoords(int x, int z, int y, int encodeOffset) {
         return (x + ((long) z << COORD_X_BITS) + ((long) y << (COORD_X_BITS + COORD_Z_BITS)) + encodeOffset) & COORD_MASK;
     }
 
+    // Returns the sided transparency flag of a state.
     protected static long sidedFlag(IBlockState state) {
         return sidedFlag(LightInfo.of(state));
     }
 
+    // Returns the sided transparency flag of packed light info.
     protected static long sidedFlag(int lightInfo) {
         return (lightInfo & LightInfo.REGISTRY) != 0 ? FLAG_HAS_SIDED_TRANSPARENT_BLOCKS : 0L;
     }
 
-    // Per-section emptiness of a chunk's storage, TRUE for absent or blockless
+    // Returns the empty sections for chunk.
     public static Boolean[] getEmptySectionsForChunk(Chunk chunk) {
         ExtendedBlockStorage[] sections = chunk.getBlockStorageArray();
         Boolean[] ret = new Boolean[16];
@@ -90,11 +119,12 @@ public abstract class BfsLightEngine extends LightEngineCache {
         return ret;
     }
 
-    // The engine's emptiness is about blocks only; Fulgor widens ExtendedBlockStorage.isEmpty to cover light worth sending, which is not the question here
+    // Returns whether empty of blocks.
     static boolean isEmptyOfBlocks(ExtendedBlockStorage section) {
         return section == null || FulgorRenderBridge.isEmptyOfBlocks(section);
     }
 
+    // Resets the task state.
     @Override
     protected final void resetTaskState() {
         this.queueOverflowed = false;
@@ -103,41 +133,55 @@ public abstract class BfsLightEngine extends LightEngineCache {
         this.decreaseQueueInitialLength = 0;
     }
 
+    // Packs a light level into a queue entry.
     protected long encodeQueueLevel(int level) {
         return (level & 0xFL) << LIGHT_LEVEL_SHIFT;
     }
 
+    // Returns whether a level is too low to spread.
     protected boolean isBelowPropagationThreshold(int level) {
         return level <= 1;
     }
 
+    // Stores the emptiness map.
     protected abstract void setEmptinessMap(Chunk chunk, boolean[] to);
 
+    // Returns the emptiness map.
     @Override
     protected abstract boolean[] getEmptinessMap(Chunk chunk);
 
+    // Returns the light nibbles of a chunk.
     @Override
     protected abstract SWMRNibbleArray[] getNibblesOnChunk(Chunk chunk);
 
+    // Returns whether use chunk.
     @Override
     protected final boolean canUseChunk(Chunk chunk) {
         return ((AsyncLitChunk) chunk).fulgor$isLightUsable();
     }
 
+    // Stores the nibbles.
     protected abstract void setNibbles(Chunk chunk, SWMRNibbleArray[] to);
 
+    // Initializes the nibble.
     protected abstract void initNibble(int chunkX, int chunkY, int chunkZ, boolean extrude, boolean initRemovedNibbles);
 
+    // Stores the nibble null.
     protected abstract void setNibbleNull(int chunkX, int chunkY, int chunkZ);
 
+    // Queues the light changes of one changed block.
     protected abstract void propagateBlockChanges(Chunk atChunk, int blockX, int blockY, int blockZ);
 
+    // Queues a recheck of one block.
     protected abstract void checkBlock(int worldX, int worldY, int worldZ);
 
+    // Returns the light a block should have.
     protected abstract int calculateLightValue(int worldX, int worldY, int worldZ, int expect);
 
+    // Lights a chunk from scratch.
     protected abstract void lightChunk(Chunk chunk, boolean needsEdgeChecks);
 
+    // Relights after one block change.
     public final void blockChanged(int blockX, int blockY, int blockZ) {
         if (blockY < 0 || blockY > 255) {
             return;
@@ -157,7 +201,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
         }
     }
 
-    // One chunk's batch of block and section changes: sections first (they create or remove nibbles), then the positions against the updated nibbles
+    // Relights after the block changes of a chunk.
     public final void blocksChangedInChunk(int chunkX, int chunkZ, IntOpenHashSet changedPositions, Boolean[] changedSections) {
         this.lastBfsIncreaseTotal = 0;
         this.lastBfsDecreaseTotal = 0;
@@ -184,7 +228,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
         }
     }
 
-    // Re-derives section emptiness from the queued positions, since a mod replacing Chunk.setBlockState can hide a section transition from the RETURN hook
+    // Returns the section emptiness changes of a chunk.
     private Boolean[] reconcileSectionChanges(Chunk chunk, IntOpenHashSet changedPositions, Boolean[] changedSections) {
         if (changedPositions == null || changedPositions.isEmpty()) {
             return changedSections;
@@ -213,7 +257,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
         return effectiveChanges;
     }
 
-    // Every changed position is seeded before one drain, so a dense edit is not re-flooded once per block
+    // Queues the light changes of every changed position.
     protected void processBlockPositionChanges(Chunk chunk, int chunkX, int chunkZ, IntOpenHashSet changedPositions) {
         IntIterator it = changedPositions.iterator();
         while (it.hasNext()) {
@@ -230,7 +274,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
         performLightDecrease();
     }
 
-    // A chunk's initial pass: fresh NULL nibbles are lit from scratch and handed to the chunk at the end
+    // Lights a chunk and optionally checks its edges.
     public final void light(Chunk chunk, Boolean[] emptySections, boolean checkEdges) {
         int chunkX = chunk.x;
         int chunkZ = chunk.z;
@@ -254,6 +298,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
         }
     }
 
+    // Returns the cached light nibbles of a chunk.
     private SWMRNibbleArray[] getNibblesFromCache(Chunk chunk) {
         SWMRNibbleArray[] nibbles = new SWMRNibbleArray[ChunkLightHelper.LIGHT_SECTIONS];
         for (int cy = MIN_LIGHT_SECTION; cy <= MAX_LIGHT_SECTION; ++cy) {
@@ -262,7 +307,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
         return nibbles;
     }
 
-    // Load-time init for a chunk restored with valid saved light: nibble and emptiness-map setup only, no BFS (Starlight's forceHandleEmptySectionChanges)
+    // Seeds the light of a loaded chunk.
     public final void loadInChunk(Chunk chunk, Boolean[] emptySections) {
         int chunkX = chunk.x;
         int chunkZ = chunk.z;
@@ -282,6 +327,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
         }
     }
 
+    // Checks the edges of the given sections.
     public final void checkChunkEdges(int chunkX, int chunkZ, IntOpenHashSet sections) {
         setupCaches(chunkX * 16 + 7, 128, chunkZ * 16 + 7, true, false);
         try {
@@ -301,43 +347,51 @@ public abstract class BfsLightEngine extends LightEngineCache {
         }
     }
 
+    // Prepares edge checks for a chunk.
     protected void prepareBatchedEdgeChecks(int chunkX, int chunkZ) {
     }
 
-    // Applies sparse per-section emptiness changes (null means unchanged) and initialises the nibbles around any section that became non-empty
+    // Updates nibbles for section emptiness changes.
     protected final boolean[] handleEmptySectionChanges(Chunk chunk, Boolean[] emptinessChanges, boolean unlit) {
         return this.sectionProcessor.handleEmptySectionChanges(chunk, emptinessChanges, unlit);
     }
 
+    // Checks one section edge against its neighbours.
     protected void checkChunkEdge(int chunkX, int chunkY, int chunkZ) {
         this.sectionProcessor.checkChunkEdge(chunkX, chunkY, chunkZ);
     }
 
+    // Returns whether both sections of an edge are full.
     protected boolean areBothEdgeSectionsFull(int currentIndex, int neighbourIndex) {
         return this.nibbleCache[currentIndex].isFullUpdating() && this.nibbleCache[neighbourIndex].isFullUpdating();
     }
 
+    // Returns whether both sections of an edge are zero.
     protected boolean areBothEdgeSectionsZero(int currentIndex, int neighbourIndex) {
         return this.nibbleCache[currentIndex].isZeroUpdating() && this.nibbleCache[neighbourIndex].isZeroUpdating();
     }
 
+    // Checks the edges of a section range.
     protected void checkChunkEdges(Chunk chunk, int fromSection, int toSection) {
         this.sectionProcessor.checkChunkEdges(chunk, fromSection, toSection);
     }
 
+    // Spreads neighbour light into a section range.
     protected void propagateNeighbourLevels(Chunk chunk, int fromSection, int toSection) {
         this.sectionProcessor.propagateNeighbourLevels(chunk, fromSection, toSection);
     }
 
+    // Grows the increase queue.
     protected final long[] resizeIncreaseQueue() {
         return this.increaseQueue = Arrays.copyOf(this.increaseQueue, Math.min(this.increaseQueue.length * 2, MAX_QUEUE_SIZE));
     }
 
+    // Grows the decrease queue.
     protected final long[] resizeDecreaseQueue() {
         return this.decreaseQueue = Arrays.copyOf(this.decreaseQueue, Math.min(this.decreaseQueue.length * 2, MAX_QUEUE_SIZE));
     }
 
-    // False when the entry was dropped for overflow; a caller that appends speculatively and rolls back must check it, since a drop never incremented the length
+    // Adds an entry to the increase queue and returns false on overflow.
     protected final boolean appendToIncreaseQueue(long value) {
         long[] queue = this.increaseQueue;
         int idx = this.increaseQueueInitialLength;
@@ -353,6 +407,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
         return true;
     }
 
+    // Adds an entry to the decrease queue and returns false on overflow.
     protected final boolean appendToDecreaseQueue(long value) {
         long[] queue = this.decreaseQueue;
         int idx = this.decreaseQueueInitialLength;
@@ -368,6 +423,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
         return true;
     }
 
+    // Logs the first queue overflow.
     private void warnQueueOverflow() {
         this.queueOverflowed = true;
         if (!this.queueOverflowWarned) {
@@ -376,14 +432,15 @@ public abstract class BfsLightEngine extends LightEngineCache {
         }
     }
 
+    // Returns whether queue overflowed.
     public boolean wasQueueOverflowed() {
         return this.queueOverflowed;
     }
 
-    // Which vanilla array a published section mirrors into
+    // Returns the vanilla light array of a section.
     protected abstract NibbleArray vanillaLightArray(ExtendedBlockStorage section);
 
-    // Highest level any of the six neighbours can deliver into this cell after per-face absorption, starting from level; returns early once expect is beaten
+    // Returns the brightest neighbour light minus the opacity.
     protected final int attenuateFromNeighbours(int worldX, int worldY, int worldZ, int expect, int info, int level) {
         int rawOpacity = LightInfo.opacity(info);
         boolean sidedTransparent = rawOpacity > 1 && (info & LightInfo.REGISTRY) != 0;
@@ -417,7 +474,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
         return level;
     }
 
-    // Face bits of the entry's own block when it was flagged sided-transparent, so light does not leave through a face the block seals
+    // Returns the faces of a source block that stop light.
     private int sourceBlockedFaces(long queueValue, int posX, int posY, int posZ) {
         if ((queueValue & FLAG_HAS_SIDED_TRANSPARENT_BLOCKS) == 0L) {
             return 0;
@@ -427,6 +484,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
         return LightInfo.faceBits(lightInfoAt(srcState, posX, posY, posZ));
     }
 
+    // Spreads queued light increases.
     protected final void performLightIncrease() {
         long[] queue = this.increaseQueue;
         int queueReadIndex = 0;
@@ -473,7 +531,6 @@ public abstract class BfsLightEngine extends LightEngineCache {
                 }
 
                 int currentLevel = getLightLevel(sectionIndex, localIndex);
-                // Absorption is at least one, so a neighbour already at level - 1 cannot be brightened; skips the palette and info reads for about half the frontier
                 if (currentLevel >= propagatedLevel - 1) {
                     continue;
                 }
@@ -487,7 +544,6 @@ public abstract class BfsLightEngine extends LightEngineCache {
                     continue;
                 }
 
-                // The guards above proved a real change, so the nibble is written directly rather than through setLightLevel's no-op check
                 this.nibbleCache[sectionIndex].set(localIndex, targetLevel);
                 postLightUpdate(sectionIndex, offX & 15, offY & 15, offZ & 15);
 
@@ -509,6 +565,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
         this.lastBfsIncreaseTotal += queueLength;
     }
 
+    // Spreads queued light decreases.
     protected final void performLightDecrease() {
         long[] queue = this.decreaseQueue;
         long[] increaseQueue = this.increaseQueue;
@@ -521,7 +578,6 @@ public abstract class BfsLightEngine extends LightEngineCache {
         int decodeOffsetZ = -this.encodeOffsetZ;
         int encodeOffset = this.coordinateOffset;
         int sectionOffset = this.chunkSectionIndexOffset;
-        // Blocks emit block light only; the sky lane never re-seeds from an emitter
         boolean reseedEmitters = !this.skylightPropagator;
 
         while (queueReadIndex < queueLength) {
@@ -554,7 +610,6 @@ public abstract class BfsLightEngine extends LightEngineCache {
                 if (currentLevel == 0) {
                     continue;
                 }
-                // No skip for a level-15 neighbour: a sky source must reach the brighter-neighbour branch and be re-queued as a recheck increase, which is what re-floods the region being darkened
 
                 IBlockState state = getBlockStateFast(sectionIndex, offX & 15, offY & 15, offZ & 15);
                 int info = lightInfoAt(state, offX, offY, offZ);
@@ -563,7 +618,6 @@ public abstract class BfsLightEngine extends LightEngineCache {
                 int targetLevel = propagatedLevel - absorption;
                 long sFlag = sidedFlag(info);
 
-                // Brighter than this decrease can account for: it has its own source, so it is re-checked as an increase rather than cleared
                 if (currentLevel > targetLevel) {
                     if (increaseQueueLength >= increaseQueue.length) {
                         if (increaseQueue.length >= MAX_QUEUE_SIZE) {
@@ -603,7 +657,6 @@ public abstract class BfsLightEngine extends LightEngineCache {
                     }
                 }
 
-                // Independent of any re-seed: the decrease keeps walking past emitters, or removing a bright source leaves a ghost region behind any dimmer one; the level-1 boundary entries re-flood the cleared region's outer ring from the surrounding light
                 if (targetLevel > 0) {
                     if (queueLength >= queue.length) {
                         if (queue.length >= MAX_QUEUE_SIZE) {
@@ -625,7 +678,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
         performLightIncrease();
     }
 
-    // Mirrors the published section into the lane's vanilla array; a no-op on the client where the SWMR array shares the vanilla storage
+    // Handles the nibble visible.
     @Override
     protected final void onNibbleVisible(int cacheIndex, SWMRNibbleArray nibble) {
         if (nibble == null) {
@@ -653,25 +706,39 @@ public abstract class BfsLightEngine extends LightEngineCache {
         }
     }
 
-    // The six neighbour offsets; ordinal ^ 1 is the opposite, and the bit masks feed the direction bitset of a queue entry
+    // Choices of the axis direction setting.
     protected enum AxisDirection {
+        // Value that selects positive x.
         POSITIVE_X(1, 0, 0),
+        // Value that selects negative x.
         NEGATIVE_X(-1, 0, 0),
+        // Value that selects positive z.
         POSITIVE_Z(0, 0, 1),
+        // Value that selects negative z.
         NEGATIVE_Z(0, 0, -1),
+        // Value that selects positive y.
         POSITIVE_Y(0, 1, 0),
+        // Value that selects negative y.
         NEGATIVE_Y(0, -1, 0);
 
+        // X step of the direction.
         protected final int x;
+        // Y step of the direction.
         protected final int y;
+        // Z step of the direction.
         protected final int z;
+        // Ordinal of the opposite direction.
         protected final int oppositeOrdinal;
+        // Direction set without the opposite direction.
         protected final long everythingButTheOppositeDirection;
+        // Direction set without this direction.
         protected final long everythingButThisDirection;
-        // Step along a chunk's edge facing this (horizontal) direction: an X-facing edge runs along Z and vice versa
+        // X step along a chunk edge.
         protected final int edgeStepX;
+        // Z step along a chunk edge.
         protected final int edgeStepZ;
 
+        // Creates an axis direction from its x and y and z.
         AxisDirection(int x, int y, int z) {
             this.x = x;
             this.y = y;
@@ -684,7 +751,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
             this.edgeStepZ = x != 0 ? 1 : 0;
         }
 
-        // First block X of the edge column: the chunk's own boundary layer, or (outside) the neighbour's layer just past it
+        // Returns the first x of a chunk edge.
         protected int edgeStartX(int chunkX, boolean outside) {
             int base = chunkX << 4;
             if (this.x == 0) {
@@ -693,6 +760,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
             return this.x < 0 ? base - (outside ? 1 : 0) : base + (outside ? 16 : 15);
         }
 
+        // Returns the first z of a chunk edge.
         protected int edgeStartZ(int chunkZ, boolean outside) {
             int base = chunkZ << 4;
             if (this.z == 0) {

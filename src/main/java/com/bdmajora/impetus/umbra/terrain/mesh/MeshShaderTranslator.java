@@ -5,6 +5,8 @@ import com.bdmajora.impetus.engine.impl.render.shader.ShaderLoader;
 import com.bdmajora.impetus.umbra.terrain.mesh.GlslDeclarations.Declaration;
 import com.bdmajora.impetus.umbra.terrain.mesh.GlslDeclarations.Declarator;
 
+import com.bdmajora.impetus.umbra.util.SafeInt;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -14,52 +16,70 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-// Rewrites a pack terrain program, already lifted onto Impetus's vertex bridge by ImpetusTerrainTransformer, into the mesh-shader stages an Nvidium port ships: the vertex stage becomes a function each mesh lane runs for its vertex, its outputs per-thread globals copied into per-vertex arrays, and every varying gets a fixed location both stages agree on, worked out from the declarations alone so the files hold for any option set
+// Ports the vertex and fragment stages of a terrain program to an Nvidium mesh shader.
 public final class MeshShaderTranslator {
-    // Bumped whenever ported files stop matching what the loader and the mesh pipeline expect, so stale ports are refused rather than mis-rendered
+    // Version of the port output.
     public static final int PORT_FORMAT = 3;
-    // The first line of every ported stage, after #version
+    // First line of every ported file.
     public static final String HEADER = "// Ported for Nvidium by Impetus, port format " + PORT_FORMAT;
 
-    // Lanes per meshlet, one vertex each: eight quads, or four when the varyings would push the meshlet past the mesh output memory
+    // Thread count of a mesh workgroup.
     public static final int THREADS = 32;
+    // Thread count when the outputs exceed the budget.
     public static final int LIGHT_THREADS = 16;
-    // Bytes of per-vertex output a 32-lane meshlet may use; NVIDIA gives a mesh workgroup 16 KB in all
+    // Bytes of mesh outputs a workgroup may write.
     static final int OUTPUT_BUDGET = 14 * 1024;
-    // Locations a fragment stage can take in at most
+    // Largest number of varying locations.
     static final int MAX_LOCATIONS = 32;
 
-    // Names the bridge prologue declares on both sides; the loader pins the fragment side of these, since the bridge is added to the fragment stage at load
+    // Name of the alpha cutoff varying.
     public static final String ALPHA_CUTOFF = "iris_AlphaCutoff";
+    // Name of the fog coordinate varying.
     public static final String FOG = "iris_FogFragCoord";
+    // Name of the texture coordinate array varying.
     public static final String TEX_COORDS = "iris_TexCoordArr";
+    // Name of the vertex color builtin.
     private static final String COLOR = "gl_Color";
-    // gl_Color's stand-in on both sides
+    // Name of the color input of the fragment stage.
     private static final String COLOR_INPUT = "umbra_FrontColorIn";
 
+    // Pattern of the version line.
     private static final Pattern VERSION = Pattern.compile("(?m)^[ \\t]*#version[ \\t]+(\\d+)([^\\n]*)\\n?");
+    // Pattern of the main function.
     private static final Pattern WRAPPER_MAIN = Pattern.compile("\\bvoid\\s+main\\s*\\(\\s*(void)?\\s*\\)");
+    // Pattern of an invariant builtin declaration.
     private static final Pattern INVARIANT_BUILTIN = Pattern.compile("(?m)^[ \\t]*invariant[ \\t]+gl_\\w+[ \\t]*;");
+    // Pattern of an interpolation qualifier.
     private static final Pattern INTERPOLATION = Pattern.compile("\\b(?:flat|smooth|noperspective|centroid|sample|invariant)\\s+");
+    // Pattern of a layout qualifier.
     private static final Pattern LAYOUT = Pattern.compile("\\blayout\\s*\\([^)]*\\)\\s*");
+    // Pattern of one array dimension.
     private static final Pattern ARRAY_DIMENSION = Pattern.compile("\\[\\s*(\\d*)\\s*]");
-    // The loader's record of where the bridge varyings sit, written into the ported fragment stage
+    // Pattern of a bridge directive comment.
     private static final Pattern BRIDGE_DIRECTIVE = Pattern.compile("/\\*\\s*NVIDIUM_BRIDGE:([^*]*)\\*/");
-    // The bridge's mc_chunkFade inputs: a per-region age array indexed by draw id and the fade rate, both uniforms on the raster path
+    // Pattern of the chunk fade uniform declarations.
     private static final Pattern CHUNK_FADE_UNIFORMS = Pattern.compile("\\buniform\\s+float\\s+iris_Chunk(?:AgesMs\\s*\\[[^\\]]*]|FadeInv)\\s*;");
+    // Pattern of a chunk age read.
     private static final Pattern CHUNK_AGE = Pattern.compile("\\biris_ChunkAgesMs\\s*\\[\\s*drawId\\s*]");
+    // Pattern of the chunk fade rate.
     private static final Pattern CHUNK_FADE_RATE = Pattern.compile("\\biris_ChunkFadeInv\\b");
 
-    // Words GLSL 4.60 reserves that a pack written for 330 or earlier may use as plain names; renamed only below #version 400
+    // Keywords of later GLSL versions that are renamed.
     private static final Set<String> LATER_KEYWORDS = Set.of("sample", "patch", "subroutine", "precise", "coherent", "volatile",
             "restrict", "readonly", "writeonly", "resource", "noncoherent");
-    // Keywords an older pack may still use as such through an extension, renamed only when it never enables one
+    // Keywords that are renamed unless their extensions are enabled.
     private static final Set<String> EXTENSION_KEYWORDS = Set.of("buffer", "shared");
+    // Pattern of the later keywords.
+    private static final Pattern LATER_ONLY = keywordPattern(LATER_KEYWORDS, Set.of());
+    // Pattern of the later keywords and the extension keywords.
+    private static final Pattern LATER_AND_EXTENSION = keywordPattern(LATER_KEYWORDS, EXTENSION_KEYWORDS);
+    // Interpolation qualifiers.
     private static final Set<String> INTERPOLATION_QUALIFIERS = Set.of("flat", "smooth", "noperspective", "centroid", "sample");
 
-    // Locations one value of each varying type fills
+    // Locations of one value of each varying type.
     private static final Map<String, Integer> TYPE_LOCATIONS = new HashMap<>();
 
+    // Fills the location counts of the scalar and vector and matrix types
     static {
         for (String scalar : new String[]{"float", "int", "uint", "bool", "double"}) {
             TYPE_LOCATIONS.put(scalar, 1);
@@ -80,7 +100,7 @@ public final class MeshShaderTranslator {
         }
     }
 
-    // The vertex built-ins a mesh stage lacks, as globals the pack's code writes in their place
+    // Stand ins of the vertex builtins.
     private static final String BUILTINS = String.join("\n",
             "vec4 umbra_Position = vec4(0.0, 0.0, 0.0, 1.0);",
             "float umbra_PointSize = 1.0;",
@@ -104,16 +124,19 @@ public final class MeshShaderTranslator {
             "#define gl_DrawID 0",
             "") + "\n";
 
+    // Layout of the mesh workgroup.
     private static final String MESH_LAYOUT = String.join("\n",
             "layout(local_size_x = UMBRA_MESH_THREADS) in;",
             "layout(triangles, max_vertices = UMBRA_MESH_THREADS, max_primitives = UMBRA_MESH_THREADS / 2) out;",
             "") + "\n";
 
+    // Removal of the builtin stand ins.
     private static final String UNDEFINE_BUILTINS = String.join("\n",
             "#undef gl_Position", "#undef gl_PointSize", "#undef gl_ClipVertex", "#undef gl_ClipDistance", "#undef gl_FrontColor",
             "#undef gl_BackColor", "#undef gl_VertexID", "#undef gl_InstanceID", "#undef gl_BaseVertex", "#undef gl_BaseInstance",
             "#undef gl_DrawID", "") + "\n";
 
+    // Extensions a mesh shader needs.
     private static final String EXTENSIONS = String.join("\n",
             "#extension GL_NV_mesh_shader : require",
             "#extension GL_NV_gpu_shader5 : require",
@@ -125,32 +148,34 @@ public final class MeshShaderTranslator {
             "#extension GL_KHR_shader_subgroup_shuffle_relative : require",
             "") + "\n";
 
+    // Prevents instantiation
     private MeshShaderTranslator() {
     }
 
-    // One varying both stages carry: its GLSL type and array suffix, first location, locations filled, and the fragment side's interpolation qualifiers
+    // Varying with its type and locations.
     public record Varying(String name, String type, String arraySuffix, int location, int locations, String interpolation) {
     }
 
-    // One ported program: the mesh stage (both opaque and translucent forms, picked by UMBRA_TRANSLUCENT at load) and the fragment stage with its inputs pinned
+    // Ported stages with their varyings and thread count.
     public record Port(String mesh, String fragment, List<Varying> varyings, int threads) {
     }
 
-    // Thrown for a program shape the port cannot carry; that program keeps only its OpenGL stages
+    // Failure of a program the port cannot handle.
     public static final class UnsupportedProgramException extends RuntimeException {
+        // Creates a failure with a reason.
         public UnsupportedProgramException(String message) {
             super(message);
         }
     }
 
-    // Ports one program from its bridged vertex stage and the pack's own fragment stage
+    // Ports a bridged vertex stage and a fragment stage.
     public static Port port(String bridgedVertex, String fragment) {
         List<Varying> varyings = assignLocations(fragment);
         int threads = threadsFor(varyings);
         return new Port(meshShader(bridgedVertex, varyings, threads), fragmentShader(fragment, varyings), varyings, threads);
     }
 
-    // Fixed locations for everything the fragment stage may read, across every #if branch: the bridge's alpha cutoff, its fog and texture-coordinate arrays and the gl_Color stand-in when the fragment stage uses them, the pack's own inputs in declaration order, then the quad's mipmap flag when it samples the atlas
+    // Returns the varyings the fragment stage reads with their locations and rejects too many.
     public static List<Varying> assignLocations(String fragment) {
         Map<String, Varying> varyings = new LinkedHashMap<>();
         int[] next = {0};
@@ -195,18 +220,25 @@ public final class MeshShaderTranslator {
         return new ArrayList<>(varyings.values());
     }
 
-    // Appends a varying at the next free location
+    // Adds a varying at the next location and rejects an unknown type or an overflow.
     private static void add(Map<String, Varying> varyings, int[] next, String name, String type, String arraySuffix, String interpolation) {
         Integer perValue = TYPE_LOCATIONS.get(type);
         if (perValue == null) {
             throw new UnsupportedProgramException("varying " + name + " of type " + type);
         }
-        int locations = perValue * arrayLength(name, arraySuffix);
-        varyings.put(name, new Varying(name, type, arraySuffix, next[0], locations, interpolation));
-        next[0] += locations;
+        int locations = arrayLength(name, arraySuffix);
+        // Rejects a varying whose locations overflow the running total
+        try {
+            locations = Math.multiplyExact(perValue, locations);
+            int end = Math.addExact(next[0], locations);
+            varyings.put(name, new Varying(name, type, arraySuffix, next[0], locations, interpolation));
+            next[0] = end;
+        } catch (ArithmeticException e) {
+            throw new UnsupportedProgramException("varying " + name + " is too large");
+        }
     }
 
-    // Elements in an array suffix, 1 for none; only literal sizes, since a location must not move with an option
+    // Returns the element count of an array suffix and rejects an unsized or computed or overflowing array.
     static int arrayLength(String name, String arraySuffix) {
         int length = 1;
         Matcher dimension = ARRAY_DIMENSION.matcher(arraySuffix);
@@ -215,7 +247,12 @@ public final class MeshShaderTranslator {
             if (dimension.group(1).isEmpty()) {
                 throw new UnsupportedProgramException("varying " + name + " has an unsized array");
             }
-            length *= Integer.parseInt(dimension.group(1));
+            // Rejects an array whose location count overflows
+            try {
+                length = Math.multiplyExact(length, SafeInt.parse(dimension.group(1)));
+            } catch (ArithmeticException e) {
+                throw new UnsupportedProgramException("varying " + name + " is too large");
+            }
             consumed = dimension.end();
         }
         if (consumed != arraySuffix.length()) {
@@ -224,7 +261,7 @@ public final class MeshShaderTranslator {
         return length;
     }
 
-    // Lanes per meshlet for these varyings: a full warp unless the per-vertex outputs, counted over every branch, would not fit
+    // Returns the thread count that keeps the outputs within the budget.
     public static int threadsFor(List<Varying> varyings) {
         int locations = 1;
         for (Varying varying : varyings) {
@@ -233,14 +270,14 @@ public final class MeshShaderTranslator {
         return THREADS * locations * 16 > OUTPUT_BUDGET ? LIGHT_THREADS : THREADS;
     }
 
-    // The mesh stage, every template inlined so the file stands alone: the pack's vertex code with its interface turned into globals, each output fed from whichever #if branch declared it, then both the opaque and the translucent mesh mains behind UMBRA_TRANSLUCENT
+    // Returns the mesh shader of a bridged vertex stage.
     public static String meshShader(String bridgedVertex, List<Varying> varyings, int threads) {
         Matcher version = VERSION.matcher(bridgedVertex);
         if (!version.find()) {
             throw new UnsupportedProgramException("vertex stage without #version");
         }
 
-        int declared = Integer.parseInt(version.group(1));
+        int declared = SafeInt.parse(version.group(1));
         boolean compatibility = version.group(2).contains("compatibility");
 
         Map<String, Varying> byName = new HashMap<>();
@@ -250,7 +287,6 @@ public final class MeshShaderTranslator {
 
         String body = bridgedVertex.substring(0, version.start()) + bridgedVertex.substring(version.end());
         body = INVARIANT_BUILTIN.matcher(body).replaceAll("");
-        // A mesh lane gets its section's age from the task stage and the fade rate from the scene block
         body = CHUNK_FADE_UNIFORMS.matcher(body).replaceAll("");
         body = CHUNK_AGE.matcher(body).replaceAll("umbra_SectionAgeMs");
         body = CHUNK_FADE_RATE.matcher(body).replaceAll("umbra_ChunkFadeInv");
@@ -267,7 +303,6 @@ public final class MeshShaderTranslator {
         out.append(HEADER).append('\n');
         out.append(EXTENSIONS);
         out.append("#define UMBRA_MESH_THREADS ").append(threads).append('\n');
-        // The output layout comes before any output, since the per-vertex arrays take their size from max_vertices
         out.append(MESH_LAYOUT);
         out.append("#ifdef UMBRA_TRANSLUCENT\n#define UMBRA_WRITABLE_TERRAIN 1\n#endif\n");
         out.append("#import <impetus:mesh/pack/scene.glsl>\n");
@@ -277,7 +312,6 @@ public final class MeshShaderTranslator {
         out.append(body);
         out.append("\n// ---- end pack vertex stage ----\n");
         out.append(UNDEFINE_BUILTINS);
-        // The copies name the pack's globals, so they take the same renames
         StringBuilder outputs = new StringBuilder();
         appendOutputs(outputs, varyings);
         out.append(rename ? renameLaterKeywords(outputs.toString(), extensions) : outputs);
@@ -287,7 +321,7 @@ public final class MeshShaderTranslator {
         return String.join("\n", ShaderParser.parseShader(out.toString(), ShaderLoader::getShaderSource)) + "\n";
     }
 
-    // The fragment stage with every input pinned, the gl_Color stand-in, and the record of where the bridge varyings the loader adds belong
+    // Returns the fragment stage that reads the mesh outputs.
     public static String fragmentShader(String fragment, List<Varying> varyings) {
         Map<String, Varying> byName = new HashMap<>();
         StringBuilder bridge = new StringBuilder("/* NVIDIUM_BRIDGE:");
@@ -301,8 +335,7 @@ public final class MeshShaderTranslator {
 
         String body = GlslDeclarations.rewrite(fragment, declaration -> fragmentInput(declaration, byName));
         Matcher declared = VERSION.matcher(body);
-        // Block members match by name, so the fragment stage takes the same keyword renames as the mesh stage
-        if (!declared.find() || Integer.parseInt(declared.group(1)) < 400) {
+        if (!declared.find() || com.bdmajora.impetus.umbra.util.SafeInt.parse(declared.group(1)) < 400) {
             body = renameLaterKeywords(body);
         }
         Varying mipped = byName.get(AtlasSampling.MIPPED);
@@ -313,8 +346,7 @@ public final class MeshShaderTranslator {
         boolean versioned = version.find();
 
         StringBuilder header = new StringBuilder(HEADER).append('\n');
-        // Locations on fragment inputs arrived in 4.10; below that they need separate_shader_objects
-        if (!versioned || Integer.parseInt(version.group(1)) < 410) {
+        if (!versioned || com.bdmajora.impetus.umbra.util.SafeInt.parse(version.group(1)) < 410) {
             header.append("#extension GL_ARB_separate_shader_objects : enable\n");
         }
         header.append(bridge);
@@ -331,7 +363,7 @@ public final class MeshShaderTranslator {
                 : header + body;
     }
 
-    // At load: turns the bridge inputs ImpetusTerrainTransformer declared in a transformed fragment stage into input blocks at the locations its port recorded, and lifts the stage to GLSL 1.50, the first with input blocks
+    // Pins the inputs named by bridge directives to their locations.
     public static String pinBridgeInputs(String transformedFragment) {
         Matcher directive = BRIDGE_DIRECTIVE.matcher(transformedFragment);
         if (!directive.find()) {
@@ -352,23 +384,23 @@ public final class MeshShaderTranslator {
             }
         }
         Matcher version = VERSION.matcher(result);
-        if (version.find() && Integer.parseInt(version.group(1)) < 150) {
+        if (version.find() && com.bdmajora.impetus.umbra.util.SafeInt.parse(version.group(1)) < 150) {
             result = result.substring(0, version.start()) + "#version 150 compatibility\n" + result.substring(version.end());
         }
         return result;
     }
 
-    // Whether a declaration is a stage input
+    // Returns whether a declaration is a stage input.
     private static boolean isInput(Declaration declaration) {
         return declaration.storage().equals("in") || declaration.storage().equals("varying");
     }
 
-    // Whether the source mentions an identifier as a whole word
+    // Returns whether a source uses an identifier.
     private static boolean uses(String source, String identifier) {
         return Pattern.compile("\\b" + Pattern.quote(identifier) + "\\b").matcher(source).find();
     }
 
-    // A vertex-stage global under the mesh stage: inputs become zeroed globals the fetch fills, outputs plain globals, and a fed output also declares its per-vertex array and marks itself fed inside the very #if branch it sits in
+    // Returns the mesh shader form of a vertex global or null to keep it.
     static String vertexGlobal(Declaration declaration, Map<String, Varying> byName) {
         switch (declaration.storage()) {
             case "in", "attribute" -> {
@@ -412,7 +444,7 @@ public final class MeshShaderTranslator {
         }
     }
 
-    // An output block as a struct-typed global, or loose globals when it has no instance name; gl_PerVertex redeclarations go entirely
+    // Returns the members of an output block as globals or a struct instance.
     private static String outputBlock(Declaration declaration) {
         if (declaration.type().equals("gl_PerVertex")) {
             return "";
@@ -426,7 +458,7 @@ public final class MeshShaderTranslator {
         return "struct " + struct + " {" + members + "}; " + struct + ' ' + instance.name() + instance.arraySuffix() + ';';
     }
 
-    // A fragment input declaration as one input block per variable at its location, any location the pack chose dropped since its numbering no longer applies
+    // Returns the fragment form of an input or null to keep it.
     static String fragmentInput(Declaration declaration, Map<String, Varying> byName) {
         if (!isInput(declaration) || declaration.isBlock()) {
             return null;
@@ -445,7 +477,7 @@ public final class MeshShaderTranslator {
         return out.toString();
     }
 
-    // Copies each fed output into its per-vertex block; gl_Color's stand-in and the mipmap flag are always declared, since umbra_FrontColor and umbra_Mipped always exist
+    // Appends the output blocks and the function that writes them.
     private static void appendOutputs(StringBuilder out, List<Varying> varyings) {
         StringBuilder writes = new StringBuilder();
         for (Varying varying : varyings) {
@@ -465,17 +497,17 @@ public final class MeshShaderTranslator {
         out.append("void umbra_writeOutputs(uint lane) {\n").append(writes).append("}\n");
     }
 
-    // One varying's per-vertex output: a block of its own at its location, since NVIDIA counts a loose per-vertex array as one location per vertex and its neighbours then overlap
+    // Returns an output block at a location.
     private static String outputBlock(int location, String member) {
         return "layout(location = " + location + ") out umbra_v" + location + " { " + member + "; } umbra_o" + location + "[];\n";
     }
 
-    // The matching fragment input block, whose member keeps the varying's own name in the stage's global scope
+    // Returns an input block at a location.
     private static String inputBlock(int location, String member) {
         return "layout(location = " + location + ") in umbra_v" + location + " { " + member + "; };";
     }
 
-    // Precision qualifiers survive onto a plain global, the rest of the stage interface does not
+    // Returns the precision qualifiers of a declaration.
     private static String precisionOf(Declaration declaration) {
         StringBuilder out = new StringBuilder();
         for (String qualifier : declaration.qualifiers()) {
@@ -486,22 +518,25 @@ public final class MeshShaderTranslator {
         return out.toString();
     }
 
-    // Renames identifiers that are keywords at 460 but were free names where the pack was written
+    // Renames the later keywords of a body.
     static String renameLaterKeywords(String body) {
         return renameLaterKeywords(body, body.contains("GL_ARB_shader_storage_buffer_object") || body.contains("GL_ARB_compute_shader"));
     }
 
-    // The same, told whether the pack enables an extension that makes buffer and shared keywords already
+    // Renames the later keywords and the extension keywords when their extensions are absent.
     private static String renameLaterKeywords(String body, boolean extensions) {
+        return (extensions ? LATER_ONLY : LATER_AND_EXTENSION).matcher(body).replaceAll("umbra_$1");
+    }
+
+    // Returns a pattern of whole words from keyword sets.
+    private static Pattern keywordPattern(Set<String> first, Set<String> second) {
         StringBuilder words = new StringBuilder();
-        for (String word : LATER_KEYWORDS) {
+        for (String word : first) {
             words.append(words.isEmpty() ? "" : "|").append(word);
         }
-        if (!extensions) {
-            for (String word : EXTENSION_KEYWORDS) {
-                words.append('|').append(word);
-            }
+        for (String word : second) {
+            words.append('|').append(word);
         }
-        return Pattern.compile("\\b(" + words + ")\\b").matcher(body).replaceAll("umbra_$1");
+        return Pattern.compile("\\b(" + words + ")\\b");
     }
 }

@@ -7,9 +7,10 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 
 import java.util.List;
 
-// Exposes ShaderGroup's pass list; 1.12.2's post framework only sets uniforms to constants from JSON, and Panini's strength and extents change per frame with the FOV
+// Mixin that changes ShaderGroup.
 @Mixin(ShaderGroup.class)
 public interface ShaderGroupAccessor {
+    // Gives access to the field get shaders.
     @Accessor("listShaders")
     List<Shader> impetus$getShaders();
 }

@@ -7,9 +7,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Applies the Time and Weather locks to the integrated server at tick HEAD, before vanilla's weather scheduler can overwrite a forced state; single-player only, like OptiFine's
+// Mixin that changes WorldServer.
 @Mixin(WorldServer.class)
 public class WorldServerMixin {
+    // Runs at the start of tick.
     @Inject(method = "tick", at = @At("HEAD"))
     private void impetus$applyOverrides(CallbackInfo ci) {
         TimeWeatherOverride.apply((WorldServer) (Object) this);

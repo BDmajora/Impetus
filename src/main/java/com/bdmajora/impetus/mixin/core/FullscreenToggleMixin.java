@@ -6,9 +6,10 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
 
-// Routes vanilla's fullscreen toggle (F11, the video settings button, Impetus's own mode switch) through Impetus's window modes
+// Mixin that changes Minecraft.
 @Mixin(Minecraft.class)
 public class FullscreenToggleMixin {
+    // Handles toggle fullscreen.
     @WrapMethod(method = "toggleFullscreen")
     private void impetus$toggleFullscreen(Operation<Void> original) {
         WindowModes.toggle((Minecraft) (Object) this, original::call);

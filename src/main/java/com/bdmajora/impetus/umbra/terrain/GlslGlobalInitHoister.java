@@ -3,31 +3,38 @@ package com.bdmajora.impetus.umbra.terrain;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-// Moves non-constant global initialisers into main(), reproducing #version 120 semantics under 330 where NVIDIA may evaluate them before uniforms load; multi-line initialisers are collected whole and top-level #ifdef gates are mirrored
+// Moves global initialisers that read non constant values into an assignment block for main.
 public final class GlslGlobalInitHoister {
-    // Matches only the START of a global initialiser (indent, type, name, =, rest of first line); the remainder is collected by hand since a regex cannot balance multi-line nesting
+    // Pattern of a global declaration with an initialiser.
     private static final Pattern GLOBAL_INIT_START = Pattern.compile(
             "^(\\s*)(float|int|bool|vec[234]|ivec[234]|mat[234])\\s+(\\w+)\\s*=\\s*(.*)$");
+    // Pattern of whitespace and an optional line comment after a semicolon.
     private static final Pattern TRAILING_AFTER_TERMINATOR = Pattern.compile("\\s*(?://.*)?");
+    // Pattern of an identifier.
     private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
+    // Pattern of the identifiers allowed in a constant initialiser.
     private static final Pattern CONSTANT_CALLEES = Pattern.compile(
             "vec[234]|ivec[234]|mat[234]|float|int|bool|true|false");
 
-    // The two halves the caller needs: the rewritten source with initialisers stripped to bare declarations, and the assignments to splice into the generated main()
+    // Rewritten source and the assignments to run at the start of main.
     public static final class Result {
+        // Source with the initialisers removed.
         public final String body;
+        // Assignments wrapped in the global conditional directives or empty.
         public final String hoistedAssignments;
 
+        // Creates a result.
         Result(String body, String hoistedAssignments) {
             this.body = body;
             this.hoistedAssignments = hoistedAssignments;
         }
     }
 
+    // Prevents instantiation
     private GlslGlobalInitHoister() {
     }
 
-    // Returns the rewritten globals and the assignment block to inject at the top of main
+    // Splits non constant global initialisers out of a source and keeps its line count.
     public static Result hoist(String source) {
         StringBuilder body = new StringBuilder(source.length());
         StringBuilder hoisted = new StringBuilder();
@@ -47,7 +54,6 @@ public final class GlslGlobalInitHoister {
                 if (starter.matches()) {
                     Initializer init = collectInitializer(lines, idx, starter.group(4));
                     if (init != null && !isConstantExpression(init.expression)) {
-                        // Bare declaration on the first line; blank continuation lines keep GLSL error line numbers aligned with the dumped source
                         body.append(starter.group(1)).append(starter.group(2)).append(' ')
                                 .append(starter.group(3)).append(";\n");
                         for (int k = idx + 1; k <= init.endLine; k++) {
@@ -71,18 +77,21 @@ public final class GlslGlobalInitHoister {
         return new Result(body.toString(), hasHoistedAssignments ? hoisted.toString() : "");
     }
 
-    // One collected initialiser: the expression without its trailing ;, and the index of its last source line so the caller knows how many lines to consume
+    // Initialiser text and the line that ends it.
     private static final class Initializer {
+        // Initialiser text without the semicolon.
         final String expression;
+        // Index of the line with the semicolon.
         final int endLine;
 
+        // Creates an initialiser.
         Initializer(String expression, int endLine) {
             this.expression = expression;
             this.endLine = endLine;
         }
     }
 
-    // Accumulates the initialiser from after the = across lines until the ; at nesting 0; null when the statement never terminates or real code follows the terminator on its line, both meaning leave it alone since hoisting would drop that trailing code
+    // Reads an initialiser up to its semicolon or returns null when code follows it or it never ends.
     private static Initializer collectInitializer(String[] lines, int startLine, String firstRemainder) {
         StringBuilder expression = new StringBuilder();
         int nesting = 0;
@@ -110,7 +119,7 @@ public final class GlslGlobalInitHoister {
         return null;
     }
 
-    // Simple-typed, single-declarator, initialised, at depth zero
+    // Returns whether a line can start a global variable declaration.
     private static boolean isDeclarationCandidate(String trimmed) {
         return !trimmed.isEmpty()
                 && !trimmed.startsWith("const")
@@ -123,7 +132,7 @@ public final class GlslGlobalInitHoister {
                 && !trimmed.startsWith("out ");
     }
 
-    // Net brace count on a line, ignoring string and comment content
+    // Returns the opened braces minus the closed braces of a line.
     private static int braceDelta(String line) {
         int delta = 0;
         for (int i = 0; i < line.length(); i++) {
@@ -137,7 +146,7 @@ public final class GlslGlobalInitHoister {
         return delta;
     }
 
-    // #if, #ifdef, #ifndef, #else, #elif or #endif
+    // Returns whether a line is a conditional preprocessor directive.
     private static boolean isConditionalDirective(String trimmed) {
         if (!trimmed.startsWith("#")) {
             return false;
@@ -147,11 +156,11 @@ public final class GlslGlobalInitHoister {
                 || startsDirective(directive, "ifdef")
                 || startsDirective(directive, "ifndef")
                 || startsDirective(directive, "elif")
-                || directive.equals("else")
-                || directive.equals("endif");
+                || startsDirective(directive, "else")
+                || startsDirective(directive, "endif");
     }
 
-    // Directive match tolerant of whitespace after the hash
+    // Returns whether a directive is a keyword followed by nothing or a space or a bracket or a comment.
     private static boolean startsDirective(String directive, String keyword) {
         if (!directive.startsWith(keyword)) {
             return false;
@@ -160,17 +169,27 @@ public final class GlslGlobalInitHoister {
             return true;
         }
         char next = directive.charAt(keyword.length());
-        return next == '(' || Character.isWhitespace(next);
+        return next == '(' || next == '/' || Character.isWhitespace(next);
     }
 
-    // Literals and type constructors only; anything referencing an identifier is not
+    // Returns whether an expression uses only literals and constructors.
     private static boolean isConstantExpression(String expression) {
         Matcher identifiers = IDENTIFIER.matcher(expression);
         while (identifiers.find()) {
+            int start = identifiers.start();
+            // Suffix or exponent of a number literal
+            if (start > 0 && isNumberChar(expression.charAt(start - 1))) {
+                continue;
+            }
             if (!CONSTANT_CALLEES.matcher(identifiers.group()).matches()) {
                 return false;
             }
         }
         return true;
+    }
+
+    // Returns whether a character belongs to a number literal.
+    private static boolean isNumberChar(char c) {
+        return (c >= '0' && c <= '9') || c == '.';
     }
 }

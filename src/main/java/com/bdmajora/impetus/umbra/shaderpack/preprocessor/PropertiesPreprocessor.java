@@ -13,31 +13,31 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-// Evaluates the C-preprocessor conditionals OptiFine allows in *.properties files (#if/#ifdef/#ifndef/#elif/#else/#endif and defined()), written from scratch since they only use integer comparisons; other # lines drop as comments, backslash continuations are joined first
+// C style preprocessor of shader pack properties files with numeric macro expansion.
 public final class PropertiesPreprocessor {
+    // Logger of unbalanced directives.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
 
+    // Prevents instantiation
     private PropertiesPreprocessor() {
     }
 
-    // Evaluates #if gates in a properties file against the option defines
+    // Resolves the directives of a source.
     public static String preprocess(String source, Map<String, String> defines) {
         return preprocess(source, defines, false);
     }
 
-    // preprocess() plus NUMERIC macro substitution into directive VALUES, since Iris's JCPP expands macros in passed-through text and Complementary sizes `image.wsr_img` by COLORED_LIGHTING (verbatim, parse threw and wsr_sampler stayed unbound all session); numeric-only keeps blend.* factors like SRC_ALPHA safe, and the menu directives read from the ORIGINAL anyway
+    // Resolves the directives of a properties file and expands numeric macros in its values.
     public static String preprocessProperties(String source, Map<String, String> defines) {
         return preprocess(source, defines, true);
     }
 
-    // The pass itself; expandValues also substitutes defines into values
+    // Resolves conditionals and defines line by line and keeps the active lines.
     private static String preprocess(String source, Map<String, String> defines, boolean expandValues) {
         List<String> logicalLines = joinContinuations(source);
         StringBuilder out = new StringBuilder(source.length());
-        // Track #define/#undef in ACTIVE regions so cascading defines feed later #if evaluation, required when this runs over shader sources to pick the ACTIVE DRAWBUFFERS/RENDERTARGETS variant like Umbra's preprocessed-source extraction
         defines = new HashMap<>(defines);
 
-        // Each conditional nesting level: [0] = this branch active, [1] = any branch so far taken.
         Deque<boolean[]> stack = new ArrayDeque<>();
 
         for (String line : logicalLines) {
@@ -95,7 +95,6 @@ public final class PropertiesPreprocessor {
                             stack.pop();
                         }
                     }
-                    // Any other #-line is a properties comment; dropped either way
                     default -> { }
                 }
                 continue;
@@ -110,21 +109,21 @@ public final class PropertiesPreprocessor {
         return out.toString();
     }
 
-    // An identifier NOT glued to a preceding word character or dot, so a dotted key like image.wsr_img is never matched segment by segment
+    // Pattern of an identifier that is not part of a dotted name.
     private static final Pattern PROPERTY_IDENTIFIER =
             Pattern.compile("(?<![A-Za-z0-9_.])([A-Za-z_][A-Za-z0-9_]*)(?![A-Za-z0-9_])");
 
-    // How far a `#define A B` then `#define B 256` chain is followed; a bound rather than cycle detection, since a self-referential define would loop forever
+    // Longest chain of defines that is followed.
     private static final int MAX_DEFINE_HOPS = 8;
 
-    // The option-menu layout directives, whose values are option NAMES; ShaderProperties reads them from the original anyway, so skipping only keeps a misleading `sliders = 256 ...` out of the preprocessed text
+    // Returns whether a key describes the option menu layout.
     private static boolean isMenuLayoutKey(String key) {
         String trimmed = key.trim();
         return trimmed.equals("sliders") || trimmed.equals("screen")
                 || trimmed.startsWith("screen.") || trimmed.startsWith("profile.");
     }
 
-    // Substitutes numerically-valued macros into the part AFTER the first =; keys are dotted paths (image.wsr_img, program.composite1.enabled) whose segments would otherwise be candidates
+    // Replaces identifiers in a value with the numbers their defines resolve to.
     private static String expandNumericMacrosInValue(String line, Map<String, String> defines) {
         int separator = line.indexOf('=');
         if (separator < 0 || defines.isEmpty() || isMenuLayoutKey(line.substring(0, separator))) {
@@ -132,7 +131,7 @@ public final class PropertiesPreprocessor {
         }
         String value = line.substring(separator + 1);
         Matcher identifier = PROPERTY_IDENTIFIER.matcher(value);
-        StringBuffer expanded = new StringBuffer(value.length());
+        StringBuilder expanded = new StringBuilder(value.length());
         boolean substituted = false;
         while (identifier.find()) {
             String resolved = resolveNumericDefine(identifier.group(1), defines);
@@ -147,7 +146,7 @@ public final class PropertiesPreprocessor {
         return substituted ? line.substring(0, separator + 1) + expanded : line;
     }
 
-    // The numeric text this name ultimately expands to following a define chain, or null when undefined, empty or non-numeric, which is what keeps identifier-valued macros safe
+    // Returns the number a define resolves to through a short chain or null.
     private static String resolveNumericDefine(String name, Map<String, String> defines) {
         String current = name;
         for (int hop = 0; hop < MAX_DEFINE_HOPS; hop++) {
@@ -157,7 +156,6 @@ public final class PropertiesPreprocessor {
             }
             String trimmed = value.trim();
             if (trimmed.isEmpty()) {
-                // A bare `#define FOO` is a flag, not a value; JCPP expands it to nothing, which would corrupt a positional directive more quietly than leaving the name
                 return null;
             }
             if (isNumeric(trimmed)) {
@@ -168,7 +166,7 @@ public final class PropertiesPreprocessor {
         return null;
     }
 
-    // Integer or float literal
+    // Returns whether a text is a number literal.
     private static boolean isNumeric(String text) {
         try {
             Long.decode(text);
@@ -183,7 +181,7 @@ public final class PropertiesPreprocessor {
         }
     }
 
-    // JCPP strips comments before evaluating directives, and this must match: packs write `#if OPTION // label`, and feeding the comment into the parser makes a valid pack look unterminated
+    // Removes the comments of a directive.
     private static String stripDirectiveComments(String directive) {
         StringBuilder out = new StringBuilder(directive.length());
         for (int i = 0; i < directive.length(); i++) {
@@ -210,7 +208,7 @@ public final class PropertiesPreprocessor {
         return out.toString();
     }
 
-    // Records a "#define NAME [value]" directive's body; a function-like macro is tracked for presence only (defined() checks), its value being unusable in #if
+    // Stores the name and value of a define directive.
     static void recordDefine(String directive, Map<String, String> defines) {
         String body = directive.substring("define ".length()).trim();
         int space = body.indexOf(' ');
@@ -224,7 +222,7 @@ public final class PropertiesPreprocessor {
         }
     }
 
-    // The directive's leading keyword (`if`, `ifdef`, `endif`, ...), so `#if(` and `#if ` dispatch alike
+    // Returns the keyword of a directive.
     private static String directiveKeyword(String directive) {
         int end = 0;
         while (end < directive.length() && Character.isLetter(directive.charAt(end))) {
@@ -233,12 +231,12 @@ public final class PropertiesPreprocessor {
         return directive.substring(0, end);
     }
 
-    // Whether the innermost branch AND every enclosing one is active, i.e. whether this line is emitted
+    // Returns whether the innermost branch is active.
     private static boolean currentActive(Deque<boolean[]> stack) {
         return parentActive(stack) && (stack.isEmpty() || stack.peek()[0]);
     }
 
-    // Whether every enclosing conditional level is active; a nested #if inside a false branch stays false regardless of its own condition
+    // Returns whether the branch around the innermost one is active.
     private static boolean parentActive(Deque<boolean[]> stack) {
         for (boolean[] frame : stack) {
             if (!frame[0]) {
@@ -248,7 +246,7 @@ public final class PropertiesPreprocessor {
         return true;
     }
 
-    // Splits into lines, joining backslash-continued ones like java.util.Properties, so a directive or value split across lines is seen as one
+    // Returns the logical lines with backslash continuations joined.
     private static List<String> joinContinuations(String source) {
         String[] rawLines = source.split("\r\n|\r|\n", -1);
         List<String> lines = new ArrayList<>(rawLines.length);
@@ -266,7 +264,7 @@ public final class PropertiesPreprocessor {
         return lines;
     }
 
-    // A continuation line; an even count is an escaped backslash
+    // Returns whether a line ends with an odd number of backslashes.
     private static boolean endsWithOddBackslashes(String line) {
         int count = 0;
         for (int i = line.length() - 1; i >= 0 && line.charAt(i) == '\\'; i--) {
@@ -275,13 +273,12 @@ public final class PropertiesPreprocessor {
         return (count & 1) == 1;
     }
 
-    // ------------------------------------------------------------------ expression evaluation
-
+    // Evaluates a condition and reads a malformed one as false.
     private static boolean evaluate(String expression, Map<String, String> defines) {
         return evaluateBooleanExpression(expression, defines).orElse(false);
     }
 
-    // Parses and evaluates a preprocessor condition; empty on a syntax error
+    // Evaluates a condition.
     public static Optional<Boolean> evaluateBooleanExpression(String expression, Map<String, String> defines) {
         try {
             return Optional.of(new ExpressionParser(expression, defines).parse() != 0);
@@ -291,7 +288,7 @@ public final class PropertiesPreprocessor {
         }
     }
 
-    // The SILENT sibling of evaluateBooleanExpression for callers where "cannot evaluate" is normal, chiefly foldFloatConditionals; Photon alone has 20 backslash-continued conditionals, and warning on each compile would drown the log
+    // Evaluates a condition or returns empty for a malformed one.
     public static Optional<Boolean> tryEvaluateBooleanExpression(String expression, Map<String, String> defines) {
         try {
             return Optional.of(new ExpressionParser(expression, defines).parse() != 0);
@@ -300,23 +297,34 @@ public final class PropertiesPreprocessor {
         }
     }
 
-    // A minimal recursive-descent parser over the C-preprocessor integer expression grammar, enough for properties-file conditionals and nothing more
+    // Recursive descent evaluator of preprocessor conditions.
     private static final class ExpressionParser {
+        // Condition text.
         private final String text;
+        // Defines in effect.
         private final Map<String, String> defines;
+        // Depth of nested define expansion.
         private final int defineDepth;
+        // Position of the next character.
         private int pos;
+        // Current parenthesis nesting.
+        private int nesting;
+        // Deepest parenthesis nesting.
+        private static final int MAX_NESTING = 200;
 
+        // Creates an evaluator of a condition.
         ExpressionParser(String text, Map<String, String> defines) {
             this(text, defines, 0);
         }
 
+        // Creates an evaluator at a define expansion depth.
         private ExpressionParser(String text, Map<String, String> defines, int defineDepth) {
             this.text = text;
             this.defines = defines;
             this.defineDepth = defineDepth;
         }
 
+        // Evaluates the whole condition and rejects trailing input.
         long parse() {
             long value = parseOr();
             skipWhitespace();
@@ -326,7 +334,7 @@ public final class PropertiesPreprocessor {
             return value;
         }
 
-        // ||
+        // Evaluates a logical or chain.
         private long parseOr() {
             long left = parseAnd();
             while (eat("||")) {
@@ -336,7 +344,7 @@ public final class PropertiesPreprocessor {
             return left;
         }
 
-        // &&
+        // Evaluates a logical and chain.
         private long parseAnd() {
             long left = parseEquality();
             while (eat("&&")) {
@@ -346,7 +354,7 @@ public final class PropertiesPreprocessor {
             return left;
         }
 
-        // == and !=
+        // Evaluates an equality chain.
         private long parseEquality() {
             long left = parseComparison();
             while (true) {
@@ -360,7 +368,7 @@ public final class PropertiesPreprocessor {
             }
         }
 
-        // <, <=, >, >=
+        // Evaluates an ordering chain.
         private long parseComparison() {
             long left = parseAdditive();
             while (true) {
@@ -378,7 +386,7 @@ public final class PropertiesPreprocessor {
             }
         }
 
-        // + and -
+        // Evaluates a sum or difference chain.
         private long parseAdditive() {
             long left = parseMultiplicative();
             while (true) {
@@ -392,7 +400,7 @@ public final class PropertiesPreprocessor {
             }
         }
 
-        // *, / and %
+        // Evaluates a product or quotient or remainder chain.
         private long parseMultiplicative() {
             long left = parseUnary();
             while (true) {
@@ -410,22 +418,29 @@ public final class PropertiesPreprocessor {
             }
         }
 
-        // ! and unary -
+        // Evaluates a negation or logical not.
         private long parseUnary() {
-            skipWhitespace();
-            if (eatChar('!')) {
-                return parseUnary() == 0 ? 1 : 0;
+            if (++this.nesting > MAX_NESTING) {
+                throw new IllegalArgumentException("Expression nests too deeply");
             }
-            if (eatChar('-')) {
-                return -parseUnary();
+            try {
+                skipWhitespace();
+                if (eatChar('!')) {
+                    return parseUnary() == 0 ? 1 : 0;
+                }
+                if (eatChar('-')) {
+                    return -parseUnary();
+                }
+                if (eatChar('+')) {
+                    return parseUnary();
+                }
+                return parsePrimary();
+            } finally {
+                this.nesting--;
             }
-            if (eatChar('+')) {
-                return parseUnary();
-            }
-            return parsePrimary();
         }
 
-        // Literals, defined(), parenthesised expressions and identifiers
+        // Evaluates a number or defined test or define or parenthesized condition.
         private long parsePrimary() {
             skipWhitespace();
             if (eatChar('(')) {
@@ -464,7 +479,7 @@ public final class PropertiesPreprocessor {
             throw new IllegalArgumentException("Unexpected character '" + c + "'");
         }
 
-        // Consumes the identifier characters at the cursor and returns them, possibly empty
+        // Reads an identifier.
         private String scanIdentifier() {
             int start = this.pos;
             while (this.pos < this.text.length()
@@ -474,7 +489,7 @@ public final class PropertiesPreprocessor {
             return this.text.substring(start, this.pos);
         }
 
-        // Scans one numeric literal; JCPP accepts a float literal and truncates toward zero, and packs rely on it (Clarity's `#if MOTION_BLUR > 0.0` only activates at exactly 1.00 under Iris), so rejecting floats failed the conditional and fell back to raw source. Integer suffixes (u, l) are consumed and ignored like JCPP
+        // Reads a decimal or hexadecimal number.
         private long parseNumber() {
             int start = this.pos;
             boolean hex = this.text.startsWith("0x", this.pos) || this.text.startsWith("0X", this.pos);
@@ -485,7 +500,6 @@ public final class PropertiesPreprocessor {
             while (this.pos < this.text.length()) {
                 char c = this.text.charAt(this.pos);
                 if (Character.isLetterOrDigit(c)) {
-                    // A decimal exponent may carry a sign; in hex, 'e' is just a digit.
                     if (!hex && (c == 'e' || c == 'E') && this.pos + 1 < this.text.length()
                             && (this.text.charAt(this.pos + 1) == '+' || this.text.charAt(this.pos + 1) == '-')) {
                         floating = true;
@@ -515,7 +529,7 @@ public final class PropertiesPreprocessor {
             }
         }
 
-        // An identifier's value; undefined identifiers evaluate to zero as in C
+        // Evaluates the value of a define within the expansion depth.
         private long resolveDefine(String name) {
             String value = this.defines.get(name);
             if (value == null || value.isEmpty() || this.defineDepth >= 8) {
@@ -533,7 +547,7 @@ public final class PropertiesPreprocessor {
             }
         }
 
-        // Consumes the operator if present, guarding < and > against matching the first character of <= and >=
+        // Consumes a text after whitespace and returns whether it matched.
         private boolean eat(String op) {
             skipWhitespace();
             if (!this.text.startsWith(op, this.pos)) {
@@ -547,7 +561,7 @@ public final class PropertiesPreprocessor {
             return true;
         }
 
-        // Binary minus needs separating from a unary minus after another operator; at the one call site the parser is past an operand, so it never is
+        // Consumes a minus that is not part of a decrement.
         private boolean eatMinus() {
             skipWhitespace();
             if (this.pos < this.text.length() && this.text.charAt(this.pos) == '-') {
@@ -557,7 +571,7 @@ public final class PropertiesPreprocessor {
             return false;
         }
 
-        // Consumes the character if it is next
+        // Consumes a character after whitespace and returns whether it matched.
         private boolean eatChar(char c) {
             skipWhitespace();
             if (this.pos < this.text.length() && this.text.charAt(this.pos) == c) {
@@ -567,7 +581,7 @@ public final class PropertiesPreprocessor {
             return false;
         }
 
-        // Advances past spaces and tabs
+        // Moves past whitespace.
         private void skipWhitespace() {
             while (this.pos < this.text.length() && Character.isWhitespace(this.text.charAt(this.pos))) {
                 this.pos++;

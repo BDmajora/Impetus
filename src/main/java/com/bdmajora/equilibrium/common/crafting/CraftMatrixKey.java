@@ -6,13 +6,18 @@ import net.minecraft.item.ItemStack;
 
 import java.util.Arrays;
 
-// The shape of a crafting grid reduced to (item, meta) per slot; stacks with NBT never become keys since a recipe may read the tag, and the count is dropped since vanilla recipes only look at it through getRemainingItems, which is not cached
+// Key made of the items and metadata of a crafting grid.
 public final class CraftMatrixKey {
+    // Item of each slot.
     private final Item[] items;
+    // Metadata of each slot.
     private final int[] metas;
+    // Width of the grid.
     private final int width;
+    // Hash computed once at construction.
     private final int hash;
 
+    // Creates a key from its parts.
     private CraftMatrixKey(Item[] items, int[] metas, int width) {
         this.items = items;
         this.metas = metas;
@@ -20,7 +25,7 @@ public final class CraftMatrixKey {
         this.hash = 31 * (31 * Arrays.hashCode(items) + Arrays.hashCode(metas)) + width;
     }
 
-    // Null when any slot carries NBT, which tells the caller not to cache this grid
+    // Returns the key of the grid or null when a stack carries tags.
     public static CraftMatrixKey of(InventoryCrafting matrix) {
         int size = matrix.getSizeInventory();
         Item[] items = new Item[size];
@@ -39,6 +44,7 @@ public final class CraftMatrixKey {
         return new CraftMatrixKey(items, metas, matrix.getWidth());
     }
 
+    // Returns whether the other key describes the same grid.
     @Override
     public boolean equals(Object other) {
         if (this == other) {
@@ -51,6 +57,7 @@ public final class CraftMatrixKey {
         return this.width == key.width && this.hash == key.hash && Arrays.equals(this.items, key.items) && Arrays.equals(this.metas, key.metas);
     }
 
+    // Returns the stored hash.
     @Override
     public int hashCode() {
         return this.hash;

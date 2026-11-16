@@ -13,7 +13,9 @@ import org.mockito.Mockito;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+// Tests vertex array tessellation setup and enum constants.
 class TessellationTest {
+    // Records each attribute once and deletes the vertex array.
     @Test
     void vertexArrayTessellationRecordsAttributesOnce() {
         CommandList list = Mockito.mock(CommandList.class);
@@ -42,6 +44,7 @@ class TessellationTest {
         Mockito.verify(list).deleteVertexArray(array);
     }
 
+    // Reports the GL constants of every enum.
     @Test
     void enumsExposeGlConstants() {
         assertEquals(4, GlPrimitiveType.TRIANGLES.getId());

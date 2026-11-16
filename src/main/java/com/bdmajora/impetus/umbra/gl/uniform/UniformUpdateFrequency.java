@@ -1,13 +1,13 @@
 package com.bdmajora.impetus.umbra.gl.uniform;
 
-// How often a uniform's value must be recomputed; the collector groups by this so a frame does not re-evaluate suppliers whose answer cannot have moved
+// Choices of the uniform update frequency setting.
 public enum UniformUpdateFrequency {
-    // Can change between binds WITHIN a frame (render stage, fog mode, per-object material ids); re-evaluated every bind, which is why these are worth keeping few
+    // Value that selects dynamic.
     DYNAMIC,
-    // Constant for the lifetime of the program; uploaded the first time it is used and never again
+    // Value that selects once.
     ONCE,
-    // Changes at most once per game tick: moon phase, potion effects, weather strength
+    // Value that selects per tick.
     PER_TICK,
-    // Changes every frame: camera matrices, sun angle, the frame counter
+    // Value that selects per frame.
     PER_FRAME
 }

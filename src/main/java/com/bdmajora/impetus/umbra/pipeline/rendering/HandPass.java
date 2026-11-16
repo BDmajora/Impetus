@@ -11,25 +11,33 @@ import org.lwjgl.opengl.GL11;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// The first-person hand passes: solid into the PRE-deferred gbuffer like OptiFine's renderHand0 (deferred packs light it there, a later hand stays unlit raw gbuffer data), translucent after translucent geometry like renderHand1
+// Pass that draws the held items with the hand programs and the light at the eye.
 public final class HandPass {
-    // MC_RENDER_STAGE_HAND_SOLID and MC_RENDER_STAGE_HAND_TRANSLUCENT
+    // Render stage of the solid hand.
     public static final int SOLID_STAGE = 16;
+    // Render stage of the translucent hand.
     public static final int TRANSLUCENT_STAGE = 23;
+    // Packed light used without a world.
     private static final int FULL_BRIGHT_LIGHTMAP = 0x00F000F0;
+    // Scale of the lightmap texture matrix.
     private static final float LIGHTMAP_TEXTURE_SCALE = 1.0f / 256.0f;
+    // Offset of the lightmap texture matrix.
     private static final float LIGHTMAP_TEXTURE_OFFSET = 8.0f / 256.0f;
 
+    // Resources of the pack.
     private final PipelineState state;
+    // Program phase selection.
     private final PhaseController phases;
+    // Scratch of the eye position.
     private final BlockPos.MutableBlockPos eye = new BlockPos.MutableBlockPos();
 
+    // Creates the hand pass of a pipeline.
     public HandPass(PipelineState state, PhaseController phases) {
         this.state = state;
         this.phases = phases;
     }
 
-    // Binds the hand program and depth setup; true means call end(), and with no hand program it still renders fixed-function into colortex0
+    // Prepares the gbuffer and lightmap and binds the hand program and returns whether the pass runs.
     public boolean begin(ProgramId programId, int renderStage) {
         if (this.state.destroyed || !this.state.active) {
             return false;
@@ -39,14 +47,12 @@ public final class HandPass {
         this.phases.resetDepthRange();
         GlStateManager.enableDepth();
         GlStateManager.depthMask(true);
-        // The hand draws into a populated depth buffer, and with the camera pressed into geometry even the squeezed projection can fail LEQUAL; it wins for this pass, restored in end()
         GlStateManager.depthFunc(GL11.GL_ALWAYS);
         GlStateManager.enableAlpha();
         GlStateManager.enableBlend();
         GlState.resyncTextureUnitZero();
         GlState.resetVanillaVertexArrayState();
         GbufferPrograms.Entry entry = this.state.gbufferPrograms.get(programId);
-        // This binds a gbuffer program without a phase switch, and the held item draws through RenderItem underneath, so the phase must name the hand program or the per-object refresh skips currentRenderedItemId
         this.phases.current = programId;
         int packedLight = handPackedLight();
         setupHandLightmap(packedLight);
@@ -70,17 +76,16 @@ public final class HandPass {
         return true;
     }
 
-    // Restores state after the hand
+    // Unbinds the program and restores the depth test and render stage.
     public void end() {
         LWJGL.glUseProgram(0);
         GlStateManager.depthFunc(GL11.GL_LEQUAL);
         CapturedRenderingState.INSTANCE.setRenderStage(0);
     }
 
-    // BSL's gbuffers_hand derives all brightness from gl_TextureMatrix[1] * gl_MultiTexCoord1, and Sodium can leave the coord stale, so the legacy texcoord and the bridge uniform get the player's combined light (Umbra's getPackedLightCoords)
+    // Sets the lightmap coordinate and texture matrix of the hand.
     private static void setupHandLightmap(int packedLight) {
         LWJGL.glMultiTexCoord2f(OpenGlHelper.lightmapTexUnit, blockLight(packedLight), skyLight(packedLight));
-        // Vanilla's lightmap texture matrix, which packs expect on unit 1
         GlStateManager.setActiveTexture(OpenGlHelper.lightmapTexUnit);
         GlStateManager.matrixMode(GlState.GL_TEXTURE_MODE);
         GlStateManager.loadIdentity();
@@ -91,7 +96,7 @@ public final class HandPass {
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
-    // Light at the player's eye, full bright with no world
+    // Returns the packed light at the eye or full bright without a world.
     private int handPackedLight() {
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.world == null || mc.player == null) {
@@ -101,12 +106,12 @@ public final class HandPass {
         return mc.world.getCombinedLight(this.eye, 0);
     }
 
-    // Block light half of packed light as a lightmap coordinate
+    // Returns the block light of a packed light.
     static float blockLight(int packedLight) {
         return packedLight & 0xFFFF;
     }
 
-    // Sky light half
+    // Returns the sky light of a packed light.
     static float skyLight(int packedLight) {
         return (packedLight >>> 16) & 0xFFFF;
     }

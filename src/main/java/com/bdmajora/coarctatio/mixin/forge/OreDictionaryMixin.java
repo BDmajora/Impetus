@@ -27,9 +27,10 @@ import javax.annotation.Nonnull;
 import java.util.List;
 import java.util.Map;
 
-// The ore dictionary's two lookup maps keyed and valued by primitives (StellarCore): a modpack registers tens of thousands of ores, each boxing its id into an Integer and a List<Integer>, and every recipe match boxes again to look them up. remap = false, Forge class
+// Mixin that changes OreDictionary.
 @Mixin(value = OreDictionary.class, remap = false)
 public abstract class OreDictionaryMixin {
+    // Field coarctatio no id added to the target.
     @Unique
     private static final int COARCTATIO_NO_ID = -1;
 
@@ -41,21 +42,25 @@ public abstract class OreDictionaryMixin {
     @Mutable
     private static Map<Integer, List<Integer>> stackToId;
 
+    // Reference to the field id to name of the target.
     @Shadow
     private static List<String> idToName;
 
+    // Reference to the field id to stack of the target.
     @Shadow
     private static List<NonNullList<ItemStack>> idToStack;
 
+    // Reference to the field id to stack un of the target.
     @Shadow
     private static List<NonNullList<ItemStack>> idToStackUn;
 
+    // Reference to the method get ores of the target.
     @Shadow
     private static NonNullList<ItemStack> getOres(int id) {
         throw new AssertionError();
     }
 
-    // Swapped in before the vanilla entries are registered, so no boxed entry ever exists; the raw types are what let a fastutil map sit behind the declared generic ones
+    // Runs around the call of OreDictionary.initVanillaEntries in static initializer.
     @Inject(method = "<clinit>", at = @At(value = "INVOKE", target = "Lnet/minecraftforge/oredict/OreDictionary;initVanillaEntries()V"))
     private static void coarctatio$installPrimitiveMaps(CallbackInfo ci) {
         Object2IntOpenHashMap<String> names = new Object2IntOpenHashMap<>(128);
@@ -64,23 +69,26 @@ public abstract class OreDictionaryMixin {
         stackToId = coarctatio$cast(new Int2ObjectOpenHashMap<IntList>((int) (128 * 0.75)));
     }
 
+    // Helper method cast added to the target.
     @Unique
     @SuppressWarnings("unchecked")
     private static <T> T coarctatio$cast(Object value) {
         return (T) value;
     }
 
+    // Helper method names added to the target.
     @Unique
     private static Object2IntOpenHashMap<String> coarctatio$names() {
         return coarctatio$cast(nameToId);
     }
 
+    // Helper method stacks added to the target.
     @Unique
     private static Int2ObjectOpenHashMap<IntList> coarctatio$stacks() {
         return coarctatio$cast(stackToId);
     }
 
-    // A mod reaching into stackToId reflectively could have stored a boxed list; it is converted on first sight
+    // Helper method ids added to the target.
     @Unique
     @SuppressWarnings("unchecked")
     private static IntList coarctatio$ids(int hash) {
@@ -94,10 +102,7 @@ public abstract class OreDictionaryMixin {
         return primitive;
     }
 
-    /**
-     * @author Circulate233, bdmajora
-     * @reason The name lookup without boxing the id
-     */
+    // Replaces the whole method getOreID.
     @Overwrite
     public static int getOreID(String name) {
         Object2IntOpenHashMap<String> names = coarctatio$names();
@@ -114,10 +119,7 @@ public abstract class OreDictionaryMixin {
         return id;
     }
 
-    /**
-     * @author Circulate233, bdmajora
-     * @reason The ids for a stack collected into a primitive set rather than through a HashSet<Integer> and an Integer[]
-     */
+    // Replaces the whole method getOreIDs.
     @Overwrite
     public static int[] getOreIDs(@Nonnull ItemStack stack) {
         if (stack.isEmpty()) {
@@ -146,19 +148,13 @@ public abstract class OreDictionaryMixin {
         return set.toIntArray();
     }
 
-    /**
-     * @author Circulate233, bdmajora
-     * @reason Existence test without boxing
-     */
+    // Replaces the whole method doesOreNameExist.
     @Overwrite
     public static boolean doesOreNameExist(String name) {
         return coarctatio$names().getInt(name) != COARCTATIO_NO_ID;
     }
 
-    /**
-     * @author Circulate233, bdmajora
-     * @reason Probes the primitive map before creating an entry
-     */
+    // Replaces the whole method getOres.
     @Overwrite
     public static NonNullList<ItemStack> getOres(String name, boolean alwaysCreateEntry) {
         if (alwaysCreateEntry) {
@@ -167,10 +163,7 @@ public abstract class OreDictionaryMixin {
         return coarctatio$names().getInt(name) != COARCTATIO_NO_ID ? getOres(getOreID(name)) : OreDictionary.EMPTY_LIST;
     }
 
-    /**
-     * @author Circulate233, bdmajora
-     * @reason Registration straight into primitive lists, otherwise vanilla's logic and warnings verbatim
-     */
+    // Replaces the whole method registerOreImpl.
     @Overwrite
     private static void registerOreImpl(String name, @Nonnull ItemStack ore) {
         if ("Unknown".equals(name)) {
@@ -213,10 +206,7 @@ public abstract class OreDictionaryMixin {
         MinecraftForge.EVENT_BUS.post(new OreDictionary.OreRegisterEvent(name, ore));
     }
 
-    /**
-     * @author Circulate233, bdmajora
-     * @reason Rebakes into primitive lists
-     */
+    // Replaces the whole method rebakeMap.
     @Overwrite
     public static void rebakeMap() {
         Int2ObjectOpenHashMap<IntList> stacks = coarctatio$stacks();

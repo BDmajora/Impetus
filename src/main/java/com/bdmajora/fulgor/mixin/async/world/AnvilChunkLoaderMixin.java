@@ -12,9 +12,10 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Persists the engine's light in the chunk's Level tag; read runs on the chunk IO thread before the chunk is handed to the main thread, so the restored arrays are published with it
+// Mixin that changes AnvilChunkLoader.
 @Mixin(AnvilChunkLoader.class)
 public abstract class AnvilChunkLoaderMixin {
+    // Runs before every return of readChunkFromNBT.
     @Inject(method = "readChunkFromNBT", at = @At("RETURN"))
     private void fulgor$readLight(World world, NBTTagCompound compound, CallbackInfoReturnable<Chunk> cir) {
         if (cir.getReturnValue() != null) {
@@ -22,6 +23,7 @@ public abstract class AnvilChunkLoaderMixin {
         }
     }
 
+    // Runs before every return of writeChunkToNBT.
     @Inject(method = "writeChunkToNBT", at = @At("RETURN"))
     private void fulgor$writeLight(Chunk chunk, World world, NBTTagCompound compound, CallbackInfo ci) {
         AsyncLightStorage.save(chunk, ((AsyncLitWorld) world).fulgor$getLightManager(), compound);

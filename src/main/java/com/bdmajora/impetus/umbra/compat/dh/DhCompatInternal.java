@@ -28,47 +28,71 @@ import java.util.Optional;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// One pipeline's Distant Horizons state (Iris's DHCompatInternal): the pack's dh_terrain/dh_water/dh_shadow/dh_generic programs compiled onto DH's vertex formats, the framebuffers the LOD passes draw into (the gbuffer colour targets with DH's OWN depth texture, so LOD depth lands in dhDepthTex0 and never mixes with depthtex0), and the pre-translucent depth copy that is dhDepthTex1. Only ever loaded through DhCompat's method handles, since it imports the DH API
+// Distant Horizons state of one shader pipeline.
 public final class DhCompatInternal {
+    // Logger of this class.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
 
-    // The stand-in while no pipeline exists (shaders off): every override flag false, so DH renders exactly as without Impetus
+    // State used when no pack is active.
     public static final DhCompatInternal SHADERLESS = new DhCompatInternal(null, null, false);
 
-    // DH's rendering toggle as of the last checkFrame; read by the macro environment, so it is also set from DH's init event before the first pack load
+    // Flag set when Distant Horizons is present.
     static boolean dhEnabled;
 
-    // DH's internal ClientApi render entry points, the same calls DH's own RenderGlobal mixin makes; needed because Impetus's shadow pass draws terrain straight from its world renderer, never through RenderGlobal, and its renderBlockLayer overwrite never reaches the method DH hooks for the deferred pass. Resolved on first use, null (with one log line) when the internals moved
+    // Handle that draws the LODs.
     private static MethodHandle clientApiRenderLods;
+    // Handle that draws the deferred LODs.
     private static MethodHandle clientApiRenderDeferredLods;
+    // Flag set once the handles were looked up.
     private static boolean clientApiResolved;
 
-    // DH's block texture atlas getter, API 7.1+; textured LODs sample it through dh_sampleTexture, and without the getter the pack's helper reads whatever is on unit 0
+    // Handle that returns the block atlas.
     private static MethodHandle blockAtlasGetter;
+    // Flag set once the atlas handle was looked up.
     private static boolean blockAtlasResolved;
 
+    // Pipeline of the state.
     private final UmbraRenderingPipeline pipeline;
+    // Flag set when the pack draws LOD shadows.
     private boolean shouldOverrideShadow;
+    // Flag set when the pack draws LODs.
     private boolean shouldOverride;
+    // Flag set when clouds are skipped.
     private boolean avoidClouds;
+    // Solid program.
     private DhLodRenderProgram solidProgram;
+    // Translucent program.
     private DhLodRenderProgram translucentProgram;
+    // Shadow program.
     private DhLodRenderProgram shadowProgram;
+    // Generic program.
     private DhGenericRenderProgram genericProgram;
+    // Dh terrain framebuffer.
     private UmbraFramebuffer dhTerrainFramebuffer;
+    // Dh water framebuffer.
     private UmbraFramebuffer dhWaterFramebuffer;
+    // Dh generic framebuffer.
     private UmbraFramebuffer dhGenericFramebuffer;
+    // Dh terrain framebuffer wrapper.
     private DhFramebufferWrapper dhTerrainFramebufferWrapper;
+    // Dh shadow framebuffer wrapper.
     private DhFramebufferWrapper dhShadowFramebufferWrapper;
+    // Shadow culling frustum.
     private DhShadowCullingFrustum shadowCullingFrustum;
+    // Depth texture without translucents.
     private DepthTexture depthTexNoTranslucent;
+    // Depth tex width.
     private int depthTexWidth;
+    // Depth tex height.
     private int depthTexHeight;
+    // Flag set when the translucent depth needs a copy.
     private boolean translucentDepthDirty;
+    // Last depth texture attached or minus one.
     private int storedDepthTex = -1;
+    // Flag set when the pack cannot draw Distant Horizons terrain.
     private boolean incompatible;
 
-    // Compiles the pack's DH programs against this pipeline's gbuffer layout; a pack with neither dh_terrain nor dh_water is "incompatible" (DH keeps rendering with its own shaders), and dhShadowEnabled is the pack's dhShadow.enabled directive
+    // Creates a dh compat internal from its pipeline and pack and dh shadow enabled.
     public DhCompatInternal(UmbraRenderingPipeline pipeline, ShaderPack pack, boolean dhShadowEnabled) {
         this.pipeline = pipeline;
         if (pipeline == null || pack == null || DhApi.Delayed.configs == null
@@ -85,17 +109,14 @@ public final class DhCompatInternal {
         }
 
         Minecraft mc = Minecraft.getMinecraft();
-        // Unlike Iris, a dh_* program that fails to build does not fail the pack: the DH bridge is the newest transform here, and a pack is more useful with LODs in DH's own shading than not at all
         try {
             createDepthTex(mc.displayWidth, mc.displayHeight);
 
-            // dh_water falls back to dh_terrain in the ProgramSet, so at least one of the two resolved above
             ProgramSource terrainSource = terrain.orElseGet(water::get);
             this.solidProgram = DhLodRenderProgram.create(pipeline, pack, terrainSource, false, false);
             this.dhTerrainFramebuffer = pipeline.createDhFramebuffer(this.solidProgram.getDrawBuffers(), false);
             this.dhTerrainFramebufferWrapper = new DhFramebufferWrapper(this.dhTerrainFramebuffer);
 
-            // dh_generic falls back to dh_terrain too, so DH's beacon beams and clouds always get a pack program once dh_terrain exists
             Optional<ProgramSource> generic = pack.getProgramSet().get(ProgramId.DhGeneric);
             if (generic.isPresent()) {
                 this.genericProgram = DhGenericRenderProgram.create(pipeline, pack, generic.get());
@@ -111,7 +132,6 @@ public final class DhCompatInternal {
             UmbraShadowRenderer shadowRenderer = pipeline.getShadowRenderer();
             if (shadow.isPresent() && dhShadowEnabled && shadowRenderer != null) {
                 this.shadowProgram = DhLodRenderProgram.create(pipeline, pack, shadow.get(), true, false);
-                // LOD shadows draw straight into the shadow map: the shadow pass's own framebuffer, whose depth is shadowtex0
                 this.dhShadowFramebufferWrapper = new DhFramebufferWrapper(shadowRenderer.getFramebuffer());
                 this.shadowCullingFrustum = new DhShadowCullingFrustum(shadowRenderer);
                 this.shouldOverrideShadow = true;
@@ -126,7 +146,6 @@ public final class DhCompatInternal {
         if (this.translucentProgram == null) {
             this.translucentProgram = this.solidProgram;
         }
-        // dhClouds=off, or clouds=off with dhClouds unstated: the pack draws its own sky, so DH's cloud boxes must not land in the gbuffer either (Iris's avoidRenderingClouds)
         Optional<String> dhClouds = pack.getProperties().getDhCloudMode();
         this.avoidClouds = dhClouds.isPresent()
                 ? "off".equals(dhClouds.get())
@@ -137,13 +156,12 @@ public final class DhCompatInternal {
         this.shouldOverride = true;
     }
 
+    // Returns the name of the terrain source program.
     private static String terrainSourceName(Optional<ProgramSource> terrain, Optional<ProgramSource> water) {
         return terrain.isPresent() ? terrain.get().getName() : water.get().getName();
     }
 
-    // ---------------------------------------------------------------- per-frame statics (read by DhCompat)
-
-    // DH's LOD render distance in blocks; the player's render distance in blocks before DH finishes setup or while it is not rendering, like Iris
+    // Returns the dh block render distance.
     public static int getDhBlockRenderDistance() {
         if (DhApi.Delayed.configs == null || !dhEnabled) {
             return Minecraft.getMinecraft().gameSettings.renderDistanceChunks * 16;
@@ -151,11 +169,12 @@ public final class DhCompatInternal {
         return DhApi.Delayed.configs.graphics().chunkRenderDistance().getValue() * 16;
     }
 
+    // Returns the render distance.
     public static int getRenderDistance() {
         return getDhBlockRenderDistance();
     }
 
-    // DH's far plane: the LOD distance plus a margin, times sqrt 2 so the corners of the square LOD area are not clipped (DH's RenderUtil)
+    // Returns the far plane.
     public static float getFarPlane() {
         if (DhApi.Delayed.configs == null) {
             return 0;
@@ -165,7 +184,7 @@ public final class DhCompatInternal {
         return (float) ((lodBlockDist + 512) * Math.sqrt(2));
     }
 
-    // DH's near plane, which moves with the vanilla render distance so the LODs start where the chunks end
+    // Returns the near plane.
     public static float getNearPlane() {
         if (DhApi.Delayed.renderProxy == null) {
             return 0;
@@ -173,12 +192,12 @@ public final class DhCompatInternal {
         return DhApi.Delayed.renderProxy.getNearClipPlaneDistanceInBlocks(CapturedRenderingState.INSTANCE.getTickDelta());
     }
 
-    // DH's rendering toggle as last observed, without side effects
+    // Returns whether rendering enabled.
     public static boolean isRenderingEnabled() {
         return dhEnabled;
     }
 
-    // Frame hook: when DH's rendering toggle changed since the pack loaded, reload the pack so DISTANT_HORIZONS and the LOD programs follow it (the pack's define environment is baked at load); returns whether DH renders
+    // Returns whether LODs can draw this frame.
     public static boolean checkFrame() {
         if (DhApi.Delayed.configs == null) {
             return dhEnabled;
@@ -192,7 +211,7 @@ public final class DhCompatInternal {
         return dhEnabled;
     }
 
-    // Draws the opaque LODs for the shadow pass through DH's own entry point; DH's render state (matrices, level, partial ticks) is whatever its RenderGlobal hook captured last, which the shadow pass never depends on since the LOD program and frustum overrides take the shadow matrices from CapturedRenderingState
+    // Draws the solid LOD shadows.
     public static void renderShadowSolid() {
         if (!dhEnabled || !resolveClientApi()) {
             return;
@@ -204,7 +223,7 @@ public final class DhCompatInternal {
         }
     }
 
-    // Same for the deferred translucent LODs, in the shadow pass or the main translucent layer
+    // Draws the deferred LODs.
     public static void renderDeferredLods() {
         if (!dhEnabled || !resolveClientApi()) {
             return;
@@ -216,7 +235,7 @@ public final class DhCompatInternal {
         }
     }
 
-    // Binds ClientApi.INSTANCE.renderLods()/renderDeferredLodsForShaders() once; false (after one log line) when DH's internals no longer match, in which case LODs cast no shadows and LOD water never draws under a pack
+    // Looks up the LOD draw handles and returns whether they exist.
     private static boolean resolveClientApi() {
         if (clientApiResolved) {
             return clientApiRenderLods != null;
@@ -237,7 +256,7 @@ public final class DhCompatInternal {
         }
     }
 
-    // DH's block texture atlas id for dh_sampleTexture, or -1 without API 7.1's getter or before DH built it
+    // Returns the block atlas texture id.
     static int getBlockAtlasTextureId() {
         if (!blockAtlasResolved) {
             blockAtlasResolved = true;
@@ -262,21 +281,22 @@ public final class DhCompatInternal {
         }
     }
 
-    // ---------------------------------------------------------------- per-pipeline state
-
+    // Returns whether the pack cannot draw LODs.
     public boolean incompatiblePack() {
         return this.incompatible;
     }
 
+    // Returns whether override.
     public boolean shouldOverride() {
         return this.shouldOverride;
     }
 
+    // Returns whether override shadow.
     public boolean shouldOverrideShadow() {
         return this.shouldOverrideShadow;
     }
 
-    // Attaches DH's current depth texture to the LOD framebuffers, and re-sizes the pre-translucent copy to DH's texture size; called before every LOD frame since DH recreates the texture on resize (with a fresh id, deliberately)
+    // Attaches a new depth texture to the LOD framebuffers.
     public void reconnectDHTextures(int depthTex, int width, int height) {
         if (width > 0 && height > 0 && (width != this.depthTexWidth || height != this.depthTexHeight)) {
             createDepthTex(width, height);
@@ -293,7 +313,7 @@ public final class DhCompatInternal {
         }
     }
 
-    // (Re)allocates dhDepthTex1 at DH's texture size
+    // Creates the depth texture without translucents.
     private void createDepthTex(int width, int height) {
         if (this.depthTexNoTranslucent != null) {
             this.depthTexNoTranslucent.destroy();
@@ -306,7 +326,7 @@ public final class DhCompatInternal {
                 GL30.GL_DEPTH_COMPONENT32F, GL11.GL_DEPTH_COMPONENT, GL11.GL_FLOAT);
     }
 
-    // Frees everything this pack built; pipeline teardown, render thread
+    // Deletes the framebuffers and programs.
     public void clear() {
         if (this.solidProgram != null) {
             this.solidProgram.free();
@@ -344,7 +364,6 @@ public final class DhCompatInternal {
         this.storedDepthTex = -1;
         this.translucentDepthDirty = true;
 
-        // The overrides are rebound every LOD frame, but a torn-down pipeline must not leave dangling ones for DH to call
         if (this.dhTerrainFramebufferWrapper != null) {
             DhApi.overrides.unbind(IDhApiFramebuffer.class, this.dhTerrainFramebufferWrapper);
         }
@@ -363,63 +382,77 @@ public final class DhCompatInternal {
         this.shadowCullingFrustum = null;
     }
 
+    // Returns the solid shader.
     public DhLodRenderProgram getSolidShader() {
         return this.solidProgram;
     }
 
+    // Returns the translucent shader.
     public DhLodRenderProgram getTranslucentShader() {
         return this.translucentProgram == null ? this.solidProgram : this.translucentProgram;
     }
 
+    // Returns the shadow shader.
     public DhLodRenderProgram getShadowShader() {
         return this.shadowProgram;
     }
 
+    // Returns the generic shader.
     public IDhApiGenericObjectShaderProgram getGenericShader() {
         return this.genericProgram;
     }
 
+    // Returns the solid fb wrapper.
     public DhFramebufferWrapper getSolidFBWrapper() {
         return this.dhTerrainFramebufferWrapper;
     }
 
+    // Returns the shadow fb wrapper.
     public DhFramebufferWrapper getShadowFBWrapper() {
         return this.dhShadowFramebufferWrapper;
     }
 
+    // Returns the shadow culling frustum.
     public DhShadowCullingFrustum getShadowCullingFrustum() {
         return this.shadowCullingFrustum;
     }
 
+    // Returns the solid fb.
     public UmbraFramebuffer getSolidFB() {
         return this.dhTerrainFramebuffer;
     }
 
+    // Returns the translucent fb.
     public UmbraFramebuffer getTranslucentFB() {
         return this.dhWaterFramebuffer;
     }
 
+    // Returns the generic fb.
     public UmbraFramebuffer getGenericFB() {
         return this.dhGenericFramebuffer;
     }
 
+    // Returns the pipeline.
     public UmbraRenderingPipeline getPipeline() {
         return this.pipeline;
     }
 
+    // Returns the stored depth tex.
     public int getStoredDepthTex() {
         return this.storedDepthTex;
     }
 
+    // Returns the depth tex no translucent.
     public int getDepthTexNoTranslucent() {
         return this.depthTexNoTranslucent == null ? 0 : this.depthTexNoTranslucent.getTextureId();
     }
 
+    // Returns whether clouds are skipped.
     public boolean avoidRenderingClouds() {
         return this.avoidClouds;
     }
 
-    // Snapshots DH's depth after its opaque pass into dhDepthTex1, right before the translucent LODs draw over it
+    // Copies the translucents.
     public void copyTranslucents(int width, int height) {
         if (this.dhTerrainFramebuffer == null || this.depthTexNoTranslucent == null || this.storedDepthTex == -1) {
             return;
@@ -436,10 +469,9 @@ public final class DhCompatInternal {
         } finally {
             GlTextureUnits.releaseScratch();
         }
-        // The read binding must not linger on DH's framebuffer, or the next blit reads LOD depth
         LWJGL.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, 0);
     }
 
-    // A raw unit above every sampler allocation for the depth copy bind, the pipeline's own choice for the same job
+    // Texture unit used for the depth copy.
     private static final int DEPTH_COPY_SCRATCH_UNIT = 33;
 }

@@ -11,31 +11,33 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import javax.vecmath.Matrix4f;
 
-// isIdentity compared sixteen floats against the identity instance on every call, and baking asks it per vertex; the transformation is immutable so the answer is computed once. remap = false, Forge class
+// Mixin that changes TRSRTransformation.
 @Mixin(value = TRSRTransformation.class, remap = false)
 public abstract class TRSRTransformationIdentityMixin {
+    // Shared identity matrix.
     private static final Matrix4f coarctatio$IDENTITY = coarctatio$identity();
 
+    // Reference to the field matrix of the target.
     @Shadow
     @Final
     private Matrix4f matrix;
 
+    // Value is identity.
     private boolean coarctatio$isIdentity;
 
+    // Runs before every return of <init>*.
     @Inject(method = "<init>*", at = @At("RETURN"))
     private void coarctatio$cacheIdentity(CallbackInfo ci) {
         this.coarctatio$isIdentity = this.matrix.equals(coarctatio$IDENTITY);
     }
 
-    /**
-     * @author embeddedt, bdmajora
-     * @reason The answer is fixed at construction
-     */
+    // Replaces the whole method isIdentity.
     @Overwrite
     public boolean isIdentity() {
         return this.coarctatio$isIdentity;
     }
 
+    // Handles identity.
     private static Matrix4f coarctatio$identity() {
         Matrix4f identity = new Matrix4f();
         identity.setIdentity();

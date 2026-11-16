@@ -9,25 +9,31 @@ import net.minecraft.util.EnumFacing;
 import net.minecraft.world.EnumSkyBlock;
 import net.minecraft.world.chunk.Chunk;
 
-// Bookkeeping for Phosphor's chunk-boundary fix (vanilla drops propagation into unloaded chunks, MC-3329/MC-117067): section masks per (type, direction, half, in/out) replayed on load, split into 8-block halves so one can replay once its own diagonal loads
+// Saved flags of pending neighbor light checks.
 public final class NeighborLightFlags {
+    // Key of the flags in the chunk tag.
     public static final String NBT_KEY = "NeighborLightChecks";
 
+    // Prevents instantiation
     private NeighborLightFlags() {
     }
 
-    // Which side of a boundary an outstanding check belongs to
+    // Choices of the boundary facing setting.
     public enum BoundaryFacing {
+        // Value that selects in.
         IN,
+        // Value that selects out.
         OUT;
 
-        // The facing seen from the neighbouring chunk, so a flag set on one side is read on the other
+        // Returns the opposite.
         public BoundaryFacing getOpposite() {
             return this == IN ? OUT : IN;
         }
     }
 
+    // Returns the flag index of a boundary by chunk offset.
     public static int index(EnumSkyBlock lightType, int xOffset, int zOffset,
+                           // Axis direction and boundary facing.
                            EnumFacing.AxisDirection axisDirection, BoundaryFacing boundaryFacing) {
         return (lightType == EnumSkyBlock.BLOCK ? 0 : 16)
                 | ((xOffset + 1) << 2)
@@ -36,20 +42,23 @@ public final class NeighborLightFlags {
                 | boundaryFacing.ordinal();
     }
 
+    // Returns the flag index of a boundary by facing.
     public static int index(EnumSkyBlock lightType, EnumFacing dir,
+                            // Axis direction and boundary facing.
                             EnumFacing.AxisDirection axisDirection, BoundaryFacing boundaryFacing) {
         return index(lightType, dir.getXOffset(), dir.getZOffset(), axisDirection, boundaryFacing);
     }
 
-    // Which half of the edge (x, z) falls in; picked by the coordinate perpendicular to the facing
+    // Returns the axis direction of a facing at a position.
     public static EnumFacing.AxisDirection axisDirection(EnumFacing dir, int x, int z) {
         return ((dir.getAxis() == EnumFacing.Axis.X ? z : x) & 15) < 8
                 ? EnumFacing.AxisDirection.NEGATIVE
                 : EnumFacing.AxisDirection.POSITIVE;
     }
 
-    // Records that sectionMask's sections owe a check across dir, and dirties the chunk
+    // Sets the flags of a boundary for the given sections.
     public static void flagBoundary(Chunk chunk, short sectionMask, EnumSkyBlock lightType, EnumFacing dir,
+                                    // Axis direction and boundary facing.
                                     EnumFacing.AxisDirection axisDirection, BoundaryFacing boundaryFacing) {
         ChunkLightingData data = (ChunkLightingData) chunk;
 
@@ -59,7 +68,7 @@ public final class NeighborLightFlags {
         chunk.markDirty();
     }
 
-    // Skips writing when the table is all-zero (the common case once a world settles), avoiding a 32-entry list of zeroes per chunk
+    // Writes the flags of a chunk into its tag.
     public static void write(Chunk chunk, NBTTagCompound compound) {
         short[] flags = ((ChunkLightingData) chunk).fulgor$getNeighborLightChecks();
 
@@ -83,9 +92,8 @@ public final class NeighborLightFlags {
         }
     }
 
-    // Ignores the table if its length doesn't match — a foreign or stale write
+    // Reads the flags of a chunk from its tag.
     public static void read(Chunk chunk, NBTTagCompound compound) {
-        // Type 9 is TAG_List; the entries inside it are type 2, TAG_Short.
         if (!compound.hasKey(NBT_KEY, 9)) {
             return;
         }

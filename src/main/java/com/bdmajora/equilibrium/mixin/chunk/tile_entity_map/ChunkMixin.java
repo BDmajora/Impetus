@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.Map;
 
-// Swaps the chunk's tile entity map for the long-keyed one; the field is public and mods iterate it, which the view supports, and the swap happens at constructor return before anything can hold the old map. Cubic Chunks packs positions beyond BlockPos.toLong's range, so the vanilla map is kept when it is present
+// Mixin that changes Chunk.
 @Mixin(Chunk.class)
 public abstract class ChunkMixin {
     @Shadow
@@ -23,8 +23,10 @@ public abstract class ChunkMixin {
     @Mutable
     private Map<BlockPos, TileEntity> tileEntities;
 
+    // Value cubic chunks.
     private static final boolean CUBIC_CHUNKS = net.minecraftforge.fml.common.Loader.isModLoaded("cubicchunks");
 
+    // Runs before every return of constructor.
     @Inject(method = "<init>(Lnet/minecraft/world/World;II)V", at = @At("RETURN"))
     private void equilibrium$useLongKeyedMap(World world, int x, int z, CallbackInfo ci) {
         if (!CUBIC_CHUNKS) {

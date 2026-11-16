@@ -23,30 +23,34 @@ import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
-// Reads a pack folder or zip into the map ShaderPack consumes with java.nio and java.util.zip only; text to one map, binary assets to another, keys relative to shaders/
+// Loader of shader packs from folders and zip files.
 public final class ShaderPackLoader {
-    // Extensions read as raw bytes for the custom-texture directives and their .mcmeta sidecars; .dat is included since Photon ships 3D lookup textures that way
+    // Binary extensions.
     private static final Set<String> BINARY_EXTENSIONS = Set.of("png", "mcmeta", "dat", "bin", "raw");
 
-    // Text files that are metadata for OTHER mods, kept out of the source map since ShaderPackOptions scans EVERY entry for options (Iris only walks its IncludeGraph); Voxy's voxy.json opens with `#define OVERWORLD` and would register dimension macros as user toggles
+    // Text extensions that are not GLSL.
     private static final Set<String> NON_GLSL_TEXT_EXTENSIONS =
             Collections.unmodifiableSet(new HashSet<>(Arrays.asList("json", "md")));
 
-    // Guard against slurping something enormous into a String — a malformed pack, or a user's unrelated file
+    // Largest text file.
     private static final long MAX_TEXT_FILE_BYTES = 8L * 1024 * 1024;
 
-    // Same guard for binary assets, set well above the few MB the largest known pack LUTs occupy
+    // Largest binary file.
     private static final long MAX_BINARY_FILE_BYTES = 32L * 1024 * 1024;
 
+    // Largest total pack size.
+    private static final long MAX_PACK_BYTES = 512L * 1024 * 1024;
+
+    // Prevents instantiation
     private ShaderPackLoader() {
     }
 
-    // Loads a pack laid out as a folder with a shaders/ subdirectory
+    // Loads a pack folder with default options.
     public static ShaderPack loadFromDirectory(Path packRoot) throws IOException {
         return loadFromDirectory(packRoot, Collections.emptyMap());
     }
 
-    // Walks an unzipped pack
+    // Loads a pack folder with option changes.
     public static ShaderPack loadFromDirectory(Path packRoot, Map<String, String> changedConfigs) throws IOException {
         Path shadersDir = packRoot.resolve("shaders");
         if (!Files.isDirectory(shadersDir)) {
@@ -55,12 +59,15 @@ public final class ShaderPackLoader {
 
         Map<AbsolutePackPath, String> sources = new HashMap<>();
         Map<AbsolutePackPath, byte[]> binaries = new HashMap<>();
+        long[] loaded = new long[1];
         Files.walkFileTree(shadersDir, new SimpleFileVisitor<Path>() {
-            // Reads text files as sources and known binaries as raw bytes
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                loaded[0] += attrs.size();
+                if (loaded[0] > MAX_PACK_BYTES) {
+                    throw new IOException("Shader pack is larger than " + MAX_PACK_BYTES + " bytes: " + packRoot);
+                }
                 String relative = "/" + shadersDir.relativize(file).toString().replace('\\', '/');
-                // Binary first: isTextPath is now "not binary", so testing it first would starve this branch.
                 if (isBinaryPath(relative) && attrs.size() <= MAX_BINARY_FILE_BYTES) {
                     binaries.put(AbsolutePackPath.fromAbsolutePath(relative), Files.readAllBytes(file));
                 } else if (isTextPath(relative) && attrs.size() <= MAX_TEXT_FILE_BYTES) {
@@ -74,15 +81,16 @@ public final class ShaderPackLoader {
         return new ShaderPack(sources, changedConfigs, binaries);
     }
 
-    // Loads a pack distributed as a .zip with a top-level shaders/ directory; keys come out relative to it, matching the folder loader
+    // Loads a pack zip with default options.
     public static ShaderPack loadFromZip(Path zipFile) throws IOException {
         return loadFromZip(zipFile, Collections.emptyMap());
     }
 
-    // Streams a zipped pack, tolerating a single top-level folder
+    // Loads a pack zip with option changes.
     public static ShaderPack loadFromZip(Path zipFile, Map<String, String> changedConfigs) throws IOException {
         Map<AbsolutePackPath, String> sources = new HashMap<>();
         Map<AbsolutePackPath, byte[]> binaries = new HashMap<>();
+        long loaded = 0L;
         try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(zipFile))) {
             ZipEntry entry;
             while ((entry = zip.getNextEntry()) != null) {
@@ -98,17 +106,21 @@ public final class ShaderPackLoader {
                 if (relative.equals("/")) {
                     continue;
                 }
-                // Binary first: isTextPath is now "not binary", so testing it first would starve this branch.
                 if (isBinaryPath(relative)) {
                     byte[] contents = readBinaryEntry(zip);
                     if (contents != null) {
+                        loaded += contents.length;
                         binaries.put(AbsolutePackPath.fromAbsolutePath(relative), contents);
                     }
                 } else if (isTextPath(relative)) {
                     String contents = readEntry(zip);
                     if (contents != null) {
+                        loaded += contents.length();
                         sources.put(AbsolutePackPath.fromAbsolutePath(relative), contents);
                     }
+                }
+                if (loaded > MAX_PACK_BYTES) {
+                    throw new IOException("Shader pack is larger than " + MAX_PACK_BYTES + " bytes: " + zipFile);
                 }
                 zip.closeEntry();
             }
@@ -120,7 +132,7 @@ public final class ShaderPackLoader {
         return new ShaderPack(sources, changedConfigs, binaries);
     }
 
-    // Anything not a recognised binary asset is read as text, a blacklist NOT a whitelist: Iris and OptiFine read #include paths straight off disk, but this port pre-scans into a source map, so a whitelist silently dropped miniature-shader's /shader.h and RedHat's lib/defines/*.h and every constant became an undefined-variable error
+    // Returns whether a path is read as text.
     private static boolean isTextPath(String relative) {
         int dot = relative.lastIndexOf('.');
         if (dot >= 0 && NON_GLSL_TEXT_EXTENSIONS.contains(relative.substring(dot + 1).toLowerCase(Locale.ROOT))) {
@@ -129,7 +141,7 @@ public final class ShaderPackLoader {
         return !isBinaryPath(relative);
     }
 
-    // Textures and other assets that must not be decoded as text
+    // Returns whether a path is read as bytes.
     private static boolean isBinaryPath(String relative) {
         int dot = relative.lastIndexOf('.');
         if (dot < 0) {
@@ -138,12 +150,11 @@ public final class ShaderPackLoader {
         return BINARY_EXTENSIONS.contains(relative.substring(dot + 1).toLowerCase(Locale.ROOT));
     }
 
-    // One entry as UTF-8
+    // Reads a zip entry as text within the size limit.
     private static String readEntry(ZipInputStream zip) throws IOException {
         StringBuilder sb = new StringBuilder();
         char[] buffer = new char[4096];
         long total = 0;
-        // Do not close the reader; it would close the shared ZipInputStream.
         BufferedReader reader = new BufferedReader(new InputStreamReader(new UncloseableStream(zip), StandardCharsets.UTF_8));
         int read;
         while ((read = reader.read(buffer)) != -1) {
@@ -156,7 +167,7 @@ public final class ShaderPackLoader {
         return sb.toString();
     }
 
-    // One entry as bytes
+    // Reads a zip entry as bytes within the size limit.
     private static byte[] readBinaryEntry(ZipInputStream zip) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         byte[] buffer = new byte[8192];
@@ -172,30 +183,31 @@ public final class ShaderPackLoader {
         return out.toByteArray();
     }
 
-    // Wraps a stream so close() does nothing; the reading helpers close what they are handed, but a ZipInputStream is reused across every entry
+    // Stream that ignores close.
     private static final class UncloseableStream extends InputStream {
+        // Stream being read.
         private final InputStream delegate;
 
+        // Creates an uncloseable stream from its delegate.
         UncloseableStream(InputStream delegate) {
             this.delegate = delegate;
         }
 
-        // Delegates without closing the underlying zip
+        // Reads one byte.
         @Override
         public int read() throws IOException {
             return this.delegate.read();
         }
 
-        // Delegates without closing the underlying zip
+        // Reads bytes into an array.
         @Override
         public int read(byte[] b, int off, int len) throws IOException {
             return this.delegate.read(b, off, len);
         }
 
-        // No-op, so readers can be closed without ending the zip stream
+        // Leaves the underlying stream open.
         @Override
         public void close() {
-            // no-op
         }
     }
 }

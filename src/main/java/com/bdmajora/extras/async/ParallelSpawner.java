@@ -25,16 +25,19 @@ import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
-// WorldEntitySpawner.findChunksForSpawning with the per-chunk attempt loop spread over the pool: the eligibility sweep and per-type caps stay serial and identical to vanilla, each chunk's placement search runs as one task, and spawns funnel through the world lock like any other
+// Spawns mobs in parallel.
 public final class ParallelSpawner {
+    // Number of chunks that one mob cap covers.
     private static final int MOB_COUNT_DIV = 17 * 17;
 
-    // Vanilla mixes world.rand into every attempt; a per-thread source avoids 24 threads hammering one atomic seed
+    // Random source of each thread.
     private static final ThreadLocal<Random> RANDOM = ThreadLocal.withInitial(Random::new);
 
+    // Prevents instantiation
     private ParallelSpawner() {
     }
 
+    // Spawns mobs near the players and returns the number spawned.
     public static int findChunksForSpawning(WorldServer world, boolean spawnHostileMobs, boolean spawnPeacefulMobs, boolean spawnOnSetTickRate) {
         if (!spawnHostileMobs && !spawnPeacefulMobs) {
             return 0;
@@ -96,7 +99,7 @@ public final class ParallelSpawner {
         return spawned.get();
     }
 
-    // One chunk's attempts, a straight transcription of the loop body; returns how many entities it placed
+    // Tries to spawn groups in the chunk and returns the number spawned.
     private static int spawnInChunk(WorldServer world, EnumCreatureType type, ChunkPos chunkPos, BlockPos spawnPoint) {
         Random rand = RANDOM.get();
         BlockPos start = getRandomChunkPosition(world, chunkPos.x, chunkPos.z, rand);
@@ -150,13 +153,12 @@ public final class ParallelSpawner {
                 try {
                     living = entry.newInstance(world);
                 } catch (Exception exception) {
-                    exception.printStackTrace();
+                    com.bdmajora.extras.Extras.LOGGER.warn("Could not create the spawn entity", exception);
                     return total;
                 }
 
                 living.setLocationAndAngles(fx, y, fz, rand.nextFloat() * 360.0F, 0.0F);
 
-                // A null spawner is what the deprecated isSpawner = false overloads passed on
                 Event.Result canSpawn = ForgeEventFactory.canEntitySpawn(living, world, fx, y, fz, null);
                 if (canSpawn == Event.Result.ALLOW || (canSpawn == Event.Result.DEFAULT && living.getCanSpawnHere() && living.isNotColliding())) {
                     if (!ForgeEventFactory.doSpecialSpawn(living, world, fx, y, fz, null)) {
@@ -175,7 +177,6 @@ public final class ParallelSpawner {
                     }
                 }
 
-                // Vanilla adds the running pack count on every successful placement, so a pack of three counts 1 + 2 + 3; kept for parity with its return value
                 total += packSize;
             }
         }
@@ -183,7 +184,7 @@ public final class ParallelSpawner {
         return total;
     }
 
-    // Vanilla's private helper with the random source made explicit
+    // Returns a random position in the chunk.
     private static BlockPos getRandomChunkPosition(WorldServer world, int chunkX, int chunkZ, Random rand) {
         Chunk chunk = world.getChunk(chunkX, chunkZ);
         int x = chunkX * 16 + rand.nextInt(16);

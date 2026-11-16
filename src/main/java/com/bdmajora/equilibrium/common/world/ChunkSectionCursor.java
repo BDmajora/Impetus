@@ -8,29 +8,36 @@ import net.minecraft.world.WorldType;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 
-// Cursor for reading many blocks from one region, holding the last chunk and section and re-resolving at boundaries; short-lived and unshared, and whether unloaded chunks load is the caller's choice since vanilla is inconsistent about it
+// Reads block states while it remembers the last chunk and section.
 public final class ChunkSectionCursor {
+    // Default state of air.
     private static final IBlockState AIR = Blocks.AIR.getDefaultState();
 
+    // World to read.
     private final World world;
 
-    // Null when the world does not implement ChunkAccess, i.e. the option is off.
+    // Chunk lookup of the world or null.
     private final ChunkAccess access;
 
-    // True in the debug world, where block states are generated on read and not held in sections.
+    // Whether the world generates states on demand.
     private final boolean synthetic;
 
-    // Whether a read outside the loaded area should load the chunk, as getBlockState does.
+    // Whether missing chunks are loaded.
     private final boolean loadChunks;
 
+    // Chunk of the last read.
     private Chunk chunk;
+    // East position of the chunk.
     private int chunkX = Integer.MIN_VALUE;
+    // South position of the chunk.
     private int chunkZ = Integer.MIN_VALUE;
 
+    // Section of the last read.
     private ExtendedBlockStorage section;
+    // Height of the section.
     private int sectionY = Integer.MIN_VALUE;
 
-    // loadChunks true matches World#getBlockState, false treats unloaded chunks as air like World#getCollisionBoxes
+    // Creates a cursor for the world.
     public ChunkSectionCursor(World world, boolean loadChunks) {
         this.world = world;
         this.access = world instanceof ChunkAccess ? (ChunkAccess) world : null;
@@ -38,7 +45,7 @@ public final class ChunkSectionCursor {
         this.loadChunks = loadChunks;
     }
 
-    // The state at this position, or air if it is outside the world or in a chunk we cannot see.
+    // Returns the state at the position and air outside the world.
     public IBlockState getBlockState(int x, int y, int z) {
         if (y < 0 || y > 255) {
             return AIR;
@@ -59,7 +66,6 @@ public final class ChunkSectionCursor {
                     ? this.access.equilibrium$getChunkCached(newChunkX, newChunkZ)
                     : this.access.equilibrium$getLoadedChunk(newChunkX, newChunkZ);
 
-            // Force the section to be re-resolved; the y index alone no longer identifies it.
             this.sectionY = Integer.MIN_VALUE;
         }
 

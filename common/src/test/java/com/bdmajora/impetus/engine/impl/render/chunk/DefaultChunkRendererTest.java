@@ -76,6 +76,7 @@ class DefaultChunkRendererTest {
     private static final class Renderer extends DefaultChunkRenderer {
         final AtomicInteger configured = new AtomicInteger();
         boolean cull = true;
+        RuntimeException configureFailure;
 
         Renderer(GLRenderDevice device) {
             super(device, ChunkBuildBuffersTest.CONFIG, new TestFogService());
@@ -90,6 +91,9 @@ class DefaultChunkRendererTest {
         @Override
         protected void configureShaderInterface(ChunkShaderInterface shader) {
             configured.incrementAndGet();
+            if (configureFailure != null) {
+                throw configureFailure;
+            }
         }
     }
 
@@ -151,5 +155,50 @@ class DefaultChunkRendererTest {
         broken.render(matrices, commands, lists(near), Passes.CUTOUT, camera, camera);
         assertEquals(0, broken.configured.get());
         broken.delete(commands);
+    }
+
+    // Ends the pass and clears the program when drawing throws and draws again on the next call.
+    @Test
+    void aFailureInsideThePassStillEndsIt() {
+        Renderer renderer = new Renderer(device);
+        RenderSection near = built(0, 0, Passes.SOLID, false);
+        ChunkRenderMatrices matrices = new ChunkRenderMatrices(new Matrix4f(), new Matrix4f());
+        CameraTransform camera = new CameraTransform(8.5, 20, 8.5);
+        renderer.configureFailure = new IllegalStateException("configure");
+        assertThrows(IllegalStateException.class, () -> renderer.render(matrices, commands, lists(near), Passes.SOLID, camera, camera));
+        assertNull(renderer.activeProgram);
+        renderer.configureFailure = null;
+        renderer.render(matrices, commands, lists(near), Passes.SOLID, camera, camera);
+        Mockito.verify(TestGl.gl(), Mockito.times(1)).glMultiDrawElementsBaseVertex(Mockito.anyInt(), Mockito.anyLong(), Mockito.anyInt(), Mockito.anyLong(), Mockito.anyInt(), Mockito.anyLong());
+        renderer.delete(commands);
+        renderer.delete(commands);
+    }
+
+    // Creates one shared index buffer per primitive type and reuses it.
+    @Test
+    void sharedIndexBuffersAreReused() {
+        Renderer renderer = new Renderer(device);
+        var type = Passes.SOLID.primitiveType();
+        assertSame(renderer.getSharedIndexBuffer(type, commands), renderer.getSharedIndexBuffer(type, commands));
+        renderer.delete(commands);
+        assertNotNull(renderer.getSharedIndexBuffer(type, commands));
+        renderer.delete(commands);
+    }
+
+    // Unbinds the program and clears it when restoring the shader state throws.
+    @Test
+    @SuppressWarnings("unchecked")
+    void aFailingRestoreStillUnbindsTheProgram() {
+        Renderer renderer = new Renderer(device);
+        com.bdmajora.impetus.engine.impl.gl.shader.GlProgram<ChunkShaderInterface> program = Mockito.mock(com.bdmajora.impetus.engine.impl.gl.shader.GlProgram.class);
+        ChunkShaderInterface shader = Mockito.mock(ChunkShaderInterface.class);
+        Mockito.when(program.getInterface()).thenReturn(shader);
+        Mockito.doThrow(new IllegalStateException("restore")).when(shader).restoreState();
+        Passes.SOLID.startDrawing();
+        renderer.activeProgram = program;
+        assertThrows(IllegalStateException.class, () -> renderer.end(Passes.SOLID));
+        Mockito.verify(program).unbind();
+        assertNull(renderer.activeProgram);
+        renderer.delete(commands);
     }
 }

@@ -8,43 +8,47 @@ import java.util.Map;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Points a program's sampler uniforms at their fixed units (OptiFine's setProgramUniform1i) with the stage's custom-texture overrides, and holds the gbuffers-stage overrides of the live pipeline for the terrain and DH programs built outside it
+// Published custom texture overrides of the active pipeline.
 public final class SamplerAssignment {
+    // Empty flip set.
     private static final BitSet NONE_FLIPPED = new BitSet();
+    // Publication without an owner or overrides.
     private static final Published NOTHING = new Published(null, Collections.emptyMap());
 
-    // The overrides the live pipeline published, with the pipeline that owns them so a stale pipeline's teardown cannot wipe its successor's
+    // Data of the published.
     private record Published(Object owner, Map<String, CustomTextureManager.Override> overrides) {
     }
 
+    // Current publication.
     private static volatile Published active = NOTHING;
 
+    // Prevents instantiation
     private SamplerAssignment() {
     }
 
-    // Publishes the gbuffers/shadow-stage overrides; owner identifies the pipeline for withdraw
+    // Publishes the overrides of an owner.
     public static void publish(Object owner, Map<String, CustomTextureManager.Override> overrides) {
         active = new Published(owner, overrides);
     }
 
-    // Drops the published overrides, only if this owner still holds them
+    // Withdraws the overrides of an owner.
     public static void withdraw(Object owner) {
         if (active.owner() == owner) {
             active = NOTHING;
         }
     }
 
-    // The overrides currently in force, empty with no pipeline
+    // Returns the active overrides.
     public static Map<String, CustomTextureManager.Override> activeOverrides() {
         return active.overrides();
     }
 
-    // The standard gbuffer mapping on the CURRENTLY BOUND raw program with the live pipeline's overrides; used by the Impetus terrain and shadow overrides and the DH programs
+    // Assigns sampler units to the bound program.
     public static void assignToBoundProgram(int programId) {
         assign(programId, SamplerLayout.gbuffer(), active.overrides(), NONE_FLIPPED);
     }
 
-    // A colortex override is skipped once an earlier pass flipped that buffer, matching Umbra; the program must be bound
+    // Assigns sampler units to a program.
     public static void assign(int programId, Map<String, Integer> units,
                               Map<String, CustomTextureManager.Override> overrides, BitSet flippedAtLeastOnce) {
         boolean waterShadow = LWJGL.glGetUniformLocation(programId, "watershadow") != -1;
@@ -57,7 +61,6 @@ public final class SamplerAssignment {
             }
             int unit = entry.getValue();
             if (waterShadow && "shadow".equals(entry.getKey())) {
-                // UmbraSamplers.addShadowSamplers parity: with watershadow present the legacy shadow alias reads the pre-translucent depth (shadowtex1) while watershadow reads shadowtex0
                 unit = shadowAliasUnit;
             }
             CustomTextureManager.Override override = overrides.get(entry.getKey());
@@ -66,7 +69,6 @@ public final class SamplerAssignment {
             }
             LWJGL.glUniform1i(location, unit);
         }
-        // Pack-declared sampler names with no standard unit (customTexture.<name> directives)
         for (Map.Entry<String, CustomTextureManager.Override> entry : overrides.entrySet()) {
             if (units.containsKey(entry.getKey())) {
                 continue;

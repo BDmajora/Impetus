@@ -9,8 +9,9 @@ import java.nio.ByteBuffer;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// A 1x1 depth texture holding 1.0, bound to shadowtex0/1 when there is no shadow pass; 1.0 is the clear value every pack reads as fully lit (what OptiFine shows without a shadow program), and raw or compare samplers layer over it per program
+// One pixel depth texture bound when no shadow map exists.
 public class StubShadowMap extends GlResource {
+    // Creates a stub shadow map with default state.
     public StubShadowMap() {
         setHandle(LWJGL.glGenTextures());
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, getGlId());
@@ -25,12 +26,12 @@ public class StubShadowMap extends GlResource {
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, 0);
     }
 
-    // For binding as shadowtex0/1
+    // Returns the texture id.
     public int getTextureId() {
         return getGlId();
     }
 
-    // Frees the texture
+    // Deletes the texture.
     @Override
     protected void destroyInternal() {
         LWJGL.glDeleteTextures(getGlId());

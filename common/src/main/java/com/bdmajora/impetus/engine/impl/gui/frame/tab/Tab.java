@@ -16,7 +16,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-// One sidebar entry and the frame it shows; every tab is its own page now, the earlier "stackable" mode that merged a mod's pages into one scroll made the Impetus group a two-hundred-row list
+// Sidebar entry with the frame it shows.
 @lombok.Builder(builderClassName = "Builder", setterPrefix = "set")
 public record Tab<T extends AbstractFrame>(
         OptionIdentifier<Void> id,
@@ -27,17 +27,17 @@ public record Tab<T extends AbstractFrame>(
         @Nullable Predicate<Option<?>> optionFilter,
         @Nullable AtomicReference<Integer> verticalScrollBarOffset
 ) {
-    // Starts a builder
+    // Creates a builder.
     public static Tab.Builder<?> createBuilder() {
         return new Tab.Builder<>();
     }
 
-    // Builds this tab's content frame at the given size
+    // Creates the content frame at the given size or returns null without a factory.
     public T createFrame(Dim2i dim) {
         return this.frameFunction != null ? this.frameFunction.apply(dim) : null;
     }
 
-    // A scrollable tab for one page
+    // Creates a scrollable tab for one page.
     public static Tab<ScrollableFrame> from(OptionPage page, Predicate<Option<?>> optionFilter, AtomicReference<Integer> verticalScrollBarOffset) {
         Function<Dim2i, ScrollableFrame> frameFunction = dim2i -> ScrollableFrame
                 .createBuilder()

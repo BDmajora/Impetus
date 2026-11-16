@@ -11,15 +11,18 @@ import net.minecraftforge.fluids.BlockFluidBase;
 
 import java.util.function.ToIntBiFunction;
 
-// Pulsar's answer to MC-92: a block that takes its brightness from its neighbours takes it only through the faces that are actually open, rather than vanilla's maximum over every neighbour, which lit a slab from a torch on the side its solid half faces
+// Rules for which block faces pass light.
 public final class FaceLightRules {
+    // Face up.
     public static final int FACE_UP = 1 << EnumFacing.UP.ordinal();
+    // Face down.
     public static final int FACE_DOWN = 1 << EnumFacing.DOWN.ordinal();
 
+    // Prevents instantiation
     private FaceLightRules() {
     }
 
-    // Bitmask over EnumFacing ordinals of the faces light may enter through, or zero for a block that is lit by its own position; slabs and stairs open their free vertical face, everything else that asks for neighbour brightness opens the top
+    // Returns the faces of a state that pass light.
     public static int openFaces(IBlockState state) {
         if (state.getBlock() instanceof BlockSlab) {
             if (((BlockSlab) state.getBlock()).isDouble()) {
@@ -36,7 +39,7 @@ public final class FaceLightRules {
         return 0;
     }
 
-    // The level at pos raised by whatever reaches it through its open faces, one neighbour per open face; stops early at full brightness. lightFor is the caller's own getLightFor, since World and ChunkCache each have one but IBlockAccess declares none
+    // Returns the brightest neighbour light over the open faces.
     public static int foldOpenFaces(int faces, int level, EnumSkyBlock type, BlockPos pos, ToIntBiFunction<EnumSkyBlock, BlockPos> lightFor) {
         for (EnumFacing facing : EnumFacing.VALUES) {
             if (level >= 15) {
@@ -49,13 +52,13 @@ public final class FaceLightRules {
         return level;
     }
 
-    // Folds one open neighbour into the running level: an open face still attenuates by one, except that full skylight stays full so a surface open to the sky reads 15
+    // Returns the light a neighbour gives at one step.
     public static int fold(int level, int neighbour, EnumSkyBlock type) {
         int attenuation = type == EnumSkyBlock.SKY && neighbour == EnumSkyBlock.SKY.defaultLightValue ? 0 : 1;
         return Math.max(level, neighbour - attenuation);
     }
 
-    // The emission a block counts as for ambient occlusion: a level-one emitter (brown mushroom, some plants) keeps smooth lighting, stronger ones do not shade themselves (MC-249343, MC-50734)
+    // Returns the emission used for ambient occlusion.
     public static int ambientOcclusionEmission(int lightValue) {
         return Math.max(Math.min(lightValue - 1, 15), 0);
     }

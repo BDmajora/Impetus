@@ -5,10 +5,12 @@ import com.bdmajora.impetus.api.options.binding.OptionBinding;
 
 import java.util.Objects;
 
+// Binding of a vanilla boolean setting.
 public class VanillaBooleanOptionBinding implements OptionBinding<GameSettings, Boolean> {
+    // Vanilla setting of the binding.
     private final GameSettings.Options option;
 
-    // Only on/off options: vanilla reads any other option as false and takes the written int as a step through its values
+    // Creates a vanilla boolean option binding from its option.
     public VanillaBooleanOptionBinding(GameSettings.Options option) {
         if (!Objects.requireNonNull(option, "Option must not be null").isBoolean()) {
             throw new IllegalArgumentException("Not an on/off option: " + option);
@@ -16,8 +18,7 @@ public class VanillaBooleanOptionBinding implements OptionBinding<GameSettings, 
         this.option = option;
     }
 
-    // Through GameSettings.setOptionValue so vanilla's own side effects run; it flips an on/off option whatever int it is
-    // given, so it only runs when the value differs, which also skips the reloads and options.txt rewrite on an unchanged write
+    // Stores the value.
     @Override
     public void setValue(GameSettings settings, Boolean value) {
         if (settings.getOptionOrdinalValue(this.option) != value) {
@@ -25,7 +26,7 @@ public class VanillaBooleanOptionBinding implements OptionBinding<GameSettings, 
         }
     }
 
-    // Through GameSettings.getOptionOrdinalValue, boxed to the shared Boolean constants
+    // Returns the value.
     @Override
     public Boolean getValue(GameSettings settings) {
         return settings.getOptionOrdinalValue(this.option);

@@ -6,9 +6,10 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
-// StutterFix's "remove yield": the render loop offers its core to the scheduler once per frame, which on a busy machine hands it to a worker and delays the next frame
+// Mixin that changes Minecraft.
 @Mixin(Minecraft.class)
 public abstract class MinecraftYieldMixin {
+    // Replaces the call of Thread.yield in runGameLoop.
     @Redirect(method = "runGameLoop", at = @At(value = "INVOKE", target = "Ljava/lang/Thread;yield()V", remap = false))
     private void impetus$optionalYield() {
         if (!ThreadTuning.removeRenderYield) {

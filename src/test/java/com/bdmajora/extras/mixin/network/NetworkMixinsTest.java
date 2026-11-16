@@ -197,6 +197,13 @@ class NetworkMixinsTest {
         PacketBuffer tooLarge = new PacketBuffer(Unpooled.buffer());
         tooLarge.writeVarInt(NetworkLimits.VANILLA_COMPRESSED_PACKET + 1);
         assertThrows(DecoderException.class, () -> Mixins.call(decoder(), "decode", context(), tooLarge, new ArrayList<>()));
+        // A claimed size no deflate stream can reach is refused before anything is allocated
+        config.network.largePackets = true;
+        PacketBuffer absurd = new PacketBuffer(Unpooled.buffer());
+        absurd.writeVarInt(Integer.MAX_VALUE);
+        absurd.writeBytes(new byte[] {1, 2, 3, 4});
+        assertThrows(DecoderException.class, () -> Mixins.call(decoder(), "decode", context(), absurd, new ArrayList<>()));
+        config.network.largePackets = false;
         // Garbage in place of deflate data fails the inflate and frees what was allocated
         PacketBuffer garbage = new PacketBuffer(Unpooled.buffer());
         garbage.writeVarInt(300);

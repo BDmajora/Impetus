@@ -19,23 +19,31 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-// ScalableLux's idea applied to Fulgor: a batch of scheduled positions is split by chunk and the chunks are passed out to a pool, with any two whose 15-block reach could meet kept apart in time; each pass settles its own region to the same fixpoint the single pass would, so the result is unchanged and only the wall time shrinks
+// Runs light updates of distant chunks in parallel and keeps nearby chunks apart.
 final class ParallelLightScheduler {
-    // A pass touches at most 15 blocks from a scheduled position and reads one further, so chunks this far apart (Chebyshev) never see each other's writes; one chunk of margin on top of the proven three
+    // Chunk distance below which two tasks never run together.
     private static final int EXCLUSION_DISTANCE = 4;
 
+    // Number of the next worker thread.
     private static final AtomicInteger THREAD_ID = new AtomicInteger();
+    // Lock of the pool creation.
     private static final Object POOL_LOCK = new Object();
+    // Shared worker pool or null before first use.
     private static volatile ThreadPoolExecutor pool;
 
+    // World the light is written to.
     private final World world;
+    // Number of worker threads.
     private final int threads;
+    // Deduplication state of new propagators.
     private final boolean deduplicate;
+    // Capacity of the queues of new propagators.
     private final int queueCapacity;
 
-    // Propagators handed to workers; grown on demand up to the pool width, since each holds 34 queues
+    // Idle propagators for reuse.
     private final ArrayDeque<LightPropagator> spare = new ArrayDeque<>();
 
+    // Creates a scheduler for a world.
     ParallelLightScheduler(World world, int threads, boolean deduplicate, int queueCapacity) {
         this.world = world;
         this.threads = threads;
@@ -43,7 +51,7 @@ final class ParallelLightScheduler {
         this.queueCapacity = queueCapacity;
     }
 
-    // One pool for every world of the session; sized once from the first engine that asks
+    // Returns the shared worker pool and creates it on first use.
     private static ThreadPoolExecutor pool(int threads) {
         ThreadPoolExecutor current = pool;
         if (current != null) {
@@ -62,7 +70,6 @@ final class ParallelLightScheduler {
                 thread.setContextClassLoader(loader);
                 return thread;
             });
-            // The default abort policy stays: a rejected task must surface as an error rather than leave the caller waiting on a latch that never counts down
             current.prestartAllCoreThreads();
             pool = current;
             Fulgor.LOGGER.info("Parallel light pool started with {} threads", threads);
@@ -70,7 +77,7 @@ final class ParallelLightScheduler {
         }
     }
 
-    // Splits the queue by chunk; the queue is drained either way, and the caller runs the whole thing inline when too few chunks are involved for a hand-off to pay
+    // Drains a queue into key lists by chunk.
     Long2ObjectOpenHashMap<LongArrayList> partition(DeduplicatedLongQueue queue) {
         Long2ObjectOpenHashMap<LongArrayList> buckets = new Long2ObjectOpenHashMap<>();
         while (!queue.isEmpty()) {
@@ -83,19 +90,17 @@ final class ParallelLightScheduler {
             }
             bucket.add(key);
         }
-        // The queue's dedup set still remembers everything just drained; cleared here as beginDraining would have, or nothing could be scheduled twice
         queue.resetDeduplication();
         return buckets;
     }
 
-    // Runs the buckets across the pool and this thread, replaying the workers' render notifications on this thread once everything has settled
+    // Runs the chunk tasks on the workers and the calling thread and reports the light changes and rethrows the first failure.
     void run(EnumSkyBlock lightType, Long2ObjectOpenHashMap<LongArrayList> buckets, LightPropagator inline) {
         List<Task> pending = new ArrayList<>(buckets.size());
         for (Long2ObjectMap.Entry<LongArrayList> entry : buckets.long2ObjectEntrySet()) {
             long chunk = entry.getLongKey();
             pending.add(new Task((int) (chunk >> 32), (int) chunk, entry.getValue()));
         }
-        // Largest first, so the long passes start early and the small ones fill the gaps
         pending.sort((a, b) -> Integer.compare(b.keys.size(), a.keys.size()));
 
         ThreadPoolExecutor executor = pool(this.threads);
@@ -104,40 +109,42 @@ final class ParallelLightScheduler {
         List<LongArrayList> notifications = new ArrayList<>();
         AtomicReference<Throwable> failure = new AtomicReference<>();
         Object monitor = this;
+        // Interrupt state that stops new tasks and is restored at the end
+        boolean interrupted = false;
 
         while (true) {
             Task inlineTask = null;
             synchronized (monitor) {
                 boolean done = false;
                 while (true) {
-                    if (pending.isEmpty() && running.isEmpty()) {
+                    if ((pending.isEmpty() || interrupted) && running.isEmpty()) {
                         done = true;
                         break;
                     }
-                    Task next = firstRunnable(pending, running);
+                    Task next = interrupted ? null : firstRunnable(pending, running);
                     if (next == null) {
                         if (running.isEmpty()) {
                             done = true;
                             break;
                         }
+                        // Waits for the running tasks even after an interrupt
                         try {
                             monitor.wait();
                         } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                            done = true;
-                            break;
+                            interrupted = true;
                         }
                         continue;
                     }
                     pending.remove(next);
                     running.add(next);
                     if (running.size() > width) {
-                        // Every worker is busy but this chunk is free to go, so this thread takes it rather than idling
                         inlineTask = next;
                         break;
                     }
                     executor.execute(() -> {
                         LightPropagator propagator = acquire();
+                        // Clean state of the propagator that allows its reuse
+                        boolean clean = false;
                         try {
                             propagator.run(lightType, propagator.fill(next.keys), true);
                             LongArrayList deferred = propagator.takeDeferredNotifications();
@@ -146,10 +153,13 @@ final class ParallelLightScheduler {
                                     notifications.add(deferred);
                                 }
                             }
+                            clean = true;
                         } catch (Throwable throwable) {
                             failure.compareAndSet(null, throwable);
                         } finally {
-                            release(propagator);
+                            if (clean) {
+                                release(propagator);
+                            }
                             synchronized (monitor) {
                                 running.remove(next);
                                 monitor.notifyAll();
@@ -161,7 +171,6 @@ final class ParallelLightScheduler {
                     break;
                 }
             }
-            // Outside the monitor so finishing workers are not held up behind this pass
             try {
                 inline.run(lightType, inline.fill(inlineTask.keys), false);
             } catch (Throwable throwable) {
@@ -172,6 +181,10 @@ final class ParallelLightScheduler {
                     monitor.notifyAll();
                 }
             }
+        }
+
+        if (interrupted) {
+            Thread.currentThread().interrupt();
         }
 
         MutableBlockPos pos = new MutableBlockPos();
@@ -193,7 +206,7 @@ final class ParallelLightScheduler {
         }
     }
 
-    // The first pending chunk far enough from everything in flight
+    // Returns the first pending task far enough from every running task or null.
     private static Task firstRunnable(List<Task> pending, List<Task> running) {
         for (Task candidate : pending) {
             boolean clear = true;
@@ -211,6 +224,7 @@ final class ParallelLightScheduler {
         return null;
     }
 
+    // Returns an idle propagator or a new one.
     private LightPropagator acquire() {
         synchronized (this.spare) {
             LightPropagator propagator = this.spare.poll();
@@ -221,6 +235,7 @@ final class ParallelLightScheduler {
         return new LightPropagator(this.world, this.deduplicate, this.queueCapacity);
     }
 
+    // Keeps a propagator for reuse while fewer than the thread count are idle.
     private void release(LightPropagator propagator) {
         synchronized (this.spare) {
             if (this.spare.size() < this.threads) {
@@ -229,12 +244,16 @@ final class ParallelLightScheduler {
         }
     }
 
-    // One chunk's scheduled positions
+    // Keys of one chunk to update.
     private static final class Task {
+        // Chunk x of the task.
         final int chunkX;
+        // Chunk z of the task.
         final int chunkZ;
+        // Light keys of the chunk.
         final LongArrayList keys;
 
+        // Creates a task.
         Task(int chunkX, int chunkZ, LongArrayList keys) {
             this.chunkX = chunkX;
             this.chunkZ = chunkZ;

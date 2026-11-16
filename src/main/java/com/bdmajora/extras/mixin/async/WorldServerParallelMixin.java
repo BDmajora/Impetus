@@ -23,16 +23,18 @@ import java.util.List;
 import java.util.Random;
 import java.util.UUID;
 
-// The server-only mutable state behind the world monitor (id and uuid tables, scheduled ticks, block events, explosions), plus random ticks collected in vanilla's LCG order on the main thread and executed as a parallel batch
+// Mixin that changes WorldServer.
 @Mixin(WorldServer.class)
 public abstract class WorldServerParallelMixin implements ParallelWorld {
-    // Random ticks run off-thread get a per-thread source, since the block's updateTick may draw from it freely
+    // Field random tick random added to the target.
     @Unique
     private static final ThreadLocal<Random> impetus$randomTickRandom = ThreadLocal.withInitial(Random::new);
 
+    // Field random tick batch added to the target.
     @Unique
     private List<Runnable> impetus$randomTickBatch;
 
+    // Adds an entity under the world lock.
     @WrapMethod(method = "onEntityAdded")
     private void impetus$lockedOnEntityAdded(Entity entity, Operation<Void> original) {
         if (!this.impetus$isParallel()) {
@@ -44,6 +46,7 @@ public abstract class WorldServerParallelMixin implements ParallelWorld {
         }
     }
 
+    // Removes an entity under the world lock.
     @WrapMethod(method = "onEntityRemoved")
     private void impetus$lockedOnEntityRemoved(Entity entity, Operation<Void> original) {
         if (!this.impetus$isParallel()) {
@@ -55,6 +58,7 @@ public abstract class WorldServerParallelMixin implements ParallelWorld {
         }
     }
 
+    // Lockeds the get entity from uuid.
     @WrapMethod(method = "getEntityFromUuid")
     private Entity impetus$lockedGetEntityFromUuid(UUID uuid, Operation<Entity> original) {
         if (!this.impetus$isParallel()) {
@@ -65,6 +69,7 @@ public abstract class WorldServerParallelMixin implements ParallelWorld {
         }
     }
 
+    // Schedules a block tick under the world lock.
     @WrapMethod(method = "updateBlockTick")
     private void impetus$lockedUpdateBlockTick(BlockPos pos, Block block, int delay, int priority, Operation<Void> original) {
         if (!this.impetus$isParallel()) {
@@ -76,6 +81,7 @@ public abstract class WorldServerParallelMixin implements ParallelWorld {
         }
     }
 
+    // Schedules a block update under the world lock.
     @WrapMethod(method = "scheduleBlockUpdate")
     private void impetus$lockedScheduleBlockUpdate(BlockPos pos, Block block, int delay, int priority, Operation<Void> original) {
         if (!this.impetus$isParallel()) {
@@ -87,6 +93,7 @@ public abstract class WorldServerParallelMixin implements ParallelWorld {
         }
     }
 
+    // Lockeds the is block tick pending.
     @WrapMethod(method = "isBlockTickPending")
     private boolean impetus$lockedIsBlockTickPending(BlockPos pos, Block block, Operation<Boolean> original) {
         if (!this.impetus$isParallel()) {
@@ -97,6 +104,7 @@ public abstract class WorldServerParallelMixin implements ParallelWorld {
         }
     }
 
+    // Lockeds the is update scheduled.
     @WrapMethod(method = "isUpdateScheduled")
     private boolean impetus$lockedIsUpdateScheduled(BlockPos pos, Block block, Operation<Boolean> original) {
         if (!this.impetus$isParallel()) {
@@ -107,6 +115,7 @@ public abstract class WorldServerParallelMixin implements ParallelWorld {
         }
     }
 
+    // Runs pending ticks under the world lock.
     @WrapMethod(method = "tickUpdates")
     private boolean impetus$lockedTickUpdates(boolean runAllPending, Operation<Boolean> original) {
         if (!this.impetus$isParallel()) {
@@ -117,6 +126,7 @@ public abstract class WorldServerParallelMixin implements ParallelWorld {
         }
     }
 
+    // Adds a block event under the world lock.
     @WrapMethod(method = "addBlockEvent")
     private void impetus$lockedAddBlockEvent(BlockPos pos, Block block, int eventId, int eventParam, Operation<Void> original) {
         if (!this.impetus$isParallel()) {
@@ -128,6 +138,7 @@ public abstract class WorldServerParallelMixin implements ParallelWorld {
         }
     }
 
+    // Sends queued block events under the world lock.
     @WrapMethod(method = "sendQueuedBlockEvents")
     private void impetus$lockedSendQueuedBlockEvents(Operation<Void> original) {
         if (!this.impetus$isParallel()) {
@@ -139,6 +150,7 @@ public abstract class WorldServerParallelMixin implements ParallelWorld {
         }
     }
 
+    // Creates an explosion under the world lock.
     @WrapMethod(method = "newExplosion")
     private Explosion impetus$lockedNewExplosion(Entity source, double x, double y, double z, float strength, boolean causesFire, boolean damagesTerrain, Operation<Explosion> original) {
         if (!this.impetus$isParallel()) {
@@ -149,7 +161,7 @@ public abstract class WorldServerParallelMixin implements ParallelWorld {
         }
     }
 
-    // Random ticks: the LCG that picks positions stays sequential on the main thread, only the block's reaction is deferred
+    // Wraps the call of Block.randomTick in updateBlocks.
     @WrapOperation(method = "updateBlocks", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/block/Block;randomTick(Lnet/minecraft/world/World;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/block/state/IBlockState;Ljava/util/Random;)V"))
     private void impetus$collectRandomTick(Block block, World world, BlockPos pos, IBlockState state, Random random, Operation<Void> original) {
@@ -162,11 +174,16 @@ public abstract class WorldServerParallelMixin implements ParallelWorld {
             batch = new ArrayList<>();
             this.impetus$randomTickBatch = batch;
         }
-        // The direct call rather than the Operation, which must not outlive the handler
         batch.add(() -> block.randomTick(world, pos, state, impetus$randomTickRandom.get()));
     }
 
-    // Flushes the collected random ticks through the pool once the chunk sweep is done
+    // Runs at the start of updateBlocks.
+    @Inject(method = "updateBlocks", at = @At("HEAD"))
+    private void impetus$discardStaleRandomTicks(CallbackInfo ci) {
+        this.impetus$randomTickBatch = null;
+    }
+
+    // Runs at the end of updateBlocks.
     @Inject(method = "updateBlocks", at = @At("TAIL"))
     private void impetus$flushRandomTicks(CallbackInfo ci) {
         List<Runnable> batch = this.impetus$randomTickBatch;

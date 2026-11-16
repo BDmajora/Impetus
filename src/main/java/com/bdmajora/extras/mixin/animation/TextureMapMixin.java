@@ -14,12 +14,13 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Predicate;
 
-// Gates each animated sprite's tick on its category switch so disabling lava animation stops paying for it; 1.12.2 sprites carry only a name, so categories match by substring, and the table is built per atlas on first use
+// Mixin that changes TextureMap.
 @Mixin(TextureMap.class)
 public abstract class TextureMapMixin {
     @Unique
     private Map<String, Predicate<ExtrasConfig.AnimationSettings>> impetus$categories;
 
+    // Wraps the call of TextureAtlasSprite.updateAnimation in updateAnimations.
     @WrapOperation(
             method = "updateAnimations",
             at = @At(value = "INVOKE",
@@ -31,6 +32,7 @@ public abstract class TextureMapMixin {
         }
     }
 
+    // Helper method should animate added to the target.
     @Unique
     private boolean impetus$shouldAnimate(TextureAtlasSprite sprite) {
         ExtrasConfig.AnimationSettings settings = Extras.options().animation;
@@ -58,13 +60,13 @@ public abstract class TextureMapMixin {
             }
         }
 
-        // Anything unrecognised is covered by the general block-animation switch, making it mean "everything else" rather than "a handful of vanilla blocks"
         return settings.blockAnimations;
     }
 
+    // Helper method build categories added to the target.
     @Unique
     private static Map<String, Predicate<ExtrasConfig.AnimationSettings>> impetus$buildCategories() {
-        Map<String, Predicate<ExtrasConfig.AnimationSettings>> map = new HashMap<>();
+        Map<String, Predicate<ExtrasConfig.AnimationSettings>> map = new java.util.LinkedHashMap<>();
 
         map.put("water_still", settings -> settings.water);
         map.put("water_flow", settings -> settings.water);
@@ -78,13 +80,11 @@ public abstract class TextureMapMixin {
 
         map.put("portal", settings -> settings.portal);
 
-        // OptiFine breaks these four out of the general block-animation switch.
         map.put("redstone", settings -> settings.redstone);
         map.put("explosion", settings -> settings.explosion);
         map.put("flame", settings -> settings.flame);
         map.put("smoke", settings -> settings.smoke);
 
-        // 1.12.2 has no sculk sensor; the switch exists for mods that add one and name it so.
         map.put("sculk_sensor", settings -> settings.sculkSensor);
 
         return map;

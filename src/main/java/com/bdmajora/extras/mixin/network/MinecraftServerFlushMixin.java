@@ -11,14 +11,16 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.List;
 
-// Brackets the server tick for FlushBatch and flushes every connection that deferred a write; the tick's own network step runs before the player list step, so this sits at the very end where keep-alives and tab list updates have been queued too
+// Mixin that changes MinecraftServer.
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerFlushMixin {
+    // Runs at the start of tick.
     @Inject(method = "tick", at = @At("HEAD"))
     private void impetus$beginBatch(CallbackInfo ci) {
         FlushBatch.beginTick();
     }
 
+    // Runs before every return of tick.
     @Inject(method = "tick", at = @At("RETURN"))
     private void impetus$flushAll(CallbackInfo ci) {
         FlushBatch.endTick();
@@ -27,7 +29,6 @@ public abstract class MinecraftServerFlushMixin {
             return;
         }
         List<NetworkManager> managers = ((NetworkSystemAccessor) system).impetus$networkManagers();
-        // Vanilla guards the list with its own monitor during networkTick and connection accept
         synchronized (managers) {
             for (int i = 0, n = managers.size(); i < n; i++) {
                 NetworkManager manager = managers.get(i);

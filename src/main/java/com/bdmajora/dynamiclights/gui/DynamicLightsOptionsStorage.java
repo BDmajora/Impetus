@@ -4,15 +4,15 @@ import com.bdmajora.dynamiclights.DynamicLights;
 import com.bdmajora.dynamiclights.DynamicLightsConfig;
 import com.bdmajora.impetus.api.options.structure.OptionStorage;
 
-// Bridges the Dynamic Lights config into the Impetus options framework.
+// Storage that reads and writes the dynamic lights settings.
 public final class DynamicLightsOptionsStorage implements OptionStorage<DynamicLightsConfig> {
-    // The options screen edits the live config directly
+    // Returns the settings.
     @Override
     public DynamicLightsConfig getData() {
         return DynamicLights.options();
     }
 
-    // Writes the file once the screen is dismissed
+    // Writes the settings to the file.
     @Override
     public void save() {
         DynamicLights.save();

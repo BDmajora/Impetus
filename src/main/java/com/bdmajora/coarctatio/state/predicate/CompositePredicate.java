@@ -6,33 +6,36 @@ import net.minecraft.block.state.IBlockState;
 import java.util.Arrays;
 import java.util.List;
 
-// Array-backed AND/OR over arbitrary children, the fallback for unflattenable trees; still drops the ICondition tree and container Guava's composite retains
+// Predicate that combines other predicates with and or or.
 public final class CompositePredicate implements Predicate<IBlockState> {
+    // Combined predicates.
     private final Predicate<IBlockState>[] predicates;
-    // true = AND, false = OR. One field instead of two subclasses, so apply below is written once
+    // Whether every predicate must match.
     private final boolean requireAll;
 
+    // Hash computed once at construction.
     private final int hash;
 
+    // Creates a predicate from its parts.
     private CompositePredicate(Predicate<IBlockState>[] predicates, boolean requireAll) {
         this.predicates = predicates;
         this.requireAll = requireAll;
         this.hash = 31 * Arrays.hashCode(predicates) + (requireAll ? 1 : 0);
     }
 
-    // toArray(new Predicate[0]) copies, so the caller's list can be reused or mutated afterwards
+    // Returns a predicate that needs every member to match.
     @SuppressWarnings("unchecked")
     public static CompositePredicate all(List<Predicate<IBlockState>> predicates) {
         return new CompositePredicate(predicates.toArray(new Predicate[0]), true);
     }
 
-    // OR form; short-circuits on the first match
+    // Returns a predicate that needs one member to match.
     @SuppressWarnings("unchecked")
     public static CompositePredicate any(List<Predicate<IBlockState>> predicates) {
         return new CompositePredicate(predicates.toArray(new Predicate[0]), false);
     }
 
-    // One loop for both modes: a child disagreeing with requireAll settles it, and falling out returns requireAll itself (AND of nothing true, OR of nothing false)
+    // Returns whether the members agree with the combination rule.
     @Override
     public boolean apply(IBlockState state) {
         for (Predicate<IBlockState> predicate : this.predicates) {
@@ -44,7 +47,7 @@ public final class CompositePredicate implements Predicate<IBlockState> {
         return this.requireAll;
     }
 
-    // Structural equality over the children and the AND/OR flag
+    // Returns whether the object combines equal members the same way.
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -58,7 +61,7 @@ public final class CompositePredicate implements Predicate<IBlockState> {
         return this.requireAll == other.requireAll && Arrays.equals(this.predicates, other.predicates);
     }
 
-    // Precomputed at construction; the predicate is immutable
+    // Returns the stored hash.
     @Override
     public int hashCode() {
         return this.hash;

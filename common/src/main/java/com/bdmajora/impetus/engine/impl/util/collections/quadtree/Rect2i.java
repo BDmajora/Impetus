@@ -1,13 +1,17 @@
 package com.bdmajora.impetus.engine.impl.util.collections.quadtree;
 
-import java.util.Objects;
-
+// Integer rectangle with an inclusive origin and an exclusive far edge.
 public class Rect2i {
+    // Left edge.
     protected final int x;
+    // Top edge.
     protected final int y;
+    // Width of the rectangle.
     protected final int width;
+    // Height of the rectangle.
     protected final int height;
 
+    // Creates a rectangle.
     public Rect2i(int x, int y, int width, int height) {
         this.x = x;
         this.y = y;
@@ -15,41 +19,45 @@ public class Rect2i {
         this.height = height;
     }
 
+    // Creates a copy of a rectangle and rejects null.
     public Rect2i(Rect2i other) {
         this(other.x(), other.y(), other.width(), other.height());
     }
 
-    // Inclusive of the origin, exclusive of the far edge
+    // Returns whether the point lies inside the rectangle.
     public boolean contains(int x, int y) {
-        return x >= this.x && y >= this.y && x < this.x + this.width && y < this.y + this.height;
+        return (long) x - this.x < this.width && (long) y - this.y < this.height && x >= this.x && y >= this.y;
     }
 
-    // Both corners inside, so the whole rect is
+    // Returns whether the other rectangle lies entirely inside this one.
     public boolean contains(Rect2i other) {
-        return this.contains(other.x, other.y) && this.contains(other.x + other.width - 1, other.y + other.height - 1);
+        return other.width >= 0 && other.height >= 0
+                && other.x >= this.x && other.y >= this.y
+                && (long) other.x + other.width <= (long) this.x + this.width
+                && (long) other.y + other.height <= (long) this.y + this.height;
     }
 
-    // Left
+    // Returns the left edge.
     public int x() {
         return x;
     }
 
-    // Top
+    // Returns the top edge.
     public int y() {
         return y;
     }
 
-    // Width
+    // Returns the width.
     public int width() {
         return width;
     }
 
-    // Height
+    // Returns the height.
     public int height() {
         return height;
     }
 
-    // By all four fields
+    // Compares the class and all four fields.
     @Override
     public boolean equals(Object obj) {
         if (obj == this) return true;
@@ -61,13 +69,16 @@ public class Rect2i {
                 this.height == that.height;
     }
 
-    // By all four fields
+    // Combines all four fields.
     @Override
     public int hashCode() {
-        return Objects.hash(x, y, width, height);
+        int result = 31 + x;
+        result = 31 * result + y;
+        result = 31 * result + width;
+        return 31 * result + height;
     }
 
-    // For debugging
+    // Returns the fields as text.
     @Override
     public String toString() {
         return "Rect2i[" +

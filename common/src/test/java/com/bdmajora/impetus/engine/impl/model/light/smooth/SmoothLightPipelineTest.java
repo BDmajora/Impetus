@@ -13,23 +13,27 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+// Tests smooth lighting of quads.
 class SmoothLightPipelineTest {
+    // Returns a world with a stone block and a wall beside its top face.
     private static FakeLightData world() {
         FakeLightData data = new FakeLightData();
         data.put(0, 0, 0, FakeLightData.stone());
-        // A wall beside the top face darkens two corners
+        // Places a wall beside the top face
         data.put(1, 1, 0, FakeLightData.stone());
         data.put(1, 1, 1, FakeLightData.stone());
         data.put(-1, 1, -1, LightDataAccess.packEM(true) | LightDataAccess.packAO(1.0f));
         return data;
     }
 
+    // Returns a top quad with the given flags.
     private static ModelQuad quad(int flags) {
         ModelQuad quad = ModelQuadTest.top();
         quad.setFlags(flags);
         return quad;
     }
 
+    // Maps the corner data straight onto aligned full faces.
     @Test
     void alignedFullFacesMapCornersDirectly() {
         SmoothLightPipeline pipeline = new SmoothLightPipeline(world(), DiffuseProvider.NONE, false);
@@ -45,6 +49,7 @@ class SmoothLightPipelineTest {
         assertArrayEquals(out.br, again.br);
     }
 
+    // Lights partial and non parallel and irregular faces.
     @Test
     void partialNonParallelAndIrregularFaces() {
         SmoothLightPipeline pipeline = new SmoothLightPipeline(world(), (nx, ny, nz, shade) -> 0.5f, true);
@@ -85,6 +90,7 @@ class SmoothLightPipelineTest {
         pipeline.calculate(diagonal, 0, 0, 0, out, ModelQuadFacing.POS_Y, ModelQuadFacing.POS_Y, true, true);
     }
 
+    // Covers every face with neighbor info.
     @Test
     void neighbourInfoCoversEveryFace() {
         float[] weights = new float[4];
@@ -104,6 +110,7 @@ class SmoothLightPipelineTest {
         new AoCompletionFlags();
     }
 
+    // Handles opaque corners and zero light in face data.
     @Test
     void faceDataHandlesOpaqueCornersAndZeroLight() {
         FakeLightData data = new FakeLightData();
@@ -131,5 +138,33 @@ class SmoothLightPipelineTest {
         AoFaceData unlit = new AoFaceData();
         unlit.initLightData(dark, 5, 5, 5, ModelQuadFacing.NEG_Y, false);
         assertTrue(unlit.hasLightData());
+    }
+
+    // Clears every cached face on reset so a block at any packed position reads fresh light.
+    @Test
+    void resetClearsEveryCachedFace() throws ReflectiveOperationException {
+        SmoothLightPipeline pipeline = new SmoothLightPipeline(world(), DiffuseProvider.NONE, false);
+        pipeline.calculate(quad(ModelQuadFlags.IS_ALIGNED), 0, 0, 0, new QuadLightData(), ModelQuadFacing.POS_Y, ModelQuadFacing.POS_Y, true, false);
+        java.lang.reflect.Field field = SmoothLightPipeline.class.getDeclaredField("cachedFaceData");
+        field.setAccessible(true);
+        AoFaceData[] faces = (AoFaceData[]) field.get(pipeline);
+        boolean any = false;
+        for (AoFaceData face : faces) {
+            any |= face.hasLightData();
+        }
+        assertTrue(any);
+        pipeline.reset();
+        pipeline.reset();
+        for (AoFaceData face : faces) {
+            assertFalse(face.hasLightData());
+            assertFalse(face.hasUnpackedLightData());
+        }
+    }
+
+    // Rejects a null cache or provider.
+    @Test
+    void rejectsNulls() {
+        assertThrows(NullPointerException.class, () -> new SmoothLightPipeline(null, DiffuseProvider.NONE, false));
+        assertThrows(NullPointerException.class, () -> new SmoothLightPipeline(new FakeLightData(), null, false));
     }
 }

@@ -6,27 +6,37 @@ import com.bdmajora.impetus.umbra.gl.sampler.ShadowSamplerKinds;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// One compute dispatch: the linked program, its uniforms, and how many groups to launch (indirect from a pack buffer, screen-relative, or fixed)
+// Compute program of a pass with its fixed or screen relative or indirect work group count.
 public final class ComputePass {
-    // GL43 dispatch-indirect binding target, a literal to avoid a hard generated-constant dependency
+    // GL enum of the indirect dispatch target.
     private static final int GL_DISPATCH_INDIRECT_BUFFER = 0x90EE;
 
+    // Compute program.
     final GlProgram program;
+    // Uniforms of the program.
     final ProgramUniforms uniforms;
-    // Sampler objects also govern a compute stage's texture fetches, so a compute reading raw shadow depth needs the same per-program choice
+    // Compare or raw kind of each shadow sampler.
     final ShadowSamplerKinds shadowSamplerKinds;
+    // Fixed work groups along x.
     private final int groupsX;
+    // Fixed work groups along y.
     private final int groupsY;
+    // Fixed work groups along z.
     private final int groupsZ;
-    // Screen-relative dispatch (const vec2 workGroupsRender); NaN = fixed dispatch
+    // Screen scale along x or NaN for fixed groups.
     private final float renderScaleX;
+    // Screen scale along y or NaN for fixed groups.
     private final float renderScaleY;
+    // Local size of the program along x.
     private final int localSizeX;
+    // Local size of the program along y.
     private final int localSizeY;
-    // Indirect dispatch (indirect.<pass> directive): GL buffer id, or -1 for direct dispatch
+    // GL name of the indirect buffer or minus one.
     private final int indirectBuffer;
+    // Byte offset of the indirect command.
     private final long indirectOffset;
 
+    // Creates a pass.
     ComputePass(GlProgram program, ProgramUniforms uniforms, ShadowSamplerKinds shadowSamplerKinds, int[] groups,
                 float[] renderScale, int[] localSize, int indirectBuffer, long indirectOffset) {
         this.program = program;
@@ -43,7 +53,7 @@ public final class ComputePass {
         this.indirectOffset = indirectOffset;
     }
 
-    // Launches with the program already bound; a screen-relative dispatch is recomputed from the render size each frame
+    // Dispatches the program with its indirect or screen relative or fixed group count.
     void dispatch(int renderWidth, int renderHeight) {
         if (this.indirectBuffer != -1) {
             LWJGL.glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, this.indirectBuffer);
@@ -57,7 +67,7 @@ public final class ComputePass {
         }
     }
 
-    // Frees the program, which this pass owns
+    // Deletes the program.
     void destroy() {
         this.program.destroy();
     }

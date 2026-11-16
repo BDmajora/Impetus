@@ -27,35 +27,41 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 
-// The model registry ModelManager consults: bakes on request from the unbaked provider, keeps the result in an expiring soft cache, and holds permanently only what mods put or the item prebake baked (VintageFix's DynamicBakedModelProvider)
+// Registry that bakes each model when it is first requested.
 public final class BakedModelProvider extends RegistrySimple<ModelResourceLocation, IBakedModel> {
+    // Source of the unbaked models.
     private final UnbakedModelProvider models;
+    // Models stored explicitly that never expire.
     private final Map<ModelResourceLocation, IBakedModel> permanent = Collections.synchronizedMap(new Object2ObjectOpenHashMap<>());
+    // Models baked on demand that may expire.
     private final Cache<ModelResourceLocation, Optional<IBakedModel>> baked = CacheBuilder.newBuilder()
             .expireAfterAccess(Duration.ofMinutes(3))
             .maximumSize(1000)
             .concurrencyLevel(8)
             .softValues()
             .build();
+    // View that maps block states to models.
     private final Map<IBlockState, IBakedModel> stateStore = new StateStore();
-    // Set by the reload once builtin/missing has baked; answered for known variants that fail so a lookup never returns null for them
+    // Model returned for known locations that fail to bake.
     IBakedModel missingModel;
 
+    // Creates a provider and rejects null models.
     public BakedModelProvider(UnbakedModelProvider models) {
-        this.models = models;
+        this.models = java.util.Objects.requireNonNull(models, "models");
     }
 
-    // RegistrySimple's own map is never used; getObject and putObject are answered from the caches
+    // Returns an empty map because the provider keeps its own tables.
     @Override
     protected Map<ModelResourceLocation, IBakedModel> createUnderlyingMap() {
         return ImmutableMap.of();
     }
 
-    // What BlockModelShapes.bakedModelStore becomes: mods that reach into that field to read or replace a state's model keep working through the registry
+    // Returns the view that maps block states to models.
     public Map<IBlockState, IBakedModel> stateStore() {
         return this.stateStore;
     }
 
+    // Returns the stored or baked model of the location.
     @Nullable
     @Override
     public IBakedModel getObject(ModelResourceLocation location) {
@@ -75,12 +81,14 @@ public final class BakedModelProvider extends RegistrySimple<ModelResourceLocati
         return ModelLocations.ITEM_VARIANTS.contains(location) ? this.missingModel : null;
     }
 
+    // Returns the cached model without baking.
     @Nullable
     public IBakedModel getIfBaked(ModelResourceLocation location) {
         Optional<IBakedModel> model = this.baked.getIfPresent(location);
         return model != null ? model.orElse(null) : null;
     }
 
+    // Returns the stored model or bakes the location and returns the missing model for known failures.
     private IBakedModel bake(ModelResourceLocation location) {
         IBakedModel model = this.permanent.get(location);
         if (model != null) {
@@ -94,7 +102,6 @@ public final class BakedModelProvider extends RegistrySimple<ModelResourceLocati
             failure = e;
         }
         if (unbaked == null) {
-            // A listener may still supply a model for a location no file backs
             DynamicModelBakeEvent event = new DynamicModelBakeEvent(location, null, this.missingModel);
             MinecraftForge.EVENT_BUS.post(event);
             if (event.bakedModel != this.missingModel) {
@@ -112,12 +119,11 @@ public final class BakedModelProvider extends RegistrySimple<ModelResourceLocati
                 }
             }
         }
-        // A variant the state mapper produced answers the missing model the way vanilla's registry would after onPostBakeEvent filled it in
         Collection<ModelResourceLocation> known = ModelLocations.VARIANTS_BY_BLOCKSTATE.get(new ResourceLocation(location.getNamespace(), location.getPath()));
         return known != null && known.contains(location) ? this.missingModel : null;
     }
 
-    // Warns once per sprite the scan did not find, which is the signal the folder list in TextureDiscovery is missing a mod's layout
+    // Looks up the atlas sprite of a texture and warns about undiscovered textures.
     private static final Function<ResourceLocation, TextureAtlasSprite> TEXTURE_GETTER = location -> {
         TextureMap map = Minecraft.getMinecraft().getTextureMapBlocks();
         String name = location.toString();
@@ -130,6 +136,7 @@ public final class BakedModelProvider extends RegistrySimple<ModelResourceLocati
         return sprite;
     };
 
+    // Returns the model baked with the item format and passed through the bake event.
     private static IBakedModel bakeChecked(ModelResourceLocation location, IModel model) {
         IBakedModel baked = model.bake(model.getDefaultState(), DefaultVertexFormats.ITEM, TEXTURE_GETTER);
         if (UnbakedModelProvider.MISSING.equals(location)) {
@@ -140,58 +147,68 @@ public final class BakedModelProvider extends RegistrySimple<ModelResourceLocati
         return event.bakedModel;
     }
 
+    // Stores a model that never expires.
     @Override
     public void putObject(ModelResourceLocation key, IBakedModel value) {
         this.permanent.put(key, value);
         this.baked.invalidate(key);
     }
 
-    // Drops both the baked and unbaked entry, for a mod that replaced a model after it may already have been baked
+    // Drops the cached model and the cached unbaked model.
     public void invalidate(ModelResourceLocation key) {
         this.baked.invalidate(key);
         this.models.invalidate(key);
     }
 
+    // Returns the number of cached models.
     public long cachedCount() {
         return this.baked.size();
     }
 
+    // Returns the number of stored models.
     public int permanentCount() {
         return this.permanent.size();
     }
 
+    // Returns the locations of the stored models.
     @Override
     public Set<ModelResourceLocation> getKeys() {
         return this.permanent.keySet();
     }
 
+    // Returns an iterator over the stored models.
     @Override
     public Iterator<IBakedModel> iterator() {
         return this.permanent.values().iterator();
     }
 
-    // A Map view over the registry keyed by state; reads resolve through BlockModelShapes, writes pin the model for that state's location
+    // Map view that reads models of block states from the model shapes.
     private final class StateStore implements Map<IBlockState, IBakedModel> {
+        // Returns the number of stored models.
         @Override
         public int size() {
             return BakedModelProvider.this.permanent.size();
         }
 
+        // Returns false because models are produced on demand.
         @Override
         public boolean isEmpty() {
             return false;
         }
 
+        // Returns true because every state has a model.
         @Override
         public boolean containsKey(Object key) {
             return true;
         }
 
+        // Returns true because every value is accepted.
         @Override
         public boolean containsValue(Object value) {
             return true;
         }
 
+        // Returns the model of the block state.
         @Override
         public IBakedModel get(Object key) {
             if (!(key instanceof IBlockState)) {
@@ -200,6 +217,7 @@ public final class BakedModelProvider extends RegistrySimple<ModelResourceLocati
             return Minecraft.getMinecraft().getBlockRendererDispatcher().getBlockModelShapes().getModelForState((IBlockState) key);
         }
 
+        // Stores the model under the location of the state and clears the model kept on the state.
         @Override
         public IBakedModel put(IBlockState key, IBakedModel value) {
             LocationAwareBlockModelShapes shapes = (LocationAwareBlockModelShapes) Minecraft.getMinecraft().getBlockRendererDispatcher().getBlockModelShapes();
@@ -213,30 +231,36 @@ public final class BakedModelProvider extends RegistrySimple<ModelResourceLocati
             return null;
         }
 
+        // Ignores the removal and returns null.
         @Override
         public IBakedModel remove(Object key) {
             return null;
         }
 
+        // Stores every entry through put.
         @Override
         public void putAll(Map<? extends IBlockState, ? extends IBakedModel> map) {
             map.forEach(this::put);
         }
 
+        // Ignores the request.
         @Override
         public void clear() {
         }
 
+        // Returns an empty set.
         @Override
         public Set<IBlockState> keySet() {
             return Collections.emptySet();
         }
 
+        // Returns the stored models.
         @Override
         public Collection<IBakedModel> values() {
             return BakedModelProvider.this.permanent.values();
         }
 
+        // Returns an empty set.
         @Override
         public Set<Entry<IBlockState, IBakedModel>> entrySet() {
             return Collections.emptySet();

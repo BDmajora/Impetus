@@ -7,42 +7,42 @@ import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 import java.util.List;
 import java.util.Set;
 
-// The no-op half of IMixinConfigPlugin every Impetus subsystem shares: no refmap (Impetus reobfuscates mixins directly), the json's own mixin list, nothing to negotiate and no bytecode rewriting; subsystems override only the gating they need
+// Mixin plugin that applies every mixin unless a subclass skips it.
 public abstract class SimpleMixinPlugin implements IMixinConfigPlugin {
-    // Nothing to prepare unless a subsystem has a config to load
+    // Handles the load.
     @Override
     public void onLoad(String mixinPackage) {
     }
 
-    // Null: there is no refmap to name
+    // Returns the ref mapper config.
     @Override
     public String getRefMapperConfig() {
         return null;
     }
 
-    // Applies everything unless a subsystem gates by config
+    // Returns whether apply mixin.
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
         return true;
     }
 
-    // Nothing to negotiate with other configs
+    // Ignores the target lists.
     @Override
     public void acceptTargets(Set<String> myTargets, Set<String> otherTargets) {
     }
 
-    // Null means use the mixin list from the json
+    // Returns the mixins.
     @Override
     public List<String> getMixins() {
         return null;
     }
 
-    // No pre-apply rewriting needed
+    // Does nothing before a mixin applies.
     @Override
     public void preApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) {
     }
 
-    // No post-apply rewriting needed
+    // Does nothing after a mixin applies.
     @Override
     public void postApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) {
     }

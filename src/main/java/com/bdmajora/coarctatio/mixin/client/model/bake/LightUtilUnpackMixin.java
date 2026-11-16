@@ -8,9 +8,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// A three-component position unpacks with w left at 0 where the builder path carried 1; consumers that transform by the full matrix depend on the 1. remap = false, Forge class
+// Mixin that changes LightUtil.
 @Mixin(value = LightUtil.class, remap = false)
 public abstract class LightUtilUnpackMixin {
+    // Runs before every return of unpack.
     @Inject(method = "unpack", at = @At("RETURN"))
     private static void coarctatio$positionW(int[] from, float[] to, VertexFormat formatFrom, int v, int e, CallbackInfo ci) {
         if (to.length < 4) {

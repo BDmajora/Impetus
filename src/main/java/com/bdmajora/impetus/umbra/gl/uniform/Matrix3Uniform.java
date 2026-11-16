@@ -8,15 +8,18 @@ import java.util.function.Supplier;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
+// Three by three matrix uniform that uploads on change.
 public class Matrix3Uniform extends Uniform {
+    // Supplier of the matrix.
     private final Supplier<Matrix3fc> value;
 
+    // Creates a matrix3 uniform from its location and value.
     public Matrix3Uniform(int location, Supplier<Matrix3fc> value) {
         super(location);
         this.value = value;
     }
 
-    // Uploads unconditionally; diffing nine floats is not cheaper than the upload
+    // Uploads the matrix when it changed.
     @Override
     public void update() {
         Matrix3fc matrix = this.value.get();

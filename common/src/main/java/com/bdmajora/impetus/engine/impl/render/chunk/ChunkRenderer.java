@@ -5,15 +5,15 @@ import com.bdmajora.impetus.engine.impl.render.chunk.lists.ChunkRenderListIterab
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 import com.bdmajora.impetus.engine.impl.render.viewport.CameraTransform;
 
-// The chunk render backend manages the graphics resource state of chunk render containers: uploading their data and rendering them
+// Backend that uploads and draws chunk geometry.
 public interface ChunkRenderer {
-    // Renders the render lists for the given pass to the active framebuffer; occlusionCamera drives block face culling and camera carries the chunk offsets
+    // Draws the render lists of a pass to the active framebuffer.
     void render(ChunkRenderMatrices matrices, CommandList commandList, ChunkRenderListIterable renderLists,
                 TerrainRenderPass pass, CameraTransform occlusionCamera, CameraTransform camera);
 
-    // deletes this render backend and any resources attached to it
+    // Deletes the backend and its resources.
     void delete(CommandList commandList);
 
-    // the render pass configuration this renderer uses
+    // Returns the render pass configuration.
     RenderPassConfiguration<?> getRenderPassConfiguration();
 }

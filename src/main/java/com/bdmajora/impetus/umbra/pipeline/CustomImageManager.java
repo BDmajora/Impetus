@@ -3,6 +3,7 @@ package com.bdmajora.impetus.umbra.pipeline;
 import com.bdmajora.impetus.umbra.gl.GlTextureUnits;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import com.bdmajora.impetus.umbra.gl.texture.InternalTextureFormat;
 import com.bdmajora.impetus.umbra.shaderpack.texture.CustomImageDefinition;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
@@ -18,35 +19,56 @@ import java.util.Map;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// The pack's writable image.* directives (Complementary's coloured-lighting voxel and floodfill volumes); each gets a GL 4.2 image unit bound READ_WRITE every frame, and contents persist since the floodfill ping-pongs history
+// Image textures a shader pack declares with their image and sampler units.
 public class CustomImageManager {
+    // Logger of images that cannot be created.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
+    // Largest number of images.
     private static final int MAX_DECLARED_IMAGES = 16;
-    // Well above GlStateManager's eight cached units, so a raw bind here cannot desync that cache
+    // Texture unit used while resizing.
     private static final int RESIZE_SCRATCH_UNIT = 32;
+    // GL enum of the image unit limit.
     private static final int GL_MAX_IMAGE_UNITS = 0x8D57;
+    // GL enum of the minimum level of detail.
     private static final int GL_TEXTURE_MIN_LOD = 0x813A;
+    // GL enum of the maximum level of detail.
     private static final int GL_TEXTURE_MAX_LOD = 0x813B;
+    // GL enum of the highest mipmap level.
     private static final int GL_TEXTURE_MAX_LEVEL = 0x813D;
+    // GL enum of the level of detail bias.
     private static final int GL_TEXTURE_LOD_BIAS = 0x8501;
+    // Barrier bit of texture fetches.
     private static final int GL_TEXTURE_FETCH_BARRIER_BIT = 0x00000008;
+    // Barrier bit of image access.
     private static final int GL_SHADER_IMAGE_ACCESS_BARRIER_BIT = 0x00000020;
+    // Barrier bit of texture updates.
     private static final int GL_TEXTURE_UPDATE_BARRIER_BIT = 0x00000100;
+    // Barriers that make a clear visible to every reader.
     private static final int CLEAR_VISIBILITY_BARRIERS =
             GL_TEXTURE_UPDATE_BARRIER_BIT
                     | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT
                     | GL_TEXTURE_FETCH_BARRIER_BIT;
 
+    // One image texture with its units and formats.
     private static final class Image {
+        // Directive of the image.
         final CustomImageDefinition definition;
+        // GL name of the texture.
         final int texture;
+        // GL texture target.
         final int target;
+        // Image unit of the texture.
         final int imageUnit;
+        // Texture unit of the sampler or minus one.
         final int samplerUnit;
+        // GL internal format.
         final int glInternalFormat;
+        // GL pixel format.
         final int glFormat;
+        // GL pixel type.
         final int glPixelType;
 
+        // Creates an image.
         Image(CustomImageDefinition definition, int texture, int target, int imageUnit, int samplerUnit,
               int glInternalFormat, int glFormat, int glPixelType) {
             this.definition = definition;
@@ -60,15 +82,18 @@ public class CustomImageManager {
         }
     }
 
+    // Images in unit order.
     private final List<Image> images = new ArrayList<>();
-    // Two mappings in one table (image uniform name -> image unit, sampler name -> texture unit) since both are consumed as plain glUniform1i assignments at program build
+    // Units of the image and sampler uniforms by name.
     private final Map<String, Integer> uniformOverrides = new LinkedHashMap<>();
-    // The driver's GL_MAX_IMAGE_UNITS — the exclusive ceiling the render-target images allocate up to
+    // Number of image units the driver allows.
     private final int hardwareImageUnits;
-    // Current render size, kept because the viewport-relative images have to be reallocated against it on resize
+    // Render width of the relative sizes.
     private int renderWidth;
+    // Render height of the relative sizes.
     private int renderHeight;
 
+    // Creates every supported image and deletes them all when one fails.
     public CustomImageManager(List<CustomImageDefinition> definitions, int firstSamplerUnit, int lastSamplerUnit,
                               int renderWidth, int renderHeight) {
         this.renderWidth = renderWidth;
@@ -79,7 +104,7 @@ public class CustomImageManager {
         int nextSamplerUnit = firstSamplerUnit;
         for (CustomImageDefinition definition : definitions) {
             if (this.images.size() >= imageUnitLimit) {
-                LOGGER.error("[Umbra] Out of image units for image.{} (max {}); ignoring it — sampler '{}' stays on "
+                LOGGER.error("[Umbra] Out of image units for image.{} (max {}); ignoring it. Sampler '{}' stays on "
                                 + "texture unit 0 and will fail every draw in any program declaring it with "
                                 + "GL_INVALID_OPERATION on a strict driver",
                         definition.name, imageUnitLimit, definition.samplerName);
@@ -89,7 +114,7 @@ public class CustomImageManager {
             int format = glFormat(definition.format);
             int pixelType = glPixelType(definition.pixelType);
             if (internalFormat == 0 || format == 0 || pixelType == 0) {
-                LOGGER.error("[Umbra] Unsupported format for image.{} ({} {} {}); ignoring it — sampler '{}' stays on "
+                LOGGER.error("[Umbra] Unsupported format for image.{} ({} {} {}); ignoring it. Sampler '{}' stays on "
                                 + "texture unit 0 and will fail every draw in any program declaring it with "
                                 + "GL_INVALID_OPERATION on a strict driver",
                         definition.name, definition.format, definition.internalFormat, definition.pixelType,
@@ -99,33 +124,37 @@ public class CustomImageManager {
 
             boolean is3D = definition.sizeZ > 0;
             int target = is3D ? GL12.GL_TEXTURE_3D : GL11.GL_TEXTURE_2D;
-            // Integer texture formats must sample NEAREST; float formats get LINEAR for smooth floodfill lookups.
             int filter = isIntegerFormat(definition.internalFormat) ? GL11.GL_NEAREST : GL11.GL_LINEAR;
             int sizeX = relativeSizeX(definition);
             int sizeY = relativeSizeY(definition);
 
             int texture = LWJGL.glGenTextures();
-            LWJGL.glBindTexture(target, texture);
-            LWJGL.glTexParameteri(target, GL11.GL_TEXTURE_MIN_FILTER, filter);
-            LWJGL.glTexParameteri(target, GL11.GL_TEXTURE_MAG_FILTER, filter);
-            LWJGL.glTexParameteri(target, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
-            LWJGL.glTexParameteri(target, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
-            // Umbra's GlImage pins custom images to mip level 0; a 3D floodfill texture inheriting mip/LOD state makes sampler3D read undefined levels, seen as every-other-frame colored noise
-            LWJGL.glTexParameteri(target, GL_TEXTURE_MAX_LEVEL, 0);
-            LWJGL.glTexParameteri(target, GL_TEXTURE_MIN_LOD, 0);
-            LWJGL.glTexParameteri(target, GL_TEXTURE_MAX_LOD, 0);
-            LWJGL.glTexParameterf(target, GL_TEXTURE_LOD_BIAS, 0.0f);
-            if (is3D) {
-                LWJGL.glTexParameteri(target, GL12.GL_TEXTURE_WRAP_R, GL12.GL_CLAMP_TO_EDGE);
-                LWJGL.glTexImage3D(target, 0, internalFormat, sizeX, sizeY, definition.sizeZ,
-                        0, format, pixelType, (ByteBuffer) null);
-            } else {
-                LWJGL.glTexImage2D(target, 0, internalFormat, sizeX, sizeY,
-                        0, format, pixelType, (ByteBuffer) null);
+            // Deletes this texture and every earlier image when the setup fails
+            try {
+                LWJGL.glBindTexture(target, texture);
+                LWJGL.glTexParameteri(target, GL11.GL_TEXTURE_MIN_FILTER, filter);
+                LWJGL.glTexParameteri(target, GL11.GL_TEXTURE_MAG_FILTER, filter);
+                LWJGL.glTexParameteri(target, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
+                LWJGL.glTexParameteri(target, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+                LWJGL.glTexParameteri(target, GL_TEXTURE_MAX_LEVEL, 0);
+                LWJGL.glTexParameteri(target, GL_TEXTURE_MIN_LOD, 0);
+                LWJGL.glTexParameteri(target, GL_TEXTURE_MAX_LOD, 0);
+                LWJGL.glTexParameterf(target, GL_TEXTURE_LOD_BIAS, 0.0f);
+                if (is3D) {
+                    LWJGL.glTexParameteri(target, GL12.GL_TEXTURE_WRAP_R, GL12.GL_CLAMP_TO_EDGE);
+                    LWJGL.glTexImage3D(target, 0, internalFormat, sizeX, sizeY, definition.sizeZ,
+                            0, format, pixelType, (ByteBuffer) null);
+                } else {
+                    LWJGL.glTexImage2D(target, 0, internalFormat, sizeX, sizeY,
+                            0, format, pixelType, (ByteBuffer) null);
+                }
+                LWJGL.glBindTexture(target, 0);
+                clearTexture(texture, format, pixelType);
+            } catch (RuntimeException | Error e) {
+                LWJGL.glDeleteTextures(texture);
+                this.destroy();
+                throw e;
             }
-            LWJGL.glBindTexture(target, 0);
-            // Zero-initialize regardless of the per-frame clear flag: glTexImage with null data is UNDEFINED, and packs deliberately skip texels (Complementary's behind-player floodfill), so creation garbage would survive and flicker
-            clearTexture(texture, format, pixelType);
 
             int imageUnit = this.images.size();
             int samplerUnit = -1;
@@ -150,21 +179,17 @@ public class CustomImageManager {
         }
     }
 
-    // Resolved through the SHARED render-target format table like Iris; the local list this replaced covered only Complementary's seven floodfill formats, so an SMAA pack's rg8 or rgba16 edge buffer was silently dropped
+    // Returns the GL internal format of a name or zero.
     private static int glInternalFormat(String name) {
-        return com.bdmajora.impetus.umbra.gl.texture.InternalTextureFormat.fromString(name)
-                .map(com.bdmajora.impetus.umbra.gl.texture.InternalTextureFormat::getInternalFormat)
-                .orElse(0);
+        return InternalTextureFormat.fromString(name).map(InternalTextureFormat::getInternalFormat).orElse(0);
     }
 
-    // Integer formats need integer client formats and integer clears
+    // Returns whether a format name is an integer format.
     private static boolean isIntegerFormat(String name) {
-        return com.bdmajora.impetus.umbra.gl.texture.InternalTextureFormat.fromString(name)
-                .map(com.bdmajora.impetus.umbra.gl.texture.InternalTextureFormat::isInteger)
-                .orElse(Boolean.FALSE);
+        return InternalTextureFormat.fromString(name).map(InternalTextureFormat::isInteger).orElse(Boolean.FALSE);
     }
 
-    // Pack format name to GL internal format
+    // Returns the GL pixel format of a name or zero.
     private static int glFormat(String name) {
         switch (name) {
             case "red_integer": return GL30.GL_RED_INTEGER;
@@ -179,7 +204,7 @@ public class CustomImageManager {
         }
     }
 
-    // A client type legal for that format
+    // Returns the GL pixel type of a name or zero.
     private static int glPixelType(String name) {
         switch (name) {
             case "unsigned_int": return GL11.GL_UNSIGNED_INT;
@@ -194,17 +219,17 @@ public class CustomImageManager {
         }
     }
 
-    // Screen-relative width for this frame
+    // Returns the width of an image.
     private int relativeSizeX(CustomImageDefinition definition) {
         return definition.relative ? Math.max(1, (int) (this.renderWidth * definition.relativeX)) : definition.sizeX;
     }
 
-    // Screen-relative height for this frame
+    // Returns the height of an image.
     private int relativeSizeY(CustomImageDefinition definition) {
         return definition.relative ? Math.max(1, (int) (this.renderHeight * definition.relativeY)) : definition.sizeY;
     }
 
-    // Reallocates the viewport-relative images at the new size like Iris's GlImage.Relative, without preserving contents (bindAll re-establishes bindings next frame); done on a scratch unit above GlStateManager's eight cached ones
+    // Reallocates and clears the relative images at a new render size.
     public void onResize(int width, int height) {
         if (width == this.renderWidth && height == this.renderHeight) {
             return;
@@ -221,7 +246,6 @@ public class CustomImageManager {
                 bound = true;
             }
             LWJGL.glBindTexture(image.target, image.texture);
-            // Relative images are 2D by definition (Umbra's GlImage.Relative).
             LWJGL.glTexImage2D(image.target, 0, image.glInternalFormat,
                     relativeSizeX(image.definition), relativeSizeY(image.definition),
                     0, image.glFormat, image.glPixelType, (ByteBuffer) null);
@@ -233,27 +257,27 @@ public class CustomImageManager {
         }
     }
 
-    // Whether the pack declared any images
+    // Returns whether no image exists.
     public boolean isEmpty() {
         return this.images.isEmpty();
     }
 
-    // The combined name -> unit table, handed to the program builders
+    // Returns the units of the image and sampler uniforms.
     public Map<String, Integer> getUniformOverrides() {
         return this.uniformOverrides;
     }
 
-    // The first image unit no image.<name> directive has taken; the render-target images (colorimgN) allocate upward from here so the pack's declarations win the low units
+    // Returns the next free image unit.
     public int getNextAvailableImageUnit() {
         return this.images.size();
     }
 
-    // The driver's GL_MAX_IMAGE_UNITS, i.e. the exclusive upper bound for any image unit
+    // Returns the number of image units the driver allows.
     public int getHardwareImageUnits() {
         return this.hardwareImageUnits;
     }
 
-    // The first 3D image's dimensions, from which the shadowcomp dispatch size is derived (volume divided by the compute local size)
+    // Returns the size of the first 3D image or null.
     public int[] getFirst3DImageSize() {
         for (Image image : this.images) {
             if (image.definition.sizeZ > 0) {
@@ -263,7 +287,7 @@ public class CustomImageManager {
         return null;
     }
 
-    // Start-of-frame reset, only for images the pack marked clear=true; see the class comment for why nothing else is cleared
+    // Clears the images that clear each frame and makes the clears visible.
     public void clearAll() {
         boolean cleared = false;
         for (Image image : this.images) {
@@ -277,15 +301,14 @@ public class CustomImageManager {
         }
     }
 
-    // A null data pointer means "clear to zero" without touching client memory or a bound pixel-unpack buffer
+    // Clears a texture to zero.
     private void clearTexture(int texture, int format, int pixelType) {
         LWJGL.glClearTexImage(texture, 0, format, pixelType, null);
     }
 
-    // Binds every image READ_WRITE on its image unit and its texture on the paired sampler unit, each to exactly the texture the pack declared; this used to alias floodfill_sampler_copy onto floodfill_img, which pointed every even frame of Complementary's framemod2 ping-pong at the volume that had NOT been updated
+    // Binds every image to its image unit and its sampler unit.
     public void bindAll() {
         for (Image image : this.images) {
-            // Umbra binds custom images as layered for every texture target.
             LWJGL.glBindImageTexture(image.imageUnit, image.texture, 0, true, 0, GL15.GL_READ_WRITE,
                     image.glInternalFormat);
             if (image.samplerUnit >= 0) {
@@ -296,7 +319,7 @@ public class CustomImageManager {
         GlTextureUnits.resetToUnit0();
     }
 
-    // Releases every image unit
+    // Unbinds every image from its sampler unit.
     public void unbindAll() {
         for (Image image : this.images) {
             if (image.samplerUnit >= 0) {
@@ -307,7 +330,7 @@ public class CustomImageManager {
         GlTextureUnits.resetToUnit0();
     }
 
-    // Frees every texture
+    // Deletes every image and forgets the overrides.
     public void destroy() {
         for (Image image : this.images) {
             LWJGL.glDeleteTextures(image.texture);

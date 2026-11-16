@@ -8,37 +8,43 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Hoists each direction's offsets into plain int fields; vanilla computes getXOffset() with a branch and a virtual call for every neighbour of every position, and unlike modern versions these are computed rather than stored
+// Mixin that changes EnumFacing.
 @Mixin(EnumFacing.class)
 public class EnumFacingMixin {
+    // Cached x offset.
     private int equilibrium$offsetX;
+    // Cached y offset.
     private int equilibrium$offsetY;
+    // Cached z offset.
     private int equilibrium$offsetZ;
 
-    // Populated from the direction vector the constructor was handed, which already holds exactly these values
+    // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void equilibrium$captureOffsets(String enumName, int ordinal, int index, int opposite,
+                                            // Horizontal index and name.
                                             int horizontalIndex, String name,
+                                            // Axis direction and axis.
                                             EnumFacing.AxisDirection axisDirection, EnumFacing.Axis axis,
+                                            // Direction vector.
                                             Vec3i directionVec, CallbackInfo ci) {
         this.equilibrium$offsetX = directionVec.getX();
         this.equilibrium$offsetY = directionVec.getY();
         this.equilibrium$offsetZ = directionVec.getZ();
     }
 
-    // Overwrite: direct field read instead of a Vec3i call
+    // Replaces the whole method getXOffset.
     @Overwrite
     public int getXOffset() {
         return this.equilibrium$offsetX;
     }
 
-    // Overwrite: direct field read
+    // Replaces the whole method getYOffset.
     @Overwrite
     public int getYOffset() {
         return this.equilibrium$offsetY;
     }
 
-    // Overwrite: direct field read
+    // Replaces the whole method getZOffset.
     @Overwrite
     public int getZOffset() {
         return this.equilibrium$offsetZ;

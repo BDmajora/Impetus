@@ -8,13 +8,10 @@ import net.minecraftforge.client.model.ModelLoaderRegistry;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
 
-// Every model request, from Forge's loaders and from mods, goes through the dynamic provider. remap = false, Forge class
+// Mixin that changes ModelLoaderRegistry.
 @Mixin(value = ModelLoaderRegistry.class, remap = false)
 public abstract class ModelLoaderRegistryDynamicMixin {
-    /**
-     * @author embeddedt, Runemoro, bdmajora
-     * @reason Loading and caching live in UnbakedModelProvider
-     */
+    // Replaces the whole method getModel.
     @Overwrite
     public static IModel getModel(ResourceLocation location) throws Exception {
         UnbakedModelProvider provider = DynamicModels.unbaked();

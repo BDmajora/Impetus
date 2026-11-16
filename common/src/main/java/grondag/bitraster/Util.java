@@ -16,7 +16,9 @@
 
 package grondag.bitraster;
 
+// Debug helpers for bit masks.
 public class Util {
+	// Prints a 64 bit mask as an eight by eight grid.
 	static void printMask(long mask) {
 		String s = "0000000000000000000000000000000000000000000000000000000000000000" + Long.toBinaryString(mask);
 		s = s.substring(s.length() - 64);
@@ -32,6 +34,7 @@ public class Util {
 		System.out.println();
 	}
 
+	// Prints a row of bits with a mark for each set bit.
 	public static void printSpaced(String s) {
 		System.out.println(s.replace("0", "- ").replace("1", "X "));
 	}

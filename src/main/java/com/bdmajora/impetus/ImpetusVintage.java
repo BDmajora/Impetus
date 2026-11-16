@@ -44,61 +44,55 @@ import com.bdmajora.impetus.impl.render.terrain.ImpetusWorldRenderer;
 import com.bdmajora.impetus.impl.util.PlatformUtil;
 import com.bdmajora.impetus.umbra.Umbra;
 
+// Mod entry point of Impetus.
 @Mod(modid = ImpetusVintage.MODID, useMetadata = true, clientSideOnly = true, acceptableRemoteVersions = "*")
 public class ImpetusVintage {
+    // Mod id.
     public static final String MODID = "impetus";
+    // Logger of this class.
     private static final Logger LOGGER = LogManager.getLogger("Impetus");
+    // Version read from the mod metadata.
     public static String VERSION;
+    // Game options loaded at startup.
     private static final ImpetusGameOptions CONFIG = loadConfig();
 
-    // Earliest Forge hook: loads config and registers the event handlers that need it
+    // Handles the construct.
     @EventHandler
     public void onConstruct(FMLConstructionEvent event) {
         VERSION = Loader.instance().getIndexedModList().get(MODID).getVersion();
         MinecraftForge.EVENT_BUS.register(this);
 
-        // Dynamic model loading bakes on demand, so CTM's per-model wrapping has to be listening before the first bake, which happens before init
         if (CoarctatioConfig.get().dynamicModels) {
             com.bdmajora.coarctatio.client.model.dynamic.compat.CtmModelWrapping.register();
         }
 
-        // The lighting engine branches on these on its hot path and every world is constructed after this point; earlier, the mod list is not yet answerable
         Fulgor.detectCompatibility();
 
-        // Distant Horizons reads which shader mod owns the frame during its own init, which runs before Impetus's
         com.bdmajora.impetus.umbra.compat.dh.DhCompat.registerIrisAccessor();
 
-        // As early as a mod can run: the remapper has its mappings by now and most mod classes are still to be loaded through it
         com.bdmajora.coarctatio.launch.RemapperCompactor.run();
 
-        // Discovery is over once mods construct; Cleanroom's discoverer is loaded before any coremod, so this is the first point Impetus can write the scan cache from
         com.bdmajora.coarctatio.launch.discovery.ModScanCache.save();
 
-        // Seed the engine's hot-path option snapshot from the loaded config.
         com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions.apply(CONFIG);
 
-        // Load the Extras options now rather than from whichever mixin body runs first; they are read on the render/client thread, so the lazy path would do its first file read inside a frame
         Extras.initialize();
 
-        // Same for Dynamic Lights, which also reads options from chunk-builder workers; only the config loads here, see DynamicLights#onClientInit for why the rest waits
         DynamicLights.initialize();
 
-        // Platform compatibility: GL strings must be read on the client thread (which owns the context during FML construction); the adapter probe and overlay scan continue on a background thread
         StartupChecks.installCrashDialog();
         StartupChecks.runAsync(GlContextInfo.capture());
     }
 
-    // Registers commands and the option pages once the game is up
+    // Handles the init.
     @EventHandler
     public void onInit(FMLInitializationEvent event) {
         if ((Boolean) Launch.blackboard.get("fml.deobfuscatedEnvironment")) {
             ClientCommandHandler.instance.registerCommand(new TogglePassCommand());
         }
 
-        // Item light sources are read from resource packs here rather than at construction, because the item registry does not exist until now
         DynamicLights.onClientInit();
 
-        // Key bindings must exist before the controls screen enumerates them
         com.bdmajora.extras.client.budget.RenderBudgetKeys.register();
         com.bdmajora.extras.client.zoom.LogicalZoom.register();
 
@@ -109,26 +103,22 @@ public class ImpetusVintage {
             ClientCommandHandler.instance.registerCommand(new com.bdmajora.impetus.impl.compat.fluidlogged.FluidloggedProbeCommand());
         }
 
-        // Distant Horizons: bind to its API when present so the pack's dh_* programs shade LODs; before the pack parses, since DISTANT_HORIZONS is part of its define environment
         com.bdmajora.impetus.umbra.compat.dh.DhCompat.run();
-        // Phase 1: parse the selected shader pack only; no rendering changes here, and if no pack is selected or loading fails Impetus renders exactly as before
         Umbra.initialize(PlatformUtil.getGameDir().toPath());
         ResourcePackScanner.scanIfChanged(Minecraft.getMinecraft());
 
-        // Runs here rather than earlier: every class a coremod will ask LaunchWrapper for has been transformed by now, so weakening its byte cache costs nothing and reclaims the largest block of startup memory
         ClassLoaderCleaner.run();
     }
 
-    // Post-init is the earliest point every mod's blocks answer isSideSolid the way they will in-game
+    // Handles the post init.
     @EventHandler
     public void onPostInit(FMLPostInitializationEvent event) {
         Fulgor.onPostInit();
     }
 
-    // Drives per-frame work that has no better home: the window mode on the first frame, toasts and the pack scanner
+    // Handles the render tick.
     @SubscribeEvent
     public void onRenderTick(TickEvent.RenderTickEvent event) {
-        // Render thread with a live GL context: build/rebuild the Umbra pipeline the first frame after a pack change; no-op otherwise and safe with Umbra disabled
         if (event.phase == TickEvent.Phase.START) {
             com.bdmajora.impetus.impl.platform.WindowModes.restoreOnce(Minecraft.getMinecraft(), CONFIG);
             ResourcePackScanner.tick(Minecraft.getMinecraft());
@@ -136,16 +126,15 @@ public class ImpetusVintage {
         }
     }
 
-    // Tears down world-scoped renderer state
+    // Handles the disconnect.
     @SubscribeEvent
     public void onDisconnect(FMLNetworkEvent.ClientDisconnectionFromServerEvent event) {
-        // Fires once on leaving a world or server (single-player included), the one unambiguous "the world is gone" signal on 1.12.2 since WorldEvent.Unload fires per dimension
         if (CoarctatioConfig.get().clearPoolsOnWorldLeave) {
             Coarctatio.onWorldLeave();
         }
     }
 
-    // Draws the notification toast over the HUD
+    // Handles the render overlay.
     @SubscribeEvent
     public void onRenderOverlay(RenderGameOverlayEvent.Post event) {
         if (event.getType() == RenderGameOverlayEvent.ElementType.ALL) {
@@ -153,7 +142,7 @@ public class ImpetusVintage {
         }
     }
 
-    // Adds the Impetus lines to the debug screen
+    // Handles the f3 text.
     @SubscribeEvent
     public void onF3Text(RenderGameOverlayEvent.Text event) {
         if (!Minecraft.getMinecraft().gameSettings.showDebugInfo) {
@@ -164,7 +153,6 @@ public class ImpetusVintage {
         strings.add("");
         strings.add(String.format("%s%s Renderer (%s)", ChatFormatting.AQUA, "Impetus", VERSION));
 
-        // Impetus: Show a lot less with reduced debug info
         if (Minecraft.getMinecraft().isReducedDebug()) {
             return;
         }
@@ -194,22 +182,22 @@ public class ImpetusVintage {
         }
     }
 
-    // Off-heap usage formatted for the debug screen
+    // Returns the native memory string.
     private static String getNativeMemoryString() {
         return "Off-Heap: +" + MathUtil.toMib(getNativeMemoryUsage()) + "MB";
     }
 
-    // Direct buffer bytes, from the JVM's buffer pool bean
+    // Returns the native memory usage.
     private static long getNativeMemoryUsage() {
         return ManagementFactory.getMemoryMXBean().getNonHeapMemoryUsage().getUsed() + NativeBuffer.getTotalAllocated();
     }
 
-    // The mod logger
+    // Returns the logger.
     public static Logger logger() {
         return LOGGER;
     }
 
-    // Loads or creates the options file
+    // Reads the game options and returns defaults on failure.
     private static ImpetusGameOptions loadConfig() {
         try {
             ImpetusGameOptions config = ImpetusGameOptions.load();
@@ -225,13 +213,13 @@ public class ImpetusVintage {
         }
     }
 
-    // Pushes settings that vanilla caches, such as leaves quality
+    // Applies the runtime config.
     private static void applyRuntimeConfig(ImpetusGameOptions config) {
         NativeBuffer.ENABLE_MEMORY_TRACING = config.advanced.enableMemoryTracing;
         RenderRegionManager.USE_ADVANCED_STAGING_BUFFERS = config.advanced.useAdvancedStagingBuffers;
     }
 
-    // The live options object
+    // Returns the options.
     public static ImpetusGameOptions options() {
         if (CONFIG == null) {
             throw new IllegalStateException("Config not yet available");

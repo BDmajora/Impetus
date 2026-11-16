@@ -8,21 +8,22 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 
-// Reads the pack's format = <name>-<version> from optifine/texture.properties into MC_TEXTURE_FORMAT_<NAME> and MC_TEXTURE_FORMAT_<NAME>_<VERSION>, since packs gate on both
+// Reader of the texture format of the resource packs.
 public final class TextureFormatLoader {
+    // Location of the texture properties file.
     private static final ResourceLocation LOCATION = new ResourceLocation("minecraft", "optifine/texture.properties");
 
+    // Prevents instantiation
     private TextureFormatLoader() {
     }
 
-    // Adds the two macros when a format is declared; nothing when it is not
+    // Adds the macros of the declared texture format.
     public static void addFormatMacros(Map<String, String> macros) {
         String format = readDeclaredFormat();
         if (format == null || format.isEmpty()) {
             return;
         }
 
-        // `<name>-<version>` where the name may contain dashes (lab-pbr-1.3 -> "lab-pbr" + "1.3"); the version is the trailing token iff it starts with a digit
         String name = format;
         String version = null;
         int lastDash = format.lastIndexOf('-');
@@ -38,12 +39,12 @@ public final class TextureFormatLoader {
         }
     }
 
-    // Uppercases and replaces anything not valid in a macro name
+    // Returns a token with only letters and digits and underscores.
     private static String sanitize(String token) {
         return token.toUpperCase(Locale.ROOT).replace('-', '_').replace('.', '_');
     }
 
-    // The raw format value from texture.properties, or null
+    // Returns the declared format or null.
     private static String readDeclaredFormat() {
         Minecraft mc = Minecraft.getMinecraft();
         if (mc == null || mc.getResourceManager() == null) {
@@ -56,7 +57,7 @@ public final class TextureFormatLoader {
             String format = properties.getProperty("format");
             return format != null ? format.trim() : null;
         } catch (Exception e) {
-            return null; // no declaration — the common case
+            return null;
         }
     }
 }

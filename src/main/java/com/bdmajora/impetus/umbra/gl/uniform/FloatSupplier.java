@@ -1,7 +1,8 @@
 package com.bdmajora.impetus.umbra.gl.uniform;
 
-// A primitive float supplier; java.util.function has none, and Supplier<Float> would box once per uniform per bind, thousands of allocations a frame
+// Contract of the float supplier.
 @FunctionalInterface
 public interface FloatSupplier {
+    // Returns the as float.
     float getAsFloat();
 }

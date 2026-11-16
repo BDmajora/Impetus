@@ -11,9 +11,10 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
-// Copying a primer into a new chunk visits every slot once into sections that start empty, so the state being replaced is always air: the redirect keeps the counter bookkeeping and the palette write and drops the read-back of a slot known to be empty (Noisium's direct section write, on 1.12.2's storage)
+// Mixin that changes Chunk.
 @Mixin(Chunk.class)
 public abstract class ChunkMixin {
+    // Replaces the call of ExtendedBlockStorage.set in constructor.
     @Redirect(method = "<init>(Lnet/minecraft/world/World;Lnet/minecraft/world/chunk/ChunkPrimer;II)V",
             at = @At(value = "INVOKE", target = "Lnet/minecraft/world/chunk/storage/ExtendedBlockStorage;set(IIILnet/minecraft/block/state/IBlockState;)V"))
     private void equilibrium$fillFreshSlot(ExtendedBlockStorage storage, int x, int y, int z, IBlockState state) {

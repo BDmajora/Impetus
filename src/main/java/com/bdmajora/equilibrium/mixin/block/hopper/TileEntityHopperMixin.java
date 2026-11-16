@@ -22,16 +22,18 @@ import org.spongepowered.asm.mixin.Unique;
 
 import javax.annotation.Nullable;
 
-// Stops hoppers re-resolving the same two inventories every tick (the cooldown is only set after a SUCCESSFUL transfer, so idle hoppers run entity queries forever); two HopperInventoryCaches per hopper, and the public static getInventoryAtPosition is left alone for droppers and mod code
+// Mixin that changes TileEntityHopper.
 @Mixin(TileEntityHopper.class)
 public abstract class TileEntityHopperMixin extends TileEntity implements IHopper, HopperCacheHolder {
+    // Field destination added to the target.
     @Unique
     private HopperInventoryCache equilibrium$destination;
 
+    // Field source added to the target.
     @Unique
     private HopperInventoryCache equilibrium$source;
 
-    // Created on first use rather than a field initialiser, since Mixin merges initialisers by rewriting constructors and this target has several inherited ones
+    // Handles source cache.
     @Override
     public HopperInventoryCache equilibrium$sourceCache() {
         if (this.equilibrium$source == null) {
@@ -41,6 +43,7 @@ public abstract class TileEntityHopperMixin extends TileEntity implements IHoppe
         return this.equilibrium$source;
     }
 
+    // Handles destination cache.
     @Override
     public HopperInventoryCache equilibrium$destinationCache() {
         if (this.equilibrium$destination == null) {
@@ -50,7 +53,7 @@ public abstract class TileEntityHopperMixin extends TileEntity implements IHoppe
         return this.equilibrium$destination;
     }
 
-    // Overwrite: the facing inventory through this hopper's cache
+    // Replaces the whole method getInventoryForHopperTransfer.
     @Nullable
     @Overwrite
     private IInventory getInventoryForHopperTransfer() {
@@ -62,7 +65,7 @@ public abstract class TileEntityHopperMixin extends TileEntity implements IHoppe
                 this.getZPos() + facing.getZOffset());
     }
 
-    // Overwrite: the inventory above through the cache when the hopper has one, else vanilla's lookup
+    // Replaces the whole method getSourceInventory.
     @Nullable
     @Overwrite
     public static IInventory getSourceInventory(IHopper hopper) {
@@ -77,7 +80,7 @@ public abstract class TileEntityHopperMixin extends TileEntity implements IHoppe
         return equilibrium$resolveUncached(hopper.getWorld(), x, y, z);
     }
 
-    // [VanillaCopy] TileEntityHopper#getInventoryAtPosition for hoppers that cannot cache (minecarts move, so a position-keyed cache would be stale); they still gain HopperEntityLookup skipping the empty entity query
+    // Helper method resolve uncached added to the target.
     @Unique
     @Nullable
     private static IInventory equilibrium$resolveUncached(World world, double x, double y, double z) {

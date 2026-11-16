@@ -10,23 +10,31 @@ import java.util.Arrays;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// The sampler objects on the two shadow depth units: four filtering flavours, each with depth comparison (sampler2DShadow) and without (a plain sampler2D reading raw depth); a bound sampler object replaces the texture's own parameters wholesale
+// Compare and raw samplers of the shadow maps in every filter flavour.
 public final class ShadowSamplers {
+    // Number of filter flavours.
     private static final int FLAVOURS = 4;
+    // Flavour bit of a mipmapped sampler.
     private static final int MIPMAPPED = 2;
+    // Flavour bit of a nearest sampler.
     private static final int NEAREST = 1;
 
-    // Per shadow texture (0 = shadowtex0, 1 = shadowtex1), from shadowHardwareFiltering and the shadowtex Mipmap/Nearest directives
+    // Hardware filtering of each shadow map.
     private final boolean[] hardwareFiltering = new boolean[2];
+    // Mipmapping of each shadow map.
     private final boolean[] mipmap = new boolean[2];
+    // Nearest filtering of each shadow map.
     private final boolean[] nearest = new boolean[2];
-    // Indexed by flavour: mipmapped * 2 + nearest
+    // Compare samplers by flavour.
     private final int[] compare = new int[FLAVOURS];
+    // Raw depth samplers by flavour.
     private final int[] raw = new int[FLAVOURS];
-    // Whether the pack DECLARED SEPARATE_HARDWARE_SAMPLERS (Umbra reads hasFeature), not whether the port could provide it; keying off isUsable() suppressed GL_TEXTURE_COMPARE_MODE and left sampler2DShadow reading "fully lit" on NVIDIA
+    // Separate hardware sampler state of the pack.
     private final boolean separateHardwareSamplers;
+    // Deleted state of the samplers.
     private boolean destroyed;
 
+    // Creates every sampler and deletes them all when one fails.
     public ShadowSamplers(boolean separateHardwareSamplers) {
         this.separateHardwareSamplers = separateHardwareSamplers;
         try {
@@ -35,28 +43,33 @@ public final class ShadowSamplers {
                 this.raw[flavour] = create(flavour, false);
             }
         } catch (RuntimeException e) {
-            // The caller never gets this object to destroy, so free what was made before failing
             destroy();
             throw e;
         }
     }
 
+    // Creates one sampler of a flavour and deletes it when its setup fails.
     private static int create(int flavour, boolean compare) {
         boolean linear = (flavour & NEAREST) == 0;
         boolean mipmapped = (flavour & MIPMAPPED) != 0;
         int sampler = LWJGL.glGenSamplers();
-        LWJGL.glSamplerParameteri(sampler, GL11.GL_TEXTURE_MAG_FILTER, linear ? GL11.GL_LINEAR : GL11.GL_NEAREST);
-        LWJGL.glSamplerParameteri(sampler, GL11.GL_TEXTURE_MIN_FILTER, mipmapped
-                ? (linear ? GL11.GL_LINEAR_MIPMAP_LINEAR : GL11.GL_NEAREST_MIPMAP_NEAREST)
-                : (linear ? GL11.GL_LINEAR : GL11.GL_NEAREST));
-        LWJGL.glSamplerParameteri(sampler, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
-        LWJGL.glSamplerParameteri(sampler, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
-        LWJGL.glSamplerParameteri(sampler, GL14.GL_TEXTURE_COMPARE_MODE,
-                compare ? GL14.GL_COMPARE_R_TO_TEXTURE : GL11.GL_NONE);
+        try {
+            LWJGL.glSamplerParameteri(sampler, GL11.GL_TEXTURE_MAG_FILTER, linear ? GL11.GL_LINEAR : GL11.GL_NEAREST);
+            LWJGL.glSamplerParameteri(sampler, GL11.GL_TEXTURE_MIN_FILTER, mipmapped
+                    ? (linear ? GL11.GL_LINEAR_MIPMAP_LINEAR : GL11.GL_NEAREST_MIPMAP_NEAREST)
+                    : (linear ? GL11.GL_LINEAR : GL11.GL_NEAREST));
+            LWJGL.glSamplerParameteri(sampler, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
+            LWJGL.glSamplerParameteri(sampler, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
+            LWJGL.glSamplerParameteri(sampler, GL14.GL_TEXTURE_COMPARE_MODE,
+                    compare ? GL14.GL_COMPARE_R_TO_TEXTURE : GL11.GL_NONE);
+        } catch (RuntimeException e) {
+            LWJGL.glDeleteSamplers(sampler);
+            throw e;
+        }
         return sampler;
     }
 
-    // Reads shadowHardwareFiltering and the shadowtex filtering constants: a shared constant sets both, a per-index one (<prefix><i><suffix>) overrides
+    // Reads the filter directives of the pack.
     public void parse(ConstDirectives consts) {
         Arrays.fill(this.hardwareFiltering, false);
         Arrays.fill(this.mipmap, false);
@@ -72,6 +85,7 @@ public final class ShadowSamplers {
         }
     }
 
+    // Applies a directive for both maps and then the directive of each map.
     private static void applyBothThenIndexed(ConstDirectives consts, String bothName, String prefix, String suffix,
                                              boolean[] values) {
         if (bothName != null) {
@@ -83,41 +97,42 @@ public final class ShadowSamplers {
         }
     }
 
-    // The live per-texture flags; UmbraShadowRenderer copies them at construction
+    // Returns the hardware filtering of each map.
     public boolean[] hardwareFiltering() {
         return this.hardwareFiltering;
     }
 
-    // Per texture, whether the map is sampled mipmapped
+    // Returns the mipmapping of each map.
     public boolean[] mipmap() {
         return this.mipmap;
     }
 
-    // Per texture, whether the map is sampled nearest
+    // Returns the nearest filtering of each map.
     public boolean[] nearest() {
         return this.nearest;
     }
 
-    // Whether the pack moved comparison onto the *HW aliases
+    // Returns whether the pack binds hardware samplers to their own units.
     public boolean separateHardwareSamplers() {
         return this.separateHardwareSamplers;
     }
 
+    // Returns the flavour of a map.
     private int flavour(int index) {
         return (this.mipmap[index] ? MIPMAPPED : 0) | (this.nearest[index] ? NEAREST : 0);
     }
 
-    // The comparison sampler for one shadow texture; shadowHardwareFiltering only picks the filtering, comparison is unconditional
+    // Returns the compare sampler of a map.
     public int compareFor(int index) {
         return this.compare[flavour(index)];
     }
 
-    // The raw-depth sampler with the same filtering, for a unit read through a plain sampler2D
+    // Returns the raw sampler of a map.
     public int rawFor(int index) {
         return this.raw[flavour(index)];
     }
 
-    // Re-points both shadow depth units at the flavour matching how the program about to draw DECLARED each of them; called after every program bind, since the frame's binds restore the comparison default in between. Gbuffer-stage programs read units 4/5, everything else 19/20, and under SEPARATE_HARDWARE_SAMPLERS the plain units already carry no sampler (the pack asked for raw depth there)
+    // Binds the sampler kinds of both maps to their units.
     public void apply(ShadowSamplerKinds kinds, boolean gbufferStage) {
         if (this.destroyed || this.separateHardwareSamplers || kinds == null) {
             return;
@@ -128,15 +143,39 @@ public final class ShadowSamplers {
                 kinds.isRaw(1) ? rawFor(1) : compareFor(1));
     }
 
-    // Deletes all eight; safe twice, and a sampler that was never made is 0, which GL ignores
+    // Deletes every created sampler once and continues after a failure.
     public void destroy() {
         if (this.destroyed) {
             return;
         }
         this.destroyed = true;
+        RuntimeException failure = null;
         for (int flavour = 0; flavour < FLAVOURS; flavour++) {
-            LWJGL.glDeleteSamplers(this.compare[flavour]);
-            LWJGL.glDeleteSamplers(this.raw[flavour]);
+            failure = delete(this.compare, flavour, failure);
+            failure = delete(this.raw, flavour, failure);
         }
+        if (failure != null) {
+            throw failure;
+        }
+    }
+
+    // Deletes one sampler that was created and returns the first failure.
+    private static RuntimeException delete(int[] samplers, int index, RuntimeException failure) {
+        int sampler = samplers[index];
+        samplers[index] = 0;
+        if (sampler == 0) {
+            return failure;
+        }
+        try {
+            LWJGL.glDeleteSamplers(sampler);
+        } catch (RuntimeException e) {
+            if (failure == null) {
+                return e;
+            }
+            if (e != failure) {
+                failure.addSuppressed(e);
+            }
+        }
+        return failure;
     }
 }

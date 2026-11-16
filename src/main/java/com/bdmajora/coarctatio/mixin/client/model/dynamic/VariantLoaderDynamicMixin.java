@@ -16,19 +16,19 @@ import org.spongepowered.asm.mixin.Shadow;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 
-// Forge's variant loader looks multipart definitions up in the loader's maps, which loadBlock filled; here the definition itself says whether the variant is one of the block's, and the model classes are reached by handle since both are private. remap = false, Forge class
+// Mixin that changes VariantLoader.
 @Mixin(targets = "net/minecraftforge/client/model/ModelLoader$VariantLoader", remap = false)
 public abstract class VariantLoaderDynamicMixin {
+    // Reference to the field loader of the target.
     @Shadow
     private ModelLoader loader;
 
+    // Value weighted model.
     private static final MethodHandle WEIGHTED_MODEL = constructor("net.minecraftforge.client.model.ModelLoader$WeightedRandomModel", ResourceLocation.class, VariantList.class);
+    // Value multipart model.
     private static final MethodHandle MULTIPART_MODEL = constructor("net.minecraftforge.client.model.ModelLoader$MultipartModel", ResourceLocation.class, Multipart.class);
 
-    /**
-     * @author embeddedt, Runemoro, bdmajora
-     * @reason Resolve variants against the dynamic definition cache
-     */
+    // Replaces the whole method loadModel.
     @Overwrite
     public IModel loadModel(ResourceLocation modelLocation) throws Exception {
         ModelResourceLocation variant = (ModelResourceLocation) modelLocation;
@@ -47,7 +47,7 @@ public abstract class VariantLoaderDynamicMixin {
         return coarctatio$construct(MULTIPART_MODEL, blockstate, definition.getMultipartData());
     }
 
-    // Forge's blockstate format writes the default variant as "" where vanilla's uses "normal"
+    // Handles variant.
     private static VariantList coarctatio$variant(ModelBlockDefinition definition, String name) {
         if (definition.hasVariant(name)) {
             return definition.getVariant(name);
@@ -58,6 +58,7 @@ public abstract class VariantLoaderDynamicMixin {
         return null;
     }
 
+    // Handles construct.
     private static IModel coarctatio$construct(MethodHandle constructor, Object first, Object second) throws Exception {
         try {
             return (IModel) constructor.invoke(first, second);
@@ -68,6 +69,7 @@ public abstract class VariantLoaderDynamicMixin {
         }
     }
 
+    // Handles constructor.
     private static MethodHandle constructor(String className, Class<?>... parameters) {
         try {
             return MethodHandles.lookup().unreflectConstructor(Class.forName(className).getDeclaredConstructor(parameters));

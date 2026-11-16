@@ -11,15 +11,16 @@ import java.lang.reflect.Field;
 import java.util.Map;
 import java.util.Set;
 
-// Reclaims caches LaunchWrapper (Foundation, under Cleanroom) and FML hold all session (resourceCache alone keeps 100-300 MB of class bytes on a large pack); weakened rather than cleared, as FoamFix does, so late transformer/crash-reporter reads still hit
+// Shrinks caches of the launch class loader.
 public final class ClassLoaderCleaner {
-    // Latched so a second call is a no-op; the entry point is reachable from more than one load phase
+    // Whether the cleanup ran.
     private static boolean done;
 
+    // Prevents instantiation
     private ClassLoaderCleaner() {
     }
 
-    // Runs once, as late as is safe: after mod construction, when every class a coremod will ask for has been transformed
+    // Runs the configured cleanups once.
     public static void run() {
         if (done) {
             return;
@@ -33,7 +34,7 @@ public final class ClassLoaderCleaner {
         }
     }
 
-    // Swaps LaunchClassLoader's byte[] cache for a weak-valued map via reflection; failure leaves vanilla behaviour
+    // Replaces the resource cache with a map that holds its values weakly.
     @SuppressWarnings("unchecked")
     private static void weakenResourceCache() {
         LaunchClassLoader loader = Launch.classLoader;
@@ -60,7 +61,6 @@ public final class ClassLoaderCleaner {
                 }
             }
 
-            // Weak values rather than clear: coremods and crash-report identifiers still read this after load, and a weak map keeps serving them while the GC reclaims the bulk under pressure; Foundation declares the field final, which reflection may still set on Java 25
             Map<String, byte[]> weak = CacheBuilder.newBuilder().weakValues().<String, byte[]>build().asMap();
             weak.putAll(existing);
             field.set(loader, weak);
@@ -71,7 +71,7 @@ public final class ClassLoaderCleaner {
         }
     }
 
-    // Size of LaunchWrapper's negative resource cache (names it already failed to find); unused today, returns -1 when unreachable, which callers treat as "unknown"
+    // Returns the size of the negative resource cache or minus one when it cannot be read.
     @SuppressWarnings("unchecked")
     static int negativeResourceCacheSize() {
         try {
@@ -82,7 +82,7 @@ public final class ClassLoaderCleaner {
         }
     }
 
-    // Foundation keeps LaunchWrapper's cache fields but declares them on its ActualClassLoader superclass, so the lookup walks up from the loader's own class
+    // Returns the accessible field of the loader or one of its superclasses.
     static Field cacheField(LaunchClassLoader loader, String name) throws NoSuchFieldException {
         for (Class<?> type = loader.getClass(); type != null; type = type.getSuperclass()) {
             try {
@@ -90,7 +90,6 @@ public final class ClassLoaderCleaner {
                 field.setAccessible(true);
                 return field;
             } catch (NoSuchFieldException ignored) {
-                // Not declared at this level; keep climbing
             }
         }
         throw new NoSuchFieldException(name);

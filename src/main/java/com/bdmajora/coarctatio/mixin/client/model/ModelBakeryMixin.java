@@ -21,14 +21,14 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
-// Swaps ModelBakery's plain HashMap/HashSet fields for fastutil (no per-entry Node); the LinkedHashMaps where bake order decides collisions are left alone, and variantNames stays identity-keyed via Reference2ObjectOpenHashMap
+// Mixin that changes ModelBakery.
 @Mixin(ModelBakery.class)
 public abstract class ModelBakeryMixin implements BakeStateReleasable {
     @Shadow
     @Final
     private Map<ModelBlockDefinition, Collection<ModelResourceLocation>> multipartVariantMap;
 
-    // Cleared from ModelLoaderCleanupMixin once baking finishes; lives here because the field is private to this class (see BakeStateReleasable)
+    // Handles release bakery state.
     @Override
     public int coarctatio$releaseBakeryState() {
         int size = this.multipartVariantMap.size();
@@ -51,6 +51,7 @@ public abstract class ModelBakeryMixin implements BakeStateReleasable {
     @Final
     private Map<Item, List<String>> variantNames;
 
+    // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void coarctatio$compactModelGraph(CallbackInfo ci) {
         this.sprites = new Object2ObjectOpenHashMap<>(this.sprites);

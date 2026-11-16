@@ -7,18 +7,22 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Skips updateArmSwingProgress for idle entities, saving two potion-effect lookups per tick; also requires swingProgress == 0 so the tick a swing finishes still writes the final value
+// Mixin that changes EntityLivingBase.
 @Mixin(EntityLivingBase.class)
 public abstract class EntityLivingBaseMixin {
+    // Reference to the field is swing in progress of the target.
     @Shadow
     public boolean isSwingInProgress;
 
+    // Reference to the field swing progress int of the target.
     @Shadow
     public int swingProgressInt;
 
+    // Reference to the field swing progress of the target.
     @Shadow
     public float swingProgress;
 
+    // Runs at the start of updateArmSwingProgress and can cancel it.
     @Inject(method = "updateArmSwingProgress", at = @At("HEAD"), cancellable = true)
     private void equilibrium$skipIdleSwing(CallbackInfo ci) {
         if (!this.isSwingInProgress && this.swingProgressInt == 0 && this.swingProgress == 0.0F) {

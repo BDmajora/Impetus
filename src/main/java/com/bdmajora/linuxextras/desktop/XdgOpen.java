@@ -6,29 +6,31 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 
-// Links and folders go to xdg-open, the desktop's default handler, as modern Minecraft does on Linux; AWT's Desktop API is unsupported on most Linux desktops, which left only Copy to Clipboard, and inside Flatpak xdg-open reaches the host through the portal
+// Opener of files and links with the desktop handler.
 public final class XdgOpen {
-    // Swapped by tests so nothing is really launched
+    // Process starter.
     static Starter starter = command -> new ProcessBuilder(command)
             .redirectOutput(ProcessBuilder.Redirect.DISCARD)
             .redirectError(ProcessBuilder.Redirect.DISCARD)
             .start();
 
+    // Prevents instantiation
     private XdgOpen() {
     }
 
+    // Contract of the starter.
     @FunctionalInterface
     interface Starter {
+        // Starts a command.
         Process start(List<String> command) throws IOException;
     }
 
-    // True once xdg-open is running; false leaves the caller's own path to run and report, as when the switch is off or xdg-open is missing
+    // Opens a target and returns whether the handler started.
     public static boolean open(String target) {
-        if (!LinuxExtras.options().xdgOpen) {
+        if (target == null || target.isBlank() || target.startsWith("-") || !LinuxExtras.options().xdgOpen) {
             return false;
         }
         try {
-            // One argument, never a shell line, so nothing in the link is interpreted
             Process process = starter.start(Arrays.asList("xdg-open", target));
             process.getOutputStream().close();
             return true;

@@ -15,16 +15,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.Map;
 
-// Selectors are only iterated, never keyed, so the LinkedHashMap.Entry per selector is pure overhead; insertion order must survive since selectors apply in declaration order
+// Mixin that changes MultipartBakedModel.
 @Mixin(MultipartBakedModel.class)
 public class MultipartBakedModelMixin {
-    // Predicate keys come from the canonicalizer, so identical conditions are already shared
     @Mutable
     @Shadow
     @Final
     private Map<Predicate<IBlockState>, IBakedModel> selectors;
 
-    // Guarded because a mod re-baking a model in place would otherwise copy an already-compacted map
+    // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void coarctatio$compactSelectors(CallbackInfo ci) {
         if (this.selectors instanceof ArrayBackedLinkedMap) {

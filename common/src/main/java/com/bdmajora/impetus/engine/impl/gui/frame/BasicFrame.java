@@ -8,57 +8,66 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
 
+// Frame whose children come from factories that receive the frame bounds.
 public class BasicFrame extends AbstractFrame {
 
+    // Factories of the children.
     protected List<Function<Dim2i, AbstractWidget>> functions;
 
+    // Creates a frame from a copy of the factories and rejects null factories.
     public BasicFrame(Dim2i dim, boolean renderOutline, List<Function<Dim2i, AbstractWidget>> functions) {
         super(dim, renderOutline);
-        this.functions = functions;
+        this.functions = List.copyOf(functions);
         this.buildFrame();
     }
 
-    // Starts a builder
+    // Creates a builder.
     public static Builder createBuilder() {
         return new Builder();
     }
 
-    // Instantiates each child factory at the frame's dimensions
+    // Creates every child from its factory at the frame bounds and rejects a null child.
     @Override
     public void buildFrame() {
         this.children.clear();
         this.drawable.clear();
         this.controlElements.clear();
 
-        this.functions.forEach(function -> this.children.add(function.apply(dim)));
+        for (Function<Dim2i, AbstractWidget> function : this.functions) {
+            this.children.add(Objects.requireNonNull(function.apply(this.dim), "child"));
+        }
 
         super.buildFrame();
     }
 
+    // Collects the settings of a frame.
     public static class Builder {
+        // Factories of the children.
         private final List<Function<Dim2i, AbstractWidget>> functions = new ArrayList<>();
+        // Bounds of the frame.
         private Dim2i dim;
+        // Outline state of the frame.
         private boolean renderOutline;
 
-        // Frame bounds
+        // Stores the bounds of the frame.
         public Builder setDimension(Dim2i dim) {
             this.dim = dim;
             return this;
         }
 
-        // Debug outline
+        // Stores whether the frame draws an outline.
         public Builder shouldRenderOutline(boolean renderOutline) {
             this.renderOutline = renderOutline;
             return this;
         }
 
-        // A child built lazily from the frame's dimensions
+        // Adds a child factory and rejects null.
         public Builder addChild(Function<Dim2i, AbstractWidget> function) {
-            this.functions.add(function);
+            this.functions.add(Objects.requireNonNull(function, "function"));
             return this;
         }
 
-        // Finalises
+        // Creates the frame and rejects missing bounds.
         public BasicFrame build() {
             Objects.requireNonNull(this.dim, "Dimension must be specified");
 

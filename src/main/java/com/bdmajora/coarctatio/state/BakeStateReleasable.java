@@ -1,7 +1,7 @@
 package com.bdmajora.coarctatio.state;
 
-// Bridges ModelLoader cleanup to state on its superclass ModelBakery; multipartVariantMap is private there, so a @Shadow from a ModelLoader mixin throws IllegalAccessError
+// Object that holds state only needed while models bake.
 public interface BakeStateReleasable {
-    // Clears bake-time state owned by ModelBakery; returns how many entries went
+    // Drops the baking state and returns how many entries were released.
     int coarctatio$releaseBakeryState();
 }

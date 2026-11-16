@@ -5,17 +5,21 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.client.model.IModel;
 import net.minecraftforge.fml.common.eventhandler.Event;
 
-// Posted on MinecraftForge.EVENT_BUS each time a model is baked on demand, the dynamic-loading stand-in for walking ModelBakeEvent's registry; a listener may replace bakedModel, and a null unbakedModel means the load failed and bakedModel is the missing model
+// Event posted when a dynamic model finishes baking.
 public class DynamicModelBakeEvent extends Event {
+    // Location of the model.
     public final ResourceLocation location;
+    // Model before baking.
     public final IModel unbakedModel;
+    // Baked model that listeners may replace.
     public IBakedModel bakedModel;
 
-    // FML's bus instantiates every event type once through its no-arg constructor when a listener registers
+    // Creates an empty event.
     public DynamicModelBakeEvent() {
         this(null, null, null);
     }
 
+    // Creates an event for a model.
     public DynamicModelBakeEvent(ResourceLocation location, IModel unbakedModel, IBakedModel bakedModel) {
         this.location = location;
         this.unbakedModel = unbakedModel;

@@ -8,9 +8,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArgs;
 import org.spongepowered.asm.mixin.injection.invoke.arg.Args;
 
-// Lights particles by the dynamic light where they are, so smoke over a held torch is lit.
+// Mixin that changes Particle.
 @Mixin(Particle.class)
 public abstract class ParticleMixin {
+    // Changes an argument of the call of World.getCombinedLight in getBrightnessForRender.
     @ModifyArgs(
             method = "getBrightnessForRender",
             at = @At(value = "INVOKE",

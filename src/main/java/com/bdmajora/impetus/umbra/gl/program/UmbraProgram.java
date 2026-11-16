@@ -1,37 +1,39 @@
 package com.bdmajora.impetus.umbra.gl.program;
 
-// A fully compiled pack program: the linked GlProgram plus its declared DRAWBUFFERS/RENDERTARGETS set; uniforms and samplers are attached separately once render targets exist
+// Program with the draw buffers its fragment stage writes.
 public class UmbraProgram {
+    // Linked program.
     private final GlProgram program;
+    // Draw buffers of the program.
     private final int[] drawBuffers;
 
-    // Both branches clone: the array is handed out by getDrawBuffers and DrawBuffers.DEFAULT is shared, so keeping either reference would let a caller mutate the default for every later program
+    // Creates a program with a copy of its draw buffers or the default ones.
     public UmbraProgram(GlProgram program, int[] drawBuffers) {
         this.program = program;
         this.drawBuffers = drawBuffers == null ? DrawBuffers.DEFAULT.clone() : drawBuffers.clone();
     }
 
-    // The linked program
+    // Returns the linked program.
     public GlProgram getProgram() {
         return this.program;
     }
 
-    // Cloned for the same reason; callers pass this straight to glDrawBuffers and some sort or filter it first
+    // Returns a copy of the draw buffers.
     public int[] getDrawBuffers() {
         return this.drawBuffers.clone();
     }
 
-    // Binds the program and applies its draw buffers
+    // Binds the program.
     public void bind() {
         this.program.bind();
     }
 
-    // glUseProgram(0)
+    // Unbinds the program.
     public void unbind() {
         this.program.unbind();
     }
 
-    // Frees the program
+    // Deletes the program.
     public void destroy() {
         this.program.destroy();
     }

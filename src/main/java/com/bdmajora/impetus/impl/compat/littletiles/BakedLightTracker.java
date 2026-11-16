@@ -1,7 +1,7 @@
 package com.bdmajora.impetus.impl.compat.littletiles;
 
-// Added to LittleTiles' TileEntityRenderManager by LittleTilesRenderManagerMixin, and only called under that manager's monitor
+// Contract of the baked light tracker.
 public interface BakedLightTracker {
-    // Records the light fingerprint the mesher just read; true when it differs from the last one, or there was none
+    // Stores a light fingerprint and returns whether it changed.
     boolean impetus$lightChanged(int fingerprint);
 }

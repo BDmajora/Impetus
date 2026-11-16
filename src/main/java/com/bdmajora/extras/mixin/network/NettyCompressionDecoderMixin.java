@@ -16,19 +16,22 @@ import org.spongepowered.asm.mixin.Shadow;
 import java.util.List;
 import java.util.zip.Inflater;
 
-// Carries the "Badly compressed packet - size of X is larger than protocol maximum of 2097152" cap from Packet Fixer and, when pooled compression is on, Krypton's habit of not copying: the compressed bytes are read from the buffer's own array where it has one and the inflated packet lands in a pooled heap buffer instead of a fresh byte[] wrapped per packet
+// Mixin that changes NettyCompressionDecoder.
 @Mixin(NettyCompressionDecoder.class)
 public abstract class NettyCompressionDecoderMixin {
+    // Reference to the field inflater of the target.
     @Shadow
     @Final
     private Inflater inflater;
 
+    // Reference to the field threshold of the target.
     @Shadow
     private int threshold;
 
+    // Reusable buffers of the decoder.
     private final CompressionScratch impetus$scratch = new CompressionScratch();
 
-    // Vanilla's method with the limit read from the switch and the allocations replaced; the exception texts are vanilla's so log readers keep matching them
+    // Replaces the whole method decode.
     @Overwrite
     protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
         if (in.readableBytes() == 0) {
@@ -47,6 +50,9 @@ public abstract class NettyCompressionDecoderMixin {
         if (size > limit) {
             throw new DecoderException("Badly compressed packet - size of " + size + " is larger than protocol maximum of " + limit);
         }
+        if ((long) size > (long) in.readableBytes() * 1032L + 64L) {
+            throw new DecoderException("Badly compressed packet - size of " + size + " is not plausible for " + in.readableBytes() + " compressed bytes");
+        }
         if (!Extras.options().network.pooledCompression) {
             byte[] compressed = new byte[buffer.readableBytes()];
             buffer.readBytes(compressed);
@@ -63,7 +69,6 @@ public abstract class NettyCompressionDecoderMixin {
         try {
             this.inflater.setInput(scratch.array, scratch.offset, scratch.length);
             int written = 0;
-            // inflate() may return before the whole packet is out when the input is consumed in pieces
             while (written < size && !this.inflater.finished()) {
                 int n = this.inflater.inflate(inflated.array(), inflated.arrayOffset() + written, size - written);
                 if (n == 0 && (this.inflater.needsInput() || this.inflater.needsDictionary())) {

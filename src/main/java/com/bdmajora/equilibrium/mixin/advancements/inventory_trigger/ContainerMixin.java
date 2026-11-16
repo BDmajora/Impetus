@@ -14,10 +14,10 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Two things about how a container mirrors its slots: the mirror starts out empty, so opening any GUI reports every occupied player slot as "changed" and fires the trigger for each; and the mirror is a copy, so the count a slot had before a change is available exactly when the new copy replaces it
+// Mixin that changes Container.
 @Mixin(Container.class)
 public abstract class ContainerMixin {
-    // Seed the mirror with a copy of what the player slot already holds; a copy, not the live stack, or in-place count changes would compare equal and never reach the client
+    // Changes an argument of the call of NonNullList.add in addSlotToContainer.
     @ModifyArg(method = "addSlotToContainer", at = @At(value = "INVOKE", target = "Lnet/minecraft/util/NonNullList;add(Ljava/lang/Object;)Z", remap = false))
     private Object equilibrium$seedKnownContents(Object empty, @Local(argsOnly = true) Slot slot) {
         if (slot.inventory instanceof InventoryPlayer && slot.getHasStack()) {
@@ -26,12 +26,13 @@ public abstract class ContainerMixin {
         return empty;
     }
 
+    // Runs around the call of ItemStack.isEmpty in detectAndSendChanges.
     @Inject(method = "detectAndSendChanges", at = @At(value = "INVOKE", target = "Lnet/minecraft/item/ItemStack;isEmpty()Z"))
     private void equilibrium$capturePrevious(CallbackInfo ci, @Local(ordinal = 1) ItemStack previous, @Share("previous") LocalRef<ItemStack> ref) {
         ref.set(previous);
     }
 
-    // Only when the same item is still there; a different item's old count is not a "previous size" of this stack
+    // Runs around the call of NonNullList.set in detectAndSendChanges.
     @Inject(method = "detectAndSendChanges", at = @At(value = "INVOKE", target = "Lnet/minecraft/util/NonNullList;set(ILjava/lang/Object;)Ljava/lang/Object;", shift = At.Shift.AFTER))
     private void equilibrium$recordPrevious(CallbackInfo ci, @Local(ordinal = 1) ItemStack replacement, @Share("previous") LocalRef<ItemStack> ref) {
         ItemStack previous = ref.get();

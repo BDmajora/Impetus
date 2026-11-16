@@ -17,25 +17,29 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// The chunk table read from every thread and written from a few: lookups go to a concurrent map with no lock, and the load/generate/unload paths serialise on the world monitor so a worker that walks into unloaded terrain generates it alone, with the generator's shared scratch state safe
+// Mixin that changes ChunkProviderServer.
 @Mixin(ChunkProviderServer.class)
 public abstract class ChunkProviderServerParallelMixin {
+    // Reference to the field loaded chunks of the target.
     @Shadow
     @Final
     @Mutable
     public Long2ObjectMap<Chunk> loadedChunks;
 
+    // Reference to the field world of the target.
     @Shadow
     @Final
     public WorldServer world;
 
+    // Reference to the method get loaded chunk of the target.
     @Shadow
     public abstract Chunk getLoadedChunk(int x, int z);
 
+    // Field parallel added to the target.
     @Unique
     private boolean impetus$parallel;
 
-    // Only server worlds own a ChunkProviderServer, so the install flag alone decides
+    // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void impetus$installConcurrentMap(CallbackInfo ci) {
         if (!ParallelProcessor.INSTALLED) {
@@ -45,7 +49,7 @@ public abstract class ChunkProviderServerParallelMixin {
         this.loadedChunks = new ConcurrentLong2ObjectMap<>(this.loadedChunks);
     }
 
-    // The loaded case, which is nearly every call, never touches the lock
+    // Handles locked provide chunk.
     @WrapMethod(method = "provideChunk")
     private Chunk impetus$lockedProvideChunk(int x, int z, Operation<Chunk> original) {
         if (!this.impetus$parallel) {
@@ -55,7 +59,6 @@ public abstract class ChunkProviderServerParallelMixin {
         if (loaded != null) {
             return loaded;
         }
-        // The generator's noise buffers and the biome layer scratch pool are shared across dimensions, so generation is single-file across every world, not just this one; the world monitor comes first to keep the order every other path uses
         synchronized (this.world) {
             synchronized (ParallelProcessor.WORLDGEN_LOCK) {
                 return original.call(x, z);
@@ -63,6 +66,7 @@ public abstract class ChunkProviderServerParallelMixin {
         }
     }
 
+    // Handles locked load chunk.
     @WrapMethod(method = "loadChunk(IILjava/lang/Runnable;)Lnet/minecraft/world/chunk/Chunk;")
     private Chunk impetus$lockedLoadChunk(int x, int z, Runnable callback, Operation<Chunk> original) {
         if (!this.impetus$parallel) {
@@ -80,6 +84,7 @@ public abstract class ChunkProviderServerParallelMixin {
         }
     }
 
+    // Handles locked queue unload.
     @WrapMethod(method = "queueUnload")
     private void impetus$lockedQueueUnload(Chunk chunk, Operation<Void> original) {
         if (!this.impetus$parallel) {
@@ -91,6 +96,7 @@ public abstract class ChunkProviderServerParallelMixin {
         }
     }
 
+    // Handles locked queue unload all.
     @WrapMethod(method = "queueUnloadAll")
     private void impetus$lockedQueueUnloadAll(Operation<Void> original) {
         if (!this.impetus$parallel) {
@@ -102,6 +108,7 @@ public abstract class ChunkProviderServerParallelMixin {
         }
     }
 
+    // Handles locked tick.
     @WrapMethod(method = "tick")
     private boolean impetus$lockedTick(Operation<Boolean> original) {
         if (!this.impetus$parallel) {
@@ -112,6 +119,7 @@ public abstract class ChunkProviderServerParallelMixin {
         }
     }
 
+    // Handles locked save chunks.
     @WrapMethod(method = "saveChunks")
     private boolean impetus$lockedSaveChunks(boolean all, Operation<Boolean> original) {
         if (!this.impetus$parallel) {

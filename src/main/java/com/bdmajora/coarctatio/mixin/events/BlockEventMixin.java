@@ -16,43 +16,51 @@ import org.spongepowered.asm.mixin.Unique;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
-// The block fields live on the base class, so the refresh and the recycled phase do too. remap = false, Forge class
+// Mixin that changes BlockEvent.
 @Mixin(value = BlockEvent.class, remap = false)
 public abstract class BlockEventMixin extends Event implements RecyclableEvent {
+    // Reference to the field world of the target.
     @Shadow
     @Final
     @Mutable
     private World world;
 
+    // Reference to the field pos of the target.
     @Shadow
     @Final
     @Mutable
     private BlockPos pos;
 
+    // Reference to the field state of the target.
     @Shadow
     @Final
     @Mutable
     private IBlockState state;
 
+    // Field phase added to the target.
     @Unique
     private EventPriority coarctatio$phase;
 
+    // Returns the phase.
     @Nullable
     @Override
     public EventPriority getPhase() {
         return this.coarctatio$phase;
     }
 
+    // Handles set phase.
     @Override
     public void setPhase(@Nonnull EventPriority value) {
         this.coarctatio$phase = RecyclableEvent.advancePhase(this.coarctatio$phase, value);
     }
 
+    // Handles reset phase.
     @Override
     public void coarctatio$resetPhase() {
         this.coarctatio$phase = null;
     }
 
+    // Handles refresh block.
     @Override
     public void coarctatio$refreshBlock(World world, BlockPos pos, IBlockState state) {
         this.world = world;

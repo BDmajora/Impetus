@@ -3,6 +3,7 @@ package com.bdmajora.impetus.umbra.uniforms.custom;
 import com.bdmajora.impetus.umbra.gl.uniform.UniformCollector;
 import com.bdmajora.impetus.umbra.gl.uniform.UniformUpdateFrequency;
 import com.bdmajora.impetus.umbra.uniforms.CommonUniforms;
+import com.bdmajora.impetus.umbra.uniforms.MatrixUniforms;
 import com.bdmajora.impetus.umbra.uniforms.SystemTimeUniforms;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -17,14 +18,21 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-// The pack's uniform.<type>.<name> and variable.<type>.<name> expressions, evaluated once per frame in declaration order so later ones reference earlier results; only uniform. entries are uploaded
+// Custom uniforms and variables of a shader pack evaluated once per frame in definition order.
 public final class CustomUniforms {
+    // Logger of evaluation and parse failures.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
 
+    // Built in values the expressions read.
     private final CustomUniformInputs inputs;
+    // Variables in definition order.
     private final List<Variable> variables;
+    // Variables by name.
     private final Map<String, Variable> byName;
+    // Context reused for every evaluation.
+    private final VariableContext context = new VariableContext();
 
+    // Creates the uniforms from parsed variables.
     private CustomUniforms(CustomUniformInputs inputs, List<Variable> variables) {
         this.inputs = inputs;
         this.variables = variables;
@@ -34,16 +42,16 @@ public final class CustomUniforms {
         }
     }
 
-    // Evaluates every variable for this frame, once and BEFORE any program uniform update or programs upload last frame's values
+    // Evaluates every variable and keeps the last value of one that fails and warns once.
     public void update() {
-        float frameTime = Math.max(SystemTimeUniforms.COUNTER.getLastFrameTime(), 1.0e-4f);
+        VariableContext context = this.context;
+        context.frameTime = Math.max(SystemTimeUniforms.COUNTER.getLastFrameTime(), 1.0e-4f);
 
         for (Variable variable : this.variables) {
-            CustomUniformContext context = new VariableContext(variable, frameTime);
+            context.variable = variable;
             try {
                 variable.current = coerce(variable.expression.evaluate(context), variable.type);
             } catch (Exception e) {
-                // Never let a bad pack expression take down the frame; freeze on the last good value.
                 if (!variable.warned) {
                     variable.warned = true;
                     LOGGER.warn("[Umbra] Custom uniform '{}' failed to evaluate: {}", variable.name, e.toString());
@@ -52,7 +60,7 @@ public final class CustomUniforms {
         }
     }
 
-    // Registers every `uniform.`-declared entry with a program's builder regardless of use, since the builder drops locations resolving to -1
+    // Registers every uniform variable with a collector.
     public void assignTo(UniformCollector collector) {
         for (Variable variable : this.variables) {
             if (!variable.isUniform) {
@@ -84,17 +92,17 @@ public final class CustomUniforms {
         }
     }
 
-    // Whether the pack declared any
+    // Returns whether no variable was defined.
     public boolean isEmpty() {
         return this.variables.isEmpty();
     }
 
-    // Variable count
+    // Returns the number of variables.
     public int size() {
         return this.variables.size();
     }
 
-    // Every variable's value as evaluated this frame in declaration order, reporting only; a pack expression sharing a built-in's name WINS at program build, so these are the values reaching the shader and comparing against the built-in shows a divergence
+    // Returns the current value of every variable as text.
     public Map<String, String> snapshot() {
         Map<String, String> out = new LinkedHashMap<>();
         for (Variable variable : this.variables) {
@@ -111,13 +119,13 @@ public final class CustomUniforms {
         return out;
     }
 
-    // One component of a variable's current value
+    // Returns a component of the current value or zero past its width.
     private static float component(Variable variable, int index) {
         CustomUniformValue value = variable.current;
         return index < value.width ? value.components[index] : 0.0f;
     }
 
-    // Widens or narrows to the declared type
+    // Returns a value widened or narrowed to the width of a type and repeats a scalar.
     private static CustomUniformValue coerce(CustomUniformValue value, Type type) {
         if (value.width == type.width) {
             return value;
@@ -129,16 +137,14 @@ public final class CustomUniforms {
         return CustomUniformValue.of(out);
     }
 
+    // Context that resolves names for the variable being evaluated.
     private final class VariableContext implements CustomUniformContext {
-        private final Variable variable;
-        private final float frameTime;
+        // Variable being evaluated.
+        private Variable variable;
+        // Length of the last frame in seconds.
+        private float frameTime;
 
-        VariableContext(Variable variable, float frameTime) {
-            this.variable = variable;
-            this.frameTime = frameTime;
-        }
-
-        // A variable's current value, or a builtin's
+        // Returns another variable or a built in value by name.
         @Override
         public CustomUniformValue resolve(String name) {
             Variable other = byName.get(name);
@@ -148,29 +154,33 @@ public final class CustomUniforms {
             return inputs.resolve(name);
         }
 
-        // Per-smooth() call state
+        // Returns a smoothing state of the variable.
         @Override
         public SmoothState smoothState(int index) {
             return this.variable.smoothStates[index];
         }
 
-        // Delta for the smoothers
+        // Returns the length of the last frame in seconds.
         @Override
         public float frameTime() {
             return this.frameTime;
         }
     }
 
+    // Types of custom uniforms.
     public enum Type {
+        // Scalar and vector types with their component counts.
         BOOL(1), INT(1), FLOAT(1), VEC2(2), VEC3(3), VEC4(4);
 
+        // Number of components.
         final int width;
 
+        // Creates a type with a component count.
         Type(int width) {
             this.width = width;
         }
 
-        // bool, int, float, vec2..4
+        // Returns the type of a token or null.
         static Type parse(String token) {
             switch (token.toLowerCase(Locale.ROOT)) {
                 case "bool": return BOOL;
@@ -184,15 +194,24 @@ public final class CustomUniforms {
         }
     }
 
+    // One custom uniform or variable.
     private static final class Variable {
+        // Name of the variable.
         final String name;
+        // Type of the variable.
         final Type type;
+        // Uniform state that exposes the variable to programs.
         final boolean isUniform;
+        // Compiled expression.
         final CompiledExpression expression;
+        // States of the smooth calls in the expression.
         final CustomUniformContext.SmoothState[] smoothStates;
+        // Value of the last evaluation.
         CustomUniformValue current;
+        // Warned state of a failed evaluation.
         boolean warned;
 
+        // Creates a variable with a zero value.
         Variable(String name, Type type, boolean isUniform, CompiledExpression expression, int smoothCount) {
             this.name = name;
             this.type = type;
@@ -206,10 +225,12 @@ public final class CustomUniforms {
         }
     }
 
+    // Collector of variable definitions.
     public static final class Builder {
+        // Definitions by name in definition order.
         private final Map<String, PendingVariable> pending = new LinkedHashMap<>();
 
-        // Declares one variable.<type>.<name> or uniform.<type>.<name>
+        // Adds a definition and ignores an unknown type or a repeated name.
         public void addVariable(String typeToken, String name, String expression, boolean isUniform) {
             Type type = Type.parse(typeToken);
             if (type == null) {
@@ -217,23 +238,22 @@ public final class CustomUniforms {
                 return;
             }
             if (this.pending.containsKey(name)) {
-                LOGGER.warn("[Umbra] Duplicate custom uniform/variable '{}', keeping the first definition", name);
+                LOGGER.warn("[Umbra] Duplicate custom uniform or variable '{}', keeping the first definition", name);
                 return;
             }
             this.pending.put(name, new PendingVariable(name, type, expression, isUniform));
         }
 
-        // Whether anything was declared
+        // Returns whether no definition was added.
         public boolean isEmpty() {
             return this.pending.isEmpty();
         }
 
-        // Compiles every expression, in dependency order
+        // Parses every definition and skips those that fail.
         public CustomUniforms build() {
             CustomUniformInputs inputs = new CustomUniformInputs();
-            // Capture the full built-in uniform surface (common + celestial + system-time all register through addCommonUniforms; matrices resolve per-cell, e.g. gbufferProjection.1.1)
             CommonUniforms.addCommonUniforms(inputs);
-            com.bdmajora.impetus.umbra.uniforms.MatrixUniforms.addMatrixUniforms(inputs);
+            MatrixUniforms.addMatrixUniforms(inputs);
 
             List<Variable> variables = new ArrayList<>();
             for (PendingVariable p : this.pending.values()) {
@@ -249,7 +269,7 @@ public final class CustomUniforms {
             return new CustomUniforms(inputs, variables);
         }
 
-        // A declaration awaiting compilation
+        // Definition that has not been parsed.
         private record PendingVariable(String name, Type type, String expression, boolean isUniform) {
         }
     }

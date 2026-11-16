@@ -7,18 +7,18 @@ import com.bdmajora.extras.client.bakedentities.BakedEntities;
 import com.bdmajora.extras.client.booster.GpuBooster;
 import com.bdmajora.extras.client.particle.ParticleTicker;
 
-// Copies the settings of a config into the subsystems that hold them in static state
+// Runtime switches derived from the Extras config.
 public final class ExtrasRuntime {
     // Prevents instantiation
     private ExtrasRuntime() {
     }
 
-    // Installs the parallel ticking master switch that holds until the next launch
+    // Installs the value.
     public static void install(ExtrasConfig options) {
         ParallelProcessor.install(options.async);
     }
 
-    // Applies every setting that takes effect at once
+    // Applies the value.
     public static void apply(ExtrasConfig options) {
         GpuBooster.apply(options.gpuBooster);
         ParallelProcessor.apply(options.async);

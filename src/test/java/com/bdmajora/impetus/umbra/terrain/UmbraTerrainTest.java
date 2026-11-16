@@ -426,4 +426,23 @@ class UmbraTerrainTest {
         assertTrue(local.contains("mat4 projectionMatrix)"), local);
         assertFalse(local.contains("gl_ProjectionMatrix"), local);
     }
+
+    // Keeps commented directives in the hoisted block and leaves number literals constant.
+    @Test
+    void hoisterReadsCommentedDirectivesAndNumberSuffixes() {
+        GlslGlobalInitHoister.Result result = GlslGlobalInitHoister.hoist(String.join("\n",
+                "#ifdef FOG",
+                "float fog = density;",
+                "#else // no fog",
+                "float fog2 = density;",
+                "#endif // FOG",
+                "float big = 1.0e5;",
+                "uint count = 3u;",
+                "float half = 0.5f;"));
+        assertTrue(result.hoistedAssignments.contains("#else // no fog"), result.hoistedAssignments);
+        assertTrue(result.hoistedAssignments.contains("#endif // FOG"), result.hoistedAssignments);
+        assertTrue(result.body.contains("float big = 1.0e5;"), result.body);
+        assertTrue(result.body.contains("float half = 0.5f;"), result.body);
+        assertFalse(result.hoistedAssignments.contains("big ="), result.hoistedAssignments);
+    }
 }

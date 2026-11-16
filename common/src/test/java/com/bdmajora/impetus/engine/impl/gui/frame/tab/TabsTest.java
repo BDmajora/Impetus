@@ -29,7 +29,9 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+// Tests tabs and the tab frame and the header widget.
 class TabsTest {
+    // Returns a page with one group of tick box rows.
     private static OptionPage page(String mod, String name, int rows) {
         OptionGroup.Builder group = OptionGroup.createBuilder().setId(OptionIdentifier.create(mod, name + "g"));
         for (int i = 0; i < rows; i++) {
@@ -44,6 +46,7 @@ class TabsTest {
         return new OptionPage(OptionIdentifier.create(mod, name), TextComponent.literal(name), List.of(group.build()));
     }
 
+    // Builds a scrollable option frame from a page.
     @Test
     void tabFromPageBuildsAScrollableOptionFrame() {
         OptionPage page = page("impetus", "General", 30);
@@ -67,6 +70,7 @@ class TabsTest {
         assertEquals(tab.hashCode(), tab.hashCode());
     }
 
+    // Selects and folds groups and draws the frames.
     @Test
     void tabFrameSelectsFoldsAndRenders() {
         FakeDrawContext draw = new FakeDrawContext();
@@ -131,6 +135,7 @@ class TabsTest {
         assertTrue(scrolling.mouseScrolled(ctx, 10, 10, 0, -1));
     }
 
+    // Draws the icon and name and fold marker of a header.
     @Test
     void headerWidgetDrawsIconNameAndMarker() {
         FakeDrawContext draw = new FakeDrawContext();
@@ -167,6 +172,7 @@ class TabsTest {
         return focused instanceof ControlElement<?> row ? row.getOption().getName().toString() : String.valueOf(focused);
     }
 
+    // Walks the sidebar into the page with the keyboard and keeps focus through a rebuild.
     @Test
     void theKeyboardWalksTheSidebarIntoThePageAndAPressedEntryKeepsTheFocusThroughTheRebuild() {
         Set<String> collapsed = Statics.get(TabFrame.class, "COLLAPSED_GROUPS");
@@ -241,5 +247,56 @@ class TabsTest {
         } finally {
             collapsed.removeIf(id -> id.startsWith("keys_"));
         }
+    }
+
+    // Draws no page frame after switching to a tab without a frame factory.
+    @Test
+    void switchingToATabWithoutAFrameClearsThePage() {
+        Set<String> collapsed = Statics.get(TabFrame.class, "COLLAPSED_GROUPS");
+        collapsed.clear();
+        int[] draws = {0};
+        Tab<?> framed = Tab.<AbstractFrame>builder().setTitle(TextComponent.literal("framed"))
+                .setFrameFunction(dim -> new AbstractFrame(dim, false) {
+                    @Override
+                    public void render(com.bdmajora.impetus.engine.impl.gui.framework.DrawContext drawContext, int mouseX, int mouseY, float delta) {
+                        draws[0]++;
+                    }
+                }).build();
+        Tab<?> bare = Tab.createBuilder().setTitle(TextComponent.literal("bare")).build();
+        FakeDrawContext draw = new FakeDrawContext();
+        TabFrame frame = TabFrame.createBuilder().setDimension(new Dim2i(0, 0, 300, 200))
+                .addTabs(tabs -> tabs.put("impetus", new ArrayList<>(List.of(framed, bare))))
+                .setTabSectionSelectedTab(new AtomicReference<>(null))
+                .build(draw);
+        frame.render(draw, 0, 0, 0f);
+        assertEquals(1, draws[0]);
+        frame.setTab(bare);
+        frame.render(draw, 0, 0, 0f);
+        assertEquals(1, draws[0]);
+        assertFalse(frame.mouseScrolled(new FakeInteractionContext(), 250, 100, 0, -1));
+    }
+
+    // Unfolds only the group that holds the selected tab object.
+    @Test
+    void setTabUnfoldsTheGroupHoldingTheSameObject() {
+        Set<String> collapsed = Statics.get(TabFrame.class, "COLLAPSED_GROUPS");
+        collapsed.clear();
+        Tab<?> first = Tab.createBuilder().setTitle(TextComponent.literal("same")).build();
+        Tab<?> twin = Tab.createBuilder().setTitle(TextComponent.literal("same")).build();
+        assertEquals(first, twin);
+        FakeDrawContext draw = new FakeDrawContext();
+        TabFrame frame = TabFrame.createBuilder().setDimension(new Dim2i(0, 0, 300, 200))
+                .addTabs(tabs -> {
+                    tabs.put("a", List.of(first));
+                    tabs.put("b", List.of(twin));
+                })
+                .build(draw);
+        collapsed.add("a");
+        collapsed.add("b");
+        frame.setTab(twin);
+        assertTrue(collapsed.contains("a"));
+        assertFalse(collapsed.contains("b"));
+        assertThrows(NullPointerException.class, () -> frame.setTab(null));
+        collapsed.clear();
     }
 }

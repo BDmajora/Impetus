@@ -13,11 +13,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-// Item models with their coplanar faces resolved, cached per model on the render thread; only models whose quads are fixed for a null state are touched, and weak keys let a resource reload's old models go
+// Caches the resolved quads of item models.
 public final class ItemFaceCache {
-    // Forge's wrapper around a baked JSON model (every resource pack item model); for a null state it answers its SimpleBakedModel's quads
+    // Name prefix of the vanilla model wrapper.
     private static final String VANILLA_WRAPPER = "net.minecraftforge.client.model.ModelLoader$VanillaModelWrapper$";
-    // Whether a model class only ever answers the same quads for a null state; anything else (dynamic mod models, Forge's generated sprites) is drawn as it comes
+    // Whether each model class may be resolved.
     private static final ClassValue<Boolean> FIXED = new ClassValue<>() {
         @Override
         protected Boolean computeValue(Class<?> type) {
@@ -25,17 +25,20 @@ public final class ItemFaceCache {
                     || PerspectiveMapWrapper.class.isAssignableFrom(type) && type.getName().startsWith(VANILLA_WRAPPER);
         }
     };
-    // Stands for a model with nothing to resolve
+    // Marker for a model that needs no change.
     private static final List<List<BakedQuad>> UNCHANGED = List.of();
+    // Resolved quads of each model.
     private static final Map<IBakedModel, List<List<BakedQuad>>> RESOLVED = new WeakHashMap<>();
-    // renderModel asks one model for all seven lists in a row, so only the first ask looks it up
+    // Model of the last lookup.
     private static IBakedModel lastModel;
+    // Resolved quads of the last model.
     private static List<List<BakedQuad>> lastLists = UNCHANGED;
 
+    // Prevents instantiation
     private ItemFaceCache() {
     }
 
-    // The quads renderModel draws for one side: the resolved list while the fix is on and the model is fixed, else the model's own
+    // Returns the resolved quads of the model or its own quads.
     public static List<BakedQuad> quads(IBakedModel model, IBlockState state, EnumFacing side, long rand) {
         if (state == null && rand == 0L && Extras.options().render.itemModelFlickerFix && FIXED.get(model.getClass())) {
             List<List<BakedQuad>> lists = resolved(model);
@@ -46,6 +49,7 @@ public final class ItemFaceCache {
         return model.getQuads(state, side, rand);
     }
 
+    // Returns the resolved quads of the model.
     private static List<List<BakedQuad>> resolved(IBakedModel model) {
         if (model != lastModel) {
             List<List<BakedQuad>> lists = RESOLVED.get(model);
@@ -67,7 +71,7 @@ public final class ItemFaceCache {
         return lastLists;
     }
 
-    // Forgets every resolved model
+    // Forgets every resolved model.
     static void clear() {
         RESOLVED.clear();
         lastModel = null;

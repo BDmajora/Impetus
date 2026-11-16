@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-// Compacts the per-section entity lookup (FoamFix's FoamyClassInheritanceMultiMap): sixteen per chunk, each eagerly allocating a HashMap and HashSet; Class keys are canonical so reference hashing is correct and faster. Unrelated to Impetus' own forEach mixin on the same target
+// Mixin that changes ClassInheritanceMultiMap.
 @Mixin(ClassInheritanceMultiMap.class)
 public abstract class ClassInheritanceMultiMapMixin<T> {
     @Mutable
@@ -23,12 +23,13 @@ public abstract class ClassInheritanceMultiMapMixin<T> {
     @Final
     private Map<Class<?>, List<T>> map;
 
+    // Reference to the field known keys of the target.
     @Mutable
     @Shadow
     @Final
     private Set<Class<?>> knownKeys;
 
-    // At RETURN so vanilla has populated both collections; the copy constructors carry the contents across and the originals become garbage immediately
+    // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void coarctatio$compactLookups(CallbackInfo ci) {
         this.map = new Reference2ObjectOpenHashMap<>(this.map);

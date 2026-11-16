@@ -10,43 +10,51 @@ import org.jetbrains.annotations.NotNull;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongFunction;
 
+// Tracks the run times of chunk jobs by output type.
 public class ChunkJobMetricsTracker {
+    // Length of the observation window in nanoseconds.
     public static final long OBSERVATION_COUNT_TIME = TimeUnit.SECONDS.toNanos(1);
 
-    // Summary of one job type's durations
+    // Average and largest and smallest duration of a job type.
     public record MetricStats(long avg, long max, long min) {
-        // Formatted with a caller-supplied unit
+        // Returns the text of the values formatted by a function.
         public String toString(LongFunction<String> observationStringifier) {
             return "avg = " + observationStringifier.apply(avg)
                     + ", max = " + observationStringifier.apply(max)
                     + ", min = " + observationStringifier.apply(min);
         }
 
+        // Returns the text of the raw values.
         @Override
         public @NotNull String toString() {
             return toString(String::valueOf);
         }
     }
 
+    // Durations of one job type.
     public static class MetricsData {
+        // Number of durations kept.
         private static final int MAX_OBSERVATIONS = 10000;
 
-        /**
-         * Smoothing factor for the exponential moving average of execution time. Small enough to smooth over the
-         * large per-section variance (empty vs. dense sections), large enough to track a change in terrain within a
-         * few dozen completed tasks.
-         */
+        // Weight of a new duration in the moving average.
         private static final double EMA_ALPHA = 0.05;
 
+        // Kept durations.
         private final LongArrayList observations = new LongArrayList(MAX_OBSERVATIONS);
+        // Position that the next duration replaces.
         private int nextInsertPoint = 0;
 
+        // Number of durations in the last window.
         private int observationsInLastTimeInterval;
+        // Number of durations in the current window.
         private int observationsInCurrentTimeInterval;
 
+        // Moving average of the durations.
         private double emaNanos;
+        // Whether a duration was collected.
         private boolean hasEma;
 
+        // Adds a duration and replaces the oldest one when full.
         public void collect(long observation) {
             if (observations.size() < MAX_OBSERVATIONS) {
                 observations.add(observation);
@@ -66,48 +74,57 @@ public class ChunkJobMetricsTracker {
             }
         }
 
+        // Starts a new window.
         public void flipInterval() {
             this.observationsInLastTimeInterval = this.observationsInCurrentTimeInterval;
             this.observationsInCurrentTimeInterval = 0;
         }
 
-        // Sample count in the window
+        // Returns the number of durations in the last window.
         public int getObservationsInLastTimeInterval() {
             return this.observationsInLastTimeInterval;
         }
 
-        /**
-         * {@return the exponential moving average of the observed execution time in nanoseconds, or {@code fallback}
-         * if nothing has been observed yet}
-         */
+        // Returns the moving average in nanoseconds or the fallback when nothing was collected.
         public double getAverageNanos(double fallback) {
             return this.hasEma ? this.emaNanos : fallback;
         }
 
+        // Returns the average and largest and smallest kept duration.
         public MetricStats getStats() {
             int count = observations.size();
             if (count == 0) {
                 return new MetricStats(0, 0, 0);
             }
             long sum = 0;
+            boolean overflow = false;
+            long quotient = 0;
+            long remainder = 0;
             long min = Long.MAX_VALUE;
             long max = Long.MIN_VALUE;
-            // Indexed rather than iterated: LongArrayList's iterator boxes each value through next()
             for (int i = 0; i < count; i++) {
                 long observation = observations.getLong(i);
-                sum += observation;
+                try {
+                    sum = Math.addExact(sum, observation);
+                } catch (ArithmeticException e) {
+                    overflow = true;
+                }
+                quotient += observation / count;
+                remainder += observation % count;
                 min = Math.min(min, observation);
                 max = Math.max(max, observation);
             }
-            return new MetricStats(sum / count, max, min);
+            return new MetricStats(overflow ? quotient + remainder / count : sum / count, max, min);
         }
     }
 
+    // Durations by output type.
     private final Reference2ReferenceMap<Class<? extends ChunkTaskOutput>, MetricsData> metricsByTask = new Reference2ReferenceArrayMap<>(2);
 
+    // Time of the last window start.
     private long lastTimeIntervalFlip = System.nanoTime();
 
-    // Rolls the window
+    // Starts a new window when the current one is over.
     public void tick() {
         long time = System.nanoTime();
         if ((time - lastTimeIntervalFlip) >= OBSERVATION_COUNT_TIME) {
@@ -118,8 +135,9 @@ public class ChunkJobMetricsTracker {
         }
     }
 
-    // Records a job's duration under its output type
+    // Records the duration of a job under its output type and ignores negative durations.
     public void collectMetrics(ChunkJobResult.Success<? extends ChunkTaskOutput> successfulResult) {
+        java.util.Objects.requireNonNull(successfulResult, "successfulResult");
         if (successfulResult.executionTimeNanos() < 0) {
             return;
         }
@@ -127,15 +145,13 @@ public class ChunkJobMetricsTracker {
         data.collect(successfulResult.executionTimeNanos());
     }
 
-    /**
-     * {@return the recent average execution time in nanoseconds of tasks producing the given output type, or
-     * {@code fallback} if none have completed yet}
-     */
+    // Returns the recent average duration of an output type or the fallback.
     public double getAverageExecutionNanos(Class<? extends ChunkTaskOutput> outputType, double fallback) {
         var data = metricsByTask.get(outputType);
         return data != null ? data.getAverageNanos(fallback) : fallback;
     }
 
+    // Returns a read only view of the durations by output type.
     public Reference2ReferenceMap<Class<? extends ChunkTaskOutput>, MetricsData> getMetrics() {
         return Reference2ReferenceMaps.unmodifiable(metricsByTask);
     }

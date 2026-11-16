@@ -2,21 +2,25 @@ package com.bdmajora.impetus.engine.impl.util.rand;
 
 import it.unimi.dsi.fastutil.HashCommon;
 
-// Minimal SplitMixRandom from DSI Utilities (http://xoshiro.di.unimi.it/) to avoid importing Apache Commons
+// Minimal SplitMix generator based on the DSI Utilities version.
 public class SplitMixRandom {
+    // Increment of the state for every value.
     private static final long PHI = 0x9E3779B97F4A7C15L;
 
+    // State of the generator.
     private long x;
 
+    // Creates a generator with a random seed.
     public SplitMixRandom() {
         this(XoRoShiRoRandom.randomSeed());
     }
 
+    // Creates a generator with a seed.
     public SplitMixRandom(final long seed) {
         this.setSeed(seed);
     }
 
-    // Stafford's variant 13 finaliser
+    // Returns the Stafford variant 13 mix of a value.
     private static long staffordMix13(long z) {
         z = (z ^ (z >>> 30)) * 0xBF58476D1CE4E5B9L;
         z = (z ^ (z >>> 27)) * 0x94D049BB133111EBL;
@@ -24,29 +28,29 @@ public class SplitMixRandom {
         return z ^ (z >>> 31);
     }
 
-    // Variant 4, upper 32 bits only, for nextInt
+    // Returns the upper 32 bits of the Stafford variant 4 mix of a value.
     private static int staffordMix4Upper32(long z) {
         z = (z ^ (z >>> 33)) * 0x62A9D9ED799705F5L;
 
         return (int) (((z ^ (z >>> 28)) * 0xCB24D0A5C88C35B3L) >>> 32);
     }
 
-    // Advances the state by the golden gamma and mixes
+    // Returns the next 64 bit value.
     public long nextLong() {
         return staffordMix13(this.x += PHI);
     }
 
-    // Upper 32 bits of a mixed state
+    // Returns the next 32 bit value.
     public int nextInt() {
         return staffordMix4Upper32(this.x += PHI);
     }
 
-    // Unbiased bounded int by rejection
+    // Returns a value between zero and the bound without bias.
     public int nextInt(final int n) {
         return (int) this.nextLong(n);
     }
 
-    // Unbiased bounded long by rejection
+    // Returns a value between zero and the bound without bias and rejects a bound that is not positive.
     public long nextLong(final long n) {
         if (n <= 0) {
             throw new IllegalArgumentException("illegal bound " + n + " (must be positive)");
@@ -69,22 +73,22 @@ public class SplitMixRandom {
         return t;
     }
 
-    // 53 random bits scaled to [0, 1)
+    // Returns a double of at least zero and below one.
     public double nextDouble() {
         return (staffordMix13(this.x += PHI) >>> 11) * 0x1.0p-53;
     }
 
-    // 24 random bits scaled to [0, 1)
+    // Returns a float of at least zero and below one.
     public float nextFloat() {
         return (staffordMix4Upper32(this.x += PHI) >>> 8) * 0x1.0p-24f;
     }
 
-    // Sign bit of a long
+    // Returns a random boolean.
     public boolean nextBoolean() {
         return staffordMix4Upper32(this.x += PHI) < 0;
     }
 
-    // Fills eight bytes per long
+    // Fills the array with random bytes.
     public void nextBytes(final byte[] bytes) {
         int i = bytes.length, n;
 
@@ -96,12 +100,12 @@ public class SplitMixRandom {
         }
     }
 
-    // Mixes the seed so similar seeds diverge
+    // Stores a state derived from the seed.
     public void setSeed(final long seed) {
         this.x = HashCommon.murmurHash3(seed);
     }
 
-    // Raw state, for reproducing a sequence exactly
+    // Stores the state directly.
     public void setState(final long state) {
         this.x = state;
     }

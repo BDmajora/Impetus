@@ -24,46 +24,57 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Predicate;
 
+// Frame that lists the option rows of one page.
 public class OptionPageFrame extends AbstractFrame {
+    // Logger of tooltip failures.
     private static final Logger LOGGER = LogManager.getLogger();
-    // Options whose tooltip threw, held weakly and by identity so their own equals and hashCode never run; their tooltip is not drawn again and the failure is reported once
+    // Options whose tooltip failed.
     private static final WeakIdentitySet<Option<?>> BROKEN_TOOLTIPS = new WeakIdentitySet<>();
-    // Height of the page-title header band rendered above the option rows
+    // Height of the page title band.
     private static final int SECTION_HEADER_HEIGHT = 18;
-    // Height of a group heading row, drawn above a named group's rows; unnamed groups keep only the padding
+    // Height of a group heading row.
     private static final int GROUP_HEADER_HEIGHT = 14;
+    // Height of an option row.
     private static final int OPTION_ROW_HEIGHT = 18;
+    // Space between groups.
     private static final int GROUP_PADDING = 4;
+    // Color of group headings.
     private static final int GROUP_HEADER_COLOR = 0xFFA8A8A8;
-    // The tooltip's impact line for each impact by ordinal, made once instead of every frame a tooltip shows
+    // Tooltip line of each impact by ordinal.
     private static final TextComponent[] IMPACT_LINES = Arrays.stream(OptionImpact.values())
             .map(impact -> TextComponent.translatable("impetus.options.performance_impact_string", impact.getLocalizedName()).withStyle(TextFormattingStyle.GRAY))
             .toArray(TextComponent[]::new);
 
+    // Page shown by the frame.
     protected final OptionPage page;
+    // Time the hover started or zero.
     private long lastTime = 0;
+    // Row under the cursor in the last frame.
     private ControlElement<?> lastHoveredElement = null;
+    // Filter that selects the visible options.
     protected final Predicate<Option<?>> optionFilter;
-    // Named-group headings at their frame-relative y, rebuilt with the frame
+    // Headings of named groups.
     private final List<GroupHeading> groupHeadings = new ArrayList<>();
 
+    // Heading text with its offset in the frame.
     private record GroupHeading(TextComponent name, int y) {
     }
 
+    // Creates a frame and rejects a null page and shows every option for a null filter.
     public OptionPageFrame(Dim2i dim, boolean renderOutline, OptionPage page, Predicate<Option<?>> optionFilter) {
         super(dim, renderOutline);
-        this.page = page;
-        this.optionFilter = optionFilter;
+        this.page = Objects.requireNonNull(page, "page");
+        this.optionFilter = optionFilter != null ? optionFilter : option -> true;
         this.setupFrame();
         this.buildFrame();
     }
 
-    // Starts a builder
+    // Creates a builder.
     public static Builder createBuilder() {
         return new Builder();
     }
 
-    // Sizes the frame to its content: one layout pass with no elements created, so the scroll container knows the height before the rows exist
+    // Sets the height of the frame to the height of its content.
     public void setupFrame() {
         this.children.clear();
         this.drawable.clear();
@@ -73,7 +84,7 @@ public class OptionPageFrame extends AbstractFrame {
         this.dim = this.dim.withHeight(this.layout(false));
     }
 
-    // Stacks the groups vertically, a heading over each named one and padding between them
+    // Creates the option rows and group headings.
     @Override
     public void buildFrame() {
         if (this.page == null) return;
@@ -88,13 +99,15 @@ public class OptionPageFrame extends AbstractFrame {
         super.buildFrame();
     }
 
-    // Walks the groups once; with create, control elements and headings are added, without it only the height is measured. Returns the content height including the page header; groups with nothing visible take no space at all
+    // Measures the content height and creates rows and headings when asked.
     private int layout(boolean create) {
         int y = SECTION_HEADER_HEIGHT;
         boolean first = true;
+        // Visible options of the current group
+        List<Option<?>> visible = new ArrayList<>();
 
         for (OptionGroup group : this.page.getGroups()) {
-            List<Option<?>> visible = new ArrayList<>();
+            visible.clear();
             for (Option<?> option : group.getOptions()) {
                 if (this.optionFilter.test(option)) {
                     visible.add(option);
@@ -127,13 +140,13 @@ public class OptionPageFrame extends AbstractFrame {
         return y;
     }
 
-    // Draws controls, then the tooltip for whichever is hovered
+    // Draws the headings and rows and the tooltip of the hovered row.
     @Override
     public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
         this.renderSectionHeader(drawContext);
         this.renderGroupHeadings(drawContext);
 
-        // The rows are all this frame holds, so one pass over them both tests the frame and finds the row
+        // Finds the hovered row
         ControlElement<?> hoveredElement = this.getCapturedChild() == null ? this.findHoveredControl(mouseX, mouseY) : null;
         super.render(drawContext, mouseX, mouseY, delta);
         if (hoveredElement != null && this.lastHoveredElement == hoveredElement) {
@@ -147,7 +160,7 @@ public class OptionPageFrame extends AbstractFrame {
         }
     }
 
-    // The first control under the cursor, a plain indexed loop since this runs every frame; a row that throws is replaced and passed over this frame
+    // Returns the first row under the cursor and replaces a row that throws.
     private ControlElement<?> findHoveredControl(int mouseX, int mouseY) {
         for (int i = 0; i < this.controlElements.size(); i++) {
             ControlElement<?> control = this.controlElements.get(i);
@@ -164,7 +177,7 @@ public class OptionPageFrame extends AbstractFrame {
         return null;
     }
 
-    // Muted group names, indented like the page title so the columns line up
+    // Draws the group names.
     private void renderGroupHeadings(DrawContext drawContext) {
         for (GroupHeading heading : this.groupHeadings) {
             int textY = this.dim.y() + heading.y() + (GROUP_HEADER_HEIGHT - drawContext.lineHeight()) / 2 + 1;
@@ -172,7 +185,7 @@ public class OptionPageFrame extends AbstractFrame {
         }
     }
 
-    // Accent bar + page name, styled after Umbra/Sodium's settings screen section headers
+    // Draws the accent bar and the page name.
     private void renderSectionHeader(DrawContext drawContext) {
         int x = this.dim.x();
         int y = this.dim.y();
@@ -183,16 +196,16 @@ public class OptionPageFrame extends AbstractFrame {
         drawContext.drawString(this.page.getName(), x + 7, textY, accentColor);
     }
 
-    // Owning mod for the tooltip footer; vanilla options are Impetus' own pages, so they never get an "added by" line
+    // Returns the mod id used to compare owners of a tooltip.
     private static String normalizeModForTooltip(@Nullable String mod) {
         return "minecraft".equals(mod) ? "impetus" : mod;
     }
 
-    // The tooltip once the hover has lasted, unless the option's own code broke it before; a tooltip that throws is reported once and left off from then on
+    // Draws the tooltip after a hover delay and reports a failing tooltip once.
     private void renderOptionTooltip(DrawContext drawContext, ControlElement<?> element) {
         if (this.lastTime + 500 > System.currentTimeMillis()) return;
 
-        // Read once, so the option checked is the one drawn and marked; a row whose getter throws is replaced like a row failing anywhere else
+        // Reads the option of the row
         Option<?> option;
         try {
             option = element.getOption();
@@ -202,7 +215,7 @@ public class OptionPageFrame extends AbstractFrame {
             }
             return;
         }
-        // A row that reports no option is replaced too, as creating it would have been refused
+        // Replaces a row without an option
         if (option == null) {
             this.recoverChild(element, new IllegalStateException("Element reports no option"));
             return;
@@ -217,18 +230,18 @@ public class OptionPageFrame extends AbstractFrame {
         } catch (VirtualMachineError fatal) {
             throw fatal;
         } catch (Throwable broken) {
-            // Anything the tooltip left pushed is taken off before the next frame draws
+            // Restores the draw state
             drawContext.unwindTo(matrices, scissors);
             if (BROKEN_TOOLTIPS.add(option)) {
                 String name = nameOf(option);
                 LOGGER.error("Tooltip of option {} failed and is no longer shown", name, broken);
-                // The log keeps the whole failure, the toast only the first line of it and of the id
+                // Shows only the first lines in the notification
                 ImpetusNotifications.error("Tooltip failed: " + FailureText.firstLine(name), FailureText.of(broken));
             }
         }
     }
 
-    // The option's id as text, its name when it has no id, or its class name when its own code throws giving either
+    // Returns the id or the name or the class name of an option.
     private static String nameOf(Option<?> option) {
         try {
             OptionIdentifier<?> id = option.getId();
@@ -239,18 +252,17 @@ public class OptionPageFrame extends AbstractFrame {
         }
     }
 
-    // Wrapped tooltip beside the control, flipped left when it would overflow
+    // Draws the tooltip below or above the row.
     private void drawOptionTooltip(DrawContext drawContext, Dim2i dim, Option<?> option) {
         int textPadding = 3;
         int boxPadding = 3;
 
         int boxWidth = dim.width();
 
-        //Offset based on mouse position, width and height of content and width and height of the window
         int boxY = dim.getLimitY();
         int boxX = dim.x();
 
-        // An option with no tooltip of its own still shows its impact and mod lines
+        // Collects the tooltip lines
         List<TextComponent> tooltip = new ArrayList<>();
         TextComponent text = option.getTooltip();
         if (text != null) {
@@ -270,7 +282,7 @@ public class OptionPageFrame extends AbstractFrame {
             tooltip.add(addedByModString);
         }
 
-        // Nothing to show draws no box at all
+        // Skips an empty tooltip
         if (tooltip.isEmpty()) {
             return;
         }
@@ -279,7 +291,7 @@ public class OptionPageFrame extends AbstractFrame {
         int boxYLimit = boxY + boxHeight;
         int boxYCutoff = this.dim.getLimitY();
 
-        // If the box is going to be cutoff on the Y-axis, move it back up the difference
+        // Moves the box above the row when it passes the bottom
         if (boxYLimit > boxYCutoff) {
             boxY -= boxHeight + dim.height();
         }
@@ -289,7 +301,7 @@ public class OptionPageFrame extends AbstractFrame {
         }
 
         drawContext.pushMatrix();
-        // Popped however the drawing ends, so a failure inside never leaves the transform pushed
+        // Pops the transform on every path
         try {
             drawContext.translate(0, 0, 90);
 
@@ -304,37 +316,42 @@ public class OptionPageFrame extends AbstractFrame {
         }
     }
 
+    // Collects the settings of an option page frame.
     public static class Builder {
+        // Bounds of the frame.
         private Dim2i dim;
+        // Outline state of the frame.
         private boolean renderOutline;
+        // Page shown by the frame.
         private OptionPage page;
+        // Filter that selects the visible options.
         private Predicate<Option<?>> optionFilter = o -> true;
 
-        // Frame bounds
+        // Stores the bounds of the frame.
         public Builder setDimension(Dim2i dim) {
             this.dim = dim;
             return this;
         }
 
-        // Debug outline
+        // Stores whether the frame draws an outline.
         public Builder shouldRenderOutline(boolean renderOutline) {
             this.renderOutline = renderOutline;
             return this;
         }
 
-        // The page to show
+        // Stores the page.
         public Builder setOptionPage(OptionPage page) {
             this.page = page;
             return this;
         }
 
-        // Hides options failing the predicate, for search
+        // Stores the option filter.
         public Builder setOptionFilter(Predicate<Option<?>> optionFilter) {
             this.optionFilter = optionFilter;
             return this;
         }
 
-        // Finalises
+        // Creates the frame and rejects missing bounds or page.
         public OptionPageFrame build() {
             Objects.requireNonNull(this.dim, "Dimension must be specified");
             Objects.requireNonNull(this.page, "Option Page must be specified");

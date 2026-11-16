@@ -6,10 +6,12 @@ import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.init.SoundEvents;
 import com.bdmajora.impetus.engine.impl.gui.framework.InteractionContext;
 
+// Choices of the vintage interaction context setting.
 public enum VintageInteractionContext implements InteractionContext {
+    // Value that selects instance.
     INSTANCE;
 
-    // Maps Sodium's modifier keys onto LWJGL2 keyboard state
+    // Returns whether a modifier key is held.
     @Override
     public boolean isSpecialKeyDown(SpecialKey key) {
         return switch (key) {
@@ -19,7 +21,7 @@ public enum VintageInteractionContext implements InteractionContext {
         };
     }
 
-    // Vanilla's button click
+    // Plays the click sound.
     @Override
     public void playClickSound() {
         Minecraft.getMinecraft().getSoundHandler().playSound(

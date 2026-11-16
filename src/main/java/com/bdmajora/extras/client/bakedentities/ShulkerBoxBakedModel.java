@@ -13,14 +13,17 @@ import org.joml.Matrix4f;
 import java.util.Collections;
 import java.util.List;
 
-// Shulker boxes at rest: base and lid in the closed pose under the box's colour; a box mid-animation hands itself back to the renderer
+// Baked model of shulker boxes.
 public final class ShulkerBoxBakedModel extends BakedEntityModel {
+    // Base model of shulkers.
     private final ModelShulker model = new ModelShulker();
 
+    // Returns the texture of the color.
     static ResourceLocation texture(EnumDyeColor color) {
         return new ResourceLocation("minecraft", "entity/shulker/shulker_" + color.getName());
     }
 
+    // Returns the quads of the shulker box state.
     @Override
     protected List<BakedQuad> quadsFor(IBlockState state, BakedEntityContext context) {
         if (!(state.getBlock() instanceof BlockShulkerBox)) {
@@ -35,7 +38,7 @@ public final class ShulkerBoxBakedModel extends BakedEntityModel {
         return variant(key, k -> bake(facing, color));
     }
 
-    // The colour is private on the block; the colour-to-block table is public, so invert it
+    // Returns the color of the block.
     static EnumDyeColor colorOf(BlockShulkerBox block) {
         for (EnumDyeColor color : EnumDyeColor.values()) {
             if (BlockShulkerBox.getBlockByColor(color) == block) {
@@ -45,7 +48,7 @@ public final class ShulkerBoxBakedModel extends BakedEntityModel {
         return EnumDyeColor.PURPLE;
     }
 
-    // TileEntityShulkerBoxRenderer's setup with the lid at progress zero, minus its 0.9995 shrink: in the mesh that left a hairline slit at every seam of stacked or neighbouring boxes, and the full-size box also covers the renderer's own copy in the ticks after a close
+    // Returns the quads of one variant.
     private List<BakedQuad> bake(EnumFacing facing, EnumDyeColor color) {
         Matrix4f matrix = new Matrix4f();
         matrix.translate(0.5F, 1.5F, 0.5F);
@@ -84,6 +87,7 @@ public final class ShulkerBoxBakedModel extends BakedEntityModel {
         }
     }
 
+    // Returns the sprite of the particles.
     @Override
     protected TextureAtlasSprite particleSprite() {
         return BakedEntities.sprite(texture(EnumDyeColor.PURPLE));

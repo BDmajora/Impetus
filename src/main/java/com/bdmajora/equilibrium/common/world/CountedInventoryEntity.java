@@ -4,10 +4,12 @@ import net.minecraft.world.World;
 
 import javax.annotation.Nullable;
 
-// Records which world counts this entity in its inventory-entity total (on Entity by mixin); onEntityAdded/onEntityRemoved are not a matched pair, so holding the world makes the accounting structural
+// Entity that remembers the world that counted it.
 public interface CountedInventoryEntity {
+    // Returns the world that counted the entity or null.
     @Nullable
     World equilibrium$getCountedWorld();
 
+    // Stores the world that counted the entity.
     void equilibrium$setCountedWorld(@Nullable World world);
 }

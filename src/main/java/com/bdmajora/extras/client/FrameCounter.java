@@ -8,29 +8,41 @@ import net.minecraftforge.fml.relauncher.SideOnly;
 
 import java.util.Arrays;
 
-// Frame timings over a rolling five-second window as average / 1% low / 0.1% low (Sodium Extra's benchmarking definition, mean of the slowest N%); recomputed at most twice a second from a ring-buffer append per frame
+// Measures the frame rate over a sliding window.
 @Mod.EventBusSubscriber(Side.CLIENT)
 @SideOnly(Side.CLIENT)
 public final class FrameCounter {
+    // Length of the sliding window.
     private static final long WINDOW_NS = 5_000_000_000L;
+    // Time between recalculations.
     private static final long CACHE_INTERVAL_NS = 500_000_000L;
 
+    // Time of each sample.
     private static long[] sampleTimes = new long[512];
+    // Length of each frame.
     private static long[] sampleDeltas = new long[512];
+    // Position of the oldest sample.
     private static int sampleHead;
+    // Number of samples.
     private static int sampleCount;
 
+    // Time of the previous frame.
     private static long lastFrameTime;
+    // Time of the last recalculation.
     private static long lastCacheTime;
 
+    // Average frame rate.
     private static int cachedAverageFps;
+    // Frame rate of the slowest one percent.
     private static int cachedOnePercentLowFps;
+    // Frame rate of the slowest tenth of a percent.
     private static int cachedPointOnePercentLowFps;
 
+    // Prevents instantiation
     private FrameCounter() {
     }
 
-    // Records one frame time per render tick and recomputes the percentiles on a fixed interval
+    // Records the frame and drops old samples.
     @SubscribeEvent
     public static void onRenderTick(TickEvent.RenderTickEvent event) {
         if (event.phase != TickEvent.Phase.START) {
@@ -39,7 +51,6 @@ public final class FrameCounter {
 
         long now = System.nanoTime();
 
-        // The first observed frame only seeds the timer; there is nothing to measure against yet.
         if (lastFrameTime != 0) {
             long delta = now - lastFrameTime;
             if (delta > 0) {
@@ -59,22 +70,22 @@ public final class FrameCounter {
         }
     }
 
-    // Mean over the sample window, cached between recalculations
+    // Returns the average frame rate.
     public static int getAverageFps() {
         return cachedAverageFps;
     }
 
-    // FPS at the 1st percentile of frame times, cached
+    // Returns the frame rate of the slowest one percent.
     public static int getOnePercentLowFps() {
         return cachedOnePercentLowFps;
     }
 
-    // FPS at the 0.1st percentile of frame times, cached
+    // Returns the frame rate of the slowest tenth of a percent.
     public static int getPointOnePercentLowFps() {
         return cachedPointOnePercentLowFps;
     }
 
-    // Sorts the current window and derives the three figures; zeros when empty
+    // Recomputes the frame rates.
     private static void recalculate() {
         int size = sampleCount;
         if (size == 0) {
@@ -100,7 +111,7 @@ public final class FrameCounter {
         cachedPointOnePercentLowFps = percentileLow(deltas, 0.1);
     }
 
-    // Appends to the ring, doubling the arrays when full
+    // Stores a sample and grows the arrays when full.
     private static void addSample(long time, long delta) {
         if (sampleCount == sampleTimes.length) {
             int capacity = sampleTimes.length * 2;
@@ -124,7 +135,7 @@ public final class FrameCounter {
         sampleCount++;
     }
 
-    // The mean of the slowest percent of frames, as an FPS figure.
+    // Returns the frame rate of the slowest share of frames.
     private static int percentileLow(long[] ascendingDeltas, double percent) {
         int count = (int) Math.ceil(ascendingDeltas.length * (percent / 100.0));
         if (count == 0) {

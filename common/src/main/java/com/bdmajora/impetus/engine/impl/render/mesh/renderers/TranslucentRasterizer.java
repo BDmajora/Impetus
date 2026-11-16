@@ -4,10 +4,12 @@ import com.bdmajora.impetus.engine.impl.gl.shader.ShaderConstants;
 import com.bdmajora.impetus.engine.impl.gl.shader.ShaderType;
 import com.bdmajora.impetus.engine.impl.render.mesh.gl.MeshProgram;
 
-// Translucent terrain from the mirrored command buffer the section rasterizer wrote this frame, so regions arrive farthest first; blending state is the caller's, as vanilla sets it up for the translucent layer
+// Draws the translucent terrain from the commands of the section rasterizer.
 public class TranslucentRasterizer {
+    // Program of the draw.
     private final MeshProgram program;
 
+    // Creates the program.
     public TranslucentRasterizer(ShaderConstants constants) {
         this.program = MeshProgram.builder("mesh/translucent")
                 .constants(constants)
@@ -17,18 +19,18 @@ public class TranslucentRasterizer {
                 .link();
     }
 
-    // One multi-draw over every visible region's translucent sections
+    // Binds the program and draws the commands of every region.
     public void raster(int regionCount, long commandBufferAddress) {
         this.program.bind();
         TerrainRasterizer.drawIndirect(regionCount, commandBufferAddress);
     }
 
-    // glUseProgram, for a caller drawing its command list itself
+    // Binds the program.
     public void bind() {
         this.program.bind();
     }
 
-    // Frees the program
+    // Deletes the program.
     public void delete() {
         this.program.delete();
     }

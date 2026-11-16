@@ -11,15 +11,20 @@ import net.minecraft.client.gui.ScaledResolution;
 
 import java.util.List;
 
+// Draws the visible notifications as toasts in the top right corner.
 public final class ImpetusToastRenderer {
+    // Width of a toast in scaled pixels.
     private static final int WIDTH = 250;
+    // Inner padding of a toast.
     private static final int PADDING = 6;
+    // Space between toasts.
     private static final int GAP = 4;
 
+    // Prevents instantiation
     private ImpetusToastRenderer() {
     }
 
-    // Draws the pending notification in the top-right corner
+    // Draws every visible notification when toasts are on.
     public static void render(Minecraft client, ScaledResolution resolution) {
         if (!ImpetusVintage.options().notifications.showToasts) {
             return;
@@ -54,7 +59,7 @@ public final class ImpetusToastRenderer {
         }
     }
 
-    // Bar colour per severity
+    // Returns the accent color of a level.
     private static int accentColor(ImpetusNotification.Level level) {
         return switch (level) {
             case INFO -> DefaultColors.ELEMENT_ACTIVATED;
@@ -63,7 +68,7 @@ public final class ImpetusToastRenderer {
         };
     }
 
-    // Truncates with an ellipsis to fit the toast
+    // Returns a text cut to a width with an ellipsis.
     private static String trim(FontRenderer font, String text, int width) {
         return font.getStringWidth(text) <= width ? text : font.trimStringToWidth(text, width - font.getStringWidth("...")) + "...";
     }

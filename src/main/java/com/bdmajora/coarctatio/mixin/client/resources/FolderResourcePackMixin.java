@@ -12,22 +12,26 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.io.File;
 import java.util.Set;
 
-// A directory pack answers each lookup with a stat and a canonical-path resolution (the latter to reject wrong-case names on case-insensitive filesystems); the tree is walked once per reload instead, and membership in an exact-case index answers both questions
+// Mixin that changes FolderResourcePack.
 @Mixin(FolderResourcePack.class)
 public abstract class FolderResourcePackMixin extends AbstractResourcePack implements IndexedResourcePack {
+    // Creates a folder resource pack mixin from its file.
     protected FolderResourcePackMixin(File file) {
         super(file);
     }
 
+    // Relative paths of the files in the folder.
     private Set<String> coarctatio$files;
+    // Generation of the file index.
     private int coarctatio$indexedGeneration = -1;
 
+    // Runs at the start of getFile and can cancel it.
     @Inject(method = "getFile", at = @At("HEAD"), cancellable = true)
     private void coarctatio$lookupInIndex(String name, CallbackInfoReturnable<File> cir) {
         cir.setReturnValue(this.coarctatio$indexedPaths().contains(name) ? new File(this.resourcePackFile, name) : null);
     }
 
-    // The same index, for the texture scan; rebuilt when the reload generation moved on
+    // Handles indexed paths.
     @Override
     public Set<String> coarctatio$indexedPaths() {
         int generation = ResourceLookupCaches.generation();

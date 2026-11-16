@@ -18,7 +18,7 @@ import java.lang.invoke.MethodType;
 import java.lang.reflect.Modifier;
 import java.util.function.Function;
 
-// Forge builds every entity through Constructor.newInstance, which re-checks access and boxes the world on each spawn (Chibi's fasterEntitySpawnPreparation); a LambdaMetafactory-spun Function bound to the (World) constructor is a direct call the JIT can inline. Falls back to Forge's factory for anything the lookup cannot see. remap = false, Forge class
+// Mixin that changes EntityEntry.
 @Mixin(value = EntityEntry.class, remap = false)
 public abstract class EntityEntryMixin {
     @Shadow
@@ -27,13 +27,13 @@ public abstract class EntityEntryMixin {
     @Shadow
     Function<World, ? extends Entity> factory;
 
+    // Runs at the start of init and can cancel it.
     @Inject(method = "init", at = @At("HEAD"), cancellable = true)
     private void equilibrium$spinConstructorLambda(CallbackInfo ci) {
         if (this.cls == null || Modifier.isAbstract(this.cls.getModifiers())) {
             return;
         }
         try {
-            // A private lookup in the entity's own class can see a package-private or protected constructor, which mods do declare
             MethodHandles.Lookup lookup = privateLookup(this.cls);
             MethodHandle ctor = lookup.findConstructor(this.cls, MethodType.methodType(void.class, World.class));
             CallSite site = LambdaMetafactory.metafactory(lookup, "apply",
@@ -50,7 +50,7 @@ public abstract class EntityEntryMixin {
         }
     }
 
-    // Full-privilege lookup on the entity class, so private constructors get a spun factory too; entity classes and this one share the unnamed module, which opens everything, and the plain lookup still serves public constructors if a mod's loader says otherwise
+    // Handles private lookup.
     private static MethodHandles.Lookup privateLookup(Class<?> target) throws ReflectiveOperationException {
         try {
             return MethodHandles.privateLookupIn(target, MethodHandles.lookup());

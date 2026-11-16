@@ -7,36 +7,43 @@ import org.spongepowered.asm.mixin.Mixin;
 
 import javax.annotation.Nullable;
 
-// The trigger only receives the inventory, so the changed stack rides along on it for the duration of one trigger call
+// Mixin that changes InventoryPlayer.
 @Mixin(InventoryPlayer.class)
 public abstract class InventoryPlayerMixin implements SlotChangeContext {
+    // Stack that changed.
     @Nullable
     private ItemStack equilibrium$changed;
+    // Cached slot counts.
     @Nullable
     private SlotCounts equilibrium$counts;
 
+    // Handles changed stack.
     @Override
     @Nullable
     public ItemStack equilibrium$changedStack() {
         return this.equilibrium$changed;
     }
 
+    // Handles set changed stack.
     @Override
     public void equilibrium$setChangedStack(ItemStack stack) {
         this.equilibrium$changed = stack;
     }
 
+    // Handles slot counts.
     @Override
     @Nullable
     public SlotCounts equilibrium$slotCounts() {
         return this.equilibrium$counts;
     }
 
+    // Handles set slot counts.
     @Override
     public void equilibrium$setSlotCounts(int full, int empty, int occupied) {
         this.equilibrium$counts = new SlotCounts(full, empty, occupied);
     }
 
+    // Handles clear.
     @Override
     public void equilibrium$clear() {
         this.equilibrium$changed = null;

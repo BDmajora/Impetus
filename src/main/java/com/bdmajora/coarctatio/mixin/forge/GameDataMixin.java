@@ -13,9 +13,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.Locale;
 
-// Every registry name goes through this; a name that already carries a namespace is returned as given without consulting the active mod or logging the "potentially dangerous alternative prefix" warning, which a large pack emits by the thousand (UniversalTweaks, by Darkhax). Every caller passes warnOverrides, so the result matches vanilla's. remap = false, Forge class
+// Mixin that changes GameData.
 @Mixin(value = GameData.class, remap = false)
 public abstract class GameDataMixin {
+    // Runs at the start of checkPrefix and can cancel it.
     @Inject(method = "checkPrefix(Ljava/lang/String;Z)Lnet/minecraft/util/ResourceLocation;", at = @At("HEAD"), cancellable = true)
     private static void coarctatio$quietPrefixCheck(String name, boolean warnOverrides, CallbackInfoReturnable<ResourceLocation> cir) {
         int separator = name.lastIndexOf(':');

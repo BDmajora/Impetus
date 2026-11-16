@@ -97,4 +97,23 @@ class CustomTextureTransformerTest {
         // Closing did nothing to the stream underneath
         assertEquals(8, bytes.read());
     }
+
+    // Rejects image sizes that are not positive and relative sizes that are not finite.
+    @Test
+    void imageSizesMustBePositive() {
+        assertNotNull(CustomImageDefinition.parse("a", "img RGBA RGBA8 UNSIGNED_BYTE false false 1 1"));
+        assertNotNull(CustomImageDefinition.parse("a", "img RGBA RGBA8 UNSIGNED_BYTE false false 4 4 0"));
+        assertNull(CustomImageDefinition.parse("a", "img RGBA RGBA8 UNSIGNED_BYTE false false 0 4"));
+        assertNull(CustomImageDefinition.parse("a", "img RGBA RGBA8 UNSIGNED_BYTE false false 4 -1"));
+        assertNull(CustomImageDefinition.parse("a", "img RGBA RGBA8 UNSIGNED_BYTE false false 4 4 -1"));
+        assertNull(CustomImageDefinition.parse("a", "img RGBA RGBA8 UNSIGNED_BYTE false false 2147483648 4"));
+        CustomImageDefinition relative = CustomImageDefinition.parse("a", "img RGBA RGBA8 UNSIGNED_BYTE true true 0.5 2");
+        assertNotNull(relative);
+        assertTrue(relative.clear);
+        assertEquals(0.5f, relative.relativeX);
+        assertNull(CustomImageDefinition.parse("a", "img RGBA RGBA8 UNSIGNED_BYTE false true 0 1"));
+        assertNull(CustomImageDefinition.parse("a", "img RGBA RGBA8 UNSIGNED_BYTE false true NaN 1"));
+        assertNull(CustomImageDefinition.parse("a", "img RGBA RGBA8 UNSIGNED_BYTE false true Infinity 1"));
+        assertNull(CustomImageDefinition.parse("a", "img RGBA RGBA8 UNSIGNED_BYTE false true 1 -0.5"));
+    }
 }

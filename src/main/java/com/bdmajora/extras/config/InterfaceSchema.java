@@ -5,9 +5,9 @@ import com.bdmajora.extras.ExtrasConfig.HudSettings;
 import com.bdmajora.extras.ExtrasConfig.TextSettings;
 import com.bdmajora.extras.ExtrasConfig.ZoomSettings;
 
-// Settings of the overlays and toasts and HUD and text and zoom
+// Schema of the interface settings.
 final class InterfaceSchema {
-    // Overlay and toast and quality of life settings
+    // Schema of the extra settings.
     static final SettingGroup<ExtraSettings> EXTRA = SettingGroup.builder("extra", c -> c.extra, ExtraSettings::new)
             .bool("showFps", "Show the FPS overlay", s -> s.showFps, (s, v) -> s.showFps = v)
             .bool("showFPSExtended", "Include average, 1% low and 0.1% low in the FPS overlay",
@@ -46,7 +46,7 @@ final class InterfaceSchema {
                     s -> s.weatherOverride, (s, v) -> s.weatherOverride = v)
             .build();
 
-    // HUD framebuffer cache switch and rate
+    // Schema of the hud settings.
     static final SettingGroup<HudSettings> HUD = SettingGroup.builder("hud", c -> c.hud, HudSettings::new)
             .bool("cacheEnabled", "Draw the HUD into a framebuffer at a capped rate and composite it every frame; crosshair and vignette stay live",
                     s -> s.cacheEnabled, (s, v) -> s.cacheEnabled = v)
@@ -54,13 +54,13 @@ final class InterfaceSchema {
                     s -> s.cacheFps, (s, v) -> s.cacheFps = v)
             .build();
 
-    // Glyph batching switch
+    // Schema of the text settings.
     static final SettingGroup<TextSettings> TEXT = SettingGroup.builder("text", c -> c.text, TextSettings::new)
             .bool("batchGlyphs", "Draw each string's glyphs in one batch instead of one immediate-mode quad per glyph",
                     s -> s.batchGlyphs, (s, v) -> s.batchGlyphs = v)
             .build();
 
-    // Hold to zoom switches and zoom level
+    // Schema of the zoom settings.
     static final SettingGroup<ZoomSettings> ZOOM = SettingGroup.builder("zoom", c -> c.zoom, ZoomSettings::new)
             .bool("enabled", "Zoom while the zoom key (C by default) is held", s -> s.enabled, (s, v) -> s.enabled = v)
             .bool("smoothCamera", "Turn the cinematic camera on while zoomed", s -> s.smoothCamera, (s, v) -> s.smoothCamera = v)

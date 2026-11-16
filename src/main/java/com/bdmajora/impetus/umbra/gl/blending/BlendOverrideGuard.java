@@ -4,25 +4,26 @@ import org.lwjgl.opengl.GL11;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Holds a pack's blend.<program>=off in place while vanilla's fixed-function renderers (which call enableBlend themselves) draw into packed gbuffer targets; only the enable is suppressed, replaying full state broke the hand
+// Guard that stops blend changes while a program blend override is active.
 public final class BlendOverrideGuard {
-    // Set between the two hooks below, while the pack's blend state is being applied and the result is not yet known
+    // Flag set while blend calls are captured.
     private static boolean capturing;
-    // True once a pack override has been captured and is being enforced
+    // Flag set while blend calls are blocked.
     private static boolean locked;
-    // Only an override that turned blend OFF is worth enforcing; one that left it on agrees with vanilla anyway
+    // Flag set when the locked state has blending off.
     private static boolean lockedBlendOff;
 
+    // Prevents instantiation
     private BlendOverrideGuard() {
     }
 
-    // Called immediately before a program's blend state is applied; releases first so a previous program's lock cannot leak
+    // Locks blend calls before a program override applies.
     public static void beforeProgramBlendApply(boolean active) {
         release();
         capturing = active;
     }
 
-    // Called immediately after; reads real GL rather than trusting the request, since the directive goes through vanilla's state manager and may not have taken
+    // Unlocks blend calls after a program override applied.
     public static void afterProgramBlendApply() {
         if (!capturing) {
             return;
@@ -32,19 +33,19 @@ public final class BlendOverrideGuard {
         lockedBlendOff = LWJGL.glGetInteger(GL11.GL_BLEND) == 0;
     }
 
-    // Ends the override so vanilla's enableBlend works again
+    // Lets blend calls through again.
     public static void release() {
         locked = false;
         capturing = false;
         lockedBlendOff = false;
     }
 
-    // The hook GlStateManager.enableBlend consults; true means "swallow this call"
+    // Returns whether an enable blend call may run.
     public static boolean recordEnableBlend() {
         return shouldSuppressBlendEnable();
     }
 
-    // True only while a blend-off program is bound and drawing into the gbuffer
+    // Returns whether suppress blend enable.
     private static boolean shouldSuppressBlendEnable() {
         return locked && lockedBlendOff;
     }

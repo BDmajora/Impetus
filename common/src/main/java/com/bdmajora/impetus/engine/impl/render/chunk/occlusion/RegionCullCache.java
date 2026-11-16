@@ -9,71 +9,47 @@ import java.util.Arrays;
 import static com.bdmajora.impetus.engine.impl.common.util.MathUtil.nearestToZero;
 import static com.bdmajora.impetus.engine.impl.render.chunk.region.RenderRegion.*;
 
-/**
- * Per-search memoization for region-level visibility classification.
- *
- * <p>Sections are grouped into dense 8x4x8-section regions
- * ({@code 128x64x128} blocks). The cache computes a conservative result for
- * each region once per search, then lets {@link OcclusionCuller} avoid the
- * exact distance and frustum tests whenever the region result is conclusive.
- * Region ids are dense and serve directly as cache indices.
- *
- * <p>The classification contract is:
- * <ul>
- *   <li>{@link #OUTSIDE}: every section is guaranteed to fail the
- *       combined render-distance/frustum visibility test;</li>
- *   <li>{@link #FULLY_INSIDE}: every section is guaranteed to pass both
- *       tests;</li>
- *   <li>{@link #PARTIAL_DISTANCE_IN}: every section passes the distance test,
- *       but the caller must test each section against the frustum;</li>
- *   <li>{@link #PARTIAL_FRUSTUM_IN}: every section passes the frustum test,
- *       but the caller must test each section's distance; and</li>
- *   <li>{@link #PARTIAL}: both tests are inconclusive at region level, so the
- *       caller must run both per section.</li>
- * </ul>
- *
- * <p>The cache is mutable and intended for one search at a time. Call
- * {@link #begin(Viewport, float, int)} before {@link #classify}; it resets the
- * classification array so no result leaks between searches.
- */
+// Memoizes the visibility class of each region during one search.
 final class RegionCullCache {
+    // Every section passes both tests.
     static final int FULLY_INSIDE = Frustum.FULLY_INSIDE;
+    // Both tests are inconclusive.
     static final int PARTIAL = Frustum.PARTIALLY_INSIDE;
+    // Every section passes the distance test.
     static final int PARTIAL_DISTANCE_IN = 2;
+    // Every section passes the frustum test.
     static final int PARTIAL_FRUSTUM_IN = 3;
+    // Every section fails a test.
     static final int OUTSIDE = 4;
 
-    // Sentinel stored in unclassified slots; distinct from every classification result.
+    // Value of a region that was not classified.
     static final byte UNCOMPUTED = -1;
 
-    // Per-section frustum padding is 9.125 - 8 = 1.125 blocks. Add a
-    // further 1/32 block to absorb camera-relative floating-point rounding.
+    // Padding of the frustum box in blocks.
     private static final float FRUSTUM_PAD = 1.125f + 0.03125f;
 
-    // Slack for distance bounds; errors at render-distance magnitudes are
-    // approximately 1e-4, so this keeps conservative comparisons stable.
+    // Slack of the distance bounds in blocks.
     private static final float DISTANCE_EPSILON = 0.001f;
 
+    // Starting size of the cache.
     private static final int INITIAL_CAPACITY = 64;
 
-    // Indexed by dense region id; UNCOMPUTED until classified in the current search.
+    // Class of each region by id.
     private byte[] classification = new byte[INITIAL_CAPACITY];
 
-    // Search configuration, refreshed by begin().
+    // Viewport of the search.
     private Viewport viewport;
+    // Camera of the search.
     private CameraTransform camera;
+    // Search distance.
     private float maxDistance;
 
-    /**
-     * Start a search and configure the camera-relative bounds used by
-     * subsequent classifications.
-     *
-     * @param viewport current camera and frustum
-     * @param searchDistance maximum horizontal/vertical render distance
-     * @param numRegions exclusive upper bound of the dense region ids that
-     *                    may be passed to {@link #classify}
-     */
+    // Starts a search and clears the classes and rejects a null viewport or a negative region count.
     void begin(Viewport viewport, float searchDistance, int numRegions) {
+        java.util.Objects.requireNonNull(viewport, "viewport");
+        if (numRegions < 0) {
+            throw new IllegalArgumentException("Negative region count " + numRegions);
+        }
         this.viewport = viewport;
         this.camera = viewport.getTransform();
         this.maxDistance = searchDistance;
@@ -83,18 +59,7 @@ final class RegionCullCache {
         Arrays.fill(this.classification, 0, numRegions, UNCOMPUTED);
     }
 
-    /**
-     * Return the cached classification for a region, computing it on first
-     * use in the current search.
-     *
-     * @param regionId dense region id and cache slot
-     * @param regionOriginX block X coordinate of the region's minimum corner
-     * @param regionOriginY block Y coordinate of the region's minimum corner
-     * @param regionOriginZ block Z coordinate of the region's minimum corner
-     * @return one of this cache's classification constants
-     * @implNote The origin must correspond to {@code regionId}; only the first
-     *           classification for an id is computed in a search.
-     */
+    // Returns the class of a region and computes it on first use.
     int classify(int regionId, int regionOriginX, int regionOriginY, int regionOriginZ) {
 
         byte result = this.classification[regionId];
@@ -107,31 +72,18 @@ final class RegionCullCache {
         return result;
     }
 
-    /**
-     * Return a region's classification without computing it.
-     *
-     * <p>For callers that can obtain the region origin only at a cost: the origin is needed just to compute a
-     * classification, and there are far fewer regions than sections, so testing for a hit first keeps that cost off
-     * the common path.
-     *
-     * @return one of this cache's classification constants, or {@link #UNCOMPUTED} if this search has not
-     *         classified the region yet
-     */
+    // Returns the class of a region or the uncomputed marker.
     int cached(int regionId) {
         return this.classification[regionId];
     }
 
-    // Grow the classification array; contents are reset by the next begin().
+    // Replaces the cache with a larger one.
     private void grow(int minimumCapacity) {
         int capacity = Math.max(minimumCapacity, this.classification.length * 2);
         this.classification = new byte[capacity];
     }
 
-    /**
-     * Compute conservative region bounds. Distance is rejected first when the
-     * nearest possible section point is too far away; otherwise the padded
-     * region box is classified against the camera frustum.
-     */
+    // Computes the conservative class of a region.
     private int compute(int regionOriginX, int regionOriginY, int regionOriginZ) {
         final CameraTransform t = this.camera;
         final float maxDistance = this.maxDistance;
@@ -140,8 +92,7 @@ final class RegionCullCache {
         final int ay = regionOriginY - t.intY, by = ay + REGION_BLOCK_HEIGHT;
         final int az = regionOriginZ - t.intZ, bz = az + REGION_BLOCK_LENGTH;
 
-        // Signed range of the nearest-point distance component for all member
-        // section boxes along each axis.
+        // Calculates the nearest distance range on each axis
         final float loX = nearestToZero(ax, ax + 16) - t.fracX;
         final float hiX = nearestToZero(bx - 16, bx) - t.fracX;
         final float loY = nearestToZero(ay, ay + 16) - t.fracY;
@@ -149,28 +100,26 @@ final class RegionCullCache {
         final float loZ = nearestToZero(az, az + 16) - t.fracZ;
         final float hiZ = nearestToZero(bz - 16, bz) - t.fracZ;
 
-        // Upper bound on every member's absolute distance component.
+        // Calculates the largest distance on each axis
         final float farX = maxAbs(loX, hiX) + DISTANCE_EPSILON;
         final float farY = maxAbs(loY, hiY) + DISTANCE_EPSILON;
         final float farZ = maxAbs(loZ, hiZ) + DISTANCE_EPSILON;
 
-        // Lower bound on every member's absolute distance component.
+        // Calculates the smallest distance on each axis
         final float nearX = Math.max(0.0f, minAbs(loX, hiX) - DISTANCE_EPSILON);
         final float nearY = Math.max(0.0f, minAbs(loY, hiY) - DISTANCE_EPSILON);
         final float nearZ = Math.max(0.0f, minAbs(loZ, hiZ) - DISTANCE_EPSILON);
 
         final float maxDistanceSq = maxDistance * maxDistance;
 
-        // If even the nearest possible point fails the distance test, every
-        // section is out of range and the frustum need not be queried.
+        // Rejects the region when the nearest point is too far
         boolean distanceOut = ((nearX * nearX) + (nearZ * nearZ)) >= maxDistanceSq || nearY >= maxDistance;
 
         if (distanceOut) {
             return OUTSIDE;
         }
 
-        // Only claim a conclusive pass when the farthest possible point is
-        // still strictly inside the distance bounds.
+        // Accepts the distance only when the farthest point is inside
         boolean distanceIn = ((farX * farX) + (farZ * farZ)) < maxDistanceSq && farY < maxDistance;
 
         int result = this.viewport.intersectCameraRelativeBox(
@@ -192,12 +141,12 @@ final class RegionCullCache {
         return distanceIn ? PARTIAL_DISTANCE_IN : PARTIAL;
     }
 
-    // Largest absolute value in a signed interval.
+    // Returns the largest absolute value of an interval.
     private static float maxAbs(float lo, float hi) {
         return Math.max(Math.abs(lo), Math.abs(hi));
     }
 
-    // Smallest absolute value in a signed interval.
+    // Returns the smallest absolute value of an interval.
     private static float minAbs(float lo, float hi) {
         if (lo > 0.0f) {
             return lo;

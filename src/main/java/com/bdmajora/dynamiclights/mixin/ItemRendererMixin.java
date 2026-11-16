@@ -14,19 +14,23 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
 
-// Lights the first-person hand and held item, which are drawn after the world with their own lightmap and would otherwise stay dark; raises getCombinedLight's MINIMUM BLOCK LIGHT argument, vanilla's own mechanism for held light
+// Mixin that changes ItemRenderer.
 @Mixin(ItemRenderer.class)
 public abstract class ItemRendererMixin {
+    // Reference to the field item stack main hand of the target.
     @Shadow
     private ItemStack itemStackMainHand;
 
+    // Reference to the field item stack off hand of the target.
     @Shadow
     private ItemStack itemStackOffHand;
 
+    // Reference to the field mc of the target.
     @Shadow
     @Final
     private Minecraft mc;
 
+    // Changes an argument of the call of WorldClient in setLightmap.
     @ModifyArg(
             method = "setLightmap",
             at = @At(value = "INVOKE",
@@ -45,7 +49,6 @@ public abstract class ItemRendererMixin {
                 DynamicLightsEngine.getLuminanceFromItemStack(this.itemStackMainHand, submerged),
                 DynamicLightsEngine.getLuminanceFromItemStack(this.itemStackOffHand, submerged));
 
-        // Also take the light of anything else nearby, so standing next to a lit creeper lights the hand.
         int surrounding = (int) DynamicLights.engine().getDynamicLightLevel(
                 MathHelper.floor(player.posX), MathHelper.floor(player.posY + player.getEyeHeight()), MathHelper.floor(player.posZ));
 

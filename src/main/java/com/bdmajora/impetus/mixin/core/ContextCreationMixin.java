@@ -8,8 +8,10 @@ import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
+// Mixin that changes Minecraft.
 @Mixin(Minecraft.class)
 public class ContextCreationMixin {
+    // Wraps the call of Builder.build in init.
     @WrapOperation(method = "init", at = @At(value = "INVOKE", target = "Lcom/cleanroommc/client/sdl/Window$Builder;build()Lcom/cleanroommc/client/sdl/Window;", remap = false))
     private Window impetus$createWindow(Window.Builder builder, Operation<Window> original) {
         return ContextCreation.create(() -> original.call(builder));

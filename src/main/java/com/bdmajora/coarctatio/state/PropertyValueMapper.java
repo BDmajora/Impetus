@@ -20,20 +20,22 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
-// Packs every listed property of a block into one int (FoamFix's technique), replacing vanilla's per-state ImmutableTable (250-400 MB on a 300-mod pack); values resolve via the block's own property, allocation is bounded by MAX_STATE_ARRAY, and the table is still producible on demand
+// Packs the property values of a block into one int and finds states by it.
 public final class PropertyValueMapper {
-    // Hard ceiling on the shared state array; a block needing more than a million slots is pathological and falling back to vanilla costs a table that was never going to fit
+    // Largest number of states a mapper may hold.
     private static final int MAX_STATE_ARRAY = 1 << 20;
 
-    // Per-property immutable entries shared by every block using a static property (BlockHorizontal.FACING etc); reference-keyed since two equal-but-distinct properties may order values differently
+    // Entries by property.
     private static final Map<IProperty<?>, Entry> ENTRY_CACHE = new Reference2ObjectOpenHashMap<>();
 
-    // Counters for the memory report; atomic because block registration is not thread-confined once mods register from their own init
+    // Count of blocks that got a mapper.
     private static final AtomicInteger BLOCKS_MAPPED = new AtomicInteger();
+    // Count of blocks left on vanilla states.
     private static final AtomicInteger BLOCKS_SKIPPED = new AtomicInteger();
+    // Count of neighbor tables built on demand.
     static final AtomicInteger TABLES_MATERIALISED = new AtomicInteger();
 
-    // Orders properties least-wasteful first (waste = padded width minus real value count) so the worst fit's unused tail runs off the end of the array; ties break on name so the layout is deterministic across launches
+    // Order that puts the least wasteful properties first.
     private static final Comparator<Entry> BY_BIT_FITNESS = (a, b) -> {
         int wasteA = a.bitSize - a.count;
         int wasteB = b.bitSize - b.count;
@@ -43,18 +45,19 @@ public final class PropertyValueMapper {
                 : Integer.compare(wasteA, wasteB);
     };
 
-    // Sorted by BY_BIT_FITNESS, so index order here is bit order, not the container's property order
+    // Packing rule of each property.
     private final Entry[] entries;
-    // offsets[i] is the low bit of entries[i]'s slice within the packed int
+    // Bit offset of each property.
     private final int[] offsets;
-    // Property name -> index into entries; -1 for anything this block does not have
+    // Position of each property by name.
     private final Object2IntOpenHashMap<String> indexByName;
-    // Every state of the block indexed by packed value, shared by all of them; this array replaces the per-state tables
+    // States by packed value.
     private final IBlockState[] states;
 
-    // Donated by the first state of this block and then reused by all of them; see sharedKeys below
+    // Property keys shared by every state.
     private Object[] sharedKeys;
 
+    // Creates a mapper from its parts.
     private PropertyValueMapper(Entry[] entries, int[] offsets, Object2IntOpenHashMap<String> indexByName,
                                 IBlockState[] states) {
         this.entries = entries;
@@ -63,7 +66,7 @@ public final class PropertyValueMapper {
         this.states = states;
     }
 
-    // Builds a mapper for a container, or null when the block should keep vanilla states (blacklisted, unindexable, too large all just mean "leave it alone"); safe inside the constructor since the property map is assigned before the state loop
+    // Returns a mapper for the block or null when it cannot be packed.
     public static PropertyValueMapper create(BlockStateContainer container, Block block) {
         if (block == null || isBlacklisted(block)) {
             BLOCKS_SKIPPED.incrementAndGet();
@@ -97,7 +100,6 @@ public final class PropertyValueMapper {
             bitPos += entries[i].bits;
         }
 
-        // 30 rather than 31: the packed value is a signed int and the array index derived from it must stay positive
         if (bitPos > 30) {
             BLOCKS_SKIPPED.incrementAndGet();
             return null;
@@ -107,7 +109,6 @@ public final class PropertyValueMapper {
         if (entries.length == 0) {
             size = 1;
         } else {
-            // The highest property needs no power-of-two padding; nothing is packed above it so the unused tail is never addressed
             Entry last = entries[entries.length - 1];
             size = (1L << (bitPos - last.bits)) * last.count;
         }
@@ -121,7 +122,7 @@ public final class PropertyValueMapper {
         return new PropertyValueMapper(entries, offsets, indexByName, new IBlockState[(int) size]);
     }
 
-    // Prefix match against the config blacklist, for blocks whose state handling breaks under packing
+    // Returns whether the class of the block is excluded by configuration.
     private static boolean isBlacklisted(Block block) {
         String name = block.getClass().getName();
 
@@ -134,7 +135,7 @@ public final class PropertyValueMapper {
         return false;
     }
 
-    // Computes the packed index, files the state in the shared array and returns the index; called from buildPropertyValueTable on every state, so the array is full before byValue can be called
+    // Stores the state under its packed value and returns it.
     int register(IBlockState state) {
         int value = 0;
 
@@ -143,7 +144,6 @@ public final class PropertyValueMapper {
             int index = entry.indexOf(state.getValue(entry.property));
 
             if (index < 0) {
-                // The state came from the container's own cartesian product, so reaching here means an IProperty whose getAllowedValues() disagrees with itself between calls
                 throw new IllegalStateException("Property " + entry.property.getName()
                         + " rejected its own allowed value on " + state);
             }
@@ -152,7 +152,6 @@ public final class PropertyValueMapper {
         }
 
         if (this.states[value] != null) {
-            // Two distinct states packing to the same index means the bit layout does not separate them, a corrupted world waiting to happen; fail here where the cause is visible
             throw new IllegalStateException("Packed index " + value + " is claimed by both "
                     + this.states[value] + " and " + state
                     + ". Please report this to Impetus with the mod list.");
@@ -163,12 +162,12 @@ public final class PropertyValueMapper {
         return value;
     }
 
-    // The state at a packed index, or null when that bit combination lands in a padding hole no real state occupies
+    // Returns the state of the packed value.
     public IBlockState byValue(int value) {
         return this.states[value];
     }
 
-    // Shared property key array for CoarctatioPropertyMap, captured from the FIRST state's own map (entries is reordered for bit fitness and would mismatch keys with values); null when the caller's map differs in shape, synchronized since states can be created off-thread
+    // Returns the shared keys or null when the property count differs.
     public synchronized Object[] sharedKeys(Map<IProperty<?>, Comparable<?>> properties) {
         if (this.sharedKeys == null) {
             this.sharedKeys = properties.keySet().toArray();
@@ -177,8 +176,12 @@ public final class PropertyValueMapper {
         return this.sharedKeys.length == properties.size() ? this.sharedKeys : null;
     }
 
-    // Returns packed with one property changed, or -1 if the block lacks the property or the value is disallowed; clears the bit slice and ORs the new index, resolving by property NAME so an equal-but-distinct IProperty still works
+    // Returns the packed value with the property changed or minus one when it cannot be changed.
     public int withValue(int packed, IProperty<?> property, Object newValue) {
+        if (property == null) {
+            return -1;
+        }
+
         int index = this.indexByName.getInt(property.getName());
 
         if (index < 0) {
@@ -192,20 +195,19 @@ public final class PropertyValueMapper {
             return -1;
         }
 
-        // bitSize is a power of two, so bitSize - 1 is the slice's low-bit mask, shifted into position
         int offset = this.offsets[index];
         int mask = (entry.bitSize - 1) << offset;
 
         return (packed & ~mask) | (valueIndex << offset);
     }
 
-    // Counts for /coarctatio
+    // Returns a one line report of the results.
     public static String statistics() {
         return String.format("%d blocks packed, %d left on vanilla states, %d tables rebuilt on demand",
                 BLOCKS_MAPPED.get(), BLOCKS_SKIPPED.get(), TABLES_MATERIALISED.get());
     }
 
-    // Cache lookup for buildEntry; null is NOT cached, so an unindexable property is rebuilt and re-rejected once per block declaring it
+    // Returns the cached entry of the property.
     private static Entry entryFor(IProperty<?> property) {
         synchronized (ENTRY_CACHE) {
             Entry cached = ENTRY_CACHE.get(property);
@@ -219,7 +221,7 @@ public final class PropertyValueMapper {
         }
     }
 
-    // Chooses the tightest entry type for a property's values; null means it cannot be packed
+    // Returns the packing rule of the property or null when it has no values.
     private static Entry buildEntry(IProperty<?> property) {
         Collection<?> allowed = property.getAllowedValues();
         int count = allowed.size();
@@ -228,18 +230,18 @@ public final class PropertyValueMapper {
             return null;
         }
 
-        // Only exact vanilla property classes get a closed-form index; a subclass may override getAllowedValues() or parseValue(), so anything else uses an explicit value map
         Class<?> type = property.getClass();
 
         if (type == PropertyBool.class && count == 2) {
+            // Packs a boolean by its truth value
             return new BooleanEntry(property, count);
         }
 
         if (type == PropertyEnum.class || type == PropertyDirection.class) {
             Object[] constants = property.getValueClass().getEnumConstants();
 
-            // Ordinals are only dense when every constant is allowed; a filtered PropertyEnum (BlockStone's variants) would leave holes in the bit range
             if (constants != null && constants.length == count) {
+                // Packs an enum that allows every constant by its ordinal
                 return new OrdinalEntry(property, count);
             }
         }
@@ -252,10 +254,11 @@ public final class PropertyValueMapper {
             }
         }
 
+        // Packs any other property by a lookup table
         return new MappedEntry(property, allowed);
     }
 
-    // Rounds up to the next power of two by smearing the highest set bit down; pads a value count to a whole bit width so the layout is addressable with shifts and masks
+    // Returns the smallest power of two not below the value.
     private static int ceilPowerOfTwo(int value) {
         int v = value - 1;
         v |= v >> 1;
@@ -266,16 +269,18 @@ public final class PropertyValueMapper {
         return v + 1;
     }
 
-    // One property's slice of the packed int: width and value mapping; subclassed so the hot indexOf is one virtual dispatch and each type uses its cheapest indexing
+    // Packing rule of one property.
     abstract static class Entry {
+        // Property that the rule packs.
         final IProperty<?> property;
-        // Real number of allowed values
+        // Number of allowed values.
         final int count;
-        // count rounded up to a power of two, i.e. how many slots the slice actually occupies
+        // Count rounded up to a power of two.
         final int bitSize;
-        // Width of the slice in bits, log2 of bitSize
+        // Number of bits the rule uses.
         final int bits;
 
+        // Creates a rule for the property.
         Entry(IProperty<?> property, int count) {
             this.property = property;
             this.count = count;
@@ -283,49 +288,58 @@ public final class PropertyValueMapper {
             this.bits = Integer.numberOfTrailingZeros(this.bitSize);
         }
 
-        // Index of value among the allowed values, or -1 if it does not belong; never defaults, since a wrong answer produces a valid-looking but incorrect state
+        // Returns the index of the value or minus one when it is not allowed.
         abstract int indexOf(Object value);
     }
 
+    // Rule for a boolean property.
     private static final class BooleanEntry extends Entry {
+        // Creates a rule for a boolean property.
         BooleanEntry(IProperty<?> property, int count) {
             super(property, count);
         }
 
+        // Returns one for true and zero for false.
         @Override
         int indexOf(Object value) {
             if (Boolean.TRUE.equals(value)) {
                 return 1;
             }
 
-            // Not a fall-through to 0: a non-Boolean means the wrong property was passed, and answering "false" would silently return a wrong state
             return Boolean.FALSE.equals(value) ? 0 : -1;
         }
     }
 
+    // Rule for an enum property that allows every constant.
     private static final class OrdinalEntry extends Entry {
+        // Enum class of the property.
         private final Class<?> valueClass;
 
+        // Creates a rule for an enum property.
         OrdinalEntry(IProperty<?> property, int count) {
             super(property, count);
             this.valueClass = property.getValueClass();
         }
 
+        // Returns the ordinal of the value.
         @Override
         int indexOf(Object value) {
             return this.valueClass.isInstance(value) ? ((Enum<?>) value).ordinal() : -1;
         }
     }
 
+    // Rule for an integer property with consecutive values.
     private static final class ContiguousIntegerEntry extends Entry {
+        // Smallest allowed value.
         private final int minimum;
 
+        // Creates a rule for the property.
         private ContiguousIntegerEntry(IProperty<?> property, int count, int minimum) {
             super(property, count);
             this.minimum = minimum;
         }
 
-        // Null unless every value is an Integer and they form one unbroken run, which lets the value be the index
+        // Returns a rule when the values are consecutive integers or null otherwise.
         static ContiguousIntegerEntry tryCreate(IProperty<?> property, Collection<?> allowed) {
             int minimum = Integer.MAX_VALUE;
             int maximum = Integer.MIN_VALUE;
@@ -340,14 +354,14 @@ public final class PropertyValueMapper {
                 maximum = Math.max(maximum, i);
             }
 
-            // Contiguous iff the span matches the count; that also rules out duplicates.
-            if (maximum - minimum + 1 != allowed.size()) {
+            if ((long) maximum - minimum + 1 != allowed.size()) {
                 return null;
             }
 
             return new ContiguousIntegerEntry(property, allowed.size(), minimum);
         }
 
+        // Returns the distance of the value from the smallest value.
         @Override
         int indexOf(Object value) {
             if (!(value instanceof Integer)) {
@@ -359,10 +373,12 @@ public final class PropertyValueMapper {
         }
     }
 
-    // The general case, an explicit value-to-index map keyed by equals since Integer autoboxing only caches -128..127
+    // Rule for any other property.
     private static final class MappedEntry extends Entry {
+        // Index of each allowed value.
         private final Object2IntOpenHashMap<Object> indices;
 
+        // Creates a rule with the index of each allowed value.
         MappedEntry(IProperty<?> property, Collection<?> allowed) {
             super(property, allowed.size());
 
@@ -375,6 +391,7 @@ public final class PropertyValueMapper {
             }
         }
 
+        // Returns the stored index of the value.
         @Override
         int indexOf(Object value) {
             return value == null ? -1 : this.indices.getInt(value);

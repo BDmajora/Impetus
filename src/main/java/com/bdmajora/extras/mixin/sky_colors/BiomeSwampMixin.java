@@ -13,9 +13,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// OptiFine's Swamp Colors switch: BiomeSwamp overrides with literal colours, so the base temperature-and-rainfall computation is reproduced through ColorizerGrass/ColorizerFoliage so pack colourmaps still work
+// Mixin that changes BiomeSwamp.
 @Mixin(BiomeSwamp.class)
 public class BiomeSwampMixin {
+    // Runs at the start of getGrassColorAtPos and can cancel it.
     @Inject(method = "getGrassColorAtPos", at = @At("HEAD"), cancellable = true)
     private void impetus$grassColor(BlockPos pos, CallbackInfoReturnable<Integer> cir) {
         if (!Extras.options().detail.swampColors) {
@@ -25,6 +26,7 @@ public class BiomeSwampMixin {
         }
     }
 
+    // Runs at the start of getFoliageColorAtPos and can cancel it.
     @Inject(method = "getFoliageColorAtPos", at = @At("HEAD"), cancellable = true)
     private void impetus$foliageColor(BlockPos pos, CallbackInfoReturnable<Integer> cir) {
         if (!Extras.options().detail.swampColors) {
@@ -34,11 +36,13 @@ public class BiomeSwampMixin {
         }
     }
 
+    // Helper method temperature added to the target.
     @Unique
     private static double impetus$temperature(Biome biome, BlockPos pos) {
         return MathHelper.clamp(biome.getTemperature(pos), 0.0F, 1.0F);
     }
 
+    // Helper method rainfall added to the target.
     @Unique
     private static double impetus$rainfall(Biome biome) {
         return MathHelper.clamp(biome.getRainfall(), 0.0F, 1.0F);

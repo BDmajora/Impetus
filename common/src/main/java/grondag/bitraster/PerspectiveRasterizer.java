@@ -46,18 +46,22 @@ import static grondag.bitraster.Constants.PV_Y;
 import static grondag.bitraster.Constants.PV_Z;
 import static grondag.bitraster.Constants.SCANT_PRECISE_PIXEL_CENTER;
 
+// Rasterizer for perspective projections with clipping at the near plane.
 public final class PerspectiveRasterizer extends AbstractRasterizer {
+	// Creates a rasterizer with the default size.
 	public PerspectiveRasterizer() {
 		this(DEFAULT_SIZE_TILES, DEFAULT_SIZE_TILES);
 	}
 
+	// Creates a rasterizer with a size in tiles.
 	public PerspectiveRasterizer(int tileWidth, int tileHeight) {
 		super(tileWidth, tileHeight);
 	}
 
-	/** Holds results of {@link #clipNear(int, int)}. */
+	// Position of the clipped vertex.
 	private int clipX, clipY;
 
+	// Projects one vertex.
 	@Override void setupVertex(final int baseIndex, final int x, final int y, final int z) {
 		final int[] data = vertexData;
 
@@ -85,6 +89,7 @@ public final class PerspectiveRasterizer extends AbstractRasterizer {
 		}
 	}
 
+	// Projects the corners of a box and returns whether it can be drawn.
 	@Override
 	boolean setupBoxVertices(int[] corners, int x0, int y0, int z0, int x1, int y1, int z1) {
 		transformBoxCorners(x0, y0, z0, x1, y1, z1);
@@ -94,14 +99,11 @@ public final class PerspectiveRasterizer extends AbstractRasterizer {
 		final int halfPreciseWidth = this.halfPreciseWidth;
 		final int halfPreciseHeight = this.halfPreciseHeight;
 
-		// only the projected position is stored: the clip-space coordinates are needed by the near-clip
-		// fallback alone, and that path recomputes every vertex it uses through setupVertex
 		for (int baseIndex : corners) {
 			final int corner = baseIndex / PROJECTED_VERTEX_STRIDE;
 			final float w = cw[corner];
 			final float tz = cz[corner];
 
-			// same acceptance as needsNearClip
 			if (!(w > 0 && tz > 0)) {
 				return false;
 			}
@@ -114,6 +116,7 @@ public final class PerspectiveRasterizer extends AbstractRasterizer {
 		return true;
 	}
 
+	// Returns whether a point is not covered.
 	@Override
 	boolean isPointClear(float x, float y, float z) {
 		final float fx = x + offsetX;
@@ -122,7 +125,6 @@ public final class PerspectiveRasterizer extends AbstractRasterizer {
 
 		final float w = m30 * fx + m31 * fy + m32 * fz + m33;
 
-		// behind the eye; callers only ask about points well past the near plane
 		if (w <= 0) {
 			return false;
 		}
@@ -133,6 +135,7 @@ public final class PerspectiveRasterizer extends AbstractRasterizer {
 		return isProjectedPointClear(tx, ty, 1f / w);
 	}
 
+	// Clips an edge at the near plane.
 	private void clipNear(int internal, int external) {
 		final int[] data = vertexData;
 
@@ -146,13 +149,8 @@ public final class PerspectiveRasterizer extends AbstractRasterizer {
 		final float extZ = Float.intBitsToFloat(data[external + PV_Z]);
 		final float extW = Float.intBitsToFloat(data[external + PV_W]);
 
-		// intersection point is the projection plane, at which point Z == 1
-		// and w will be 0 but projection division isn't needed, so force output to W = 1
-		// see https://www.cs.usfca.edu/~cruse/math202s11/homocoords.pdf
-
 		final float wt = intZ / -(extZ - intZ);
 
-		// note again that projection division isn't needed
 		final float x = (intX + (extX - intX) * wt);
 		final float y = (intY + (extY - intY) * wt);
 		final float w = (intW + (extW - intW) * wt);
@@ -162,9 +160,9 @@ public final class PerspectiveRasterizer extends AbstractRasterizer {
 		clipY = roundToInt(iw * y * halfPreciseHeight) + halfPreciseHeight;
 	}
 
+	// Calculates the bounds of a quad and picks the clipping case.
 	@Override
 	int prepareBounds(int v0, int v1, int v2, int v3) {
-		// puts bits in lexical order
 		final int split = needsNearClip(v3) | (needsNearClip(v2) << 1) | (needsNearClip(v1) << 2) | (needsNearClip(v0) << 3);
 
 		switch (split) {
@@ -212,12 +210,12 @@ public final class PerspectiveRasterizer extends AbstractRasterizer {
 
 			default:
 				assert false : "Occlusion edge case";
-				// NOOP
 		}
 
 		return BOUNDS_OUTSIDE_OR_TOO_SMALL;
 	}
 
+	// Calculates the bounds of a quad with no vertex outside the near plane.
 	private int prepareBounds0000(int v0, int v1, int v2, int v3) {
 		final int[] data = vertexData;
 		int ax0, ay0, ax1, ay1;
@@ -362,6 +360,7 @@ public final class PerspectiveRasterizer extends AbstractRasterizer {
 		return BOUNDS_IN;
 	}
 
+	// Calculates the bounds of a quad with one vertex outside the near plane.
 	private int prepareBounds0001(int v0, int v1, int v2, int ext3) {
 		final int[] data = vertexData;
 		int ax0, ay0, ax1, ay1;
@@ -395,7 +394,6 @@ public final class PerspectiveRasterizer extends AbstractRasterizer {
 		minX = ax0;
 		maxX = ax0;
 
-		// ax1 = bx0 and dx1 = ax0,  so no need to test those
 		if (bx0 < minX) {
 			minX = bx0;
 		} else if (bx0 > maxX) {
@@ -523,6 +521,7 @@ public final class PerspectiveRasterizer extends AbstractRasterizer {
 		return BOUNDS_IN;
 	}
 
+	// Calculates the bounds of a quad with two vertices outside the near plane.
 	private int prepareBounds0011(int v0, int v1, int ext2, int ext3) {
 		final int[] data = vertexData;
 		int ax0, ay0, ax1, ay1;
@@ -543,7 +542,6 @@ public final class PerspectiveRasterizer extends AbstractRasterizer {
 		bx1 = clipX;
 		by1 = clipY;
 
-		// force line c to be a single, existing point - entire line is clipped and should not influence anything
 		cx0 = ax0;
 		cy0 = ay0;
 		cx1 = ax0;
@@ -673,6 +671,7 @@ public final class PerspectiveRasterizer extends AbstractRasterizer {
 		return BOUNDS_IN;
 	}
 
+	// Calculates the bounds of a quad with three vertices outside the near plane.
 	private int prepareBounds0111(int v0, int ext1, int ext2, int ext3) {
 		final int[] data = vertexData;
 		int ax0, ay0, ax1, ay1;
@@ -687,7 +686,6 @@ public final class PerspectiveRasterizer extends AbstractRasterizer {
 		ax1 = clipX;
 		ay1 = clipY;
 
-		// force lines b & c to be a single, existing point - entire line is clipped and should not influence anything
 		bx0 = ax0;
 		by0 = ay0;
 		bx1 = ax0;

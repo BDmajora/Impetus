@@ -156,4 +156,21 @@ class PipelineStateTest {
         assertThrows(IllegalStateException.class, () -> PipelineGl.pipeline("/shaders.properties", ""));
         verify(TestGl.gl(), Mockito.atLeast(3)).glDeleteTextures(anyInt());
     }
+
+    // Releases the targets after a failed release step and rethrows that failure once.
+    @Test
+    void aFailedReleaseStepStillReleasesTheRest() {
+        UmbraRenderingPipeline pipeline = PipelineGl.pipeline("/shaders.properties", "");
+        PipelineState state = PipelineGl.state(pipeline);
+        int depth = state.targets.getDepthTexture().getTextureId();
+        IllegalStateException failure = new IllegalStateException("sampler");
+        doThrow(failure).when(TestGl.gl()).glDeleteSamplers(anyInt());
+        IllegalStateException thrown = assertThrows(IllegalStateException.class, state::destroy);
+        assertSame(failure, thrown);
+        verify(TestGl.gl()).glDeleteTextures(depth);
+        assertTrue(state.destroyed);
+        Mockito.reset(TestGl.gl());
+        state.destroy();
+        verify(TestGl.gl(), never()).glDeleteTextures(anyInt());
+    }
 }

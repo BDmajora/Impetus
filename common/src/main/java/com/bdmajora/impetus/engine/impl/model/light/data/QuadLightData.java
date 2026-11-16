@@ -1,10 +1,10 @@
 package com.bdmajora.impetus.engine.impl.model.light.data;
 
-// Computed light data for a quad, indexed in the same vertex order as the quad itself
+// Light values of the four vertices of a quad.
 public class QuadLightData {
-    // Per-vertex brightness, normalized 0..1
+    // Brightness of each vertex between 0 and 1.
     public final float[] br = new float[4];
 
-    // Per-vertex lightmap texture coords
+    // Packed lightmap coordinates of each vertex.
     public final int[] lm = new int[4];
 }

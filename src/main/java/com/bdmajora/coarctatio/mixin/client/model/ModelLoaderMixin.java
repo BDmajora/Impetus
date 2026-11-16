@@ -18,7 +18,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.Map;
 import java.util.Set;
 
-// Forge half of ModelBakeryMixin: ModelLoader's five extra collections are plain HashMap/HashSet with no ordering contract, so all swap safely; remap = false since ModelLoader is Forge-added
+// Mixin that changes ModelLoader.
 @Mixin(value = ModelLoader.class, remap = false)
 public abstract class ModelLoaderMixin {
     @Mutable
@@ -36,6 +36,7 @@ public abstract class ModelLoaderMixin {
     @Final
     private Map<ModelBlockDefinition, IModel> multipartModels;
 
+    // Reference to the field missing variants of the target.
     @Mutable
     @Shadow
     @Final
@@ -46,6 +47,7 @@ public abstract class ModelLoaderMixin {
     @Final
     private Map<ResourceLocation, Exception> loadingExceptions;
 
+    // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void coarctatio$compactLoaderMaps(CallbackInfo ci) {
         this.stateModels = new Object2ObjectOpenHashMap<>(this.stateModels);

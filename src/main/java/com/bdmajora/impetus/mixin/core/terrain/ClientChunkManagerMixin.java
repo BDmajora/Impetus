@@ -13,19 +13,21 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+// Mixin that changes ChunkProviderClient.
 @Mixin(ChunkProviderClient.class)
 public abstract class ClientChunkManagerMixin {
+    // Reference to the field world of the target.
     @Shadow
     @Final
     private World world;
 
-    // Tells the chunk tracker a column is now fully present
+    // Runs before every return of loadChunk.
     @Inject(method = "loadChunk", at = @At("RETURN"))
     private void afterLoadChunkFromPacket(int x, int z, CallbackInfoReturnable<Chunk> cir) {
         ChunkTrackerHolder.get(this.world).onChunkStatusAdded(x, z, ChunkStatus.FLAG_ALL);
     }
 
-    // Tells the chunk tracker a column is gone
+    // Runs around the call of Chunk.onUnload in unloadChunk.
     @Inject(method = "unloadChunk", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/chunk/Chunk;onUnload()V", shift = At.Shift.AFTER))
     private void afterUnloadChunk(int x, int z, CallbackInfo ci) {
         ChunkTrackerHolder.get(this.world).onChunkStatusRemoved(x, z, ChunkStatus.FLAG_ALL);

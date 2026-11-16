@@ -13,9 +13,10 @@ import org.spongepowered.asm.mixin.injection.At;
 
 import java.util.List;
 
-// The per-tick pushing check every living entity runs; the hottest AABB query on a busy server
+// Mixin that changes EntityLivingBase.
 @Mixin(EntityLivingBase.class)
 public abstract class EntityLivingBaseMixin {
+    // Wraps the call of World.getEntitiesInAABBexcluding in collideWithNearbyEntities.
     @WrapOperation(method = "collideWithNearbyEntities", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/World;getEntitiesInAABBexcluding(Lnet/minecraft/entity/Entity;Lnet/minecraft/util/math/AxisAlignedBB;Lcom/google/common/base/Predicate;)Ljava/util/List;"))
     private List<Entity> equilibrium$collideWithVanillaRadius(World world, Entity entity, AxisAlignedBB box, Predicate<? super Entity> predicate, Operation<List<Entity>> original) {
         if (entity != null && ReducedRadiusQuery.applies() && ReducedRadiusQuery.isEligible(entity)) {

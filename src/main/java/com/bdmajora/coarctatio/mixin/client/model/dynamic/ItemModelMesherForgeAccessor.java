@@ -10,9 +10,10 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 
 import java.util.Map;
 
-// Every registered item model location, the prebake's work list. remap = false, Forge class
+// Mixin that changes ItemModelMesherForge.
 @Mixin(value = ItemModelMesherForge.class, remap = false)
 public interface ItemModelMesherForgeAccessor {
+    // Gives access to the field locations.
     @Accessor("locations")
     Map<IRegistryDelegate<Item>, Int2ObjectMap<ModelResourceLocation>> coarctatio$locations();
 }

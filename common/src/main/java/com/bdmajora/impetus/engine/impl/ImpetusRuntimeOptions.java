@@ -2,31 +2,38 @@ package com.bdmajora.impetus.engine.impl;
 
 import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions;
 
-// Snapshot of hot-path option values as plain statics, refreshed at startup and on every Apply so mesh workers never touch a config object
+// Copies of option values that are read often.
 public final class ImpetusRuntimeOptions {
+    // Prevents instantiation
     private ImpetusRuntimeOptions() {
     }
 
-    // Quality
+    // Whether translucent geometry is sorted more accurately.
     public static boolean improvedTransparency = false;
+    // Whether hidden fluid faces are culled.
     public static boolean hiddenFluidCulling = true;
+    // Whether fluid shapes are improved.
     public static boolean improvedFluidShaping = false;
+    // Whether entities sort by their closest point.
     public static boolean closestPointEntitySort = false;
-    // Milliseconds a new section takes to fade in; 0 shows it at once
+    // Milliseconds a new section takes to fade in.
     public static int chunkFadeInDuration = 0;
 
-    // Performance
+    // Whether quads are split for sorting.
     public static boolean quadSplittingEnabled = true;
+    // Mode that defers chunk updates.
     public static ImpetusGameOptions.DeferChunkUpdatesMode deferMode = ImpetusGameOptions.DeferChunkUpdatesMode.ONE_FRAME;
+    // Frame rate limit while inactive.
     public static ImpetusGameOptions.InactivityFpsLimit inactivityFpsLimit = ImpetusGameOptions.InactivityFpsLimit.AFK;
-    // Read when a chunk renderer is built, so a change takes a renderer reload; off until the config is applied, so nothing built before then needs GL 4.3
+    // Whether multi draw indirect is used.
     public static boolean multiDrawIndirect = false;
 
-    // Block atlas sampling; only magnification is configurable, minification is pinned to vanilla's because the atlas has no sprite borders (see BlockAtlasFiltering)
+    // Filtering of the block atlas.
     public static ImpetusGameOptions.PixelFilteringMode pixelFiltering = ImpetusGameOptions.PixelFilteringMode.NEAREST;
 
-    // Copies the hot-path subset out of the config
+    // Copies the values from the options and rejects null.
     public static void apply(ImpetusGameOptions options) {
+        java.util.Objects.requireNonNull(options, "options");
         var quality = options.quality;
         improvedTransparency = quality.improvedTransparency;
         hiddenFluidCulling = quality.hiddenFluidCulling;
@@ -41,7 +48,7 @@ public final class ImpetusRuntimeOptions {
         inactivityFpsLimit = performance.inactivityFpsLimit;
         multiDrawIndirect = performance.useMultiDrawIndirect;
 
-        // Keep the legacy boolean the engine already reads in sync with the new tri-state defer mode.
+        // Updates the legacy defer flag
         performance.alwaysDeferChunkUpdates = performance.deferChunkUpdatesMode.defersVisible();
     }
 }

@@ -8,9 +8,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Render-budget skipping for block entity special renderers; the three-argument render is the per-block-entity entry both the world renderer and Umbra's shadow pass go through, before vanilla's own 64-block cutoff
+// Mixin that changes TileEntityRendererDispatcher.
 @Mixin(TileEntityRendererDispatcher.class)
 public class TileEntityRendererDispatcherBudgetMixin {
+    // Runs at the start of render and can cancel it.
     @Inject(
             method = "render(Lnet/minecraft/tileentity/TileEntity;FI)V",
             at = @At("HEAD"),

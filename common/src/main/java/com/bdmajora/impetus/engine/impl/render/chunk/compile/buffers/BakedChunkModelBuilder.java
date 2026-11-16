@@ -9,19 +9,27 @@ import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexEn
 
 import java.util.Objects;
 
+// Model builder that writes vertices into one buffer per facing.
 public class BakedChunkModelBuilder implements ChunkModelBuilder {
+    // Buffers by facing ordinal.
     private final ChunkMeshBufferBuilder[] vertexBuffers;
+    // Whether vertices go to the buffer of their facing.
     private final boolean splitBySide;
+    // Encoder of the vertices.
     @Getter
     private final ChunkVertexEncoder encoder;
 
+    // Data of the section being built.
     private BuiltRenderSectionData renderData;
 
+    // Creates the buffers for a pass and rejects a null encoder or pass.
     public BakedChunkModelBuilder(ChunkVertexEncoder encoder, int stride, TerrainRenderPass pass) {
+        Objects.requireNonNull(encoder, "encoder");
+        Objects.requireNonNull(pass, "pass");
         var vertexBuffers = new ChunkMeshBufferBuilder[ModelQuadFacing.COUNT];
         boolean sorted = pass.isSorted();
 
-        // A sorted pass writes everything through the UNASSIGNED buffer, so the six per-facing buffers (64 KiB each, growing) are never allocated for it
+        // Allocates only the unassigned buffer for a sorted pass
         for (int facing = 0; facing < ModelQuadFacing.COUNT; facing++) {
             boolean unassigned = facing == ModelQuadFacing.UNASSIGNED.ordinal();
             if (!sorted || unassigned) {
@@ -34,20 +42,20 @@ public class BakedChunkModelBuilder implements ChunkModelBuilder {
         this.splitBySide = !sorted;
     }
 
-    // The buffer for one facing, so faces stay grouped for culling
+    // Returns the buffer of a facing or the unassigned buffer for a sorted pass.
     @Override
     public ChunkMeshBufferBuilder getVertexBuffer(ModelQuadFacing facing) {
         Objects.requireNonNull(this.renderData, "Builder has not been started");
         return splitBySide ? this.vertexBuffers[facing.ordinal()] : this.vertexBuffers[ModelQuadFacing.UNASSIGNED.ordinal()];
     }
 
-    // The section data being filled
+    // Returns the data of the section being built.
     @Override
     public BuiltRenderSectionData getSectionContextBundle() {
         return this.renderData;
     }
 
-    // Frees every facing buffer
+    // Frees every buffer.
     public void destroy() {
         for (ChunkMeshBufferBuilder builder : this.vertexBuffers) {
             if(builder != null) {
@@ -56,9 +64,9 @@ public class BakedChunkModelBuilder implements ChunkModelBuilder {
         }
     }
 
-    // Resets the buffers for a new section
+    // Starts a new section in every buffer and rejects null data.
     public void begin(BuiltRenderSectionData renderData, int sectionIndex) {
-        this.renderData = renderData;
+        this.renderData = Objects.requireNonNull(renderData, "renderData");
 
         for (var vertexBuffer : this.vertexBuffers) {
             if(vertexBuffer != null) {
@@ -67,7 +75,7 @@ public class BakedChunkModelBuilder implements ChunkModelBuilder {
         }
     }
 
-    // No vertices written on any facing
+    // Returns whether no vertices were written.
     public boolean isEmpty() {
         for (var vertexBuffer : this.vertexBuffers) {
             if (vertexBuffer != null && !vertexBuffer.isEmpty()) {

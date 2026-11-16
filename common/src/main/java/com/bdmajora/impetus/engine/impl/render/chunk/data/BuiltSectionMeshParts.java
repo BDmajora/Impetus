@@ -12,24 +12,42 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Map;
 
+// Vertex and index data of one pass of a section.
 public record BuiltSectionMeshParts(NativeBuffer vertexBuffer, @Nullable NativeBuffer indexBuffer, @Nullable SortState sortState, Map<ModelQuadFacing, VertexRange> ranges) {
+    // Rejects a null vertex buffer or ranges.
+    public BuiltSectionMeshParts {
+        java.util.Objects.requireNonNull(vertexBuffer, "vertexBuffer");
+        java.util.Objects.requireNonNull(ranges, "ranges");
+    }
+
+    // Frees both buffers and still frees the index buffer when the vertex buffer fails.
     public void free() {
-        vertexBuffer.free();
-        if (indexBuffer != null) {
-            indexBuffer.free();
+        try {
+            vertexBuffer.free();
+        } finally {
+            if (indexBuffer != null) {
+                indexBuffer.free();
+            }
         }
     }
 
-    // Packs each pass's facing buffers into one mesh with per-facing ranges
+    // Creates the meshes of every pass of the buffers and frees them again when one pass fails.
     public static Reference2ReferenceMap<TerrainRenderPass, BuiltSectionMeshParts> groupFromBuildBuffers(ChunkBuildBuffers buffers, float relativeCameraX, float relativeCameraY, float relativeCameraZ) {
         Reference2ReferenceMap<TerrainRenderPass, BuiltSectionMeshParts> meshes = new Reference2ReferenceOpenHashMap<>();
 
-        for (TerrainRenderPass pass : buffers.getBuilderPasses()) {
-            BuiltSectionMeshParts mesh = buffers.createMesh(pass, relativeCameraX, relativeCameraY, relativeCameraZ);
+        try {
+            for (TerrainRenderPass pass : buffers.getBuilderPasses()) {
+                BuiltSectionMeshParts mesh = buffers.createMesh(pass, relativeCameraX, relativeCameraY, relativeCameraZ);
 
-            if (mesh != null) {
-                meshes.put(pass, mesh);
+                if (mesh != null) {
+                    meshes.put(pass, mesh);
+                }
             }
+        } catch (Throwable failure) {
+            for (BuiltSectionMeshParts mesh : meshes.values()) {
+                mesh.free();
+            }
+            throw failure;
         }
 
         return meshes;

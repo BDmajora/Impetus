@@ -5,27 +5,27 @@ import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
-// Shadow frustum that keeps the view frustum planes facing away from the light and extrudes its silhouette edges along the light direction
+// Shadow frustum that keeps only the camera frustum planes facing away from the light and adds edge planes along it.
 public class AdvancedShadowCullingFrustum implements Frustum {
-    // Largest number of planes the frustum stores
+    // Largest number of clipping planes.
     private static final int MAX_CLIPPING_PLANES = 13;
-    // Result for a box entirely outside one plane
+    // Result of a box outside the frustum.
     public static final int OUTSIDE = -1;
-    // Result for a box inside every plane
+    // Result of a box fully inside the frustum.
     public static final int INSIDE = -2;
-    // Result for a box that crosses at least one plane
+    // Result of a box that crosses a plane.
     public static final int INTERSECT = -3;
 
-    // Distance box tested before the planes or null for no distance bound
+    // Distance culler of shadow boxes or null.
     protected final ShadowBoxCuller boxCuller;
-    // Four coefficients per plane where a point is inside when the dot product with the point and 1 is not negative
+    // Plane coefficients in groups of four.
     private final float[] planes = new float[MAX_CLIPPING_PLANES * 4];
-    // Unit vector from the origin toward the shadow light
+    // Direction of the light.
     private final Vector3f shadowLightVectorFromOrigin;
-    // Number of planes stored
+    // Number of planes.
     private int planeCount;
 
-    // Builds the planes from the view projection and the light direction with an optional distance box
+    // Creates the frustum from the camera matrix and the light direction.
     public AdvancedShadowCullingFrustum(Matrix4fc modelViewProjection, Vector3f shadowLightVectorFromOrigin,
                                         ShadowBoxCuller boxCuller) {
         this.shadowLightVectorFromOrigin = shadowLightVectorFromOrigin;
@@ -35,7 +35,7 @@ public class AdvancedShadowCullingFrustum implements Frustum {
         addEdgePlanes(basePlanes, isBack);
     }
 
-    // Appends one plane and drops it once the store is full
+    // Adds a plane while the plane limit allows.
     private void addPlane(float a, float b, float c, float w) {
         if (this.planeCount >= MAX_CLIPPING_PLANES) {
             return;
@@ -48,7 +48,7 @@ public class AdvancedShadowCullingFrustum implements Frustum {
         this.planeCount++;
     }
 
-    // Stores every plane whose normal points along or across the light and returns which ones point along it
+    // Adds the planes that face away from the light and returns which planes those are.
     private boolean[] addBackPlanes(Vector4f[] basePlanes) {
         boolean[] isBack = new boolean[basePlanes.length];
         for (int planeIndex = 0; planeIndex < basePlanes.length; planeIndex++) {
@@ -63,7 +63,7 @@ public class AdvancedShadowCullingFrustum implements Frustum {
         return isBack;
     }
 
-    // Adds an extruded plane on every edge where a back plane meets a plane that is not a back plane
+    // Adds a plane along the light for every edge between a back and a front plane.
     private void addEdgePlanes(Vector4f[] basePlanes, boolean[] isBack) {
         EdgeScratch scratch = new EdgeScratch();
         for (int planeIndex = 0; planeIndex < basePlanes.length; planeIndex++) {
@@ -87,14 +87,12 @@ public class AdvancedShadowCullingFrustum implements Frustum {
         }
     }
 
-    // Adds the plane through the line where two planes meet with a normal perpendicular to the light
+    // Adds the plane through the edge of two planes that contains the light direction.
     private void addEdgePlane(Vector4f backPlane, Vector4f frontPlane, EdgeScratch scratch) {
         Vector3f backNormal = scratch.backNormal.set(backPlane.x(), backPlane.y(), backPlane.z());
         Vector3f frontNormal = scratch.frontNormal.set(frontPlane.x(), frontPlane.y(), frontPlane.z());
-        // Direction of the line where the two planes meet
         Vector3f intersection = scratch.intersection.set(backNormal).cross(frontNormal);
         Vector3f edgeNormal = scratch.edgeNormal.set(intersection).cross(this.shadowLightVectorFromOrigin);
-        // Point on the meeting line from the two plane offsets
         Vector3f ixb = scratch.ixb.set(intersection).cross(backNormal);
         Vector3f fxi = scratch.fxi.set(frontNormal).cross(intersection);
         ixb.mul(-frontPlane.w());
@@ -102,7 +100,6 @@ public class AdvancedShadowCullingFrustum implements Frustum {
         ixb.add(fxi);
         float lengthSquared = intersection.x() * intersection.x() + intersection.y() * intersection.y()
                 + intersection.z() * intersection.z();
-        // Skips parallel planes which have no meeting line
         if (lengthSquared == 0.0f) {
             return;
         }
@@ -110,7 +107,7 @@ public class AdvancedShadowCullingFrustum implements Frustum {
         addPlane(edgeNormal.x(), edgeNormal.y(), edgeNormal.z(), -edgeNormal.dot(point));
     }
 
-    // Classifies a camera relative box as OUTSIDE or INSIDE or INTERSECT against every plane
+    // Returns whether a box is outside or inside or crosses the planes.
     protected int checkCornerVisibility(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
         boolean inside = true;
         float[] planes = this.planes;
@@ -120,20 +117,21 @@ public class AdvancedShadowCullingFrustum implements Frustum {
             float b = planes[base + 1];
             float c = planes[base + 2];
             float w = planes[base + 3];
-            // The corner farthest along the normal decides outside and the nearest corner decides inside
             float outsideBoundX = a < 0 ? minX : maxX;
             float outsideBoundY = b < 0 ? minY : maxY;
             float outsideBoundZ = c < 0 ? minZ : maxZ;
-            if (a * outsideBoundX + b * outsideBoundY + c * outsideBoundZ >= -w) {
-                inside &= a * (a < 0 ? maxX : minX) + b * (b < 0 ? maxY : minY) + c * (c < 0 ? maxZ : minZ) + w >= 0;
-            } else {
+            if (!(a * outsideBoundX + b * outsideBoundY + c * outsideBoundZ >= -w)) {
                 return OUTSIDE;
+            }
+            // Tests the inner corner only while the box may still be fully inside
+            if (inside) {
+                inside = a * (a < 0 ? maxX : minX) + b * (b < 0 ? maxY : minY) + c * (c < 0 ? maxZ : minZ) + w >= 0;
             }
         }
         return inside ? INSIDE : INTERSECT;
     }
 
-    // Returns whether a camera relative box passes the distance box and is not outside any plane
+    // Returns whether a box passes the box culler and the planes.
     @Override
     public boolean testAab(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
         if (this.boxCuller != null && !this.boxCuller.testAab(minX, minY, minZ, maxX, maxY, maxZ)) {
@@ -142,19 +140,19 @@ public class AdvancedShadowCullingFrustum implements Frustum {
         return checkCornerVisibility(minX, minY, minZ, maxX, maxY, maxZ) != OUTSIDE;
     }
 
-    // Vectors reused by every edge plane of one frustum
+    // Scratch vectors of the edge plane calculation.
     private static final class EdgeScratch {
-        // Normal of the back plane
+        // Normal of the back plane.
         final Vector3f backNormal = new Vector3f();
-        // Normal of the front plane
+        // Normal of the front plane.
         final Vector3f frontNormal = new Vector3f();
-        // Direction of the meeting line
+        // Direction of the edge.
         final Vector3f intersection = new Vector3f();
-        // Normal of the edge plane
+        // Normal of the edge plane.
         final Vector3f edgeNormal = new Vector3f();
-        // Meeting line direction crossed with the back normal
+        // Cross product of the edge and the back normal.
         final Vector3f ixb = new Vector3f();
-        // Front normal crossed with the meeting line direction
+        // Cross product of the front normal and the edge.
         final Vector3f fxi = new Vector3f();
     }
 }

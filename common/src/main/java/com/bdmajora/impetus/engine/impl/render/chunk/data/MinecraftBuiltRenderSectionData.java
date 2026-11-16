@@ -9,12 +9,16 @@ import com.bdmajora.impetus.engine.impl.render.chunk.lists.SortedRenderLists;
 import java.util.*;
 import java.util.function.Consumer;
 
+// Section data with the sprites and block entities of the game.
 public class MinecraftBuiltRenderSectionData<SPRITE, BLOCKENTITY> extends BuiltRenderSectionData {
+    // Sprites that animate.
     public Collection<SPRITE> animatedSprites = new ObjectOpenHashSet<>();
+    // Block entities that are culled with the section.
     public List<BLOCKENTITY> culledBlockEntities = new ArrayList<>();
+    // Block entities that render whatever the visibility.
     public List<BLOCKENTITY> globalBlockEntities = new ArrayList<>();
 
-    // Freezes the block entity and sprite lists
+    // Makes the sprite and block entity collections unmodifiable.
     @Override
     public void bake() {
         super.bake();
@@ -23,7 +27,7 @@ public class MinecraftBuiltRenderSectionData<SPRITE, BLOCKENTITY> extends BuiltR
         globalBlockEntities = List.copyOf(globalBlockEntities);
     }
 
-    // Which of geometry, sprites and entities the section has
+    // Returns the bit mask of geometry and sprites and block entities.
     @Override
     public int getVisualBitmaskForSection() {
         int flags = super.getVisualBitmaskForSection();
@@ -36,7 +40,7 @@ public class MinecraftBuiltRenderSectionData<SPRITE, BLOCKENTITY> extends BuiltR
         return flags;
     }
 
-    // By contents
+    // Compares the contents.
     @Override
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
@@ -45,13 +49,13 @@ public class MinecraftBuiltRenderSectionData<SPRITE, BLOCKENTITY> extends BuiltR
         return Objects.equals(animatedSprites, that.animatedSprites) && Objects.equals(culledBlockEntities, that.culledBlockEntities) && Objects.equals(globalBlockEntities, that.globalBlockEntities);
     }
 
-    // By contents
+    // Combines the contents.
     @Override
     public int hashCode() {
         return Objects.hash(super.hashCode(), animatedSprites, culledBlockEntities, globalBlockEntities);
     }
 
-    // Visits the built data of every visible section flagged as holding block entities, in render-list order; sections whose data is not ours (or that are gone) are skipped
+    // Visits the data of every visible section with block entities and skips sections without such data.
     public static void forEachVisibleSectionData(SortedRenderLists renderLists, Consumer<MinecraftBuiltRenderSectionData<?, ?>> visitor) {
         Iterator<ChunkRenderList> renderListIterator = renderLists.iterator();
 
@@ -75,7 +79,7 @@ public class MinecraftBuiltRenderSectionData<SPRITE, BLOCKENTITY> extends BuiltR
         }
     }
 
-    // Same for the sections flagged as holding global block entities (rendered regardless of visibility, like beacons)
+    // Visits the data of the sections with global block entities.
     public static void forEachGlobalSectionData(Collection<RenderSection> globalSections, Consumer<MinecraftBuiltRenderSectionData<?, ?>> visitor) {
         for (var renderSection : globalSections) {
             if (renderSection.getBuiltContext() instanceof MinecraftBuiltRenderSectionData<?, ?> mcData) {

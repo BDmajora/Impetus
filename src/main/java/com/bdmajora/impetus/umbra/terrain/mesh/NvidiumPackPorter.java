@@ -37,31 +37,33 @@ import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
-// Ports a shader pack for the Nvidium backend ahead of time: the whole pack is copied into nvidium_shaderpacks/ and every terrain-family program gets its mesh-shader stages written beside its OpenGL ones, flattened and translated, so loading the port compiles them like any other pack file with no translation at all; ensure() keeps a port in step with its pack, so it is only redone when the pack or the port's own templates change
+// Porter of shader packs to mesh shader terrain.
 public final class NvidiumPackPorter {
-    // Written at the port's root, outside shaders/, so the loader never reads it; also how a re-port knows the folder is its own to replace
+    // Name of the file that records a port.
     public static final String MANIFEST = "nvidium_port.txt";
 
-    // Every template a ported mesh stage inlines; a change to any of them makes existing ports stale
+    // Engine templates included by ported programs.
     private static final String[] TEMPLATES = {"impetus:mesh/pack/scene.glsl", "impetus:mesh/cull.glsl", "impetus:mesh/pack/fetch.glsl",
             "impetus:mesh/pack/emit.glsl", "impetus:mesh/pack/opaque_main.glsl", "impetus:mesh/pack/translucent_main.glsl"};
 
-    // The phases the mesh backend draws, whose fallback chains name every program a port may need
+    // Programs that get a mesh stage.
     private static final ProgramId[] ROLES = {ProgramId.TerrainCutoutMip, ProgramId.Water, ProgramId.ShadowCutout, ProgramId.ShadowWater};
-    // Read as bytes and never as source, as ShaderPackLoader does
+    // Binary extensions.
     private static final Set<String> BINARY_EXTENSIONS = Set.of("png", "mcmeta", "dat", "bin", "raw");
 
+    // Prevents instantiation
     private NvidiumPackPorter() {
     }
 
-    // What a port holds: the programs it translated and, for each it could not, why; reused when ensure() found it already up to date
+    // Data of the result.
     public record Result(List<String> ported, List<String> skipped, boolean reused) {
+        // Creates a result from its ported and skipped.
         public Result(List<String> ported, List<String> skipped) {
             this(ported, skipped, false);
         }
     }
 
-    // Every program name a mesh phase may resolve to, nearest first
+    // Returns the source names of the ported programs.
     static Set<String> candidatePrograms() {
         Set<String> names = new LinkedHashSet<>();
         for (ProgramId role : ROLES) {
@@ -72,7 +74,7 @@ public final class NvidiumPackPorter {
         return names;
     }
 
-    // The ported stage files for a pack's raw sources, keyed where they belong: beside each program, in each folder that ships one of its stages, paired the way ShaderPack's stage lookup pairs them (the folder first, then the root)
+    // Returns the sources with mesh stages added.
     public static Map<AbsolutePackPath, String> portSources(Map<AbsolutePackPath, String> sources, List<String> ported, List<String> skipped) {
         IncludeProcessor includes = new IncludeProcessor(sources);
         Map<AbsolutePackPath, String> output = new TreeMap<>(Comparator.comparing(AbsolutePackPath::getPathString));
@@ -107,7 +109,7 @@ public final class NvidiumPackPorter {
         return output;
     }
 
-    // One program through the same bridge the OpenGL path builds, then into mesh form; the fragment stage only gets the modern-name rewrite here, since its own bridge depends on the draw buffers the options pick
+    // Translates one program to a mesh stage.
     static MeshShaderTranslator.Port portProgram(String name, String vertex, String fragment) {
         String vsh = VanillaNameTransformer.transform(vertex);
         String fsh = VanillaNameTransformer.transform(fragment);
@@ -118,7 +120,7 @@ public final class NvidiumPackPorter {
         return MeshShaderTranslator.port(bridged, fsh);
     }
 
-    // The port at target when it was made from source as it is now, by this port format and these templates; otherwise a fresh port
+    // Ports a pack unless its recorded port is current.
     public static Result ensure(Path source, Path target) throws IOException {
         String fingerprint = fingerprint(source);
         Properties manifest = readManifest(target);
@@ -138,11 +140,12 @@ public final class NvidiumPackPorter {
         return port(source, target, fingerprint);
     }
 
-    // Copies the pack at source (folder or zip) into target and writes the ported stages; refuses a target it did not make, and a re-port replaces its own earlier one whole
+    // Ports a pack into a target folder.
     public static Result port(Path source, Path target) throws IOException {
         return port(source, target, fingerprint(source));
     }
 
+    // Ports a pack into a target folder with a fingerprint.
     private static Result port(Path source, Path target, String fingerprint) throws IOException {
         Map<String, byte[]> files = readPack(source);
         if (files.keySet().stream().noneMatch(file -> file.startsWith("shaders/"))) {
@@ -182,7 +185,7 @@ public final class NvidiumPackPorter {
         return new Result(ported, skipped);
     }
 
-    // The manifest: where the port came from, what it was made from, and what was and was not ported
+    // Returns the manifest text of a port.
     private static String manifest(Path source, String fingerprint, List<String> ported, List<String> skipped) {
         StringBuilder out = new StringBuilder("# Nvidium port of a shader pack, written by Impetus and remade whenever the pack changes; delete this folder to force a fresh one\n");
         out.append("source=").append(source.getFileName()).append('\n');
@@ -196,7 +199,7 @@ public final class NvidiumPackPorter {
         return out.toString();
     }
 
-    // The manifest a port at target carries, or null when there is none to read
+    // Reads the manifest of a port or returns null.
     private static Properties readManifest(Path target) throws IOException {
         Path file = target.resolve(MANIFEST);
         if (!Files.isRegularFile(file)) {
@@ -209,7 +212,7 @@ public final class NvidiumPackPorter {
         return manifest;
     }
 
-    // What a port is made from: the port format, the inlined templates, and every file of the pack by path, size and modification time (a zip as one file)
+    // Returns a hash of the pack files.
     static String fingerprint(Path source) throws IOException {
         MessageDigest digest;
         try {
@@ -237,7 +240,7 @@ public final class NvidiumPackPorter {
         return HexFormat.of().formatHex(digest.digest());
     }
 
-    // The folders that can hold programs: the root ("") and every top-level folder of shaders/, as /name
+    // Returns the program folders of a pack.
     private static Set<String> folders(Map<AbsolutePackPath, String> sources) {
         Set<String> folders = new TreeSet<>();
         folders.add("");
@@ -251,7 +254,7 @@ public final class NvidiumPackPorter {
         return folders;
     }
 
-    // A stage file in a folder, or at the root when the folder lacks it
+    // Returns the path of a stage or null.
     private static AbsolutePackPath locate(Map<AbsolutePackPath, String> sources, String folder, String name, String extension) {
         AbsolutePackPath inFolder = path(folder, name, extension);
         if (sources.containsKey(inFolder)) {
@@ -261,11 +264,12 @@ public final class NvidiumPackPorter {
         return sources.containsKey(atRoot) ? atRoot : null;
     }
 
+    // Returns the path of a file in a folder.
     private static AbsolutePackPath path(String folder, String name, String extension) {
         return AbsolutePackPath.fromAbsolutePath(folder + "/" + name + "." + extension);
     }
 
-    // Every file of a pack, keyed relative to its root with shaders/ on top: a folder as it is, a zip with any single wrapping folder stripped
+    // Reads every file of a pack folder or zip.
     static Map<String, byte[]> readPack(Path source) throws IOException {
         Map<String, byte[]> files = new TreeMap<>();
         if (Files.isDirectory(source)) {
@@ -304,13 +308,13 @@ public final class NvidiumPackPorter {
         return files;
     }
 
-    // The lower-case extension of a path, or "" for none
+    // Returns the extension of a path.
     private static String extension(String path) {
         int dot = path.lastIndexOf('.');
         return dot < 0 || dot < path.lastIndexOf('/') ? "" : path.substring(dot + 1).toLowerCase(Locale.ROOT);
     }
 
-    // Deletes a folder and everything in it, deepest first
+    // Deletes a folder and its contents.
     private static void deleteTree(Path root) throws IOException {
         try (Stream<Path> walk = Files.walk(root)) {
             for (Path path : walk.sorted(Comparator.reverseOrder()).toList()) {

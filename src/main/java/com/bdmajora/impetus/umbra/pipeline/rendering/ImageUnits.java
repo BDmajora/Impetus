@@ -15,23 +15,29 @@ import java.util.Map;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Image units for colour targets written through the image API (colorimgN, Umbra's addRenderTargetImages) and for the shadow colour attachments (shadowcolorimgN), above the image.<name> units in one ascending allocation; Umbra assigns per program, but with fixed units one global unit per target is equivalent since the binding is re-established per pass
+// Bindings of the pack images to image units.
 public final class ImageUnits {
+    // Logger of this class.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
+    // Shadow color indices.
     private static final int SHADOW_COLOR_INDICES = 8;
 
-    // Image unit per colortex / per shadowcolor, -1 when unreferenced or out of units
+    // Render target units.
     private final int[] renderTargetUnits = new int[UmbraRenderTargets.MAX_COLOR_BUFFERS];
+    // Shadow color units.
     private final int[] shadowColorUnits = new int[SHADOW_COLOR_INDICES];
+    // Render target count.
     private int renderTargetCount;
+    // Shadow color count.
     private int shadowColorCount;
 
+    // Creates an image units with default state.
     public ImageUnits() {
         Arrays.fill(this.renderTargetUnits, -1);
         Arrays.fill(this.shadowColorUnits, -1);
     }
 
-    // Reserves a unit per referenced colorimgN; Umbra createIfUnsure()s the target, since a buffer nothing samples but a compute writes still has to exist
+    // Assigns image units to the referenced render targets.
     public void allocateRenderTargets(BitSet referenced, CustomImageManager images, UmbraRenderTargets targets) {
         int unit = images.getNextAvailableImageUnit();
         int limit = images.getHardwareImageUnits();
@@ -47,7 +53,7 @@ public final class ImageUnits {
         }
     }
 
-    // Reserves units for shadowcolorimgN after the render-target images, only for buffers the shadow renderer actually owns
+    // Assigns image units to the referenced shadow colors.
     public void allocateShadowColors(BitSet referenced, CustomImageManager images, UmbraShadowRenderer shadow) {
         if (shadow == null) {
             return;
@@ -68,7 +74,7 @@ public final class ImageUnits {
         }
     }
 
-    // The image uniforms as sampler-assignment overrides; image entries never deactivate (colorTarget -1)
+    // Binds the custom image overrides.
     public void addOverrides(Map<String, CustomTextureManager.Override> into) {
         for (int i = 0; i < this.renderTargetUnits.length; i++) {
             if (this.renderTargetUnits[i] >= 0) {
@@ -82,12 +88,12 @@ public final class ImageUnits {
         }
     }
 
-    // Whether there is anything to bind
+    // Returns whether empty.
     public boolean isEmpty() {
         return this.renderTargetCount == 0 && this.shadowColorCount == 0;
     }
 
-    // Binds every image for one pass: colour targets flip-aware like Umbra, so a compute writing colorimg4 hits the exact texture later programs sample as colortex4; shadow colours do not ping-pong. The two halves are independent, a pack using only shadowcolorimg used to get no binding at all
+    // Binds every image for the current flip state.
     public void bind(BitSet flipsBefore, UmbraRenderTargets targets, UmbraShadowRenderer shadow) {
         if (this.renderTargetCount > 0) {
             for (int i = 0; i < this.renderTargetUnits.length; i++) {

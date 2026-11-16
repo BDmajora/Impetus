@@ -4,15 +4,15 @@ import com.bdmajora.extras.Extras;
 import com.bdmajora.extras.ExtrasConfig;
 import com.bdmajora.impetus.api.options.structure.OptionStorage;
 
-// Bridges the Extras config into the Impetus options framework.
+// Storage that saves the Extras config when an option changes.
 public final class ExtrasOptionsStorage implements OptionStorage<ExtrasConfig> {
-    // The options screen edits the live config directly
+    // Returns the data.
     @Override
     public ExtrasConfig getData() {
         return Extras.options();
     }
 
-    // Writes the file once the screen is dismissed
+    // Saves the value.
     @Override
     public void save() {
         Extras.save();

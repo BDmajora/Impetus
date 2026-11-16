@@ -4,12 +4,13 @@ import org.lwjgl.opengl.GL11;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// The four sampler parameters every pipeline-created 2D texture sets on the texture currently bound to GL_TEXTURE_2D
+// Setters of texture filtering and wrap parameters.
 public final class TextureParameters {
+    // Prevents instantiation
     private TextureParameters() {
     }
 
-    // Same filter for minification and magnification, same wrap on both axes
+    // Sets the filter and wrap of the bound 2D texture.
     public static void set2D(int filter, int wrap) {
         LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, filter);
         LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, filter);
@@ -17,7 +18,7 @@ public final class TextureParameters {
         LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, wrap);
     }
 
-    // Just the two filters, for a texture whose wrap mode is already set
+    // Stores the filter2 d.
     public static void setFilter2D(int filter) {
         LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, filter);
         LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, filter);

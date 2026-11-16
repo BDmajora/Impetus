@@ -11,19 +11,24 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// isSneaking, isSprinting, isInvisible, isGlowing, isBurning and isElytraFlying all read one synced byte through EntityDataManager.get, which takes a read-write lock and unboxes a Byte on every call, and rendering alone asks several of them per entity per frame (BadOptimizations' entity flag caching); the byte is kept here and refreshed only when the data manager writes it
+// Mixin that changes Entity.
 @Mixin(Entity.class)
 public abstract class EntityMixin implements FlagCache {
+    // Reference to the field flags of the target.
     @Shadow
     @Final
     protected static DataParameter<Byte> FLAGS;
 
+    // Reference to the field data manager of the target.
     @Shadow
     protected EntityDataManager dataManager;
 
+    // Cached entity flags.
     private byte equilibrium$flags;
+    // Flag set while the cached flags are current.
     private boolean equilibrium$flagsValid;
 
+    // Runs at the start of getFlag and can cancel it.
     @Inject(method = "getFlag", at = @At("HEAD"), cancellable = true)
     private void equilibrium$readCachedFlag(int flag, CallbackInfoReturnable<Boolean> cir) {
         if (!this.equilibrium$flagsValid) {
@@ -37,6 +42,7 @@ public abstract class EntityMixin implements FlagCache {
         cir.setReturnValue((this.equilibrium$flags & 1 << flag) != 0);
     }
 
+    // Handles invalidate flags.
     @Override
     public void equilibrium$invalidateFlags() {
         this.equilibrium$flagsValid = false;

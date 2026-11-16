@@ -8,27 +8,27 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
 
-// /coarctatio prints what the memory subsystem saved in megabytes, each line marked MEASURED or ESTIMATED, alongside the live heap
+// Command that prints the memory report.
 public class CoarctatioStatsCommand extends CommandBase {
-    // Command name, so this is /coarctatio
+    // Returns the command name.
     @Override
     public String getName() {
         return "coarctatio";
     }
 
-    // Shown by /help
+    // Returns the usage text.
     @Override
     public String getUsage(ICommandSender sender) {
         return "/coarctatio — report memory saved by Impetus' memory subsystem";
     }
 
-    // Zero so any player can run it; it only reads counters
+    // Returns the permission level that every player has.
     @Override
     public int getRequiredPermissionLevel() {
         return 0;
     }
 
-    // Indented lines are detail under a heading, so they are greyed
+    // Sends the memory report and the statistics to the sender.
     @Override
     public void execute(MinecraftServer server, ICommandSender sender, String[] args) {
         for (String line : MemoryReport.lines()) {

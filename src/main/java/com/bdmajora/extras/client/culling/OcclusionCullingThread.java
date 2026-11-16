@@ -13,43 +13,61 @@ import net.minecraft.util.math.Vec3d;
 
 import java.util.List;
 
-// The worker behind occlusion culling, after tr7zw's and Meldexun's Entity Culling: every ~10 ms it walks the loaded entities and tile entities, ray-casts from the camera toward each one's box, and stamps a verdict on it that the render hooks read on the next frame. It reads world state without locks, exactly as those mods do; a torn read only ever produces a wrong verdict for one pass, and every exception ends the pass rather than the thread
+// Thread that tests which entities and block entities are hidden.
 public final class OcclusionCullingThread extends Thread {
+    // Time between passes.
     private static final long PASS_INTERVAL_NANOS = 10_000_000L;
-    // Beyond this the verdict is ignored by the hooks, so nothing past it is worth casting to
+    // Squared distance beyond which nothing is tested.
     private static final double MAX_DISTANCE_SQ = 96.0D * 96.0D;
+    // Radius of the cell cache.
     private static final int CACHE_RADIUS = 48;
-    // A crude view cone: anything more than this far behind the camera is left visible (never cast), since the frustum will drop it anyway
+    // Cosine below which a target is behind the camera.
     private static final double BEHIND_COSINE = -0.5D;
 
+    // Running thread or null.
     private static volatile OcclusionCullingThread instance;
 
+    // Visibility of the cells around the camera.
     private final CellVisibilityCache cache = new CellVisibilityCache(CACHE_RADIUS);
+    // Ray tester of the current world.
     private OcclusionRaycaster raycaster;
+    // World of the ray tester.
     private WorldClient raycasterWorld;
 
+    // East position of the camera.
     private double camX;
+    // Height of the camera.
     private double camY;
+    // South position of the camera.
     private double camZ;
+    // East part of the view direction.
     private double lookX;
+    // Vertical part of the view direction.
     private double lookY;
+    // South part of the view direction.
     private double lookZ;
+    // East block of the camera.
     private int camBlockX;
+    // Block height of the camera.
     private int camBlockY;
+    // South block of the camera.
     private int camBlockZ;
 
-    // Timing shared with the debug overlay
+    // Duration of the last pass.
     public static volatile long lastPassNanos;
+    // Entities hidden by the last pass.
     public static volatile int lastEntitiesCulled;
+    // Block entities hidden by the last pass.
     public static volatile int lastBlockEntitiesCulled;
 
+    // Creates the thread.
     private OcclusionCullingThread() {
         super("Impetus Occlusion Culling");
         this.setDaemon(true);
         this.setPriority(Thread.MIN_PRIORITY + 1);
     }
 
-    // Started on first use from the render thread; a daemon, so it never keeps the game alive
+    // Starts the thread when it is not running.
     public static void ensureRunning() {
         if (instance == null) {
             synchronized (OcclusionCullingThread.class) {
@@ -62,6 +80,7 @@ public final class OcclusionCullingThread extends Thread {
         }
     }
 
+    // Runs a pass every interval.
     @Override
     public void run() {
         Minecraft mc = Minecraft.getMinecraft();
@@ -75,7 +94,6 @@ public final class OcclusionCullingThread extends Thread {
                     this.pass(world, view, settings);
                 }
             } catch (Throwable ignored) {
-                // A pass torn by the client thread mutating a list or a chunk mid-read; the next pass starts clean
             }
             long elapsed = System.nanoTime() - start;
             lastPassNanos = elapsed;
@@ -90,6 +108,7 @@ public final class OcclusionCullingThread extends Thread {
         }
     }
 
+    // Tests every entity and block entity of the world.
     private void pass(WorldClient world, Entity view, ExtrasConfig.OcclusionSettings settings) {
         if (this.raycasterWorld != world) {
             this.raycaster = new OcclusionRaycaster(world);
@@ -142,8 +161,8 @@ public final class OcclusionCullingThread extends Thread {
         lastBlockEntitiesCulled = culledBlockEntities;
     }
 
+    // Returns whether the entity is visible.
     private boolean isEntityVisible(Entity entity, ExtrasConfig.OcclusionSettings settings, double slack) {
-        // Bosses, glowing and name-tagged entities are drawn through walls by vanilla's own rules; anything vanilla would not frustum-cull is left alone too
         if (!entity.isNonBoss() || entity.ignoreFrustumCheck || entity.isGlowing() || entity.getAlwaysRenderNameTagForRender()) {
             return true;
         }
@@ -167,6 +186,7 @@ public final class OcclusionCullingThread extends Thread {
         return this.isBoxVisible(box.minX - 0.5D, box.minY - 0.5D, box.minZ - 0.5D, box.maxX + 0.5D, box.maxY + 0.5D, box.maxZ + 0.5D, slack);
     }
 
+    // Returns whether the block entity is visible.
     private boolean isBlockEntityVisible(TileEntity blockEntity, ExtrasConfig.OcclusionSettings settings, double slack) {
         if (blockEntity.isInvalid()) {
             return true;
@@ -192,13 +212,14 @@ public final class OcclusionCullingThread extends Thread {
         return this.isBoxVisible(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, slack);
     }
 
+    // Returns whether the target is behind the camera.
     private boolean isBehindCamera(double dx, double dy, double dz, double distanceSq) {
         double inv = 1.0D / Math.sqrt(distanceSq);
         double cosine = (dx * this.lookX + dy * this.lookY + dz * this.lookZ) * inv;
         return cosine < BEHIND_COSINE;
     }
 
-    // Centre first, since it answers the common fully-visible case with one ray, then every block cell on the faces of the box that face the camera; a box the camera is inside is visible by definition
+    // Returns whether any ray from the camera reaches the box.
     private boolean isBoxVisible(double minX, double minY, double minZ, double maxX, double maxY, double maxZ, double slack) {
         if (this.camX >= minX && this.camX <= maxX && this.camY >= minY && this.camY <= maxY && this.camZ >= minZ && this.camZ <= maxZ) {
             return true;
@@ -230,6 +251,7 @@ public final class OcclusionCullingThread extends Thread {
         return false;
     }
 
+    // Returns whether any cell of the face is visible.
     private boolean faceVisible(int x0, int x1, int y0, int y1, int z0, int z1, double slack) {
         for (int x = x0; x <= x1; x++) {
             for (int y = y0; y <= y1; y++) {
@@ -243,6 +265,7 @@ public final class OcclusionCullingThread extends Thread {
         return false;
     }
 
+    // Returns whether the cell is visible.
     private boolean cellVisible(int x, int y, int z, double slack) {
         return this.cache.isVisible(x - this.camBlockX, y - this.camBlockY, z - this.camBlockZ,
                 () -> this.raycaster.isClear(this.camX, this.camY, this.camZ, x, y, z, slack));

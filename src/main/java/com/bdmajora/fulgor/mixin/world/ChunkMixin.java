@@ -23,88 +23,106 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Where the chunk stops calculating light itself and asks the engine; getLightFor, checkLight and recheckGaps are @Overwritten because their vanilla bodies would fight the engine, relightBlock because vanilla's drops the cross-chunk half of its job
+// Mixin that changes Chunk.
 @Mixin(Chunk.class)
 public abstract class ChunkMixin implements ChunkLightingData, LightingEngineProvider {
+    // Field fulgor horizontals added to the target.
     @Unique
     private static final EnumFacing[] FULGOR_HORIZONTALS = EnumFacing.Plane.HORIZONTAL.facings();
 
+    // Reference to the field world of the target.
     @Shadow
     @Final
     private World world;
 
+    // Reference to the field storage arrays of the target.
     @Shadow
     @Final
     private ExtendedBlockStorage[] storageArrays;
 
+    // Reference to the field height map of the target.
     @Shadow
     @Final
     private int[] heightMap;
 
+    // Reference to the field update skylight columns of the target.
     @Shadow
     @Final
     private boolean[] updateSkylightColumns;
 
+    // Reference to the field x of the target.
     @Shadow
     @Final
     public int x;
 
+    // Reference to the field z of the target.
     @Shadow
     @Final
     public int z;
 
+    // Reference to the field height map minimum of the target.
     @Shadow
     private int heightMapMinimum;
 
+    // Reference to the field dirty of the target.
     @Shadow
     private boolean dirty;
 
+    // Reference to the field is terrain populated of the target.
     @Shadow
     private boolean isTerrainPopulated;
 
+    // Reference to the field is gap lighting updated of the target.
     @Shadow
     private boolean isGapLightingUpdated;
 
+    // Reference to the method can see sky of the target.
     @Shadow
     public abstract boolean canSeeSky(BlockPos pos);
 
+    // Reference to the method get height value of the target.
     @Shadow
     public abstract int getHeightValue(int x, int z);
 
+    // Reference to the method get block light opacity of the target.
     @Shadow
     protected abstract int getBlockLightOpacity(int x, int y, int z);
 
+    // Reference to the method set skylight updated of the target.
     @Shadow
     protected abstract void setSkylightUpdated();
 
+    // Field lighting engine added to the target.
     @Unique
     private LightingEngine fulgor$lightingEngine;
 
+    // Field neighbor light checks added to the target.
     @Unique
     private short[] fulgor$neighborLightChecks;
 
+    // Field light initialized added to the target.
     @Unique
     private boolean fulgor$lightInitialized;
 
-    // Caches the world's engine on the chunk; getLightFor is one of the most-called methods in the game, and going through the world each call would add an interface dispatch and a field read
+    // Runs before every return of constructor.
     @Inject(method = "<init>(Lnet/minecraft/world/World;II)V", at = @At("RETURN"))
     private void fulgor$captureLightingEngine(World world, int x, int z, CallbackInfo ci) {
         this.fulgor$lightingEngine = ((LightingEngineProvider) world).fulgor$getLightingEngine();
     }
 
-    // getLightSubtracted reads both light types at once and is the entity/rendering path's way in, so it flushes both queues rather than going through getLightFor twice
+    // Runs at the start of getLightSubtracted.
     @Inject(method = "getLightSubtracted", at = @At("HEAD"))
     private void fulgor$flushBeforeLightSubtracted(BlockPos pos, int amount, CallbackInfoReturnable<Integer> cir) {
         this.fulgor$lightingEngine.processLightUpdates();
     }
 
-    // Replays the boundary checks this chunk and its neighbours owe each other; loading a chunk is the only event that makes a previously impossible boundary crossing possible
+    // Runs before every return of onLoad.
     @Inject(method = "onLoad", at = @At("RETURN"))
     private void fulgor$replayBoundaryChecks(CallbackInfo ci) {
         LightingHooks.scheduleRelightChecksForChunkBoundaries(this.world, (Chunk) (Object) this);
     }
 
-    // setLightFor rebuilds the whole chunk's skylight map when it creates a section, and the engine calls it for every position it writes; a full-column rebuild mid-pass is ruinously slow and overwrites what the pass decided, so only the new section is seeded
+    // Replaces the call of Chunk.generateSkylightMap in setLightFor.
     @Redirect(
             method = "setLightFor",
             at = @At(value = "INVOKE", target = "Lnet/minecraft/world/chunk/Chunk;generateSkylightMap()V"),
@@ -113,7 +131,7 @@ public abstract class ChunkMixin implements ChunkLightingData, LightingEnginePro
         LightingHooks.initSkylightForSection(this.world, (Chunk) (Object) this, this.storageArrays[pos.getY() >> 4]);
     }
 
-    // Vanilla relights the column but drops the part crossing into an unloaded neighbour (the source of worldgen skylight seams); this hands the column to LightingHooks#relightSkylightColumn, which records what it cannot do now. @author/@reason are Mixin's required @Overwrite metadata
+    // Replaces the whole method relightBlock.
     @Overwrite
     private void relightBlock(int x, int y, int z) {
         int oldHeight = this.heightMap[z << 4 | x] & 255;
@@ -138,7 +156,7 @@ public abstract class ChunkMixin implements ChunkLightingData, LightingEnginePro
         }
     }
 
-    // The single point where deferral becomes visible: any light read resolves what is pending first, for the requested type only since the two propagate independently. @author/@reason are Mixin's required @Overwrite metadata
+    // Replaces the whole method getLightFor.
     @Overwrite
     public int getLightFor(EnumSkyBlock lightType, BlockPos pos) {
         this.fulgor$lightingEngine.processLightUpdatesForType(lightType);
@@ -146,7 +164,7 @@ public abstract class ChunkMixin implements ChunkLightingData, LightingEnginePro
         return this.fulgor$getCachedLightFor(lightType, pos);
     }
 
-    // Vanilla walks all 256 columns and relights each immediately against whatever neighbours exist; this seeds the emitters into the engine and defers declaring the chunk lit until its whole neighbourhood is lit. @author/@reason are Mixin's required @Overwrite metadata
+    // Replaces the whole method checkLight.
     @Overwrite
     public void checkLight() {
         this.isTerrainPopulated = true;
@@ -154,7 +172,7 @@ public abstract class ChunkMixin implements ChunkLightingData, LightingEnginePro
         LightingHooks.checkChunkLighting(this.world, (Chunk) (Object) this);
     }
 
-    // Functionally vanilla, but its 1024 chunk-provider lookups are replaced by one 5x5 snapshot; the lookups are spread across four private helpers so the body cannot simply be redirected. @author/@reason are Mixin's required @Overwrite metadata
+    // Replaces the whole method recheckGaps.
     @Overwrite
     private void recheckGaps(boolean onlyOne) {
         this.world.profiler.startSection("recheckGaps");
@@ -180,6 +198,7 @@ public abstract class ChunkMixin implements ChunkLightingData, LightingEnginePro
         }
     }
 
+    // Helper method recheck gaps for column added to the target.
     @Unique
     private boolean fulgor$recheckGapsForColumn(WorldChunkSlice slice, int x, int z) {
         int index = x + z * 16;
@@ -206,6 +225,7 @@ public abstract class ChunkMixin implements ChunkLightingData, LightingEnginePro
         return true;
     }
 
+    // Helper method lowest neighbor height added to the target.
     @Unique
     private int fulgor$lowestNeighborHeight(WorldChunkSlice slice, int x, int z) {
         int lowest = Integer.MAX_VALUE;
@@ -221,6 +241,7 @@ public abstract class ChunkMixin implements ChunkLightingData, LightingEnginePro
         return lowest;
     }
 
+    // Helper method check skylight neighbor height added to the target.
     @Unique
     private void fulgor$checkSkylightNeighborHeight(WorldChunkSlice slice, int x, int z, int maxValue) {
         Chunk chunk = slice.getChunkFromWorldCoords(x, z);
@@ -238,6 +259,7 @@ public abstract class ChunkMixin implements ChunkLightingData, LightingEnginePro
         }
     }
 
+    // Helper method update skylight neighbor height added to the target.
     @Unique
     private void fulgor$updateSkylightNeighborHeight(WorldChunkSlice slice, int x, int z, int startY, int endY) {
         if (endY <= startY || !slice.isLoaded(x, z, 16)) {
@@ -251,18 +273,19 @@ public abstract class ChunkMixin implements ChunkLightingData, LightingEnginePro
         this.dirty = true;
     }
 
-    // === ChunkLightingData ===
-
+    // Returns the neighbor light checks.
     @Override
     public short[] fulgor$getNeighborLightChecks() {
         return this.fulgor$neighborLightChecks;
     }
 
+    // Stores the neighbor light checks.
     @Override
     public void fulgor$setNeighborLightChecks(short[] data) {
         this.fulgor$neighborLightChecks = data;
     }
 
+    // Initializes the neighbor light checks.
     @Override
     public void fulgor$initNeighborLightChecks() {
         if (this.fulgor$neighborLightChecks == null) {
@@ -270,31 +293,38 @@ public abstract class ChunkMixin implements ChunkLightingData, LightingEnginePro
         }
     }
 
+    // Returns whether light initialized.
     @Override
     public boolean fulgor$isLightInitialized() {
         return this.fulgor$lightInitialized;
     }
 
+    // Stores the light initialized.
     @Override
     public void fulgor$setLightInitialized(boolean lightInitialized) {
         this.fulgor$lightInitialized = lightInitialized;
     }
 
+    // Stores the skylight updated.
     @Override
     public void fulgor$setSkylightUpdated() {
         this.setSkylightUpdated();
     }
 
+    // Returns the cached light for.
     @Override
     public int fulgor$getCachedLightFor(EnumSkyBlock lightType, BlockPos pos) {
         int x = pos.getX() & 15;
         int y = pos.getY();
         int z = pos.getZ() & 15;
 
+        if (y < 0 || y > 255) {
+            return y > 255 ? lightType.defaultLightValue : 0;
+        }
+
         ExtendedBlockStorage section = this.storageArrays[y >> 4];
 
         if (section == Chunk.NULL_BLOCK_STORAGE) {
-            // No section means no stored light, so answer per the sky rule; deliberately ignores the light type like vanilla, so a block-light query in an empty section under open sky returns the sky default
             return this.canSeeSky(pos) ? lightType.defaultLightValue : 0;
         }
 
@@ -305,6 +335,7 @@ public abstract class ChunkMixin implements ChunkLightingData, LightingEnginePro
         return lightType == EnumSkyBlock.BLOCK ? section.getBlockLight(x, y & 15, z) : lightType.defaultLightValue;
     }
 
+    // Returns the lighting engine.
     @Override
     public LightingEngine fulgor$getLightingEngine() {
         return this.fulgor$lightingEngine;

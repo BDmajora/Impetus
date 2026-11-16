@@ -3,27 +3,37 @@ package com.bdmajora.impetus.umbra.shaderpack.texture;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-// One parsed `image.<name>` directive: <samplerName> <format> <internalFormat> <pixelType> <clear> <relative> <sizeX> <sizeY> [<sizeZ>], Iris's WRITABLE images reached via imageStore/imageLoad (Complementary's voxelization); parsing only, CustomImageManager owns the GL objects
+// Image directive of a shader pack.
 public final class CustomImageDefinition {
+    // Logger of malformed directives.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
 
+    // Name of the image.
     public final String name;
+    // Name of the sampler that reads the image.
     public final String samplerName;
+    // Name of the pixel format.
     public final String format;
+    // Name of the internal format.
     public final String internalFormat;
+    // Name of the pixel type.
     public final String pixelType;
-    // Whether the image is zeroed at frame start; a pack accumulating across frames declares false, and clearing anyway wipes its history
+    // Clear state of the image each frame.
     public final boolean clear;
-    // True when the declared sizes are viewport-relative multipliers rather than texels, the real dimensions being relativeX/relativeY times the render size
+    // Screen relative state of the size.
     public final boolean relative;
-    // Fixed dimensions in texels. For a relative image these are 0 and the manager derives the real size instead
+    // Width in pixels.
     public final int sizeX;
+    // Height in pixels.
     public final int sizeY;
-    // 0 for a 2D image; a relative image is always 2D like Iris's GlImage.Relative, since there is no meaningful viewport-relative depth
+    // Depth in pixels or zero for a 2D image.
     public final int sizeZ;
+    // Width as a share of the screen.
     public final float relativeX;
+    // Height as a share of the screen.
     public final float relativeY;
 
+    // Creates a definition.
     private CustomImageDefinition(String name, String samplerName, String format, String internalFormat,
                                   String pixelType, boolean clear, boolean relative, int sizeX, int sizeY, int sizeZ,
                                   float relativeX, float relativeY) {
@@ -41,7 +51,7 @@ public final class CustomImageDefinition {
         this.relativeY = relativeY;
     }
 
-    // Parses one directive value, returning null with a log line when malformed; the consequence is spelled out because the missing image leaves its sampler on unit 0 with a DIFFERENT sampler type, which makes the program invalid (GL_INVALID_OPERATION) on Mesa but not NVIDIA, reported as a bare 0x502
+    // Parses a directive and returns null and logs a malformed one.
     public static CustomImageDefinition parse(String name, String value) {
         String[] parts = value.trim().split("\\s+");
         if (parts.length < 8 || parts.length > 9) {
@@ -51,13 +61,24 @@ public final class CustomImageDefinition {
         try {
             boolean clear = Boolean.parseBoolean(parts[4]);
             if (Boolean.parseBoolean(parts[5])) {
-                // Viewport-relative: the last two fields are float multipliers of the render size, not pixel counts.
+                float relativeX = Float.parseFloat(parts[6]);
+                float relativeY = Float.parseFloat(parts[7]);
+                // Rejects a relative size that is not a positive finite number
+                if (!(relativeX > 0.0f && relativeX < Float.POSITIVE_INFINITY && relativeY > 0.0f && relativeY < Float.POSITIVE_INFINITY)) {
+                    warnMalformed(name, value, parts);
+                    return null;
+                }
                 return new CustomImageDefinition(name, parts[0], parts[1], parts[2], parts[3],
-                        clear, true, 0, 0, 0, Float.parseFloat(parts[6]), Float.parseFloat(parts[7]));
+                        clear, true, 0, 0, 0, relativeX, relativeY);
             }
             int sizeX = Integer.parseInt(parts[6]);
             int sizeY = Integer.parseInt(parts[7]);
             int sizeZ = parts.length == 9 ? Integer.parseInt(parts[8]) : 0;
+            // Rejects a width or height that is not positive or a negative depth
+            if (sizeX <= 0 || sizeY <= 0 || sizeZ < 0) {
+                warnMalformed(name, value, parts);
+                return null;
+            }
             return new CustomImageDefinition(name, parts[0], parts[1], parts[2], parts[3],
                     clear, false, sizeX, sizeY, sizeZ, 0.0f, 0.0f);
         } catch (NumberFormatException e) {
@@ -66,10 +87,10 @@ public final class CustomImageDefinition {
         }
     }
 
-    // Names the SAMPLER about to be left unbound, not just the failed directive, since that is what the resulting GL error will not tell you; recoverable from parts[0] except for an empty value
+    // Logs a malformed directive.
     private static void warnMalformed(String name, String value, String[] parts) {
         String samplerName = parts.length > 0 && !parts[0].isEmpty() ? parts[0] : "(unknown)";
-        LOGGER.error("[Umbra] Malformed image directive image.{} = {} — the image is NOT created and sampler '{}' is "
+        LOGGER.error("[Umbra] Malformed image directive image.{} = {}. The image is NOT created and sampler '{}' is "
                         + "left on texture unit 0, which fails every draw in any program that declares it with "
                         + "GL_INVALID_OPERATION on a strict driver",
                 name, value, samplerName);

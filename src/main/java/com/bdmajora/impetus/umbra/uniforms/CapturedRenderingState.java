@@ -6,49 +6,66 @@ import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
-// A singleton snapshot of per-frame render state captured out of the vanilla render loop (camera matrices and position, partial ticks, render stage, alpha threshold, the entity or block entity being submitted); a singleton because the capturing mixins are scattered and have no pipeline reference
+// Render state captured during a frame for uniforms.
 public final class CapturedRenderingState {
+    // Shared instance.
     public static final CapturedRenderingState INSTANCE = new CapturedRenderingState();
 
+    // Gbuffer model view.
     private final Matrix4f gbufferModelView = new Matrix4f();
+    // Gbuffer projection.
     private final Matrix4f gbufferProjection = new Matrix4f();
+    // Camera position.
     private final Vector3d cameraPosition = new Vector3d();
+    // Fog color.
     private final Vector3f fogColor = new Vector3f();
+    // Shadow model view.
     private final Matrix4f shadowModelView = new Matrix4f();
+    // Shadow projection.
     private final Matrix4f shadowProjection = new Matrix4f();
-    // Where the camera (the view-space origin) sits relative to vanilla's render origin, the view entity's FEET: 1.12's model-view carries orientCamera's translate(0, -eyeHeight, 0) and the third-person pull-back, so player space as OptiFine 1.12 defined it starts at the feet. Modern packs assume the Iris/1.17+ convention where player space starts AT the camera (Complementary marches its light shafts as `rayDirection * distance` from the origin, so from the feet every downward ray was underground and the fog cut off at the horizon); the pack-facing matrices and cameraPosition below are re-based by this vector while the geometry keeps rendering feet-relative
+    // Camera offset.
     private final Vector3d cameraOffset = new Vector3d();
+    // Previous camera offset.
     private final Vector3d previousCameraOffset = new Vector3d();
-    // gbufferModelView * translate(cameraOffset): maps camera-relative player space to view space with the camera at the origin, what the gbufferModelView/gbufferModelViewInverse uniforms upload
+    // Gbuffer model view with the camera at the origin.
     private final Matrix4f gbufferModelViewCameraCentered = new Matrix4f();
-    // shadowModelView * translate(cameraOffset), the shadowModelView uniform; the shadow pass itself still draws feet-relative geometry through the raw matrix, and the two agree on clip positions since the offset is folded into the vertex position the pack reconstructs
+    // Shadow model view with the camera at the origin.
     private final Matrix4f shadowModelViewCameraCentered = new Matrix4f();
+    // Atlas size.
     private final Vector2i atlasSize = new Vector2i();
+    // Color modulator.
     private final Vector4f colorModulator = new Vector4f(1.0f, 1.0f, 1.0f, 1.0f);
+    // Entity color.
     private final Vector4f entityColor = new Vector4f(0.0f, 0.0f, 0.0f, 0.0f);
 
+    // Partial tick of the frame.
     private float tickDelta;
-    // The renderStage uniform, the current WorldRenderingPhase ordinal matching MC_RENDER_STAGE_*; packs switch on it to tell terrain from entities from the hand within one program
+    // Render stage.
     private int renderStage;
+    // Current alpha test.
     private float currentAlphaTest;
+    // Id of the block entity being drawn or minus one.
     private int currentRenderedBlockEntity = -1;
+    // Id of the entity being drawn or minus one.
     private int currentRenderedEntity = -1;
+    // Id of the item being drawn or minus one.
     private int currentRenderedItem = -1;
+    // Number of texture reloads.
     private int textureReloadCount;
 
+    // Prevents instantiation
     private CapturedRenderingState() {
     }
 
-    // Model-view captured at the start of the gbuffer stage
+    // Returns the gbuffer model view.
     public Matrix4f getGbufferModelView() {
         return this.gbufferModelView;
     }
 
-    // Captured by the renderer mixin once per frame; also rolls the camera offset, so previousCameraOffset pairs with the previous frame's camera position the way CameraUniforms rolls the feet position at frame start
+    // Stores the gbuffer model view.
     public void setGbufferModelView(Matrix4f modelView) {
         this.gbufferModelView.set(modelView);
         this.previousCameraOffset.set(this.cameraOffset);
-        // The view-space origin pulled back into feet-relative space is exactly the camera point vanilla's gluUnProject reports, bobbing and third-person offsets included; a singular capture (all-zero buffer on the first frames) leaves the offset at zero rather than NaN
         Matrix4f inverse = new Matrix4f(modelView).invert();
         Vector4f origin = new Vector4f(0.0f, 0.0f, 0.0f, 1.0f);
         inverse.transform(origin);
@@ -63,179 +80,179 @@ public final class CapturedRenderingState {
                 .translate((float) this.cameraOffset.x, (float) this.cameraOffset.y, (float) this.cameraOffset.z);
     }
 
-    // The pack-facing model-view with the camera at the player-space origin (Iris convention)
+    // Returns the gbuffer model view camera centered.
     public Matrix4f getGbufferModelViewCameraCentered() {
         return this.gbufferModelViewCameraCentered;
     }
 
-    // The pack-facing shadow model-view, re-based the same way
+    // Returns the shadow model view camera centered.
     public Matrix4f getShadowModelViewCameraCentered() {
         return this.shadowModelViewCameraCentered;
     }
 
-    // Camera point relative to the feet render origin this frame
+    // Returns the camera offset.
     public Vector3d getCameraOffset() {
         return this.cameraOffset;
     }
 
-    // Same for the previous frame, for previousCameraPosition
+    // Returns the previous camera offset.
     public Vector3d getPreviousCameraOffset() {
         return this.previousCameraOffset;
     }
 
-    // Projection captured at the start of the gbuffer stage
+    // Returns the gbuffer projection.
     public Matrix4f getGbufferProjection() {
         return this.gbufferProjection;
     }
 
-    // Captured by the renderer mixin
+    // Stores the gbuffer projection.
     public void setGbufferProjection(Matrix4f projection) {
         this.gbufferProjection.set(projection);
     }
 
-    // Camera position this frame
+    // Returns the camera position.
     public Vector3d getCameraPosition() {
         return this.cameraPosition;
     }
 
-    // Captured by the renderer mixin
+    // Stores the camera position.
     public void setCameraPosition(double x, double y, double z) {
         this.cameraPosition.set(x, y, z);
     }
 
-    // Shadow pass model-view
+    // Returns the shadow model view.
     public Matrix4f getShadowModelView() {
         return this.shadowModelView;
     }
 
-    // Captured by the shadow renderer, after the camera capture of the same frame, so the re-based copy uses this frame's offset
+    // Stores the shadow model view.
     public void setShadowModelView(Matrix4f modelView) {
         this.shadowModelView.set(modelView);
         this.shadowModelViewCameraCentered.set(modelView)
                 .translate((float) this.cameraOffset.x, (float) this.cameraOffset.y, (float) this.cameraOffset.z);
     }
 
-    // Shadow pass projection
+    // Returns the shadow projection.
     public Matrix4f getShadowProjection() {
         return this.shadowProjection;
     }
 
-    // Captured by the shadow renderer
+    // Stores the shadow projection.
     public void setShadowProjection(Matrix4f projection) {
         this.shadowProjection.set(projection);
     }
 
-    // Block atlas size, for atlasSize
+    // Returns the atlas size.
     public Vector2i getAtlasSize() {
         return this.atlasSize;
     }
 
-    // Captured on stitch
+    // Stores the atlas size.
     public void setAtlasSize(int width, int height) {
         this.atlasSize.set(width, height);
     }
 
-    // Fog colour this frame
+    // Returns the fog color.
     public Vector3f getFogColor() {
         return this.fogColor;
     }
 
-    // Captured from vanilla's fog setup
+    // Stores the fog color.
     public void setFogColor(float red, float green, float blue) {
         this.fogColor.set(red, green, blue);
     }
 
-    // GL colour multiplier this draw
+    // Returns the color modulator.
     public Vector4f getColorModulator() {
         return this.colorModulator;
     }
 
-    // Captured from GlStateManager.color
+    // Stores the color modulator.
     public void setColorModulator(float red, float green, float blue, float alpha) {
         this.colorModulator.set(red, green, blue, alpha);
     }
 
-    // OptiFine's entityColor (rgb tint, a blend factor, the pack finishes with mix(color.rgb, entityColor.rgb, entityColor.a)); a uniform because vanilla paints the hurt flash and creeper charge with fixed-function combiners a bound program ignores
+    // Returns the entity color.
     public Vector4f getEntityColor() {
         return this.entityColor;
     }
 
-    // Hurt or flash tint for the entity being drawn
+    // Stores the entity color.
     public void setEntityColor(float red, float green, float blue, float alpha) {
         this.entityColor.set(red, green, blue, alpha);
     }
 
-    // Clears after the entity
+    // Clears the entity color.
     public void resetEntityColor() {
         this.entityColor.set(0.0f, 0.0f, 0.0f, 0.0f);
     }
 
-    // Iris render stage enum ordinal
+    // Returns the render stage.
     public int getRenderStage() {
         return this.renderStage;
     }
 
-    // Set as the frame progresses
+    // Stores the render stage.
     public void setRenderStage(int renderStage) {
         this.renderStage = renderStage;
     }
 
-    // Partial ticks this frame
+    // Returns the tick delta.
     public float getTickDelta() {
         return this.tickDelta;
     }
 
-    // Captured at frame start
+    // Stores the tick delta.
     public void setTickDelta(float tickDelta) {
         this.tickDelta = tickDelta;
     }
 
-    // Alpha test threshold for the current draw
+    // Returns the current alpha test.
     public float getCurrentAlphaTest() {
         return this.currentAlphaTest;
     }
 
-    // Captured from GlStateManager.alphaFunc
+    // Stores the current alpha test.
     public void setCurrentAlphaTest(float currentAlphaTest) {
         this.currentAlphaTest = currentAlphaTest;
     }
 
-    // Pack id of the tile entity being drawn, or -1
+    // Returns the current rendered block entity.
     public int getCurrentRenderedBlockEntity() {
         return this.currentRenderedBlockEntity;
     }
 
-    // Set by the tile entity dispatcher mixin
+    // Stores the current rendered block entity.
     public void setCurrentRenderedBlockEntity(int id) {
         this.currentRenderedBlockEntity = id;
     }
 
-    // Pack id of the entity being drawn, or -1
+    // Returns the current rendered entity.
     public int getCurrentRenderedEntity() {
         return this.currentRenderedEntity;
     }
 
-    // Set by the entity renderer mixin
+    // Stores the current rendered entity.
     public void setCurrentRenderedEntity(int id) {
         this.currentRenderedEntity = id;
     }
 
-    // Pack id of the item being drawn, or -1
+    // Returns the current rendered item.
     public int getCurrentRenderedItem() {
         return this.currentRenderedItem;
     }
 
-    // Set by the item renderer mixin
+    // Stores the current rendered item.
     public void setCurrentRenderedItem(int id) {
         this.currentRenderedItem = id;
     }
 
-    // Bumped on every resource reload, so caches keyed on it invalidate
+    // Returns the texture reload count.
     public int getTextureReloadCount() {
         return this.textureReloadCount;
     }
 
-    // Called on reload
+    // Counts a texture reload.
     public void incrementTextureReloadCount() {
         this.textureReloadCount++;
     }

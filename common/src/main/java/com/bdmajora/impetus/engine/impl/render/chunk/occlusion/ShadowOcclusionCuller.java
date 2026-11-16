@@ -14,41 +14,21 @@ import static com.bdmajora.impetus.engine.impl.render.chunk.occlusion.OcclusionC
 import static com.bdmajora.impetus.engine.impl.render.chunk.occlusion.SectionLattice.XYZ_LOCAL_MASK;
 import static com.bdmajora.impetus.engine.impl.render.chunk.occlusion.SectionLattice.XYZ_SHIFT;
 
-/**
- * Receiver-driven, light-monotone visibility search for a directional shadow pass.
- *
- * <p>A section can only cast a shadow the player sees if it lies on a light ray through a point the camera can
- * see. The search therefore starts from every cell the main pass reported visible and expands only toward the light,
- * through the face-pair visibility graph, until a blocker. Blockers are reported (they are shadow casters) but do not
- * get queued for further traversal. This design means geometry the camera cannot see (such as the surface sections
- * above an enclosed cave) is never reached.
- *
- * <p>Less things depend on the camera position than the standard occlusion culler. The outward-direction and
- * angle-refinement masks follow from the light vector alone and are constant for the whole search, and there is no
- * angular aperture to track.
- *
- * <p>In this culler variant, a section is not necessarily dequeued only once. A later arrival through a
- * previously unused incoming face can widen the exits available to that section, so it must be enqueued and expanded
- * again. {@code REPORTED_BIT} prevents duplicate visitor reports. (The main culler avoids this by normally enqueuing
- * only one root and expanding outwards. This guarantees every path to a cell arrives at the same queue depth, so
- * all incoming apertures are merged before that cell is dequeued. Edge cases needing multiple roots disable aperture
- * clamping to sidestep the problem.)
- *
- * <p>The search stamps {@link SectionLattice#shadowVisitState}, leaving the main search's state intact, and reads
- * the root set from {@link SectionLattice#visibleCells}, so it must run after the main search for the same frame.
- */
+// Searches the sections that can cast a shadow that the camera sees.
 final class ShadowOcclusionCuller {
-    // A light component smaller than this is treated as zero: both directions on that axis stay open.
+    // Light component below which both directions of an axis stay open.
     private static final float AXIS_EPSILON = 1e-4f;
 
-    // Marks a root cell. A root is where a light ray ends, not somewhere it passes through, so it is expanded in
-    // every direction toward the light no matter which neighbours reach it later.
+    // State bit of a root cell.
     private static final int ROOT_BIT = 1 << GraphDirection.COUNT;
 
+    // State bit of a cell that was reported.
     private static final int REPORTED_BIT = 1 << (GraphDirection.COUNT + 1);
 
+    // Mask of the incoming faces in a state.
     private static final int INCOMING_MASK = GraphDirectionSet.ALL;
 
+    // Bit of each direction.
     private static final int DOWN_BIT = 1 << GraphDirection.DOWN;
     private static final int UP_BIT = 1 << GraphDirection.UP;
     private static final int NORTH_BIT = 1 << GraphDirection.NORTH;
@@ -56,22 +36,20 @@ final class ShadowOcclusionCuller {
     private static final int WEST_BIT = 1 << GraphDirection.WEST;
     private static final int EAST_BIT = 1 << GraphDirection.EAST;
 
+    // Lattice of the sections.
     private final SectionLattice lattice;
+    // Region classes of the search.
     private final RegionCullCache regionCullCache = new RegionCullCache();
 
-    // Same entry format as OcclusionCuller's queue: (packedLocalXYZ << 32) | latticeIndex.
+    // Queue of entries made of the local position and the lattice index.
     private long[] queue = new long[256];
 
+    // Creates a culler for a lattice and rejects null.
     ShadowOcclusionCuller(SectionLattice lattice) {
-        this.lattice = lattice;
+        this.lattice = java.util.Objects.requireNonNull(lattice, "lattice");
     }
 
-    /**
-     * Search from the main pass's visible cells toward the light and report each reached cell to {@code visitor}.
-     *
-     * @param viewport       the shadow viewport; its frustum and camera bound the search like in the main pass
-     * @param lightX         unit vector toward the shadow light
-     */
+    // Searches from the visible cells toward the light and reports every reached cell.
     void findVisible(OcclusionCuller.Visitor visitor,
                      Viewport viewport,
                      float searchDistance,
@@ -79,8 +57,7 @@ final class ShadowOcclusionCuller {
                      float lightX, float lightY, float lightZ,
                      int frame)
     {
-        // Room for one entry per installed cell, which is all a cell's first visit can need. Only re-expansion can
-        // want more, and the loop below grows the queue if it does.
+        // Sizes the queue for the installed cells
         int installed = this.lattice.installedCount;
         if (this.queue.length < installed) {
             this.queue = new long[Math.max(installed, this.queue.length * 2)];
@@ -96,10 +73,7 @@ final class ShadowOcclusionCuller {
         this.process(visitor, viewport, searchDistance, towardLight, refinementMask, frameStamp, tail);
     }
 
-    /**
-     * Directions a light ray may step in: the sign of each light component. A component near zero keeps both
-     * directions open, so a near-vertical sun does not flicker between sides from float jitter.
-     */
+    // Returns the directions toward the light.
     static int towardLightDirections(float lightX, float lightY, float lightZ) {
         int directions = 0;
 
@@ -115,11 +89,7 @@ final class ShadowOcclusionCuller {
         return directions;
     }
 
-    /**
-     * Visibility mask dropping the straight-through face pairs of every axis that is strictly shorter than the
-     * light's dominant component: a ray crossing a full section along such an axis would travel more than a section
-     * along the dominant one. Ties keep their pairs.
-     */
+    // Returns the mask of the face pairs that stay for a light direction.
     static long refinementMask(float lightX, float lightY, float lightZ) {
         float ax = Math.abs(lightX), ay = Math.abs(lightY), az = Math.abs(lightZ);
         float max = Math.max(ax, Math.max(ay, az));
@@ -132,11 +102,7 @@ final class ShadowOcclusionCuller {
         return ANGLE_REFINEMENT_MASKS[sel];
     }
 
-    /**
-     * Enqueue every main-pass visible cell whose region is not wholly outside the shadow frustum. Cells are installed
-     * by construction (the lattice is structurally unchanged between the two searches), so only the stamp gate is
-     * needed to avoid duplicates.
-     */
+    // Queues every visible cell of the main pass that is not outside the shadow frustum and returns the tail.
     private int seed(long frameStamp) {
         final long[] roots = this.lattice.visibleCells;
         final int rootCount = this.lattice.visibleCount;
@@ -152,14 +118,12 @@ final class ShadowOcclusionCuller {
             long entry = roots[i];
             int idx = (int) entry;
 
-            // Defensive check if roots somehow contain duplicates
+            // Skips duplicates
             if (visitState[idx] >= frameStamp) {
                 continue;
             }
 
-            // The chunk coords are only needed to work out the region's bounds, and each region is measured once
-            // per search. With thousands of roots per region that is nearly always a cache hit, so unpack the
-            // coordinates inside the miss rather than for every root.
+            // Reads the region class and unpacks coordinates only on a miss
             int regionId = regionOfCell[idx];
             int classification = cache.cached(regionId);
 
@@ -176,7 +140,7 @@ final class ShadowOcclusionCuller {
             }
 
             if (classification == RegionCullCache.OUTSIDE) {
-                // Shadow frustum is guaranteed to exclude section, skip
+                // Skips the section
                 continue;
             }
 
@@ -187,6 +151,7 @@ final class ShadowOcclusionCuller {
         return tail;
     }
 
+    // Expands the queued cells toward the light and reports them.
     private void process(OcclusionCuller.Visitor visitor,
                          Viewport viewport,
                          float searchDistance,
@@ -213,8 +178,7 @@ final class ShadowOcclusionCuller {
         int head = 0;
 
         while (head < tail) {
-            // Expanding this cell adds at most one entry per direction. We hoist the bounds check for that here to avoid
-            // needing to do it multiple times later.
+            // Makes room for one entry per direction
             if (tail + GraphDirection.COUNT > queue.length) {
                 queue = this.grow(tail + GraphDirection.COUNT);
             }
@@ -227,8 +191,7 @@ final class ShadowOcclusionCuller {
             int chunkY = baseY + ((xyz >>> XYZ_SHIFT) & XYZ_LOCAL_MASK);
             int chunkZ = baseZ + (xyz & XYZ_LOCAL_MASK);
 
-            // Safe to read now and write back further down: expanding a cell only ever writes its neighbours,
-            // so nothing between here and there touches this cell's state.
+            // Reads the state of the cell
             long state = visitState[idx];
             boolean first = (state & REPORTED_BIT) == 0;
 
@@ -249,8 +212,7 @@ final class ShadowOcclusionCuller {
                 visible = isVisibleInPartialRegion(classification, viewport, transform, chunkX, chunkY, chunkZ, searchDistance);
             }
 
-            // Report the cell the first time it comes off the queue. A later pass over it has nothing new to
-            // report, only new faces to expand. Cells that failed the visibility tests are marked too.
+            // Reports the cell once
             if (first) {
                 visitState[idx] = state | REPORTED_BIT;
 
@@ -265,18 +227,14 @@ final class ShadowOcclusionCuller {
             int connections;
 
             if ((state & ROOT_BIT) != 0) {
-                // A root is a camera-visible cell where a shadow may be received. Do not require the light path to
-                // pass through the root's section: even a solid root can contain a visible receiving surface. Start
-                // with every face open; the towardLight mask below restricts traversal to directions toward the light.
+                // Opens every face of a root
                 connections = GraphDirectionSet.ALL;
             } else {
-                // For a non-root, the search has entered through one or more faces. Follow only the face-to-face
-                // paths that the section's occlusion data allows; blocked paths stop at this section instead of
-                // reaching sections farther along the light ray.
+                // Follows the paths that the visibility data allows
                 connections = VisibilityEncoding.getConnections(sm & refinementMask, (int) (state & INCOMING_MASK));
             }
 
-            // Only ever step toward the light.
+            // Steps only toward the light
             connections &= towardLight;
 
             if ((connections & DOWN_BIT) != 0) {
@@ -300,22 +258,13 @@ final class ShadowOcclusionCuller {
         }
     }
 
-    // Keeps the entries still waiting in the queue. The caller reads the queue through a local, so it has to take
-    // the new array back.
+    // Replaces the queue with a larger one and keeps its entries.
     private long[] grow(int minimumCapacity) {
         this.queue = Arrays.copyOf(this.queue, Math.max(minimumCapacity, this.queue.length * 2));
         return this.queue;
     }
 
-    /**
-     * Queue a neighbour the first time it is reached this frame, and again if it is later reached through a face it
-     * was not expanded with. Reaching it through a face it already has just records the direction.
-     *
-     * <p>The second test is written as one mask because the bits it looks at cannot overlap. It asks for three
-     * things: the face is new, the cell is not a root, and the cell has already been expanded. A root is skipped
-     * because it already leaves in every direction it can, so another face adds nothing. A cell that is still
-     * waiting its turn is skipped because it will see the face when that turn comes.
-     */
+    // Queues a neighbor the first time it is reached or again when a new face widens its exits and returns the tail.
     private static int visit(long[] visitState, long[] sectionMeta, long[] queue, int idx, int xyz, int incoming,
                              long refinementMask, int towardLight, long frameStamp, int tail) {
         long state = visitState[idx];
@@ -333,23 +282,11 @@ final class ShadowOcclusionCuller {
         return tail;
     }
 
-    /**
-     * Whether coming in through {@code incoming} as well lets the cell reach somewhere it could not before.
-     *
-     * <p>Usually it does not. If a section can be seen through between every pair of its faces, then it does not
-     * matter which face the ray came in by, because it can leave by all the same ones either way. Only a section
-     * that blocks some of those pairs behaves differently, and there the way out really does depend on the way in.
-     * Ordinary terrain blocks some pairs; a section holding two separate air pockets is the clearest example.
-     *
-     * <p>{@code state} is the exact set of faces the cell was last expanded with, because expanding a cell always
-     * uses every face it has at that moment. So a face that turns up while the cell is waiting for a second turn
-     * gets used anyway, whatever this returns.
-     */
+    // Returns whether an additional incoming face lets a cell reach more directions.
     private static boolean widensExits(long sm, long refinementMask, int towardLight, int state, int incoming) {
         long visibility = sm & refinementMask;
 
-        // Can be seen through between every pair of faces the light allows, so it already leaves in every
-        // direction it can and no further face changes that.
+        // Returns false when every pair of faces is open
         if (visibility == refinementMask) {
             return false;
         }

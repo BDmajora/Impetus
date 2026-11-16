@@ -6,18 +6,22 @@ import org.apache.logging.log4j.Logger;
 
 import java.io.File;
 
-// Sodium Extra's option set on 1.12.2; owns no rendering, so none of its mixins need coremod gating and all read options() live
+// Entry point of the Extras module.
 public final class Extras {
+    // Constant logger.
     public static final Logger LOGGER = LogManager.getLogger("Impetus/Extras");
 
+    // Constant file name.
     private static final String FILE_NAME = "impetus-extras.cfg";
 
+    // Choice of the config option.
     private static volatile ExtrasConfig config;
 
+    // Prevents instantiation
     private Extras() {
     }
 
-    // Called from mixin bodies on render/client threads, so first-call safety matters; ImpetusVintage warms it during construction well before that
+    // Handles the options.
     public static ExtrasConfig options() {
         ExtrasConfig loaded = config;
         if (loaded == null) {
@@ -32,17 +36,17 @@ public final class Extras {
         return loaded;
     }
 
-    // Loads the config now rather than on the first mixin that asks for it
+    // Initializes the value.
     public static void initialize() {
         options();
     }
 
-    // Persists the current options; safe to call before initialize()
+    // Saves the value.
     public static void save() {
         options().writeChanges();
     }
 
-    // config/<FILE_NAME> under the game directory
+    // Handles the config file.
     private static File configFile() {
         return PropertiesConfig.configFile(LOGGER, FILE_NAME);
     }

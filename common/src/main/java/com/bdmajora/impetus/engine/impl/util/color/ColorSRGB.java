@@ -3,8 +3,9 @@ package com.bdmajora.impetus.engine.impl.util.color;
 
 import com.bdmajora.impetus.engine.api.util.ColorARGB;
 
-// Ported from thomcc/fast-srgb8 (MIT/Apache-2.0 dual licensed)
+// Conversion between sRGB and linear colors with lookup tables.
 public class ColorSRGB {
+    // Table for the conversion to sRGB.
     private static final int[] TO_SRGB8_TABLE = new int[] {
             0x0073000d, 0x007a000d, 0x0080000d, 0x0087000d, 0x008d000d, 0x0094000d, 0x009a000d, 0x00a1000d,
             0x00a7001a, 0x00b4001a, 0x00c1001a, 0x00ce001a, 0x00da001a, 0x00e7001a, 0x00f4001a, 0x0101001a,
@@ -21,6 +22,7 @@ public class ColorSRGB {
             0x5e0c0a23, 0x631c0980, 0x67db08f6, 0x6c55087f, 0x70940818, 0x74a007bd, 0x787d076c, 0x7c330723,
     };
 
+    // Table for the conversion to linear values.
     private static final float[] FROM_SRGB8_TABLE = new float[] {
             0.0f, 0.000303527f, 0.000607054f, 0.00091058103f, 0.001214108f, 0.001517635f, 0.0018211621f, 0.002124689f,
             0.002428216f, 0.002731743f, 0.00303527f, 0.0033465356f, 0.003676507f, 0.004024717f, 0.004391442f,
@@ -56,23 +58,27 @@ public class ColorSRGB {
             0.93011117f, 0.9386859f, 0.9473069f, 0.9559735f, 0.9646866f, 0.9734455f, 0.98225087f, 0.9911022f, 1.0f
     };
 
-    private static final int MIN_BITS = 0x39000000; // 2^(-13)
-    private static final int MAX_BITS = 0x3f7fffff; // 1.0 - f32::EPSILON
+    // Bits of the smallest convertible value.
+    private static final int MIN_BITS = 0x39000000;
+    // Bits of the largest convertible value.
+    private static final int MAX_BITS = 0x3f7fffff;
 
+    // Smallest convertible value.
     private static final float MIN_BOUND = Float.intBitsToFloat(MIN_BITS);
+    // Largest convertible value.
     private static final float MAX_BOUND = Float.intBitsToFloat(MAX_BITS);
 
-    // Non-linear sRGB (0-255) -> linear RGB (0.0-1.0) via lookup table
+    // Returns the linear value of an sRGB byte.
     public static float srgbToLinear(int c) {
         return FROM_SRGB8_TABLE[c & 255];
     }
 
-    // r/g/b are linear (0.0-1.0), a is already non-linear (0-255); packs into non-linear sRGB+alpha
+    // Returns the packed sRGB color of linear channels and an alpha byte.
     public static int linearToSrgb(float r, float g, float b, int a) {
         return ColorARGB.pack(linearToSrgb(r), linearToSrgb(g), linearToSrgb(b), a);
     }
 
-    // Linear RGB (0.0-1.0) -> non-linear SRGB8 (0-255) via lookup table + bit tricks
+    // Returns the sRGB byte of a linear value.
     private static int linearToSrgb(float c) {
         int inputBits = Float.floatToRawIntBits(clampLinearInput(c));
         int entry = TO_SRGB8_TABLE[((inputBits - MIN_BITS) >> 20)];
@@ -84,9 +90,8 @@ public class ColorSRGB {
         return (bias + (scale * t)) >>> 16;
     }
 
-    // Linear values outside [0, 1] would produce NaN in the transfer function
+    // Returns the value limited to the convertible range and replaces not a number.
     private static float clampLinearInput(float input) {
-        // !(a > b) is used to guard against NaN
         if (!(input > MIN_BOUND)) {
             input = MIN_BOUND;
         }

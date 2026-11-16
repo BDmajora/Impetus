@@ -4,52 +4,55 @@ import com.bdmajora.impetus.core.PropertiesConfig;
 
 import java.util.Map;
 
-// Feature switches for the lighting subsystem, a plain Properties file (see PropertiesConfig) since the mixin plugin reads it during coremod setup before Forge/Minecraft classes are safe
+// Settings of the Fulgor module.
 public final class FulgorConfig {
+    // Name of the config file.
     private static final String FILE_NAME = "impetus-fulgor.cfg";
 
+    // Loaded config or null before the first read.
     private static FulgorConfig instance;
 
-    // The backing file; set by load before the instance is published
+    // Properties file of the config.
     private PropertiesConfig file;
 
-    // Off means unmodified vanilla lighting; kept separate from the individual switches so "is this Fulgor's fault" needs no understanding of the rest
+    // Enabled state of the lighting engine.
     public boolean enabled;
-    // The subsystem's whole point; everything else supports this or fixes a vanilla bug the batching exposes
+    // Deferred light updates.
     public boolean deferredLightUpdates;
-    // Alfheim's headline change over Phosphor: bulk edits (worldgen, /fill, explosions) schedule the same position from several neighbours in one tick, otherwise each is evaluated separately
+    // Deduplicate updates.
     public boolean deduplicateUpdates;
-    // Phosphor's BlockStateLightInfo, adapted; Forge's position-aware getLightOpacity/getLightValue cost a virtual dispatch (and a redundant world lookup) though most answers are position-independent. Ignored under Dynamic Lights or Fluidlogged API
+    // Cache block light info.
     public boolean cacheBlockLightInfo;
-    // Fixes MC-3329: vanilla drops boundary light updates to unloaded neighbours and never revisits them
+    // Fix chunk boundary lighting.
     public boolean fixChunkBoundaryLighting;
-    // Fixes MC-116690: vanilla's emptiness test counts blocks only, so a carved-out section with real light data is skipped by the chunk packet and the client relights it wrong
+    // Send non trivial section light.
     public boolean sendNonTrivialSectionLight;
-    // Also fixes MC-80966: vanilla skips the render light-update drain while the chunk builder is busy, so changes can sit unrendered indefinitely under load
+    // Optimize render light updates.
     public boolean optimizeRenderLightUpdates;
-    // Skips light processing while the game is paused
+    // Skip updates while paused.
     public boolean skipUpdatesWhilePaused;
-    // Memory bound, not a performance knob: stops a pathological producer from growing a queue unbounded
+    // Max scheduled updates.
     public int maxScheduledUpdates;
-    // Inherited from Phosphor; always another mod's bug and the engine survives it either way, but loud by default
+    // Warn on illegal thread access.
     public boolean warnOnIllegalThreadAccess;
-    // Adds a Fulgor line to the F3 debug overlay.
+    // Show debug overlay.
     public boolean showDebugOverlay;
-    // ScalableLux's idea: a batch of scheduled positions is split by chunk and run across a pool, with chunks whose reach could meet kept apart in time; same result, less wall time
+    // Parallel light updates.
     public boolean parallelLightUpdates;
-    // Pool width for parallel passes; 0 picks a third of the cores like ScalableLux
+    // Parallel light threads.
     public int parallelLightThreads;
-    // Batches below this many positions run on the calling thread, since the hand-off costs more than it saves
+    // Parallel min positions.
     public int parallelMinPositions;
-    // Batches spread over fewer chunks than this run on the calling thread, since there is nothing to run side by side
+    // Parallel min chunks.
     public int parallelMinChunks;
-    // Pulsar's Starlight-style engine in place of the Phosphor-style one: per-chunk BFS with its own light storage, run on two worker threads on the server and from the tick on the client; initial chunk lighting leaves the server thread entirely
+    // Async light updates.
     public boolean asyncLightUpdates;
-    // Pulsar's render-side lighting fixes: a slab or stair takes neighbour brightness only through its open face (MC-92), the slab lightmap hack that sampled the block below goes, and a level-one emitter keeps smooth lighting (MC-249343); read by the mesher and two client mixins
+    // Fix render lighting.
     public boolean fixRenderLighting;
-    // Lets the server send a chunk before its initial pass has finished; wrong light sent to a 1.12.2 client stays wrong until a block changes, so off by default and it only delays freshly generated chunks by a few milliseconds
+    // Async send chunks without light.
     public boolean asyncSendChunksWithoutLight;
 
+    // Creates a fulgor config from its props.
     private FulgorConfig(PropertiesConfig props) {
         this.enabled = props.bool("enabled", true);
         this.deferredLightUpdates = props.bool("deferredLightUpdates", true);
@@ -71,7 +74,7 @@ public final class FulgorConfig {
         this.fixRenderLighting = props.bool("fixRenderLighting", true);
     }
 
-    // The pool width to use: the configured count, or a third of the cores with at least one
+    // Returns the thread count limited to the available cores.
     public int parallelLightThreads() {
         if (this.parallelLightThreads > 0) {
             return this.parallelLightThreads;
@@ -79,7 +82,7 @@ public final class FulgorConfig {
         return Math.max(1, Runtime.getRuntime().availableProcessors() / 3);
     }
 
-    // Loads on first use and caches; every reader shares the one instance
+    // Returns the value.
     public static FulgorConfig get() {
         if (instance == null) {
             instance = load();
@@ -87,7 +90,7 @@ public final class FulgorConfig {
         return instance;
     }
 
-    // Reads the file if present, otherwise starts from defaults and writes them out
+    // Reads the config file and fills missing values with defaults.
     private static FulgorConfig load() {
         PropertiesConfig props = new PropertiesConfig(Fulgor.LOGGER, FILE_NAME, "Impetus / Fulgor lighting subsystem. Delete a line to restore its default.");
         props.load();
@@ -97,12 +100,12 @@ public final class FulgorConfig {
         return config;
     }
 
-    // Every switch except the two diagnostics and skipUpdatesWhilePaused decides whether a mixin applies, so changes take effect next launch (the options screen flags those for restart)
+    // Writes every value to the config file.
     public void save() {
         this.file.save(values());
     }
 
-    // Every key in declaration order, so a rewritten file lists every switch; user-set values are preserved verbatim
+    // Returns every setting as text by key.
     private Map<String, String> values() {
         Map<String, String> values = PropertiesConfig.values();
         values.put("enabled", Boolean.toString(this.enabled));

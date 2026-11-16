@@ -12,28 +12,22 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
-/**
- * State shared by every graph search of one world renderer: the {@link SectionLattice}, the single search thread,
- * and the bookkeeping that keeps lattice mutations off that thread while a search is running.
- *
- * <p>One {@link RenderListManager} per pass (terrain, and optionally shadow) submits its searches here. All searches
- * run on one single-thread executor in submission order, which is what lets the shadow search consume the root set
- * produced by the terrain search submitted just before it.
- */
+// Section lattice and search thread shared by the graph searches of a world renderer.
 public final class SectionGraph {
+    // Lattice of the sections.
     private final SectionLattice lattice;
 
+    // Thread that runs asynchronous searches or null.
     @Nullable
     private final ExecutorService executor;
 
-    // Number of submitted searches that have not been joined. While non-zero, structural mutations are forbidden
-    // and metadata updates are deferred.
+    // Number of searches that were submitted and not joined.
     private int inFlight;
 
-    // Tasks deferred by submitUpdateTask() while a search is in flight. Drained on the render thread by
-    // runDeferredTasks() once every search has been joined.
+    // Lattice updates that wait for the searches to finish.
     private final ArrayDeque<Runnable> updateTasks = new ArrayDeque<>();
 
+    // Creates the lattice and a search thread unless searches are inline.
     public SectionGraph(int minSectionY, int maxSectionY, AsyncOcclusionMode asyncMode, boolean hasShadowPass, boolean rasterOcclusion) {
         this.lattice = new SectionLattice(minSectionY, maxSectionY, hasShadowPass, rasterOcclusion);
 
@@ -49,24 +43,29 @@ public final class SectionGraph {
         }
     }
 
+    // Returns the lattice.
     SectionLattice getLattice() {
         return this.lattice;
     }
 
-    /**
-     * Run a search task, on the search thread when {@code async} is set and an executor exists, otherwise inline.
-     * The caller must pair every submission with {@link #onSearchJoined()} after joining the returned future.
-     */
+    // Runs a search on the search thread or inline and counts it until it is joined.
     <T> CompletableFuture<T> submit(Supplier<T> task, boolean async) {
+        java.util.Objects.requireNonNull(task, "task");
         this.inFlight++;
 
-        if (async && this.executor != null) {
-            return CompletableFuture.supplyAsync(task, this.executor);
-        } else {
-            return CompletableFuture.completedFuture(task.get());
+        try {
+            if (async && this.executor != null) {
+                return CompletableFuture.supplyAsync(task, this.executor);
+            } else {
+                return CompletableFuture.completedFuture(task.get());
+            }
+        } catch (Throwable failure) {
+            this.inFlight--;
+            throw failure;
         }
     }
 
+    // Marks a search as joined and rejects a join without a submission.
     void onSearchJoined() {
         if (this.inFlight <= 0) {
             throw new IllegalStateException("No search in flight");
@@ -74,10 +73,7 @@ public final class SectionGraph {
         this.inFlight--;
     }
 
-    /**
-     * Run deferred lattice updates if no search is in flight. Callers must have joined the searches they submitted,
-     * which establishes the happens-before edge for the search thread's writes to the lattice arrays.
-     */
+    // Runs the deferred lattice updates when no search is in flight.
     void runDeferredTasks() {
         if (this.inFlight > 0) {
             return;
@@ -90,30 +86,28 @@ public final class SectionGraph {
         }
     }
 
-    // Structural mutations to the lattice (adding/removing nodes, rewiring neighbor links)
-    // are unsafe while a search holds a reference to it.
+    // Rejects a structural change while a search runs.
     private void assertSearchNotRunning() {
         if (this.inFlight > 0) {
             throw new IllegalStateException("Attempted to update occlusion graph during occlusion!");
         }
     }
 
+    // Adds a section to the lattice.
     public void attachRenderSection(RenderSection section) {
         this.assertSearchNotRunning();
         this.lattice.attach(section);
     }
 
+    // Removes a section from the lattice.
     public void detachRenderSection(RenderSection section) {
         this.assertSearchNotRunning();
         this.lattice.detach(section);
     }
 
-    /**
-     * Mirror a section's packed metadata into the lattice, immediately if no search is active and otherwise once
-     * every in-flight search has been joined. {@code onGraphInputChanged} runs (at the same time as the update) when
-     * the change can alter a search's output, so the owning managers can request a re-search.
-     */
+    // Applies the metadata of a section now or after the searches and calls the callback when the search input changed.
     public void updateSectionMetadata(int x, int y, int z, long packedMetadata, Runnable onGraphInputChanged) {
+        java.util.Objects.requireNonNull(onGraphInputChanged, "onGraphInputChanged");
         this.submitUpdateTask(() -> {
             if (this.lattice.updateSectionMetadata(x, y, z, packedMetadata)) {
                 onGraphInputChanged.run();
@@ -121,8 +115,7 @@ public final class SectionGraph {
         });
     }
 
-    // Runs the task immediately if no search is active, otherwise defers it to
-    // runDeferredTasks() to prevent concurrent writes to the lattice arrays.
+    // Runs a task now or defers it while a search runs.
     private void submitUpdateTask(Runnable runnable) {
         if (this.inFlight == 0) {
             runnable.run();
@@ -131,16 +124,20 @@ public final class SectionGraph {
         }
     }
 
+    // Stops the search thread and waits for it.
     public void destroy() {
         if (this.executor != null) {
             this.executor.shutdown();
 
             try {
                 if (!this.executor.awaitTermination(10, TimeUnit.SECONDS)) {
-                    throw new InterruptedException();
+                    this.executor.shutdownNow();
+                    throw new IllegalStateException("Async graph executor has not shut down");
                 }
             } catch (InterruptedException e) {
-                throw new IllegalStateException("Async graph executor has somehow not shut down");
+                this.executor.shutdownNow();
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Interrupted while stopping the async graph executor", e);
             }
         }
     }

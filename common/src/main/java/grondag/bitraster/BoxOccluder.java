@@ -36,42 +36,53 @@ import static grondag.bitraster.Constants.WEST;
 
 import java.util.function.Consumer;
 
+// Occlusion buffer that tests and draws boxes.
 public abstract class BoxOccluder {
-	/** How close face must be to trigger aggressive refresh of occlusion. */
+	// Distance of the near occluders.
 	private static final int NEAR_RANGE = 8 << CAMERA_PRECISION_BITS;
 
+	// Matrix of the scene.
 	private final Matrix4L baseMvpMatrix = new Matrix4L();
 
+	// Rasterizer that keeps the coverage.
 	protected final AbstractRasterizer raster;
+	// Counter that changes when the buffer is cleared.
 	private int occlusionVersion = 1;
+	// Tests by box type.
 	protected final BoxTest[] partiallyClearTests = new BoxTest[128];
+	// Tests for covered parts by box type.
 	protected final BoxTest[] partiallyOccludedTests = new BoxTest[128];
+	// Draws by box type.
 	protected final BoxDraw[] boxDraws = new BoxDraw[128];
+	// View position.
 	private long viewX;
 	private long viewY;
 	private long viewZ;
-	// Add these to region-relative box coordinates to get camera-relative coordinates
-	// They are in camera fixed precision.
+	// Offset of the region.
 	protected int offsetX;
 	protected int offsetY;
 	protected int offsetZ;
+	// Range class of the region.
 	private int occlusionRange;
+	// Squared chunk distance of the region.
 	private int regionSquaredChunkDist;
+	// Version of the view.
 	private int viewVersion = -1;
+	// Version of the region.
 	private int regionVersion = -1;
+	// Whether the next scene redraws everything.
 	private volatile boolean forceRedraw = false;
+	// Largest squared chunk distance of the scene.
 	private int maxSquaredChunkDistance;
+	// Whether near occluders were drawn.
 	private boolean hasNearOccluders = false;
+	// Whether near occluders are drawn.
 	private boolean drawNearOccluders = true;
 
-	/**
-	 * Outline of a box as seen from the camera side encoded by the face-visibility outcome: the union of the
-	 * visible faces' quads with their shared edges removed, wound consistently with the quad tables below.
-	 * Drawing or testing this one convex polygon replaces two or three overlapping quads. The quad tables
-	 * remain as the fallback when a corner needs near-plane clipping.
-	 */
+	// Corners of the silhouette of a box by view position.
 	private static final int[][] SILHOUETTES = new int[64][];
 
+	// Fills the silhouette table.
 	static {
 		SILHOUETTES[UP] = new int[] { V110, V010, V011, V111 };
 		SILHOUETTES[DOWN] = new int[] { V000, V100, V101, V001 };
@@ -101,6 +112,7 @@ public abstract class BoxOccluder {
 		SILHOUETTES[DOWN | WEST | SOUTH] = new int[] { V100, V101, V111, V011, V010, V000 };
 	}
 
+	// Creates an occluder with a rasterizer.
 	public BoxOccluder(AbstractRasterizer raster) {
 		this.raster = raster;
 
@@ -156,7 +168,6 @@ public abstract class BoxOccluder {
 			return raster.isQuadPartiallyClear(V001, V101, V111, V011);
 		};
 
-		// NB: Split across two quads to give more evenly-sized test regions vs potentially one big and one very small
 		partiallyClearTests[UP | EAST] = (x0, y0, z0, x1, y1, z1) -> {
 			raster.setupVertex(V010, x0, y1, z0);
 			raster.setupVertex(V011, x0, y1, z1);
@@ -289,8 +300,6 @@ public abstract class BoxOccluder {
 					|| raster.isQuadPartiallyClear(V000, V001, V011, V010);
 		};
 
-		// NB: When three faces are visible, omit nearest vertex and draw two quads instead of three.
-
 		partiallyClearTests[UP | EAST | NORTH] = (x0, y0, z0, x1, y1, z1) -> {
 			raster.setupVertex(V000, x0, y0, z0);
 			raster.setupVertex(V010, x0, y1, z0);
@@ -379,8 +388,6 @@ public abstract class BoxOccluder {
 					|| raster.isQuadPartiallyClear(V011, V010, V000, V100);
 		};
 
-		////
-
 		partiallyOccludedTests[0] = (x0, y0, z0, x1, y1, z1) -> {
 			return false;
 		};
@@ -433,7 +440,6 @@ public abstract class BoxOccluder {
 			return raster.isQuadPartiallyOccluded(V001, V101, V111, V011);
 		};
 
-		// NB: Split across two quads to give more evenly-sized test regions vs potentially one big and one very small
 		partiallyOccludedTests[UP | EAST] = (x0, y0, z0, x1, y1, z1) -> {
 			raster.setupVertex(V010, x0, y1, z0);
 			raster.setupVertex(V011, x0, y1, z1);
@@ -566,8 +572,6 @@ public abstract class BoxOccluder {
 					|| raster.isQuadPartiallyOccluded(V000, V001, V011, V010);
 		};
 
-		// NB: When three faces are visible, omit nearest vertex and draw two quads instead of three.
-
 		partiallyOccludedTests[UP | EAST | NORTH] = (x0, y0, z0, x1, y1, z1) -> {
 			raster.setupVertex(V000, x0, y0, z0);
 			raster.setupVertex(V010, x0, y1, z0);
@@ -656,10 +660,7 @@ public abstract class BoxOccluder {
 					|| raster.isQuadPartiallyOccluded(V011, V010, V000, V100);
 		};
 
-		////
-
 		boxDraws[0] = (x0, y0, z0, x1, y1, z1) -> {
-			// NOOP
 		};
 
 		boxDraws[UP] = (x0, y0, z0, x1, y1, z1) -> {
@@ -710,7 +711,6 @@ public abstract class BoxOccluder {
 			raster.drawQuad(V001, V101, V111, V011);
 		};
 
-		// NB: Split across two quads to give more evenly-sized test regions vs potentially one big and one very small
 		boxDraws[UP | EAST] = (x0, y0, z0, x1, y1, z1) -> {
 			raster.setupVertex(V010, x0, y1, z0);
 			raster.setupVertex(V011, x0, y1, z1);
@@ -843,8 +843,6 @@ public abstract class BoxOccluder {
 			raster.drawQuad(V000, V001, V011, V010);
 		};
 
-		// NB: When three faces are visible, omit nearest vertex and draw two quads instead of three.
-
 		boxDraws[UP | EAST | NORTH] = (x0, y0, z0, x1, y1, z1) -> {
 			raster.setupVertex(V000, x0, y0, z0);
 			raster.setupVertex(V010, x0, y1, z0);
@@ -934,12 +932,14 @@ public abstract class BoxOccluder {
 		};
 	}
 
+	// Returns the state of the occluder as text.
 	@Override
 	public final String toString() {
 		return String.format("OcclusionVersion:%d  viewX:%d  viewY:%d  viewZ:%d  offsetX:%d  offsetY:%d  offsetZ:%d viewVersion:%d  regionVersion:%d  forceRedraw:%b  matrix:%s",
 				occlusionVersion, viewX, viewY, viewZ, offsetX, offsetY, offsetZ, viewVersion, regionVersion, forceRedraw, raster.mvpMatrix.toString());
 	}
 
+	// Copies the state of another occluder.
 	public void copyFrom(BoxOccluder source) {
 		baseMvpMatrix.copyFrom(source.baseMvpMatrix);
 		raster.copyFrom(source.raster);
@@ -961,40 +961,27 @@ public abstract class BoxOccluder {
 		forceRedraw = source.forceRedraw;
 	}
 
-	/**
-	 * Incremented each time the occluder is cleared and redrawn.
-	 * Previously tested regions can reuse test results if their version matches.
-	 * However, they must still be drawn (if visible) if indicated by {@link #clearSceneIfNeeded(int, int)}.
-	 */
+	// Returns the counter that changes when the buffer is cleared.
 	public final int occlusionVersion() {
 		return occlusionVersion;
 	}
 
-	/**
-	 * For perspective occluders, controls if near occluders are drawn.
-	 * Has no effect on testing.  Meant to reduce flickering and gaps
-	 * when the camera is moving around nearby terrain. Defaults to true
-	 * and setting persists until it is changed again.
-	 */
+	// Stores whether near occluders are drawn.
 	public void drawNearOccluders(boolean val) {
 		drawNearOccluders = val;
 	}
 
-	/** Current buffer width in pixels. */
+	// Returns the width of the buffer in pixels.
 	public final int bufferWidth() {
 		return raster.pixelWidth;
 	}
 
-	/** Current buffer height in pixels. */
+	// Returns the height of the buffer in pixels.
 	public final int bufferHeight() {
 		return raster.pixelHeight;
 	}
 
-	/**
-	 * Changes the buffer size; call before {@link #prepareScene} since the buffer is discarded.
-	 * @param tileWidth tiles across, see {@link Constants#DEFAULT_SIZE_TILES}
-	 * @param tileHeight tiles down, likewise
-	 */
+	// Resizes the buffer in tiles.
 	public final void resizeBuffer(int tileWidth, int tileHeight) {
 		if (tileWidth != raster.tileWidth() || tileHeight != raster.tileHeight()) {
 			raster.resize(tileWidth, tileHeight);
@@ -1002,18 +989,16 @@ public abstract class BoxOccluder {
 		}
 	}
 
-	/**
-	 * Force update to new version.
-	 */
+	// Marks the buffer as outdated.
 	public final void invalidate() {
 		forceRedraw = true;
 	}
 
+	// Prepares a region for testing and drawing.
 	public final void prepareRegion(int originX, int originY, int originZ, int occlusionRange, int squaredChunkDistance) {
 		this.occlusionRange = occlusionRange;
 		regionSquaredChunkDist = squaredChunkDistance;
 
-		// PERF: could perhaps reuse CameraRelativeCenter values in BuildRenderRegion that are used by Frustum
 		offsetX = (int) (((long) originX << CAMERA_PRECISION_BITS) - viewX);
 		offsetY = (int) (((long) originY << CAMERA_PRECISION_BITS) - viewY);
 		offsetZ = (int) (((long) originZ << CAMERA_PRECISION_BITS) - viewZ);
@@ -1021,10 +1006,7 @@ public abstract class BoxOccluder {
 		raster.setRegionOffset(offsetX, offsetY, offsetZ);
 	}
 
-	/**
-	 * Check if needs redrawn and prep for redraw if so.
-	 * When false, regions should be drawn only if their occluder version is not current.
-	 */
+	// Prepares the buffer for a scene and returns whether it was cleared.
 	public final boolean prepareScene(int viewVersion, double cameraX, double cameraY, double cameraZ, Consumer<Matrix4L> modelMatrixSetter, Consumer<Matrix4L> projectionMatrixSetter) {
 		if (this.viewVersion != viewVersion) {
 			final Matrix4L baseMvpMatrix = this.baseMvpMatrix;
@@ -1058,24 +1040,15 @@ public abstract class BoxOccluder {
 		}
 	}
 
-	/**
-	 * True if occlusion includes geometry within the near region.
-	 * When true, simple movement distance test isn't sufficient for knowing if redraw is needed.
-	 */
+	// Returns whether near occluders were drawn.
 	public final boolean hasNearOccluders() {
 		return hasNearOccluders;
 	}
 
-	//final MicroTimer timer = new MicroTimer("boxTests.apply", 500000);
-
+	// Returns whether a packed box is visible.
 	public abstract boolean isBoxVisible(int packedBox, int fuzz);
 
-	/**
-	 * Does not rely on winding order but instead the distance from
-	 * plane with known facing to camera position.
-	 *
-	 * <p>Not suitable for orthographic perspective.
-	 */
+	// Returns whether a packed box is visible from the perspective.
 	protected final boolean isBoxVisibleFromPerspective(int packedBox, int fuzz) {
 		final int x0 = PackedBox.x0(packedBox) - fuzz;
 		final int y0 = PackedBox.y0(packedBox) - fuzz;
@@ -1090,7 +1063,6 @@ public abstract class BoxOccluder {
 
 		int outcome = 0;
 
-		// if camera below top face can't be seen
 		if (offsetY < -(y1 << CAMERA_PRECISION_BITS)) {
 			outcome |= UP;
 		} else if (offsetY > -(y0 << CAMERA_PRECISION_BITS)) {
@@ -1109,21 +1081,6 @@ public abstract class BoxOccluder {
 			outcome |= NORTH;
 		}
 
-		//timer.start();
-		//final boolean result = partiallyClearTests[outcome].apply(x0, y0, z0, x1, y1, z1);
-		//timer.stop(false);
-
-		//final int size = (raster.maxPixelY - raster.minPixelY) * (raster.maxPixelX - raster.minPixelX);
-
-		// Small regions ~ 20% of elapsed time, generally fast
-		//timer.stop(size <= 576);
-
-		// Very large regions are expensive but rare < 5% of elapsed time
-		//timer.stop(size > 500000);
-
-		// Small to moderate are 80% of elapsed time, doesn't seem to be much variation in time
-		//timer.stop(size < 100000);
-
 		final int[] silhouette = SILHOUETTES[outcome];
 
 		if (silhouette != null && raster.setupBoxVertices(silhouette, x0, y0, z0, x1, y1, z1)) {
@@ -1134,10 +1091,7 @@ public abstract class BoxOccluder {
 		return partiallyClearTests[outcome].apply(x0, y0, z0, x1, y1, z1);
 	}
 
-	/**
-	 * Cheap sufficient test: the centre of a convex box projects inside the box's silhouette, so a clear pixel
-	 * there proves the box visible with one transform. False only means the full test is still needed.
-	 */
+	// Returns whether the center of a packed box is not covered.
 	public final boolean isBoxCenterClear(int packedBox) {
 		final float cx = (PackedBox.x0(packedBox) + PackedBox.x1(packedBox)) * 0.5f;
 		final float cy = (PackedBox.y0(packedBox) + PackedBox.y1(packedBox)) * 0.5f;
@@ -1145,23 +1099,16 @@ public abstract class BoxOccluder {
 		return raster.isPointClear(cx, cy, cz);
 	}
 
+	// Returns whether an empty region is visible.
 	public final boolean isEmptyRegionVisible(int originX, int originY, int originZ, int fuzz) {
 		prepareRegion(originX, originY, originZ, 0, 0);
 		return isBoxVisible(PackedBox.FULL_BOX, fuzz);
 	}
 
-	/**
-	 * Does not rely on winding order but instead the distance from
-	 * plane with known facing to camera position.
-	 */
+	// Draws a packed box.
 	public abstract void occludeBox(int packedBox);
 
-	/**
-	 * Does not rely on winding order but instead the distance from
-	 * plane with known facing to camera position.
-	 *
-	 * <p>Will not be suitable for orthographic projection.
-	 */
+	// Draws a packed box from the perspective.
 	protected void occludeFromPerspective(int packedBox) {
 		final int x0 = PackedBox.x0(packedBox);
 		final int y0 = PackedBox.y0(packedBox);
@@ -1180,18 +1127,13 @@ public abstract class BoxOccluder {
 
 		final int top = (y1 << CAMERA_PRECISION_BITS) + offsetY;
 
-		// NB: entirely possible for neither top or bottom to be visible.
-		// This happens when camera is between them.
-
 		if (top < 0) {
-			// camera above top face
 			outcome |= UP;
 			hasNear &= top > -NEAR_RANGE;
 		} else {
 			final int bottom = (y0 << CAMERA_PRECISION_BITS) + offsetY;
 
 			if (bottom > 0) {
-				// camera below bottom face
 				outcome |= DOWN;
 				hasNear &= bottom < NEAR_RANGE;
 			}
@@ -1238,11 +1180,11 @@ public abstract class BoxOccluder {
 		if (silhouette != null && raster.setupBoxVertices(silhouette, x0, y0, z0, x1, y1, z1)) {
 			raster.drawPolygon(silhouette, silhouette.length);
 		} else {
-			// some vertex needs near clipping, which only the quad path handles
 			boxDraws[outcome].apply(x0, y0, z0, x1, y1, z1);
 		}
 	}
 
+	// Draws the boxes of a section.
 	public final void occlude(int[] visData) {
 		final int occlusionRange = this.occlusionRange;
 		final int limit = visData.length;
@@ -1275,16 +1217,19 @@ public abstract class BoxOccluder {
 		}
 	}
 
+	// Test of a box type.
 	@FunctionalInterface
 	protected interface BoxTest {
 		boolean apply(int x0, int y0, int z0, int x1, int y1, int z1);
 	}
 
+	// Draw of a box type.
 	@FunctionalInterface
 	protected interface BoxDraw {
 		void apply(int x0, int y0, int z0, int x1, int y1, int z1);
 	}
 
+	// Returns the largest squared chunk distance of the scene.
 	public final int maxSquaredChunkDistance() {
 		return maxSquaredChunkDistance;
 	}

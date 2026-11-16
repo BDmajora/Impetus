@@ -6,37 +6,44 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Consumer;
 
+// Job that runs one builder task and reports its result.
 public class ChunkJobTyped<TASK extends ChunkBuilderTask<OUTPUT>, OUTPUT>
         implements ChunkJob
 {
+    // Task to run.
     private final TASK task;
+    // Receiver of the result.
     private final Consumer<@Nullable ChunkJobResult<OUTPUT>> consumer;
 
+    // Whether cancellation was requested.
     private volatile boolean cancelled;
+    // Whether a worker started the job.
     private volatile boolean started;
 
-    // Ordering keys assigned by ChunkJobQueue when the job is enqueued. Only accessed under the queue's lock.
+    // Priority assigned by the queue.
     long priority;
+    // Order of arrival assigned by the queue.
     long sequence;
 
+    // Creates a job and rejects a null task or receiver.
     ChunkJobTyped(TASK task, Consumer<@Nullable ChunkJobResult<OUTPUT>> consumer) {
-        this.task = task;
-        this.consumer = consumer;
+        this.task = java.util.Objects.requireNonNull(task, "task");
+        this.consumer = java.util.Objects.requireNonNull(consumer, "consumer");
     }
 
-    // Whether cancel was requested
+    // Returns whether cancellation was requested.
     @Override
     public boolean isCancelled() {
         return this.cancelled;
     }
 
-    // Requests cancellation; a running task checks the token
+    // Requests cancellation.
     @Override
     public void setCancelled() {
         this.cancelled = true;
     }
 
-    // Runs the task, catching everything into a failure result so a worker never dies; a cancelled job still reports (with null), or a collector waiting on it never wakes
+    // Runs the task and passes the result or the failure or null for a cancelled job to the receiver.
     @Override
     public void execute(ChunkBuildContext context) {
         ChunkJobResult<OUTPUT> result = null;
@@ -49,7 +56,7 @@ public class ChunkJobTyped<TASK extends ChunkBuilderTask<OUTPUT>, OUTPUT>
             try {
                 var output = this.task.execute(context, this);
 
-                // A null output means the task was cancelled while executing
+                // Treats a null output as cancelled
                 if (output != null) {
                     result = new ChunkJobResult.Success<>(output, System.nanoTime() - startTime);
                 }
@@ -66,7 +73,7 @@ public class ChunkJobTyped<TASK extends ChunkBuilderTask<OUTPUT>, OUTPUT>
         }
     }
 
-    // Whether a worker picked it up
+    // Returns whether a worker started the job.
     @Override
     public boolean isStarted() {
         return this.started;

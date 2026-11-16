@@ -17,7 +17,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.concurrent.ExecutionException;
 
-// Blockstate definitions come from an expiring soft cache instead of the bakery's keep-everything map, and a multipart definition carries its block's state container the way loadBlock set it
+// Mixin that changes ModelLoader.
 @Mixin(ModelLoader.class)
 public abstract class ModelLoaderDefinitionMixin implements DefinitionLoader {
     private final Cache<ResourceLocation, ModelBlockDefinition> coarctatio$definitions = CacheBuilder.newBuilder()
@@ -27,12 +27,13 @@ public abstract class ModelLoaderDefinitionMixin implements DefinitionLoader {
             .softValues()
             .build();
 
+    // Runs at the start of getModelBlockDefinition and can cancel it.
     @Inject(method = "getModelBlockDefinition", at = @At("HEAD"), cancellable = true)
     private void coarctatio$cachedDefinition(ResourceLocation location, CallbackInfoReturnable<ModelBlockDefinition> cir) {
         cir.setReturnValue(this.coarctatio$definition(location));
     }
 
-    // Keyed by the plain location, since every variant of a block shares one definition file
+    // Handles definition.
     @Override
     public ModelBlockDefinition coarctatio$definition(ResourceLocation location) {
         ResourceLocation plain = new ResourceLocation(location.getNamespace(), location.getPath());
@@ -41,7 +42,6 @@ public abstract class ModelLoaderDefinitionMixin implements DefinitionLoader {
                 try {
                     return ModelLocations.loadDefinition(plain);
                 } catch (Exception e) {
-                    // Vanilla's behaviour for a broken or absent file: an empty definition, and the variant load fails on it
                     Coarctatio.LOGGER.debug("Error loading model block definition {}", plain, e);
                     return new ModelBlockDefinition(new ArrayList<>());
                 }

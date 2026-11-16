@@ -10,23 +10,27 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 
-// The player's own light: the "Entities" switch does not silence a held torch (the first-person switch does), and a spectator emits nothing
+// Mixin that changes EntityPlayer.
 @Mixin(EntityPlayer.class)
 public abstract class EntityPlayerMixin extends EntityLivingBase implements DynamicLightSource {
+    // Reference to the method is spectator of the target.
     @Shadow
     public abstract boolean isSpectator();
 
+    // Field player luminance added to the target.
     @Unique
     private int impetus$playerLuminance;
 
-    // The world this player was last ticked in, so a dimension change clears the stale light.
+    // Field last world added to the target.
     @Unique
     private World impetus$lastWorld;
 
+    // Creates an entity player mixin from its world.
     private EntityPlayerMixin(World world) {
         super(world);
     }
 
+    // Handles dynamic light tick.
     @Override
     public void impetus$dynamicLightTick() {
         EntityPlayer self = (EntityPlayer) (Object) this;
@@ -54,6 +58,7 @@ public abstract class EntityPlayerMixin extends EntityLivingBase implements Dyna
         }
     }
 
+    // Returns the luminance.
     @Override
     public int impetus$getLuminance() {
         return this.impetus$playerLuminance;

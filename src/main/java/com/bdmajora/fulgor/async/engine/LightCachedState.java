@@ -1,6 +1,7 @@
 package com.bdmajora.fulgor.async.engine;
 
-// Implemented by BlockStateContainer$StateImplementation: the packed LightInfo for the state, computed on first use (Starlight's per-state opacity cache)
+// Contract of the light cached state.
 public interface LightCachedState {
+    // Returns the packed light info of the state.
     int fulgor$lightInfo();
 }

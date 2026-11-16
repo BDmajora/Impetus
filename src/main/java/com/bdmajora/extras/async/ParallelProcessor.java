@@ -43,50 +43,63 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
-// Server-side entity ticking spread over a worker pool, after AxalotL's Async (itself from MCMT): entities are grouped by 4x4-chunk section so neighbours share a task, sized by a learned cost model, and the main thread ticks the entities that must stay serial while it waits
+// Runs entity ticks and random ticks and spawning on worker threads.
 public final class ParallelProcessor {
-    // Entities within the same 4x4 chunk square land in one task, keeping most entity-to-entity interaction on one thread
+    // Shift from chunk coordinates to section coordinates.
     private static final int SECTION_SHIFT = 2;
 
-    // Read once at startup: the collections that make parallel ticking safe are swapped in when a world is constructed, so this cannot flip live
+    // Whether the feature was installed at startup.
     public static volatile boolean INSTALLED;
 
-    // Held around chunk generation in every world: the vanilla generator keeps per-instance noise buffers, but the biome layers' scratch arrays are one static pool
+    // Lock that serialises world generation.
     public static final Object WORLDGEN_LOCK = new Object();
 
-    // Live switches, applied whenever the Extras config loads or saves
+    // Whether entities tick in parallel.
     public static volatile boolean entities;
+    // Whether random ticks run in parallel.
     public static volatile boolean randomTicks;
+    // Whether spawning runs in parallel.
     public static volatile boolean spawning;
+    // Whether entities of other mods tick in parallel.
     public static volatile boolean moddedEntities;
+    // Configured worker count or zero for automatic.
     private static volatile int configuredThreads;
 
+    // Cost model of entity ticks.
     public static final CostModel ENTITY_COST = new CostModel(25_000D);
+    // Cost model of random ticks.
     public static final CostModel RANDOM_TICK_COST = new CostModel(20_000D);
+    // Cost model of spawning.
     public static final CostModel SPAWN_COST = new CostModel(100_000D);
 
-    // Vanilla types that touch shared state their tick cannot own: falling blocks and shulkers write blocks, boats carry passengers across chunks, the dragon and its parts are one multi-body entity, projectiles hit whatever they cross
+    // Entity classes that always tick on the main thread.
     private static final Class<?>[] BLOCKED_CLASSES = {
             EntityPlayer.class, IProjectile.class, EntityFireball.class, EntityShulkerBullet.class, EntityFishHook.class,
             EntityFallingBlock.class, EntityShulker.class, EntityBoat.class, EntityDragon.class, MultiPartEntityPart.class,
             EntityEnderCrystal.class, EntityWeatherEffect.class
     };
 
+    // Whether each entity class ticks on the main thread.
     private static final Map<Class<?>, Boolean> SYNC_BY_CLASS = new ConcurrentHashMap<>();
+    // Counter for worker names.
     private static final AtomicInteger THREAD_ID = new AtomicInteger();
+    // Lock that guards the pool.
     private static final Object POOL_LOCK = new Object();
+    // Worker pool or null.
     private static volatile ThreadPoolExecutor pool;
+    // Whether the pool is stopping.
     private static volatile boolean shuttingDown;
 
+    // Prevents instantiation
     private ParallelProcessor() {
     }
 
-    // Startup half of the config: sets the install flag the world-construction hooks read
+    // Records whether the feature is enabled.
     public static void install(ExtrasConfig.AsyncSettings settings) {
         INSTALLED = settings.enabled;
     }
 
-    // Live half: sub-switches and thread count; the class cache is dropped since the sync rules may have changed
+    // Applies the settings and resizes the pool.
     public static void apply(ExtrasConfig.AsyncSettings settings) {
         boolean on = INSTALLED && settings.enabled;
         entities = on && settings.entities;
@@ -102,25 +115,27 @@ public final class ParallelProcessor {
         }
     }
 
-    // Whether this world's entity loop should collect into batches this tick
+    // Returns whether the world ticks entities in parallel.
     public static boolean isEntityTickingActive(World world) {
         return entities && !shuttingDown && !world.isRemote && ((ParallelWorld) world).impetus$isParallel();
     }
 
+    // Returns whether the world ticks random blocks in parallel.
     public static boolean isRandomTickingActive(World world) {
         return randomTicks && !shuttingDown && !world.isRemote && ((ParallelWorld) world).impetus$isParallel();
     }
 
+    // Returns whether the world spawns in parallel.
     public static boolean isSpawningActive(World world) {
         return spawning && !shuttingDown && !world.isRemote && ((ParallelWorld) world).impetus$isParallel();
     }
 
-    // True on a pool thread
+    // Returns whether the current thread is a worker.
     public static boolean isWorkerThread() {
         return ParallelWorkerThread.isCurrent();
     }
 
-    // Auto sizing follows Async: leave headroom for the OS and, on the integrated server, for the render thread
+    // Returns the worker count that the settings ask for.
     public static int desiredThreads() {
         int cores = Runtime.getRuntime().availableProcessors();
         int configured = configuredThreads;
@@ -135,18 +150,18 @@ public final class ParallelProcessor {
         return Math.max(1, threads);
     }
 
-    // Upper bound for the thread slider
+    // Returns the number of processors.
     public static int maxThreads() {
         return Math.max(1, Runtime.getRuntime().availableProcessors());
     }
 
-    // Current pool width, or zero before the first batch
+    // Returns the current worker count.
     public static int poolSize() {
         ThreadPoolExecutor current = pool;
         return current == null ? 0 : current.getCorePoolSize();
     }
 
-    // Builds the pool on first use; threads inherit the server thread's context loader so mod classes resolve on them
+    // Returns the pool and starts it when needed.
     private static ThreadPoolExecutor ensurePool() {
         ThreadPoolExecutor current = pool;
         if (current != null && !current.isShutdown()) {
@@ -160,7 +175,6 @@ public final class ParallelProcessor {
             int threads = desiredThreads();
             ClassLoader loader = Thread.currentThread().getContextClassLoader();
             current = new ThreadPoolExecutor(threads, threads, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(), task -> {
-                // The server group, whichever thread grows the pool: mods ask FML for the effective side and it answers from the group
                 ParallelWorkerThread thread = new ParallelWorkerThread(SidedThreadGroups.SERVER, task, "Impetus-Parallel-Tick-" + THREAD_ID.getAndIncrement());
                 thread.setDaemon(true);
                 thread.setPriority(Thread.NORM_PRIORITY - 1);
@@ -176,7 +190,7 @@ public final class ParallelProcessor {
         }
     }
 
-    // Grows or shrinks in place; order matters since core may not exceed max
+    // Changes the worker count of the pool.
     private static void resize(ThreadPoolExecutor current, int threads) {
         if (current.getCorePoolSize() == threads) {
             return;
@@ -191,12 +205,12 @@ public final class ParallelProcessor {
         current.prestartAllCoreThreads();
     }
 
-    // Server start: clears the stop flag a previous integrated server left behind, so its worlds can batch again
+    // Allows parallel work again.
     public static void onServerStart() {
         shuttingDown = false;
     }
 
-    // Server stop: lets in-flight tasks finish, then drops the pool so the next world starts a fresh one
+    // Stops the pool and waits for its tasks.
     public static void shutdown() {
         shuttingDown = true;
         ThreadPoolExecutor current = pool;
@@ -216,9 +230,7 @@ public final class ParallelProcessor {
         SYNC_BY_CLASS.clear();
     }
 
-    // Entity classification
-
-    // Whether this entity's tick must stay on the main thread; per-class answers are cached, the per-entity ones (portal transit) are not
+    // Returns whether the entity must tick on the main thread.
     public static boolean shouldTickSynchronously(Entity entity) {
         if (shuttingDown || entity.world.isRemote) {
             return true;
@@ -236,6 +248,7 @@ public final class ParallelProcessor {
         return sync;
     }
 
+    // Returns whether the class of the entity must tick on the main thread.
     private static boolean classify(Entity entity, Class<?> type) {
         for (Class<?> blocked : BLOCKED_CLASSES) {
             if (blocked.isAssignableFrom(type)) {
@@ -243,7 +256,6 @@ public final class ParallelProcessor {
             }
         }
         ResourceLocation key = EntityList.getKey(entity);
-        // Unregistered entities are unknown quantities, and modded ones only join the pool by choice
         if (key == null) {
             return true;
         }
@@ -253,9 +265,7 @@ public final class ParallelProcessor {
         return SyncEntityRules.matches(key);
     }
 
-    // Entity batches
-
-    // Ticks the collected entities: workers take the async list by section, the main thread takes the sync list and then helps drain the queue; a crash in any task surfaces on the main thread once the batch has settled
+    // Ticks the entities and spreads the parallel ones over the workers.
     public static void tickEntities(World world, List<Entity> async, List<Entity> sync) {
         ThreadPoolExecutor executor = ensurePool();
         if (executor == null || ENTITY_COST.shouldRunSequentially(async.size())) {
@@ -279,7 +289,7 @@ public final class ParallelProcessor {
         batch.rethrow();
     }
 
-    // One entity's tick with vanilla's crash handling; a failure either removes the entity (Forge's removeErroringEntities) or is parked on the batch for the main thread
+    // Ticks one entity and reports a crash.
     private static void tickEntity(World world, Entity entity, Batch batch) {
         if (entity.isDead) {
             return;
@@ -303,13 +313,14 @@ public final class ParallelProcessor {
         }
     }
 
+    // Returns the packed section of the entity.
     private static long sectionKey(Entity entity) {
         int x = entity.chunkCoordX >> SECTION_SHIFT;
         int z = entity.chunkCoordZ >> SECTION_SHIFT;
         return ((long) x << 32) | (z & 0xFFFFFFFFL);
     }
 
-    // Groups by section, emits full sections as their own tasks and packs the small remainder in key order so adjacent sections still tend to share a task
+    // Returns tasks that group nearby entities.
     private static List<Runnable> buildSpatialWork(List<Entity> entities, int workers, Consumer<Entity> action) {
         Long2ObjectOpenHashMap<List<Entity>> bySection = new Long2ObjectOpenHashMap<>();
         for (Entity entity : entities) {
@@ -350,6 +361,7 @@ public final class ParallelProcessor {
         return work;
     }
 
+    // Adds a task that runs the action on every item.
     private static <T> void emit(List<Runnable> work, List<T> batch, CostModel cost, Consumer<T> action) {
         work.add(cost.wrap(batch.size(), () -> {
             for (T item : batch) {
@@ -358,15 +370,14 @@ public final class ParallelProcessor {
         }));
     }
 
+    // Adds tasks that each run a slice of the items.
     private static <T> void addSlices(List<Runnable> work, List<T> items, int maxPerTask, CostModel cost, Consumer<T> action) {
         for (int i = 0; i < items.size(); i += maxPerTask) {
             emit(work, new ArrayList<>(items.subList(i, Math.min(i + maxPerTask, items.size()))), cost, action);
         }
     }
 
-    // Generic batches
-
-    // Runs an action over a list in parallel when the cost model says it is worth it; exceptions from tasks are logged, not propagated, since callers (random ticks, spawning) have no entity to blame
+    // Runs the action on every item in parallel.
     public static <T> void forEachParallel(List<T> items, CostModel cost, Consumer<T> action) {
         if (items.isEmpty()) {
             return;
@@ -386,6 +397,7 @@ public final class ParallelProcessor {
         finish(batch);
     }
 
+    // Runs the action and logs a failure.
     private static <T> void runLogged(T item, Consumer<T> action) {
         try {
             action.accept(item);
@@ -394,9 +406,7 @@ public final class ParallelProcessor {
         }
     }
 
-    // Batch plumbing
-
-    // Queues the work and wakes as many workers as there are tasks; workers and the main thread all pull from the same queue so nobody idles while tasks remain
+    // Queues the tasks and wakes the workers.
     private static void submit(ThreadPoolExecutor executor, Batch batch, List<Runnable> work) {
         for (Runnable task : work) {
             batch.queue.add(() -> {
@@ -415,7 +425,7 @@ public final class ParallelProcessor {
         }
     }
 
-    // The main thread empties what it can, then blocks until the last worker finishes its task; an interrupt is remembered rather than acted on, since returning early would leave workers writing into a world the tick has moved on from
+    // Helps with the queue and waits for every task.
     private static void finish(Batch batch) {
         drain(batch.queue);
         boolean interrupted = false;
@@ -432,6 +442,7 @@ public final class ParallelProcessor {
         }
     }
 
+    // Runs queued tasks until the queue is empty.
     private static void drain(Queue<Runnable> queue) {
         Runnable task;
         while ((task = queue.poll()) != null) {
@@ -439,22 +450,26 @@ public final class ParallelProcessor {
         }
     }
 
-    // One tick's worth of queued tasks plus the first failure any of them raised
+    // Tasks of one parallel run.
     private static final class Batch {
+        // Tasks that wait to run.
         final Queue<Runnable> queue = new ConcurrentLinkedQueue<>();
+        // First failure of the run.
         final AtomicReference<Throwable> failure = new AtomicReference<>();
+        // Latch that counts finished tasks.
         volatile CountDownLatch done = new CountDownLatch(0);
 
-        // Sized once the work list is known and before anything is queued
+        // Sets the number of tasks to wait for.
         void arm(int tasks) {
             this.done = new CountDownLatch(tasks);
         }
 
+        // Stores the first failure.
         void fail(Throwable throwable) {
             this.failure.compareAndSet(null, throwable);
         }
 
-        // Rethrows on the main thread so the crash report reads like vanilla's
+        // Throws the stored failure.
         void rethrow() {
             Throwable throwable = this.failure.get();
             if (throwable instanceof ReportedException) {

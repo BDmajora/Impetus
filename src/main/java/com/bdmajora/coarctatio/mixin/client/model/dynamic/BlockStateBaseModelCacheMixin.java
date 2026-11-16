@@ -7,17 +7,20 @@ import org.spongepowered.asm.mixin.Mixin;
 
 import java.lang.ref.SoftReference;
 
-// One soft reference per state, so a model the registry has let expire can still be reclaimed under memory pressure
+// Mixin that changes BlockStateBase.
 @Mixin(BlockStateBase.class)
 public abstract class BlockStateBaseModelCacheMixin implements ModelHoldingState {
+    // Softly held baked model of the state.
     private volatile SoftReference<IBakedModel> coarctatio$model;
 
+    // Handles cached model.
     @Override
     public IBakedModel coarctatio$cachedModel() {
         SoftReference<IBakedModel> reference = this.coarctatio$model;
         return reference != null ? reference.get() : null;
     }
 
+    // Handles cache model.
     @Override
     public void coarctatio$cacheModel(IBakedModel model) {
         this.coarctatio$model = model != null ? new SoftReference<>(model) : null;

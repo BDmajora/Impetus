@@ -11,15 +11,17 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.awt.image.BufferedImage;
 
-// Keeps a screenshot from poisoning texture state: vanilla ends createScreenshot with bindTexture(framebufferTexture), which GlStateManager may record against the wrong cached unit (the pipeline drives units via raw glActiveTexture), turning every later blit into a no-op and the screen white until restart; resetToUnit0() at HEAD and an unbind at RETURN (the render target must not stay bound as a sampler) fix both
+// Mixin that changes ScreenShotHelper.
 @Mixin(ScreenShotHelper.class)
 public class ScreenshotTextureStateMixin {
+    // Runs at the start of createScreenshot.
     @Inject(method = "createScreenshot", at = @At("HEAD"))
     private static void impetus$syncTextureUnitBeforeCapture(int width, int height, Framebuffer buffer,
                                                              CallbackInfoReturnable<BufferedImage> cir) {
         GlTextureUnits.resetToUnit0();
     }
 
+    // Runs before every return of createScreenshot.
     @Inject(method = "createScreenshot", at = @At("RETURN"))
     private static void impetus$releaseFramebufferTexture(int width, int height, Framebuffer buffer,
                                                           CallbackInfoReturnable<BufferedImage> cir) {

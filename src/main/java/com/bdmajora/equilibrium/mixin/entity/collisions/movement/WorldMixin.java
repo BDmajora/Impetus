@@ -15,9 +15,10 @@ import org.spongepowered.asm.mixin.Overwrite;
 import javax.annotation.Nullable;
 import java.util.List;
 
-// Reads the blocks around a moving entity through a chunk section cursor: the loop runs down columns so sixteen reads share a section; iteration order, bounds, border handling and Forge hooks are exactly vanilla, and the cursor is non-loading so entities cannot generate chunks ahead of themselves
+// Mixin that changes World.
 @Mixin(World.class)
 public abstract class WorldMixin {
+    // Replaces the whole method getCollisionBoxes.
     @Overwrite
     private boolean getCollisionBoxes(@Nullable Entity entityIn, AxisAlignedBB aabb, boolean stopOnFirst,
                                       @Nullable List<AxisAlignedBB> outList) {
@@ -52,7 +53,6 @@ public abstract class WorldMixin {
                     boolean onXEdge = x == minX || x == maxX - 1;
                     boolean onZEdge = z == minZ || z == maxZ - 1;
 
-                    // Corners of the expanded box cannot touch the entity, so vanilla skips them.
                     if (onXEdge && onZEdge) {
                         continue;
                     }
@@ -78,7 +78,6 @@ public abstract class WorldMixin {
 
                         IBlockState state;
 
-                        // Outside the border the world is treated as solid stone so entities cannot walk out; vanilla's rule, and why this is not just a read
                         if (!stopOnFirst && !border.contains(pos) && isInsideBorder) {
                             state = borderFiller;
                         } else {

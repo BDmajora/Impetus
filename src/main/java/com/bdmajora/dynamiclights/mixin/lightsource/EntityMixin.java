@@ -18,47 +18,60 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Makes every entity a potential light source: burning entities and registered handlers glow here, subclass mixins override impetus$dynamicLightTick() and keep their own luminance field (a @Unique field cannot be shadowed across mixins) plus impetus$getLuminance()
+// Mixin that changes Entity.
 @Mixin(Entity.class)
 public abstract class EntityMixin implements DynamicLightSource {
+    // Reference to the field world of the target.
     @Shadow
     public World world;
 
+    // Reference to the field pos x of the target.
     @Shadow
     public double posX;
 
+    // Reference to the field pos y of the target.
     @Shadow
     public double posY;
 
+    // Reference to the field pos z of the target.
     @Shadow
     public double posZ;
 
+    // Reference to the field is dead of the target.
     @Shadow
     public boolean isDead;
 
+    // Reference to the method is burning of the target.
     @Shadow
     public abstract boolean isBurning();
 
+    // Reference to the method get eye height of the target.
     @Shadow
     public abstract float getEyeHeight();
 
+    // Field luminance added to the target.
     @Unique
     private int impetus$luminance;
+    // Field last luminance added to the target.
     @Unique
     private int impetus$lastLuminance;
+    // Field last update added to the target.
     @Unique
     private long impetus$lastUpdate;
+    // Field prev x added to the target.
     @Unique
     private double impetus$prevX;
+    // Field prev y added to the target.
     @Unique
     private double impetus$prevY;
+    // Field prev z added to the target.
     @Unique
     private double impetus$prevZ;
-    // Sections this entity currently lights, allocated on first use; upstream allocates eagerly, which on a busy client is thousands of empty hash sets
+    // Field tracked lit chunk pos added to the target.
     @Unique
     private LongOpenHashSet impetus$trackedLitChunkPos;
 
-    // Recomputes luminance once per tick from onEntityUpdate, the shared tail every entity's tick runs through except those overriding onUpdate without calling up (EntityHanging, EntityMinecart carry their own)
+    // Runs at the end of onEntityUpdate.
     @Inject(method = "onEntityUpdate", at = @At("TAIL"))
     private void impetus$onTick(CallbackInfo ci) {
         if (!this.world.isRemote) {
@@ -68,7 +81,7 @@ public abstract class EntityMixin implements DynamicLightSource {
         this.impetus$tickDynamicLight(this.isDead);
     }
 
-    // Lights the entity's own model by the brighter of its own glow and the light where it stands.
+    // Runs before every return of getBrightnessForRender and can cancel it.
     @Inject(method = "getBrightnessForRender", at = @At("RETURN"), cancellable = true)
     private void impetus$brightnessForRender(CallbackInfoReturnable<Integer> cir) {
         if (!DynamicLights.options().mode.isEnabled()) {
@@ -79,6 +92,7 @@ public abstract class EntityMixin implements DynamicLightSource {
                 .getLightmapWithDynamicLight((Entity) (Object) this, cir.getReturnValueI()));
     }
 
+    // Runs at the end of onRemovedFromWorld.
     @Inject(method = "onRemovedFromWorld", at = @At("TAIL"))
     private void impetus$onRemoved(CallbackInfo ci) {
         if (this.world.isRemote) {
@@ -86,34 +100,37 @@ public abstract class EntityMixin implements DynamicLightSource {
         }
     }
 
-    // DynamicLightSource
-
+    // Returns the dynamic light x.
     @Override
     public double impetus$getDynamicLightX() {
         return this.posX;
     }
 
-    // Eye height, not feet: a held torch is at head level, and the falloff is measured from it.
+    // Returns the dynamic light y.
     @Override
     public double impetus$getDynamicLightY() {
         return this.posY + this.getEyeHeight();
     }
 
+    // Returns the dynamic light z.
     @Override
     public double impetus$getDynamicLightZ() {
         return this.posZ;
     }
 
+    // Returns the dynamic light world.
     @Override
     public World impetus$getDynamicLightWorld() {
         return this.world;
     }
 
+    // Handles reset dynamic light.
     @Override
     public void impetus$resetDynamicLight() {
         this.impetus$lastLuminance = 0;
     }
 
+    // Handles dynamic light tick.
     @Override
     public void impetus$dynamicLightTick() {
         Entity self = (Entity) (Object) this;
@@ -127,11 +144,13 @@ public abstract class EntityMixin implements DynamicLightSource {
         this.impetus$luminance = Math.max(burning, DynamicLightHandlers.getLuminanceFrom(self));
     }
 
+    // Returns the luminance.
     @Override
     public int impetus$getLuminance() {
         return this.impetus$luminance;
     }
 
+    // Returns whether update dynamic light.
     @Override
     public boolean impetus$shouldUpdateDynamicLight() {
         long stamp = DynamicLightsEngine.nextUpdateStamp(this.impetus$lastUpdate);
@@ -142,7 +161,7 @@ public abstract class EntityMixin implements DynamicLightSource {
         return true;
     }
 
-    // Re-lights surrounding chunks if the entity moved 0.1+ blocks (keeps a standing player from re-meshing every frame) or changed brightness
+    // Handles update dynamic light.
     @Override
     public boolean impetus$updateDynamicLight(RenderGlobal renderer) {
         if (!this.impetus$shouldUpdateDynamicLight()) {
@@ -171,19 +190,18 @@ public abstract class EntityMixin implements DynamicLightSource {
                     this.impetus$trackedLitChunkPos, newPos);
         }
 
-        // Whatever is left in the old set is a chunk this source moved away from and still needs rebuilding to lose the light
         this.impetus$scheduleTrackedChunksRebuild(renderer);
         this.impetus$trackedLitChunkPos = newPos;
         return true;
     }
 
+    // Handles schedule tracked chunks rebuild.
     @Override
     public void impetus$scheduleTrackedChunksRebuild(RenderGlobal renderer) {
         if (this.impetus$trackedLitChunkPos == null || Minecraft.getMinecraft().world != this.world) {
             return;
         }
 
-        // Explicit primitive iterator: the enhanced for boxes every position through LongIterator.next()
         LongIterator positions = this.impetus$trackedLitChunkPos.iterator();
         while (positions.hasNext()) {
             DynamicLightsEngine.scheduleChunkRebuild(renderer, positions.nextLong());

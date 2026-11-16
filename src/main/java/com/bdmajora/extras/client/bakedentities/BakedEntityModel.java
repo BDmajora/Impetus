@@ -17,25 +17,28 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-// A block entity's static geometry served as a block model: every quad is returned unassigned so no neighbour ever culls it, variants are baked on first request per key and dropped when the atlas restitches
+// Baked model of a block entity.
 public abstract class BakedEntityModel implements IBakedModel {
+    // Baked quads of each variant.
     private final Map<Object, List<BakedQuad>> variants = new ConcurrentHashMap<>();
 
-    // The variant for this state and, when the mesher pinned one, this world position; null or empty hides the block from the mesh
+    // Returns the quads of the state.
     protected abstract List<BakedQuad> quadsFor(IBlockState state, BakedEntityContext context);
 
-    // Sprite used for breaking particles and the missing-side fallback
+    // Returns the sprite of the particles.
     protected abstract TextureAtlasSprite particleSprite();
 
+    // Returns the quads of the variant and bakes them when needed.
     protected List<BakedQuad> variant(Object key, Function<Object, List<BakedQuad>> baker) {
         return this.variants.computeIfAbsent(key, baker);
     }
 
-    // Called on restitch: sprite coordinates baked into the quads are no longer valid
+    // Discards every baked variant.
     public void invalidate() {
         this.variants.clear();
     }
 
+    // Returns the quads for the general side only.
     @Override
     public List<BakedQuad> getQuads(IBlockState state, EnumFacing side, long rand) {
         if (side != null || state == null) {
@@ -45,38 +48,43 @@ public abstract class BakedEntityModel implements IBakedModel {
         return quads == null ? Collections.emptyList() : quads;
     }
 
+    // Returns true.
     @Override
     public boolean isAmbientOcclusion() {
         return true;
     }
 
+    // Returns false.
     @Override
     public boolean isGui3d() {
         return false;
     }
 
+    // Returns false.
     @Override
     public boolean isBuiltInRenderer() {
         return false;
     }
 
+    // Returns the sprite of the particles.
     @Override
     public TextureAtlasSprite getParticleTexture() {
         return particleSprite();
     }
 
+    // Returns no overrides.
     @Override
     public ItemOverrideList getOverrides() {
         return ItemOverrideList.NONE;
     }
 
-    // Whether the block entity at a position, if it is one of the animating kinds, is at rest; a missing entity counts as at rest so a freshly placed block draws immediately
+    // Returns whether the block entity is at rest.
     protected static boolean settled(IBlockAccess access, BlockPos pos) {
         TileEntity tile = access.getTileEntity(pos);
         return !(tile instanceof AnimatedBlockEntity) || ((AnimatedBlockEntity) tile).impetus$isSettled();
     }
 
-    // The renderer's opening moves, in block units, shared by the chest family: origin to the block's far top corner, flip y and z, spin about the centre, back
+    // Returns the transform of a chest facing.
     protected static Matrix4f chestMatrix(EnumFacing facing, float preRotateX, float preRotateZ) {
         Matrix4f matrix = new Matrix4f();
         matrix.translate(0.0F, 1.0F, 1.0F);
@@ -88,7 +96,7 @@ public abstract class BakedEntityModel implements IBakedModel {
         return matrix;
     }
 
-    // Degrees the chest renderer spins the model for each facing
+    // Returns the rotation of a chest facing in degrees.
     protected static int chestRotation(EnumFacing facing) {
         return switch (facing) {
             case NORTH -> 180;

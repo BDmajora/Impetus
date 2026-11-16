@@ -13,29 +13,35 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-// The colortex directives (<target>Format, <target>Clear, <target>ClearColor, legacy GAUX4FORMAT, per-program <target>MipmapEnabled); they may sit in ANY stage and Umbra/OptiFine scan every one, so Sildur's HDR formats in gbuffers_textured.fsh are honoured
+// Format and clear directives of the color targets read from the pack sources.
 public final class TargetDirectives {
+    // Logger of unusable directives.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
-    // The three target directives in one pass; the suffix decides which type and value shape is valid
+    // Pattern of a format or clear directive.
     private static final Pattern DIRECTIVE = Pattern.compile(
             "const\\s+(int|bool|vec4)\\s+(\\w+?)(Format|ClearColor|Clear)\\s*=\\s*([^;]*?)\\s*;");
+    // Pattern of an identifier.
     private static final Pattern IDENTIFIER = Pattern.compile("\\w+");
+    // Pattern of a vec4 literal.
     private static final Pattern VEC4 = Pattern.compile("vec4\\s*\\(([^)]*)\\)");
-    // OptiFine's pre-colortexNFormat way of upgrading gaux4/colortex7 (GAUX4FORMAT:RGB32F)
+    // Pattern of the legacy gaux4 format comment.
     private static final Pattern GAUX4_FORMAT = Pattern.compile("/\\*\\s*GAUX4FORMAT\\s*:\\s*(\\w+)\\s*\\*/");
+    // Pattern of a mipmap directive.
     private static final Pattern MIPMAP = Pattern.compile("const\\s+bool\\s+(\\w+?)MipmapEnabled\\s*=\\s*(true|false)\\s*;");
+    // Index of gaux4.
     private static final int GAUX4 = 7;
 
-    // Umbra defaults every colortex to clear=true
+    // Clear state of each target.
     private final boolean[] clears = new boolean[UmbraRenderTargets.MAX_COLOR_BUFFERS];
-    // Explicit colortexNClearColor values; null means the default colour for that buffer
+    // Clear color of each target or null.
     private final float[][] clearColors = new float[UmbraRenderTargets.MAX_COLOR_BUFFERS][];
 
+    // Creates directives that clear every target.
     public TargetDirectives() {
         Arrays.fill(this.clears, true);
     }
 
-    // Applies every format directive to the targets and records the clears, later declarations winning; must precede target materialisation or HDR packs clamp and blow out
+    // Applies the legacy gaux4 formats and then every directive of the active stages.
     public void apply(PackSources sources, UmbraRenderTargets targets) {
         for (ProgramSource source : sources.all()) {
             for (String stage : sources.activeStages(source)) {
@@ -49,7 +55,6 @@ public final class TargetDirectives {
             for (String stage : sources.activeStages(source)) {
                 Matcher matcher = DIRECTIVE.matcher(stage);
                 while (matcher.find()) {
-                    // Not a colour-target name (shadowcolor0Format belongs to the shadow pass)
                     Integer index = names.get(matcher.group(2));
                     if (index != null) {
                         applyOne(matcher.group(1), matcher.group(3), matcher.group(4), index, source.getName(), targets);
@@ -59,6 +64,7 @@ public final class TargetDirectives {
         }
     }
 
+    // Applies one directive to a target.
     private void applyOne(String type, String suffix, String value, int index, String source, UmbraRenderTargets targets) {
         switch (suffix) {
             case "Format" -> {
@@ -73,7 +79,6 @@ public final class TargetDirectives {
             }
             default -> {
                 Matcher vec4 = VEC4.matcher(value);
-                // A malformed colour keeps the previous one, as Umbra ignores a directive it cannot parse
                 float[] color = type.equals("vec4") && vec4.matches() ? parseVec4(vec4.group(1)) : null;
                 if (color != null) {
                     this.clearColors[index] = color;
@@ -82,6 +87,7 @@ public final class TargetDirectives {
         }
     }
 
+    // Sets the format of a target and reports an unknown format or a target that exists.
     private static void applyFormat(int index, String name, String source, UmbraRenderTargets targets) {
         Optional<InternalTextureFormat> format = InternalTextureFormat.fromString(name);
         if (format.isEmpty()) {
@@ -95,13 +101,13 @@ public final class TargetDirectives {
         }
     }
 
-    // Only OptiFine's three formats are honoured, matching Umbra's PackRenderTargetDirectives
+    // Applies the valid legacy gaux4 formats.
     private static void applyLegacyGaux4(String stage, String source, UmbraRenderTargets targets) {
         Matcher matcher = GAUX4_FORMAT.matcher(stage);
         while (matcher.find()) {
             String name = matcher.group(1);
             if (!name.equals("RGBA32F") && !name.equals("RGB32F") && !name.equals("RGB16")) {
-                LOGGER.warn("[Umbra] Ignoring GAUX4FORMAT:{} in '{}' — only RGBA32F, RGB32F and RGB16 are valid; "
+                LOGGER.warn("[Umbra] Ignoring GAUX4FORMAT:{} in '{}'. Only RGBA32F, RGB32F and RGB16 are valid; "
                         + "use `const int colortex7Format = {};` instead", name, source, name);
                 continue;
             }
@@ -109,7 +115,7 @@ public final class TargetDirectives {
         }
     }
 
-    // Four comma-separated floats, or one splatted; null for anything malformed or non-finite
+    // Returns the components of a vec4 literal or null for a malformed or non finite one.
     static float[] parseVec4(String value) {
         String[] parts = value.split(",");
         if (parts.length != 1 && parts.length != 4) {
@@ -129,12 +135,12 @@ public final class TargetDirectives {
         return color;
     }
 
-    // Whether a target clears every frame
+    // Returns whether a target clears each frame.
     public boolean clears(int index) {
         return this.clears[index];
     }
 
-    // colortex0 clears to the fog colour (null), colortex1 to white, the rest to transparent black, unless the pack says otherwise
+    // Returns the clear color of a target or null for the fog color.
     public float[] clearColor(int index) {
         if (this.clearColors[index] != null) {
             return this.clearColors[index];
@@ -145,7 +151,7 @@ public final class TargetDirectives {
         return index == 1 ? new float[]{1.0f, 1.0f, 1.0f, 1.0f} : new float[]{0.0f, 0.0f, 0.0f, 0.0f};
     }
 
-    // One program's colortexNMipmapEnabled set, read like Umbra's ProgramDirectives from the resolved fragment stage (Body Camera declares it both ways in one #if and the dead branch broke its auto-exposure)
+    // Returns the targets a program mipmaps.
     public static BitSet mipmappedBuffers(ProgramSource source, PackSources sources) {
         BitSet mipmapped = new BitSet(UmbraRenderTargets.MAX_COLOR_BUFFERS);
         String fragment = sources.activeFragment(source);

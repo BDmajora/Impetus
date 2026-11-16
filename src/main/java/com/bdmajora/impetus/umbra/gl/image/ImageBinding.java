@@ -6,22 +6,24 @@ import java.util.function.IntSupplier;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// One image uniform's binding for one program; the texture id is a supplier and update() runs at every use, since a render-target image's texture changes on flip and an unrelated draw may have rebound the unit (Iris does the same)
+// Binding of a texture to an image unit.
 public class ImageBinding {
+    // Image unit of the binding.
     private final int imageUnit;
-    // Must match the image's declared format; a mismatch here is undefined behaviour rather than a GL error
+    // Format of the image.
     private final int internalFormat;
+    // Supplier of the texture name.
     private final IntSupplier textureID;
 
+    // Creates a binding and rejects a null texture supplier.
     public ImageBinding(int imageUnit, int internalFormat, IntSupplier textureID) {
         this.imageUnit = imageUnit;
         this.internalFormat = internalFormat;
-        this.textureID = textureID;
+        this.textureID = java.util.Objects.requireNonNull(textureID, "textureID");
     }
 
-    // glBindImageTexture with the supplier's current texture
+    // Binds the current texture to the image unit.
     public void update() {
-        // Always layered: a layered binding exposes a 3D/array image whole, which every custom image with a depth needs, and is harmless for 2D (Umbra binds layered unconditionally)
         LWJGL.glBindImageTexture(this.imageUnit, this.textureID.getAsInt(), 0, true, 0,
                 GL15.GL_READ_WRITE, this.internalFormat);
     }

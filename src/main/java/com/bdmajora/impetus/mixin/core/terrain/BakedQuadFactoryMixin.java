@@ -11,19 +11,20 @@ import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFlags;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
-// Patches FaceBakery#makeBakedQuad to tag quads whose sprite/UVs can be trusted for our chunk renderer
+// Mixin that changes FaceBakery.
 @Mixin(FaceBakery.class)
 public class BakedQuadFactoryMixin {
+    // Changes the return value of makeBakedQuad.
     @ModifyReturnValue(method = "makeBakedQuad(Lorg/lwjgl/util/vector/Vector3f;Lorg/lwjgl/util/vector/Vector3f;Lnet/minecraft/client/renderer/block/model/BlockPartFace;Lnet/minecraft/client/renderer/texture/TextureAtlasSprite;Lnet/minecraft/util/EnumFacing;Lnet/minecraftforge/common/model/ITransformation;Lnet/minecraft/client/renderer/block/model/BlockPartRotation;ZZ)Lnet/minecraft/client/renderer/block/model/BakedQuad;", at = @At("RETURN"))
     private BakedQuad setMaterialClassification(BakedQuad quad, @Local(ordinal = 0, argsOnly = true) BlockPartFace face, @Local(ordinal = 0, argsOnly = true) TextureAtlasSprite sprite) {
         handleMaterialClassifications(quad, sprite, face);
         return quad;
     }
 
-    // Marks quads whose UVs cover the whole sprite, which lets the atlas skip per-quad clamping later
+    // Handles handle material classifications.
     private static void handleMaterialClassifications(BakedQuad quad, TextureAtlasSprite sprite, BlockPartFace face) {
         if (sprite.getClass() == TextureAtlasSprite.class) {
-            float minUV = Float.MAX_VALUE, maxUV = Float.MIN_VALUE;
+            float minUV = Float.MAX_VALUE, maxUV = -Float.MAX_VALUE;
             float[] uvs = face.blockFaceUV.uvs;
 
             for (float uv : uvs) {
@@ -32,7 +33,6 @@ public class BakedQuadFactoryMixin {
             }
 
             if (minUV >= 0 && maxUV <= 16) {
-                // Quad UVs do not extend outside texture boundary, we can trust the given sprite
                 BakedQuadView view = (BakedQuadView)(Object)quad;
                 view.addFlags(ModelQuadFlags.IS_TRUSTED_SPRITE);
             }

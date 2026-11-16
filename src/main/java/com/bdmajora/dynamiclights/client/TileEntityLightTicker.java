@@ -9,19 +9,21 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 import java.util.List;
 
-// Ticks block entity light sources once per client tick since they have no shared update hook; the walk is skipped unless a mod registered a block entity handler
+// Ticks the light level of block entities.
 public final class TileEntityLightTicker {
+    // Prevents instantiation
     private TileEntityLightTicker() {
     }
 
+    // Single instance.
     private static final TileEntityLightTicker INSTANCE = new TileEntityLightTicker();
 
-    // Typed as Object so the event bus registration needs no Forge import at the call site
+    // Returns the instance to register on the event bus.
     public static Object instance() {
         return INSTANCE;
     }
 
-    // Runs at END so it sees the world state the tick produced
+    // Recomputes the light level of every loaded block entity at the end of a tick.
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) {
@@ -41,13 +43,11 @@ public final class TileEntityLightTicker {
 
         List<TileEntity> tileEntities = world.loadedTileEntityList;
 
-        // Indexed rather than for-each: a handler may invalidate a block entity, and the removal would throw ConcurrentModificationException on a live iterator
         for (int i = 0, size = tileEntities.size(); i < size; i++) {
             TileEntity tileEntity;
             try {
                 tileEntity = tileEntities.get(i);
             } catch (IndexOutOfBoundsException e) {
-                // The list shrank underneath us; whatever is left will be picked up next tick.
                 break;
             }
 

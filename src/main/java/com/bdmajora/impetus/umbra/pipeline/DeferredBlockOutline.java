@@ -11,28 +11,35 @@ import java.nio.FloatBuffer;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Replays the block selection box after the composite chain for packs with no gbuffers_line; drawn in the world pass it hits albedo and composite lighting turns the black line dark red beside a torch, so the world matrices are captured and restored here
+// Captures the block selection outline and draws it after the shader pack passes.
 public final class DeferredBlockOutline {
+    // Projection matrix at capture time.
     private static final FloatBuffer PROJECTION = BufferUtils.createFloatBuffer(16);
+    // Model view matrix at capture time.
     private static final FloatBuffer MODELVIEW = BufferUtils.createFloatBuffer(16);
 
+    // Pending state of a captured outline.
     private static boolean pending;
-    // Set while the replay calls vanilla's drawSelectionBox, so the capture hook lets it through instead of re-capturing into an infinite loop
+    // Replay state of the outline draw.
     private static boolean replaying;
 
+    // Player of the captured outline or null.
     private static EntityPlayer player;
+    // Target of the captured outline or null.
     private static RayTraceResult target;
+    // Partial ticks of the captured outline.
     private static float partialTicks;
 
+    // Prevents instantiation
     private DeferredBlockOutline() {
     }
 
-    // Read by the capture hook to tell our own replay apart from vanilla's original call
+    // Returns whether the outline is being drawn.
     public static boolean isReplaying() {
         return replaying;
     }
 
-    // Records the pending outline and its exact matrices, from the CANCELLED drawSelectionBox, the only point where the projection and modelview are still the world camera's
+    // Records the matrices and target of an outline draw.
     public static void capture(EntityPlayer capturedPlayer, RayTraceResult capturedTarget, float capturedPartialTicks) {
         PROJECTION.clear();
         MODELVIEW.clear();
@@ -47,14 +54,14 @@ public final class DeferredBlockOutline {
         pending = true;
     }
 
-    // Drops a captured outline without drawing, for an early-ended frame or a vanished pipeline; otherwise a stale capture replays into the next frame around a block no longer looked at
+    // Forgets the captured outline.
     public static void discard() {
         pending = false;
         player = null;
         target = null;
     }
 
-    // Draws the captured outline into the finished image after the final pass, with Minecraft's framebuffer and its world depth bound so the far edges stay hidden behind the block like vanilla
+    // Draws the captured outline once with the captured matrices and restores the state.
     public static void drawIfPending() {
         if (!pending) {
             return;
@@ -70,12 +77,10 @@ public final class DeferredBlockOutline {
             return;
         }
 
-        // The final pass leaves ITS framebuffer bound, not the presented one; measured, without this the replay lands zero pixels, so bind Minecraft's own
         if (mc.getFramebuffer() != null) {
             mc.getFramebuffer().bindFramebuffer(false);
         }
 
-        // The final pass leaves its own program bound; the outline is fixed-function geometry.
         LWJGL.glUseProgram(0);
 
         GlStateManager.matrixMode(GL11.GL_PROJECTION);
@@ -90,7 +95,6 @@ public final class DeferredBlockOutline {
         GlStateManager.multMatrix(MODELVIEW);
         MODELVIEW.rewind();
 
-        // The box tests against world depth without writing it (drawSelectionBox sets depthMask(false)).
         GlStateManager.enableDepth();
 
         replaying = true;
@@ -104,7 +108,6 @@ public final class DeferredBlockOutline {
             GlStateManager.matrixMode(GL11.GL_MODELVIEW);
             GlStateManager.popMatrix();
 
-            // Match finishWorldRendering's vanilla handoff so inventory models can hide their rear faces.
             GlStateManager.enableDepth();
             GlStateManager.depthMask(true);
             GlStateManager.disableBlend();

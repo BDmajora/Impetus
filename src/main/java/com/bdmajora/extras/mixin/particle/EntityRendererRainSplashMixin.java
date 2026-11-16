@@ -8,9 +8,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Skips the whole rain-splash pass rather than filtering particles; addRainParticles raycasts per candidate before spawning, so cancelling at the top avoids the search
+// Mixin that changes EntityRenderer.
 @Mixin(EntityRenderer.class)
 public class EntityRendererRainSplashMixin {
+    // Runs at the start of addRainParticles and can cancel it.
     @Inject(method = "addRainParticles()V", at = @At("HEAD"), cancellable = true)
     private void impetus$addRainParticles(CallbackInfo ci) {
         ExtrasConfig.ParticleSettings settings = Extras.options().particle;

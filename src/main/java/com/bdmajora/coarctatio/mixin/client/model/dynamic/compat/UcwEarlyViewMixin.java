@@ -14,17 +14,20 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.Map;
 
-// Unlimited Chisel Works reads and writes the loader's stateModels map through its early view; those go to the dynamic provider instead. Applied only when UCW is present
+// Mixin that changes ModelLoaderEarlyView.
 @Pseudo
 @Mixin(targets = "pl/asie/ucw/util/ModelLoaderEarlyView", remap = false)
 public abstract class UcwEarlyViewMixin {
+    // Missing model.
     private IModel coarctatio$missing;
 
+    // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void coarctatio$keepMissing(CallbackInfo ci) {
         this.coarctatio$missing = DynamicModels.unbaked().getObject(UnbakedModelProvider.MISSING);
     }
 
+    // Replaces the call of Map.get in getModel.
     @Redirect(method = "getModel(Lnet/minecraft/client/renderer/block/model/ModelResourceLocation;)Lnet/minecraftforge/client/model/IModel;", at = @At(value = "INVOKE", target = "Ljava/util/Map;get(Ljava/lang/Object;)Ljava/lang/Object;"))
     private Object coarctatio$getDynamic(Map<Object, Object> stateModels, Object location) {
         try {
@@ -35,6 +38,7 @@ public abstract class UcwEarlyViewMixin {
         }
     }
 
+    // Replaces the call of Map.put in putModel.
     @Redirect(method = "putModel", at = @At(value = "INVOKE", target = "Ljava/util/Map;put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"))
     private Object coarctatio$putDynamic(Map<Object, Object> stateModels, Object location, Object model) {
         DynamicModels.unbaked().putObject((ResourceLocation) location, (IModel) model);

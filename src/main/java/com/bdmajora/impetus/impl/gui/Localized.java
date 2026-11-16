@@ -2,11 +2,12 @@ package com.bdmajora.impetus.impl.gui;
 
 import net.minecraft.client.resources.I18n;
 
-// Something with a lang key; lets the option pages build cycling controls generically over any module's enums
+// Contract of the localized.
 public interface Localized {
+    // Returns the translation key of the entry.
     String translationKey();
 
-    // Resolves the translation key for display
+    // Returns the translated name.
     default String localizedName() {
         return I18n.format(this.translationKey());
     }

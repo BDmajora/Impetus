@@ -10,18 +10,18 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 
-// OptiFine MC_* preprocessor macros injected into every stage; GL-dependent vendor/renderer macros go through withGlInfo on the render thread, standard() holds the rest
+// Standard macros defined for pack shaders.
 public final class ShaderMacros {
-    // Minecraft version encoded the OptiFine way: 1.12.2 -> 11202
+    // Game version number.
     public static final int MC_VERSION = 11202;
 
-    // Programs forced to compile as plain OptiFine 1.12.2 (IS_IRIS/IRIS_VERSION withheld) so they take their authored path; only the manual -Dimpetus.umbra.legacyPrograms override, empty by default, since setPackLegacyPrograms detects pairings like Sildur's gbuffers_water/composite1 automatically
+    // Forced legacy programs.
     private static final Set<String> FORCED_LEGACY_PROGRAMS = parseLegacyPrograms();
 
-    // Programs the loaded pack itself marked as having an authored pre-Umbra path (see ShaderPack.detectLegacyPrograms); replaced on every pack load
+    // Pack legacy programs.
     private static volatile Set<String> packLegacyPrograms = Collections.emptySet();
 
-    // Installs the pack-detected legacy program list, once per pack load before any program compiles so the terrain and composite paths see the same set
+    // Stores the pack legacy programs.
     public static void setPackLegacyPrograms(Set<String> names) {
         Set<String> lowered = new HashSet<>();
         for (String name : names) {
@@ -30,10 +30,11 @@ public final class ShaderMacros {
         packLegacyPrograms = lowered;
     }
 
+    // Prevents instantiation
     private ShaderMacros() {
     }
 
-    // Program names the pack marks as legacy, which get the 120-era macro set
+    // Returns the programs named in the legacy property.
     private static Set<String> parseLegacyPrograms() {
         String value = System.getProperty("impetus.umbra.legacyPrograms", "");
         Set<String> names = new HashSet<>();
@@ -46,7 +47,7 @@ public final class ShaderMacros {
         return names;
     }
 
-    // Macro set programName compiles against, identical to the input unless it is a legacy program (Umbra identity macros withheld); callers MUST use the same map for DrawBuffers.parseActive and injectDefines, since mixing points a gl_FragData write at an unbound slot
+    // Fors the program.
     public static Map<String, String> forProgram(Map<String, String> macros, String programName) {
         if (programName == null) {
             return macros;
@@ -61,7 +62,7 @@ public final class ShaderMacros {
         return scoped;
     }
 
-    // Macros that need no GL context (Minecraft version, host OS, baseline quality knobs)
+    // Returns the standard macros.
     public static Map<String, String> standard() {
         Map<String, String> macros = new LinkedHashMap<>();
         macros.put("MC_VERSION", Integer.toString(MC_VERSION));
@@ -69,29 +70,21 @@ public final class ShaderMacros {
         macros.put("MC_RENDER_QUALITY", "1.0");
         macros.put("MC_SHADOW_QUALITY", "1.0");
         macros.put("MC_HAND_DEPTH", "0.125");
-        // PBR sampler availability (OptiFine's default-on normal/specular feature); the `normals`/`specular` samplers are always bound to either the stitched companion atlases or the neutral 1x1 defaults
         macros.put("MC_NORMAL_MAP", "");
         macros.put("MC_SPECULAR_MAP", "");
-        // Resource-pack-declared PBR texture format (optifine/texture.properties `format=`), e.g. MC_TEXTURE_FORMAT_LAB_PBR + _1_3; Umbra parity
         TextureFormatLoader.addFormatMacros(macros);
-        // One IRIS_FEATURE_<NAME> define per implemented Iris extension; Complementary's colored lighting gates on IRIS_FEATURE_CUSTOM_IMAGES and its shadowcomp pass never declares voxel_sampler without it
         FeatureFlags.addUsableDefines(macros);
-        // IS_IRIS, IRIS_VERSION and the IRIS_FEATURE_* prefix are the pack-facing contract, NOT our naming: renaming them drops every pack onto its OptiFine path (Complementary's "not supported on Optifine" screen); IS_IRIS gates Iris-exclusive uniform DECLARATIONS, all of which CommonUniforms uploads at MC_VERSION 11202
         macros.put("IS_IRIS", "");
-        // Distant Horizons presence, the same two defines Iris's StandardMacros emits: packs gate their dh_* programs and the dhDepthTex reads on DISTANT_HORIZONS, and DISTANT_HORIZONS_TEXTURES tells them dh_sampleTexture() exists; only while DH is installed AND rendering, since a pack compiled with them expects real LOD depth
         if (DhCompat.hasRenderingEnabled()) {
             macros.put("DISTANT_HORIZONS", "");
             macros.put("DISTANT_HORIZONS_TEXTURES", "");
         }
-        // The DH material ids a dh_* program reads off dhMaterialId (EDhApiBlockMaterial's indices), unconditional like Iris so shared includes compile without DH
         String[] dhMaterials = {"UNKNOWN", "LEAVES", "STONE", "WOOD", "METAL", "DIRT", "LAVA", "DEEPSLATE", "SNOW",
                 "SAND", "TERRACOTTA", "NETHER_STONE", "WATER", "GRASS", "AIR", "ILLUMINATED"};
         for (int i = 0; i < dhMaterials.length; i++) {
             macros.put("DH_BLOCK_" + dhMaterials[i], Integer.toString(i));
         }
-        // Iris version as major*10000 + minor*100 + bugfix; Complementary takes the precise cameraPositionFract split at >= 10800 (fixing colored-lighting shimmer far from origin), and 10805 is the lowest value enabling that while leaving every legacy `IRIS_VERSION < N` workaround where undefined left it
         macros.put("IRIS_VERSION", "10805");
-        // Umbra render-stage constants (WorldRenderingPhase ordinals, exact Umbra order) for the renderStage uniform.
         macros.put("MC_RENDER_STAGE_NONE", "0");
         macros.put("MC_RENDER_STAGE_SKY", "1");
         macros.put("MC_RENDER_STAGE_SUNSET", "2");
@@ -119,14 +112,14 @@ public final class ShaderMacros {
         return macros;
     }
 
-    // Adds the GL-context-dependent macros (GLSL version and vendor/renderer family) to an existing macro map
+    // Returns a copy with the gl info.
     public static void withGlInfo(Map<String, String> macros, int glslVersion, int glVersion, String vendor, String renderer) {
         macros.put("MC_GL_VERSION", Integer.toString(glVersion));
         macros.put("MC_GLSL_VERSION", Integer.toString(glslVersion));
         withGpuIdentity(macros, vendor, renderer);
     }
 
-    // Adds only the vendor/renderer identity macros packs gate hardware workarounds on; skips MC_GL_VERSION/MC_GLSL_VERSION since programs compile at 120, 330 or 460 depending on path and advertising the real version invites GLSL-120 programs to use syntax they cannot take
+    // Returns a copy with the gpu identity.
     public static void withGpuIdentity(Map<String, String> macros, String vendor, String renderer) {
         String vendorMacro = vendorMacro(vendor);
         if (vendorMacro != null) {
@@ -138,7 +131,7 @@ public final class ShaderMacros {
         }
     }
 
-    // Inserts #define lines right after #version (or at the top); used by the fullscreen/terrain/compute paths that skip ShaderProgramCompiler's define application
+    // Adds define lines after the version line.
     public static String injectDefines(String source, Map<String, String> macros) {
         StringBuilder defines = new StringBuilder();
         for (Map.Entry<String, String> macro : macros.entrySet()) {
@@ -173,10 +166,9 @@ public final class ShaderMacros {
         return out.toString();
     }
 
-    // MC_OS_WINDOWS, MC_OS_LINUX or MC_OS_MAC from the JVM's os.name
+    // Returns the macro of the operating system.
     private static String osMacro() {
         String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        // Mac first: "darwin" contains "win"
         if (os.contains("mac") || os.contains("darwin")) {
             return "MC_OS_MAC";
         } else if (os.contains("win")) {
@@ -187,7 +179,7 @@ public final class ShaderMacros {
         return "MC_OS_OTHER";
     }
 
-    // Matches Umbra's StandardMacros.getVendor() exactly (OptiFine's documented behaviour); prefix tests, not substring, see rendererMacro
+    // Returns the macro of a GPU vendor.
     private static String vendorMacro(String vendor) {
         if (vendor == null) {
             return "MC_GL_VENDOR_OTHER";
@@ -200,7 +192,6 @@ public final class ShaderMacros {
         } else if (v.startsWith("nvidia")) {
             return "MC_GL_VENDOR_NVIDIA";
         } else if (v.startsWith("amd")) {
-            // Umbra reports AMD separately from ATI; folding it into ATI only satisfied Complementary's `AMD || ATI` test by luck, and a pack testing MC_GL_VENDOR_AMD alone would take the wrong branch
             return "MC_GL_VENDOR_AMD";
         } else if (v.startsWith("x.org")) {
             return "MC_GL_VENDOR_XORG";
@@ -208,7 +199,7 @@ public final class ShaderMacros {
         return "MC_GL_VENDOR_OTHER";
     }
 
-    // Matches Umbra's StandardMacros.getRenderer() exactly including test order; prefix tests, since contains("intel") misfired on "Mesa Intel(R) Arc(tm)" and advertised Arc as an ancient iGPU
+    // Returns the macro of a renderer name.
     private static String rendererMacro(String renderer) {
         if (renderer == null) {
             return "MC_GL_RENDERER_OTHER";

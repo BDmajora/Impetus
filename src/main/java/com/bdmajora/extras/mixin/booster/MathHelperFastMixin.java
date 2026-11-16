@@ -6,10 +6,10 @@ import net.minecraft.util.math.MathHelper;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
 
-// GPU Booster's fast math on the MathHelper routines that still cost something here; each overwrite keeps vanilla's exact expression on its off branch, and Equilibrium's sine mixin on the same class touches only sin/cos
+// Mixin that changes MathHelper.
 @Mixin(MathHelper.class)
 public class MathHelperFastMixin {
-    // Overwrite: floor-based wrap instead of the float remainder
+    // Replaces the whole method wrapDegrees.
     @Overwrite
     public static float wrapDegrees(float value) {
         if (FastMath.enabled) {
@@ -26,7 +26,7 @@ public class MathHelperFastMixin {
         return value;
     }
 
-    // Overwrite: floor-based wrap instead of the double remainder
+    // Replaces the whole method wrapDegrees.
     @Overwrite
     public static double wrapDegrees(double value) {
         if (FastMath.enabled) {
@@ -43,7 +43,7 @@ public class MathHelperFastMixin {
         return value;
     }
 
-    // Overwrite: leading-zero count instead of the de Bruijn multiply and table
+    // Replaces the whole method log2DeBruijn.
     @Overwrite
     public static int log2DeBruijn(int value) {
         if (FastMath.enabled) {
@@ -54,7 +54,7 @@ public class MathHelperFastMixin {
         return DE_BRUIJN[(int) ((long) value * 125613361L >> 27) & 31];
     }
 
-    // Overwrite: leading-zero count instead of two de Bruijn lookups
+    // Replaces the whole method log2.
     @Overwrite
     public static int log2(int value) {
         if (FastMath.enabled) {
@@ -63,7 +63,7 @@ public class MathHelperFastMixin {
         return log2DeBruijn(value) - (MathUtil.isPowerOfTwo(value) ? 0 : 1);
     }
 
-    // Vanilla's private table, duplicated here since the off branch must not depend on the shadowed original staying reachable
+    // De Bruijn table for bit scans.
     private static final int[] DE_BRUIJN = {
             0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8,
             31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9

@@ -22,34 +22,42 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-// ModelLoaderRegistry.getModel's loader walk, done on request and remembered in an expiring soft cache instead of a map that holds every model until the next reload (VintageFix's DynamicModelProvider); loads are serialised on this since Forge's loaders keep per-call state
+// Registry that loads each unbaked model when it is first requested.
 public final class UnbakedModelProvider implements IRegistry<ResourceLocation, IModel> {
+    // Location of the missing model.
     public static final ModelResourceLocation MISSING = new ModelResourceLocation("builtin/missing", "missing");
 
+    // Loader of vanilla model files.
     private static final ICustomModelLoader VANILLA_LOADER = loaderInstance("net.minecraftforge.client.model.ModelLoader$VanillaLoader");
+    // Loader of block state variants.
     private static final ICustomModelLoader VARIANT_LOADER = loaderInstance("net.minecraftforge.client.model.ModelLoader$VariantLoader");
+    // Class that wraps vanilla models.
     private static final Class<?> VANILLA_MODEL_WRAPPER = classNamed("net.minecraftforge.client.model.ModelLoader$VanillaModelWrapper");
 
-    // Set while the stitch fallback is re-walking every model, so their textures can be gathered as they load
+    // Set that collects textures of loaded models or null.
     public static volatile Set<ResourceLocation> textureCapture;
 
+    // Loaders registered by mods.
     private final Set<ICustomModelLoader> loaders;
-    // Models put by mods (or the item prebake) that must not expire
+    // Models stored explicitly that never expire.
     private final Map<ResourceLocation, IModel> permanent = new Object2ObjectOpenHashMap<>();
+    // Models loaded on demand that may expire.
     private final Cache<ResourceLocation, Optional<IModel>> loaded = CacheBuilder.newBuilder()
             .expireAfterAccess(Duration.ofMinutes(3))
             .maximumSize(1000)
             .concurrencyLevel(8)
             .softValues()
             .build();
-    // Inventory variants an item model's overrides pointed at, resolved to the model file rather than through a blockstate that lacks them
+    // Locations that redirect to another location.
     private final Map<ResourceLocation, ResourceLocation> aliases = new Object2ObjectOpenHashMap<>();
 
+    // Creates a provider and rejects null loaders.
     public UnbakedModelProvider(Set<ICustomModelLoader> loaders) {
-        this.loaders = loaders;
+        this.loaders = java.util.Objects.requireNonNull(loaders, "loaders");
         this.aliases.put(new ResourceLocation("block/builtin/entity"), new ResourceLocation("builtin/entity"));
     }
 
+    // Returns the stored or loaded model of the location.
     @Nullable
     @Override
     public IModel getObject(ResourceLocation location) {
@@ -74,6 +82,7 @@ public final class UnbakedModelProvider implements IRegistry<ResourceLocation, I
         return model.orElse(null);
     }
 
+    // Returns the model of the location or the missing model when loading fails.
     public IModel getModelOrMissing(ResourceLocation location) {
         try {
             return this.getObject(location);
@@ -82,7 +91,7 @@ public final class UnbakedModelProvider implements IRegistry<ResourceLocation, I
         }
     }
 
-    // Vanilla's item loading order: the blockstate variant first, then the item model file, remembering override locations found on the way
+    // Returns the model loaded as a block state or as an item and throws when both fail.
     private IModel loadFromBlockstateOrItem(ResourceLocation location) throws ModelLoaderRegistry.LoaderException {
         ResourceLocation itemFile = null;
         Throwable blockstateFailure = null;
@@ -130,6 +139,7 @@ public final class UnbakedModelProvider implements IRegistry<ResourceLocation, I
         throw failure;
     }
 
+    // Returns the model loaded through the loader that accepts the location.
     private IModel load(ResourceLocation location, Set<ResourceLocation> stack) throws ModelLoaderRegistry.LoaderException {
         if (stack.add(location)) {
             ResourceLocation alias;
@@ -144,7 +154,6 @@ public final class UnbakedModelProvider implements IRegistry<ResourceLocation, I
         if (model != null) {
             return model;
         }
-        // Forge seeds its own cache with the builtin/generated item model under three names
         model = ModelLoaderRegistryAccessor.coarctatio$cache().get(location);
         if (model != null) {
             return model;
@@ -178,8 +187,8 @@ public final class UnbakedModelProvider implements IRegistry<ResourceLocation, I
         try {
             model = accepted.loadModel(actual);
         } catch (Exception e) {
-            // A variant that is simply absent is the common item-model fallback path, and not worth a stack trace
             if (e instanceof ModelBlockDefinition.MissingVariantException && accepted == VARIANT_LOADER) {
+                // Creates the failure with a message.
                 throw new MissingVariantFailure("Variant " + location + " does not exist");
             }
             throw new ModelLoaderRegistry.LoaderException("Exception loading model " + location + " with loader " + accepted, e);
@@ -191,7 +200,6 @@ public final class UnbakedModelProvider implements IRegistry<ResourceLocation, I
             throw new ModelLoaderRegistry.LoaderException("Loader " + accepted + " provided missing model for " + location);
         }
         try {
-            // Resolves the parent chain now, where the failure can be attributed to this model
             model.getTextures();
         } catch (Exception e) {
             throw new ModelLoaderRegistry.LoaderException("Exception loading model " + location + " with loader " + accepted, e);
@@ -199,6 +207,7 @@ public final class UnbakedModelProvider implements IRegistry<ResourceLocation, I
         return model;
     }
 
+    // Stores a model that never expires.
     @Override
     public void putObject(ResourceLocation key, IModel value) {
         synchronized (this) {
@@ -207,38 +216,46 @@ public final class UnbakedModelProvider implements IRegistry<ResourceLocation, I
         this.loaded.invalidate(key);
     }
 
+    // Redirects the location to another location.
     public void putAlias(ResourceLocation from, ResourceLocation to) {
         synchronized (this.aliases) {
             this.aliases.put(from, to);
         }
     }
 
+    // Drops the cached model of the location.
     public void invalidate(ResourceLocation key) {
         this.loaded.invalidate(key);
     }
 
+    // Drops every cached model.
     public void clearCache() {
         this.loaded.invalidateAll();
     }
 
+    // Returns the number of cached models.
     public long cachedCount() {
         return this.loaded.size();
     }
 
+    // Returns the number of stored models.
     public int permanentCount() {
         return this.permanent.size();
     }
 
+    // Returns the locations of the stored models.
     @Override
     public Set<ResourceLocation> getKeys() {
         return this.permanent.keySet();
     }
 
+    // Returns an iterator over the stored models.
     @Override
     public Iterator<IModel> iterator() {
         return this.permanent.values().iterator();
     }
 
+    // Returns the singleton loader of the named class.
     private static ICustomModelLoader loaderInstance(String className) {
         try {
             Field instance = Class.forName(className).getDeclaredField("INSTANCE");
@@ -249,6 +266,7 @@ public final class UnbakedModelProvider implements IRegistry<ResourceLocation, I
         }
     }
 
+    // Returns the class of the name.
     private static Class<?> classNamed(String className) {
         try {
             return Class.forName(className);
@@ -257,12 +275,13 @@ public final class UnbakedModelProvider implements IRegistry<ResourceLocation, I
         }
     }
 
-    // Thrown for absent variants, which happen once per item that has no blockstate entry; the stack trace is the whole cost
+    // Failure for a variant that does not exist and carries no stack trace.
     private static final class MissingVariantFailure extends ModelLoaderRegistry.LoaderException {
         MissingVariantFailure(String message) {
             super(message);
         }
 
+        // Returns the failure without recording a stack trace.
         @Override
         public synchronized Throwable fillInStackTrace() {
             return this;

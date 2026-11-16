@@ -6,9 +6,10 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 
 import java.io.File;
 
-// The folder or file a pack reads from
+// Mixin that changes AbstractResourcePack.
 @Mixin(AbstractResourcePack.class)
 public interface AbstractResourcePackAccessor {
+    // Gives access to the field file.
     @Accessor("resourcePackFile")
     File coarctatio$file();
 }

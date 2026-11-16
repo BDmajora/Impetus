@@ -17,28 +17,34 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import javax.annotation.Nullable;
 
-// Forge fires AttachCapabilitiesEvent and builds a CapabilityDispatcher for every ItemStack constructed, and a modded game constructs them by the million (recipe matching, JEI, inventory copies, rendering); nearly all are never asked for a capability (Chibi's delayItemStackCapabilityInit, PrototypeTrousers' idea). The dispatcher is built on the first capability query instead; until then the loaded capability NBT is carried as-is so copying and saving lose nothing
+// Mixin that changes ItemStack.
 @Mixin(ItemStack.class)
 public abstract class ItemStackCapabilityMixin {
+    // Reference to the field is empty of the target.
     @Shadow
     private boolean isEmpty;
 
+    // Reference to the field capabilities of the target.
     @Shadow(remap = false)
     private CapabilityDispatcher capabilities;
 
+    // Reference to the field cap nbt of the target.
     @Shadow(remap = false)
     private NBTTagCompound capNBT;
 
+    // Reference to the field delegate of the target.
     @Shadow(remap = false)
     private IRegistryDelegate<Item> delegate;
 
+    // Reference to the method get item raw of the target.
     @Shadow(remap = false)
     @Nullable
     protected abstract Item getItemRaw();
 
+    // Capabilities ready.
     private boolean coarctatio$capabilitiesReady;
 
-    // Forge's constructor hook: only the registry delegate is resolved now, the dispatcher waits
+    // Replaces the whole method forgeInit.
     @Overwrite(remap = false)
     private void forgeInit() {
         Item item = this.getItemRaw();
@@ -47,6 +53,7 @@ public abstract class ItemStackCapabilityMixin {
         }
     }
 
+    // Initializes the capabilities.
     private void coarctatio$initCapabilities() {
         if (this.coarctatio$capabilitiesReady) {
             return;
@@ -62,6 +69,7 @@ public abstract class ItemStackCapabilityMixin {
         }
     }
 
+    // Replaces the whole method hasCapability.
     @Overwrite(remap = false)
     public boolean hasCapability(Capability<?> capability, @Nullable EnumFacing facing) {
         if (this.isEmpty) {
@@ -71,6 +79,7 @@ public abstract class ItemStackCapabilityMixin {
         return this.capabilities != null && this.capabilities.hasCapability(capability, facing);
     }
 
+    // Replaces the whole method getCapability.
     @Nullable
     @Overwrite(remap = false)
     public <T> T getCapability(Capability<T> capability, @Nullable EnumFacing facing) {
@@ -81,6 +90,7 @@ public abstract class ItemStackCapabilityMixin {
         return this.capabilities == null ? null : this.capabilities.getCapability(capability, facing);
     }
 
+    // Replaces the whole method areCapsCompatible.
     @Overwrite(remap = false)
     public boolean areCapsCompatible(ItemStack other) {
         this.coarctatio$initCapabilities();
@@ -92,7 +102,18 @@ public abstract class ItemStackCapabilityMixin {
         return this.capabilities.areCompatible(that.capabilities);
     }
 
-    // Forge only writes ForgeCaps from a live dispatcher; a stack that loaded caps and was never queried still has them in capNBT and must not drop them on save
+    // Runs before every return of copy.
+    @Inject(method = "copy", at = @At("RETURN"))
+    private void coarctatio$copyUnrealisedCaps(CallbackInfoReturnable<ItemStack> cir) {
+        if (!this.coarctatio$capabilitiesReady && this.capNBT != null) {
+            ItemStackCapabilityMixin copy = (ItemStackCapabilityMixin) (Object) cir.getReturnValue();
+            if (copy.capNBT == null) {
+                copy.capNBT = this.capNBT.copy();
+            }
+        }
+    }
+
+    // Runs before every return of writeToNBT.
     @Inject(method = "writeToNBT", at = @At("RETURN"))
     private void coarctatio$writeUnrealisedCaps(NBTTagCompound nbt, CallbackInfoReturnable<NBTTagCompound> cir) {
         if (!this.coarctatio$capabilitiesReady && this.capNBT != null && !this.capNBT.isEmpty() && !nbt.hasKey("ForgeCaps")) {

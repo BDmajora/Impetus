@@ -12,9 +12,9 @@ import net.minecraftforge.fml.relauncher.Side;
 
 import java.util.EnumSet;
 
-// Implemented by mixin on each recycled event class (never on Event itself, which Forge loads before mixins can touch it) so an instance can be put back to freshly constructed state before it is posted again
+// Event that can be reset and reused.
 public interface RecyclableEvent {
-    // Clears the cancel flag, result and dispatch phase Forge's bus wrote during the last post
+    // Restores the cancel state and result to their defaults.
     default void coarctatio$resetEventState() {
         coarctatio$resetPhase();
         Event self = (Event) this;
@@ -26,10 +26,10 @@ public interface RecyclableEvent {
         }
     }
 
-    // Forgets the dispatch phase; Event's own field is private, so each recycled class keeps a replacement and overrides getPhase/setPhase onto it
+    // Restores the phase to the unset state.
     void coarctatio$resetPhase();
 
-    // Event.setPhase's contract, phases only ever advance, applied to the replacement field
+    // Returns the next phase and rejects a null or earlier phase.
     static EventPriority advancePhase(EventPriority current, EventPriority value) {
         Preconditions.checkNotNull(value, "setPhase argument must not be null");
         int prev = current == null ? -1 : current.ordinal();
@@ -37,24 +37,31 @@ public interface RecyclableEvent {
         return value;
     }
 
+    // Stores the side of the event.
     default void coarctatio$refreshSide(Side side) {
     }
 
+    // Stores the player of the event.
     default void coarctatio$refreshPlayer(EntityPlayer player) {
     }
 
+    // Stores the world of the event.
     default void coarctatio$refreshWorld(World world) {
     }
 
+    // Stores the render time of the event.
     default void coarctatio$refreshRenderTime(float renderTickTime) {
     }
 
+    // Stores the object of the event.
     default void coarctatio$refreshObject(Object object) {
     }
 
+    // Stores the block data of the event.
     default void coarctatio$refreshBlock(World world, BlockPos pos, IBlockState state) {
     }
 
+    // Stores the notified sides of the event.
     default void coarctatio$refreshNeighbors(EnumSet<EnumFacing> notifiedSides, boolean forceRedstoneUpdate) {
     }
 }

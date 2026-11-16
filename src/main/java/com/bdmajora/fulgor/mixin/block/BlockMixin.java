@@ -9,29 +9,36 @@ import net.minecraft.world.IBlockAccess;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 
-// Caches on Block whether it overrides Forge's position-aware getLightValue/getLightOpacity, skipping the state->block->state double dispatch for six neighbours per position; resolved lazily by reflection since coremods may still be rewriting classes at construction, and both names are unobfuscated Forge additions
+// Mixin that changes Block.
 @Mixin(Block.class)
 public abstract class BlockMixin implements LightInfoBlock {
+    // Field fulgor resolved added to the target.
     @Unique
     private static final int FULGOR_RESOLVED = 1;
+    // Field fulgor position aware light value added to the target.
     @Unique
     private static final int FULGOR_POSITION_AWARE_LIGHT_VALUE = 1 << 1;
+    // Field fulgor position aware opacity added to the target.
     @Unique
     private static final int FULGOR_POSITION_AWARE_OPACITY = 1 << 2;
 
+    // Field light info flags added to the target.
     @Unique
     private byte fulgor$lightInfoFlags;
 
+    // Returns whether position aware light value.
     @Override
     public boolean fulgor$hasPositionAwareLightValue() {
         return (fulgor$lightInfoFlags() & FULGOR_POSITION_AWARE_LIGHT_VALUE) != 0;
     }
 
+    // Returns whether position aware opacity.
     @Override
     public boolean fulgor$hasPositionAwareOpacity() {
         return (fulgor$lightInfoFlags() & FULGOR_POSITION_AWARE_OPACITY) != 0;
     }
 
+    // Helper method light info flags added to the target.
     @Unique
     private int fulgor$lightInfoFlags() {
         int flags = this.fulgor$lightInfoFlags;
@@ -53,7 +60,7 @@ public abstract class BlockMixin implements LightInfoBlock {
         return flags;
     }
 
-    // Fails safe: if the method cannot be resolved (transformer removed it, security manager refused), treat the block as position-aware, slower but never wrong
+    // Helper method overrides added to the target.
     @Unique
     private boolean fulgor$overrides(String name) {
         try {

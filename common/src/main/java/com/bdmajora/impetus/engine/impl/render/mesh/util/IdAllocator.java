@@ -3,14 +3,19 @@ package com.bdmajora.impetus.engine.impl.render.mesh.util;
 import it.unimi.dsi.fastutil.ints.IntAVLTreeSet;
 import it.unimi.dsi.fastutil.ints.IntSortedSet;
 
-// Hands out the densest ids it can and shrinks its high-water mark when the tail is released, since the pipeline scans 0..maxIndex() every frame for live regions
+// Hands out the smallest ids and shrinks its range when the last ids are released.
 public class IdAllocator {
+    // Released ids.
     private final IntSortedSet released = new IntAVLTreeSet();
+    // Smallest id that was never handed out.
     private int next;
 
-    // Reuses a released id before growing
+    // Returns the smallest released id or a new id and rejects an overflow.
     public int allocate() {
         if (this.released.isEmpty()) {
+            if (this.next == Integer.MAX_VALUE) {
+                throw new IllegalStateException("No ids left");
+            }
             return this.next++;
         }
 
@@ -19,17 +24,21 @@ public class IdAllocator {
         return id;
     }
 
-    // Returns an id for reuse
+    // Returns an id and rejects an id that is not allocated.
     public void release(int id) {
-        this.released.add(id);
+        if (id < 0 || id >= this.next) {
+            throw new IllegalArgumentException("Id was not allocated " + id);
+        }
+        if (!this.released.add(id)) {
+            throw new IllegalArgumentException("Id was released already " + id);
+        }
 
-        // Walk the high-water mark back over released ids at the tail, so freeing the last region actually shortens the per-frame scan
         while (!this.released.isEmpty() && this.released.lastInt() + 1 == this.next) {
             this.released.remove(--this.next);
         }
     }
 
-    // One past the largest id ever handed out and not since reclaimed from the tail
+    // Returns one past the largest id in use.
     public int maxIndex() {
         return this.next;
     }

@@ -11,15 +11,16 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 
 import java.io.FileNotFoundException;
 
-// Both "not found" throws in the per-domain manager, and the leak tracker that captures a stack trace for every stream it opens
+// Mixin that changes FallbackResourceManager.
 @Mixin(FallbackResourceManager.class)
 public abstract class FallbackResourceManagerMixin {
+    // Replaces the missing resource exception with one without a stack trace.
     @Redirect(method = {"getResource", "getAllResources"}, at = @At(value = "NEW", target = "(Ljava/lang/String;)Ljava/io/FileNotFoundException;", remap = false))
     private FileNotFoundException coarctatio$stackless(String message) {
         return new StacklessFileNotFoundException(message);
     }
 
-    // Forge's log config always has debug on, so vanilla wraps every resource stream in a tracker that prints a stack trace and registers a finalizer, whose global lock also serialises the parallel model and texture readers
+    // Wraps the call of Logger.isDebugEnabled in getInputStream.
     @WrapOperation(method = "getInputStream(Lnet/minecraft/util/ResourceLocation;Lnet/minecraft/client/resources/IResourcePack;)Ljava/io/InputStream;",
             at = @At(value = "INVOKE", target = "Lorg/apache/logging/log4j/Logger;isDebugEnabled()Z", remap = false))
     private boolean coarctatio$untrackedStreams(Logger logger, Operation<Boolean> original) {

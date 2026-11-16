@@ -9,24 +9,31 @@ import net.minecraft.world.World;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-// Remembers which recipe (or that none) matched a grid shape, after Universal Tweaks' crafting cache: vanilla walks every registered recipe on every slot change and on every crafting-table tick of every automation block, and a large pack registers tens of thousands. A hit is re-verified with matches() so a recipe that reads more than item and meta can still say no, and the whole cache is dropped whenever the registry's size changes so a reload starts clean
+// Remembers which recipe matches a crafting grid.
 public final class CraftingCache {
+    // Largest number of remembered grids.
     private static final int CAPACITY = 4096;
-    // Sentinel for "scanned everything, nothing matched"; null in the map would be indistinguishable from absent
+    // Marker for a grid without a recipe.
     private static final IRecipe NO_MATCH = new NoRecipe();
 
+    // Recipes by grid in order of use.
     private static final Map<CraftMatrixKey, IRecipe> CACHE = new LinkedHashMap<CraftMatrixKey, IRecipe>(256, 0.75F, true) {
+        // Returns whether the oldest entry exceeds the capacity.
         @Override
         protected boolean removeEldestEntry(Map.Entry<CraftMatrixKey, IRecipe> eldest) {
             return this.size() > CAPACITY;
         }
     };
+    // Size of the recipe registry when the cache was filled.
     private static int registrySize = -1;
+    // Recipe that matched last.
     private static IRecipe lastMatch;
 
+    // Prevents instantiation
     private CraftingCache() {
     }
 
+    // Returns the recipe that matches the grid or null.
     public static synchronized IRecipe findMatchingRecipe(InventoryCrafting matrix, World world) {
         int size = CraftingManager.REGISTRY.getKeys().size();
         if (size != registrySize) {
@@ -34,7 +41,6 @@ public final class CraftingCache {
             lastMatch = null;
             registrySize = size;
         }
-        // The same grid is queried repeatedly while a player arranges it, and automation re-asks with the same contents every tick
         IRecipe previous = lastMatch;
         if (previous != null && previous.matches(matrix, world)) {
             return previous;
@@ -56,7 +62,7 @@ public final class CraftingCache {
         return found;
     }
 
-    // Vanilla's loop, kept separate so the NBT path and a cache miss share it
+    // Returns the first registered recipe that matches the grid.
     private static IRecipe scan(InventoryCrafting matrix, World world) {
         for (IRecipe recipe : CraftingManager.REGISTRY) {
             if (recipe.matches(matrix, world)) {
@@ -67,23 +73,27 @@ public final class CraftingCache {
         return null;
     }
 
-    // Never registered and never returned; only its identity is used
+    // Recipe that never matches.
     private static final class NoRecipe extends net.minecraftforge.registries.IForgeRegistryEntry.Impl<IRecipe> implements IRecipe {
+        // Returns false.
         @Override
         public boolean matches(InventoryCrafting inv, World world) {
             return false;
         }
 
+        // Returns the empty stack.
         @Override
         public ItemStack getCraftingResult(InventoryCrafting inv) {
             return ItemStack.EMPTY;
         }
 
+        // Returns false.
         @Override
         public boolean canFit(int width, int height) {
             return false;
         }
 
+        // Returns the empty stack.
         @Override
         public ItemStack getRecipeOutput() {
             return ItemStack.EMPTY;

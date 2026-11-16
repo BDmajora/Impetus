@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.engine.impl.gui.framework;
 
+// Text colors and modifiers.
 public enum TextFormattingStyle {
     BLACK,
     DARK_BLUE,
@@ -21,7 +22,7 @@ public enum TextFormattingStyle {
     UNDERLINE,
     ITALIC;
 
-    // Colour codes versus modifiers like bold
+    // Returns whether the style is a color.
     public boolean isColor() {
         return this.ordinal() < 16;
     }

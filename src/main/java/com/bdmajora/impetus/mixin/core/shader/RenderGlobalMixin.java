@@ -31,15 +31,17 @@ import com.bdmajora.impetus.umbra.uniforms.CelestialUniforms;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Switches the sky phase to gbuffers_skytextured for the sun and moon inside renderSky and back to gbuffers_skybasic afterwards (OptiFine's preCelestialRotate split); the outer "sky" anchor already selected skybasic
+// Mixin that changes RenderGlobal.
 @Mixin(RenderGlobal.class)
 public class RenderGlobalMixin {
+    // Name of the sun texture field.
     private static final String SUN_TEXTURES_FIELD =
             "Lnet/minecraft/client/renderer/RenderGlobal;SUN_TEXTURES:Lnet/minecraft/util/ResourceLocation;";
+    // Name of the moon texture field.
     private static final String MOON_TEXTURES_FIELD =
             "Lnet/minecraft/client/renderer/RenderGlobal;MOON_PHASES_TEXTURES:Lnet/minecraft/util/ResourceLocation;";
 
-    // Right before the sky disc VBO draws, with skybasic active, draw OptiFine's horizon fill so the thin uncovered band lands in colortex1 with the sky colour instead of stale HDR (Shaders.preSkyList's call site)
+    // Runs around the call of VertexBuffer.bindBuffer in renderSky.
     @Inject(method = "renderSky(FI)V",
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/vertex/VertexBuffer;bindBuffer()V", ordinal = 0))
@@ -50,7 +52,7 @@ public class RenderGlobalMixin {
         }
     }
 
-    // OptiFine's preCelestialRotate: rotate the live modelview by the pack's sunPathRotation between vanilla's -90 Y-rotation and its time-of-day X-rotation, so the drawn sun matches sunPosition and the shadow projection (Umbra rotates only the uniform, which is visibly wrong on 1.12's vanilla sun disc; 19 of 22 packs set it)
+    // Runs around the call of WorldClient.getCelestialAngle in renderSky.
     @Inject(method = "renderSky(FI)V",
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/client/multiplayer/WorldClient;getCelestialAngle(F)F", ordinal = 1))
@@ -64,31 +66,32 @@ public class RenderGlobalMixin {
         }
     }
 
+    // Runs inside renderSky.
     @Inject(method = "renderSky(FI)V",
             at = @At(value = "FIELD", target = SUN_TEXTURES_FIELD, opcode = Opcodes.GETSTATIC))
     private void impetus$beginSunMoon(float partialTicks, int pass, CallbackInfo ci) {
-        Umbra.setPhase(ProgramId.SkyTextured, 4); // MC_RENDER_STAGE_SUN
+        Umbra.setPhase(ProgramId.SkyTextured, 4);
     }
 
-    // The moon needs its own stage: vanilla draws sun then moon through one program, and 13 call sites across the installed packs branch on MC_RENDER_STAGE_MOON (Spooklementary, Pastel key moon tinting on it)
+    // Runs inside renderSky.
     @Inject(method = "renderSky(FI)V",
             at = @At(value = "FIELD", target = MOON_TEXTURES_FIELD, opcode = Opcodes.GETSTATIC),
             require = 0)
     private void impetus$beginMoon(float partialTicks, int pass, CallbackInfo ci) {
-        Umbra.setPhase(ProgramId.SkyTextured, 5); // MC_RENDER_STAGE_MOON
+        Umbra.setPhase(ProgramId.SkyTextured, 5);
     }
 
+    // Runs inside renderSky.
     @Inject(method = "renderSky(FI)V",
             slice = @Slice(from = @At(value = "FIELD", target = SUN_TEXTURES_FIELD,
                     opcode = Opcodes.GETSTATIC)),
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/GlStateManager;disableTexture2D()V", ordinal = 0))
     private void impetus$endSunMoon(float partialTicks, int pass, CallbackInfo ci) {
-        // Vanilla's disableTexture2D() right after the sun/moon quads is where the star field begins; stars go back through gbuffers_skybasic, so the finer stage is published explicitly (Clarity emits stars only under MC_RENDER_STAGE_STARS)
-        Umbra.setPhase(ProgramId.SkyBasic, 6); // MC_RENDER_STAGE_STARS
+        Umbra.setPhase(ProgramId.SkyBasic, 6);
     }
 
-    // OptiFine brackets the cloud geometry inside RenderGlobal.renderClouds with beginClouds()/endClouds(); done at the geometry boundary rather than the profiler label because a pack can cancel the dispatcher and a leaked phase leaves colortex4 selected. Only fires on the vanilla fallback path
+    // Runs around the call of GlStateManager.disableCull in renderClouds.
     @Inject(method = "renderClouds(FIDDD)V",
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/GlStateManager;disableCull()V",
@@ -98,6 +101,7 @@ public class RenderGlobalMixin {
         Umbra.setPhase(ProgramId.Clouds);
     }
 
+    // Runs around the call of GlStateManager.enableCull in renderClouds.
     @Inject(method = "renderClouds(FIDDD)V",
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/GlStateManager;enableCull()V",
@@ -108,47 +112,48 @@ public class RenderGlobalMixin {
         Umbra.setPhase(null);
     }
 
-    // No clouds directive check here any more: GameSettingsCloudsMixin folds the pack's setting into shouldRenderClouds(), so reaching this means fancy is the effective mode
+    // Runs at the start of renderCloudsFancy.
     @Inject(method = "renderCloudsFancy(FIDDD)V", at = @At("HEAD"), require = 0)
     private void impetus$beginFancyClouds(float partialTicks, int pass, double x, double y, double z, CallbackInfo ci) {
         Umbra.setPhase(ProgramId.Clouds);
     }
 
+    // Runs before every return of renderCloudsFancy.
     @Inject(method = "renderCloudsFancy(FIDDD)V", at = @At("RETURN"), require = 0)
     private void impetus$endFancyClouds(float partialTicks, int pass, double x, double y, double z, CallbackInfo ci) {
         Umbra.setPhase(null);
     }
 
-    // Binds gbuffers_line (fallback gbuffers_basic) for the block selection box like Umbra; the "outline" section runs right after "entities", so without this it inherits gbuffers_entities and is written into the entity DRAWBUFFERS, normals and material targets included (OptiFine's disableTexture2D hook does the same)
+    // Runs at the start of drawSelectionBox and can cancel it.
     @Inject(method = "drawSelectionBox", at = @At("HEAD"), cancellable = true, require = 0)
     private void impetus$beginBlockOutline(EntityPlayer player,
+                                           // Target and draw flag.
                                            RayTraceResult target, int execute,
+                                           // Partial ticks.
                                            float partialTicks, CallbackInfo ci) {
-        // Only route the outline through the pack when it ships `gbuffers_line` (Complementary handles it deliberately); with no such program the fallback lands in gbuffers_basic, and RedHat's stamps land material with no normal/specular into a depthMask(false) draw so the deferred pass produces a view-dependent red line across torches, whereas fixed-function keeps vanilla's blend, alpha and draw-buffer mask
         UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
         if (pipeline == null || DeferredBlockOutline.isReplaying()) {
-            // No pack, or this *is* the post-composite replay: let vanilla draw exactly as it always does.
             return;
         }
         if (pipeline.hasDirectGbufferProgram(ProgramId.Line)) {
             Umbra.setPhase(ProgramId.Line);
             return;
         }
-        // No gbuffers_line: defer the whole draw past the composite chain (see DeferredBlockOutline); drawing now would only tint albedo, which the composite relights
         DeferredBlockOutline.capture(player, target, partialTicks);
         ci.cancel();
     }
 
+    // Runs before every return of drawSelectionBox.
     @Inject(method = "drawSelectionBox", at = @At("RETURN"), require = 0)
     private void impetus$endBlockOutline(EntityPlayer player,
+                                         // Target and draw flag.
                                          RayTraceResult target, int execute,
+                                         // Partial ticks.
                                          float partialTicks, CallbackInfo ci) {
         Umbra.setPhase(null);
     }
 
-    // Deliberately no blend override for the selection box: drawBoundingBox hides its GL_LINE_STRIP connectors with alpha = 0 vertices, so suppressing blend draws them at full strength and makes the outline replace the gbuffer (a zero normal stamped along every edge under Pastel's DRAWBUFFERS 0/3/6/7 came back as a bright cage); OptiFine and Umbra both keep vanilla's blend, and setPhase already applies an explicit blend.gbuffers_line directive
-
-    // sky = false: draw no vanilla sky geometry, since the pack paints the sky in its composite chain; stronger than the individual sun/moon/stars switches
+    // Runs at the start of renderSky and can cancel it.
     @Inject(method = "renderSky(FI)V", at = @At("HEAD"), cancellable = true, require = 0)
     private void impetus$suppressSky(float partialTicks, int pass, CallbackInfo ci) {
         if (!VanillaFeatureToggles.shouldRenderSky()) {
@@ -156,7 +161,7 @@ public class RenderGlobalMixin {
         }
     }
 
-    // Distant Horizons draws its deferred LOD water from the one-argument renderBlockLayer, which the Impetus terrain overwrite never calls, so DH's call runs here at the start of the translucent layer; declared ahead of the culling and skip hooks so DH's GL state is spent before they set theirs, and its program, VAO and buffers are unbound after as its own opaque hook does
+    // Runs at the start of renderBlockLayer.
     @Inject(method = "renderBlockLayer(Lnet/minecraft/util/BlockRenderLayer;DILnet/minecraft/entity/Entity;)I",
             at = @At("HEAD"), require = 0)
     private void impetus$renderDeferredLods(BlockRenderLayer layer, double partialTicks, int pass, Entity entity,
@@ -174,10 +179,11 @@ public class RenderGlobalMixin {
         }
     }
 
-    // backFace.<layer>: vanilla culls back faces for every terrain layer, so a pack shading both sides asks for a layer's back faces and culling is turned off around that draw
+    // Runs at the start of renderBlockLayer.
     @Inject(method = "renderBlockLayer(Lnet/minecraft/util/BlockRenderLayer;DILnet/minecraft/entity/Entity;)I",
             at = @At("HEAD"), require = 0)
     private void impetus$applyBackFaceCulling(BlockRenderLayer layer, double partialTicks, int pass,
+                                              // Viewer entity.
                                               Entity entity,
                                               CallbackInfoReturnable<Integer> cir) {
         UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
@@ -187,9 +193,11 @@ public class RenderGlobalMixin {
         }
     }
 
+    // Runs before every return of renderBlockLayer.
     @Inject(method = "renderBlockLayer(Lnet/minecraft/util/BlockRenderLayer;DILnet/minecraft/entity/Entity;)I",
             at = @At("RETURN"), require = 0)
     private void impetus$restoreBackFaceCulling(BlockRenderLayer layer, double partialTicks,
+                                                // Pass and viewer entity.
                                                 int pass, Entity entity,
                                                 CallbackInfoReturnable<Integer> cir) {
         if (impetus$restoreCull) {
@@ -198,13 +206,15 @@ public class RenderGlobalMixin {
         }
     }
 
+    // Field restore cull added to the target.
     @Unique
     private boolean impetus$restoreCull;
 
-    // skipAllRendering: draw no terrain, leaving the composite chain to produce the whole image; used by debug and benchmark packs
+    // Runs at the start of renderBlockLayer and can cancel it.
     @Inject(method = "renderBlockLayer(Lnet/minecraft/util/BlockRenderLayer;DILnet/minecraft/entity/Entity;)I",
             at = @At("HEAD"), cancellable = true, require = 0)
     private void impetus$skipTerrain(BlockRenderLayer layer, double partialTicks, int pass,
+                                     // Viewer entity.
                                      Entity entity,
                                      CallbackInfoReturnable<Integer> cir) {
         UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
@@ -213,7 +223,7 @@ public class RenderGlobalMixin {
         }
     }
 
-    // The sun, moon and stars toggles; all three draw inline in renderSky, so the celestial quads are suppressed with a fully transparent texture (additive, so it contributes nothing) and the star field by skipping its draw
+    // Replaces the call of TextureManager.bindTexture in renderSky.
     @Redirect(method = "renderSky(FI)V",
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/texture/TextureManager;bindTexture"
@@ -231,6 +241,7 @@ public class RenderGlobalMixin {
         manager.bindTexture(location);
     }
 
+    // Replaces the call of VertexBuffer.drawArrays in renderSky.
     @Redirect(method = "renderSky(FI)V",
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/vertex/VertexBuffer;drawArrays(I)V"),
@@ -241,6 +252,7 @@ public class RenderGlobalMixin {
         }
     }
 
+    // Replaces the call of GlStateManager.callList in renderSky.
     @Redirect(method = "renderSky(FI)V",
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/GlStateManager;callList(I)V"),
@@ -251,7 +263,7 @@ public class RenderGlobalMixin {
         }
     }
 
-    // A 1x1 fully transparent texture, so a suppressed celestial quad still draws but contributes nothing.
+    // Helper method transparent texture added to the target.
     @Unique
     private static ResourceLocation impetus$transparentTexture() {
         if (impetus$transparent == null) {
@@ -264,6 +276,7 @@ public class RenderGlobalMixin {
         return impetus$transparent;
     }
 
+    // Field transparent added to the target.
     @Unique
     private static ResourceLocation impetus$transparent;
 

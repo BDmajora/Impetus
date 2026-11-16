@@ -14,28 +14,34 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Serves the light sampled at tick time (AsyncParticles' light cache): vanilla walks chunk light for every particle every frame, this does it once per tick on the ticking thread; dynamic lights are folded back in here since their hook sits on the call this bypasses
+// Mixin that changes Particle.
 @Mixin(Particle.class)
 public abstract class ParticleLightCacheMixin implements LightCachedParticle {
+    // Reference to the field world of the target.
     @Shadow
     protected World world;
 
+    // Reference to the field pos x of the target.
     @Shadow
     protected double posX;
 
+    // Reference to the field pos y of the target.
     @Shadow
     protected double posY;
 
+    // Reference to the field pos z of the target.
     @Shadow
     protected double posZ;
 
+    // Field cached light added to the target.
     @Unique
     private int impetus$cachedLight;
 
-    // The tick the sample was taken on; anything older is ignored so a particle ticked on the vanilla path never renders with stale light
+    // Field cached light tick added to the target.
     @Unique
     private int impetus$cachedLightTick = -1;
 
+    // Handles sample light.
     @Override
     public void impetus$sampleLight() {
         BlockPos pos = new BlockPos(this.posX, this.posY, this.posZ);
@@ -43,6 +49,7 @@ public abstract class ParticleLightCacheMixin implements LightCachedParticle {
         this.impetus$cachedLightTick = ParticleTicker.tickCounter;
     }
 
+    // Runs at the start of getBrightnessForRender and can cancel it.
     @Inject(method = "getBrightnessForRender", at = @At("HEAD"), cancellable = true)
     private void impetus$useCachedLight(float partialTicks, CallbackInfoReturnable<Integer> cir) {
         if (!ParticleTicker.lightCache || this.impetus$cachedLightTick != ParticleTicker.tickCounter) {

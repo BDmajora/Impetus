@@ -7,9 +7,10 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 
 import java.util.Map;
 
-// Exposes ParticleManager's private factory registry so per-class toggles are built from what's actually registered, not a hard-coded list
+// Mixin that changes ParticleManager.
 @Mixin(ParticleManager.class)
 public interface ParticleManagerAccessor {
+    // Gives access to the field get particle types.
     @Accessor("particleTypes")
     Map<Integer, IParticleFactory> impetus$getParticleTypes();
 }

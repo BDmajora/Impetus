@@ -11,33 +11,40 @@ import java.util.List;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// A linked task/mesh/fragment program, not a GlProgram since these shaders have no uniforms at all: every input is the address-bound scene UBO or a pointer read from it
+// Linked task and mesh and fragment program.
 public class MeshProgram {
+    // Name for log lines.
     private final String name;
+    // GL name.
     private final int handle;
+    // Whether the program was deleted.
     private boolean deleted;
 
+    // Creates a program wrapper.
     private MeshProgram(String name, int handle) {
         this.name = name;
         this.handle = handle;
     }
 
-    // Starts a mesh shader program
+    // Creates a builder for a program.
     public static Builder builder(String name) {
         return new Builder(name);
     }
 
-    // glUseProgram
+    // Uses the program and rejects a deleted program.
     public void bind() {
+        if (this.deleted) {
+            throw new IllegalStateException("Program was deleted");
+        }
         LWJGL.glUseProgram(this.handle);
     }
 
-    // For log lines
+    // Returns the name.
     public String getName() {
         return this.name;
     }
 
-    // glDeleteProgram
+    // Deletes the program once.
     public void delete() {
         if (this.deleted) {
             return;
@@ -46,29 +53,39 @@ public class MeshProgram {
         LWJGL.glDeleteProgram(this.handle);
     }
 
+    // Collects the stages of a program.
     public static class Builder {
+        // Name of the program.
         private final String name;
+        // Compiled stages.
         private final List<GlShader> stages = new ArrayList<>();
+        // Definitions of the stages that follow.
         private ShaderConstants constants = ShaderConstants.EMPTY;
 
+        // Creates a builder and rejects a null name.
         private Builder(String name) {
-            this.name = name;
+            this.name = java.util.Objects.requireNonNull(name, "name");
         }
 
-        // Specialisation defines, applied to every stage added after this call
+        // Stores the definitions of the stages that follow and rejects null.
         public Builder constants(ShaderConstants constants) {
-            this.constants = constants;
+            this.constants = java.util.Objects.requireNonNull(constants, "constants");
             return this;
         }
 
-        // Loads and compiles one stage from /assets/{namespace}/shaders/{path} through the engine's ShaderParser so #import and define injection match the chunk shaders
+        // Loads and compiles a stage and rejects a null type or path.
         public Builder stage(ShaderType type, String path) {
+            java.util.Objects.requireNonNull(type, "type");
+            java.util.Objects.requireNonNull(path, "path");
             this.stages.add(ShaderLoader.loadShader(type, path, this.constants));
             return this;
         }
 
-        // Links the attached task, mesh and fragment stages; throws with the log on failure
+        // Links the stages and deletes them and rejects a program without stages or a failed link.
         public MeshProgram link() {
+            if (this.stages.isEmpty()) {
+                throw new IllegalStateException("Mesh program " + this.name + " has no stages");
+            }
             int program = LWJGL.glCreateProgram();
 
             for (GlShader stage : this.stages) {
@@ -77,7 +94,6 @@ public class MeshProgram {
 
             LWJGL.glLinkProgram(program);
 
-            // Detach before deleting, or the driver keeps the compiled stages alive attached to this program
             for (GlShader stage : this.stages) {
                 LWJGL.glDetachShader(program, stage.handle());
                 stage.delete();

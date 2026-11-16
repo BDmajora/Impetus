@@ -5,31 +5,45 @@ import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 
+import java.util.Objects;
 import java.util.function.Consumer;
 
+// Index of the planes that cut the order of translucent geometry.
 public final class CutPlaneIndex<T> {
-    /** movements larger than this many buckets rescan every owner instead of walking the buckets */
+    // Largest movement in buckets that is searched by bucket.
     static final int MAX_BUCKET_SPAN = 64;
 
+    // Cuts and buckets of one owner.
     private record Registration<T>(float[][] cuts, int[] origin, long[][] buckets) {
     }
 
+    // Owners by bucket on each axis.
     @SuppressWarnings("unchecked")
     private final Long2ObjectOpenHashMap<ReferenceOpenHashSet<T>>[] bucketsByAxis = new Long2ObjectOpenHashMap[] {
             new Long2ObjectOpenHashMap<>(), new Long2ObjectOpenHashMap<>(), new Long2ObjectOpenHashMap<>()
     };
 
+    // Registration of each owner.
     private final Reference2ObjectOpenHashMap<T, Registration<T>> registrations = new Reference2ObjectOpenHashMap<>();
 
+    // Owners reported by the running query.
     private final ReferenceOpenHashSet<T> reported = new ReferenceOpenHashSet<>();
 
+    // Number of registered planes.
     private int planeCount;
 
+    // Registers the cuts of an owner and replaces its earlier cuts.
     public void put(T owner, float[][] cutsByAxis, int originX, int originY, int originZ) {
+        Objects.requireNonNull(owner, "owner");
+        if (cutsByAxis.length != 3) {
+            throw new IllegalArgumentException("Cuts are needed for three axes");
+        }
+        for (float[] cuts : cutsByAxis) {
+            Objects.requireNonNull(cuts, "cuts");
+        }
         remove(owner);
 
         if (cutsByAxis[0].length == 0 && cutsByAxis[1].length == 0 && cutsByAxis[2].length == 0) {
-            // a leaf's order can never change, so it's not worth indexing
             return;
         }
 
@@ -43,7 +57,6 @@ public final class CutPlaneIndex<T> {
             long lastKey = 0;
             boolean first = true;
 
-            // cutsByAxis[axis] is sorted, so equal bucket keys are adjacent
             for (float cut : cutsByAxis[axis]) {
                 long key = bucketKey(cut, origin[axis]);
                 if (first || key != lastKey) {
@@ -63,6 +76,7 @@ public final class CutPlaneIndex<T> {
         this.registrations.put(owner, new Registration<>(cutsByAxis, origin, buckets));
     }
 
+    // Removes an owner.
     public void remove(T owner) {
         Registration<T> registration = this.registrations.remove(owner);
 
@@ -88,7 +102,9 @@ public final class CutPlaneIndex<T> {
         }
     }
 
+    // Reports every owner with a plane between two positions.
     public void query(double fromX, double fromY, double fromZ, double toX, double toY, double toZ, Consumer<T> out) {
+        Objects.requireNonNull(out, "out");
         if (this.registrations.isEmpty()) {
             return;
         }
@@ -102,15 +118,16 @@ public final class CutPlaneIndex<T> {
         }
     }
 
+    // Reports the owners with a plane between two positions on one axis.
     private void queryAxis(int axis, double from, double to, Consumer<T> out) {
         double lo = Math.min(from, to), hi = Math.max(from, to);
 
-        if (lo == hi) return;
+        if (!(lo < hi)) return;
 
         long loBucket = (long) Math.floor(lo);
         long hiBucket = (long) Math.floor(hi);
 
-        if (hiBucket - loBucket > MAX_BUCKET_SPAN) {
+        if (!(hi - lo <= MAX_BUCKET_SPAN)) {
             var iterator = this.registrations.reference2ObjectEntrySet().fastIterator();
             while (iterator.hasNext()) {
                 var entry = iterator.next();
@@ -134,6 +151,7 @@ public final class CutPlaneIndex<T> {
         }
     }
 
+    // Reports an owner when one of its planes lies between two positions.
     private void considerCandidate(T owner, Registration<T> registration, int axis, double lo, double hi, Consumer<T> out) {
         if (registration == null || this.reported.contains(owner)) {
             return;
@@ -151,14 +169,17 @@ public final class CutPlaneIndex<T> {
         }
     }
 
+    // Returns the bucket of a local coordinate.
     private static long bucketKey(float localCoord, int origin) {
         return (long) Math.floor((double) localCoord + (double) origin);
     }
 
+    // Returns the number of owners.
     public int size() {
         return this.registrations.size();
     }
 
+    // Returns the number of planes.
     public int planeCount() {
         return this.planeCount;
     }

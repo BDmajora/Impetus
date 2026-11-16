@@ -3,11 +3,16 @@ package com.bdmajora.equilibrium.common.world;
 import java.util.ArrayList;
 import java.util.List;
 
-// One thread's share of the biome layer scratch arrays: vanilla IntCache's four lists and its large-array size, owned by the thread instead of the class
+// Pool of reusable int arrays.
 public final class IntCachePool {
+    // Length of large arrays.
     public int largeSize = 256;
+    // Small arrays that are free.
     public final List<int[]> freeSmall = new ArrayList<>();
+    // Small arrays that are handed out.
     public final List<int[]> inUseSmall = new ArrayList<>();
+    // Large arrays that are free.
     public final List<int[]> freeLarge = new ArrayList<>();
+    // Large arrays that are handed out.
     public final List<int[]> inUseLarge = new ArrayList<>();
 }

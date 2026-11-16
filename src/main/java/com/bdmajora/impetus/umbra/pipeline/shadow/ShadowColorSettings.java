@@ -8,27 +8,28 @@ import org.apache.logging.log4j.Logger;
 import java.util.Arrays;
 import java.util.Objects;
 
-// Format and clear and filtering settings of each shadow colour buffer from the pack const directives
+// Settings of the shadow color group.
 public final class ShadowColorSettings {
+    // Choice of the logger option.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
 
-    // Number of shadow colour buffers without the HIGHER_SHADOWCOLOR feature
+    // Choice of the optifine buffers option.
     public static final int OPTIFINE_BUFFERS = 2;
-    // Number of shadow colour buffers with the HIGHER_SHADOWCOLOR feature
+    // Choice of the iris buffers option.
     public static final int IRIS_BUFFERS = 8;
 
-    // Internal format per buffer
+    // Choice of the formats option.
     private final InternalTextureFormat[] formats;
-    // Clear switch per buffer for the start of every pass
+    // Choice of the clear option.
     private final boolean[] clear;
-    // Clear colour per buffer as four components
+    // Choice of the clear colors option.
     private final float[][] clearColors;
-    // Mipmap switch per buffer
+    // Choice of the mipmap option.
     private final boolean[] mipmap;
-    // Nearest filtering switch per buffer
+    // Choice of the nearest option.
     private final boolean[] nearest;
 
-    // Creates the defaults of white RGBA8 cleared every pass with linear filtering and no mipmaps
+    // Creates a shadow color settings from its count.
     private ShadowColorSettings(int count) {
         this.formats = new InternalTextureFormat[count];
         this.clear = new boolean[count];
@@ -42,7 +43,7 @@ public final class ShadowColorSettings {
         }
     }
 
-    // Reads the shared mipmap switch and then the directives of each buffer between 0 and count minus 1
+    // Reads the color target settings from the pack constants.
     public static ShadowColorSettings parse(ConstDirectives consts, int count) {
         Objects.requireNonNull(consts, "consts");
         if (count < 0) {
@@ -68,32 +69,32 @@ public final class ShadowColorSettings {
         return settings;
     }
 
-    // Returns how many buffers the pack may address
+    // Returns the number of color targets.
     public int count() {
         return this.formats.length;
     }
 
-    // Returns the internal format of a buffer
+    // Returns the format of a color target.
     public InternalTextureFormat format(int index) {
         return this.formats[index];
     }
 
-    // Returns whether a buffer clears at the start of every pass
+    // Returns whether a color target is cleared each frame.
     public boolean clear(int index) {
         return this.clear[index];
     }
 
-    // Returns the live clear colour array of a buffer
+    // Returns the clear color of a target.
     public float[] clearColor(int index) {
         return this.clearColors[index];
     }
 
-    // Returns whether a buffer gets a mip chain after every pass
+    // Returns whether a target gets mipmaps.
     public boolean mipmap(int index) {
         return this.mipmap[index];
     }
 
-    // Returns whether a buffer filters nearest which integer formats always do
+    // Returns whether a target uses nearest filtering.
     public boolean nearest(int index) {
         return this.nearest[index] || this.formats[index].isInteger();
     }

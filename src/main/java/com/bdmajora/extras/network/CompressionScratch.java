@@ -2,19 +2,24 @@ package com.bdmajora.extras.network;
 
 import io.netty.buffer.ByteBuf;
 
-// Per-handler input scratch for the compression codecs: vanilla allocates a fresh byte[] of the packet's size on every compressed packet in both directions just to hand Deflater/Inflater a heap array. A buffer that already sits on a heap array is used in place, anything else is copied into one growable array kept for the handler's lifetime (each connection owns its codec, so no sharing)
+// Reusable buffers for packet decompression.
 public final class CompressionScratch {
+    // Constant initial.
     private static final int INITIAL = 8192;
-    // A single huge packet should not pin its buffer forever
+    // Constant retain limit.
     private static final int RETAIN_LIMIT = 1 << 20;
 
+    // Choice of the scratch option.
     private byte[] scratch = new byte[INITIAL];
 
-    // The array holding the buffer's readable bytes, with the offset the caller must start reading at
+    // Choice of the array option.
     public byte[] array;
+    // Value of the offset option.
     public int offset;
+    // Value of the length option.
     public int length;
 
+    // Loads the value.
     public void load(ByteBuf in) {
         int readable = in.readableBytes();
         if (in.hasArray()) {
@@ -32,7 +37,7 @@ public final class CompressionScratch {
         this.length = readable;
     }
 
-    // Drops references so a released ByteBuf's array is not held, and trims an oversized scratch
+    // Releases the value.
     public void release() {
         this.array = null;
         if (this.scratch.length > RETAIN_LIMIT) {

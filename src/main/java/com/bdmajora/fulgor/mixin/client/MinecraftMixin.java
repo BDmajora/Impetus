@@ -16,24 +16,28 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Flushes pending light updates once per client tick in two ordered stages: world engine first (writes light, queues renderer notifications), then renderer drain; reversed, the terrain renderer would copy a stale batch out of chunk sections. Runs before updateEntities and the world tick but after the packet drain and the player's own edits, so those are lit before the frame
+// Mixin that changes Minecraft.
 @SideOnly(Side.CLIENT)
 @Mixin(Minecraft.class)
 public abstract class MinecraftMixin {
+    // Reference to the field profiler of the target.
     @Shadow
     @Final
     public Profiler profiler;
 
+    // Reference to the field world of the target.
     @Shadow
     public WorldClient world;
 
+    // Reference to the field render global of the target.
     @Shadow
     public RenderGlobal renderGlobal;
 
+    // Reference to the field is game paused of the target.
     @Shadow
     private boolean isGamePaused;
 
-    // Stage one, just before the "levelRenderer" profiler section opens: opens "lighting" and lets vanilla's endStartSection close it, keeping the profiler balanced
+    // Runs inside runTick.
     @Inject(method = "runTick", at = @At(value = "CONSTANT", args = "stringValue=levelRenderer"))
     private void fulgor$processWorldLightUpdates(CallbackInfo ci) {
         if (this.world == null || (this.isGamePaused && FulgorConfig.get().skipUpdatesWhilePaused)) {
@@ -45,14 +49,13 @@ public abstract class MinecraftMixin {
         Fulgor.processClientLightUpdates(this.world);
     }
 
-    // Stage two, just before the "level" section, right after renderGlobal.updateClouds(), the call whose light-update drain Fulgor took over
+    // Runs inside runTick.
     @Inject(method = "runTick", at = @At(value = "CONSTANT", args = "stringValue=level"))
     private void fulgor$processRenderLightUpdates(CallbackInfo ci) {
         if (this.isGamePaused && FulgorConfig.get().skipUpdatesWhilePaused) {
             return;
         }
 
-        // instanceof rather than a cast: the renderer-side queue is a separate config switch, and with it off RenderGlobal keeps vanilla's drain and does not implement this
         if (this.renderGlobal instanceof LightUpdateProcessor) {
             ((LightUpdateProcessor) this.renderGlobal).fulgor$processLightUpdates();
         }

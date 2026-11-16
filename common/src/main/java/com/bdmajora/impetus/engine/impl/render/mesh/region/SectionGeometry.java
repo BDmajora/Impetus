@@ -7,27 +7,27 @@ import com.bdmajora.impetus.engine.impl.render.chunk.data.BuiltSectionMeshParts;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.impl.MeshChunkVertex;
 import org.lwjgl.system.MemoryUtil;
 
-
-// A finished build reshaped for the mesh pipeline (raw vertex bytes, per-facing quad counts, bounding box), produced on a build worker since doing it in uploadChunks wrecks 1% lows
+// Geometry of a section in the layout of the mesh shader.
 public record SectionGeometry(
-        // Total quads across every facing
+        // Total quads of every facing.
         int quadCount,
-        // Vertex bytes in MeshChunkVertex layout, four per quad, grouped by facing in ModelQuadFacing ordinal order
+        // Vertex bytes grouped by facing.
         NativeBuffer geometry,
-        // Quads per facing, indexed by ModelQuadFacing.ordinal(); slot 6 is UNASSIGNED, which is always drawn
+        // Quads of each facing.
         short[] quadsPerFacing,
-        // Quad index within the section's own geometry where the first facing's quads start; the packer puts the translucent quads before it, so it doubles as their count
+        // Quad index where the first facing starts.
         short baseQuad,
-        // Section-relative bounding box in whole blocks, each component 0..15
+        // Lowest cell of the bounding box.
         int minX, int minY, int minZ,
+        // Size of the bounding box.
         int sizeX, int sizeY, int sizeZ
 ) {
-    // Returns the quad allocation to the arena
+    // Frees the geometry.
     public void delete() {
         this.geometry.free();
     }
 
-    // Reshapes one pass's build output in MeshChunkVertex layout; null when the pass produced nothing, which signals dropping the section rather than uploading an empty one
+    // Reshapes the mesh of a pass and returns null when it has no quads.
     public static SectionGeometry from(BuiltSectionMeshParts mesh) {
         NativeBuffer vertices = mesh.vertexBuffer();
 
@@ -46,8 +46,10 @@ public record SectionGeometry(
                 continue;
             }
 
-            // Four vertices to a quad; the mesher never emits a partial one
             int quads = range.vertexCount() >> 2;
+            if (quads > 0xFFFF) {
+                throw new IllegalStateException("Too many quads in one facing: " + quads);
+            }
             quadsPerFacing[facing.ordinal()] = (short) quads;
             total += quads;
             firstVertex = Math.min(firstVertex, range.vertexStart());
@@ -57,22 +59,32 @@ public record SectionGeometry(
             return null;
         }
 
+        if ((firstVertex >> 2) > 0xFFFF) {
+            throw new IllegalStateException("Base quad out of range: " + (firstVertex >> 2));
+        }
+
         BoundingBox box = computeBounds(vertices, firstVertex, total, MeshChunkVertex.STRIDE);
 
         return new SectionGeometry(total, vertices, quadsPerFacing, (short) (firstVertex >> 2),
                 box.minX, box.minY, box.minZ, box.sizeX, box.sizeY, box.sizeZ);
     }
 
-    // Wraps already-packed geometry (every quad from the buffer's start, stride bytes per vertex) and measures its bounds
+    // Wraps packed geometry and measures its bounds and rejects a count that is not positive.
     public static SectionGeometry bounded(int quadCount, NativeBuffer geometry, short[] quadsPerFacing, short baseQuad, int stride) {
+        if (quadCount <= 0) {
+            throw new IllegalArgumentException("Quad count must be positive");
+        }
         BoundingBox box = computeBounds(geometry, 0, quadCount, stride);
 
         return new SectionGeometry(quadCount, geometry, quadsPerFacing, baseQuad,
                 box.minX, box.minY, box.minZ, box.sizeX, box.sizeY, box.sizeZ);
     }
 
-    // Snaps the geometry to a 16x16x16 grid of 1-block cells (the occlusion box granularity); a tight box is what lets a section behind a wall fail the depth test
+    // Returns the bounds in whole blocks and rejects geometry that runs past its buffer.
     private static BoundingBox computeBounds(NativeBuffer vertices, int firstVertex, int quadCount, int stride) {
+        if (stride <= 0 || firstVertex < 0 || ((long) firstVertex + 4L * quadCount) * stride > vertices.getLength()) {
+            throw new IllegalArgumentException("Geometry runs past the end of its buffer");
+        }
         long ptr = MemoryUtil.memAddress(vertices.getDirectBuffer()) + (long) firstVertex * stride;
         long end = ptr + (long) quadCount * 4L * stride;
 
@@ -92,10 +104,9 @@ public record SectionGeometry(
             maxZ = Math.max(maxZ, z);
         }
 
-        // An empty span cannot happen (quadCount > 0) but a degenerate one can if every vertex shares a cell; size 0 is correct and the shader adds the extra block
         return new BoundingBox(minX, minY, minZ, maxX - minX, maxY - minY, maxZ - minZ);
     }
 
-    // Section-local bounds of the geometry, for the mesh shader's cull
+    // Bounds of the geometry inside a section.
     private record BoundingBox(int minX, int minY, int minZ, int sizeX, int sizeY, int sizeZ) {}
 }

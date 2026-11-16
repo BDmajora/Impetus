@@ -8,9 +8,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArgs;
 import org.spongepowered.asm.mixin.injection.invoke.arg.Args;
 
-// Lights block entity renderers by the dynamic light at their position, since chests, banners and signs are drawn outside the chunk mesh; targets render(TileEntity, float, int) specifically to avoid Impetus' and Extras' injectors on the other overloads
+// Mixin that changes TileEntityRendererDispatcher.
 @Mixin(TileEntityRendererDispatcher.class)
 public abstract class TileEntityRendererDispatcherMixin {
+    // Changes an argument of the call of World.getCombinedLight in render.
     @ModifyArgs(
             method = "render(Lnet/minecraft/tileentity/TileEntity;FI)V",
             at = @At(value = "INVOKE",

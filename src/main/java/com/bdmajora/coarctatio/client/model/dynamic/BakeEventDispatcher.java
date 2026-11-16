@@ -32,11 +32,12 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
-// Posts ModelBakeEvent one listener at a time, so a throwing mod loses only its own changes, with a registry view whose keys are every known location and whose lookups bake on demand
+// Posts the model bake event and reports slow listeners.
 public final class BakeEventDispatcher {
-    // How much of the location universe a mod sees when it iterates the registry's keys: the default is everything, since that is what vanilla gave; the listed mods walk every key and load every model, and only need their own
+    // Amount of models that a mod may see.
     private enum Visibility { NONE, SELF_AND_DEPENDENCIES, EVERYTHING }
 
+    // Visibility of mods that need a limit.
     private static final Map<String, Visibility> VISIBILITY = ImmutableMap.<String, Visibility>builder()
             .put("opencomputers", Visibility.SELF_AND_DEPENDENCIES)
             .put("refinedstorage", Visibility.SELF_AND_DEPENDENCIES)
@@ -45,10 +46,13 @@ public final class BakeEventDispatcher {
             .put("ebwizardry", Visibility.SELF_AND_DEPENDENCIES)
             .build();
 
+    // Prevents instantiation
     private BakeEventDispatcher() {
     }
 
+    // Posts the event to each listener and logs the slowest mods.
     public static void post(ModelManager manager, IRegistry<ModelResourceLocation, IBakedModel> registry, ModelLoader loader) {
+        // Creates a wrapper around the registry.
         WrappingRegistry wrapped = new WrappingRegistry(registry);
         ModelBakeEvent event = new ModelBakeEvent(manager, wrapped, loader);
         int busId = ((EventBusAccessor) MinecraftForge.EVENT_BUS).coarctatio$busId();
@@ -58,7 +62,6 @@ public final class BakeEventDispatcher {
         long start = System.nanoTime();
         for (IEventListener listener : listeners) {
             bar.step(listener.toString());
-            // The bus wrapper for a context-setting event names the owning mod before invoking; cleared so a listener without one is not charged to the previous
             ((IContextSetter) event).setModContainer(null);
             long listenerStart = System.nanoTime();
             try {
@@ -66,6 +69,7 @@ public final class BakeEventDispatcher {
             } catch (Throwable e) {
                 Coarctatio.LOGGER.error("{} listener '{}' threw an exception, its models may be broken", event, listener, e);
             }
+            // Returns the mod of the last listener.
             ModContainer mod = ((ContextAwareBakeEvent) event).coarctatio$lastMod();
             if (mod != null) {
                 perMod.addTo(mod, System.nanoTime() - listenerStart);
@@ -82,14 +86,16 @@ public final class BakeEventDispatcher {
         ProgressManager.pop(bar);
     }
 
-    // Implemented on ModelBakeEvent by mixin, alongside IContextSetter, so the mod each listener belongs to is known here
+    // Event that remembers the mod of its last listener.
     public interface ContextAwareBakeEvent {
         ModContainer coarctatio$lastMod();
     }
 
-    // getKeys answers the known-location universe the calling mod may see, containsKey answers from it too, and everything else goes to the dynamic registry
+    // Registry that limits the model locations a mod can list.
     private static final class WrappingRegistry extends RegistrySimple<ModelResourceLocation, IBakedModel> {
+        // Registry that stores the models.
         private final IRegistry<ModelResourceLocation, IBakedModel> delegate;
+        // Graph of mod dependencies.
         private final MutableGraph<String> dependencies;
 
         WrappingRegistry(IRegistry<ModelResourceLocation, IBakedModel> delegate) {
@@ -97,17 +103,20 @@ public final class BakeEventDispatcher {
             this.dependencies = dependencyGraph();
         }
 
+        // Returns the model of the location.
         @Nullable
         @Override
         public IBakedModel getObject(ModelResourceLocation name) {
             return this.delegate.getObject(name);
         }
 
+        // Stores the model.
         @Override
         public void putObject(ModelResourceLocation key, IBakedModel value) {
             this.delegate.putObject(key, value);
         }
 
+        // Returns the locations that the active mod may see.
         @Override
         public Set<ModelResourceLocation> getKeys() {
             Set<ModelResourceLocation> visible = this.visibleTo(Loader.instance().activeModContainer());
@@ -115,17 +124,19 @@ public final class BakeEventDispatcher {
             return visible == null ? pinned : Sets.union(visible, pinned);
         }
 
+        // Returns whether the location is known.
         @Override
         public boolean containsKey(ModelResourceLocation key) {
             return ModelLocations.ALL_KNOWN.contains(key);
         }
 
+        // Returns an iterator over the stored models.
         @Override
         public Iterator<IBakedModel> iterator() {
             return this.delegate.iterator();
         }
 
-        // Mods linked to the ones whose namespaces have models, so a restricted mod still sees the models of what it depends on
+        // Returns the graph of mod dependencies that own models.
         private static MutableGraph<String> dependencyGraph() {
             MutableGraph<String> graph = GraphBuilder.undirected().build();
             for (ModContainer mod : Loader.instance().getModList()) {
@@ -153,6 +164,7 @@ public final class BakeEventDispatcher {
             return graph;
         }
 
+        // Returns the locations that the mod may see or null for a mod that sees none.
         private Set<ModelResourceLocation> visibleTo(ModContainer mod) {
             if (mod == null) {
                 return null;

@@ -17,91 +17,81 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
 
-/**
- * The render state object for a chunk section. This contains all the graphics state for each render pass along with
- * data about the render in the chunk visibility graph.
- */
+// Render state of a chunk section and its place in the visibility graph.
 public class RenderSection extends AbstractSection {
-    // Render Region State
+    // Region that holds the section.
     private final RenderRegion region;
 
-    // We must use EVERYTHING here for the default visibility encoding, so that ContextBundle.empty() would correspond
-    // to the data generated for an empty section.
+    // Built data of an empty section that sees through every face.
     public static final BuiltRenderSectionData EMPTY_DATA = new BuiltRenderSectionData();
 
+    // Marks the empty data as having no geometry and full visibility
     static {
         EMPTY_DATA.hasBlockGeometry = false;
         EMPTY_DATA.visibilityData = VisibilityEncoding.EVERYTHING;
     }
 
-    // Rendering State
+    // Built data of the section or null.
     private BuiltRenderSectionData contextData;
 
-    // Packed encoding of the visibility encoding, visuals flags, pending update type, and build-in-flight bit;
-    // see PackedSectionMetadata for the bit layout. The graph search reads a mirror of this in SectionLattice, so
-    // mutate it only through writeMetadata(), which notifies the mirror.
+    // Packed visibility and visual flags and pending update and build state.
     private long packedMetadata;
 
-    // Notified on every packedMetadata change to keep the lattice mirror in sync. Null until the section is
-    // attached to its manager (the initial constructor write predates attachment).
+    // Receiver of every metadata change or null.
     @Nullable
     private MetadataSink metadataSink;
 
+    // Receiver of metadata changes.
     public interface MetadataSink {
+        // Handles a metadata change of a section.
         void onMetadataChanged(RenderSection section);
     }
 
-    /** Marks a section with no translucent render passes at all, which the debug overlay does not count */
+    // Sort index of a section without translucent passes.
     public static final int NO_TRANSLUCENT_GEOMETRY = -1;
 
-    /**
-     * A mapping from translucent render passes to the sort state for that particular pass, holding the data needed to
-     * resort that pass' geometry as the camera moves. Only passes that actually need resorting appear here, so this is
-     * empty for sections whose translucent geometry (if any) was sorted once at mesh time.
-     */
+    // Sort states of the translucent passes that resort as the camera moves.
     @Getter
     @NotNull
     private Map<TerrainRenderPass, SortState.Resortable> translucencySortStates = Collections.emptyMap();
 
-    /**
-     * The {@link SortState#debugIndex()} of the most expensive sort among this section's translucent passes, or
-     * {@link #NO_TRANSLUCENT_GEOMETRY} if it has none. Only consumed by the debug overlay.
-     */
+    // Debug index of the most expensive sort of the section or the no translucent marker.
     @Getter
     private int highestSortingIndex = NO_TRANSLUCENT_GEOMETRY;
 
+    // Sorting modes of a section.
     public enum SortMode {
         NONE,
         TREE,
         DYNAMIC
     }
 
+    // Sorting mode of the section.
     @Getter
     @NotNull
     private SortMode sortMode = SortMode.NONE;
 
-    // Pending Update State
-
-    // The in-flight build job for this section, if one exists. Serves two purposes:
-    //   1. Cancellation: allows delete() to abort a queued or executing build early.
-    //   2. Deduplication hint: VisibleChunkCollector skips re-queuing a section whose build
-    //      is already in flight. submitRebuildTasks() performs the authoritative type check.
+    // Token of the build in flight or null.
     @Nullable
     private CancellationToken buildCancellationToken = null;
 
+    // Frame of the last finished build.
     private int lastBuiltFrame = -1;
+    // Frame of the last submitted build.
     private int lastSubmittedFrame = -1;
 
-    // Lifetime state
+    // Deleted state of the section.
     private boolean disposed;
 
+    // Duration of the last build in nanoseconds.
     @Getter
     @Setter
     private long lastBuildDurationNanos;
 
-    // Used by the translucency sorter, to determine when a section needs sorting again
+    // Camera position of the last translucency sort.
     public double lastCameraX, lastCameraY, lastCameraZ;
 
+    // Creates a section in a region at section coordinates.
     public RenderSection(RenderRegion region, int chunkX, int chunkY, int chunkZ) {
         super(chunkX, chunkY, chunkZ);
 
@@ -111,11 +101,7 @@ public class RenderSection extends AbstractSection {
         this.updateCachedContextDataFlags();
     }
 
-    /**
-     * Deletes all data attached to this render and drops any pending tasks. This should be used when the render falls
-     * out of view or otherwise needs to be destroyed. After the render has been destroyed, the object can no longer
-     * be used.
-     */
+    // Cancels the build in flight and drops the built data and marks the section deleted.
     public void delete() {
         if (this.buildCancellationToken != null) {
             this.buildCancellationToken.setCancelled();
@@ -126,6 +112,7 @@ public class RenderSection extends AbstractSection {
         this.disposed = true;
     }
 
+    // Stores new built data and returns whether it changed.
     public boolean setInfo(@Nullable BuiltRenderSectionData info) {
         boolean changed = !Objects.equals(info, this.contextData);
         if (changed) {
@@ -140,22 +127,27 @@ public class RenderSection extends AbstractSection {
         return changed;
     }
 
+    // Returns whether the section was deleted.
     public boolean isDisposed() {
         return this.disposed;
     }
 
+    // Returns whether the section has built data.
     public boolean isBuilt() {
         return this.contextData != null;
     }
 
+    // Returns the region of the section.
     public RenderRegion getRegion() {
         return this.region;
     }
 
+    // Returns the built data or null.
     public @Nullable BuiltRenderSectionData getBuiltContext() {
         return this.contextData;
     }
 
+    // Writes the visual flags and visibility and occluder state of the built data into the metadata.
     public void updateCachedContextDataFlags() {
         int flags = 0;
         if (this.contextData != null) {
@@ -171,7 +163,7 @@ public class RenderSection extends AbstractSection {
                 PackedSectionMetadata.withVisualsFlags(this.packedMetadata, flags), visibilityData), hasOccluderData));
     }
 
-    // The sole writer of packedMetadata: stores the new word and notifies the mirror.
+    // Stores the metadata and notifies the sink.
     private void writeMetadata(long packed) {
         this.packedMetadata = packed;
         if (this.metadataSink != null) {
@@ -179,76 +171,84 @@ public class RenderSection extends AbstractSection {
         }
     }
 
+    // Returns the packed metadata.
     public long getPackedMetadata() {
         return this.packedMetadata;
     }
 
+    // Stores the metadata sink.
     public void setMetadataSink(@Nullable MetadataSink sink) {
         this.metadataSink = sink;
     }
 
+    // Returns the visual flags.
     public int getVisualsServiceFlags() {
         return PackedSectionMetadata.getVisualsFlags(this.packedMetadata);
     }
 
+    // Returns the visibility data.
     public long getVisibilityData() {
         return PackedSectionMetadata.getVisibilityData(this.packedMetadata);
     }
 
+    // Returns whether any visual flag is set.
     public boolean hasAnythingToRender() {
         return this.getVisualsServiceFlags() != 0;
     }
 
-    /**
-     * @param sortStates the passes needing a resort as the camera moves; every entry implies dynamic sorting
-     * @param highestSortingIndex the highest variant seen before compaction, or {@link #NO_TRANSLUCENT_GEOMETRY}
-     */
+    // Stores a copy of the sort states and the highest sort index and derives the sorting mode.
     public void setTranslucencySortStates(@NotNull Map<TerrainRenderPass, SortState.Resortable> sortStates, int highestSortingIndex) {
         this.translucencySortStates = Map.copyOf(sortStates);
         this.highestSortingIndex = highestSortingIndex;
         if (sortStates.isEmpty()) {
             this.sortMode = SortMode.NONE;
-        } else if (sortStates.values().stream().allMatch(state -> state instanceof PartitionTree)) {
-            this.sortMode = SortMode.TREE;
         } else {
-            this.sortMode = SortMode.DYNAMIC;
+            SortMode mode = SortMode.TREE;
+            for (SortState.Resortable state : sortStates.values()) {
+                if (!(state instanceof PartitionTree)) {
+                    mode = SortMode.DYNAMIC;
+                    break;
+                }
+            }
+            this.sortMode = mode;
         }
         this.updateCachedContextDataFlags();
     }
 
+    // Clears the sort states and the sorting mode.
     public void clearTranslucencySortStates() {
         this.translucencySortStates = Collections.emptyMap();
         this.sortMode = SortMode.NONE;
         this.updateCachedContextDataFlags();
     }
 
+    // Returns whether the section sorts by partition tree.
     public boolean isTreeSorted() {
         return this.sortMode == SortMode.TREE;
     }
 
+    // Returns the token of the build in flight or null.
     public @Nullable CancellationToken getBuildCancellationToken() {
         return this.buildCancellationToken;
     }
 
+    // Stores the token of the build in flight and the build flag.
     public void setBuildCancellationToken(@Nullable CancellationToken token) {
         this.buildCancellationToken = token;
         this.writeMetadata(PackedSectionMetadata.withBuildInFlight(this.packedMetadata, token != null));
     }
 
+    // Returns the pending update or null.
     public @Nullable ChunkUpdateType getPendingUpdate() {
         return PackedSectionMetadata.getPendingUpdate(this.packedMetadata);
     }
 
+    // Stores the pending update.
     public void setPendingUpdate(@Nullable ChunkUpdateType type) {
         this.writeMetadata(PackedSectionMetadata.withPendingUpdate(this.packedMetadata, type));
     }
 
-    /**
-     * Request a type of chunk update for this render section. This may "upgrade" an existing pending update for the
-     * section.
-     * @param type the chunk update
-     * @return true if the section's chunk update type has changed
-     */
+    // Requests an update and promotes the pending one and returns whether it changed.
     public boolean requestUpdate(ChunkUpdateType type) {
         type = ChunkUpdateType.getPromotionUpdateType(this.getPendingUpdate(), type);
 
@@ -260,18 +260,22 @@ public class RenderSection extends AbstractSection {
         }
     }
 
+    // Returns the frame of the last finished build.
     public int getLastBuiltFrame() {
         return this.lastBuiltFrame;
     }
 
+    // Stores the frame of the last finished build.
     public void setLastBuiltFrame(int lastBuiltFrame) {
         this.lastBuiltFrame = lastBuiltFrame;
     }
 
+    // Returns the frame of the last submitted build.
     public int getLastSubmittedFrame() {
         return this.lastSubmittedFrame;
     }
 
+    // Stores the frame of the last submitted build.
     public void setLastSubmittedFrame(int lastSubmittedFrame) {
         this.lastSubmittedFrame = lastSubmittedFrame;
     }

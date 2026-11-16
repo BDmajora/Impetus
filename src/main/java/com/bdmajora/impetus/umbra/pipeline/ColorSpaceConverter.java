@@ -15,14 +15,17 @@ import com.bdmajora.impetus.umbra.gl.texture.TextureParameters;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Final-presentation conversion from sRGB to a wide-gamut target (P3, Rec.2020, Adobe RGB) like Iris: scratch copy, then a fullscreen quad through decode, 3x3 primaries transform, encode; skipped for sRGB
+// Converts the final image from sRGB to a wide gamut display color space.
 public final class ColorSpaceConverter {
+    // Logger of conversion failures.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
 
+    // Display color spaces.
     public enum ColorSpace {
+        // Supported color spaces.
         SRGB, DCI_P3, DISPLAY_P3, REC2020, ADOBE_RGB;
 
-        // Pack or option name to a colour space; SRGB when unknown
+        // Returns the color space of a name or sRGB for an unknown name.
         public static ColorSpace byName(String name) {
             if (name == null) {
                 return SRGB;
@@ -35,31 +38,36 @@ public final class ColorSpaceConverter {
         }
     }
 
-    // The user's selected output colourspace, read by the pipeline every frame so a change takes effect at once; static since the options screen sets it and the pipeline reads it
+    // Selected color space.
     private static ColorSpace current = ColorSpace.SRGB;
 
+    // Conversion program or null.
     private GlProgram program;
+    // Color space the program converts to.
     private ColorSpace programSpace;
+    // Copy of the image being converted or minus one.
     private int scratchTexture = -1;
+    // Size of the scratch texture.
     private int scratchWidth = -1, scratchHeight = -1;
+    // Disabled state after a failure.
     private boolean broken;
 
-    // Selects the output transform
+    // Selects a color space and reads null as sRGB.
     public static void setColorSpace(ColorSpace space) {
         current = space != null ? space : ColorSpace.SRGB;
     }
 
-    // Current output transform
+    // Returns the selected color space.
     public static ColorSpace getColorSpace() {
         return current;
     }
 
-    // Whether a non-sRGB transform is selected
+    // Returns whether a conversion runs.
     public boolean isActive() {
         return current != ColorSpace.SRGB && !this.broken;
     }
 
-    // Converts the bound draw framebuffer's colour in place; requires the presentation framebuffer bound for BOTH read and draw with blending and depth off, exactly the state the composite chain ends in
+    // Converts the framebuffer in place and disables the conversion after a failure.
     public void run(int width, int height, FullscreenQuadRenderer quad) {
         if (!isActive() || width <= 0 || height <= 0) {
             return;
@@ -71,22 +79,27 @@ public final class ColorSpaceConverter {
 
             GlTextureUnits.resetToUnit0();
             int previous = LWJGL.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
-            LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, this.scratchTexture);
-            LWJGL.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, 0, 0, width, height);
+            // Restores the program and the texture binding on every path
+            try {
+                LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, this.scratchTexture);
+                LWJGL.glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, 0, 0, width, height);
 
-            this.program.bind();
-            quad.draw();
-            this.program.unbind();
-
-            LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, previous);
+                this.program.bind();
+                try {
+                    quad.draw();
+                } finally {
+                    this.program.unbind();
+                }
+            } finally {
+                LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, previous);
+            }
         } catch (Exception e) {
-            // A conversion failure must never take out presentation; disable and keep rendering sRGB.
             this.broken = true;
             LOGGER.error("[Umbra] Colorspace conversion disabled after error", e);
         }
     }
 
-    // Frees the scratch texture and program
+    // Releases the program and the scratch texture and clears the failure.
     public void destroy() {
         if (this.program != null) {
             this.program.destroy();
@@ -102,7 +115,7 @@ public final class ColorSpaceConverter {
         this.broken = false;
     }
 
-    // Lazily sizes the intermediate texture
+    // Creates or resizes the scratch texture.
     private void ensureScratch(int width, int height) {
         if (this.scratchTexture != -1 && this.scratchWidth == width && this.scratchHeight == height) {
             return;
@@ -121,7 +134,7 @@ public final class ColorSpaceConverter {
         this.scratchHeight = height;
     }
 
-    // Lazily compiles the conversion shader
+    // Builds the program of the selected color space.
     private void ensureProgram() {
         if (this.program != null && this.programSpace == current) {
             return;
@@ -133,8 +146,10 @@ public final class ColorSpaceConverter {
 
         String name = "impetus_colorspace_" + current.name().toLowerCase(Locale.ROOT);
         GlShader vertex = new GlShader(ShaderType.VERTEX, name + ".vsh", VERTEX_SOURCE);
-        GlShader fragment = new GlShader(ShaderType.FRAGMENT, name + ".fsh", fragmentSource(current));
+        GlShader fragment = null;
+        // Deletes both shaders after linking or after a failed compile
         try {
+            fragment = new GlShader(ShaderType.FRAGMENT, name + ".fsh", fragmentSource(current));
             this.program = ProgramBuilder.begin(name)
                     .attach(vertex)
                     .attach(fragment)
@@ -143,11 +158,12 @@ public final class ColorSpaceConverter {
                     .link();
         } finally {
             vertex.destroy();
-            fragment.destroy();
+            if (fragment != null) {
+                fragment.destroy();
+            }
         }
         this.programSpace = current;
 
-        // The scratch copy always sits on unit 0.
         this.program.bind();
         int location = this.program.getUniformLocation("u_Source");
         if (location != -1) {
@@ -156,6 +172,7 @@ public final class ColorSpaceConverter {
         this.program.unbind();
     }
 
+    // Source of the fullscreen vertex stage.
     private static final String VERTEX_SOURCE =
             "#version 120\n" +
             "attribute vec2 a_Position;\n" +
@@ -163,11 +180,10 @@ public final class ColorSpaceConverter {
             "varying vec2 v_Tex;\n" +
             "void main() {\n" +
             "    v_Tex = a_TexCoord;\n" +
-            // The shared fullscreen quad supplies a_Position in [0,1]; map to NDC [-1,1] here.
             "    gl_Position = vec4(a_Position * 2.0 - 1.0, 0.0, 1.0);\n" +
             "}\n";
 
-    // Builds the conversion shader for one target: linear Rec.709/sRGB into XYZ at D65, out to the target's primaries, then its transfer function; every matrix is published CIE data, not a fit
+    // Returns the fragment stage of a color space.
     private static String fragmentSource(ColorSpace space) {
         String matrix;
         String encode;

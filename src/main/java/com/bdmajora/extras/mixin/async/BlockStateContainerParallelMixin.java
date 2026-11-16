@@ -10,14 +10,14 @@ import org.spongepowered.asm.mixin.Unique;
 
 import java.util.concurrent.locks.StampedLock;
 
-// Section palette under a StampedLock: a read that overlaps a palette resize can land on a half-swapped bit array, so reads are optimistic and retried under the read lock when a write intervened; the index-taking overloads are left alone since onResize calls them re-entrantly during a write
+// Mixin that changes BlockStateContainer.
 @Mixin(BlockStateContainer.class)
 public abstract class BlockStateContainerParallelMixin implements ParallelBlockStateContainer {
-    // Null until ChunkParallelMixin enables it for a section of a parallel server world, so every client section and every section of a world that is not ticked in parallel keeps the lock-free read; the container has no world reference, and gating on the install flag alone put the optimistic read and its fence on every block read of the client (the mesher, particles, entity collision) for nothing. Volatile so a section published to the workers right after creation sees the lock, at the cost of a plain load on x86
+    // Field lock added to the target.
     @Unique
     private volatile StampedLock impetus$lock;
 
-    // Called once, before the section is reachable from another thread
+    // Handles enable parallel lock.
     @Override
     public void impetus$enableParallelLock() {
         if (this.impetus$lock == null) {
@@ -25,6 +25,7 @@ public abstract class BlockStateContainerParallelMixin implements ParallelBlockS
         }
     }
 
+    // Handles locked get.
     @WrapMethod(method = "get(III)Lnet/minecraft/block/state/IBlockState;")
     private IBlockState impetus$lockedGet(int x, int y, int z, Operation<IBlockState> original) {
         StampedLock lock = this.impetus$lock;
@@ -39,7 +40,6 @@ public abstract class BlockStateContainerParallelMixin implements ParallelBlockS
                     return state;
                 }
             } catch (Throwable ignored) {
-                // A resize moved the storage out from under the read; the locked read below is authoritative
             }
         }
         stamp = lock.readLock();
@@ -50,6 +50,7 @@ public abstract class BlockStateContainerParallelMixin implements ParallelBlockS
         }
     }
 
+    // Handles locked set.
     @WrapMethod(method = "set(IIILnet/minecraft/block/state/IBlockState;)V")
     private void impetus$lockedSet(int x, int y, int z, IBlockState state, Operation<Void> original) {
         StampedLock lock = this.impetus$lock;

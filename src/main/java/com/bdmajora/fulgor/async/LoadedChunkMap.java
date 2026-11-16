@@ -4,18 +4,21 @@ import net.minecraft.world.chunk.Chunk;
 
 import java.util.concurrent.ConcurrentHashMap;
 
-// The chunks the engine may read, keyed by ChunkPos.asLong; a ConcurrentHashMap so the workers' lookups are lock-free and a put on the main thread happens-before the worker's get
+// Map of loaded chunks by packed position.
 final class LoadedChunkMap {
     private final ConcurrentHashMap<Long, Chunk> map = new ConcurrentHashMap<>(256);
 
+    // Stores a chunk under its key.
     void put(long key, Chunk value) {
         this.map.put(key, value);
     }
 
+    // Removes and returns the chunk of a key.
     Chunk remove(long key) {
         return this.map.remove(key);
     }
 
+    // Returns the value.
     Chunk get(long key) {
         return this.map.get(key);
     }

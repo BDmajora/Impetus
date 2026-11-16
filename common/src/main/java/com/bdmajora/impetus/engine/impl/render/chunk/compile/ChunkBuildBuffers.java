@@ -17,22 +17,28 @@ import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexEn
 
 import java.util.*;
 
-// Per-worker scratch buffers for building chunk meshes per render pass; sizes are picked best-effort and never shrunk
+// Scratch buffers of a worker for building the meshes of a section per render pass.
 public final class ChunkBuildBuffers {
+    // Facings uploaded for a sorted pass.
     private static final ModelQuadFacing[] ONLY_UNASSIGNED = new ModelQuadFacing[] { ModelQuadFacing.UNASSIGNED };
+    // Builders by render pass.
     private final Reference2ReferenceOpenHashMap<TerrainRenderPass, BakedChunkModelBuilder> builders = new Reference2ReferenceOpenHashMap<>();
 
+    // Configuration of the render passes.
     @Getter
     private final RenderPassConfiguration<?> renderPassConfiguration;
 
+    // Data of the section being built.
     private BuiltRenderSectionData renderData;
+    // Index of the section being built.
     private int sectionIndex;
 
+    // Creates buffers for a configuration.
     public ChunkBuildBuffers(RenderPassConfiguration<?> configuration) {
         this.renderPassConfiguration = configuration;
     }
 
-    // Prepares every pass builder for a new section
+    // Starts a new section in every pass builder.
     public void init(BuiltRenderSectionData renderData, int sectionIndex) {
         this.renderData = renderData;
         this.sectionIndex = sectionIndex;
@@ -41,38 +47,38 @@ public final class ChunkBuildBuffers {
         }
     }
 
-    // The section data being filled
+    // Returns the data of the section being built.
     public BuiltRenderSectionData getSectionContextBundle() {
         return this.renderData;
     }
 
-    // Builder for the pass a material renders in
+    // Returns the builder of the pass of a material.
     public ChunkModelBuilder get(Material material) {
         return this.get(material.pass);
     }
 
-    // One builder per pass, with the pass's vertex type
+    // Creates the builder of a pass and rejects use before a section was started.
     private ChunkModelBuilder createBuilder(TerrainRenderPass pass) {
+        Objects.requireNonNull(renderData, "Buffers have not been started");
         var vertexType = pass.vertexType();
         var builder = new BakedChunkModelBuilder(vertexType.createEncoder(), vertexType.getVertexFormat().getStride(), pass);
-        Objects.requireNonNull(renderData, "Buffers have not been started");
         builder.begin(renderData, sectionIndex);
         this.builders.put(pass, builder);
         return builder;
     }
 
-    // Builder for a pass, created lazily
+    // Returns the builder of a pass and creates it when missing.
     public ChunkModelBuilder get(TerrainRenderPass pass) {
         var builder = this.builders.get(pass);
         return builder != null ? builder : createBuilder(pass);
     }
 
-    // Passes that received geometry this section
+    // Returns the passes that have a builder.
     public Set<TerrainRenderPass> getBuilderPasses() {
         return this.builders.keySet();
     }
 
-    // Builds immutable baked meshes from every non-empty scratch buffer for upload; may be called repeatedly for multiple copies
+    // Creates the mesh of a pass from its builder or returns null when empty.
     public BuiltSectionMeshParts createMesh(TerrainRenderPass pass, float camX, float camY, float camZ) {
         var builder = this.builders.get(pass);
 
@@ -86,7 +92,7 @@ public final class ChunkBuildBuffers {
         ModelQuadFacing[] facingsToUpload = pass.isSorted() ? ONLY_UNASSIGNED : ModelQuadFacing.VALUES;
         SortState sortState = pass.isSorted() ? builder.getVertexBuffer(ModelQuadFacing.UNASSIGNED).getSortState() : null;
 
-        // First pass sizes the merged buffer and lays out the ranges
+        // Lays out the ranges of every facing
         for (ModelQuadFacing facing : facingsToUpload) {
             var buffer = builder.getVertexBuffer(facing);
 
@@ -105,43 +111,48 @@ public final class ChunkBuildBuffers {
         var vertexType = pass.vertexType();
         var primitiveType = pass.primitiveType();
 
-        var mergedBuffer = new NativeBuffer(vertexCount * vertexType.getVertexFormat().getStride());
-        var mergedBufferBuilder = mergedBuffer.getDirectBuffer();
+        var mergedBuffer = new NativeBuffer(Math.multiplyExact(vertexCount, vertexType.getVertexFormat().getStride()));
+        NativeBuffer mergedIndexBuffer = null;
 
-        // Second pass copies in the same facing order, so no intermediate list of slices is needed
-        for (ModelQuadFacing facing : facingsToUpload) {
-            var buffer = builder.getVertexBuffer(facing);
+        try {
+            var mergedBufferBuilder = mergedBuffer.getDirectBuffer();
 
-            if (!buffer.isEmpty()) {
-                mergedBufferBuilder.put(buffer.slice());
+            // Copies the facings in layout order
+            for (ModelQuadFacing facing : facingsToUpload) {
+                var buffer = builder.getVertexBuffer(facing);
+
+                if (!buffer.isEmpty()) {
+                    mergedBufferBuilder.put(buffer.slice());
+                }
             }
+
+            mergedBufferBuilder.flip();
+
+            if (pass.isSorted()) {
+                int numPrimitives = vertexCount / primitiveType.getVerticesPerPrimitive();
+                mergedIndexBuffer = new NativeBuffer(primitiveType.getIndexBufferSize(numPrimitives));
+
+                // Sorts for the first camera position
+                primitiveType.generateSortedIndexBuffer(mergedIndexBuffer.getDirectBuffer(), numPrimitives, sortState, camX, camY, camZ);
+            }
+        } catch (Throwable failure) {
+            mergedBuffer.free();
+            if (mergedIndexBuffer != null) {
+                mergedIndexBuffer.free();
+            }
+            throw failure;
         }
 
-        mergedBufferBuilder.flip();
-
-        NativeBuffer mergedIndexBuffer;
-
-        if (pass.isSorted()) {
-            int numPrimitives = vertexCount / primitiveType.getVerticesPerPrimitive();
-            // Generate the canonical index buffer
-            mergedIndexBuffer = new NativeBuffer(primitiveType.getIndexBufferSize(numPrimitives));
-
-            // Do the initial sort now
-            primitiveType.generateSortedIndexBuffer(mergedIndexBuffer.getDirectBuffer(), numPrimitives, sortState, camX, camY, camZ);
-        } else {
-            mergedIndexBuffer = null;
-        }
-
-        // Uncompacted: the consumer needs the sorting level before it throws away the data behind it.
         return new BuiltSectionMeshParts(mergedBuffer, mergedIndexBuffer, sortState, vertexRanges);
     }
 
-    // Frees every builder
+    // Frees and forgets every builder.
     public void destroy() {
         this.sectionIndex = 0;
         this.renderData = null;
         for (var builder : this.builders.values()) {
             builder.destroy();
         }
+        this.builders.clear();
     }
 }

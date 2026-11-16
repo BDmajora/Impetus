@@ -8,9 +8,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Stops tracking an entity the server told the client to forget; removeEntityFromWorld (leaving tracking range) does not reliably reach Entity#onRemovedFromWorld, so a burning mob would leave its light behind
+// Mixin that changes WorldClient.
 @Mixin(WorldClient.class)
 public abstract class WorldClientMixin {
+    // Runs at the start of removeEntityFromWorld.
     @Inject(method = "removeEntityFromWorld", at = @At("HEAD"))
     private void impetus$untrackDynamicLight(int entityId, CallbackInfoReturnable<Entity> cir) {
         Entity entity = ((WorldClient) (Object) this).getEntityByID(entityId);

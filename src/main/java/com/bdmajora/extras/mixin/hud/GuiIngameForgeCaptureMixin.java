@@ -7,9 +7,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// The crosshair inverts whatever is behind it and carries the attack indicator, so it is drawn live too
+// Mixin that changes GuiIngameForge.
 @Mixin(value = GuiIngameForge.class, remap = false)
 public abstract class GuiIngameForgeCaptureMixin {
+    // Runs at the start of renderCrosshairs and can cancel it.
     @Inject(method = "renderCrosshairs", at = @At("HEAD"), cancellable = true)
     private void impetus$skipCrosshairWhileCapturing(float partialTicks, CallbackInfo ci) {
         if (HudCache.capturing) {

@@ -10,19 +10,20 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
-// Avoids allocating a HashMap-backed set for an entity with no passengers, called every tick for ridden mounts; ReferenceOpenHashSet is fine since Entity does not override equals
+// Mixin that changes Entity.
 @Mixin(Entity.class)
 public abstract class EntityMixin {
+    // Reference to the method get passengers of the target.
     @Shadow
     public abstract List<Entity> getPassengers();
 
-    // Private in the target, so it cannot be shadowed as abstract; the body is never reached.
+    // Reference to the method get recursive passengers by type of the target.
     @Shadow
     private <T extends Entity> void getRecursivePassengersByType(Class<T> entityClass, Set<T> theSet) {
         throw new AssertionError();
     }
 
-    // Avoid allocating a hash set for the common case of no passengers
+    // Replaces the whole method getRecursivePassengers.
     @Overwrite
     public Collection<Entity> getRecursivePassengers() {
         Set<Entity> passengers = new ReferenceOpenHashSet<>(this.getPassengers().isEmpty() ? 0 : 4);
@@ -32,7 +33,7 @@ public abstract class EntityMixin {
         return passengers;
     }
 
-    // Avoid allocating a hash set for the common case of no passengers
+    // Replaces the whole method getRecursivePassengersByType.
     @Overwrite
     public <T extends Entity> Collection<T> getRecursivePassengersByType(Class<T> entityClass) {
         Set<T> passengers = new ReferenceOpenHashSet<>(this.getPassengers().isEmpty() ? 0 : 4);

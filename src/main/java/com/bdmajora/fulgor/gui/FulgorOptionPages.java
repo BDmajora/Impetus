@@ -17,30 +17,31 @@ import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 
-// Lighting page in Impetus' video options; except diagnostics and pause behaviour these are read by FulgorMixinPlugin before the window exists, hence REQUIRES_GAME_RESTART on most
+// Builder of the Fulgor pages of the video options screen.
 public final class FulgorOptionPages {
+    // Mod id of the pages.
     private static final String MOD_ID = "fulgor";
 
+    // Storage that saves the Fulgor config.
     private static final OptionStorage<FulgorConfig> STORAGE = new OptionStorage<FulgorConfig>() {
-        // The options screen edits the live config directly
         @Override
         public FulgorConfig getData() {
             return FulgorConfig.get();
         }
 
-        // Writes the file once the screen is dismissed
         @Override
         public void save() {
             FulgorConfig.get().save();
         }
     };
-    // Ids sit directly under the mod id and the lang keys are spelled out per option
+    // Options of the Fulgor module.
     private static final ModuleOptions<FulgorConfig> OPTIONS = new ModuleOptions<>(MOD_ID, "", "", STORAGE);
 
+    // Prevents instantiation
     private FulgorOptionPages() {
     }
 
-    // Builds the page; most toggles need a restart since the mixin plugin already read them
+    // Returns the lighting page.
     public static OptionPage lighting() {
         List<OptionGroup> groups = new ArrayList<>();
 
@@ -112,7 +113,6 @@ public final class FulgorOptionPages {
                         OptionImpact.MEDIUM,
                         (config, value) -> config.optimizeRenderLightUpdates = value,
                         config -> config.optimizeRenderLightUpdates))
-                // Read on every client tick, so this one genuinely applies without a restart.
                 .add(liveToggle("skip_updates_while_paused",
                         "impetus.options.fulgor.skip_while_paused",
                         OptionImpact.LOW,
@@ -141,14 +141,17 @@ public final class FulgorOptionPages {
                 ImmutableList.copyOf(groups));
     }
 
+    // Returns a toggle that needs a restart.
     private static OptionImpl<FulgorConfig, Boolean> restartToggle(
+            // Config path of the option.
             String path, String langKey, OptionImpact impact,
             BiConsumer<FulgorConfig, Boolean> setter, Function<FulgorConfig, Boolean> getter) {
         return OPTIONS.toggle(path, langKey, setter, getter, impact, OptionFlag.REQUIRES_GAME_RESTART, null);
     }
 
-    // The diagnostics have no performance impact worth labelling, so impact may be null and no badge is shown
+    // Returns a toggle that applies at once.
     private static OptionImpl<FulgorConfig, Boolean> liveToggle(
+            // Config path of the option.
             String path, String langKey, OptionImpact impact,
             BiConsumer<FulgorConfig, Boolean> setter, Function<FulgorConfig, Boolean> getter) {
         return OPTIONS.toggle(path, langKey, setter, getter, impact, null, null);

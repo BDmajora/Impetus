@@ -27,36 +27,48 @@ import java.util.Map;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// The ChunkShaderInterface for a pack terrain program: feeds the engine's per-draw state (u_ModelViewMatrix, u_ProjectionMatrix, u_RegionOffset, block/lightmap units) the generated prologue declares, and binds the pipeline's gbuffer so terrain lands there for the deferred chain
+// Terrain shader interface of pack programs.
 public class UmbraTerrainShaderInterface implements ChunkShaderInterface {
+    // Model view matrix uniform.
     private final GlUniformMatrix4f uModelViewMatrix;
+    // Projection matrix uniform.
     private final GlUniformMatrix4f uProjectionMatrix;
+    // Region offset uniform.
     private final GlUniformFloat3v uRegionOffset;
-    // mc_chunkFade's inputs, present only when the pack reads it
+    // Chunk age array uniform.
     private final GlUniformFloatArray uChunkAges;
+    // Inverse chunk fade time uniform.
     private final GlUniformFloat uChunkFadeInv;
     private final Map<ChunkShaderTextureSlot, GlUniformInt> uTextures = new EnumMap<>(ChunkShaderTextureSlot.class);
-    // The program's sanitised DRAWBUFFERS mask, re-applied to the gbuffer FBO on every bind; sanitised since a pack can name a buffer this driver lacks and an out-of-range slot fails the whole draw
+    // Draw buffers.
     private final int[] drawBuffers;
+    // Blend state.
     private final ProgramBlendState blendState;
+    // Alpha test.
     private final ProgramAlphaTest alphaTest;
-    // The pack's OptiFine uniform set (gbufferModelView and inverse, cameraPosition, time counters) uploaded every bind; without it the world-space round trip multiplies by a zero matrix and the world disappears. Attached after link, hence not final
+    // Uniforms of the program.
     private ProgramUniforms uniforms;
-    // How this program declared shadowtex0/1; attached after link like the uniforms, comparison-only until then
+    // Shadow sampler kinds of the program.
     private ShadowSamplerKinds shadowSamplerKinds = ShadowSamplerKinds.ALL_COMPARE;
 
+    // Primitive type.
     private GlPrimitiveType primitiveType = GlPrimitiveType.TRIANGLES;
-    // Linked with tessellation stages, so the chunk draws go out as three-vertex patches
+    // Flag set when the program has tessellation stages.
     private final boolean tessellated;
+    // Flag set when state must be restored after the draw.
     private boolean restoreAfterDraw;
+    // Draw buffer slots in use.
     private int activeDrawBufferSlots;
 
+    // Creates an umbra terrain shader interface from its context and draw buffers and blend state.
     public UmbraTerrainShaderInterface(ShaderBindingContext context, int[] drawBuffers, ProgramBlendState blendState,
                                       ProgramAlphaTest alphaTest) {
         this(context, drawBuffers, blendState, alphaTest, false);
     }
 
+    // Creates an umbra terrain shader interface from its context and draw buffers and blend state.
     public UmbraTerrainShaderInterface(ShaderBindingContext context, int[] drawBuffers, ProgramBlendState blendState,
+                                      // Alpha test and tessellation flag.
                                       ProgramAlphaTest alphaTest, boolean tessellated) {
         this.tessellated = tessellated;
         this.drawBuffers = drawBuffers == null ? DrawBuffers.DEFAULT.clone() : drawBuffers.clone();
@@ -78,7 +90,7 @@ public class UmbraTerrainShaderInterface implements ChunkShaderInterface {
         }
     }
 
-    // Binds the first of several possible uniform spellings, since packs and transforms name them differently
+    // Returns the first uniform that exists or null.
     private static GlUniformInt firstPresent(ShaderBindingContext context, String... names) {
         for (String name : names) {
             GlUniformInt uniform = context.bindUniformIfPresent(name, GlUniformInt::new);
@@ -89,27 +101,25 @@ public class UmbraTerrainShaderInterface implements ChunkShaderInterface {
         return null;
     }
 
-    // Uploads the pack's uniform set for this frame
+    // Stores the uniforms.
     public void setUniforms(ProgramUniforms uniforms) {
         this.uniforms = uniforms;
     }
 
-    // Records the declared shadow sampler types the bind path applies
+    // Stores the shadow sampler kinds.
     public void setShadowSamplerKinds(ShadowSamplerKinds kinds) {
         this.shadowSamplerKinds = kinds == null ? ShadowSamplerKinds.ALL_COMPARE : kinds;
     }
 
-    // Binds the gbuffer framebuffer and per-pass state before drawing terrain
+    // Sets up the state.
     @Override
     public void setupState(TerrainRenderPass pass) {
         if (this.tessellated) {
-            // The mesher's index buffer already splits quads into triangles, which are exactly the patches the pack's control stage expects
             this.primitiveType = GlPrimitiveType.PATCHES;
             LWJGL.glPatchParameteri(GL40.GL_PATCH_VERTICES, 3);
         } else {
             this.primitiveType = pass.primitiveType().getGlPrimitiveType();
         }
-        // Terrain draws into the frame pipeline's gbuffer; point its draw-buffer mask at this program's DRAWBUFFERS so iris_FragData[k] lands in the requested colortex (skipped in the shadow pass, where onTerrainDraw would rebind the gbuffer over the shadow framebuffer)
         UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
         boolean shadowPass = UmbraShadowRenderer.isShadowPass();
         if (pipeline != null && !shadowPass) {
@@ -118,7 +128,6 @@ public class UmbraTerrainShaderInterface implements ChunkShaderInterface {
                 restoreOptifineWaterState();
             }
             pipeline.onTerrainDraw(this.drawBuffers, this.blendState, this.alphaTest, translucentPass);
-            // After onTerrainDraw, which rebinds the comparison default on the shadow units; skipped in the shadow pass where those units hold the map being rendered and nothing samples them
             pipeline.applyShadowSamplerKinds(this.shadowSamplerKinds, true);
             this.restoreAfterDraw = true;
             this.activeDrawBufferSlots = this.drawBuffers.length;
@@ -126,13 +135,12 @@ public class UmbraTerrainShaderInterface implements ChunkShaderInterface {
         if (pipeline != null) {
             pipeline.bindCustomImages();
         }
-        // ShaderChunkRenderer.begin binds the program before setupState, so uniform uploads land on this program.
         if (this.uniforms != null) {
             this.uniforms.update();
         }
     }
 
-    // Returns to the main framebuffer and default state
+    // Restores the GL state after a draw.
     @Override
     public void restoreState() {
         if (!this.restoreAfterDraw) {
@@ -145,7 +153,7 @@ public class UmbraTerrainShaderInterface implements ChunkShaderInterface {
         }
     }
 
-    // Undoes the blend and depth tweaks the water pass applied
+    // Restores the water state that OptiFine packs expect.
     private static void restoreOptifineWaterState() {
         GlStateManager.enableBlend();
         GlStateManager.tryBlendFuncSeparate(
@@ -154,7 +162,7 @@ public class UmbraTerrainShaderInterface implements ChunkShaderInterface {
         GlStateManager.depthMask(true);
     }
 
-    // Section ages in milliseconds and the fade rate, for mc_chunkFade; ages cap at 30 s like the raster path so the float never loses precision
+    // Stores the section ages.
     @Override
     public void setSectionAges(long timestamp, long[] loadTimes) {
         if (this.uChunkAges == null) {
@@ -171,13 +179,13 @@ public class UmbraTerrainShaderInterface implements ChunkShaderInterface {
         }
     }
 
-    // Triangles, as the mesher emits
+    // Returns the primitive type.
     @Override
     public GlPrimitiveType getPrimitiveType() {
         return this.primitiveType;
     }
 
-    // Engine projection into the generated prologue's uniform
+    // Stores the projection matrix.
     @Override
     public void setProjectionMatrix(Matrix4fc matrix) {
         if (this.uProjectionMatrix != null) {
@@ -185,7 +193,7 @@ public class UmbraTerrainShaderInterface implements ChunkShaderInterface {
         }
     }
 
-    // Engine model-view into the generated prologue's uniform
+    // Stores the model view matrix.
     @Override
     public void setModelViewMatrix(Matrix4fc matrix) {
         if (this.uModelViewMatrix != null) {
@@ -193,7 +201,7 @@ public class UmbraTerrainShaderInterface implements ChunkShaderInterface {
         }
     }
 
-    // Region origin for the prologue's position decode
+    // Stores the region offset.
     @Override
     public void setRegionOffset(float x, float y, float z) {
         if (this.uRegionOffset != null) {
@@ -201,7 +209,7 @@ public class UmbraTerrainShaderInterface implements ChunkShaderInterface {
         }
     }
 
-    // Block atlas or lightmap unit into the prologue's sampler
+    // Stores the texture slot.
     @Override
     public void setTextureSlot(ChunkShaderTextureSlot slot, int val) {
         GlUniformInt uniform = this.uTextures.get(slot);

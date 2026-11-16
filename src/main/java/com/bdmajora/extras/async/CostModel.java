@@ -2,21 +2,28 @@ package com.bdmajora.extras.async;
 
 import java.util.concurrent.atomic.LongAdder;
 
-// Learns how long one work item takes so batches can be cut to about a quarter millisecond each: too fine and the queue overhead dominates, too coarse and one slow section leaves the other cores idle
+// Estimates the time of one work item to size parallel tasks.
 public final class CostModel {
+    // Time that one task should take.
     private static final long TARGET_TASK_NANOS = 250_000L;
+    // Smallest total work that is worth running in parallel.
     private static final long MIN_PARALLEL_NANOS = 2L * TARGET_TASK_NANOS;
+    // Weight of a new sample.
     private static final double SMOOTHING = 0.25D;
 
+    // Time of the tasks since the last fold.
     private final LongAdder batchNanos = new LongAdder();
+    // Items of the tasks since the last fold.
     private final LongAdder batchItems = new LongAdder();
+    // Estimated time of one item.
     private volatile double nanosPerItem;
 
+    // Creates a model that starts from a seed estimate limited to a sensible range.
     public CostModel(double seedNanosPerItem) {
-        this.nanosPerItem = seedNanosPerItem;
+        this.nanosPerItem = Double.isNaN(seedNanosPerItem) ? 100.0D : Math.min(2_000_000.0D, Math.max(100.0D, seedNanosPerItem));
     }
 
-    // Times a batch and records its item count for the next fold
+    // Returns the task wrapped to record its time.
     public Runnable wrap(int items, Runnable task) {
         return () -> {
             long start = System.nanoTime();
@@ -29,7 +36,7 @@ public final class CostModel {
         };
     }
 
-    // Folds the last round of samples into the running estimate, clamped so one pathological batch cannot swing it
+    // Folds the recorded times into the estimate.
     private synchronized void fold() {
         long items = this.batchItems.sumThenReset();
         if (items <= 0L) {
@@ -41,16 +48,16 @@ public final class CostModel {
         this.nanosPerItem = current + (sample - current) * SMOOTHING;
     }
 
-    // Items per task: enough to fill the target, but never more than an even share so every worker gets something
+    // Returns the number of items for each task.
     public int chunkSize(int workItems, int workers) {
         fold();
-        int byCost = (int) Math.max(1L, (long) (TARGET_TASK_NANOS / this.nanosPerItem));
+        int byCost = (int) Math.min(Integer.MAX_VALUE, Math.max(1L, (long) (TARGET_TASK_NANOS / this.nanosPerItem)));
         int participants = Math.max(1, workers) + 1;
         int fairShare = Math.max(1, (workItems + participants - 1) / participants);
         return Math.min(byCost, Math.max(1, fairShare));
     }
 
-    // Below two tasks' worth of work the hand-off costs more than it saves
+    // Returns whether the work is too small for parallel tasks.
     public boolean shouldRunSequentially(int workItems) {
         fold();
         return workItems * this.nanosPerItem < MIN_PARALLEL_NANOS;

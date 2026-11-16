@@ -14,21 +14,23 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Render-budget skipping, armor stand visibility and player name tags in 1.12.2's shared living-entity renderer; a hidden stand still draws its label since stands are used as invisible signposts
+// Mixin that changes RenderLivingBase.
 @Mixin(RenderLivingBase.class)
 public abstract class RenderLivingBaseMixin<T extends EntityLivingBase> extends Render<T> {
+    // Creates a render living base mixin from its render manager.
     private RenderLivingBaseMixin(RenderManager renderManager) {
         super(renderManager);
     }
 
+    // Runs at the start of doRender and can cancel it.
     @Inject(
             method = "doRender(Lnet/minecraft/entity/EntityLivingBase;DDDFF)V",
             at = @At("HEAD"),
             cancellable = true
     )
     private void impetus$doRender(T entity, double x, double y, double z,
+                                  // Yaw and partial ticks.
                                   float entityYaw, float partialTicks, CallbackInfo ci) {
-        // Budget first: a skipped mob draws nothing, not even a signpost label, since named entities are never budgeted away
         if (RenderBudgetController.shouldCullLivingEntity(entity)) {
             ci.cancel();
             return;
@@ -43,6 +45,7 @@ public abstract class RenderLivingBaseMixin<T extends EntityLivingBase> extends 
         }
     }
 
+    // Runs at the start of canRenderName and can cancel it.
     @Inject(
             method = "canRenderName(Lnet/minecraft/entity/EntityLivingBase;)Z",
             at = @At("HEAD"),

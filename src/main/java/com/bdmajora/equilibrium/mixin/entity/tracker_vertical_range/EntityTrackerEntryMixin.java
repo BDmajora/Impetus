@@ -7,18 +7,22 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 
-// Vanilla decides whether a player tracks an entity on horizontal distance alone, so a player at bedrock receives every mob update from the surface and vice versa (StellarCore's entitytrackerIncludeY); applying the same range vertically stops that. Off by default since a player can no longer see an entity more than its tracking range above or below them, which shows on tall builds
+// Mixin that changes EntityTrackerEntry.
 @Mixin(EntityTrackerEntry.class)
 public abstract class EntityTrackerEntryMixin {
+    // Reference to the field encoded pos y of the target.
     @Shadow
     private long encodedPosY;
 
+    // Reference to the field range of the target.
     @Shadow
     private int range;
 
+    // Reference to the field max range of the target.
     @Shadow
     private int maxRange;
 
+    // Changes the return value of isVisibleTo.
     @ModifyReturnValue(method = "isVisibleTo", at = @At("RETURN"))
     private boolean equilibrium$alsoCheckVertical(boolean visible, EntityPlayerMP player) {
         if (!visible) {

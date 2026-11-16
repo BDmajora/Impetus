@@ -23,34 +23,34 @@ import java.util.Objects;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Draws entities and block entities into the shadow map through the fixed function matrix stack
+// Drawer of entities and block entities into the shadow map.
 public final class ShadowCasters {
-    // Margin in blocks added to the shadow distance for the horizontal caster cull
+    // Extra distance kept around the shadow range.
     static final double CULL_MARGIN = 16.0;
 
-    // Programs that casters draw with
+    // Programs of the casters.
     private final ShadowCasterPrograms programs;
-    // Switches for entities and players and block entities
+    // Settings of what the shadow pass draws.
     private final ShadowContentSettings content;
-    // Horizontal distance from the camera along X or Z past which a caster is skipped
+    // Distance within which casters draw.
     private final double cullRange;
-    // Direct buffer that carries one matrix into the fixed function stack
+    // Matrix buffer.
     private final FloatBuffer matrixBuffer = ByteBuffer.allocateDirect(16 * Float.BYTES)
             .order(ByteOrder.nativeOrder()).asFloatBuffer();
 
-    // Creates the caster renderer for a shadow distance in blocks
+    // Creates a shadow casters from its programs and content and shadow distance.
     public ShadowCasters(ShadowCasterPrograms programs, ShadowContentSettings content, float shadowDistance) {
         this.programs = Objects.requireNonNull(programs, "programs");
         this.content = Objects.requireNonNull(content, "content");
         this.cullRange = shadowDistance + CULL_MARGIN;
     }
 
-    // Returns whether a horizontal position lies farther than the range from the camera along X or Z
+    // Returns whether a position is beyond a range of the camera.
     static boolean outsideRange(double x, double z, Vector3d camera, double range) {
         return Math.abs(x - camera.x) > range || Math.abs(z - camera.z) > range;
     }
 
-    // Draws every enabled caster in range under the shadow matrices and restores the matrix stack and depth state
+    // Draws the casters of the frame.
     public void render(Minecraft mc, Vector3d camera, Matrix4f projection, Matrix4f modelView, float partialTicks) {
         boolean players = this.content.shouldRenderPlayer();
         boolean others = this.content.shouldRenderEntities();
@@ -73,7 +73,6 @@ public final class ShadowCasters {
         loadMatrix(modelView);
         try {
             RenderManager renderManager = mc.getRenderManager();
-            // Both dispatchers take their render origin from the interpolated camera that the model view centres on
             renderManager.cacheActiveRenderInfo(world, mc.fontRenderer, viewEntity, mc.pointedEntity, mc.gameSettings,
                     partialTicks);
             renderManager.setRenderPosition(camera.x, camera.y, camera.z);
@@ -101,8 +100,9 @@ public final class ShadowCasters {
         }
     }
 
-    // Draws each living entity in range whose kind is enabled
+    // Draws the entities of the shadow pass.
     private void renderEntities(RenderManager renderManager, List<Entity> entities, Vector3d camera,
+                                // Partial ticks and player switches.
                                 float partialTicks, boolean players, boolean others) {
         for (Entity entity : entities) {
             if (entity.isDead || outsideRange(entity.posX, entity.posZ, camera, this.cullRange)) {
@@ -115,7 +115,7 @@ public final class ShadowCasters {
         }
     }
 
-    // Draws each block entity in range that has a renderer and emits light when only emitters are enabled
+    // Draws the block entities of the shadow pass.
     private void renderBlockEntities(TileEntityRendererDispatcher dispatcher, World world, Vector3d camera,
                                      float partialTicks) {
         boolean lightOnly = this.content.shouldRenderLightBlockEntitiesOnly();
@@ -132,7 +132,7 @@ public final class ShadowCasters {
         }
     }
 
-    // Replaces the current fixed function matrix with a JOML matrix
+    // Loads a matrix into the fixed function stack.
     private void loadMatrix(Matrix4f matrix) {
         matrix.get(this.matrixBuffer);
         GlStateManager.loadIdentity();

@@ -16,20 +16,24 @@ import org.joml.Vector4f;
 import java.util.ArrayList;
 import java.util.List;
 
-// Turns a ModelRenderer tree into block-model quads by replaying the same transforms its display list would run under, so the geometry, UVs and winding are exactly what the block entity renderer draws; the matrix passed in is the renderer's own setup (translate, flip, rotate) in block units
+// Turns entity model parts into baked quads.
 public final class EntityModelBaker {
+    // Scale from model units to blocks.
     private static final float MODEL_SCALE = 0.0625F;
 
+    // Quads baked so far.
     private final List<BakedQuad> quads = new ArrayList<>();
+    // Sprite of the quads.
     private final TextureAtlasSprite sprite;
-    // The quads with coplanar faces resolved, worked out on the first ask after the last bake
+    // Quads after the overlap fix or null.
     private List<BakedQuad> resolved;
 
+    // Creates a baker for the sprite.
     public EntityModelBaker(TextureAtlasSprite sprite) {
         this.sprite = sprite;
     }
 
-    // The baked quads, with faces that share a plane (the shulker lid's lower rows over the base's teeth, the chest base over the lid's bottom row) cut so the shared part is one identical quad in each, drawn in the renderer's order; a chunk mesh keeps no GL_LEQUAL tie of its own, so this is what keeps the pair from z-fighting
+    // Returns the baked quads with overlapping faces separated.
     public List<BakedQuad> quads() {
         if (this.resolved == null) {
             List<List<BakedQuad>> lists = new ArrayList<>(CoplanarFaces.LISTS);
@@ -43,7 +47,7 @@ public final class EntityModelBaker {
         return this.resolved;
     }
 
-    // ModelRenderer.render with GL calls replaced by matrix ops: offset, then rotation point, then Z/Y/X rotations, boxes, children
+    // Bakes a part and its children.
     public void bake(ModelRenderer part, Matrix4f parent) {
         this.resolved = null;
         if (part.isHidden || !part.showModel) {
@@ -75,7 +79,7 @@ public final class EntityModelBaker {
         }
     }
 
-    // One TexturedQuad to one BakedQuad in the BLOCK format; the face is derived from the transformed normal the same way TexturedQuad.draw computes it
+    // Bakes one quad of a part.
     private void emit(TexturedQuad quad, Matrix4f matrix) {
         PositionTextureVertex[] source = quad.vertexPositions;
         if (source.length != 4) {
@@ -100,7 +104,7 @@ public final class EntityModelBaker {
         this.quads.add(build(xs, ys, zs, us, vs, this.sprite));
     }
 
-    // Normal from (v2 - v1) x (v0 - v1), the outward direction of the quad's winding, then packed vertex data with white colour and no lightmap like FaceBakery
+    // Returns a quad from corner data.
     static BakedQuad build(float[] xs, float[] ys, float[] zs, float[] us, float[] vs, TextureAtlasSprite sprite) {
         Vector3f a = new Vector3f(xs[2] - xs[1], ys[2] - ys[1], zs[2] - zs[1]);
         Vector3f b = new Vector3f(xs[0] - xs[1], ys[0] - ys[1], zs[0] - zs[1]);
@@ -121,7 +125,7 @@ public final class EntityModelBaker {
         return new BakedQuad(data, -1, face, sprite, true, DefaultVertexFormats.BLOCK);
     }
 
-    // Splits every quad at the plane axis = position, keeping the side the sign selects and shifting it by -shift on that axis; used to hand each half of a double chest the part that lies in its own block
+    // Returns the quads cut at the position and moved by the shift.
     public static List<BakedQuad> clip(List<BakedQuad> source, EnumFacing.Axis axis, float position, boolean keepAbove, float shift) {
         List<BakedQuad> result = new ArrayList<>(source.size());
         int component = component(axis);
@@ -130,7 +134,6 @@ public final class EntityModelBaker {
             if (polygon.size() != 4) {
                 continue;
             }
-            // The corners are this quad's own copies, so the shift can land in place
             for (float[] corner : polygon) {
                 corner[component] -= shift;
             }
@@ -139,11 +142,12 @@ public final class EntityModelBaker {
         return result;
     }
 
+    // Returns the index of the axis.
     private static int component(EnumFacing.Axis axis) {
         return axis == EnumFacing.Axis.X ? 0 : axis == EnumFacing.Axis.Y ? 1 : 2;
     }
 
-    // Position and atlas UV of each corner, read back out of the packed BLOCK-format data
+    // Returns the corners of a quad.
     private static List<float[]> corners(BakedQuad quad) {
         int[] data = quad.getVertexData();
         List<float[]> corners = new ArrayList<>(4);
@@ -155,7 +159,7 @@ public final class EntityModelBaker {
         return corners;
     }
 
-    // One Sutherland-Hodgman pass keeping the side of the plane the sign selects
+    // Returns the polygon cut at the position.
     private static List<float[]> cut(List<float[]> polygon, int component, float position, boolean keepAbove) {
         int count = polygon.size();
         List<float[]> kept = new ArrayList<>(count + 1);
@@ -173,7 +177,6 @@ public final class EntityModelBaker {
                 kept.add(intersect(previous, current, component, position));
             }
         }
-        // Duplicate vertices arise when an edge lies exactly on the plane; dropping them leaves the true rectangle
         List<float[]> cleaned = new ArrayList<>(kept.size());
         for (float[] vertex : kept) {
             float[] last = cleaned.isEmpty() ? null : cleaned.get(cleaned.size() - 1);
@@ -187,15 +190,17 @@ public final class EntityModelBaker {
         return cleaned;
     }
 
+    // Returns whether the value is on the kept side.
     private static boolean inside(float value, float position, boolean keepAbove) {
         return keepAbove ? value >= position - 1.0E-4F : value <= position + 1.0E-4F;
     }
 
+    // Returns whether two corners coincide.
     private static boolean same(float[] a, float[] b) {
         return Math.abs(a[0] - b[0]) < 1.0E-5F && Math.abs(a[1] - b[1]) < 1.0E-5F && Math.abs(a[2] - b[2]) < 1.0E-5F;
     }
 
-    // Linear interpolation of position and atlas UV to the plane crossing, pinned exactly onto the plane so a cut edge meets the face that caused it with no seam
+    // Returns the corner where an edge meets the position.
     private static float[] intersect(float[] from, float[] to, int component, float position) {
         float span = to[component] - from[component];
         float t = span == 0.0F ? 0.0F : (position - from[component]) / span;
@@ -207,7 +212,7 @@ public final class EntityModelBaker {
         return out;
     }
 
-    // As build, but the corners already carry atlas UVs
+    // Returns a quad from corners with atlas coordinates.
     private static BakedQuad buildAtlas(List<float[]> corners, TextureAtlasSprite sprite) {
         float[] first = corners.get(0);
         float[] second = corners.get(1);

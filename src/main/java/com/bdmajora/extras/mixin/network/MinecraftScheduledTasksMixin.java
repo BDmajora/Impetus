@@ -15,22 +15,26 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.Queue;
 import java.util.concurrent.FutureTask;
 
-// Moves the scheduled task drain out from under the queue's monitor (ScheduledTaskDrain has the why). The drain runs just before vanilla's synchronized block, inside its "scheduledExecutables" profiler section, and vanilla's loop is then told the queue is empty so a task the network thread slips in between cannot end up running under the lock after all
+// Mixin that changes Minecraft.
 @Mixin(Minecraft.class)
 public abstract class MinecraftScheduledTasksMixin {
+    // Reference to the field scheduled tasks of the target.
     @Shadow
     @Final
     private Queue<FutureTask<?>> scheduledTasks;
 
+    // Reference to the field logger of the target.
     @Shadow
     @Final
     private static Logger LOGGER;
 
+    // Runs inside runGameLoop.
     @Inject(method = "runGameLoop()V", at = @At(value = "FIELD", target = "Lnet/minecraft/client/Minecraft;scheduledTasks:Ljava/util/Queue;", opcode = Opcodes.GETFIELD, ordinal = 0))
     private void impetus$drainOutsideLock(CallbackInfo ci) {
         ScheduledTaskDrain.drain(this.scheduledTasks, LOGGER);
     }
 
+    // Changes an expression value in runGameLoop.
     @ModifyExpressionValue(method = "runGameLoop()V", at = @At(value = "INVOKE", target = "Ljava/util/Queue;isEmpty()Z", remap = false))
     private boolean impetus$skipLockedDrain(boolean empty) {
         return true;

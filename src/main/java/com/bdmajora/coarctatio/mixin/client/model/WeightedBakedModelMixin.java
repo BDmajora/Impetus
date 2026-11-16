@@ -12,16 +12,16 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.List;
 
-// Compacts WeightedBakedModel's list, tiny per model but one per variant; only read by WeightedRandom.getRandomItem's indexed access, which FixedArrayList serves at the same cost
+// Mixin that changes WeightedBakedModel.
 @Mixin(WeightedBakedModel.class)
 public class WeightedBakedModelMixin {
-    // Made mutable so the constructor injection can swap it after vanilla assigns it
+    // Reference to the field models of the target.
     @Mutable
     @Shadow
     @Final
     private List<WeightedBakedModel.WeightedModel> models;
 
-    // At RETURN the list is fully populated and never written again
+    // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void coarctatio$compactModelList(CallbackInfo ci) {
         this.models = CollectionHelper.fixed(this.models);

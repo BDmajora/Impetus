@@ -13,25 +13,26 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import com.bdmajora.impetus.ImpetusVintage;
 
-// Patches Minecraft's frame loop: CPU render-ahead throttling and inactivity FPS caps
+// Mixin that changes Minecraft.
 @Mixin(Minecraft.class)
 public class MinecraftMixin {
+    // Field render ahead manager added to the target.
     @Unique
     private final RenderAheadManager impetus$renderAheadManager = new RenderAheadManager();
 
-    // Opens the frame for the render-ahead limiter. runGameLoop, not runTick: Sodium hooks MinecraftClient.runTick(boolean) because in modern versions that IS the per-frame render, but in 1.12.2 runTick() is the 20 Hz game tick and runGameLoop() the frame, so a fence per tick never bounded anything (a fence three ticks old is 150 ms behind the GPU)
+    // Runs at the start of runGameLoop.
     @Inject(method = "runGameLoop", at = @At("HEAD"))
     private void preRender(CallbackInfo ci) {
         impetus$renderAheadManager.startFrame(ImpetusVintage.options().advanced.cpuRenderAheadLimit);
     }
 
-    // Closes the frame, which is where the limiter may block
+    // Runs before every return of runGameLoop.
     @Inject(method = "runGameLoop", at = @At("RETURN"))
     private void postRender(CallbackInfo ci) {
         impetus$renderAheadManager.endFrame();
     }
 
-    // Caps framerate hard when minimized, or (in AFK mode) merely unfocused; mirrors Sodium's "Inactivity FPS Limit"
+    // Changes the return value of getLimitFramerate.
     @ModifyReturnValue(method = "getLimitFramerate", at = @At("RETURN"))
     private int impetus$applyInactivityFpsLimit(int limit) {
         ImpetusGameOptions.InactivityFpsLimit mode = ImpetusRuntimeOptions.inactivityFpsLimit;
@@ -41,19 +42,17 @@ public class MinecraftMixin {
         }
 
         if (GameWindow.isMinimized()) {
-            // Minimized window: both AFK and MINIMIZED modes clamp hard.
             return impetus$capped(limit, 10);
         }
 
         if (mode == ImpetusGameOptions.InactivityFpsLimit.AFK && !GameWindow.isFocused()) {
-            // Unfocused window in AFK mode.
             return impetus$capped(limit, 30);
         }
 
         return limit;
     }
 
-    // The lower of the limit and the cap, a limit of zero or less counting as none since sync skips it
+    // Helper method capped added to the target.
     @Unique
     private static int impetus$capped(int limit, int cap) {
         return limit > 0 ? Math.min(limit, cap) : cap;

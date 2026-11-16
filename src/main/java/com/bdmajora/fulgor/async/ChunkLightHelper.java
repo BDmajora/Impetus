@@ -5,16 +5,20 @@ import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 
 import java.util.Arrays;
 
-// Moves light between the vanilla nibble arrays and the SWMR arrays; sections run -1..16 in the SWMR arrays (index = sectionY + 1) and 0..15 in vanilla storage
+// Helpers that read and seed chunk light data.
 public final class ChunkLightHelper {
+    // Lowest light section.
     public static final int MIN_LIGHT_SECTION = -1;
+    // Highest light section.
     public static final int MAX_LIGHT_SECTION = 16;
+    // Number of light sections.
     public static final int LIGHT_SECTIONS = 18;
 
+    // Prevents instantiation
     private ChunkLightHelper() {
     }
 
-    // Copies each stored section's vanilla skylight into a fresh SWMR array
+    // Copies vanilla sky light into the nibbles.
     public static void importVanillaSky(SWMRNibbleArray[] sky, ExtendedBlockStorage[] storageArrays) {
         for (int sectionY = 0; sectionY < 16; sectionY++) {
             ExtendedBlockStorage section = storageArrays[sectionY];
@@ -28,7 +32,7 @@ public final class ChunkLightHelper {
         }
     }
 
-    // Copies each stored section's vanilla block light into a fresh SWMR array
+    // Copies vanilla block light into the nibbles.
     public static void importVanillaBlock(SWMRNibbleArray[] block, ExtendedBlockStorage[] storageArrays) {
         for (int sectionY = 0; sectionY < 16; sectionY++) {
             ExtendedBlockStorage section = storageArrays[sectionY];
@@ -42,7 +46,7 @@ public final class ChunkLightHelper {
         }
     }
 
-    // Wraps the vanilla arrays without copying, so a publish lands straight in what the renderer reads; client only, where every write is on the main thread
+    // Wraps vanilla block light arrays in nibbles.
     public static void wrapVanillaBlock(SWMRNibbleArray[] block, ExtendedBlockStorage[] storageArrays) {
         for (int sectionY = 0; sectionY < 16; sectionY++) {
             ExtendedBlockStorage section = storageArrays[sectionY];
@@ -56,6 +60,7 @@ public final class ChunkLightHelper {
         }
     }
 
+    // Wraps vanilla sky light arrays in nibbles.
     public static void wrapVanillaSky(SWMRNibbleArray[] sky, ExtendedBlockStorage[] storageArrays) {
         for (int sectionY = 0; sectionY < 16; sectionY++) {
             ExtendedBlockStorage section = storageArrays[sectionY];
@@ -69,7 +74,7 @@ public final class ChunkLightHelper {
         }
     }
 
-    // Publishes the visible sky data into the vanilla arrays, under each nibble's monitor since updateVisible mutates the visible array in place
+    // Synchronizes the sky to vanilla.
     public static void syncSkyToVanilla(SWMRNibbleArray[] skyNibbles, ExtendedBlockStorage[] storageArrays) {
         for (int sectionY = 0; sectionY < 16; sectionY++) {
             SWMRNibbleArray nibble = skyNibbles[sectionY + 1];
@@ -89,14 +94,13 @@ public final class ChunkLightHelper {
                         System.arraycopy(data, 0, vanillaData, 0, SWMRNibbleArray.ARRAY_SIZE);
                     }
                 } else if (nibble.isUninitialisedVisible()) {
-                    // UNINIT means present and all zero; filling 0xFF here lit every enclosed cave section
                     Arrays.fill(vanillaData, (byte) 0);
                 }
-                // NULL leaves the vanilla array alone: the column fill already approximates open sky
             }
         }
     }
 
+    // Synchronizes the block to vanilla.
     public static void syncBlockToVanilla(SWMRNibbleArray[] blockNibbles, ExtendedBlockStorage[] storageArrays) {
         for (int sectionY = 0; sectionY < 16; sectionY++) {
             SWMRNibbleArray nibble = blockNibbles[sectionY + 1];
@@ -122,8 +126,9 @@ public final class ChunkLightHelper {
         }
     }
 
-    // Fills a section created after the chunk was lit from the visible SWMR state; nothing else republishes already-visible data into fresh zeroed vanilla arrays, and the section would ship to clients black
+    // Copies engine light into the vanilla arrays.
     public static void fillVanillaFromEngine(SWMRNibbleArray[] skyNibbles, SWMRNibbleArray[] blockNibbles,
+                                             // Storage section being read.
                                              ExtendedBlockStorage section, int sectionY, boolean hasSky) {
         NibbleArray blockArray = section.getBlockLight();
         NibbleArray skyArray = hasSky ? section.getSkyLight() : null;
@@ -142,7 +147,7 @@ public final class ChunkLightHelper {
         }
     }
 
-    // Visible block light at a world position; zero outside the light sections or for a null nibble
+    // Returns the block light.
     public static int getBlockLight(SWMRNibbleArray[] block, int x, int y, int z) {
         int sectionY = y >> 4;
         if (sectionY < MIN_LIGHT_SECTION || sectionY > MAX_LIGHT_SECTION || block == null) {
@@ -152,7 +157,7 @@ public final class ChunkLightHelper {
         return nibble == null ? 0 : nibble.getVisible((x & 15) | ((z & 15) << 4) | ((y & 15) << 8));
     }
 
-    // Visible skylight at a world position: 15 above the world, 0 below it, and for a null section the bottom layer of the first real section above (the column's shadow), 15 if there is none
+    // Returns the sky light.
     public static int getSkyLight(SWMRNibbleArray[] sky, int x, int y, int z) {
         int sectionY = y >> 4;
         if (sectionY > MAX_LIGHT_SECTION) {
@@ -180,14 +185,13 @@ public final class ChunkLightHelper {
             }
             return 15;
         }
-        // UNINIT is present and all zero, not unknown
         if (nibble.isUninitialisedVisible()) {
             return 0;
         }
         return nibble.getVisible(x, y, z);
     }
 
-    // A fresh set of NULL nibbles for a new chunk
+    // Creates the null nibbles.
     public static SWMRNibbleArray[] newNullNibbles() {
         SWMRNibbleArray[] nibbles = new SWMRNibbleArray[LIGHT_SECTIONS];
         for (int i = 0; i < LIGHT_SECTIONS; ++i) {

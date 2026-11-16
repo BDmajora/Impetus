@@ -2,27 +2,38 @@ package com.bdmajora.extras.client.culling;
 
 import java.util.Arrays;
 
-// Per-pass memo of "is the block cell at this offset from the camera reachable"; many targets share cells (a crowd of mobs, a wall of chests), and a full clear per pass is cheaper than stamping. Offsets beyond the radius are simply not cached
+// Remembers which cells around the camera are visible.
 public final class CellVisibilityCache {
+    // State of a cell that was not tested.
     private static final byte UNKNOWN = 0;
+    // State of a cell that is hidden.
     private static final byte BLOCKED = 1;
+    // State of a cell that is visible.
     private static final byte VISIBLE = 2;
 
+    // Number of cells from the centre to the edge.
     private final int radius;
+    // Number of cells along one side.
     private final int size;
+    // State of every cell.
     private final byte[] cells;
 
+    // Creates a cache and rejects a negative or huge radius.
     public CellVisibilityCache(int radius) {
+        if (radius < 0 || radius > 600) {
+            throw new IllegalArgumentException("Radius out of range: " + radius);
+        }
         this.radius = radius;
         this.size = radius * 2;
         this.cells = new byte[this.size * this.size * this.size];
     }
 
+    // Forgets every cell.
     public void clear() {
         Arrays.fill(this.cells, UNKNOWN);
     }
 
-    // Returns the cached answer or computes it via `test`, which is only consulted for unknown cells
+    // Returns the cached result of the cell and runs the test for a new cell.
     public boolean isVisible(int dx, int dy, int dz, CellTest test) {
         int x = dx + this.radius;
         int y = dy + this.radius;
@@ -40,7 +51,9 @@ public final class CellVisibilityCache {
         return visible;
     }
 
+    // Test of one cell.
     public interface CellTest {
+        // Returns whether the cell is visible.
         boolean test();
     }
 }

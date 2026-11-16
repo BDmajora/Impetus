@@ -11,21 +11,26 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Face-aware neighbour brightness for entity and item rendering, which reads through World; limited to client worlds so the integrated server's spawn light checks keep vanilla's answer
+// Mixin that changes World.
 @Mixin(World.class)
 public abstract class WorldNeighborLightMixin {
+    // Reference to the method get light for of the target.
     @Shadow
     public abstract int getLightFor(EnumSkyBlock type, BlockPos pos);
 
+    // Reference to the method get block state of the target.
     @Shadow
     public abstract IBlockState getBlockState(BlockPos pos);
 
+    // Reference to the method is valid of the target.
     @Shadow
     public abstract boolean isValid(BlockPos pos);
 
+    // Reference to the method is block loaded of the target.
     @Shadow
     public abstract boolean isBlockLoaded(BlockPos pos);
 
+    // Runs at the start of getLightFromNeighborsFor and can cancel it.
     @Inject(method = "getLightFromNeighborsFor", at = @At("HEAD"), cancellable = true)
     private void fulgor$faceAwareNeighborLight(EnumSkyBlock type, BlockPos pos, CallbackInfoReturnable<Integer> cir) {
         World self = (World) (Object) this;

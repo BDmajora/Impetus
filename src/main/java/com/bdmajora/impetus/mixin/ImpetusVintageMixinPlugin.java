@@ -14,32 +14,34 @@ import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+// Class impetus vintage mixin plugin.
 public class ImpetusVintageMixinPlugin implements IMixinConfigPlugin {
+    // Logger of the mixin plugin.
     public static final Logger LOGGER = LogManager.getLogger("ImpetusMixins");
 
-    // Nothing to prepare: Cleanroom runs LWJGL3 natively, so there is no lwjgl3ify redirect to opt out of
+    // Handles on load.
     @Override
     public void onLoad(String mixinPackage) {
     }
 
-    // Null: the remapped jar carries SRG selectors in the annotations themselves, so there is no refmap ("" makes Mixin look for a file by that name)
+    // Returns the ref mapper config.
     @Override
     public String getRefMapperConfig() {
         return null;
     }
 
-    // Unused; getMixins supplies the list directly and Mixin does not consult this for those
+    // Returns whether apply mixin.
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
         return false;
     }
 
-    // Nothing to negotiate with other configs
+    // Handles accept targets.
     @Override
     public void acceptTargets(Set<String> myTargets, Set<String> otherTargets) {
     }
 
-    // Discovers every class under com.bdmajora.impetus.mixin by walking the jar or classes dir, so new mixins need no listing
+    // Returns the mixins.
     @Override
     public List<String> getMixins() {
         List<Path> rootPaths = new ArrayList<>();
@@ -84,13 +86,13 @@ public class ImpetusVintageMixinPlugin implements IMixinConfigPlugin {
         return new ArrayList<>(possibleMixinClasses);
     }
 
-    // No pre-apply rewriting needed
+    // Handles pre apply.
     @Override
     public void preApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) {
 
     }
 
-    // No post-apply rewriting needed
+    // Handles post apply.
     @Override
     public void postApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) {
 

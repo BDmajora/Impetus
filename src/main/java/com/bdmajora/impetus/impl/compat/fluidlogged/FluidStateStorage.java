@@ -10,17 +10,19 @@ import org.apache.commons.lang3.mutable.MutableInt;
 
 import java.util.Objects;
 
-// Holds a 16x16x16 copy of IFluidStateContainer data, one per chunk section
+// Fluid states of one section.
 public class FluidStateStorage {
+    // Container of the fluid states.
     private final BlockStateContainer data = new BlockStateContainer();
+    // Number of positions with a fluid.
     private final int nonEmptyCount;
 
+    // Copies the fluid states of the section at a block height of a chunk.
     public FluidStateStorage(Chunk chunkIn, int yIn) {
         IFluidStateContainer container = Objects.requireNonNull(IFluidStateCapability.get((ICapabilityProvider)chunkIn)).getContainer(yIn);
         MutableInt counter = new MutableInt();
         container.forEach((pos, fluidState) -> {
             int y = container.deserializeY(pos);
-            // container spans the whole chunk, so filter down to just this section's Y range
             if (y >> 4 == yIn >> 4) {
                 int x = container.deserializeX(pos);
                 int z = container.deserializeZ(pos);
@@ -32,12 +34,12 @@ public class FluidStateStorage {
         this.nonEmptyCount = counter.intValue();
     }
 
-    // True when no block in the section carries a fluid state, letting the slice skip the copy
+    // Returns whether the section has no fluid.
     public boolean isEmpty() {
         return this.nonEmptyCount == 0;
     }
 
-    // Typed as Object so nothing here links against Fluidlogged when it is absent
+    // Returns the fluid state at a local position.
     public Object get(int x, int y, int z) {
         return FluidState.of(data.get(x, y, z));
     }

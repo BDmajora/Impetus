@@ -8,42 +8,52 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-// Options other mods take out of our hands, detected by class presence since FML has no mod list yet; every conflicting mod is a coremod, so a class present only when installed is a reliable signal
+// Switches that other mods force off.
 public final class ModCompatibility {
-    // One mod's claim on one option.
+    // Value that a mod forces.
     public static final class Override {
+        // Mod that forces the value.
         private final String modId;
+        // Name of the switch.
         private final String option;
+        // Forced value.
         private final boolean enabled;
 
+        // Creates an override.
         Override(String modId, String option, boolean enabled) {
             this.modId = modId;
             this.option = option;
             this.enabled = enabled;
         }
 
-        // Mod that forced the value
+        // Returns the mod.
         public String modId() {
             return this.modId;
         }
 
-        // Rule that was overridden
+        // Returns the switch.
         public String option() {
             return this.option;
         }
 
-        // Value the mod forced
+        // Returns the forced value.
         public boolean enabled() {
             return this.enabled;
         }
     }
 
+    // Mod that conflicts with some switches.
     private static final class Conflict {
+        // Name of the mod.
         final String modId;
+        // Class that shows the mod is present.
         final String marker;
+        // Reason of the conflict.
         final String reason;
+        // Switches to turn off.
         final String[] disables;
 
+        // Creates a conflict.
         Conflict(String modId, String marker, String reason, String... disables) {
             this.modId = modId;
             this.marker = marker;
@@ -52,16 +62,17 @@ public final class ModCompatibility {
         }
     }
 
+    // Known conflicts.
     private static final List<Conflict> CONFLICTS = conflicts();
 
+    // Prevents instantiation
     private ModCompatibility() {
     }
 
-    // Known incompatible mods and the rules they force off, keyed by mod id so duplicates collapse
+    // Returns the known conflicts.
     private static List<Conflict> conflicts() {
         Map<String, Conflict> conflicts = new LinkedHashMap<>();
 
-        // Cubic Chunks replaces the chunk column with a cube grid, making every world-shaped assumption here (sixteen sections, eight-bit section index, one heightmap) quietly wrong
         conflicts.put("cubicchunks", new Conflict("Cubic Chunks",
                 "io.github.opencubicchunks.cubicchunks.core.asm.CubicChunksCoreContainer",
                 "it replaces the chunk column with a cube grid",
@@ -73,7 +84,6 @@ public final class ModCompatibility {
                 "mixin.entity.collisions",
                 "mixin.entity.fast_retrieval"));
 
-        // Sponge rewrites world ticking, block scheduling and inventory handling to hang its event system off them; both replace the same methods
         conflicts.put("sponge", new Conflict("SpongeForge",
                 "org.spongepowered.common.SpongeImpl",
                 "it rewrites world ticking and inventory handling",
@@ -82,13 +92,11 @@ public final class ModCompatibility {
                 "mixin.world.block_entity_ticking",
                 "mixin.world.explosions"));
 
-        // BetterFps' transformer rewrites MathHelper.sin/cos and ours overwrites the same two methods; whichever runs second wins and the loser's table is wasted, which must not depend on transformer order
         conflicts.put("betterfps", new Conflict("BetterFps",
                 "guichaguri.betterfps.tweaker.BetterFpsTweaker",
                 "its math transformer replaces the same sine table",
                 "mixin.math.sine_lut"));
 
-        // FoamFix's coremod rewrites BlockPos' mutable subclasses field by field while our patch replaces the offset methods they inherit; not observed to collide, but BlockPos loads during bootstrap before anything could report it
         conflicts.put("foamfix", new Conflict("FoamFix",
                 "pl.asie.foamfix.coremod.FoamFixCore",
                 "its coremod rewrites BlockPos",
@@ -97,7 +105,7 @@ public final class ModCompatibility {
         return Collections.unmodifiableList(new ArrayList<>(conflicts.values()));
     }
 
-    // resolves the overrides that apply to this instance; called once, from EquilibriumConfig#load
+    // Returns the overrides of every present mod.
     public static List<Override> detect() {
         List<Override> overrides = new ArrayList<>();
 
@@ -117,7 +125,7 @@ public final class ModCompatibility {
         return overrides;
     }
 
-    // Deliberately does not initialise the class (same reasoning as FulgorMixinPlugin): during coremod setup, loading a foreign class early can change load order, and existence is all that is asked
+    // Returns whether the class can be found.
     private static boolean isClassPresent(String name) {
         try {
             Class.forName(name, false, ModCompatibility.class.getClassLoader());

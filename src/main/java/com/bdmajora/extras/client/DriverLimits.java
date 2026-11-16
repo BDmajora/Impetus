@@ -3,14 +3,16 @@ package com.bdmajora.extras.client;
 import com.bdmajora.extras.Extras;
 import org.lwjgl.opengl.GL11;
 
-// Driver-reported limits the loading mixins substitute for vanilla's probing; each is read once from the context and kept
+// Limits reported by the graphics driver.
 public final class DriverLimits {
+    // Cached largest texture size or minus one.
     private static int maxTextureSize = -1;
 
+    // Prevents instantiation
     private DriverLimits() {
     }
 
-    // GL_MAX_TEXTURE_SIZE, the driver's own word on the largest atlas, or -1 when the switch is off or the query answered nothing (the caller then falls through to vanilla's probe)
+    // Returns the largest texture size or minus one when the limit is off.
     public static int maxTextureSize() {
         if (!Extras.options().loading.driverAtlasLimit) {
             return -1;

@@ -8,9 +8,10 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 
 import java.util.Random;
 
-// Every entity constructs its own java.util.Random; under GPU Booster it gets a FastRandom instead, one per entity so the integrated server's entities and the client's never share state
+// Mixin that changes Entity.
 @Mixin(Entity.class)
 public class EntityRandomMixin {
+    // Replaces the creation of Random in constructor.
     @Redirect(method = "<init>", at = @At(value = "NEW", target = "java/util/Random", remap = false))
     private Random impetus$fastRandom() {
         return FastRandom.enabled ? new FastRandom() : new Random();

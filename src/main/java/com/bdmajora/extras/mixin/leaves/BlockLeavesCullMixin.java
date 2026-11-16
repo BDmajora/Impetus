@@ -14,19 +14,20 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Fancy leaves draw every face of every leaf block, including the ones buried inside a canopy that no camera angle reaches (More Culling's leaf modes, Cull Less Leaves' depth rule); this is the same shouldSideBeRendered the chunk mesher asks, so it covers vanilla and Impetus meshing alike. Check: a face toward a leaf or opaque block is dropped only when this block is boxed in on every other side too. Depth: a face toward leaves is dropped when the next N blocks along that direction are all solid
+// Mixin that changes BlockLeaves.
 @Mixin(BlockLeaves.class)
 public abstract class BlockLeavesCullMixin {
+    // Reference to the field leaves fancy of the target.
     @Shadow
     protected boolean leavesFancy;
 
+    // Runs at the start of shouldSideBeRendered and can cancel it.
     @Inject(method = "shouldSideBeRendered", at = @At("HEAD"), cancellable = true)
     private void impetus$cullInteriorFaces(IBlockState state, IBlockAccess world, BlockPos pos, EnumFacing side, CallbackInfoReturnable<Boolean> cir) {
         ExtrasConfig.LeafSettings settings = Extras.options().leaves;
         if (settings.cullingMode == ExtrasConfig.LeafCulling.DEFAULT || !this.leavesFancy) {
             return;
         }
-        // One cursor per thread: this runs for every face of every leaf block on the chunk-build workers, and offset() allocated a BlockPos per neighbour looked at
         BlockPos.MutableBlockPos cursor = impetus$CURSOR.get();
         if (!impetus$hides(world.getBlockState(cursor.setPos(pos).move(side)))) {
             return;
@@ -55,9 +56,11 @@ public abstract class BlockLeavesCullMixin {
         }
     }
 
+    // Field cursor added to the target.
     @Unique
     private static final ThreadLocal<BlockPos.MutableBlockPos> impetus$CURSOR = ThreadLocal.withInitial(BlockPos.MutableBlockPos::new);
 
+    // Handles hides.
     private static boolean impetus$hides(IBlockState state) {
         return state.getBlock() instanceof BlockLeaves || state.isOpaqueCube();
     }

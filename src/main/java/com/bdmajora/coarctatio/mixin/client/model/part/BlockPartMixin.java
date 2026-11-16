@@ -16,7 +16,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.EnumMap;
 import java.util.Map;
 
-// The deserializer hands every element a HashMap of at most six faces; an EnumMap is a six-slot array, smaller and faster for the baker's per-face lookups (StellarCore)
+// Mixin that changes BlockPart.
 @Mixin(BlockPart.class)
 public abstract class BlockPartMixin {
     @Shadow
@@ -24,8 +24,10 @@ public abstract class BlockPartMixin {
     @Mutable
     public Map<EnumFacing, BlockPartFace> mapFaces;
 
+    // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void coarctatio$compactFaces(Vector3f from, Vector3f to, Map<EnumFacing, BlockPartFace> faces,
+                                         // Rotation of the part.
                                          BlockPartRotation rotation, boolean shade, CallbackInfo ci) {
         if (this.mapFaces != null && !(this.mapFaces instanceof EnumMap) && !this.mapFaces.isEmpty()) {
             this.mapFaces = new EnumMap<>(this.mapFaces);

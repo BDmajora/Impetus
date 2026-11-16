@@ -9,9 +9,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Steps aside while the chest (and its pair) is at rest in the mesh; the breaking overlay pass always runs since the damage texture is drawn over this model, not the mesh
+// Mixin that changes TileEntityChestRenderer.
 @Mixin(TileEntityChestRenderer.class)
 public abstract class TileEntityChestRendererMixin {
+    // Runs at the start of render and can cancel it.
     @Inject(method = "render(Lnet/minecraft/tileentity/TileEntityChest;DDDFIF)V", at = @At("HEAD"), cancellable = true)
     private void impetus$skipStaticChest(TileEntityChest te, double x, double y, double z, float partialTicks, int destroyStage, float alpha, CallbackInfo ci) {
         if (destroyStage >= 0 || !BakedEntities.chests || !te.hasWorld()) {
@@ -24,6 +25,7 @@ public abstract class TileEntityChestRendererMixin {
         ci.cancel();
     }
 
+    // Returns whether renderer.
     private static boolean impetus$needsRenderer(TileEntityChest te) {
         return te != null && ((AnimatedBlockEntity) te).impetus$needsRenderer();
     }

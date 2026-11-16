@@ -1,19 +1,19 @@
 package com.bdmajora.impetus.impl.extensions;
 
-// Element positions of a vertex format as int-array indices, cached on the format so the per-vertex quad readers do one multiply-add instead of unboxing the format's offset lists
+// Contract of the vertex format extension.
 public interface VertexFormatExtension {
-    // Ints per vertex
+    // Returns the vertex size in ints.
     int impetus$intStride();
 
-    // Int index of the colour element within a vertex, or -1 when the format has none
+    // Returns the int index of the color.
     int impetus$colorIndex();
 
-    // Int index of the first UV set (block atlas)
+    // Returns the int index of the texture coordinate.
     int impetus$uvIndex();
 
-    // Int index of the second UV set (lightmap), or -1 when absent
+    // Returns the int index of the lightmap coordinate.
     int impetus$lightIndex();
 
-    // Int index of the normal element, or -1 when absent
+    // Returns the int index of the normal.
     int impetus$normalIndex();
 }

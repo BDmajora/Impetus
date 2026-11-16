@@ -1,21 +1,23 @@
 package com.bdmajora.impetus.engine.impl.model.compat;
 
+// Model pipeline of baked vanilla and Forge models.
 public enum VanillaForgeModelPipeline implements ModdedModelPipeline {
+    // Only instance.
     INSTANCE;
 
-    // VANILLA
+    // Returns the backend of the pipeline.
     @Override
     public ModelPipelineBackend backend() {
         return ModelPipelineBackend.VANILLA_FORGE;
     }
 
-    // Always
+    // Returns true for every call.
     @Override
     public boolean isAvailable() {
         return true;
     }
 
-    // Any baked model
+    // Returns true for every model.
     @Override
     public boolean canHandle(Object model) {
         return true;

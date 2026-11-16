@@ -7,9 +7,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Hides the sky dome, horizon and void planes; cancelling renderSky takes sun, moon and stars with it (matches Sodium Extra), see RenderGlobalSunMoonMixin/RenderGlobalStarsMixin for keeping the sky
+// Mixin that changes RenderGlobal.
 @Mixin(RenderGlobal.class)
 public class RenderGlobalSkyMixin {
+    // Runs at the start of renderSky and can cancel it.
     @Inject(method = "renderSky(FI)V", at = @At("HEAD"), cancellable = true)
     private void impetus$renderSky(float partialTicks, int pass, CallbackInfo ci) {
         if (!Extras.options().detail.sky) {

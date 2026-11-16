@@ -9,9 +9,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Drives the per-frame source update from renderEntities (needs a RenderGlobal to schedule rebuilds, and a moving source should re-light the frame it moves); at HEAD so it does not collide with core/terrain/RenderGlobalMixin's injectors
+// Mixin that changes RenderGlobal.
 @Mixin(RenderGlobal.class)
 public abstract class RenderGlobalMixin {
+    // Runs at the start of renderEntities.
     @Inject(method = "renderEntities", at = @At("HEAD"))
     private void impetus$updateDynamicLights(Entity renderViewEntity, ICamera camera, float partialTicks,
                                              CallbackInfo ci) {

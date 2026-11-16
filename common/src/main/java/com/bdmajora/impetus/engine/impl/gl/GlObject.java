@@ -1,53 +1,58 @@
 package com.bdmajora.impetus.engine.impl.gl;
 
-// Base for the engine's GL objects; the handle accessor checks validity to catch use-after-delete, but a copied-out int handle escapes it, so it is a guard rail not a guarantee
+// Base class of GL objects that guards the handle against use after delete.
 public abstract class GlObject {
+    // Handle value of an object that holds no GL name.
     private static final int INVALID_HANDLE = 0;
 
+    // GL name or the invalid handle after deletion.
     private int handle = INVALID_HANDLE;
 
+    // Creates an object without a GL name.
     protected GlObject() {
 
     }
 
-    // Called once by the subclass constructor
+    // Stores the GL name.
     protected final void setHandle(int handle) {
         this.handle = handle;
     }
 
-    // The GL name; throws once deleted
+    // Returns the GL name and rejects a deleted object.
     public final int handle() {
         this.checkHandle();
 
         return this.handle;
     }
 
-    // Throws on use after delete
+    // Rejects an object without a valid handle.
     protected final void checkHandle() {
         if (!this.isHandleValid()) {
             throw new IllegalStateException("Handle is not valid");
         }
     }
 
-    // Whether not yet deleted
+    // Returns whether the object holds a GL name.
     protected final boolean isHandleValid() {
         return this.handle != INVALID_HANDLE;
     }
 
-    // Frees once; a second call is a no-op rather than a use-after-delete throw from the handle check
+    // Frees the GL object once and keeps the handle when freeing fails.
     public final void delete() {
         if (!this.isHandleValid()) {
             return;
         }
+
         this.destroyInternal();
         this.handle = INVALID_HANDLE;
     }
 
-    // Alias of delete
-    @Deprecated // kept around to avoid huge diffs in old Umbra code
+    // Frees the GL object through delete.
+    @Deprecated
     public final void destroy() {
         this.delete();
     }
 
+    // Frees the GL object while the handle is still valid.
     protected abstract void destroyInternal();
 }

@@ -4,29 +4,37 @@ import com.bdmajora.impetus.engine.impl.model.light.data.LightDataAccess;
 import com.bdmajora.impetus.engine.impl.model.light.flat.FlatLightPipeline;
 import com.bdmajora.impetus.engine.impl.model.light.smooth.SmoothLightPipeline;
 
-// Holds the quad lighters; on Forge with the experimental pipeline a passthrough hands lighting to Forge's QuadLighter, otherwise the built-in Smooth/Flat pipelines (vanilla-like with optimisations and fixes) are used
+import java.util.Objects;
+
+// Holds the smooth and flat quad lighters.
 public class LightPipelineProvider {
+    // Lighter that blends the corners.
     private final LightPipeline smooth;
+    // Lighter that uses one value per face.
     private final LightPipeline flat;
+    // Light cache shared by both lighters.
     private final LightDataAccess lightData;
 
+    // Creates both lighters and rejects a null cache or diffuse provider.
     public LightPipelineProvider(LightDataAccess cache, DiffuseProvider diffuseProvider, boolean useQuadNormalsForShading) {
+        Objects.requireNonNull(cache, "cache");
+        Objects.requireNonNull(diffuseProvider, "diffuseProvider");
         this.lightData = cache;
         this.smooth = new SmoothLightPipeline(cache, diffuseProvider, useQuadNormalsForShading);
         this.flat = new FlatLightPipeline(cache, diffuseProvider, useQuadNormalsForShading);
     }
 
-    // Flat or smooth; asked per block, so a field pick rather than a map lookup
+    // Returns the smooth lighter for the smooth mode and the flat lighter otherwise.
     public LightPipeline getLighter(LightMode type) {
         return type == LightMode.SMOOTH ? this.smooth : this.flat;
     }
 
-    // The shared light cache both pipelines read
+    // Returns the light cache shared by both lighters.
     public LightDataAccess getLightData() {
         return this.lightData;
     }
 
-    // Resets the light pipelines and invalidates their caches; called whenever the underlying world data changes
+    // Resets both lighters.
     public void reset() {
         this.smooth.reset();
         this.flat.reset();

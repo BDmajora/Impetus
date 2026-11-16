@@ -8,9 +8,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// The "vignette" shaders.properties toggle via VanillaFeatureToggles; Complementary and Photon apply their own in the composite chain, and vanilla's would composite over the tonemapped image
+// Mixin that changes GuiIngame.
 @Mixin(GuiIngame.class)
 public class VanillaVignetteToggleMixin {
+    // Runs at the start of renderVignette and can cancel it.
     @Inject(method = "renderVignette", at = @At("HEAD"), cancellable = true, require = 0)
     private void impetus$suppressVignette(float lightLevel, ScaledResolution scaledRes, CallbackInfo ci) {
         if (!VanillaFeatureToggles.shouldRenderVignette()) {

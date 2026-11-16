@@ -6,20 +6,38 @@ import org.lwjgl.opengl.ARBSparseBuffer;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Resident buffer with an enormous address space and on-demand page commitment, so section allocation is pointer arithmetic instead of per-region arenas needing compaction
+// Device buffer with a huge address space where pages are committed on demand.
 public class SparseBindlessBuffer implements DeviceBuffer {
-    // 1 MB rather than the driver's minimum page size; smaller pages fragment the driver's physical allocator until commitment cost dominates
+    // Size of a committed page.
     public static final long PAGE_SIZE = 1L << 20;
 
+    // GL name.
     private final int id;
+    // Virtual size in bytes.
     private final long size;
+    // GPU address.
     private final long deviceAddress;
+    // Whether the buffer was deleted.
     private boolean deleted;
 
-    // Page index -> live allocations touching it; a page is released only when the last one goes, since quad-granular allocations from neighbouring sections routinely share a page
+    // Rejects a deleted buffer and a range outside it.
+    private void checkRange(long offset, long length) {
+        if (this.deleted) {
+            throw new IllegalStateException("Buffer was deleted");
+        }
+        if (offset < 0 || length < 0 || length > this.size - offset) {
+            throw new IllegalArgumentException("Range outside the buffer " + offset + " " + length);
+        }
+    }
+
+    // Number of allocations that touch each committed page.
     private final Int2IntOpenHashMap pageRefCounts = new Int2IntOpenHashMap();
 
+    // Creates a buffer rounded up to whole pages and rejects a size that is not positive.
     public SparseBindlessBuffer(long requestedSize) {
+        if (requestedSize <= 0) {
+            throw new IllegalArgumentException("Buffer size must be positive");
+        }
         this.size = alignUp(requestedSize, PAGE_SIZE);
         this.id = LWJGL.glCreateBuffers();
         LWJGL.glNamedBufferStorage(this.id, this.size, ARBSparseBuffer.GL_SPARSE_STORAGE_BIT_ARB);
@@ -27,36 +45,45 @@ public class SparseBindlessBuffer implements DeviceBuffer {
         this.deviceAddress = LWJGL.glGetNamedBufferGpuAddressNV(this.id);
 
         if (this.deviceAddress == 0L) {
+            LWJGL.glMakeNamedBufferNonResidentNV(this.id);
+            LWJGL.glDeleteBuffers(this.id);
             throw new IllegalStateException("Driver returned a null GPU address for a resident sparse buffer");
         }
     }
 
-    // Rounds up to a multiple
+    // Returns a value rounded up to a multiple and rejects an alignment that is not positive.
     public static long alignUp(long value, long alignment) {
-        long remainder = value % alignment;
-        return remainder == 0 ? value : value + (alignment - remainder);
+        if (alignment <= 0) {
+            throw new IllegalArgumentException("Alignment must be positive");
+        }
+        long remainder = Math.floorMod(value, alignment);
+        return remainder == 0 ? value : Math.addExact(value, alignment - remainder);
     }
 
-    // GL name
+    // Returns the GL name.
     @Override
     public int getId() {
         return this.id;
     }
 
-    // Virtual size; only committed pages are backed
+    // Returns the virtual size.
     @Override
     public long getSize() {
         return this.size;
     }
 
-    // GPU virtual address
+    // Returns the GPU address.
     @Override
     public long getDeviceAddress() {
         return this.deviceAddress;
     }
 
-    // Commits every page the byte range touches, taking a reference on each
+    // Commits the pages of a byte range and counts a reference on each.
     public void ensureCommitted(long offset, long length) {
+        this.checkRange(offset, length);
+        if (length == 0) {
+            return;
+        }
         int firstPage = firstPage(offset);
         int lastPage = pageEnd(offset, length);
 
@@ -67,13 +94,21 @@ public class SparseBindlessBuffer implements DeviceBuffer {
         }
     }
 
-    // Drops a reference on every page the range touches, releasing the ones that hit zero
+    // Drops a reference on the pages of a byte range and decommits pages without references.
     public void release(long offset, long length) {
+        this.checkRange(offset, length);
+        if (length == 0) {
+            return;
+        }
         int firstPage = firstPage(offset);
         int lastPage = pageEnd(offset, length);
 
         for (int page = firstPage; page < lastPage; page++) {
             int remaining = this.pageRefCounts.get(page) - 1;
+
+            if (!this.pageRefCounts.containsKey(page)) {
+                continue;
+            }
 
             if (remaining > 0) {
                 this.pageRefCounts.put(page, remaining);
@@ -84,43 +119,43 @@ public class SparseBindlessBuffer implements DeviceBuffer {
         }
     }
 
-    // Page holding a byte offset
+    // Returns the page of a byte offset.
     private static int firstPage(long offset) {
         return (int) (offset / PAGE_SIZE);
     }
 
-    // One past the last page a byte range touches
+    // Returns one past the last page of a byte range.
     private static int pageEnd(long offset, long length) {
         return (int) ((offset + length + PAGE_SIZE - 1) / PAGE_SIZE);
     }
 
-    // Physically resident pages, i.e. what this buffer actually costs in VRAM regardless of its address space
+    // Returns the number of committed pages.
     public int getCommittedPages() {
         return this.pageRefCounts.size();
     }
 
-    // Backed memory, for the debug screen
+    // Returns the bytes of the committed pages.
     public long getCommittedBytes() {
         return (long) this.pageRefCounts.size() * PAGE_SIZE;
     }
 
-    // Makes non-resident, then deletes
+    // Makes the buffer non resident and deletes it once.
     @Override
     public void delete() {
         if (this.deleted) {
             return;
         }
         this.deleted = true;
+        this.pageRefCounts.clear();
         LWJGL.glMakeNamedBufferNonResidentNV(this.id);
         LWJGL.glDeleteBuffers(this.id);
     }
 
-    // glBufferPageCommitmentARB over a page range
+    // Commits or decommits a range of pages.
     private void commit(int firstPage, int pageCount, boolean commit) {
         if (pageCount <= 0) {
             return;
         }
-        // Page commitment has no DSA form so the buffer must be bound; ARRAY_BUFFER is least intrusive since nothing in the mesh pipeline draws from a bound vertex array
         LWJGL.glBindBuffer(GL15.GL_ARRAY_BUFFER, this.id);
         LWJGL.glBufferPageCommitmentARB(GL15.GL_ARRAY_BUFFER, firstPage * PAGE_SIZE, pageCount * PAGE_SIZE, commit);
         LWJGL.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);

@@ -7,15 +7,17 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-// The pack's `const <type> <name> = <value>;` directives, scanned once from the concatenated (conditional-resolved) sources; last declaration wins, which is Umbra's and OptiFine's rule since each directive overwrites the previous in file order. Replaces one full-text regex scan per directive read
+// Constant directives found in pack sources.
 public final class ConstDirectives {
-    // The GLSL float literal grammar, as permissive as Float#parseFloat (sign, .5 and 1. forms, exponent)
+    // Pattern of a float literal.
     public static final String FLOAT_LITERAL = "([-+]?(?:[0-9]+\\.?[0-9]*|\\.[0-9]+)(?:[eE][-+]?[0-9]+)?)[fF]?";
+    // Pattern of a constant declaration.
     private static final Pattern CONST = Pattern.compile("const\\s+(int|float|bool|vec4)\\s+(\\w+)\\s*=\\s*([^;]+?)\\s*;");
-    // vec4(x, y, z, w), or vec4(x) splatted, the two spellings packs write clear colours in
+    // Vec4.
     private static final Pattern VEC4 = Pattern.compile("^vec4\\s*\\(([^)]*)\\)$");
-    // Only the leading literal of a value is read, as the per-directive scans did, so `2048 * 2` still yields 2048 rather than a parse failure
+    // Int prefix.
     private static final Pattern INT_PREFIX = Pattern.compile("^[-+]?\\d+");
+    // Float prefix.
     private static final Pattern FLOAT_PREFIX = Pattern.compile("^" + FLOAT_LITERAL);
 
     private final Map<String, String> ints = new HashMap<>();
@@ -23,17 +25,19 @@ public final class ConstDirectives {
     private final Map<String, String> bools = new HashMap<>();
     private final Map<String, String> vec4s = new HashMap<>();
 
+    // Creates a const directives from its text.
     public ConstDirectives(String text) {
         scan(text);
     }
 
-    // Several texts in order, each scanned on its own so an unterminated construct in one cannot swallow the next; a later declaration still wins
+    // Creates a const directives from its texts.
     public ConstDirectives(List<String> texts) {
         for (String text : texts) {
             scan(text);
         }
     }
 
+    // Records the constants of a source.
     private void scan(String text) {
         Matcher matcher = CONST.matcher(text);
         while (matcher.find()) {
@@ -48,7 +52,7 @@ public final class ConstDirectives {
         }
     }
 
-    // const int NAME = value;
+    // Returns an int constant or a fallback.
     public int getInt(String name, int fallback) {
         String value = ints.get(name);
         if (value == null) {
@@ -65,7 +69,7 @@ public final class ConstDirectives {
         }
     }
 
-    // const float NAME = value;, or const int since packs write `const float shadowDistance = 120;` and both Umbra and OptiFine tolerate it
+    // Returns a float constant or null.
     public Float getFloat(String name) {
         String value = floats.get(name);
         if (value == null) {
@@ -85,21 +89,23 @@ public final class ConstDirectives {
         }
     }
 
+    // Returns a float constant or a fallback.
     public float getFloat(String name, float fallback) {
         Float value = getFloat(name);
         return value != null ? value : fallback;
     }
 
-    // const bool NAME = value;, false when absent
+    // Returns a bool constant or false.
     public boolean getBool(String name) {
         return getBool(name, false);
     }
 
+    // Returns a bool constant or a fallback.
     public boolean getBool(String name, boolean fallback) {
         return getOptionalBool(name).orElse(fallback);
     }
 
-    // const bool with presence distinguished from false
+    // Returns a bool constant or empty.
     public Optional<Boolean> getOptionalBool(String name) {
         String value = bools.get(name);
         if ("true".equals(value)) {
@@ -111,12 +117,12 @@ public final class ConstDirectives {
         return Optional.empty();
     }
 
-    // The raw value of a const int, for directives whose value is an identifier rather than a number (const int shadowcolor0Format = RGBA16F;)
+    // Returns the raw text of an int constant or empty.
     public Optional<String> getIntToken(String name) {
         return Optional.ofNullable(ints.get(name));
     }
 
-    // const vec4 NAME = vec4(...); a single component fills all four, anything malformed reads as absent
+    // Returns a vec4 constant or empty.
     public Optional<float[]> getVec4(String name) {
         String value = vec4s.get(name);
         if (value == null) {

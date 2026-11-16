@@ -8,15 +8,17 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Hides the enchanting table's animated floating book
+// Mixin that changes TileEntityEnchantmentTableRenderer.
 @Mixin(TileEntityEnchantmentTableRenderer.class)
 public class TileEntityEnchantmentTableRendererMixin {
+    // Runs at the start of render and can cancel it.
     @Inject(
             method = "render(Lnet/minecraft/tileentity/TileEntityEnchantmentTable;DDDFIF)V",
             at = @At("HEAD"),
             cancellable = true
     )
     private void impetus$render(TileEntityEnchantmentTable table, double x, double y, double z,
+                                // Partial ticks and destroy stage and alpha.
                                 float partialTicks, int destroyStage, float alpha, CallbackInfo ci) {
         if (!Extras.options().render.enchantingTableBooks) {
             ci.cancel();

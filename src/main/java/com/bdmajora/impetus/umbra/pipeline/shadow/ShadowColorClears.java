@@ -11,25 +11,25 @@ import java.util.Objects;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Clears the allocated shadow colour buffers that the pack wants cleared at the start of each pass
+// Clears of the shadow color textures that the pack marks for clearing.
 public final class ShadowColorClears {
-    // Byte size of one integer clear colour with four 32 bit components
+    // Bytes of an integer clear color.
     private static final int INTEGER_COLOR_BYTES = 16;
 
-    // Buffer index per clear in ascending order
+    // Shadow color indices that clear.
     private final int[] indices;
-    // Texture name per clear
+    // GL names of the cleared textures.
     private final int[] textures;
-    // Pixel format per clear
+    // Pixel format of each cleared texture.
     private final int[] pixelFormats;
-    // Integer clear colour per clear or null for a clear through the framebuffer
+    // Integer clear color of each texture or null.
     private final ByteBuffer[] integerColors;
-    // Float clear colours as four consecutive components per clear
+    // Float clear colors in groups of four.
     private final float[] colors;
-    // Single entry draw buffer mask reused by every framebuffer clear
+    // Scratch of a single draw buffer.
     private final int[] singleBuffer = new int[1];
 
-    // Creates the clear list for the allocated buffers and reads the integer clear support once
+    // Collects the clears of the allocated shadow color textures.
     public ShadowColorClears(ShadowColorSettings settings, int[] allocated, int[] textures, boolean integerClearSupported) {
         Objects.requireNonNull(settings, "settings");
         Objects.requireNonNull(allocated, "allocated");
@@ -56,7 +56,6 @@ public final class ShadowColorClears {
             this.textures[entry] = textures[index];
             this.pixelFormats[entry] = format.getPixelFormat();
             System.arraycopy(color, 0, this.colors, entry * 4, 4);
-            // A float clear colour is undefined for integer formats so those clear the texture directly
             if (format.isInteger() && integerClearSupported) {
                 ByteBuffer data = ByteBuffer.allocateDirect(INTEGER_COLOR_BYTES).order(ByteOrder.nativeOrder());
                 for (int component = 0; component < 4; component++) {
@@ -68,12 +67,12 @@ public final class ShadowColorClears {
         }
     }
 
-    // Returns how many buffers each pass clears
+    // Returns the number of cleared textures.
     public int size() {
         return this.indices.length;
     }
 
-    // Clears each listed buffer to its colour and leaves the clear colour and draw buffers changed
+    // Clears every texture with a texture clear or a framebuffer clear.
     public void run(UmbraFramebuffer framebuffer) {
         for (int entry = 0; entry < this.indices.length; entry++) {
             ByteBuffer data = this.integerColors[entry];

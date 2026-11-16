@@ -1,6 +1,7 @@
 package com.bdmajora.fulgor.api;
 
-// Implemented by RenderGlobal; vanilla drains its light-update collection from updateClouds only when the chunk builder is idle (MC-80966), so Fulgor drains it unconditionally from the client tick via this hook
+// Contract of the light update processor.
 public interface LightUpdateProcessor {
+    // Processes the light updates.
     void fulgor$processLightUpdates();
 }

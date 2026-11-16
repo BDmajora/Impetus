@@ -9,9 +9,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// The model file VanillaLoader asks the bakery for, answered from the parallel prefetch when it was read there
+// Mixin that changes ModelBakery.
 @Mixin(ModelBakery.class)
 public abstract class ModelBakeryPrefetchMixin {
+    // Runs at the start of loadModel and can cancel it.
     @Inject(method = "loadModel(Lnet/minecraft/util/ResourceLocation;)Lnet/minecraft/client/renderer/block/model/ModelBlock;",
             at = @At("HEAD"), cancellable = true)
     private void coarctatio$prefetchedModel(ResourceLocation location, CallbackInfoReturnable<ModelBlock> cir) {

@@ -12,33 +12,44 @@ import java.util.List;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// One entry of a numbered pass family: a fullscreen draw into its own framebuffer, the final pass (framebuffer == null), or compute-only (program == null) for a slot with only .csh files; its computes dispatch before its draw under the same flip state, like Umbra
+// One composite pass with its program and framebuffer and the computes that run before it.
 public final class FullscreenPass {
+    // Name of the program.
     final String name;
+    // Raster program or null for a compute only pass.
     final UmbraProgram program;
+    // Uniforms of the program or null.
     final ProgramUniforms uniforms;
+    // Framebuffer the pass draws into or null.
     final UmbraFramebuffer framebuffer;
-    // Per colour buffer, the texture to bind as colortexN when this pass runs (0 = target not in use)
+    // Textures sampled as each color target.
     final int[] colorSamplers;
-    // Logical render targets in shader output-slot order, used for per-target blend directives
+    // Draw buffers of the program.
     final int[] drawBuffers;
+    // Blend override of the program or null.
     final ProgramBlendState blendState;
+    // Flip state before the pass.
     final BitSet flipsBefore;
+    // Targets mipmapped before the pass.
     final BitSet mipmappedBuffers;
-    // Compute stages dispatched before this pass draws; never null, usually empty
+    // Compute programs that run before the raster program.
     final List<ComputePass> computes;
-    // How the program declared shadowtex0/1, applied to the shadow units after it binds
+    // Compare or raw kind of each shadow sampler.
     final ShadowSamplerKinds shadowSamplerKinds;
-    // A modern (#version 130+ compatibility) program positions the quad through ftransform()/gl_TextureMatrix[0], so only it needs the fixed-function matrices pushed; the 330-core rewrite has its own
+    // Core profile state of the program.
     final boolean modern;
-    // The size of the buffers this pass writes (size.buffer.colortexN); zero means the current render size
+    // Fixed viewport width or zero for the render width.
     private final int viewportWidth;
+    // Fixed viewport height or zero for the render height.
     private final int viewportHeight;
-    // scale.<program> (Umbra's ViewportData): shrinks the rasterised rectangle inside whatever size the pass has
+    // Scale of the viewport.
     private final float viewportScale;
+    // Horizontal offset of the viewport as a share of the width.
     private final float viewportOffsetX;
+    // Vertical offset of the viewport as a share of the height.
     private final float viewportOffsetY;
 
+    // Creates a pass.
     FullscreenPass(String name, UmbraProgram program, ProgramUniforms uniforms, UmbraFramebuffer framebuffer,
                    int[] colorSamplers, int[] drawBuffers, ProgramBlendState blendState, BitSet flipsBefore,
                    BitSet mipmappedBuffers, List<ComputePass> computes, ShadowSamplerKinds shadowSamplerKinds,
@@ -62,13 +73,13 @@ public final class FullscreenPass {
         this.viewportOffsetY = viewportScale == null ? 0.0f : viewportScale[2];
     }
 
-    // Umbra's ComputeOnlyPass: computes but no vertex/fragment pair; draws nothing, but still needs the flip state and colortex snapshot of its position in the chain
+    // Creates a pass that only runs compute programs.
     static FullscreenPass computeOnly(String name, int[] colorSamplers, BitSet flips, List<ComputePass> computes) {
         return new FullscreenPass(name, null, null, null, colorSamplers, DrawBuffers.DEFAULT.clone(), null, flips,
                 new BitSet(), computes, ShadowSamplerKinds.ALL_COMPARE, false, new int[2], null);
     }
 
-    // Sets the viewport for a pass into its own framebuffer: an explicitly sized buffer draws at its own resolution, then scale.<program> as Umbra does it (offsets are fractions of the pass size, the scaled extent truncated); a negative scale cannot become a negative glViewport, which GL rejects and so left the last pass's viewport in place
+    // Sets the scaled and offset viewport of the pass.
     void applyViewport(int renderWidth, int renderHeight) {
         int width = this.viewportWidth > 0 ? this.viewportWidth : renderWidth;
         int height = this.viewportHeight > 0 ? this.viewportHeight : renderHeight;
@@ -76,7 +87,7 @@ public final class FullscreenPass {
                 Math.max(0, (int) (width * this.viewportScale)), Math.max(0, (int) (height * this.viewportScale)));
     }
 
-    // Frees the computes this pass owns; the draw program belongs to the program cache
+    // Destroys the compute programs of the pass.
     void destroyComputes() {
         for (ComputePass compute : this.computes) {
             compute.destroy();

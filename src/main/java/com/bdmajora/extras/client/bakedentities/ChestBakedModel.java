@@ -14,25 +14,31 @@ import org.joml.Matrix4f;
 import java.util.Collections;
 import java.util.List;
 
-// Chests and trapped chests, single and double: a double is baked once as the large model in the lower half's frame and split at the shared plane, so each block carries only what lies inside it and section culling stays exact
+// Baked model of chests.
 public final class ChestBakedModel extends BakedEntityModel {
+    // Base model of a single chest.
     private final ModelChest single = new ModelChest();
+    // Base model of a double chest.
     private final ModelChest large = new ModelLargeChest();
 
-    // Which block of a pair this is, if any, and along which axis the pair runs
+    // Position of a chest in a pair.
     enum Role {
         SINGLE(null, false), PRIMARY_X(EnumFacing.Axis.X, false), SECONDARY_X(EnumFacing.Axis.X, true),
         PRIMARY_Z(EnumFacing.Axis.Z, false), SECONDARY_Z(EnumFacing.Axis.Z, true);
 
+        // Axis of the pair or null.
         final EnumFacing.Axis axis;
+        // Whether the chest is the second half.
         final boolean secondary;
 
+        // Creates a role.
         Role(EnumFacing.Axis axis, boolean secondary) {
             this.axis = axis;
             this.secondary = secondary;
         }
     }
 
+    // Returns the quads of the chest state.
     @Override
     protected List<BakedQuad> quadsFor(IBlockState state, BakedEntityContext context) {
         if (!(state.getBlock() instanceof BlockChest)) {
@@ -44,7 +50,6 @@ public final class ChestBakedModel extends BakedEntityModel {
         if (context != null) {
             IBlockAccess access = context.access;
             BlockPos pos = context.pos;
-            // Same adjacency rule as TileEntityChest.checkForAdjacentChests: a chest of the same type on a side makes a pair, and the lower coordinate is the one the renderer draws from
             if (isChest(access, pos.west(), block)) {
                 role = Role.SECONDARY_X;
             } else if (isChest(access, pos.east(), block)) {
@@ -64,10 +69,12 @@ public final class ChestBakedModel extends BakedEntityModel {
         return variant(key, k -> bake(facing, finalRole, texture));
     }
 
+    // Returns whether the position holds the chest block.
     private static boolean isChest(IBlockAccess access, BlockPos pos, BlockChest block) {
         return access.getBlockState(pos).getBlock() == block;
     }
 
+    // Returns the position of the other half.
     private static BlockPos partner(BlockPos pos, Role role) {
         return switch (role) {
             case PRIMARY_X -> pos.east();
@@ -77,7 +84,7 @@ public final class ChestBakedModel extends BakedEntityModel {
         };
     }
 
-    // Replays TileEntityChestRenderer's matrix for the primary of the pair, including its one-block nudges for the two facings whose rotation would otherwise put the model on the wrong side
+    // Returns the quads of one chest variant.
     private List<BakedQuad> bake(EnumFacing facing, Role role, BakedEntities.ChestTexture texture) {
         TextureAtlasSprite sprite = BakedEntities.sprite(texture.location);
         float nudgeX = facing == EnumFacing.NORTH && role.axis == EnumFacing.Axis.X ? 1.0F : 0.0F;
@@ -99,6 +106,7 @@ public final class ChestBakedModel extends BakedEntityModel {
         }
     }
 
+    // Returns the sprite of the particles.
     @Override
     protected TextureAtlasSprite particleSprite() {
         return BakedEntities.sprite(BakedEntities.ChestTexture.NORMAL.location);

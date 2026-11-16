@@ -8,18 +8,21 @@ import org.spongepowered.asm.mixin.Unique;
 
 import javax.annotation.Nullable;
 
-// The world currently counting this entity as an inventory entity (see CountedInventoryEntity); null for nearly every entity, and it keeps nothing alive not already reachable via Entity.world
+// Mixin that changes Entity.
 @Mixin(Entity.class)
 public abstract class EntityMixin implements CountedInventoryEntity {
+    // Field counted world added to the target.
     @Unique
     private World equilibrium$countedWorld;
 
+    // Returns the counted world.
     @Nullable
     @Override
     public World equilibrium$getCountedWorld() {
         return this.equilibrium$countedWorld;
     }
 
+    // Handles set counted world.
     @Override
     public void equilibrium$setCountedWorld(@Nullable World world) {
         this.equilibrium$countedWorld = world;

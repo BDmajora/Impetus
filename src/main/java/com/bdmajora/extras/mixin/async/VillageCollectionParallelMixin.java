@@ -7,9 +7,10 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.village.VillageCollection;
 import org.spongepowered.asm.mixin.Mixin;
 
-// Every villager reports its position here each tick; the list is bounded at 64 entries and drained by the main thread's village tick
+// Mixin that changes VillageCollection.
 @Mixin(VillageCollection.class)
 public abstract class VillageCollectionParallelMixin {
+    // Handles locked add position.
     @WrapMethod(method = "addToVillagerPositionList")
     private void impetus$lockedAddPosition(BlockPos pos, Operation<Void> original) {
         if (!ParallelProcessor.INSTALLED) {

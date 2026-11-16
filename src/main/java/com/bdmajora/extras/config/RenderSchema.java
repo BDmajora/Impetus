@@ -7,9 +7,9 @@ import com.bdmajora.extras.ExtrasConfig.OcclusionSettings;
 import com.bdmajora.extras.ExtrasConfig.RenderBudgetSettings;
 import com.bdmajora.extras.ExtrasConfig.RenderSettings;
 
-// Settings of world rendering and the render budget and the GPU booster and entity drawing
+// Schema of the render settings.
 final class RenderSchema {
-    // World render switches and fog and cloud tuning
+    // Schema of the render settings.
     static final SettingGroup<RenderSettings> RENDER = SettingGroup.builder("render", c -> c.render, RenderSettings::new)
             .bool("fog", "Render atmospheric fog", s -> s.fog, (s, v) -> s.fog = v)
             .bool("lightUpdates", "Process client-side light updates", s -> s.lightUpdates, (s, v) -> s.lightUpdates = v)
@@ -47,7 +47,7 @@ final class RenderSchema {
                     s -> s.fogShape, (s, v) -> s.fogShape = v)
             .build();
 
-    // Adaptive render budget switches and limits
+    // Schema of the render budget settings.
     static final SettingGroup<RenderBudgetSettings> RENDER_BUDGET = SettingGroup.builder("render_budget", c -> c.renderBudget, RenderBudgetSettings::new)
             .bool("enabled", "Adaptive render budgeting: skip distant idle mobs and thin cosmetic particles under frame pressure",
                     s -> s.enabled, (s, v) -> s.enabled = v)
@@ -74,7 +74,7 @@ final class RenderSchema {
                     s -> s.profile, (s, v) -> s.profile = v)
             .build();
 
-    // GPU booster switches
+    // Schema of the gpu booster settings.
     static final SettingGroup<GpuBoosterSettings> GPU_BOOSTER = SettingGroup.builder("gpu_booster", c -> c.gpuBooster, GpuBoosterSettings::new)
             .bool("enabled", "Master switch for the GPU Booster set: fast random, fast math, streamed vertex uploads and the vertex format cache",
                     s -> s.enabled, (s, v) -> s.enabled = v)
@@ -87,7 +87,7 @@ final class RenderSchema {
                     s -> s.vertexFormatCache, (s, v) -> s.vertexFormatCache = v)
             .build();
 
-    // Switches of block entities drawn as terrain
+    // Schema of the baked entities settings.
     static final SettingGroup<BakedEntitySettings> BAKED_ENTITIES = SettingGroup.builder("baked_block_entities", c -> c.bakedEntities, BakedEntitySettings::new)
             .bool("enabled", "Master switch: draw resting chests, ender chests, signs, beds and shulker boxes as terrain instead of through their block entity renderers",
                     s -> s.enabled, (s, v) -> s.enabled = v)
@@ -98,7 +98,7 @@ final class RenderSchema {
             .bool("shulkerBoxes", "Bake closed shulker boxes", s -> s.shulkerBoxes, (s, v) -> s.shulkerBoxes = v)
             .build();
 
-    // Occlusion culling switches and size limits
+    // Schema of the occlusion settings.
     static final SettingGroup<OcclusionSettings> OCCLUSION = SettingGroup.builder("occlusion_culling", c -> c.occlusion, OcclusionSettings::new)
             .bool("enabled", "Master switch: skip drawing entities and block entities a worker thread has ray-cast as hidden behind blocks",
                     s -> s.enabled, (s, v) -> s.enabled = v)
@@ -112,7 +112,7 @@ final class RenderSchema {
                     s -> s.raycastSlack, (s, v) -> s.raycastSlack = v)
             .build();
 
-    // Model box transform switch
+    // Schema of the entity models settings.
     static final SettingGroup<EntityModelSettings> ENTITY_MODELS = SettingGroup.builder("entity_models", c -> c.entityModels, EntityModelSettings::new)
             .bool("matrixTransforms", "Position each model box with one matrix multiply instead of up to six translate/rotate calls",
                     s -> s.matrixTransforms, (s, v) -> s.matrixTransforms = v)

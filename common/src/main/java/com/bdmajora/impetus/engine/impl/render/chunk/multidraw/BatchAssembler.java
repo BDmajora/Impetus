@@ -19,20 +19,16 @@ import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 import com.bdmajora.impetus.engine.impl.render.viewport.CameraTransform;
 import com.bdmajora.impetus.engine.impl.util.BitwiseMath;
 
-/**
- * Turns a region's visible section list into a {@link MultiDrawBatch}.
- */
+// Turns the visible sections of a region into draw batches.
 public final class BatchAssembler {
-    /**
-     * Magic sentinel returned by {@link BatchAssembler#uniformCullMask} when sections in the region have differing
-     * cull masks.
-     */
+    // Marker of a region whose sections have different cull masks.
     private static final int MASK_NOT_UNIFORM = -1;
 
+    // Prevents instantiation
     private BatchAssembler() {
     }
 
-    // Indirect batches keep their commands in a GPU buffer for as long as the batch stays cached; the option picks them when the device has GL 4.3 multi-draw indirect
+    // Creates an indirect batch when the option and the device allow it and a direct batch otherwise.
     private static MultiDrawBatch createBatch(int capacity) {
         if (ImpetusRuntimeOptions.multiDrawIndirect && RenderDevice.INSTANCE.getGpuDevice().supports(GpuDeviceFeature.MULTI_DRAW_INDIRECT)) {
             return new IndirectMultiDrawBatch(capacity);
@@ -40,18 +36,17 @@ public final class BatchAssembler {
         return new DirectMultiDrawBatch(capacity);
     }
 
-    /**
-     * Assembles every draw command for one region into {@code batch}, which is cleared first.
-     * The returned batch must be uploaded before being used.
-     *
-     * @param useBlockFaceCulling whether the caller wants face culling; already false for sorted passes
-     */
+    // Creates the draw batch of a region and returns null when nothing is drawn.
     public static MultiDrawBatch fillRegion(RenderRegion region,
                                   SectionRenderDataStorage storage,
                                   ChunkRenderList renderList,
                                   CameraTransform camera,
                                   TerrainRenderPass pass,
                                   boolean useBlockFaceCulling) {
+        java.util.Objects.requireNonNull(region, "region");
+        java.util.Objects.requireNonNull(storage, "storage");
+        java.util.Objects.requireNonNull(camera, "camera");
+        java.util.Objects.requireNonNull(pass, "pass");
         var sections = renderList.getSectionsWithGeometry();
         int sectionCount = renderList.getSectionsWithGeometryCount();
 
@@ -63,23 +58,20 @@ public final class BatchAssembler {
         var primitiveType = storage.getPrimitiveType();
 
         if (pass.isSorted()) {
-            // Sorted passes keep the FULL layout: real per-facing index offsets, so no merging is possible, and no
-            // culling is applied. In practice only UNASSIGNED is ever populated.
-            // We need one command per section count and facing.
+            // Uses one command per section and facing without culling
             var batch = createBatch(sectionCount * ModelQuadFacing.COUNT);
             fillSorted(batch, storage, sections, sectionCount, reverse, primitiveType);
             return batch;
         }
 
         if (!useBlockFaceCulling) {
-            // Every facing visible everywhere: one run (and command) covering the whole section.
+            // Uses one command per section
             var batch = createBatch(sectionCount);
             fillSingleRun(batch, storage, sections, sectionCount, reverse, primitiveType, 0, ModelQuadFacing.COUNT - 1);
             return batch;
         }
 
-        // Determine whether every section in the region will use the same cull mask. If so, the relevant runs
-        // can be precomputed at the region-level rather than once per section.
+        // Checks whether every section shares one cull mask
         int uniformMask = uniformCullMask(region, camera);
 
         if (uniformMask == MASK_NOT_UNIFORM) {
@@ -105,11 +97,14 @@ public final class BatchAssembler {
         return batch;
     }
 
+    // Source of the tessellation of a region and pass.
     @FunctionalInterface
     public interface TessellationProvider {
+        // Returns the tessellation.
         GlTessellation getTessellation(CommandList commandList, RenderRegion region, TerrainRenderPass pass);
     }
 
+    // Creates a batch with its tessellation and the camera cell where it stays valid and deletes the batch on a failure.
     public static CachedBatch createCachedBatch(RenderRegion region,
                                                 SectionRenderDataStorage storage,
                                                 ChunkRenderList renderList,
@@ -118,16 +113,25 @@ public final class BatchAssembler {
                                                 boolean useBlockFaceCulling,
                                                 CommandList commandList,
                                                 TessellationProvider tessellationProvider) {
+        java.util.Objects.requireNonNull(commandList, "commandList");
+        java.util.Objects.requireNonNull(tessellationProvider, "tessellationProvider");
         var batch = fillRegion(region, storage, renderList, camera, pass, useBlockFaceCulling);
 
         GlTessellation tessellation = null;
 
-        if (batch != null) {
-            batch.upload(commandList);
+        try {
+            if (batch != null) {
+                batch.upload(commandList);
 
-            if (!batch.isEmpty()) {
-                tessellation = tessellationProvider.getTessellation(commandList, region, pass);
+                if (!batch.isEmpty()) {
+                    tessellation = tessellationProvider.getTessellation(commandList, region, pass);
+                }
             }
+        } catch (Throwable failure) {
+            if (batch != null) {
+                batch.delete();
+            }
+            throw failure;
         }
 
         long intervalX, intervalY, intervalZ;
@@ -148,15 +152,7 @@ public final class BatchAssembler {
     }
 
 
-    /**
-     * {@return the cull mask that every section in the region shares, or {@link #MASK_NOT_UNIFORM} if they differ}
-     * <p>
-     * Testing all sections would cost more than it saves, but the two opposite corners are enough to decide it.
-     * Consider the POS_X bit: it is set when the camera lies past the section's lower X bound. Stepping a section along
-     * +X only raises that bound, so across the region the bit can flip from set to clear but never back. Every other bit
-     * behaves the same way on its own axis. A bit that agrees at the lowest and the highest section therefore agrees at
-     * every section in between, so if the two corner masks are equal, that mask is the mask of the whole region.
-     */
+    // Returns the cull mask shared by every section of the region or the marker when they differ.
     private static int uniformCullMask(RenderRegion region, CameraTransform camera) {
         int minX = region.getChunkX(), minY = region.getChunkY(), minZ = region.getChunkZ();
         int maxX = minX + RenderRegion.REGION_WIDTH - 1;
@@ -169,20 +165,10 @@ public final class BatchAssembler {
         return atMin == atMax ? atMin : MASK_NOT_UNIFORM;
     }
 
-    // A run plan is a cull mask decomposed into maximal groups of consecutive set bits, packed into one long.
-    //
-    //   bits  0..3   run 0 first facing      bits  4..7   run 0 last facing
-    //   bits  8..11  run 1 first facing      bits 12..15  run 1 last facing
-    //   ...                                  ...
-    //   bits 32..35  run count
-    //
-    // Run i occupies nibbles 2i and 2i+1. A 7-bit facing mask can decompose into at most 4 runs (0b1010101),
-    // which need two 4-bit nibbles each. At 8 bits per run, that brings us to precisely the 32 bits below the count.
+    // Bit position of the run count in a packed run plan.
     private static final int RUN_COUNT_SHIFT = 32;
 
-    /**
-     * Decomposes a packed cull mask of visible facings into a run plan.
-     */
+    // Packs a cull mask into runs of consecutive facings.
     private static long packRuns(int mask) {
         long runs = 0;
         int count = 0;
@@ -190,12 +176,11 @@ public final class BatchAssembler {
         while (mask != 0) {
             int first = Integer.numberOfTrailingZeros(mask);
 
-            // Length of the run of set bits starting at `first`. Shifting the run to start at bit 0 and complementing
-            // turns its end into the lowest set bit, so it can be located with another NTZ.
+            // Measures the run of set bits
             int length = Integer.numberOfTrailingZeros(~(mask >>> first));
             int last = (first + length) - 1;
 
-            // Identifies where to embed the run in the packed plan
+            // Stores the run
             int shift = count << 3;
             runs |= ((long) first << shift) | ((long) last << (shift + 4));
             count++;
@@ -206,55 +191,44 @@ public final class BatchAssembler {
         return runs | ((long) count << RUN_COUNT_SHIFT);
     }
 
-    /**
-     * {@return the number of runs packed in this plan}
-     */
+    // Returns the number of runs of a plan.
     private static int runCount(long runs) {
         return (int) (runs >>> RUN_COUNT_SHIFT) & 0xF;
     }
 
-    /**
-     * {@return the first facing of run `run` in the plan}
-     */
+    // Returns the first facing of a run.
     private static int runFirst(long runs, int run) {
         return (int) (runs >>> (run << 3)) & 0xF;
     }
 
-    /**
-     * {@return the last facing of run `run` in the plan}
-     */
+    // Returns the last facing of a run.
     private static int runLast(long runs, int run) {
         return (int) (runs >>> ((run << 3) + 4)) & 0xF;
     }
 
-    /**
-     * Finds how far the camera can move along one axis before block face culling would alter the assembled batch.
-     * <p>
-     * The result is a half-open interval, {@code [lower, upper)}. Every camera coordinate in that interval produces
-     * the same culling mask for every section in the region.
-     */
+    // Returns the half open interval of camera coordinates on one axis that keep the culling of every section of a region.
     public static long cameraValidityInterval(int camera, int minChunkCoord, int sizeInChunks) {
-        int maxChunkCoord = minChunkCoord + sizeInChunks - 1;
+        long maxChunkCoord = (long) minChunkCoord + sizeInChunks - 1;
 
         int min = Integer.MIN_VALUE;
         int max = Integer.MAX_VALUE;
 
-        // Check the POS-face boundary (16*k - 2) and NEG-face boundary (16*k + 19).
+        // Visits the boundaries of the positive and negative faces
         for (int offset = -2; offset <= 19; offset += 21) {
-            // Find the section whose boundary is immediately at or below the camera.
-            int lastBelow = Math.floorDiv(camera - offset, 16);
+            // Finds the section whose boundary is at or below the camera
+            long lastBelow = Math.floorDiv((long) camera - offset, 16L);
 
-            // Only that boundary and the next one can be closest to the camera.
+            // Checks that boundary and the next one
             for (int i = 0; i <= 1; i++) {
-                // Clamp to the region when the camera is completely before or after it.
-                int k = Math.max(minChunkCoord, Math.min(lastBelow + i, maxChunkCoord));
-                int threshold = (k << 4) + offset;
+                // Limits the section to the region
+                long k = Math.max(minChunkCoord, Math.min(lastBelow + i, maxChunkCoord));
+                long threshold = (k << 4) + offset;
 
-                // Keep the closest boundary on each side of the camera.
+                // Keeps the closest boundary on each side
                 if (threshold <= camera) {
-                    min = Math.max(min, threshold);
+                    min = (int) Math.max(min, threshold);
                 } else {
-                    max = Math.min(max, threshold);
+                    max = (int) Math.min(max, threshold);
                 }
             }
         }
@@ -262,14 +236,17 @@ public final class BatchAssembler {
         return (min & 0xFFFFFFFFL) | ((long) max << 32);
     }
 
+    // Returns the lower end of an interval.
     private static int intervalMin(long interval) {
         return (int) interval;
     }
 
+    // Returns the upper end of an interval.
     private static int intervalMax(long interval) {
         return (int) (interval >>> 32);
     }
 
+    // Ordinals of the facings.
     private static final int MODEL_UNASSIGNED = ModelQuadFacing.UNASSIGNED.ordinal();
     private static final int MODEL_POS_X      = ModelQuadFacing.POS_X.ordinal();
     private static final int MODEL_POS_Y      = ModelQuadFacing.POS_Y.ordinal();
@@ -279,41 +256,16 @@ public final class BatchAssembler {
     private static final int MODEL_NEG_Y      = ModelQuadFacing.NEG_Y.ordinal();
     private static final int MODEL_NEG_Z      = ModelQuadFacing.NEG_Z.ordinal();
 
-    /**
-     * When true, block face culling checks are inverted to debug if the feature works properly.
-     */
+    // Whether the face culling checks are inverted for debugging.
     private static final boolean DEBUG_BLOCK_FACE_CULLING = false;
 
+    // Returns the mask of the facings of a section that face the camera.
     public static int getVisibleFaces(int originX, int originY, int originZ, int chunkX, int chunkY, int chunkZ) {
-        // This is carefully written so that we can keep everything branch-less.
-        // TODO: Determine if this is worth keeping branchless now that we hoist it where possible
-        //
-        // Normally, this would be a ridiculous way to handle the problem. But the Hotspot VM's
-        // heuristic for generating SETcc/CMOV instructions is broken, and it will always create a
-        // branch even when a trivial ternary is encountered.
-        //
-        // For example, the following will never be transformed into a SETcc:
-        //   (a > b) ? 1 : 0
-        //
-        // So we have to instead rely on sign-bit extension and masking (which generates a ton
-        // of unnecessary instructions) to get this to be branch-less.
-        //
-        // To do this, we can transform the previous expression into the following.
-        //   (b - a) >> 31
-        //
-        // This works because if (a > b) then (b - a) will always create a negative number. We then shift the sign bit
-        // into the least significant bit's position (which also discards any bits following the sign bit) to get the
-        // output we are looking for.
-        //
-        // If you look at the output which LLVM produces for a series of ternaries, you will instantly become distraught,
-        // because it manages to a) correctly evaluate the cost of instructions, and b) go so far
-        // as to actually produce vector code.  (https://godbolt.org/z/GaaEx39T9)
-
         int boundsMinX = (chunkX << 4), boundsMaxX = boundsMinX + 16;
         int boundsMinY = (chunkY << 4), boundsMaxY = boundsMinY + 16;
         int boundsMinZ = (chunkZ << 4), boundsMaxZ = boundsMinZ + 16;
 
-        // the "unassigned" plane is always front-facing, since we can't check it
+        // Always shows the unassigned facing
         int planes = (1 << MODEL_UNASSIGNED);
 
         if (DEBUG_BLOCK_FACE_CULLING) {
@@ -337,11 +289,7 @@ public final class BatchAssembler {
         return planes;
     }
 
-    // ------------------------------------------------------------------------------------------------------------
-    // Specialized loops for each of the scenarios. They all use similar structure but with increasing complexity
-    // depending on how much changes per section/run
-    // ------------------------------------------------------------------------------------------------------------
-
+    // Draws every section as one command.
     private static void fillSingleRun(MultiDrawBatch batch,
                                       SectionRenderDataStorage storage,
                                       byte[] sections, int sectionCount, boolean reverse,
@@ -363,9 +311,7 @@ public final class BatchAssembler {
         }
     }
 
-    /**
-     * Uniform cull mask, but with more than one run to emit
-     */
+    // Draws every section as one command per run of a shared cull mask.
     private static void fillUniformRuns(MultiDrawBatch batch,
                                         SectionRenderDataStorage storage,
                                         byte[] sections, int sectionCount, boolean reverse,
@@ -394,10 +340,7 @@ public final class BatchAssembler {
         }
     }
 
-    /**
-     * The worst case scenario, where the cull mask is not uniform across the region, and the cull mask must be
-     * recomputed per section. Run planning is not used here.
-     */
+    // Draws every section with a cull mask calculated for the section.
     private static void fillPerSectionRuns(MultiDrawBatch batch,
                                            RenderRegion region,
                                            SectionRenderDataStorage storage,
@@ -428,8 +371,7 @@ public final class BatchAssembler {
             int sectionStart = batch.size();
             int previousEnd = 0;
 
-            // A do-while loop is chosen because UNASSIGNED is always marked as visible by getVisibleFaces, so the mask
-            // is never zero and there is always an attempt to emit at least one run.
+            // Emits at least one run because the mask is never zero
             do {
                 int firstFacing = Integer.numberOfTrailingZeros(mask);
                 int lastFacing = firstFacing + Integer.numberOfTrailingZeros(~(mask >>> firstFacing)) - 1;
@@ -439,15 +381,13 @@ public final class BatchAssembler {
 
                 previousEnd = writeUnsorted(batch, start, end, primitiveType, sectionStart, previousEnd);
 
-                // Runs are found in ascending order, so clear all bits below what we just consumed.
+                // Clears the consumed facings
                 mask &= -1 << (lastFacing + 1);
             } while (mask != 0);
         }
     }
 
-    /**
-     * Sorted pass: FULL layout, one command per populated facing, real index offsets, no culling.
-     */
+    // Draws every populated facing of every section of a sorted pass.
     private static void fillSorted(MultiDrawBatch batch,
                                    SectionRenderDataStorage storage,
                                    byte[] sections, int sectionCount, boolean reverse,
@@ -462,7 +402,7 @@ public final class BatchAssembler {
             long pMeshData = pBase + ((sections[cursor] & 0xFF) * stride);
 
             for (int facing = 0; facing < ModelQuadFacing.COUNT; facing++) {
-                // Unconditionally append; it skips empty commands automatically.
+                // Appends the command and relies on the batch to skip empty ones
                 batch.appendDrawCommand(
                         SectionRenderDataUnsafe.Strategy.FULL.getVertexOffset(pMeshData, facing),
                         SectionRenderDataUnsafe.Strategy.FULL.getElementCount(pMeshData, facing, primitiveType),
@@ -471,10 +411,7 @@ public final class BatchAssembler {
         }
     }
 
-    /**
-     * Appends a run to the batch, merging it into the previous command when it picks up exactly where the
-     * previous one left off (i.e. the two runs are contiguous and thus part of the same section's geometry).
-     */
+    // Appends a run or merges it into the previous command and returns the end of the run.
     private static int writeUnsorted(MultiDrawBatch batch, int baseVertex, int endVertex,
                                      ChunkPrimitiveType primitiveType, int sectionStart, int previousEnd) {
         int elementCount = SectionRenderDataUnsafe.elementsForVertices(endVertex - baseVertex, primitiveType);

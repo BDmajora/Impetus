@@ -10,13 +10,13 @@ import net.minecraft.world.World;
 import javax.annotation.Nullable;
 import java.util.List;
 
-// Entity half of a hopper's inventory search, skipped when the world holds no inventory entity; onEntityAdded/onEntityRemoved are the only entry and exit, so a zero count is exact, and otherwise vanilla's query runs unchanged
+// Finds inventory entities near a hopper.
 public final class HopperEntityLookup {
-    // Static-only
+    // Prevents instantiation
     private HopperEntityLookup() {
     }
 
-    // Null when nothing is there, matching what the vanilla branch returns for an empty candidate list
+    // Returns a random inventory entity inside the block or null.
     @Nullable
     public static IInventory findInventoryEntity(World world, double x, double y, double z) {
         if (world instanceof InventoryEntityTracker
@@ -24,7 +24,6 @@ public final class HopperEntityLookup {
             return null;
         }
 
-        // [VanillaCopy] TileEntityHopper#getInventoryAtPosition, entity branch.
         List<Entity> candidates = world.getEntitiesInAABBexcluding(null,
                 new AxisAlignedBB(x - 0.5D, y - 0.5D, z - 0.5D, x + 0.5D, y + 0.5D, z + 0.5D),
                 EntitySelectors.HAS_INVENTORY);

@@ -13,14 +13,16 @@ import net.minecraftforge.fml.common.asm.transformers.deobf.FMLDeobfuscatingRema
 import java.lang.reflect.Field;
 import java.util.Map;
 
-// Chibi's optimizeFMLRemapper: the runtime deobfuscator keeps a merged field and method map per class it has ever remapped, and a mod class extending a Minecraft class gets a full private copy of its parent's; the two caches are swapped for maps that share content-equal copies and skip classes with nothing to map. Reflection since the remapper's package is excluded from transformation
+// Shrinks the caches of the FML remapper.
 public final class RemapperCompactor {
+    // Whether the compaction ran.
     private static boolean done;
 
+    // Prevents instantiation
     private RemapperCompactor() {
     }
 
-    // Runs once at construction, after the SRG file is loaded and before most mod classes have been remapped; entries already made are rebuilt through the same filter
+    // Compacts the remapper caches once outside a development environment.
     public static void run() {
         if (done) {
             return;
@@ -30,7 +32,6 @@ public final class RemapperCompactor {
         if (!CoarctatioConfig.get().compactRemapperCaches) {
             return;
         }
-        // In a development workspace the remapper has no mappings at all, and the caches stay empty
         Object deobf = Launch.blackboard.get("fml.deobfuscatedEnvironment");
         if (deobf instanceof Boolean && (Boolean) deobf) {
             return;
@@ -44,7 +45,7 @@ public final class RemapperCompactor {
         }
     }
 
-    // Swaps one cache, returning how many inner maps the old one held
+    // Replaces the named cache with a compact map and returns its entry count.
     @SuppressWarnings("unchecked")
     private static long replace(String fieldName) throws ReflectiveOperationException {
         Field field = FMLDeobfuscatingRemapper.class.getDeclaredField(fieldName);
@@ -53,8 +54,8 @@ public final class RemapperCompactor {
         if (existing == null || existing instanceof CompactMap) {
             return 0;
         }
+        // Creates a map sized for the expected number of entries.
         CompactMap compact = new CompactMap(existing.size());
-        // Under the remapper's own monitor: the transformer remaps from the class loading thread while mods construct on the main one
         synchronized (FMLDeobfuscatingRemapper.INSTANCE) {
             compact.putAll(existing);
             field.set(FMLDeobfuscatingRemapper.INSTANCE, compact);
@@ -62,14 +63,16 @@ public final class RemapperCompactor {
         return existing.size();
     }
 
-    // The cache itself: a class whose merged map is empty is not stored (the remapper's negative cache then answers for it), and a non-empty map is replaced by the first content-equal one seen
+    // Map that shares equal inner maps and pooled class names.
     static final class CompactMap extends Object2ObjectOpenHashMap<String, Map<String, String>> {
+        // Inner maps already stored.
         private final ObjectOpenHashSet<Map<String, String>> canonical = new ObjectOpenHashSet<>();
 
         CompactMap(int expected) {
             super(expected);
         }
 
+        // Stores a shared copy of the inner map and drops the entry when it is null or empty.
         @Override
         public synchronized Map<String, String> put(String className, Map<String, String> inner) {
             if (inner == null || inner.isEmpty()) {
@@ -83,6 +86,7 @@ public final class RemapperCompactor {
             return super.put(StringPool.LOADER.deduplicate(className), shared);
         }
 
+        // Stores every entry through put.
         @Override
         public void putAll(Map<? extends String, ? extends Map<String, String>> map) {
             for (Map.Entry<? extends String, ? extends Map<String, String>> entry : map.entrySet()) {
@@ -90,16 +94,19 @@ public final class RemapperCompactor {
             }
         }
 
+        // Returns the inner map of the class name.
         @Override
         public synchronized Map<String, String> get(Object key) {
             return super.get(key);
         }
 
+        // Returns whether the class name is present.
         @Override
         public synchronized boolean containsKey(Object key) {
             return super.containsKey(key);
         }
 
+        // Removes the class name and returns its inner map.
         @Override
         public synchronized Map<String, String> remove(Object key) {
             return super.remove(key);

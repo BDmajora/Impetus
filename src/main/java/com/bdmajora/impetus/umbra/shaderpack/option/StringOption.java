@@ -5,11 +5,14 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
-// A configurable option whose value is a token (number, word, const value) with allowed values from the trailing `//[a b c]` comment, which lets the screen offer a cycle control; without one it is open text. From Iris with an unmodifiable List
+// Pack option with a list of allowed values.
 public class StringOption extends BaseOption {
+    // Default value.
     private final String defaultValue;
+    // Allowed values.
     private final List<String> allowedValues;
 
+    // Creates a string option from its type and name and comment and default value and allowed values.
     private StringOption(OptionType type, String name, String comment, String defaultValue, List<String> allowedValues) {
         super(type, name, comment);
 
@@ -17,7 +20,7 @@ public class StringOption extends BaseOption {
         this.allowedValues = allowedValues;
     }
 
-    // Parses the allowed values from the comment; null when there are none
+    // Creates an option or returns null when it has no allowed values.
     public static StringOption create(OptionType type, String name, String comment, String defaultValue) {
         if (comment == null) {
             return null;
@@ -57,12 +60,12 @@ public class StringOption extends BaseOption {
         return new StringOption(type, name, comment.trim(), defaultValue, Collections.unmodifiableList(builder));
     }
 
-    // Value in the source
+    // Returns the default value.
     public String getDefaultValue() {
         return defaultValue;
     }
 
-    // From the [a b c] comment
+    // Returns the allowed values.
     public List<String> getAllowedValues() {
         return allowedValues;
     }

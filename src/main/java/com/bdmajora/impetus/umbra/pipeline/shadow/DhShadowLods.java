@@ -10,13 +10,13 @@ import org.lwjgl.opengl.GL15;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Draws Distant Horizons terrain into the shadow map through the Distant Horizons renderer
+// Drawer of Distant Horizons LODs into the shadow map.
 public final class DhShadowLods {
     // Prevents instantiation
     private DhShadowLods() {
     }
 
-    // Returns whether the active pack draws Distant Horizons terrain into the shadow map
+    // Returns whether LOD shadows are drawn.
     public static boolean active() {
         UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
         if (pipeline == null) {
@@ -26,7 +26,7 @@ public final class DhShadowLods {
         return compat != null && compat.shouldRenderShadows() && DhCompat.hasRenderingEnabled();
     }
 
-    // Draws the opaque or the translucent terrain and restores the shadow pass state that the renderer changes
+    // Draws the solid or translucent LODs.
     public static void render(boolean translucent, ShadowTargets targets) {
         try {
             if (translucent) {

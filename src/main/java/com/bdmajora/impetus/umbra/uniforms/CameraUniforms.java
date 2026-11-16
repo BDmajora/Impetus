@@ -6,55 +6,62 @@ import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.joml.Vector3i;
 
-// Camera-position tracking matching Iris's precision contract: a BOUNDED float cameraPosition plus exact integer and fractional parts of the unshifted position, since a float loses sub-block precision tens of thousands of blocks out. The tracker follows the view entity's FEET (vanilla's render origin); every accessor adds CapturedRenderingState's camera offset so packs see the CAMERA point like Iris 1.17+, where the render origin is the camera itself (see CapturedRenderingState.cameraOffset)
+// Camera position uniforms with a shifted origin that keeps the values small.
 public final class CameraUniforms {
+    // Tracker of the camera positions.
     private static final CameraPositionTracker TRACKER = new CameraPositionTracker();
 
+    // Prevents instantiation
     private CameraUniforms() {
     }
 
-    // Registers the per-frame position capture
+    // Updates the tracker on every frame of a notifier.
     public static void attach(FrameUpdateNotifier notifier) {
         notifier.addListener(TRACKER::update);
     }
 
-    // Render-thread scratch, one per accessor so a supplier reading current AND previous sees both; every caller consumes the answer before the next frame
+    // Scratch of the current position.
     private static final Vector3d CURRENT = new Vector3d();
+    // Scratch of the previous position.
     private static final Vector3d PREVIOUS = new Vector3d();
+    // Scratch of the current unshifted position.
     private static final Vector3d CURRENT_UNSHIFTED = new Vector3d();
+    // Scratch of the previous unshifted position.
     private static final Vector3d PREVIOUS_UNSHIFTED = new Vector3d();
+    // Scratch of the integer part of a position.
     private static final Vector3i INT_PART = new Vector3i();
+    // Scratch of the fraction part of a position.
     private static final Vector3f FRACT_PART = new Vector3f();
 
-    // Shifted camera position, for cameraPosition
+    // Returns the shifted camera position of this frame with the camera offset.
     public static Vector3d getCurrentCameraPosition() {
         return CURRENT.set(TRACKER.getCurrentCameraPosition()).add(CapturedRenderingState.INSTANCE.getCameraOffset());
     }
 
-    // Last frame's shifted camera position; the previous offset pairs with it since both roll once per frame
+    // Returns the shifted camera position of the last frame with its offset.
     public static Vector3d getPreviousCameraPosition() {
         return PREVIOUS.set(TRACKER.getPreviousCameraPosition())
                 .add(CapturedRenderingState.INSTANCE.getPreviousCameraOffset());
     }
 
-    // Raw world camera position
+    // Returns the world camera position of this frame with the camera offset.
     public static Vector3d getCurrentCameraPositionUnshifted() {
         return CURRENT_UNSHIFTED.set(TRACKER.getCurrentCameraPositionUnshifted())
                 .add(CapturedRenderingState.INSTANCE.getCameraOffset());
     }
 
-    // Last frame's raw camera position
+    // Returns the world camera position of the last frame with its offset.
     public static Vector3d getPreviousCameraPositionUnshifted() {
         return PREVIOUS_UNSHIFTED.set(TRACKER.getPreviousCameraPositionUnshifted())
                 .add(CapturedRenderingState.INSTANCE.getPreviousCameraOffset());
     }
 
-    // The feet point itself, for the few pipeline-side consumers that pair a position with feet-relative geometry rather than with the pack-facing matrices
+    // Returns the world camera position of this frame without an offset.
     public static Vector3d getCurrentRenderOriginUnshifted() {
         return TRACKER.getCurrentCameraPositionUnshifted();
     }
 
-    // Integer part, for the split-precision uniform
+    // Returns the floor of each component of a position.
     public static Vector3i getCameraPositionInt(Vector3d originalPos) {
         return INT_PART.set(
                 (int) Math.floor(originalPos.x),
@@ -62,7 +69,7 @@ public final class CameraUniforms {
                 (int) Math.floor(originalPos.z));
     }
 
-    // Fractional part
+    // Returns the fraction of each component of a position.
     public static Vector3f getCameraPositionFract(Vector3d originalPos) {
         return FRACT_PART.set(
                 (float) (originalPos.x - Math.floor(originalPos.x)),
@@ -70,31 +77,38 @@ public final class CameraUniforms {
                 (float) (originalPos.z - Math.floor(originalPos.z)));
     }
 
-    // Interpolated FEET position of the render view entity, vanilla's render origin; the camera offset is added by the accessors above
-    private static Vector3d getUnshiftedCameraPosition() {
+    // Writes the interpolated position of the view entity or zero into a vector and returns it.
+    private static Vector3d readUnshiftedCameraPosition(Vector3d dest) {
         Entity camera = Minecraft.getMinecraft().getRenderViewEntity();
         if (camera == null) {
-            return new Vector3d();
+            return dest.zero();
         }
         float tickDelta = CapturedRenderingState.INSTANCE.getTickDelta();
-        return new Vector3d(
+        return dest.set(
                 camera.lastTickPosX + (camera.posX - camera.lastTickPosX) * tickDelta,
                 camera.lastTickPosY + (camera.posY - camera.lastTickPosY) * tickDelta,
                 camera.lastTickPosZ + (camera.posZ - camera.lastTickPosZ) * tickDelta);
     }
 
+    // Current and previous camera positions with the origin shift.
     private static final class CameraPositionTracker {
-        // Iris's camera shift policy: the shader-facing float stays inside this range so it never loses precision, and the shift applies to current AND previous position together so motion-vector deltas are unaffected
+        // Distance from the origin that triggers a shift.
         private static final double WALK_RANGE = 30000.0;
+        // Jump between frames that triggers a shift.
         private static final double TP_RANGE = 1000.0;
 
+        // Offset added to the world position.
         private final Vector3d shift = new Vector3d();
+        // Shifted position of the last frame.
         private Vector3d previousCameraPosition = new Vector3d();
+        // Shifted position of this frame.
         private Vector3d currentCameraPosition = new Vector3d();
+        // World position of the last frame.
         private Vector3d previousCameraPositionUnshifted = new Vector3d();
+        // World position of this frame.
         private Vector3d currentCameraPositionUnshifted = new Vector3d();
 
-        // How much to re-centre by when the camera crosses a shift boundary
+        // Returns the shift a component needs or zero.
         private static double getShift(double value, double prevValue) {
             if (Math.abs(value) > WALK_RANGE || Math.abs(value - prevValue) > TP_RANGE) {
                 return -(value - (value % WALK_RANGE));
@@ -102,16 +116,21 @@ public final class CameraUniforms {
             return 0.0;
         }
 
-        // Per-frame capture and shift maintenance
+        // Moves the current positions to the previous ones and reads the new camera position and updates the shift.
         private void update() {
+            // Swaps the vectors so the frame update allocates nothing
+            Vector3d recycled = this.previousCameraPosition;
             this.previousCameraPosition = this.currentCameraPosition;
+            this.currentCameraPosition = recycled;
+            Vector3d recycledUnshifted = this.previousCameraPositionUnshifted;
             this.previousCameraPositionUnshifted = this.currentCameraPositionUnshifted;
-            this.currentCameraPositionUnshifted = getUnshiftedCameraPosition();
-            this.currentCameraPosition = new Vector3d(this.currentCameraPositionUnshifted).add(this.shift);
+            this.currentCameraPositionUnshifted = recycledUnshifted;
+            readUnshiftedCameraPosition(this.currentCameraPositionUnshifted);
+            this.currentCameraPosition.set(this.currentCameraPositionUnshifted).add(this.shift);
             updateShift();
         }
 
-        // Re-centres far from origin, matching OptiFine, so float precision holds
+        // Shifts the horizontal axes that left the walk range or jumped.
         private void updateShift() {
             double dX = getShift(this.currentCameraPosition.x, this.previousCameraPosition.x);
             double dZ = getShift(this.currentCameraPosition.z, this.previousCameraPosition.z);
@@ -120,7 +139,7 @@ public final class CameraUniforms {
             }
         }
 
-        // Applies a shift to both current and previous
+        // Adds a shift to the offset and to both shifted positions.
         private void applyShift(double dX, double dZ) {
             this.shift.x += dX;
             this.currentCameraPosition.x += dX;
@@ -130,22 +149,22 @@ public final class CameraUniforms {
             this.previousCameraPosition.z += dZ;
         }
 
-        // Instance accessor
+        // Returns the shifted position of this frame.
         private Vector3d getCurrentCameraPosition() {
             return this.currentCameraPosition;
         }
 
-        // Instance accessor
+        // Returns the shifted position of the last frame.
         private Vector3d getPreviousCameraPosition() {
             return this.previousCameraPosition;
         }
 
-        // Instance accessor
+        // Returns the world position of this frame.
         private Vector3d getCurrentCameraPositionUnshifted() {
             return this.currentCameraPositionUnshifted;
         }
 
-        // Instance accessor
+        // Returns the world position of the last frame.
         private Vector3d getPreviousCameraPositionUnshifted() {
             return this.previousCameraPositionUnshifted;
         }

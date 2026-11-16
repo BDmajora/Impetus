@@ -11,9 +11,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.Random;
 
-// Finite fluids only ever touch their direct neighbours, so a one-block margin is enough (FoamFix's ghostbuster, fluids). Forge class, but updateTick overrides Block's and is func_180650_b in production, so the selector must remap
+// Mixin that changes BlockFluidFinite.
 @Mixin(BlockFluidFinite.class)
 public abstract class BlockFluidFiniteMixin {
+    // Runs at the start of updateTick and can cancel it.
     @Inject(method = "updateTick(Lnet/minecraft/world/World;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/block/state/IBlockState;Ljava/util/Random;)V", at = @At("HEAD"), cancellable = true)
     private void equilibrium$requireLoadedArea(World world, BlockPos pos, IBlockState state, Random rand, CallbackInfo ci) {
         if (!world.isAreaLoaded(pos, 1)) {

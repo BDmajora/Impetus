@@ -20,13 +20,15 @@ import org.spongepowered.asm.mixin.Shadow;
 
 import java.util.Map;
 
-// Vanilla fills a state-to-model table with every model at reload; here a state remembers its model once first drawn, and the table field becomes a view over the registry for mods that reach into it
+// Mixin that changes BlockModelShapes.
 @Mixin(BlockModelShapes.class)
 public abstract class BlockModelShapesDynamicMixin implements LocationAwareBlockModelShapes {
+    // Reference to the field model manager of the target.
     @Shadow
     @Final
     private ModelManager modelManager;
 
+    // Reference to the field block state mapper of the target.
     @Shadow
     @Final
     private BlockStateMapper blockStateMapper;
@@ -36,12 +38,10 @@ public abstract class BlockModelShapesDynamicMixin implements LocationAwareBlock
     @Mutable
     private Map<IBlockState, IBakedModel> bakedModelStore;
 
+    // Model locations of every state.
     private StateModelLocations coarctatio$locations;
 
-    /**
-     * @author embeddedt, Runemoro, bdmajora
-     * @reason Clear the per-state caches instead of baking every state's model
-     */
+    // Replaces the whole method reloadModels.
     @Overwrite
     public void reloadModels() {
         if (this.coarctatio$locations == null) {
@@ -54,16 +54,12 @@ public abstract class BlockModelShapesDynamicMixin implements LocationAwareBlock
                 }
             }
         }
-        // A mod calling this before any dynamic reload has nothing to view yet
         if (DynamicModels.baked() != null) {
             this.bakedModelStore = DynamicModels.baked().stateStore();
         }
     }
 
-    /**
-     * @author embeddedt, Runemoro, bdmajora
-     * @reason Answer from the state's own cache, baking through the model manager on a miss
-     */
+    // Replaces the whole method getModelForState.
     @Overwrite
     public IBakedModel getModelForState(IBlockState state) {
         if (!(state instanceof ModelHoldingState)) {
@@ -78,7 +74,7 @@ public abstract class BlockModelShapesDynamicMixin implements LocationAwareBlock
         return model;
     }
 
-    // Mods pass null states here; vanilla's table lookup answered the missing model for them
+    // Handles lookup.
     private IBakedModel coarctatio$lookup(IBlockState state) {
         if (state == null) {
             return this.modelManager.getMissingModel();
@@ -87,6 +83,7 @@ public abstract class BlockModelShapesDynamicMixin implements LocationAwareBlock
         return model != null ? model : this.modelManager.getMissingModel();
     }
 
+    // Handles location for state.
     @Override
     public ModelResourceLocation coarctatio$locationForState(IBlockState state) {
         if (this.coarctatio$locations == null) {

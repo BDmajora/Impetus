@@ -14,35 +14,41 @@ import java.util.Locale;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// A program's blend directives: program-level `blend.<program>` plus per-target `blend.<program>.<buffer>` overrides, needed because the albedo target wants normal blending while normal/material targets must be written unblended
+// Blend override of a program for all buffers and for single buffers.
 public final class ProgramBlendState {
+    // Logger of this class.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
+    // Flag set after the missing per buffer blend warning.
     private static boolean warnedNoBufferBlend;
 
+    // Flag set when a base mode is given.
     private final boolean baseSpecified;
+    // Blend mode of every buffer or null.
     private final BlendMode baseMode;
-    // Keyed by colortex index; primitive so the per-object apply() never boxes
+    // Blend modes by buffer.
     private final Int2ObjectMap<BlendMode> perTargetModes;
 
+    // Creates a program blend state from its base specified and base mode and per target modes.
     private ProgramBlendState(boolean baseSpecified, BlendMode baseMode, Int2ObjectMap<BlendMode> perTargetModes) {
         this.baseSpecified = baseSpecified;
         this.baseMode = baseMode;
         this.perTargetModes = perTargetModes;
     }
 
+    // State without overrides.
     private static final ProgramBlendState EMPTY = new ProgramBlendState(false, null, Int2ObjectMaps.emptyMap());
 
-    // No directives; leaves vanilla's blend state alone
+    // Returns the state without overrides.
     public static ProgramBlendState empty() {
         return EMPTY;
     }
 
-    // Reads blend.<program> and every blend.<program>.<buffer> override
+    // Creates from.
     public static ProgramBlendState from(ShaderProperties properties, String programName) {
         return from(properties, programName, null);
     }
 
-    // defaultBase is the fallback when the pack declared no blend.<program>, or null; Iris hangs those defaults off ProgramId and lets an explicit directive win, same precedence here
+    // Creates from.
     public static ProgramBlendState from(ShaderProperties properties, String programName, BlendMode defaultBase) {
         boolean baseSpecified = false;
         BlendMode baseMode = null;
@@ -73,12 +79,12 @@ public final class ProgramBlendState {
         return new ProgramBlendState(baseSpecified, baseMode, perTargetModes);
     }
 
-    // Whether anything needs applying
+    // Returns whether directives.
     public boolean hasDirectives() {
         return this.baseSpecified || !this.perTargetModes.isEmpty();
     }
 
-    // Applies blend state for a program with the given logical DRAWBUFFERS; GL's per-buffer blend index is an OUTPUT SLOT, not a colortex number, so directives are translated through the draw-buffer order
+    // Applies the overrides to the draw buffers.
     public void apply(int[] drawBuffers) {
         if (!hasDirectives()) {
             return;
@@ -114,7 +120,6 @@ public final class ProgramBlendState {
         for (int slot = 0; slot < drawBuffers.length; slot++) {
             int target = drawBuffers[slot];
 
-            // A per-target directive replaces the base for that slot; "off" is stored as null, so presence is what matters
             if (this.perTargetModes.containsKey(target)) {
                 applySlotMode(slot, this.perTargetModes.get(target));
             } else if (this.baseSpecified) {
@@ -123,7 +128,7 @@ public final class ProgramBlendState {
         }
     }
 
-    // glBlendFuncSeparatei for one attachment
+    // Applies the slot mode.
     private static void applySlotMode(int slot, BlendMode mode) {
         if (mode == null) {
             LWJGL.glDisablei(GL11.GL_BLEND, slot);
@@ -133,7 +138,7 @@ public final class ProgramBlendState {
         }
     }
 
-    // Two- or four-factor form; malformed values are logged and ignored
+    // Parses one blend mode and logs a bad one.
     private static BlendMode parseMode(String programName, String key, String value) {
         if ("off".equals(value.trim().toLowerCase(Locale.ROOT))) {
             return null;
@@ -147,7 +152,7 @@ public final class ProgramBlendState {
         }
     }
 
-    // colortexN or gcolor-style names to an index, -1 for anything else
+    // Returns the buffer index of a target name or minus one.
     private static int parseTarget(String name) {
         Integer index = UmbraRenderTargets.colorTargetIndex(name.toLowerCase(Locale.ROOT));
         return index != null ? index : -1;

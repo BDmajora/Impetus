@@ -140,85 +140,83 @@ import static grondag.bitraster.Constants.TILE_AXIS_MASK;
 import static grondag.bitraster.Constants.TILE_AXIS_SHIFT;
 import static grondag.bitraster.Constants.VERTEX_DATA_LENGTH;
 
-// Some elements are adapted from content found at
-// https://fgiesen.wordpress.com/2013/02/17/optimizing-sw-occlusion-culling-index/
-// by Fabian “ryg” Giesen. That content is in the public domain.
+// Software rasterizer that keeps one coverage bit per pixel.
 public abstract class AbstractRasterizer {
+	// Combined model view and projection matrix.
 	final Matrix4L mvpMatrix = new Matrix4L();
 
-	/** Float copy of the scene's view-projection matrix, without any per-region translation. */
+	// Elements of the matrix as floats.
 	float m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23, m30, m31, m32, m33;
 
-	/** Region origin relative to the camera, in blocks. Added to vertex positions before transformation. */
+	// Offset applied to vertices before projection.
 	float offsetX, offsetY, offsetZ;
+	// Data of the projected vertices.
 	final int[] vertexData = new int[VERTEX_DATA_LENGTH];
-	// CELERITAS: buffer geometry is per instance so each axis can follow render distance and field of view.
-	// Widths need not be powers of two: rows are addressed by multiplication, which measured no slower than
-	// the shifts and masks it replaced, and it lets an axis be sized to its requirement instead of double it.
+	// Size of the buffer in tiles.
 	int tileWidth, tileHeight, tileCount;
+	// Size of the buffer in pixels.
 	int pixelWidth, pixelHeight, lastPixelX, lastPixelY, halfPixelWidth, halfPixelHeight;
+	// Size of the buffer in precise units.
 	int preciseWidth, preciseHeight, halfPreciseWidth, halfPreciseHeight, preciseWidthClamp, preciseHeightClamp;
 
+	// Events of the current polygon.
 	int[] eventData;
+	// Coverage of every tile.
 	long[] tiles;
 
-	/** One bit per tile, set once the tile is fully covered, so scans can skip covered runs 64 tiles at a time. */
+	// Bits of the tiles that are full.
 	long[] fullBits;
 
+	// Fillers by event key.
 	final EventFiller[] EVENT_FILLERS = new EventFiller[0x1000];
 
-	/** Bounds of current triangle - pixel coordinates. */
+	// Pixel bounds of the current polygon.
 	protected int minPixelX, minPixelY, maxPixelX, maxPixelY;
 
-	/** Classifies each edge, holding results of {@link #edgePosition(int, int, int, int)}. */
+	// Position of each vertex against the edges.
 	protected int pos0, pos1, pos2, pos3;
 
+	// Index of the tile saved for later.
 	protected int saveTileIndex;
-	/** Control iteration in populateEvents_ methods. */
+	// Rows of the event data.
 	protected int eventY0, eventLimit;
 
-	/** Edge classification of the current quad, selecting its {@link #EVENT_FILLERS} entry. */
+	// Key of the event combination.
 	protected int eventKey;
 
-	/** Inclusive range of tile columns fully covered by the quad on every row of the current band; empty when first > last. */
+	// Inner rows of the band.
 	protected int bandInnerFirst, bandInnerLast;
 
-	/** Tile columns of the widest row of the current band; tiles outside them are untouched by the polygon. */
+	// Outer rows of the band.
 	protected int bandOuterFirst, bandOuterLast;
 
-	/** Per-edge intercept at y = 0 and step per pixel row, 20-bit fixed point. See {@link #prepareEvents}. */
+	// Whether the edges were prepared.
 	protected boolean edgesReady;
+	// Start x of each edge.
 	protected final long[] edgeX0 = new long[6];
+	// Step of each edge.
 	protected final long[] edgeStep = new long[6];
 
-	/** Vertex-data slot of each edge of the current polygon, in order. */
-
-	/**
-	 * True when the current polygon was set up by {@link #preparePolygonNoClip} and its events come from the
-	 * generic filler rather than the quad {@link #EVENT_FILLERS} table.
-	 */
+	// Whether the generic event path is used.
 	protected boolean genericEvents;
 
-	/** Vertices of the polygon set up by {@link #preparePolygonNoClip}, whose edges are classified on demand. */
+	// Vertices of the polygon.
 	private int[] polyVertices;
+	// Number of polygon vertices.
 	private int polyCount;
 
-	/** First and last pixel rows whose centres lie within the current polygon's vertical extent. */
+	// Rows of the polygon.
 	private int polyMinRow, polyMaxRow;
 
-	/**
-	 * True while testing: the polygon is grown by one pixel on every side so a visible strip thinner than the
-	 * pixel pitch, which pixel-centre sampling would miss, still reaches a sampled pixel. Drawing never dilates,
-	 * or abutting occluders would double-cover and hide the seams between them.
-	 */
+	// Whether the bounds of a test are widened.
 	protected boolean dilate;
-	/**
-	 * The current polygon's left and right edge chains in ascending row order: intercept at row zero and step
-	 * per row in 20-bit fixed point, and the last pixel row on which the edge is the one that bounds the span.
-	 */
+	// Number of edges of each chain.
 	private int leftCount, rightCount;
+	// Edge data of the left and right chains.
 	private final long[] leftX0 = new long[6], leftStep = new long[6], rightX0 = new long[6], rightStep = new long[6];
+	// End rows of the chains.
 	private final int[] leftEnd = new int[6], rightEnd = new int[6];
+	// Edges of a chain.
 	private final int[] chainEdges = new int[6];
 
 	{
@@ -650,7 +648,6 @@ public abstract class AbstractRasterizer {
 			populateFlatEvents(pos3, IDX_DX0);
 		};
 		EVENT_FILLERS[EVENT_0123_FFFF] = () -> {
-			// fill it
 			populateLeftEvents();
 			populateRightEvents();
 			populateFlatEvents(pos0, IDX_AX0);
@@ -660,25 +657,22 @@ public abstract class AbstractRasterizer {
 		};
 	}
 
+	// Creates a rasterizer with a size in tiles.
 	AbstractRasterizer(int tileWidth, int tileHeight) {
 		resize(tileWidth, tileHeight);
 	}
 
-	/** {@return the buffer width in tiles; pixels are eight times that} */
+	// Returns the width in tiles.
 	public final int tileWidth() {
 		return tileWidth;
 	}
 
-	/** {@return the buffer height in tiles; pixels are eight times that} */
+	// Returns the height in tiles.
 	public final int tileHeight() {
 		return tileHeight;
 	}
 
-	/**
-	 * Sets the buffer to {@code 8 * tileWidth} by {@code 8 * tileHeight} pixels and clears it if the size changed,
-	 * reallocating only past the largest size used so far. Safe between frames only: the current polygon and scene
-	 * contents are discarded.
-	 */
+	// Resizes the buffer in tiles.
 	public final void resize(int tileWidth, int tileHeight) {
 		if (tileWidth < MIN_SIZE_TILES || tileWidth > MAX_SIZE_TILES || tileHeight < MIN_SIZE_TILES || tileHeight > MAX_SIZE_TILES) {
 			throw new IllegalArgumentException("unsupported buffer size in tiles " + tileWidth + "x" + tileHeight);
@@ -701,33 +695,32 @@ public abstract class AbstractRasterizer {
 		preciseHeight = pixelHeight << PRECISION_BITS;
 		halfPreciseWidth = preciseWidth >> 1;
 		halfPreciseHeight = preciseHeight >> 1;
-		// clamp to this to ensure value + half pixel rounds down to last pixel
 		preciseWidthClamp = preciseWidth - PRECISE_PIXEL_CENTER;
 		preciseHeightClamp = preciseHeight - PRECISE_PIXEL_CENTER;
 
-		// CELERITAS: keep arrays that are large enough already, since the raster budget alternates between a small
-		// buffer and a large one; only the leading part is used, so it is cleared here as a new array would be
 		if (eventData == null || eventData.length < pixelHeight * 2) eventData = new int[pixelHeight * 2];
 		if (tiles == null || tiles.length < tileCount) tiles = new long[tileCount];
 		if (fullBits == null || fullBits.length < fullBitsWords()) fullBits = new long[fullBitsWords()];
 		clear();
 	}
 
+	// Returns the number of words of the full bits.
 	private int fullBitsWords() {
 		return (tileCount + 63) >> 6;
 	}
 
-	/** Marks every pixel clear. */
+	// Clears the coverage.
 	final void clear() {
 		Arrays.fill(tiles, 0, tileCount, 0L);
 		Arrays.fill(fullBits, 0, fullBitsWords(), 0L);
 	}
 
+	// Returns the tile index of a pixel.
 	final int tileIndexFromPixelXY(int x, int y) {
 		return (x >>> TILE_AXIS_SHIFT) + ((y >>> TILE_AXIS_SHIFT) * tileWidth);
 	}
 
-	/** Loads the scene matrix; regions are then positioned with {@link #setRegionOffset}. */
+	// Stores the matrix.
 	final void setMatrix(Matrix4L m) {
 		mvpMatrix.copyFrom(m);
 		m00 = m.a00f(); m01 = m.a01f(); m02 = m.a02f(); m03 = m.a03f();
@@ -736,7 +729,7 @@ public abstract class AbstractRasterizer {
 		m30 = m.a30f(); m31 = m.a31f(); m32 = m.a32f(); m33 = m.a33f();
 	}
 
-	/** @param x region origin relative to the camera, in {@link Constants#CAMERA_PRECISION_BITS} fixed point */
+	// Stores the offset of the region.
 	final void setRegionOffset(int x, int y, int z) {
 		final float scale = 1f / Constants.CAMERA_PRECISION_UNITY;
 		offsetX = x * scale;
@@ -744,6 +737,7 @@ public abstract class AbstractRasterizer {
 		offsetZ = z * scale;
 	}
 
+	// Copies the state of another rasterizer.
 	final void copyFrom(AbstractRasterizer source) {
 		resize(source.tileWidth, source.tileHeight);
 		setMatrix(source.mvpMatrix);
@@ -756,12 +750,16 @@ public abstract class AbstractRasterizer {
 		System.arraycopy(source.fullBits, 0, fullBits, 0, fullBitsWords());
 	}
 
-	// CELERITAS: work counters for RasterStatsReport. STATS is a constant so the JIT drops the increments when off.
+	// Whether work counters are kept.
 	public static final boolean STATS = Boolean.getBoolean("bitraster.stats");
+	// Work counters.
 	public static long STAT_D_NOOP, STAT_D_RANGE0, STAT_D_RANGE1, STAT_D_RANGE2, STAT_D_RANGE3;
+	// Test counters.
 	public static long STAT_T_EMPTY, STAT_T_INNER, STAT_T_COVER, STAT_T_HIDDEN, STAT_T_VERTEX, STAT_T_BOX_HIDDEN, STAT_D_INNER, STAT_D_COVER;
+	// Call counters.
 	public static long STAT_DRAW_QUADS, STAT_TEST_QUADS, STAT_TEST_TILES, STAT_EVENT_ROWS, STAT_DRAW_CALLS, STAT_TEST_CALLS;
 
+	// Draws a quad from four vertices.
 	final void drawQuad(int v0, int v1, int v2, int v3) {
 		if (STATS) STAT_DRAW_CALLS++;
 		dilate = false;
@@ -770,7 +768,6 @@ public abstract class AbstractRasterizer {
 		}
 		if (STATS) STAT_DRAW_QUADS++;
 
-		// Don't draw single points
 		if (minPixelX == maxPixelX && minPixelY == maxPixelY) {
 			return;
 		}
@@ -778,6 +775,7 @@ public abstract class AbstractRasterizer {
 		drawQuad();
 	}
 
+	// Returns whether part of a quad is not covered.
 	final boolean isQuadPartiallyClear(int v0, int v1, int v2, int v3) {
 		if (STATS) STAT_TEST_CALLS++;
 		dilate = true;
@@ -790,7 +788,7 @@ public abstract class AbstractRasterizer {
 		return isQuadPartiallyClear();
 	}
 
-	/** Grows the pixel bounds of a test polygon by one on every side, within the screen. */
+	// Widens the bounds by the test margin.
 	private void dilateBounds() {
 		minPixelX = Math.max(0, minPixelX - TEST_DILATION_PIXELS);
 		minPixelY = Math.max(0, minPixelY - TEST_DILATION_PIXELS);
@@ -798,6 +796,7 @@ public abstract class AbstractRasterizer {
 		maxPixelY = Math.min(lastPixelY, maxPixelY + TEST_DILATION_PIXELS);
 	}
 
+	// Returns whether part of the prepared quad is not covered.
 	final boolean isQuadPartiallyClear() {
 		final int minTileX = minPixelX >> TILE_AXIS_SHIFT;
 		final int maxTileX = maxPixelX >> TILE_AXIS_SHIFT;
@@ -813,7 +812,6 @@ public abstract class AbstractRasterizer {
 			int innerFirst = 0, innerLast = -1, outerFirst = 0, outerLast = -1;
 
 			for (int tileIndex = rowBase + minTileX; tileIndex <= last; tileIndex++) {
-				// jump to the next tile that is not already fully covered
 				final long open = ~fullBits[tileIndex >> 6] >>> (tileIndex & 63);
 
 				if (open == 0) {
@@ -830,8 +828,6 @@ public abstract class AbstractRasterizer {
 				if (STATS) STAT_TEST_TILES++;
 				final long word = tiles[tileIndex];
 
-				// nothing drawn here yet; the quad's bounds reach this tile, so treat it as clear without
-				// rasterizing. slightly optimistic at silhouette corners, which only ever under-culls.
 				if (word == 0L) {
 					if (STATS) STAT_T_EMPTY++;
 					return true;
@@ -846,13 +842,11 @@ public abstract class AbstractRasterizer {
 					outerLast = rowBase + bandOuterLast;
 				}
 
-				// interior tiles are fully covered by the quad, and this one is not fully drawn
 				if (tileIndex >= innerFirst && tileIndex <= innerLast) {
 					if (STATS) STAT_T_INNER++;
 					return true;
 				}
 
-				// outside the band's widest row the polygon covers nothing
 				if (tileIndex < outerFirst) {
 					tileIndex = outerFirst - 1;
 					continue;
@@ -871,6 +865,7 @@ public abstract class AbstractRasterizer {
 		return false;
 	}
 
+	// Returns whether part of a quad is covered.
 	final boolean isQuadPartiallyOccluded(int v0, int v1, int v2, int v3) {
 		dilate = false;
 		if (prepareBounds(v0, v1, v2, v3) == BOUNDS_OUTSIDE_OR_TOO_SMALL) {
@@ -887,6 +882,7 @@ public abstract class AbstractRasterizer {
 		}
 	}
 
+	// Returns whether part of the prepared quad is covered.
 	final boolean isQuadPartiallyOccluded() {
 		final int minTileX = minPixelX >> TILE_AXIS_SHIFT;
 		final int maxTileX = maxPixelX >> TILE_AXIS_SHIFT;
@@ -920,6 +916,7 @@ public abstract class AbstractRasterizer {
 		return false;
 	}
 
+	// Draws the prepared quad.
 	final void drawQuad() {
 		final int minTileX = minPixelX >> TILE_AXIS_SHIFT;
 		final int maxTileX = maxPixelX >> TILE_AXIS_SHIFT;
@@ -934,7 +931,6 @@ public abstract class AbstractRasterizer {
 			int innerFirst = 0, innerLast = -1, outerFirst = 0, outerLast = -1;
 
 			for (int tileIndex = rowBase + minTileX; tileIndex <= last; tileIndex++) {
-				// jump to the next tile that is not already fully covered
 				final int wordIndex = tileIndex >> 6;
 				final long open = ~fullBits[wordIndex] >>> (tileIndex & 63);
 
@@ -958,7 +954,6 @@ public abstract class AbstractRasterizer {
 					outerLast = Math.min(last, rowBase + bandOuterLast);
 				}
 
-				// outside the band's widest row the polygon covers nothing
 				if (tileIndex < outerFirst) {
 					tileIndex = outerFirst - 1;
 					continue;
@@ -967,8 +962,6 @@ public abstract class AbstractRasterizer {
 				}
 
 				if (tileIndex >= innerFirst && tileIndex <= innerLast) {
-					// every tile through the end of the interior run is covered on all rows; filling the ones
-					// already full again is harmless and cheaper than testing them one by one
 					if (STATS) STAT_D_INNER += innerLast - tileIndex + 1;
 					Arrays.fill(tiles, tileIndex, innerLast + 1, -1L);
 					markFull(fullBits, tileIndex, innerLast);
@@ -989,7 +982,7 @@ public abstract class AbstractRasterizer {
 		if (STATS && !edgesReady) STAT_D_NOOP++;
 	}
 
-	/** Sets the full bits of tiles {@code from} through {@code to} inclusive. */
+	// Marks a range of tiles as full.
 	private static void markFull(long[] fullBits, int from, int to) {
 		final int firstWord = from >> 6;
 		final int lastWord = to >> 6;
@@ -1009,12 +1002,10 @@ public abstract class AbstractRasterizer {
 		}
 	}
 
+	// Calculates the bounds of a quad.
 	abstract int prepareBounds(int v0, int v1, int v2, int v3);
 
-	/**
-	 * Marks the rows beyond a flat edge as empty. Under {@link #dilate} the first such row instead takes the
-	 * edge's span, since the sloped neighbours extrapolated past a flat edge would not cover it.
-	 */
+	// Fills the events of a flat edge.
 	private void populateFlatEvents(int position, int slot) {
 		final int[] eventData = this.eventData;
 		final int[] data = this.vertexData;
@@ -1067,7 +1058,7 @@ public abstract class AbstractRasterizer {
 		}
 	}
 
-	/** Gives one row the horizontal extent of a flat edge, if the row lies in the current band. */
+	// Fills a row between the edges.
 	private void spanRow(int row, int slot, int bandFirst, int bandLast) {
 		if (row < bandFirst || row > bandLast || row < 0 || row > lastPixelY) {
 			return;
@@ -1081,9 +1072,7 @@ public abstract class AbstractRasterizer {
 		eventData[(row << 1) + 1] = ((xa < xb ? xb : xa) + SCANT_PRECISE_PIXEL_CENTER) >> PRECISION_BITS;
 	}
 
-	/**
-	 * Puts left edge at screen boundary.
-	 */
+	// Fills the events of the left edges.
 	private void populateLeftEvents() {
 		final int[] eventData = this.eventData;
 		final int y0 = eventY0;
@@ -1094,6 +1083,7 @@ public abstract class AbstractRasterizer {
 		}
 	}
 
+	// Fills the events of one left edge.
 	private void populateLeftEvents(int a) {
 		final long[] edgeX0 = this.edgeX0;
 		final long[] edgeStep = this.edgeStep;
@@ -1110,24 +1100,23 @@ public abstract class AbstractRasterizer {
 		}
 	}
 
+	// Fills the events of the right edges.
 	private void populateRightEvents() {
 		final int[] eventData = this.eventData;
 		final int y0 = eventY0;
-		// difference from left: is high index in pairs
 		final int limit = eventLimit + 1;
 
-		// difference from left: is high index in pairs
 		for (int y = (y0 << 1) + 1; y <= limit; y += 2) {
 			eventData[y] = pixelWidth;
 		}
 	}
 
+	// Fills the events of one right edge.
 	private void populateRightEvents(int a) {
 		final long[] edgeX0 = this.edgeX0;
 		final long[] edgeStep = this.edgeStep;
 		final int[] eventData = this.eventData;
 		final int y0 = eventY0;
-		// right events are the high index in each pair
 		final int limit = eventLimit + 1;
 		final int ea = (a - IDX_AX0) >> 2;
 		final long aStep = edgeStep[ea];
@@ -1139,6 +1128,7 @@ public abstract class AbstractRasterizer {
 		}
 	}
 
+	// Fills the events of two left edges.
 	private void populateLeftEvents2(int a, int b) {
 		final long[] edgeX0 = this.edgeX0;
 		final long[] edgeStep = this.edgeStep;
@@ -1159,6 +1149,7 @@ public abstract class AbstractRasterizer {
 		}
 	}
 
+	// Fills the events of three left edges.
 	private void populateLeftEvents3(int a, int b, int c) {
 		final long[] edgeX0 = this.edgeX0;
 		final long[] edgeStep = this.edgeStep;
@@ -1184,6 +1175,7 @@ public abstract class AbstractRasterizer {
 		}
 	}
 
+	// Fills the events of four left edges.
 	private void populateLeftEvents4(int a, int b, int c, int d) {
 		final long[] edgeX0 = this.edgeX0;
 		final long[] edgeStep = this.edgeStep;
@@ -1214,12 +1206,12 @@ public abstract class AbstractRasterizer {
 		}
 	}
 
+	// Fills the events of two right edges.
 	private void populateRightEvents2(int a, int b) {
 		final long[] edgeX0 = this.edgeX0;
 		final long[] edgeStep = this.edgeStep;
 		final int[] eventData = this.eventData;
 		final int y0 = eventY0;
-		// right events are the high index in each pair
 		final int limit = eventLimit + 1;
 		final int ea = (a - IDX_AX0) >> 2;
 		final int eb = (b - IDX_AX0) >> 2;
@@ -1235,12 +1227,12 @@ public abstract class AbstractRasterizer {
 		}
 	}
 
+	// Fills the events of three right edges.
 	private void populateRightEvents3(int a, int b, int c) {
 		final long[] edgeX0 = this.edgeX0;
 		final long[] edgeStep = this.edgeStep;
 		final int[] eventData = this.eventData;
 		final int y0 = eventY0;
-		// right events are the high index in each pair
 		final int limit = eventLimit + 1;
 		final int ea = (a - IDX_AX0) >> 2;
 		final int eb = (b - IDX_AX0) >> 2;
@@ -1261,12 +1253,12 @@ public abstract class AbstractRasterizer {
 		}
 	}
 
+	// Fills the events of four right edges.
 	private void populateRightEvents4(int a, int b, int c, int d) {
 		final long[] edgeX0 = this.edgeX0;
 		final long[] edgeStep = this.edgeStep;
 		final int[] eventData = this.eventData;
 		final int y0 = eventY0;
-		// right events are the high index in each pair
 		final int limit = eventLimit + 1;
 		final int ea = (a - IDX_AX0) >> 2;
 		final int eb = (b - IDX_AX0) >> 2;
@@ -1292,24 +1284,19 @@ public abstract class AbstractRasterizer {
 		}
 	}
 
+	// Projects one vertex.
 	abstract void setupVertex(int baseIndex, int x, int y, int z);
 
-	/**
-	 * True if the pixel under the given region-relative point is known to be clear. False when the point is
-	 * covered, off screen, or too close to the camera to project, so callers must fall back to a full test.
-	 */
+	// Returns whether a point is not covered.
 	abstract boolean isPointClear(float x, float y, float z);
 
-	/**
-	 * Projects the listed corners of a region-relative box. Corner slots are laid out as V<x><y><z>, so the
-	 * slot index selects which extent each axis takes. Returns false if any listed corner needs near clipping.
-	 */
+	// Projects the corners of a box.
 	abstract boolean setupBoxVertices(int[] corners, int x0, int y0, int z0, int x1, int y1, int z1);
 
-	/** Scratch clip-space coordinates of a box's eight corners, indexed by corner in slot order. */
+	// Transformed corners of a box.
 	protected final float[] cornerX = new float[8], cornerY = new float[8], cornerZ = new float[8], cornerW = new float[8];
 
-	/** Fills the corner scratch arrays from one transformed corner and the three axis deltas. */
+	// Transforms the corners of a box.
 	final void transformBoxCorners(int x0, int y0, int z0, int x1, int y1, int z1) {
 		final float fx = x0 + offsetX;
 		final float fy = y0 + offsetY;
@@ -1320,7 +1307,6 @@ public abstract class AbstractRasterizer {
 
 		final float[] cx = cornerX, cy = cornerY, cz = cornerZ, cw = cornerW;
 
-		// V000
 		final float bx = m00 * fx + m01 * fy + m02 * fz + m03;
 		final float by = m10 * fx + m11 * fy + m12 * fz + m13;
 		final float bz = m20 * fx + m21 * fy + m22 * fz + m23;
@@ -1340,20 +1326,16 @@ public abstract class AbstractRasterizer {
 		cx[7] = cx[6] + dzx; cy[7] = cy[6] + dzy; cz[7] = cz[6] + dzz; cw[7] = cw[6] + dzw;
 	}
 
-	/**
-	 * {@link Math#round(float)} exactly, via the floor intrinsic: the double sum is exact, so the tie and the
-	 * 0.49999997f cases come out the same, without the library call the JIT may otherwise emit.
-	 */
+	// Returns a float rounded to an int.
 	static int roundToInt(float v) {
 		return (int) Math.floor(v + 0.5);
 	}
 
-	/** Shared tail of {@link #isPointClear}: normalized device position to pixel to tile bit. */
+	// Returns whether a projected point is not covered.
 	final boolean isProjectedPointClear(float tx, float ty, float iw) {
 		final float sx = tx * iw;
 		final float sy = ty * iw;
 
-		// NaN fails these too; the integer checks below catch the float rounding of (s + 1) up to exactly 2
 		if (!(sx >= -1f && sx < 1f && sy >= -1f && sy < 1f)) {
 			return false;
 		}
@@ -1370,27 +1352,21 @@ public abstract class AbstractRasterizer {
 		return (tiles[tileIndex] & (1L << (((py & TILE_PIXEL_INDEX_MASK) << TILE_AXIS_SHIFT) | (px & TILE_PIXEL_INDEX_MASK)))) == 0;
 	}
 
+	// Returns whether a vertex needs clipping at the near plane.
 	int needsNearClip(final int baseIndex) {
 		final int[] data = vertexData;
 		final float w = Float.intBitsToFloat(data[baseIndex + PV_W]);
 		final float z = Float.intBitsToFloat(data[baseIndex + PV_Z]);
 
-		// Only points behind the near plane need clipping. Past the far plane is fine: the buffer stores no
-		// depth, and such a point still projects to the right pixel, while clipNear would drag it toward the camera.
 		return (w > 0 && z > 0) ? 0 : 1;
 	}
 
-	/**
-	 * Coverage of the tile in the given column of the band last passed to {@link #populateBand}. Each row's
-	 * bits are the row's span clipped to the tile: shifts clamped to eight give an empty byte when the span
-	 * misses the tile on that side, so no row needs a branch and the eight rows overlap in the pipeline.
-	 */
+	// Returns the coverage of a tile column.
 	long computeTileCoverage(int tileX) {
 		final int[] data = eventData;
 		final int tileFirstX = tileX << TILE_AXIS_SHIFT;
 		final int tileLastX = tileFirstX + 7;
 
-		// events are in pairs, so the band's first row is at twice its pixel row
 		final int b = eventY0 << 1;
 
 		return rowCoverage(data[b], data[b + 1], tileFirstX, tileLastX)
@@ -1403,43 +1379,42 @@ public abstract class AbstractRasterizer {
 				| rowCoverage(data[b + 14], data[b + 15], tileFirstX, tileLastX) << 56;
 	}
 
-	/** Bits of one tile row covered by the span {@code left..right} inclusive, in the low byte. */
+	// Returns the bits of a row between two pixels.
 	private static long rowCoverage(int left, int right, int tileFirstX, int tileLastX) {
-		// pixels cut off the left and right of the tile, clamped to 0..8; 8 empties the byte
 		final int l = Math.min(Math.max(left - tileFirstX, 0), 8);
 		final int r = Math.min(Math.max(tileLastX - right, 0), 8);
 		return (0xFFL << l) & (0xFFL >>> r);
 	}
 
+	// Returns whether a pixel is not covered.
 	public boolean isPixelClear(int x, int y) {
 		return (tiles[tileIndexFromPixelXY(x, y)] & (1L << (Indexer.pixelIndex(x, y)))) == 0;
 	}
 
+	// Returns whether a pixel is covered.
 	public boolean isPixelSet(int x, int y) {
 		return (tiles[tileIndexFromPixelXY(x, y)] & (1L << (Indexer.pixelIndex(x, y)))) != 0;
 	}
 
+	// Marks a pixel as covered.
 	void drawPixel(int x, int y) {
 		tiles[tileIndexFromPixelXY(x, y)] |= (1L << (Indexer.pixelIndex(x, y)));
 	}
 
+	// Fills the events of one event combination.
 	@FunctionalInterface
 	interface EventFiller {
 		void apply();
 	}
 
-	/**
-	 * Classifies the input segment, returning one of the EDGE_ constants.
-	 */
+	// Returns the position class of an edge.
 	final int edgePosition(int x0In, int y0In, int x1In, int y1In) {
 		final int dy = y1In - y0In;
 		final int dx = x1In - x0In;
-		// signum of dx and dy, with shifted masks to derive the edge constant directly
-		// the edge constants are specifically formulated to allow this, inline, avoids any pointer chases
-		// sign of dy is inverted for historical reasons
 		return (1 << (((-dy >> 31) | (dy >>> 31)) + 1)) | (1 << (((dx >> 31) | (-dx >>> 31)) + 4));
 	}
 
+	// Calculates the bounds of a quad without clipping.
 	final int prepareBoundsNoClip(int v0, int v1, int v2, int v3) {
 		final int[] data = vertexData;
 		int ax0, ay0, ax1, ay1;
@@ -1584,17 +1559,14 @@ public abstract class AbstractRasterizer {
 		return BOUNDS_IN;
 	}
 
+	// Prepares the events of an event key.
 	void prepareEvents(int eventKey) {
 		this.eventKey = eventKey;
 		this.edgesReady = false;
 		this.genericEvents = false;
 	}
 
-	/**
-	 * Prepares an unclipped convex polygon of 3..6 projected vertices with consistent winding. Only the pixel
-	 * bounds are computed here; the edges are prepared by {@link #prepareEdgesGeneric} the first time a
-	 * band needs them, which a test that finds an untouched tile or a draw onto fully covered tiles never does.
-	 */
+	// Calculates the bounds of a polygon without clipping.
 	final int preparePolygonNoClip(int[] vertices, int count) {
 		final int[] data = vertexData;
 
@@ -1633,8 +1605,6 @@ public abstract class AbstractRasterizer {
 		maxPixelX = (maxX + SCANT_PRECISE_PIXEL_CENTER) >> PRECISION_BITS;
 		maxPixelY = (maxY + SCANT_PRECISE_PIXEL_CENTER) >> PRECISION_BITS;
 
-		// rows whose centres fall inside [minY, maxY]; the bounds above may overshoot by a row, which is fine
-		// for a scan range but not for deciding which rows the polygon actually spans
 		polyMinRow = minPixelY;
 		polyMaxRow = (maxY - PRECISE_PIXEL_CENTER) >> PRECISION_BITS;
 
@@ -1645,6 +1615,7 @@ public abstract class AbstractRasterizer {
 		return BOUNDS_IN;
 	}
 
+	// Draws a polygon.
 	final void drawPolygon(int[] vertices, int count) {
 		if (STATS) STAT_DRAW_CALLS++;
 		dilate = false;
@@ -1655,7 +1626,6 @@ public abstract class AbstractRasterizer {
 
 		if (STATS) STAT_DRAW_QUADS++;
 
-		// Don't draw single points
 		if (minPixelX == maxPixelX && minPixelY == maxPixelY) {
 			return;
 		}
@@ -1663,13 +1633,7 @@ public abstract class AbstractRasterizer {
 		drawQuad();
 	}
 
-	/**
-	 * True if the pixel under any on-screen vertex of a projected polygon is clear. A sufficient test only:
-	 * that pixel's centre is within half a pixel of the polygon, which the test dilation reaches except across
-	 * a nearly flat edge, so this can call a polygon visible that the full test would not, never the reverse.
-	 * Costs a few loads and no setup, and settles most sections whose centre is covered but that show at a
-	 * corner, as sections cut by the horizon do.
-	 */
+	// Returns whether the pixel of any vertex is not covered.
 	final boolean isAnyVertexPixelClear(int[] vertices, int count) {
 		final int[] data = vertexData;
 		final long[] tiles = this.tiles;
@@ -1696,6 +1660,7 @@ public abstract class AbstractRasterizer {
 		return false;
 	}
 
+	// Returns whether part of a polygon is not covered.
 	final boolean isPolygonPartiallyClear(int[] vertices, int count) {
 		if (STATS) STAT_TEST_CALLS++;
 		dilate = true;
@@ -1716,14 +1681,10 @@ public abstract class AbstractRasterizer {
 		return isQuadPartiallyClear();
 	}
 
-	/** Bounding rectangles of at most this many tiles are checked for full coverage before any edge setup. */
+	// Largest box in tiles that is checked directly.
 	private static final int COVERED_BOX_MAX_TILES = 16;
 
-	/**
-	 * True if every pixel of the current polygon's bounding rectangle is covered, which hides the polygon
-	 * without preparing its edges. Only tried on small rectangles: a far section's is a few tiles, and
-	 * those are the tests that end hidden, while a near section's would cost more than it could save.
-	 */
+	// Returns whether a small box is fully covered.
 	private boolean isSmallPixelBoxCovered() {
 		final int minTileX = minPixelX >> TILE_AXIS_SHIFT;
 		final int maxTileX = maxPixelX >> TILE_AXIS_SHIFT;
@@ -1738,7 +1699,6 @@ public abstract class AbstractRasterizer {
 		final int tileWidth = this.tileWidth;
 
 		for (int tileY = minTileY; tileY <= maxTileY; tileY++) {
-			// rows of this tile inside the rectangle, as a mask of whole tile rows
 			final int r0 = tileY == minTileY ? minPixelY & TILE_PIXEL_INDEX_MASK : 0;
 			final int r1 = tileY == maxTileY ? maxPixelY & TILE_PIXEL_INDEX_MASK : 7;
 			final long rowsMask = (-1L << (r0 << TILE_AXIS_SHIFT)) & (-1L >>> ((7 - r1) << TILE_AXIS_SHIFT));
@@ -1758,7 +1718,7 @@ public abstract class AbstractRasterizer {
 		return true;
 	}
 
-	/** Slope and intercept of each non-flat edge of the current quad, in 20-bit fixed point, so bands only step them. */
+	// Prepares the edges of the quad.
 	private void prepareEdges() {
 		final int eventKey = this.eventKey;
 		final int[] data = vertexData;
@@ -1781,29 +1741,19 @@ public abstract class AbstractRasterizer {
 				edgeStep[e] = 0;
 				edgeX0[e] = (long) ((x0 + SCANT_PRECISE_PIXEL_CENTER) >> PRECISION_BITS) << 20;
 			} else {
-				// exact for these magnitudes and far cheaper than a 64-bit integer divide
 				final long n = (long) ((double) (((long) dx) << 16) / (data[i + 3] - y0));
 				edgeStep[e] = n << PRECISION_BITS;
-				// left edges round up; right edges lose the tie
 				edgeX0[e] = ((long) x0 << 16) - n * y0 + (role == EVENT_0_LEFT ? 0x100000L : 0x7FFFFL);
 			}
 		}
 	}
 
-	/**
-	 * Builds the current polygon's left and right edge chains. With consistent winding an edge's vertical run
-	 * tells its side, and each side's edges run monotonically in y, so each chain is collected in polygon order
-	 * from wherever it starts and then read in ascending row order. An edge bounds the span only on the rows
-	 * whose centres lie within its vertical extent; a nearly flat edge that contains no row centre is dropped,
-	 * and the neighbouring edges are never evaluated outside their own extent. Deferred until a band needs
-	 * it, which a test that finds an untouched tile or a draw onto fully covered tiles never does.
-	 */
+	// Prepares the edges of any polygon.
 	private void prepareEdgesGeneric() {
 		final int[] data = vertexData;
 		final int[] vertices = this.polyVertices;
 		final int count = this.polyCount;
 
-		// which edges descend in polygon order; the rest ascend or are flat
 		int descending = 0;
 		int y0 = data[vertices[0] + PV_PY];
 
@@ -1813,7 +1763,6 @@ public abstract class AbstractRasterizer {
 			if (y1 < y0) {
 				descending |= 1 << e;
 			} else if (y1 == y0) {
-				// flat edges belong to neither chain; they only ever join two sloped edges
 				descending |= 1 << (e + 8);
 			}
 
@@ -1827,10 +1776,7 @@ public abstract class AbstractRasterizer {
 		rightCount = prepareChain(all & ~descending & ~flat, false, rightX0, rightStep, rightEnd);
 	}
 
-	/**
-	 * Emits the edges in {@code members}, which form one contiguous run around the polygon, in ascending row
-	 * order. Left chains descend in polygon order, so they are read backwards.
-	 */
+	// Prepares one chain of edges and returns its edge count.
 	private int prepareChain(int members, boolean left, long[] x0Out, long[] stepOut, int[] endOut) {
 		final int[] data = vertexData;
 		final int[] vertices = this.polyVertices;
@@ -1841,7 +1787,6 @@ public abstract class AbstractRasterizer {
 			return 0;
 		}
 
-		// the run starts at a member whose predecessor is not one; a run of every edge is impossible
 		final int predecessors = ((members << 1) | (members >>> (count - 1))) & ((1 << count) - 1);
 		int start = Integer.numberOfTrailingZeros(members & ~predecessors);
 		int chained = 0;
@@ -1864,7 +1809,6 @@ public abstract class AbstractRasterizer {
 			final int ex1 = data[v1 + PV_PX], ey1 = data[v1 + PV_PY];
 			final int yLow = Math.min(ey0, ey1), yHigh = Math.max(ey0, ey1);
 
-			// rows whose centres lie within the edge; a nearly flat edge may hold none
 			final int rowLow = (yLow + SCANT_PRECISE_PIXEL_CENTER) >> PRECISION_BITS;
 			final int rowHigh = (yHigh - PRECISE_PIXEL_CENTER) >> PRECISION_BITS;
 
@@ -1878,10 +1822,8 @@ public abstract class AbstractRasterizer {
 				stepOut[emitted] = 0;
 				x0Out[emitted] = (long) ((ex0 + SCANT_PRECISE_PIXEL_CENTER) >> PRECISION_BITS) << 20;
 			} else {
-				// exact for these magnitudes and far cheaper than a 64-bit integer divide
 				final long n = (long) ((double) (((long) dx) << 16) / (ey1 - ey0));
 				stepOut[emitted] = n << PRECISION_BITS;
-				// left edges round up; right edges lose the tie
 				x0Out[emitted] = ((long) ex0 << 16) - n * ey0 + (left ? 0x100000L : 0x7FFFFL);
 			}
 
@@ -1891,12 +1833,7 @@ public abstract class AbstractRasterizer {
 		return emitted;
 	}
 
-	/**
-	 * Band filler for polygons set up by {@link #preparePolygonNoClip}. Rows outside the polygon's vertical
-	 * extent are empty; every other row's span runs from the left chain's edge for that row to the right
-	 * chain's. Under {@link #dilate} the rows just past either end take the end row's span, grown like every
-	 * row by the dilation. The band's interior and extent tile ranges are gathered in the same pass.
-	 */
+	// Fills the events of a band for any polygon.
 	private void populateBandGeneric(int y0) {
 		final int[] eventData = this.eventData;
 		final long[] leftX0 = this.leftX0;
@@ -1915,7 +1852,6 @@ public abstract class AbstractRasterizer {
 		final int emptyLeft = pixelWidth;
 		final int screenRight = lastPixelX;
 
-		// the chains ascend, as do the rows, so the active edge only ever moves forward
 		final int firstActive = y0 < rowMin ? rowMin : (y0 > rowMax ? rowMax : y0);
 		int li = 0, ri = 0;
 		while (li < lastLeft && firstActive > leftEnd[li]) li++;
@@ -1967,7 +1903,7 @@ public abstract class AbstractRasterizer {
 		setBandRanges(maxLeft, minRight, minLeft, maxRight);
 	}
 
-	/** Derives the band's interior and extent tile columns from its narrowest and widest row spans. */
+	// Stores the ranges of a band.
 	private void setBandRanges(int maxLeft, int minRight, int minLeft, int maxRight) {
 		bandInnerFirst = (maxLeft + 7) >> TILE_AXIS_SHIFT;
 		bandInnerLast = (minRight - 7) >> TILE_AXIS_SHIFT;
@@ -1976,12 +1912,12 @@ public abstract class AbstractRasterizer {
 			bandOuterFirst = Math.max(minLeft, 0) >> TILE_AXIS_SHIFT;
 			bandOuterLast = Math.min(maxRight, lastPixelX) >> TILE_AXIS_SHIFT;
 		} else {
-			// an empty band: its extent starts past the row's last tile and ends before its first
 			bandOuterFirst = tileWidth;
 			bandOuterLast = -1;
 		}
 	}
 
+	// Fills the events of the band of a tile row.
 	final void populateBand(int tileY) {
 		final boolean generic = this.genericEvents;
 
@@ -2007,9 +1943,6 @@ public abstract class AbstractRasterizer {
 
 		EVENT_FILLERS[eventKey].apply();
 
-		// one pass over the rows dilates test polygons and finds the band's narrowest and widest spans: tiles
-		// between the widest left event and the narrowest right event are covered on every row, and tiles
-		// outside the narrowest left and widest right events on none
 		final int[] data = eventData;
 		final int grow = dilate ? TEST_DILATION_PIXELS : 0;
 		int maxLeft = Integer.MIN_VALUE, minRight = Integer.MAX_VALUE;

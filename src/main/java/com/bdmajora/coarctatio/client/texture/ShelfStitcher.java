@@ -8,17 +8,22 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-// A shelf packer for the texture atlas (the idea behind VintageFix's TurboStitcher): vanilla places each sprite by walking every slot placed so far and recursively splitting the first that fits, which on a pack with tens of thousands of sprites is seconds of stitching per reload. Sprites are laid in rows of decreasing height, and the gap above a short sprite in a tall row is refilled by later, smaller sprites, which for power-of-two sizes recovers nearly all the waste. The atlas width starts at the square root of the total area and doubles until the rows fit the height limit
+// Packs sprites into rows with a first fit search of the gaps.
 public final class ShelfStitcher {
+    // Prevents instantiation
     private ShelfStitcher() {
     }
 
-    // One placed sprite: its holder and the atlas cell it occupies
+    // Position of one sprite.
     public static final class Placement {
+        // Sprite that was placed.
         public final Stitcher.Holder holder;
+        // Left edge of the sprite.
         public final int x;
+        // Top edge of the sprite.
         public final int y;
 
+        // Creates a placement.
         Placement(Stitcher.Holder holder, int x, int y) {
             this.holder = holder;
             this.x = x;
@@ -26,11 +31,16 @@ public final class ShelfStitcher {
         }
     }
 
+    // Layout of every sprite and the atlas size it needs.
     public static final class Result {
+        // Width of the atlas.
         public final int width;
+        // Height of the atlas.
         public final int height;
+        // Position of every sprite.
         public final List<Placement> placements;
 
+        // Creates a result.
         Result(int width, int height, List<Placement> placements) {
             this.width = width;
             this.height = height;
@@ -38,8 +48,8 @@ public final class ShelfStitcher {
         }
     }
 
+    // Returns the smallest layout found and sorts the holders in place.
     public static Result stitch(Stitcher.Holder[] holders, int maxWidth, int maxHeight) {
-        // Vanilla's own ordering: tallest first, then widest, then by name, so the layout is deterministic across reloads
         Arrays.sort(holders);
         long area = 0;
         int widest = 0;
@@ -59,7 +69,6 @@ public final class ShelfStitcher {
                 if (best == null || (long) attempt.width * attempt.height < (long) best.width * best.height) {
                     best = attempt;
                 }
-                // A taller-than-wide atlas is worth one more try at double width, which usually halves the height and sometimes the area
                 if (attempt.height <= attempt.width || width >= maxWidth) {
                     return best;
                 }
@@ -69,7 +78,7 @@ public final class ShelfStitcher {
             if (width >= maxWidth) {
                 break;
             }
-            width = Math.min(width * 2, maxWidth);
+            width = (int) Math.min((long) width * 2, maxWidth);
         }
         if (best != null) {
             return best;
@@ -79,7 +88,7 @@ public final class ShelfStitcher {
                 culprit.getAtlasSprite().getIconName(), culprit.getAtlasSprite().getIconWidth(), culprit.getAtlasSprite().getIconHeight(), maxWidth, maxHeight));
     }
 
-    // First-fit decreasing height with gap refill; null when a sprite is wider than the atlas
+    // Returns the layout for one atlas width or null when a sprite is wider.
     private static Result pack(Stitcher.Holder[] holders, int width) {
         List<Shelf> shelves = new ArrayList<>();
         List<Gap> gaps = new ArrayList<>();
@@ -91,14 +100,13 @@ public final class ShelfStitcher {
             if (w > width) {
                 return null;
             }
-            // Gaps above earlier, shorter sprites first: filling them costs no new atlas area
             boolean placed = false;
             for (int i = 0, n = gaps.size(); i < n; i++) {
                 Gap gap = gaps.get(i);
                 if (w <= gap.width && h <= gap.height) {
                     placements.add(new Placement(holder, gap.x, gap.y));
-                    // What is left beside and above the sprite inside the gap
                     if (gap.width > w) {
+                        // Creates a gap.
                         gaps.add(new Gap(gap.x + w, gap.y, gap.width - w, h));
                     }
                     gap.y += h;
@@ -127,6 +135,7 @@ public final class ShelfStitcher {
             if (placed) {
                 continue;
             }
+            // Creates a row.
             Shelf shelf = new Shelf(totalHeight, h);
             placements.add(new Placement(holder, 0, shelf.y));
             shelf.x = w;
@@ -136,21 +145,30 @@ public final class ShelfStitcher {
         return new Result(width, MathHelper.smallestEncompassingPowerOfTwo(totalHeight), placements);
     }
 
+    // Row of sprites.
     private static final class Shelf {
+        // Top edge of the row.
         final int y;
+        // Height of the tallest sprite of the row.
         final int height;
+        // Left edge of the free space.
         int x;
 
+        // Top edge.
         Shelf(int y, int height) {
             this.y = y;
             this.height = height;
         }
     }
 
+    // Free rectangle below a short sprite.
     private static final class Gap {
+        // Left edge.
         final int x;
         int y;
+        // Width of the shelf.
         final int width;
+        // Height of the tallest sprite on the shelf.
         int height;
 
         Gap(int x, int y, int width, int height) {

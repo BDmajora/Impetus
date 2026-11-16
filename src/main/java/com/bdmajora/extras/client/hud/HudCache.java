@@ -17,16 +17,20 @@ import net.minecraft.client.shader.Framebuffer;
 import net.minecraftforge.client.GuiIngameForge;
 import org.lwjgl.opengl.GL11;
 
-// The HUD drawn into its own framebuffer at a capped rate and composited every frame (the idea behind Exordium, Gnetum and Patcher's HUD caching): the overlay is hundreds of small immediate-mode draws (hotbar, hearts, chat, F3, every mod's overlay) that cost the same at 300 fps as at 30, and nothing on it changes faster than a tick. The crosshair and vignette are drawn live since one blends against the scene and the other multiplies it; everything else comes from the cache, which is captured with premultiplied alpha so translucent HUD pixels composite the same way they would have drawn directly
+// Draws the overlay into a buffer that updates less often.
 public final class HudCache {
+    // Buffer that holds the overlay.
     private static Framebuffer framebuffer;
+    // Time of the last capture.
     private static long lastCaptureNanos;
-    // Read by the GlStateManager and Framebuffer hooks: true only while the overlay is being drawn into the cache
+    // Whether the overlay is being drawn into the buffer.
     public static boolean capturing;
 
+    // Prevents instantiation
     private HudCache() {
     }
 
+    // Draws the overlay from the buffer and refreshes it when due.
     public static void render(EntityRenderer renderer, GuiIngame gui, float partialTicks) {
         Minecraft mc = Minecraft.getMinecraft();
         ExtrasConfig.HudSettings settings = Extras.options().hud;
@@ -45,7 +49,6 @@ public final class HudCache {
             capture(gui, partialTicks, mc);
             renderer.setupOverlayRendering();
         }
-        // Live parts first so they sit under the cached layer exactly as they would in one pass: the vignette darkens the scene, the crosshair inverts it
         GlStateManager.enableDepth();
         GlStateManager.enableBlend();
         if (GuiIngameForge.renderVignette && Minecraft.isFancyGraphicsEnabled()) {
@@ -58,7 +61,7 @@ public final class HudCache {
         GlStateManager.enableDepth();
     }
 
-    // Draws the overlay into the cache with alpha accumulating as coverage; the framebuffer is cleared to transparent black so untouched pixels contribute nothing when composited
+    // Draws the overlay into the buffer.
     private static void capture(GuiIngame gui, float partialTicks, Minecraft mc) {
         if (framebuffer == null) {
             framebuffer = new Framebuffer(mc.displayWidth, mc.displayHeight, true);
@@ -85,7 +88,7 @@ public final class HudCache {
         GlStateManager.enableBlend();
     }
 
-    // Straight alpha in the cache was blended with (SRC_ALPHA, ONE_MINUS_SRC_ALPHA) into transparent black, so its colour is already multiplied by coverage: composite with (ONE, ONE_MINUS_SRC_ALPHA)
+    // Draws the buffer over the screen.
     private static void composite(ScaledResolution resolution) {
         GlStateManager.disableDepth();
         GlStateManager.depthMask(false);
@@ -110,14 +113,14 @@ public final class HudCache {
         GlStateManager.enableDepth();
     }
 
-    // For FramebufferCaptureMixin: a bind of the main framebuffer during capture lands here
+    // Binds the buffer when it exists.
     public static void bindCache(boolean viewport) {
         if (framebuffer != null) {
             framebuffer.bindFramebuffer(viewport);
         }
     }
 
-    // Frees the GPU memory when the feature is switched off or the player leaves the world
+    // Deletes the buffer.
     public static void release() {
         if (framebuffer != null) {
             framebuffer.deleteFramebuffer();

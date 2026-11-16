@@ -10,31 +10,33 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 
-// Reaches AtomicStryker's Dynamic Lights without compiling against it, for held and dropped sources; bound via invokeExact so it inlines, and a missing class just leaves it unavailable
+// Bridge to the light level of a dynamic lights mod.
 public final class DynamicLightsBridge {
+    // Class of the dynamic lights mod.
     private static final String CLASS_NAME = "atomicstryker.dynamiclights.client.DynamicLights";
 
+    // Get light value.
     private static final MethodHandle GET_LIGHT_VALUE = resolve();
 
+    // Prevents instantiation
     private DynamicLightsBridge() {
     }
 
-    // True only when the mod was found and the handle resolved
+    // Returns whether available.
     public static boolean isAvailable() {
         return GET_LIGHT_VALUE != null;
     }
 
-    // Asks the mod for luminance at a position; rethrows with the position since a bare handle trace is useless
+    // Returns the light of a block with dynamic light added.
     public static int getLightValue(IBlockState state, IBlockAccess world, BlockPos pos) {
         try {
             return (int) GET_LIGHT_VALUE.invokeExact(state.getBlock(), state, world, pos);
         } catch (Throwable t) {
-            // invokeExact forces this catch; rethrow with the position since a bare MethodHandle stack trace is useless
             throw new IllegalStateException("Dynamic Lights threw while reporting luminance at " + pos, t);
         }
     }
 
-    // Looks the target method up once at class init; any failure yields null rather than a crash
+    // Finds the light level method or returns null.
     private static MethodHandle resolve() {
         if (!Fulgor.hasDynamicLights()) {
             return null;

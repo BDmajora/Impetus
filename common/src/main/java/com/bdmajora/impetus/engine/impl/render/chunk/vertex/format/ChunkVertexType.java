@@ -6,22 +6,24 @@ import org.jetbrains.annotations.MustBeInvokedByOverriders;
 import java.util.HashMap;
 import java.util.Map;
 
+// Vertex layout of the terrain.
 public interface ChunkVertexType {
-    // the scale applied to vertex coordinates
+    // Returns the scale of the positions.
     float getPositionScale();
 
-    // the translation applied to vertex coordinates
+    // Returns the offset of the positions.
     float getPositionOffset();
 
-    // the scale applied to texture coordinates
+    // Returns the scale of the texture coordinates.
     float getTextureScale();
 
+    // Returns the GL format.
     GlVertexFormat getVertexFormat();
 
-    // a newly constructed vertex encoder for this vertex type
+    // Creates an encoder for the format.
     ChunkVertexEncoder createEncoder();
 
-    // Defaults to none
+    // Returns the shader definitions of the format.
     @MustBeInvokedByOverriders
     default Map<String, String> getDefines() {
         var defines = new HashMap<String, String>();

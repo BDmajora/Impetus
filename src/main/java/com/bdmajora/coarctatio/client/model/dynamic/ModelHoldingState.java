@@ -2,9 +2,11 @@ package com.bdmajora.coarctatio.client.model.dynamic;
 
 import net.minecraft.client.renderer.block.model.IBakedModel;
 
-// Implemented on BlockStateBase by mixin: one soft reference per state so the chunk builder's model lookup is a field read, not a registry probe
+// Block state that keeps its baked model.
 public interface ModelHoldingState {
+    // Returns the kept model or null.
     IBakedModel coarctatio$cachedModel();
 
+    // Keeps the model.
     void coarctatio$cacheModel(IBakedModel model);
 }

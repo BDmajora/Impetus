@@ -7,9 +7,10 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
-// Removes darkening near the world bottom; 1.12.2 folds void fog into updateFogColor via getVoidFogYFactor, so returning 1.0 treats the player as fully above the void
+// Mixin that changes EntityRenderer.
 @Mixin(EntityRenderer.class)
 public class EntityRendererVoidFogMixin {
+    // Replaces the call of WorldProvider.getVoidFogYFactor in updateFogColor.
     @Redirect(
             method = "updateFogColor(F)V",
             at = @At(value = "INVOKE", target = "Lnet/minecraft/world/WorldProvider;getVoidFogYFactor()D")

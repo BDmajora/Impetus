@@ -9,15 +9,18 @@ import net.minecraft.world.World;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 
-// Chunk-level lighting operations kept out of the mixins; vanilla treats a missing neighbour as a reason to skip work, Fulgor as a reason to record it, and the recording and replay live here
+// Hooks that schedule light checks at chunk edges.
 public final class LightingHooks {
+    // Light types.
     private static final EnumSkyBlock[] LIGHT_TYPES = EnumSkyBlock.values();
+    // Axis directions.
     private static final EnumFacing.AxisDirection[] AXIS_DIRECTIONS = EnumFacing.AxisDirection.values();
 
+    // Prevents instantiation
     private LightingHooks() {
     }
 
-    // Reschedules skylight for a column whose heightmap moved; where the column passes through a missing section the four adjacent columns are re-checked too (light travels sideways), and an unloaded neighbour's check is recorded against the boundary for replay
+    // Relights the sky light of one column range.
     public static void relightSkylightColumn(World world, Chunk chunk, int x, int z, int height1, int height2) {
         int yMin = Math.min(height1, height2);
         int yMax = Math.max(height1, height2) - 1;
@@ -29,8 +32,12 @@ public final class LightingHooks {
 
         scheduleRelightChecksForColumn(world, EnumSkyBlock.SKY, xBase, zBase, yMin, yMax);
 
-        // The block below an absent section can be lit through it, and it is outside the range above.
-        if (sections[yMin >> 4] == Chunk.NULL_BLOCK_STORAGE && yMin > 0) {
+        if (yMin < 0 || yMax > 255) {
+            yMin = Math.max(0, yMin);
+            yMax = Math.min(255, yMax);
+        }
+
+        if (yMin >> 4 < sections.length && sections[yMin >> 4] == Chunk.NULL_BLOCK_STORAGE && yMin > 0) {
             world.checkLightFor(EnumSkyBlock.SKY, new BlockPos(xBase, yMin - 1, zBase));
         }
 
@@ -50,7 +57,6 @@ public final class LightingHooks {
             int xOffset = dir.getXOffset();
             int zOffset = dir.getZOffset();
 
-            // The 16 bit is set for both -1 and 16, so one test catches either chunk edge; inside the chunk the neighbour column is trivially available
             boolean neighborColumnExists = (((x + xOffset) | (z + zOffset)) & 16) == 0
                     || world.getChunkProvider().getLoadedChunk(chunk.x + xOffset, chunk.z + zOffset) != null;
 
@@ -68,8 +74,11 @@ public final class LightingHooks {
         }
     }
 
+    // Schedules light checks over a box.
     public static void scheduleRelightChecksForArea(World world, EnumSkyBlock lightType,
+                                                    // Lowest corner of the box.
                                                     int xMin, int yMin, int zMin,
+                                                    // Highest corner of the box.
                                                     int xMax, int yMax, int zMax) {
         for (int x = xMin; x <= xMax; x++) {
             for (int z = zMin; z <= zMax; z++) {
@@ -78,7 +87,9 @@ public final class LightingHooks {
         }
     }
 
+    // Schedules light checks over a column range.
     private static void scheduleRelightChecksForColumn(World world, EnumSkyBlock lightType,
+                                                       // Column and height range.
                                                        int x, int z, int yMin, int yMax) {
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
 
@@ -87,7 +98,7 @@ public final class LightingHooks {
         }
     }
 
-    // Replays everything this chunk and its new neighbours owe each other, from Chunk.onLoad; each of the four neighbours in both directions plus the diagonal case, where this chunk was the missing corner
+    // Schedules the flagged checks at the edges of a chunk.
     public static void scheduleRelightChecksForChunkBoundaries(World world, Chunk chunk) {
         for (EnumFacing dir : EnumFacing.HORIZONTALS) {
             int xOffset = dir.getXOffset();
@@ -101,14 +112,12 @@ public final class LightingHooks {
 
             for (EnumSkyBlock lightType : LIGHT_TYPES) {
                 for (EnumFacing.AxisDirection axisDir : AXIS_DIRECTIONS) {
-                    // Fold each side's OUT flags into the other's IN flags, so only the IN side needs consulting from here
                     mergeFlags(lightType, chunk, neighbor, dir, axisDir);
                     mergeFlags(lightType, neighbor, chunk, dir.getOpposite(), axisDir);
 
                     scheduleRelightChecksForBoundary(world, chunk, neighbor, null, lightType, xOffset, zOffset, axisDir);
                     scheduleRelightChecksForBoundary(world, neighbor, chunk, null, lightType, -xOffset, -zOffset, axisDir);
 
-                    // The neighbour's boundary with its own diagonal, which this chunk is the corner of.
                     scheduleRelightChecksForBoundary(world, neighbor, null, chunk, lightType,
                             zOffset != 0 ? axisDir.getOffset() : 0,
                             xOffset != 0 ? axisDir.getOffset() : 0,
@@ -120,7 +129,9 @@ public final class LightingHooks {
         }
     }
 
+    // Moves flags of a boundary between two chunks.
     private static void mergeFlags(EnumSkyBlock lightType, Chunk inChunk, Chunk outChunk,
+                                   // Facing of the edge.
                                    EnumFacing dir, EnumFacing.AxisDirection axisDir) {
         ChunkLightingData outData = (ChunkLightingData) outChunk;
 
@@ -135,11 +146,11 @@ public final class LightingHooks {
         int outIndex = NeighborLightFlags.index(lightType, dir.getOpposite(), axisDir, BoundaryFacing.OUT);
 
         inData.fulgor$getNeighborLightChecks()[inIndex] |= outData.fulgor$getNeighborLightChecks()[outIndex];
-        // outChunk is not marked dirty: nothing was removed from it, only copied.
     }
 
-    // Replays one half of one edge if its flags say anything is outstanding and everything needed is present; neighbor is across the edge, diagonal across the corner, either looked up if null
+    // Schedules light checks along one chunk boundary.
     private static void scheduleRelightChecksForBoundary(World world, Chunk chunk, Chunk neighbor, Chunk diagonal,
+                                                         // Light type and chunk offset.
                                                          EnumSkyBlock lightType, int xOffset, int zOffset,
                                                          EnumFacing.AxisDirection axisDir) {
         ChunkLightingData data = (ChunkLightingData) chunk;
@@ -148,7 +159,6 @@ public final class LightingHooks {
             return;
         }
 
-        // Only IN is consulted; mergeFlags has already folded the neighbour's OUT into it.
         int flagIndex = NeighborLightFlags.index(lightType, xOffset, zOffset, axisDir, BoundaryFacing.IN);
         short flags = data.fulgor$getNeighborLightChecks()[flagIndex];
 
@@ -169,7 +179,6 @@ public final class LightingHooks {
                     chunk.x + (zOffset != 0 ? axisDir.getOffset() : 0),
                     chunk.z + (xOffset != 0 ? axisDir.getOffset() : 0));
 
-            // The corner columns read from the diagonal, so without it the replay would repeat the wrong answer that caused the flag; leave it flagged
             if (diagonal == null) {
                 return;
             }
@@ -182,24 +191,20 @@ public final class LightingHooks {
         ChunkLightingData neighborData = (ChunkLightingData) neighbor;
 
         if (neighborData.fulgor$getNeighborLightChecks() != null) {
-            // Cleared only now that the checks are certain to be performed.
             neighborData.fulgor$getNeighborLightChecks()[reverseIndex] = 0;
         }
 
         chunk.markDirty();
         neighbor.markDirty();
 
-        // Walk to the corner of the chunk this edge belongs to...
         int xMin = chunk.x << 4;
         int zMin = chunk.z << 4;
 
-        // ...to the far side if the direction is positive...
         if ((xOffset | zOffset) > 0) {
             xMin += 15 * xOffset;
             zMin += 15 * zOffset;
         }
 
-        // ...and along to the second half if this is that one. (n & 1 is abs(n) for n in -1, 0, 1.)
         if (axisDir == EnumFacing.AxisDirection.POSITIVE) {
             xMin += 8 * (zOffset & 1);
             zMin += 8 * (xOffset & 1);
@@ -216,7 +221,7 @@ public final class LightingHooks {
         }
     }
 
-    // Seeds a chunk's block light by scheduling every emitter (vanilla relights all 65536 columns immediately); does nothing unless the full 3x3 neighbourhood is loaded, since light seeded against missing neighbours is exactly the wrong light
+    // Initializes the chunk lighting.
     public static void initChunkLighting(World world, Chunk chunk) {
         int xBase = chunk.x << 4;
         int zBase = chunk.z << 4;
@@ -262,7 +267,7 @@ public final class LightingHooks {
         }
     }
 
-    // Replacement for Chunk.checkLight's per-column relight; a chunk is marked light-populated only once it and all eight neighbours are seeded, which stops border seams during worldgen
+    // Lights a chunk and its boundaries.
     public static void checkChunkLighting(World world, Chunk chunk) {
         if (!((ChunkLightingData) chunk).fulgor$isLightInitialized()) {
             initChunkLighting(world, chunk);
@@ -285,7 +290,7 @@ public final class LightingHooks {
         chunk.setLightPopulated(true);
     }
 
-    // Fills a new section's skylight from the heightmap, standing in for Chunk.generateSkylightMap's full column-stack rebuild; only the new section and the columns at or below it can need filling
+    // Initializes the skylight for section.
     public static void initSkylightForSection(World world, Chunk chunk, ExtendedBlockStorage section) {
         if (!world.provider.hasSkyLight()) {
             return;

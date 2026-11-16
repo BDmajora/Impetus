@@ -1,25 +1,32 @@
 package com.bdmajora.extras.client.budget;
 
-// One tick's resolved limits: the fraction of cosmetic particles allowed to spawn and the distances past which idle mobs, block entities and item frames may be skipped; NEUTRAL means "do nothing"
+// Limits that the render budget currently applies.
 public final class RenderBudget {
+    // Budget that limits nothing.
     public static final RenderBudget NEUTRAL = new RenderBudget(1.0, Integer.MAX_VALUE, Integer.MAX_VALUE, false, false, 16.7, 0.0, 0.0, false, BottleneckDetector.State.UNKNOWN);
 
+    // Share of cosmetic particles that stay.
     public final double particleScale;
+    // Distance beyond which entities may be skipped.
     public final int entityCullDistance;
-    // Already includes the shader-pack bonus; MAX_VALUE when block entities are not budgeted
+    // Distance beyond which block entities may be skipped.
     public final int blockEntityCullDistance;
+    // Whether distant item frames may be skipped.
     public final boolean itemFramesLimited;
-    // Whether skipping is live this tick; the distances are still reported when it is not so the overlay can show what would apply under pressure
+    // Whether limits apply right now.
     public final boolean armed;
+    // Target frame time.
     public final double targetFrameMillis;
+    // Smoothed frame time.
     public final double emaFrameMillis;
-    // (ema - target) / target clamped at zero, so 0.25 means frames run a quarter over target
+    // Share by which the frame time exceeds the target.
     public final double framePressure;
-    // Whether the adaptive step tightened this budget past the configured values
+    // Whether adaptive limits apply.
     public final boolean adaptiveActive;
-    // The detector's verdict the adaptive step followed
+    // State of the bottleneck detector.
     public final BottleneckDetector.State bottleneck;
 
+    // Creates a budget.
     RenderBudget(double particleScale, int entityCullDistance, int blockEntityCullDistance, boolean itemFramesLimited,
                  boolean armed, double targetFrameMillis, double emaFrameMillis, double framePressure, boolean adaptiveActive,
                  BottleneckDetector.State bottleneck) {
@@ -35,17 +42,17 @@ public final class RenderBudget {
         this.bottleneck = bottleneck;
     }
 
-    // Whether any cosmetic particle can be refused under this budget
+    // Returns whether particles are limited.
     public boolean limitsParticles() {
         return this.particleScale < 1.0;
     }
 
-    // Whether entity skipping is configured at all, armed or not
+    // Returns whether entities are limited.
     public boolean limitsEntities() {
         return this.entityCullDistance != Integer.MAX_VALUE;
     }
 
-    // Whether block entity skipping is configured at all, armed or not
+    // Returns whether block entities are limited.
     public boolean limitsBlockEntities() {
         return this.blockEntityCullDistance != Integer.MAX_VALUE;
     }

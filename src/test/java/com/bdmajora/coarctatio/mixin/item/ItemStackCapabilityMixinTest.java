@@ -120,4 +120,32 @@ class ItemStackCapabilityMixinTest {
         Mixins.call(stack, "coarctatio$writeUnrealisedCaps", already, Mixins.cir(already));
         assertTrue(already.getCompoundTag("ForgeCaps").isEmpty());
     }
+
+    @Test
+    void aCopyOfAnUnqueriedStackKeepsTheLoadedCapabilities() {
+        ItemStackCapabilityMixin stack = stack(null);
+        NBTTagCompound caps = new NBTTagCompound();
+        caps.setInteger("energy", 500);
+        Mixins.set(stack, "capNBT", caps);
+        ItemStackCapabilityMixin copy = stack(null);
+
+        Mixins.call(stack, "coarctatio$copyUnrealisedCaps", Mixins.cir((ItemStack) (Object) copy));
+        NBTTagCompound carried = Mixins.get(copy, "capNBT");
+        assertEquals(caps, carried);
+        assertNotSame(caps, carried);
+
+        // A built dispatcher serialises itself and an existing tag on the copy is kept
+        ItemStackCapabilityMixin ready = stack(null);
+        Mixins.set(ready, "capNBT", caps);
+        Mixins.set(ready, "coarctatio$capabilitiesReady", true);
+        ItemStackCapabilityMixin other = stack(null);
+        Mixins.call(ready, "coarctatio$copyUnrealisedCaps", Mixins.cir((ItemStack) (Object) other));
+        assertNull(Mixins.get(other, "capNBT"));
+        NBTTagCompound mine = new NBTTagCompound();
+        mine.setInteger("energy", 1);
+        ItemStackCapabilityMixin keeps = stack(null);
+        Mixins.set(keeps, "capNBT", mine);
+        Mixins.call(stack, "coarctatio$copyUnrealisedCaps", Mixins.cir((ItemStack) (Object) keeps));
+        assertSame(mine, Mixins.get(keeps, "capNBT"));
+    }
 }

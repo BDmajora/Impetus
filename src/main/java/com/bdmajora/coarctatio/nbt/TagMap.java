@@ -10,13 +10,17 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 
-// Backing map for NBTTagCompound: small compounds use a flat array and promote to a hash map past the threshold, keys optionally interned via StringPool; derived from LoliASM's LoliTagMap and FoamFix
+// Tag map that starts as an array map and grows into a hash map.
 public class TagMap implements Map<String, NBTBase> {
+    // Entry count at which the array map becomes a hash map.
     private final int promotionThreshold;
+    // Whether keys are replaced by pooled instances.
     private final boolean internKeys;
 
+    // Map that holds the entries.
     private Map<String, NBTBase> delegate;
 
+    // Creates an empty map using the configured threshold.
     public TagMap() {
         CoarctatioConfig config = CoarctatioConfig.get();
 
@@ -27,7 +31,7 @@ public class TagMap implements Map<String, NBTBase> {
                 : new Object2ObjectOpenHashMap<>();
     }
 
-    // Interns the key if enabled, then promotes to a hash map when the array form would get too slow
+    // Stores the tag and promotes the map to a hash map when the threshold is reached.
     @Override
     public NBTBase put(String key, NBTBase value) {
         if (this.internKeys) {
@@ -44,91 +48,89 @@ public class TagMap implements Map<String, NBTBase> {
         return this.delegate.put(key, value);
     }
 
-    // Routed through put one at a time so interning and promotion both apply
+    // Stores every entry.
     @Override
     public void putAll(Map<? extends String, ? extends NBTBase> m) {
-        // Routed through put() one at a time so interning and promotion both apply.
         for (Map.Entry<? extends String, ? extends NBTBase> entry : m.entrySet()) {
             put(entry.getKey(), entry.getValue());
         }
     }
 
-    // read() clears before filling, so this also demotes back to array storage to drop a large table
+    // Removes every entry.
     @Override
     public void clear() {
-        // NBTTagCompound.read() clears before filling, so reverting to array storage means a briefly large compound does not keep a large hash table alive
         this.delegate = this.promotionThreshold > 0
                 ? new Object2ObjectArrayMap<>()
                 : new Object2ObjectOpenHashMap<>();
     }
 
-    // Delegates to whichever backing map is current
+    // Returns the number of entries.
     @Override
     public int size() {
         return this.delegate.size();
     }
 
-    // Delegates
+    // Returns whether the map holds no entries.
     @Override
     public boolean isEmpty() {
         return this.delegate.isEmpty();
     }
 
-    // Delegates
+    // Returns whether the key is present.
     @Override
     public boolean containsKey(Object key) {
         return this.delegate.containsKey(key);
     }
 
-    // Delegates
+    // Returns whether the tag is present.
     @Override
     public boolean containsValue(Object value) {
         return this.delegate.containsValue(value);
     }
 
-    // Delegates; the hot path for every NBT read
+    // Returns the tag of the key or null when absent.
     @Override
     public NBTBase get(Object key) {
         return this.delegate.get(key);
     }
 
-    // Delegates; never demotes, since a shrinking compound is rare
+    // Removes the key and returns its tag.
     @Override
     public NBTBase remove(Object key) {
         return this.delegate.remove(key);
     }
 
-    // Delegates
+    // Returns the live key view.
     @Override
     public Set<String> keySet() {
         return this.delegate.keySet();
     }
 
-    // Delegates
+    // Returns the live tag view.
     @Override
     public Collection<NBTBase> values() {
         return this.delegate.values();
     }
 
-    // Delegates
+    // Returns the live entry view.
     @Override
     public Set<Entry<String, NBTBase>> entrySet() {
         return this.delegate.entrySet();
     }
 
-    // Map equality by contents, regardless of which backing form each side uses
+    // Returns whether the object is equal to the entries.
     @Override
     public boolean equals(Object obj) {
         return obj == this || this.delegate.equals(obj);
     }
 
-    // Delegates, consistent with equals
+    // Returns the hash of the entries.
     @Override
     public int hashCode() {
         return this.delegate.hashCode();
     }
 
-    // Delegates
+    // Returns the entries as text.
     @Override
     public String toString() {
         return this.delegate.toString();

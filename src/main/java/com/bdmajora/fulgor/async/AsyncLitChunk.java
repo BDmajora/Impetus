@@ -1,38 +1,49 @@
 package com.bdmajora.fulgor.async;
 
-// Implemented by Chunk under the async engine: the SWMR light storage, its emptiness maps and the readiness flags the engine drives
+// Contract of the async lit chunk.
 public interface AsyncLitChunk {
-    // True once initial propagation and edge reconciliation are done; light read before this is provisional
+    // Returns whether light ready.
     boolean fulgor$isLightReady();
 
+    // Stores the light ready.
     void fulgor$setLightReady(boolean ready);
 
-    // Internal gate: true after propagation so neighbours can reconcile against this chunk while the public flag stays false until its edges settle
+    // Returns whether light usable.
     boolean fulgor$isLightUsable();
 
+    // Stores the light usable.
     void fulgor$setLightUsable(boolean usable);
 
-    // Set when valid saved light was restored from NBT, so onLoad skips the initial pass
+    // Stores the saved light valid.
     void fulgor$setSavedLightValid(boolean valid);
 
+    // Returns whether saved light valid.
     boolean fulgor$hasSavedLightValid();
 
-    // Copies the visible SWMR data into the vanilla nibble arrays, for packets and code reading section storage directly
+    // Synchronizes the light to vanilla.
     void fulgor$syncLightToVanilla();
 
+    // Returns the block nibbles.
     SWMRNibbleArray[] fulgor$getBlockNibbles();
 
+    // Stores the block nibbles.
     void fulgor$setBlockNibbles(SWMRNibbleArray[] nibbles);
 
+    // Returns the block emptiness map.
     boolean[] fulgor$getBlockEmptinessMap();
 
+    // Stores the block emptiness map.
     void fulgor$setBlockEmptinessMap(boolean[] emptinessMap);
 
+    // Returns the sky nibbles.
     SWMRNibbleArray[] fulgor$getSkyNibbles();
 
+    // Stores the sky nibbles.
     void fulgor$setSkyNibbles(SWMRNibbleArray[] nibbles);
 
+    // Returns the sky emptiness map.
     boolean[] fulgor$getSkyEmptinessMap();
 
+    // Stores the sky emptiness map.
     void fulgor$setSkyEmptinessMap(boolean[] emptinessMap);
 }

@@ -4,17 +4,16 @@ import net.minecraft.util.EnumFacing;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
 
+// Mixin that changes EnumFacing.
 @Mixin(EnumFacing.class)
 public class MixinDirection {
-    // Overwrite: picks the facing directly from the biggest axis instead of looping over all directions and dotting each
+    // Replaces the whole method getFacingFromVector.
     @Overwrite
     public static EnumFacing getFacingFromVector(float x, float y, float z) {
-        // Vanilla quirk: return NORTH if all entries are zero
         if (x == 0 && y == 0 && z == 0) {
             return EnumFacing.NORTH;
         }
 
-        // First choice in ties: negative, positive; Y, Z, X
         float yM = Math.abs(y);
         float zM = Math.abs(z);
         float xM = Math.abs(x);

@@ -12,51 +12,63 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Replaces the per-glyph immediate-mode draws with the batch; geometry and UVs are vanilla's numbers, colour rides on each vertex since the batch is drawn after setColor has moved on. Flushed at the end of every renderStringAtPos, before the Tessellator-drawn strikethrough/underline, and whenever the glyph page changes
+// Mixin that changes FontRenderer.
 @Mixin(FontRenderer.class)
 public abstract class FontRendererBatchMixin {
+    // Reference to the field pos x of the target.
     @Shadow
     protected float posX;
 
+    // Reference to the field pos y of the target.
     @Shadow
     protected float posY;
 
+    // Reference to the field location font texture of the target.
     @Shadow
     @Final
     private ResourceLocation locationFontTexture;
 
+    // Reference to the field char width of the target.
     @Shadow
     @Final
     protected int[] charWidth;
 
+    // Reference to the field glyph width of the target.
     @Shadow
     @Final
     protected byte[] glyphWidth;
 
+    // Reference to the field strikethrough style of the target.
     @Shadow
     private boolean strikethroughStyle;
 
+    // Reference to the field underline style of the target.
     @Shadow
     private boolean underlineStyle;
 
+    // Reference to the method get unicode page location of the target.
     @Shadow
     protected abstract ResourceLocation getUnicodePageLocation(int page);
 
-    // Forge's hook, which the splash font overrides to bind its own texture and mods override for custom atlases
+    // Reference to the method bind texture of the target.
     @Shadow(remap = false)
     protected abstract void bindTexture(ResourceLocation location);
 
+    // Batch of queued glyphs.
     private final GlyphBatch impetus$batch = new GlyphBatch();
 
+    // Handles enabled.
     private static boolean impetus$enabled() {
         return Extras.options().text.batchGlyphs;
     }
 
+    // Runs at the start of setColor.
     @Inject(method = "setColor", at = @At("HEAD"))
     private void impetus$trackColor(float red, float green, float blue, float alpha, CallbackInfo ci) {
         this.impetus$batch.setColor(red, green, blue, alpha);
     }
 
+    // Runs at the start of renderDefaultChar and can cancel it.
     @Inject(method = "renderDefaultChar", at = @At("HEAD"), cancellable = true)
     private void impetus$batchDefaultChar(int ch, boolean italic, CallbackInfoReturnable<Float> cir) {
         if (!impetus$enabled()) {
@@ -73,6 +85,7 @@ public abstract class FontRendererBatchMixin {
         cir.setReturnValue((float) width);
     }
 
+    // Runs at the start of renderUnicodeChar and can cancel it.
     @Inject(method = "renderUnicodeChar", at = @At("HEAD"), cancellable = true)
     private void impetus$batchUnicodeChar(char ch, boolean italic, CallbackInfoReturnable<Float> cir) {
         if (!impetus$enabled()) {
@@ -98,7 +111,7 @@ public abstract class FontRendererBatchMixin {
         cir.setReturnValue((f1 - f) / 2.0F + 1.0F);
     }
 
-    // The decorations draw through the shared Tessellator with texturing off; the glyphs must be on screen before that state changes
+    // Runs at the start of doDraw.
     @Inject(method = "doDraw", at = @At("HEAD"))
     private void impetus$flushBeforeDecorations(float advance, CallbackInfo ci) {
         if ((this.strikethroughStyle || this.underlineStyle) && this.impetus$batch.isOpen()) {
@@ -106,6 +119,7 @@ public abstract class FontRendererBatchMixin {
         }
     }
 
+    // Runs before every return of renderStringAtPos.
     @Inject(method = "renderStringAtPos", at = @At("RETURN"))
     private void impetus$flushString(String text, boolean shadow, CallbackInfo ci) {
         this.impetus$batch.flush(this::bindTexture);

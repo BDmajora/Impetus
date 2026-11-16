@@ -38,70 +38,78 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
-// A fully parsed pack: every GLSL file by path, shaders.properties and the assembled ProgramSets; works over an in-memory map so it is Minecraft-free and testable. The base set reads the default dimension folder (world0/) ahead of the root, and another dimension with its own folder (world-1/, world1/, or whatever dimension.properties names) gets that folder alone, as Iris and OptiFine both do
+// Parsed shader pack with its options and properties and program sets and textures.
 public final class ShaderPack {
-    // The conventional location of shaders.properties, relative to shaders/
+    // Path of the pack properties file.
     public static final AbsolutePackPath PROPERTIES_PATH = AbsolutePackPath.fromAbsolutePath("/shaders.properties");
 
-    // Matches `!defined(IS_IRIS) && MC_VERSION < <n>` — the shape detectLegacyPrograms below looks for
+    // Pattern of a guard that targets a newer game version on non Iris loaders.
     private static final Pattern LEGACY_BRANCH_PATTERN = Pattern.compile(
             "!\\s*defined\\s*\\(?\\s*IS_IRIS\\s*\\)?\\s*&&\\s*MC_VERSION\\s*<\\s*(\\d+)");
-    // The Nvidium port's stage files, gbuffers_terrain.mesh and gbuffers_terrain.mesh.fsh beside gbuffers_terrain.vsh
+    // Extension of a mesh stage.
     public static final String MESH_EXTENSION = "mesh";
+    // Extension of the fragment stage paired with a mesh stage.
     public static final String MESH_FRAGMENT_EXTENSION = "mesh.fsh";
-    // The extensions that make a pack file a shader STAGE rather than an include; everything else only reaches the driver by being included
+    // Extensions of the classic program stages.
     private static final Set<String> STAGE_EXTENSIONS =
             new HashSet<>(Arrays.asList("vsh", "fsh", "gsh", "csh", "tcs", "tes"));
 
+    // Logger of the shader pipeline.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
 
+    // Text sources by pack path.
     private final Map<AbsolutePackPath, String> sources;
+    // Binary files by pack path.
     private final Map<AbsolutePackPath, byte[]> binaries;
+    // Options of the pack with their current values.
     private final ShaderPackOptions shaderPackOptions;
+    // Resolver of include lines over the edited sources.
     private final IncludeProcessor includeProcessor;
+    // Parsed pack properties.
     private final ShaderProperties properties;
+    // Program set of the base folder.
     private final ProgramSet baseProgramSet;
-    // Which folder each dimension's programs come from, and the exclusive sets built for the ones visited so far, since most sessions never leave the overworld
+    // Folders of each dimension.
     private final DimensionFolders dimensionFolders;
+    // Program sets of dimension folders by folder.
     private final Map<String, ProgramSet> dimensionProgramSets = new HashMap<>();
-    // The set the pipeline and terrain compile from: the base set until a dimension with its own folder is selected
+    // Program set of the current dimension.
     private volatile ProgramSet activeProgramSet;
-    // The features this pack DECLARED in iris.features.required/optional that this port honours; distinct from the IRIS_FEATURE_<NAME> defines, which advertise everything supported (Iris draws the same line between hasFeature and isUsable())
+    // Features the pack declares.
     private final Set<FeatureFlags> activeFeatures;
-    // The pack's block/item/entity.properties maps preprocessed with the ACTIVE option values, since a pack gates its ID map on its own options
+    // Block and item and entity id mappings of the pack.
     private final IdMap idMap;
 
-    // texture.noise resolved to data, or null meaning "keep the generated noisetex" (Umbra ShaderPack parity)
+    // Noise texture of the pack or null.
     private final CustomTextureData customNoiseTexture;
-    // texture.<stage>.<sampler> directives resolved to data, keyed by stage then sampler name, since the same sampler name means different things in different stages
+    // Custom textures by stage and sampler.
     private final Map<TextureStage, Map<String, CustomTextureData>> customTextureDataMap =
             new EnumMap<>(TextureStage.class);
-    // customTexture.<name> directives resolved to data keyed by sampler name; stage-independent, so no stage dimension
+    // Named custom images of the pack.
     private final Map<String, CustomTextureData> irisCustomTextureDataMap = new LinkedHashMap<>();
 
+    // Creates a pack with default option values.
     public ShaderPack(Map<AbsolutePackPath, String> sources) {
         this(sources, Collections.emptyMap());
     }
 
+    // Creates a pack with changed option values and no binaries.
     public ShaderPack(Map<AbsolutePackPath, String> sources, Map<String, String> changedConfigs) {
         this(sources, changedConfigs, Collections.emptyMap());
     }
 
-    // sources is the pack's raw text keyed relative to shaders/; changedConfigs is only the option values that DIFFER from defaults (from <pack>.txt and the menu), applied BEFORE include flattening since an option can gate an #include; binaries are .png textures and .mcmeta sidecars
+    // Parses the options and properties and programs and textures of a pack.
     public ShaderPack(Map<AbsolutePackPath, String> sources, Map<String, String> changedConfigs,
                       Map<AbsolutePackPath, byte[]> binaries) {
         this.sources = Collections.unmodifiableMap(new HashMap<>(sources));
         this.binaries = Collections.unmodifiableMap(new HashMap<>(binaries));
 
-        // Discover options across every source except the properties file and apply the changed values FIRST, since the properties/ID-map preprocessing needs the resolved values as macros and the include processor flattens the EDITED sources
         Map<AbsolutePackPath, String> optionSources = new HashMap<>(this.sources);
         optionSources.remove(PROPERTIES_PATH);
         this.shaderPackOptions = new ShaderPackOptions(optionSources, changedConfigs);
 
-        // The macro environment Umbra feeds its PropertiesPreprocessor: MC_* defines plus the pack's option values (enabled booleans as flags, string options as values)
         Map<String, String> propertiesDefines = getShaderDefines();
 
-        // Umbra parity: pipeline directives read from the PREPROCESSED contents so #if gates resolve, menu-layout directives from the original; option EDITS never touch this file
         String propertiesContents = this.sources.get(PROPERTIES_PATH);
         ShaderProperties parsedProperties = propertiesContents != null
                 ? ShaderProperties.parse(propertiesContents,
@@ -114,7 +122,6 @@ public final class ShaderPack {
                 ? parsedProperties
                 : parsedProperties.withProfileDisabledPrograms(profileDisabledPrograms);
 
-        // Feature-flag validation: a pack *requiring* a flag this port cannot honor fails loudly rather than rendering subtly wrong; optional flags stay undefined for the pack to detect
         this.activeFeatures = FeatureFlags.parseDeclared(
                 this.properties.getRaw().get("iris.features.required"),
                 this.properties.getRaw().get("iris.features.optional"));
@@ -139,7 +146,6 @@ public final class ShaderPack {
 
         this.idMap = new IdMap(this.sources, propertiesDefines);
 
-        // Resolve the custom-texture directives to data like Umbra's ShaderPack constructor; a texture that fails to read is logged and dropped, and the sampler sees the normal target or generated noise
         this.customNoiseTexture = this.properties.getNoiseTexturePath().map(this::readTextureOrNull).orElse(null);
 
         this.properties.getCustomTextures().forEach((stage, texturePropertiesMap) -> {
@@ -150,14 +156,12 @@ public final class ShaderPack {
 
         this.properties.getUmbraCustomTextures().forEach((name, path) -> putTextureIfReadable(this.irisCustomTextureDataMap, name, path));
 
-        // Must run before anything compiles: the terrain and composite compile paths ask ShaderMacros.forProgram which programs take their pre-Umbra branch
         ShaderMacros.setPackLegacyPrograms(detectLegacyPrograms(this.sources));
-        // Likewise for the raw-custom-texture renames: the gbuffers/terrain/shadow compile paths reach the transform from static contexts with no pack handle
         CustomTextureTransformer.setActivePatches(
                 this.properties.getCustomTexturePatches());
     }
 
-    // Finds programs containing `!defined(IS_IRIS) && MC_VERSION < <newer than ours>`, the pack's authored path for an OptiFine this old, and compiles them WITHOUT IS_IRIS; across nine packs this selects exactly Sildur's gbuffers_water and composite1 (its 1.12.2 water defers reflection to composite1 via gl_FragData[2], giving see-through water), while BSL's and Complementary's guards do not match. Scans RAW sources since an include says nothing about which program switches
+    // Returns the programs that guard code behind a newer game version.
     private static Set<String> detectLegacyPrograms(Map<AbsolutePackPath, String> rawSources) {
         Set<String> legacy = new HashSet<>();
         for (Map.Entry<AbsolutePackPath, String> entry : rawSources.entrySet()) {
@@ -173,7 +177,6 @@ public final class ShaderPack {
                 } catch (NumberFormatException e) {
                     continue;
                 }
-                // Only a cutoff ABOVE ours means the legacy branch is the one 1.12.2 would take.
                 if (version > ShaderMacros.MC_VERSION) {
                     legacy.add(name);
                     break;
@@ -183,7 +186,7 @@ public final class ShaderPack {
         return legacy;
     }
 
-    // Reduces a path to its program name (/world1/composite1.fsh -> composite1), null for anything that is not a shader stage
+    // Returns the program name of a stage file or null.
     private static String programName(AbsolutePackPath path) {
         String file = path.getPathString();
         int slash = file.lastIndexOf('/');
@@ -197,7 +200,7 @@ public final class ShaderPack {
         return file.substring(0, dot);
     }
 
-    // readTexture with the failure logged and swallowed, so one bad texture drops just its sampler
+    // Reads a custom texture and logs a failure as null.
     private CustomTextureData readTextureOrNull(String path) {
         try {
             return readTexture(path);
@@ -207,7 +210,7 @@ public final class ShaderPack {
         }
     }
 
-    // Stores the sampler's texture only when it could be read
+    // Adds a custom texture to a map when it reads.
     private void putTextureIfReadable(Map<String, CustomTextureData> into, String samplerName, String path) {
         CustomTextureData data = readTextureOrNull(path);
         if (data != null) {
@@ -215,7 +218,7 @@ public final class ShaderPack {
         }
     }
 
-    // Resolves one custom-texture directive value like Iris's readTexture: a namespace:path becomes a resource-location texture looked up at bind time (minecraft:dynamic/lightmap_1 marks the live lightmap), anything else a PNG in the pack with a tolerated leading / (Continuum 2.0.4) and blur/clamp from its .mcmeta
+    // Reads a raw or resource or pack file texture.
     private CustomTextureData readTexture(String path) throws IOException {
         String[] rawParts = path.trim().split("\\s+");
         if (rawParts.length > 1) {
@@ -223,6 +226,9 @@ public final class ShaderPack {
         }
         if (path.contains(":")) {
             String[] parts = path.split(":");
+            if (parts.length < 2) {
+                throw new IOException("Malformed resource location: " + path);
+            }
             if (parts.length > 2) {
                 LOGGER.warn("[Umbra] Resource location {} contained more than two parts?", path);
             }
@@ -233,7 +239,6 @@ public final class ShaderPack {
             return new CustomTextureData.ResourceData(parts[0], parts[1]);
         }
 
-        // NB: like Umbra, this does not guarantee the path stays inside the pack; the strip just fixes packs writing "/lib/..." instead of "lib/..."
         if (path.startsWith("/")) {
             path = path.substring(1);
         }
@@ -264,7 +269,7 @@ public final class ShaderPack {
         return new CustomTextureData.PngData(new TextureFilteringData(blur, clamp), content);
     }
 
-    // texture.<stage>.<name> = <path> <type> <format> <w> <h> [<d>] <pixelFormat> <pixelType>
+    // Reads a raw two or three dimensional texture definition.
     private CustomTextureData readRawTexture(String[] parts) throws IOException {
         String textureType = parts[1].toUpperCase(Locale.ROOT);
         if (textureType.equals("TEXTURE_3D")) {
@@ -289,7 +294,7 @@ public final class ShaderPack {
         throw new IOException("Unsupported raw texture target: " + parts[1]);
     }
 
-    // A binary resource from the pack, by pack-relative path
+    // Returns the bytes of a pack file and fails when it is missing.
     private byte[] readBinary(String path) throws IOException {
         if (path.startsWith("/")) {
             path = path.substring(1);
@@ -302,7 +307,7 @@ public final class ShaderPack {
         return content;
     }
 
-    // Fails with the field named, since a raw texture directive has many
+    // Parses a positive dimension of a raw texture.
     private static int parsePositiveInt(String value, String field) throws IOException {
         try {
             int parsed = Integer.parseInt(value);
@@ -315,7 +320,7 @@ public final class ShaderPack {
         }
     }
 
-    // The macro set for preprocessing the pack's *.properties files: the GL-free MC_* macros PLUS the pack's option values, matching Iris's PropertiesPreprocessor; option values deliberately do not go in getEnvironmentDefines
+    // Returns the standard macros with the pack option values.
     public Map<String, String> getShaderDefines() {
         Map<String, String> defines = ShaderMacros.standard();
         this.shaderPackOptions.getOptionSet().getBooleanOptions().forEach((name, option) -> {
@@ -328,18 +333,16 @@ public final class ShaderPack {
         return defines;
     }
 
-    // The macro set for GLSL injection, environment macros ONLY; option values are already applied in place to the sources (OptiFine/Iris semantics), so injecting them redefines the pack's #define lines ("macro redefined") and force-defines names like SuperDuperVanilla's VERTEX/FRAGMENT stage guards
+    // Returns the standard macros with the lighting and color space switches.
     public Map<String, String> getEnvironmentDefines() {
         Map<String, String> macros = ShaderMacros.standard();
 
-        // OptiFine's ShaderMacros: two shaders.properties switches exposed to GLSL so a pack adapts its lighting to the setting; both default true, matching Shaders.isOldHandLight()/isOldLighting()
         if (this.properties.getOldHandLight().orElse(Boolean.TRUE)) {
             macros.put("MC_OLD_HAND_LIGHT", "");
         }
         if (this.properties.getOldLighting().orElse(Boolean.TRUE)) {
             macros.put("MC_OLD_LIGHTING", "");
         }
-        // `supportsColorCorrection` means the pack converts to the output colour space itself, so Umbra hands it the COLOR_SPACE_* enumeration to compare `currentColorSpace` against
         if (this.properties.getSupportsColorCorrection().orElse(Boolean.FALSE)) {
             for (ColorSpaceConverter.ColorSpace space : ColorSpaceConverter.ColorSpace.values()) {
                 macros.put("COLOR_SPACE_" + space.name(), Integer.toString(space.ordinal()));
@@ -348,7 +351,7 @@ public final class ShaderPack {
         return macros;
     }
 
-    // Programs the currently selected profile turns off
+    // Returns the programs that the current profile disables.
     private Set<String> activeProfileDisabledPrograms(ShaderProperties parsedProperties) {
         if (parsedProperties.getProfiles().isEmpty()) {
             return Collections.emptySet();
@@ -371,42 +374,42 @@ public final class ShaderPack {
         }
     }
 
-    // The pack's parsed block, item and entity ID maps
+    // Returns the id mappings.
     public IdMap getIdMap() {
         return this.idMap;
     }
 
-    // texture.noise as resolved data, or null when the pack keeps the generated noisetex
+    // Returns the noise texture or null.
     public CustomTextureData getCustomNoiseTexture() {
         return this.customNoiseTexture;
     }
 
-    // The stage-scoped custom-texture overrides: stage, then sampler name, then the resolved data
+    // Returns the custom textures by stage.
     public Map<TextureStage, Map<String, CustomTextureData>> getCustomTextureDataMap() {
         return Collections.unmodifiableMap(this.customTextureDataMap);
     }
 
-    // The stage-independent customTexture.<name> definitions: sampler name to resolved data, live in every stage
+    // Returns the named custom images.
     public Map<String, CustomTextureData> getUmbraCustomTextureDataMap() {
         return Collections.unmodifiableMap(this.irisCustomTextureDataMap);
     }
 
-    // The option set and current values
+    // Returns the pack options.
     public ShaderPackOptions getShaderPackOptions() {
         return this.shaderPackOptions;
     }
 
-    // Parsed shaders.properties
+    // Returns the pack properties.
     public ShaderProperties getProperties() {
         return this.properties;
     }
 
-    // Every program source, by id, for the selected dimension
+    // Returns the program set of the current dimension.
     public ProgramSet getProgramSet() {
         return this.activeProgramSet;
     }
 
-    // Points getProgramSet at this dimension's programs; true when that changed which set is live, meaning everything compiled from the old one must be rebuilt
+    // Switches to the program set of a dimension and returns whether it changed.
     public boolean selectDimension(int dimensionId, String dimensionName) {
         String folder = this.dimensionFolders.folderFor(dimensionId, dimensionName);
         ProgramSet selected = folder == null || folder.equals(this.dimensionFolders.baseFolder())
@@ -417,17 +420,17 @@ public final class ShaderPack {
         return changed;
     }
 
-    // Whether the pack ASKED for a feature, distinct from whether this port provides it; a pack that never opted into SEPARATE_HARDWARE_SAMPLERS expects shadowtex0/1 to carry hardware comparison themselves
+    // Returns whether the pack declares a feature.
     public boolean hasFeature(FeatureFlags feature) {
         return this.activeFeatures.contains(feature);
     }
 
-    // Every text file, by path
+    // Returns the text sources.
     public Map<AbsolutePackPath, String> getSources() {
         return this.sources;
     }
 
-    // Reads each program's stages from one folder, applying includes and option edits; rootFallback lets the pack root fill in what the folder lacks, which only the base set does
+    // Reads every program of a folder into a program set.
     private ProgramSet buildProgramSet(String folder, boolean rootFallback) {
         ProgramSet set = new ProgramSet(this.properties);
         StageLocator stages = new StageLocator(folder == null ? null : "/" + folder, rootFallback || folder == null);
@@ -457,7 +460,7 @@ public final class ShaderPack {
         return set;
     }
 
-    // Reads and flattens one program's stages by source name; null when the pack has neither a raster nor a compute stage for it, distinguishing an unshipped program from a failed parse
+    // Reads the stages of one program or null when it has none.
     private ProgramSource readProgram(StageLocator stages, String sourceName) {
         String vertex = readStage(stages, sourceName, "vsh");
         String fragment = readStage(stages, sourceName, "fsh");
@@ -466,17 +469,15 @@ public final class ShaderPack {
             return null;
         }
         String geometry = readStage(stages, sourceName, "gsh");
-        // Like Iris, tessellation stages exist only for a pack that declared the feature, so an older pack shipping stray .tcs files is unaffected
         boolean tessellation = this.activeFeatures.contains(FeatureFlags.TESSELLATION_SHADERS);
         String tessControl = tessellation ? readStage(stages, sourceName, "tcs") : null;
         String tessEval = tessellation ? readStage(stages, sourceName, "tes") : null;
-        // An Nvidium port ships these beside the OpenGL stages; ordinary packs never have them
         String mesh = readStage(stages, sourceName, MESH_EXTENSION);
         String meshFragment = readStage(stages, sourceName, MESH_FRAGMENT_EXTENSION);
         return new ProgramSource(sourceName, vertex, geometry, tessControl, tessEval, fragment, computes, mesh, meshFragment);
     }
 
-    // Reads a program's compute stages, <name>.csh plus _a through _z (Iris extension); the letter scan STOPS at the first missing suffix like Iris's readComputeArray since the suffixes are an ordered chain, returning empty or a 27-entry array that may hold nulls
+    // Reads the compute stage and its numbered variants.
     private String[] readComputeVariants(StageLocator stages, String sourceName) {
         String[] computes = new String[ProgramSource.MAX_COMPUTE_VARIANTS];
         computes[0] = readStage(stages, sourceName, "csh");
@@ -493,7 +494,7 @@ public final class ShaderPack {
         return any ? computes : new String[0];
     }
 
-    // One stage file, or null when the pack has none
+    // Reads one stage with its includes resolved or null.
     private String readStage(StageLocator stages, String sourceName, String extension) {
         AbsolutePackPath path = stages.locate(sourceName + "." + extension);
         if (path == null) {
@@ -502,16 +503,20 @@ public final class ShaderPack {
         return String.join("\n", this.includeProcessor.process(path));
     }
 
-    // Where one program set's stage files live: its folder FIRST, then the pack root when the set may fall back to it, so a world0/ program shadows the root one
+    // Finder of stage files in a folder with an optional root fallback.
     private final class StageLocator {
+        // Folder searched first or null.
         private final String folder;
+        // Flag set when the pack root is searched after the folder.
         private final boolean root;
 
+        // Creates a finder for a folder.
         StageLocator(String folder, boolean root) {
             this.folder = folder;
             this.root = root;
         }
 
+        // Returns the path of a stage file or null.
         AbsolutePackPath locate(String file) {
             if (this.folder != null) {
                 AbsolutePackPath inFolder = AbsolutePackPath.fromAbsolutePath(this.folder + "/" + file);

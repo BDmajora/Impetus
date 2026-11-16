@@ -10,15 +10,15 @@ import org.spongepowered.asm.mixin.Mixin;
 
 import javax.annotation.Nullable;
 
-// Gives World a non-creating tile entity lookup, purely additive so World#getTileEntity keeps creating for callers that depend on it; EnumCreateEntityType.CHECK returns what is actually there, unlike IMMEDIATE and QUEUED
+// Mixin that changes World.
 @Mixin(World.class)
 public abstract class WorldMixin implements TileEntityAccess {
+    // Returns the existing tile entity.
     @Nullable
     @Override
     public TileEntity equilibrium$getExistingTileEntity(BlockPos pos) {
         World world = (World) (Object) this;
 
-        // Outside the build height a chunk has nothing to answer with; vanilla's own guard here is why getTileEntity does not index out of bounds
         if (world.isOutsideBuildHeight(pos)) {
             return null;
         }
@@ -33,7 +33,6 @@ public abstract class WorldMixin implements TileEntityAccess {
 
         TileEntity tileEntity = chunk.getTileEntity(pos, Chunk.EnumCreateEntityType.CHECK);
 
-        // The chunk hands back invalidated tile entities until pruned; the hopper would otherwise cache one and keep transferring into a block that no longer exists
         return tileEntity != null && !tileEntity.isInvalid() ? tileEntity : null;
     }
 }

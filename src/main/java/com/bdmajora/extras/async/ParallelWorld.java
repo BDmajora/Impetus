@@ -1,6 +1,7 @@
 package com.bdmajora.extras.async;
 
-// Implemented on World by the async mixin; true once the concurrent collections were installed at construction, which is the precondition for ticking anything off-thread
+// World that can tick in parallel.
 public interface ParallelWorld {
+    // Returns whether the world ticks in parallel.
     boolean impetus$isParallel();
 }

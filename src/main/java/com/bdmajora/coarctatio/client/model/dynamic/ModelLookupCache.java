@@ -6,21 +6,27 @@ import net.minecraft.client.renderer.block.model.IBakedModel;
 import java.util.concurrent.locks.StampedLock;
 import java.util.function.Function;
 
-// Identity-keyed LRU in front of the baked provider's Guava cache, which is too slow to hit on every item render; keys are the per-item location objects, which are unique per registration, so reference lookup is correct
+// Bounded cache of baked models by key identity.
 public final class ModelLookupCache<K> {
+    // Largest number of cached entries.
     private static final int CAPACITY = 1000;
 
+    // Cached models in order of use.
     private final Reference2ReferenceLinkedOpenHashMap<K, IBakedModel> cache = new Reference2ReferenceLinkedOpenHashMap<>();
+    // Lock that guards the cache.
     private final StampedLock lock = new StampedLock();
+    // Function that produces a missing model.
     private final Function<K, IBakedModel> loader;
-    // A null result is a real answer for item lookups (vanilla's mesher returns null for an unregistered meta), so it is cached too
+    // Whether a missing model is cached as null.
     private final boolean cacheNulls;
 
+    // Creates a cache and rejects a null loader.
     public ModelLookupCache(Function<K, IBakedModel> loader, boolean cacheNulls) {
-        this.loader = loader;
+        this.loader = java.util.Objects.requireNonNull(loader, "loader");
         this.cacheNulls = cacheNulls;
     }
 
+    // Removes every entry.
     public void clear() {
         long stamp = this.lock.writeLock();
         try {
@@ -30,6 +36,7 @@ public final class ModelLookupCache<K> {
         }
     }
 
+    // Returns the cached model or loads and stores it.
     public IBakedModel get(K key) {
         IBakedModel model = this.read(key);
         if (model == null && (!this.cacheNulls || !this.contains(key))) {
@@ -38,6 +45,7 @@ public final class ModelLookupCache<K> {
         return model;
     }
 
+    // Returns the cached model or null.
     private IBakedModel read(K key) {
         long stamp = this.lock.readLock();
         try {
@@ -47,6 +55,7 @@ public final class ModelLookupCache<K> {
         }
     }
 
+    // Returns whether the key is cached.
     private boolean contains(K key) {
         long stamp = this.lock.readLock();
         try {
@@ -56,9 +65,12 @@ public final class ModelLookupCache<K> {
         }
     }
 
-    // The load runs outside the lock since it may bake, and baking may ask this cache for another model
+    // Returns the loaded model and stores it unless it is null and nulls are not cached.
     private IBakedModel load(K key) {
         IBakedModel model = this.loader.apply(key);
+        if (model == null && !this.cacheNulls) {
+            return null;
+        }
         long stamp = this.lock.writeLock();
         try {
             this.cache.putAndMoveToFirst(key, model);

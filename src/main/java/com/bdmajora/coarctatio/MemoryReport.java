@@ -11,61 +11,64 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
-// Turns Coarctatio's counters into megabytes; texture pixels and the class loader cache are MEASURED, the rest are ESTIMATES from counts times a per-object size, and the two are never conflated
+// Estimates the memory that Coarctatio saved.
 public final class MemoryReport {
-    // ---- object sizes, 64-bit JVM with compressed oops ----
 
-    // String: 16 header + 4 value ref + 4 hash, plus its char[] at 16 header + 2 bytes per char, assuming a conservative 12-char average
+    // Estimated size of one string.
     private static final long STRING_BYTES = 24 + 16 + 24;
 
-    // int[28], one baked quad's vertex data: 16 header + 112 payload
+    // Estimated size of one quad array.
     private static final long QUAD_ARRAY_BYTES = 128;
 
-    // ItemCameraTransforms plus eight ItemTransformVec3f of three Vector3f each, rounded well down from ~600
+    // Estimated size of one camera transform set.
     private static final long CAMERA_TRANSFORMS_BYTES = 400;
 
-    // A flattened multipart predicate plus its two arrays
+    // Estimated size of one predicate.
     private static final long PREDICATE_BYTES = 64;
 
-    // The DIFFERENCE, not the size: Guava's four-entry RegularImmutableMap is ~240 bytes and CoarctatioPropertyMap ~72
+    // Estimated saving of one compact property map.
     private static final long PROPERTY_MAP_SAVED_BYTES = 168;
 
-    // Per state, the ImmutableTable that packing removes outright; deliberately low since multi-valued property blocks are worth several times this
+    // Estimated saving of one packed state table row.
     private static final long STATE_TABLE_BYTES = 200;
 
-    // Exact totals filled in by the releasing code; atomic because sprite and class loader figures accumulate off the main thread
+    // Measured bytes of released texture data.
     private static final AtomicLong SPRITE_BYTES = new AtomicLong();
+    // Measured bytes of weakened class loader entries.
     private static final AtomicLong CLASS_LOADER_BYTES = new AtomicLong();
+    // Count of packed states.
     private static final AtomicLong PACKED_STATE_COUNT = new AtomicLong();
+    // Count of compacted remapper entries.
     private static final AtomicLong REMAPPER_ENTRIES = new AtomicLong();
 
-    // One merged remapper map for a class extending a vanilla one: ImmutableMap entries for a few hundred members, well under the ~20 KB a TileEntity subclass carries
+    // Estimated saving of one compacted remapper entry.
     private static final long REMAPPER_MAP_BYTES = 8192;
 
+    // Prevents instantiation
     private MemoryReport() {
     }
 
-    // Measured: pixel arrays summed before release
+    // Adds released texture bytes.
     public static void recordSpriteBytes(long bytes) {
         SPRITE_BYTES.addAndGet(bytes);
     }
 
-    // Measured: cache entries summed before release
+    // Adds weakened class loader bytes.
     public static void recordClassLoaderBytes(long bytes) {
         CLASS_LOADER_BYTES.addAndGet(bytes);
     }
 
-    // Estimated: count of states whose table was replaced by a packed index
+    // Adds packed states.
     public static void recordPackedStates(long states) {
         PACKED_STATE_COUNT.addAndGet(states);
     }
 
-    // Estimated: remapper cache entries rebuilt through the sharing map at construction; entries made afterwards are not counted
+    // Adds compacted remapper entries.
     public static void recordRemapperEntries(long entries) {
         REMAPPER_ENTRIES.addAndGet(entries);
     }
 
-    // One line per feature plus a total, shared by the log dump and /coarctatio; features that saved nothing are skipped to keep the report short
+    // Returns the report as text lines.
     public static List<String> lines() {
         List<Line> entries = new ArrayList<>();
 
@@ -105,7 +108,7 @@ public final class MemoryReport {
         return out;
     }
 
-    // Same arithmetic as lines() collapsed to one number for F3; kept separate so the overlay does not build strings every frame
+    // Returns the total estimated saving in bytes.
     public static long totalBytes() {
         return (long) (ResourceLocationCaches.DOMAINS.shared() + ResourceLocationCaches.PATHS.shared()
                 + ModelCaches.VARIANTS.shared() + StringPool.NBT_KEYS.shared()) * STRING_BYTES
@@ -115,30 +118,35 @@ public final class MemoryReport {
                 + PACKED_STATE_COUNT.get() * STATE_TABLE_BYTES
                 + CompactPropertyMaps.compacted() * PROPERTY_MAP_SAVED_BYTES
                 + SPRITE_BYTES.get()
-                + CLASS_LOADER_BYTES.get();
+                + CLASS_LOADER_BYTES.get()
+                + REMAPPER_ENTRIES.get() * REMAPPER_MAP_BYTES;
     }
 
-    // Formats a byte count for display, dropping to KB below a megabyte so a small saving does not read "0.0 MB"
+    // Returns the size as kilobytes or megabytes.
     public static String mib(long bytes) {
         return bytes >= 1024L * 1024L
                 ? String.format("%.1f MB", bytes / (1024.0 * 1024.0))
                 : String.format("%.0f KB", bytes / 1024.0);
     }
 
-    // max(0, count) guards a never-opened pool whose counter reads negative or garbage; show nothing saved rather than subtract from the total
+    // Returns a line estimated from a count.
     private static Line estimated(String name, long count, long each) {
+        // Creates a line.
         return new Line(name, Math.max(0, count) * each, false);
     }
 
-    // A line flagged as a measurement rather than an estimate
+    // Returns a line with a measured size.
     private static Line measured(String name, long bytes) {
         return new Line(name, bytes, true);
     }
 
-    // One report row; exact is what decides whether it prints as "measured" or "estimated"
+    // One line of the report.
     private static final class Line {
+        // Label of the line.
         final String name;
+        // Size of the line.
         final long bytes;
+        // Whether the size was measured.
         final boolean exact;
 
         Line(String name, long bytes, boolean exact) {
@@ -148,7 +156,7 @@ public final class MemoryReport {
         }
     }
 
-    // The single formatted total the F3 overlay shows
+    // Returns the total saving as text.
     public static String summary() {
         return mib(totalBytes());
     }

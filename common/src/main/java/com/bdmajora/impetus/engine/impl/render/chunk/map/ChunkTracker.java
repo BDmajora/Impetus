@@ -3,20 +3,27 @@ package com.bdmajora.impetus.engine.impl.render.chunk.map;
 import it.unimi.dsi.fastutil.longs.*;
 import com.bdmajora.impetus.engine.impl.util.PositionUtil;
 
+// Tracks which chunks have all their data and neighbors and queues load and unload events.
 public class ChunkTracker implements ClientChunkEventListener {
+    // Flags of every tracked chunk.
     private final Long2IntOpenHashMap chunkStatus = new Long2IntOpenHashMap();
+    // Chunks that are ready.
     private final LongOpenHashSet chunkReady = new LongOpenHashSet();
 
+    // Chunks that became unready.
     private final LongSet unloadQueue = new LongOpenHashSet();
+    // Chunks that became ready.
     private final LongSet loadQueue = new LongOpenHashSet();
 
+    // Neighbor radius a chunk needs.
     private int requiredNeighborRadius;
 
+    // Creates a tracker with a neighbor radius of one.
     public ChunkTracker() {
         this(1);
     }
 
-    // Radius 0 is valid but misrenders edges of blocks reading neighbour data (fences, fluids); vanilla papers over it by re-updating chunks as neighbours load
+    // Creates a tracker and rejects a negative radius.
     public ChunkTracker(int requiredNeighborRadius) {
         if (requiredNeighborRadius < 0) {
             throw new IllegalArgumentException("requiredNeighborRadius must be nonnegative");
@@ -24,7 +31,7 @@ public class ChunkTracker implements ClientChunkEventListener {
         this.requiredNeighborRadius = requiredNeighborRadius;
     }
 
-    // How many loaded neighbours a chunk needs before it is ready to render
+    // Stores the neighbor radius and rechecks the chunks and rejects a negative radius.
     public void setRequiredNeighborRadius(int radius) {
         if (radius < 0) {
             throw new IllegalArgumentException("radius must be nonnegative");
@@ -34,7 +41,7 @@ public class ChunkTracker implements ClientChunkEventListener {
         }
         boolean fullUpdate = radius > this.requiredNeighborRadius;
         if (fullUpdate) {
-            // The requirement is now stricter; so we must clear chunkReady
+            // Clears the ready chunks for a stricter radius
             var readyIterator = this.chunkReady.iterator();
             while (readyIterator.hasNext()) {
                 long key = readyIterator.nextLong();
@@ -45,7 +52,7 @@ public class ChunkTracker implements ClientChunkEventListener {
             this.chunkReady.clear();
         }
         this.requiredNeighborRadius = radius;
-        // Recompute status of each chunk; this will repopulate chunkReady
+        // Rechecks every tracked chunk
         var trackedChunksIterator = this.chunkStatus.keySet().iterator();
         while (trackedChunksIterator.hasNext()) {
             long pos = trackedChunksIterator.nextLong();
@@ -58,19 +65,19 @@ public class ChunkTracker implements ClientChunkEventListener {
         }
     }
 
-    // Recentres on the player
+    // Ignores the new center.
     @Override
     public void updateMapCenter(int chunkX, int chunkZ) {
 
     }
 
-    // Resizes the tracked area
+    // Ignores the new load distance.
     @Override
     public void updateLoadDistance(int loadDistance) {
 
     }
 
-    // A chunk gained data or light; may make it or neighbours ready
+    // Adds flags to a chunk and rechecks its neighbors.
     @Override
     public void onChunkStatusAdded(int x, int z, int flags) {
         var key = PositionUtil.packChunk(x, z);
@@ -87,7 +94,7 @@ public class ChunkTracker implements ClientChunkEventListener {
         this.updateNeighbors(x, z);
     }
 
-    // A chunk lost data; may make neighbours unready
+    // Removes flags from a chunk and rechecks its neighbors.
     @Override
     public void onChunkStatusRemoved(int x, int z, int flags) {
         var key = PositionUtil.packChunk(x, z);
@@ -108,7 +115,7 @@ public class ChunkTracker implements ClientChunkEventListener {
         this.updateNeighbors(x, z);
     }
 
-    // Re-evaluates readiness of every chunk within the radius
+    // Rechecks every chunk within the radius.
     private void updateNeighbors(int x, int z) {
         int r = this.requiredNeighborRadius;
         for (int ox = -r; ox <= r; ox++) {
@@ -118,7 +125,7 @@ public class ChunkTracker implements ClientChunkEventListener {
         }
     }
 
-    // Recomputes one chunk's readiness from its neighbours and queues a load or unload event
+    // Rechecks one chunk and queues a load or unload event.
     private void updateMerged(int x, int z) {
         long key = PositionUtil.packChunk(x, z);
 
@@ -142,12 +149,12 @@ public class ChunkTracker implements ClientChunkEventListener {
         }
     }
 
-    // Every chunk currently ready
+    // Returns a read only view of the ready chunks.
     public LongCollection getReadyChunks() {
         return LongSets.unmodifiable(this.chunkReady);
     }
 
-    // Drains the queued events
+    // Passes the queued unload and load events to the handlers and clears them.
     public void forEachEvent(ChunkEventHandler loadEventHandler, ChunkEventHandler unloadEventHandler) {
         forEachChunk(this.unloadQueue, unloadEventHandler);
         this.unloadQueue.clear();
@@ -156,7 +163,7 @@ public class ChunkTracker implements ClientChunkEventListener {
         this.loadQueue.clear();
     }
 
-    // Unpacks each key and calls the handler
+    // Calls a handler for every chunk of a queue.
     public static void forEachChunk(LongCollection queue, ChunkEventHandler handler) {
         var iterator = queue.iterator();
 
@@ -170,7 +177,9 @@ public class ChunkTracker implements ClientChunkEventListener {
         }
     }
 
+    // Handler of a chunk event.
     public interface ChunkEventHandler {
+        // Handles a chunk.
         void apply(int x, int z);
     }
 }

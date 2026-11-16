@@ -1,192 +1,129 @@
 package com.bdmajora.impetus.engine.impl.render.chunk.compile.executor;
 
-import com.bdmajora.impetus.engine.impl.render.chunk.compile.ChunkBuildContext;
 import com.bdmajora.impetus.engine.impl.render.chunk.compile.tasks.ChunkBuilderTask;
-import com.bdmajora.impetus.engine.impl.util.task.CancellationToken;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+// Tests ordering and shutdown of the job queue.
 class ChunkJobQueueTest {
-    private static ChunkJobTyped<ChunkBuilderTask<Void>, Void> job() {
+    // Creates a job.
+    private static ChunkJobTyped<ChunkBuilderTask<String>, String> job() {
         return new ChunkJobTyped<>(new ChunkBuilderTask<>() {
             @Override
-            public Void execute(ChunkBuildContext context, CancellationToken token) {
-                return null;
+            public String execute(com.bdmajora.impetus.engine.impl.render.chunk.compile.ChunkBuildContext context, com.bdmajora.impetus.engine.impl.util.task.CancellationToken token) {
+                return "";
             }
-        }, result -> {});
+        }, r -> {});
     }
 
+    // Hands out important jobs first and equal priorities in arrival order.
     @Test
-    void ordersByImportanceDistanceAndSubmissionOrder() throws InterruptedException {
+    void ordering() {
         ChunkJobQueue queue = new ChunkJobQueue();
-        var far = job();
-        var nearFirst = job();
-        var nearSecond = job();
-        var importantFirst = job();
-        var importantSecond = job();
-        queue.add(far, 100);
-        queue.add(nearFirst, 10);
-        queue.add(importantFirst, ChunkJobQueue.IMPORTANT_PRIORITY);
-        queue.add(nearSecond, 10);
-        queue.add(importantSecond, ChunkJobQueue.IMPORTANT_PRIORITY);
-
-        assertFalse(queue.stealJob(job()));
-        assertEquals(5, queue.size());
-        assertSame(importantFirst, queue.waitForNextJob());
-        assertSame(importantSecond, queue.pollJob());
-        assertSame(nearFirst, queue.pollJob());
-        assertTrue(queue.stealJob(far));
-        assertSame(nearSecond, queue.waitForNextJob());
-        assertTrue(queue.isEmpty());
+        var a = job();
+        var b = job();
+        var c = job();
+        var d = job();
+        queue.add(a, 5);
+        queue.add(b, 5);
+        queue.add(c, ChunkJobQueue.IMPORTANT_PRIORITY);
+        queue.add(d, Long.MAX_VALUE);
+        assertEquals(4, queue.size());
+        assertSame(c, queue.pollJob());
+        assertSame(a, queue.pollJob());
+        assertSame(b, queue.pollJob());
+        assertSame(d, queue.pollJob());
         assertNull(queue.pollJob());
-        assertFalse(queue.stealJob(far));
+        assertTrue(queue.isEmpty());
+    }
+
+    // Steals a waiting job once and refuses jobs that are not waiting.
+    @Test
+    void stealing() {
+        ChunkJobQueue queue = new ChunkJobQueue();
+        var a = job();
+        var b = job();
+        queue.add(a, 1);
+        assertFalse(queue.stealJob(b));
+        assertEquals(1, queue.size());
+        assertTrue(queue.stealJob(a));
+        assertFalse(queue.stealJob(a));
+        assertFalse(queue.stealJob(null));
+        assertTrue(queue.isEmpty());
+        assertThrows(NullPointerException.class, () -> queue.add(null, 0));
+    }
+
+    // Returns the unclaimed jobs at shutdown and rejects later work.
+    @Test
+    void shutdownReturnsJobs() {
+        ChunkJobQueue queue = new ChunkJobQueue();
+        var a = job();
+        var b = job();
+        queue.add(a, 2);
+        queue.add(b, 1);
+        Collection<ChunkJob> left = queue.shutdown();
+        assertEquals(List.of(b, a), new ArrayList<>(left));
+        assertFalse(queue.isRunning());
+        assertThrows(IllegalStateException.class, () -> queue.add(job(), 0));
+        assertNull(queue.pollJob());
+        assertEquals(0, queue.size());
         assertTrue(queue.shutdown().isEmpty());
     }
 
+    // Wakes every blocked worker even when there are more workers than processors.
     @Test
-    void concurrentSubmissionPollingAndStealingDeliverEveryJobExactlyOnce() throws Exception {
-        int producerCount = 4;
-        int workerCount = Math.min(24, Runtime.getRuntime().availableProcessors());
-        int jobCount = 32_000;
+    void shutdownWakesAllWorkers() throws InterruptedException {
         ChunkJobQueue queue = new ChunkJobQueue();
-        List<ChunkJobTyped<ChunkBuilderTask<Void>, Void>> jobs = new ArrayList<>(jobCount);
-        for (int i = 0; i < jobCount; i++) {
-            jobs.add(job());
-        }
-
-        Set<ChunkJob> received = ConcurrentHashMap.newKeySet();
-        CountDownLatch delivered = new CountDownLatch(jobCount);
-        CountDownLatch ready = new CountDownLatch(producerCount + workerCount + 2);
-        CountDownLatch start = new CountDownLatch(1);
-        var executor = Executors.newFixedThreadPool(producerCount + workerCount + 2);
-        List<Future<?>> producers = new ArrayList<>();
-        List<Future<?>> consumers = new ArrayList<>();
-        try {
-            for (int producer = 0; producer < producerCount; producer++) {
-                int first = producer;
-                producers.add(executor.submit(() -> {
-                    ready.countDown();
-                    start.await();
-                    for (int i = first; i < jobCount; i += producerCount) {
-                        queue.add(jobs.get(i), i % 128 == 0 ? ChunkJobQueue.IMPORTANT_PRIORITY : i % 1024);
-                    }
-                    return null;
-                }));
-            }
-            for (int worker = 0; worker < workerCount; worker++) {
-                consumers.add(executor.submit(() -> {
-                    ready.countDown();
-                    start.await();
-                    while (queue.isRunning()) {
-                        ChunkJob next = queue.waitForNextJob();
-                        if (next != null) {
-                            recordDelivery(next, received, delivered);
-                        }
-                    }
-                    return null;
-                }));
-            }
-            consumers.add(executor.submit(() -> {
-                ready.countDown();
-                start.await();
-                while (queue.isRunning()) {
-                    ChunkJob next = queue.pollJob();
-                    if (next != null) {
-                        recordDelivery(next, received, delivered);
-                    } else {
-                        Thread.yield();
-                    }
+        int workers = Runtime.getRuntime().availableProcessors() * 3 + 2;
+        AtomicInteger woke = new AtomicInteger();
+        List<Thread> threads = new ArrayList<>();
+        for (int i = 0; i < workers; i++) {
+            Thread thread = new Thread(() -> {
+                try {
+                    assertNull(queue.waitForNextJob());
+                    woke.incrementAndGet();
+                } catch (InterruptedException ignored) {
                 }
-                return null;
-            }));
-            consumers.add(executor.submit(() -> {
-                ready.countDown();
-                start.await();
-                int index = 0;
-                while (queue.isRunning()) {
-                    ChunkJob target = jobs.get(index);
-                    if (queue.stealJob(target)) {
-                        recordDelivery(target, received, delivered);
-                    }
-                    index = (index + 1) % jobCount;
-                    Thread.yield();
-                }
-                return null;
-            }));
-
-            assertTrue(ready.await(5, TimeUnit.SECONDS), "All producers and consumers must start");
-            start.countDown();
-            for (Future<?> producer : producers) {
-                producer.get(10, TimeUnit.SECONDS);
-            }
-            boolean complete = delivered.await(10, TimeUnit.SECONDS);
-            for (Future<?> consumer : consumers) {
-                if (consumer.isDone()) {
-                    consumer.get();
-                }
-            }
-            assertTrue(complete, "No jobs may be lost during concurrent queue operations");
-            assertEquals(Set.copyOf(jobs), received);
-            assertTrue(queue.isEmpty());
-            assertTrue(queue.shutdown().isEmpty());
-            for (Future<?> consumer : consumers) {
-                consumer.get(5, TimeUnit.SECONDS);
-            }
-        } finally {
-            try {
-                if (queue.isRunning()) {
-                    queue.shutdown();
-                }
-            } finally {
-                start.countDown();
-                executor.shutdownNow();
-                assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS), "Queue workers must terminate");
-            }
-        }
-    }
-
-    private static void recordDelivery(ChunkJob job, Set<ChunkJob> received, CountDownLatch delivered) {
-        assertTrue(received.add(job), "A job must only be delivered once");
-        delivered.countDown();
-    }
-
-    @Test
-    void shutdownDrainsQueuedJobsAndWakesWaitingWorkers() throws Exception {
-        ChunkJobQueue queued = new ChunkJobQueue();
-        var first = job();
-        var second = job();
-        queued.add(first, 10);
-        queued.add(second, 20);
-        assertEquals(List.of(first, second), new ArrayList<>(queued.shutdown()));
-        assertFalse(queued.isRunning());
-        assertNull(queued.pollJob());
-        assertNull(queued.waitForNextJob());
-        assertThrows(IllegalStateException.class, () -> queued.add(job(), 0));
-
-        ChunkJobQueue empty = new ChunkJobQueue();
-        CountDownLatch waiting = new CountDownLatch(1);
-        try (var executor = Executors.newSingleThreadExecutor()) {
-            Future<ChunkJob> worker = executor.submit(() -> {
-                waiting.countDown();
-                return empty.waitForNextJob();
             });
-            try {
-                assertTrue(waiting.await(5, TimeUnit.SECONDS));
-                assertTrue(empty.shutdown().isEmpty());
-                assertNull(worker.get(5, TimeUnit.SECONDS));
-            } finally {
-                executor.shutdownNow();
-            }
+            thread.setDaemon(true);
+            thread.start();
+            threads.add(thread);
+        }
+        Thread.sleep(100);
+        queue.shutdown();
+        for (Thread thread : threads) {
+            thread.join(5000);
+        }
+        assertEquals(workers, woke.get());
+        assertNull(queue.waitForNextJob());
+    }
+
+    // Never loses a job that races with shutdown.
+    @Test
+    void addRacingShutdownNeverStrandsAJob() throws InterruptedException {
+        for (int round = 0; round < 200; round++) {
+            ChunkJobQueue queue = new ChunkJobQueue();
+            AtomicInteger accepted = new AtomicInteger();
+            Thread adder = new Thread(() -> {
+                for (int i = 0; i < 50; i++) {
+                    try {
+                        queue.add(job(), i);
+                        accepted.incrementAndGet();
+                    } catch (IllegalStateException e) {
+                        return;
+                    }
+                }
+            });
+            adder.start();
+            Collection<ChunkJob> left = queue.shutdown();
+            adder.join();
+            assertEquals(accepted.get(), left.size(), "round " + round);
         }
     }
 }

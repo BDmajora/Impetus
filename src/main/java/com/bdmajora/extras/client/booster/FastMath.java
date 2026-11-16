@@ -1,39 +1,61 @@
 package com.bdmajora.extras.client.booster;
 
-// Replacements for the MathHelper routines that still pay for something on 1.12.2 (the sine table is already Equilibrium's): angle wrapping without the float remainder, which HotSpot implements as an out-of-line fmod call, and the log2 pair as one leading-zero-count instruction instead of a multiply and a table read
+// Math helpers that avoid library calls.
 public final class FastMath {
+    // Whether the helpers are used.
     public static boolean enabled;
+    // Largest turn count that fits an int cast.
+    private static final int WHOLE_LIMIT = 1 << 30;
 
+    // Prevents instantiation
     private FastMath() {
     }
 
-    // [-180, 180) like vanilla, via one division and a floor instead of frem; exact for every angle an entity can carry
+    // Returns the angle wrapped into the range from minus 180 up to 180.
     public static float wrapDegrees(float value) {
         float turns = (value + 180.0F) * (1.0F / 360.0F);
+        if (Math.abs(turns) >= WHOLE_LIMIT) {
+            return value - (float) Math.floor(turns) * 360.0F;
+        }
         int whole = (int) turns;
         if (turns < whole) {
             whole--;
         }
-        return value - whole * 360.0F;
+        float wrapped = value - whole * 360.0F;
+        if (wrapped >= 180.0F) {
+            wrapped -= 360.0F;
+        } else if (wrapped < -180.0F) {
+            wrapped += 360.0F;
+        }
+        return wrapped;
     }
 
-    // Double form of the above
+    // Returns the angle wrapped into the range from minus 180 up to 180.
     public static double wrapDegrees(double value) {
         double turns = (value + 180.0D) * (1.0D / 360.0D);
+        if (Math.abs(turns) >= WHOLE_LIMIT) {
+            return value - Math.floor(turns) * 360.0D;
+        }
         int whole = (int) turns;
         if (turns < whole) {
             whole--;
         }
-        return value - whole * 360.0D;
+        double wrapped = value - whole * 360.0D;
+        if (wrapped >= 180.0D) {
+            wrapped -= 360.0D;
+        } else if (wrapped < -180.0D) {
+            wrapped += 360.0D;
+        }
+        return wrapped;
     }
 
-    // ceil(log2(value)) for value > 1, 0 otherwise, which is what vanilla's de Bruijn version returns
+    // Returns the base two logarithm rounded up.
     public static int ceilLog2(int value) {
         return value <= 1 ? 0 : 32 - Integer.numberOfLeadingZeros(value - 1);
     }
 
-    // floor(log2(value)); -1 for zero like vanilla
+    // Returns the base two logarithm rounded down or minus one when the value is not positive.
     public static int floorLog2(int value) {
-        return 31 - Integer.numberOfLeadingZeros(value);
+        return value <= 0 ? -1 : 31 - Integer.numberOfLeadingZeros(value);
     }
 }

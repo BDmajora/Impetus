@@ -2,36 +2,61 @@ package com.bdmajora.impetus.umbra.uniforms.custom;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.DoubleBinaryOperator;
 
-// Recursive-descent parser for the custom-uniform expression language (arithmetic, comparisons, logic, ternary and if, maths builtins, vec constructors); each parse method calls the next tighter one, which encodes precedence
+// Recursive descent parser of custom uniform expressions into evaluation trees.
 public final class ExpressionParser {
+    // Failure of a malformed expression.
     public static final class ParseException extends RuntimeException {
+        // Creates a failure with a reason.
         public ParseException(String message) {
             super(message);
         }
     }
 
+    // Expression text.
     private final String source;
+    // Position of the next character.
     private int pos;
-    // Running count of smooth() calls, handing each a distinct persistent-state slot baked into the compiled expression so one uniform's several smooth() calls keep separate histories
+    // Number of smooth calls so far.
     private int smoothCallCount;
+    // Current nesting depth.
+    private int depth;
+    // Deepest nesting of an expression.
+    private static final int MAX_DEPTH = 128;
+    // Value of true.
+    private static final CustomUniformValue TRUE = CustomUniformValue.bool(true);
+    // Value of false.
+    private static final CustomUniformValue FALSE = CustomUniformValue.bool(false);
+    // Value of pi.
+    private static final CustomUniformValue PI = CustomUniformValue.scalar((float) Math.PI);
+    // Value of an unknown name.
+    private static final CustomUniformValue ZERO = CustomUniformValue.scalar(0.0f);
 
+    // Creates a parser of a text.
     private ExpressionParser(String source) {
         this.source = source;
     }
 
+    // Parsed expression with its smooth call count.
     public static final class Result {
+        // Evaluation tree.
         public final CompiledExpression expression;
+        // Number of smooth calls in the tree.
         public final int smoothCallCount;
 
+        // Creates a result.
         Result(CompiledExpression expression, int smoothCallCount) {
             this.expression = expression;
             this.smoothCallCount = smoothCallCount;
         }
     }
 
-    // Compiles one custom uniform expression; errors are returned, not thrown
+    // Parses a whole expression and rejects null or malformed or trailing input.
     public static Result parse(String source) {
+        if (source == null) {
+            throw new ParseException("Expression is null");
+        }
         ExpressionParser parser = new ExpressionParser(source);
         CompiledExpression expr = parser.parseExpression();
         parser.skipWhitespace();
@@ -41,12 +66,24 @@ public final class ExpressionParser {
         return new Result(expr, parser.smoothCallCount);
     }
 
-    // Entry: the ternary level
+    // Parses a nested expression within the depth limit.
     private CompiledExpression parseExpression() {
-        return parseTernary();
+        enter();
+        try {
+            return parseTernary();
+        } finally {
+            this.depth--;
+        }
     }
 
-    // a ? b : c
+    // Enters a nesting level and rejects one past the limit.
+    private void enter() {
+        if (++this.depth > MAX_DEPTH) {
+            throw new ParseException("Expression nests too deeply in: " + this.source);
+        }
+    }
+
+    // Parses a conditional expression.
     private CompiledExpression parseTernary() {
         CompiledExpression condition = parseOr();
         skipWhitespace();
@@ -60,7 +97,7 @@ public final class ExpressionParser {
         return condition;
     }
 
-    // ||
+    // Parses a logical or chain.
     private CompiledExpression parseOr() {
         CompiledExpression left = parseAnd();
         while (true) {
@@ -75,7 +112,7 @@ public final class ExpressionParser {
         }
     }
 
-    // &&
+    // Parses a logical and chain.
     private CompiledExpression parseAnd() {
         CompiledExpression left = parseEquality();
         while (true) {
@@ -90,7 +127,7 @@ public final class ExpressionParser {
         }
     }
 
-    // == and !=
+    // Parses an equality comparison chain.
     private CompiledExpression parseEquality() {
         CompiledExpression left = parseComparison();
         while (true) {
@@ -105,7 +142,7 @@ public final class ExpressionParser {
         }
     }
 
-    // <, <=, >, >=
+    // Parses an ordering comparison chain.
     private CompiledExpression parseComparison() {
         CompiledExpression left = parseAdditive();
         while (true) {
@@ -126,7 +163,7 @@ public final class ExpressionParser {
         }
     }
 
-    // + and -
+    // Parses a sum or difference chain.
     private CompiledExpression parseAdditive() {
         CompiledExpression left = parseTerm();
         while (true) {
@@ -144,7 +181,7 @@ public final class ExpressionParser {
         }
     }
 
-    // *, / and %
+    // Parses a product or quotient or remainder chain.
     private CompiledExpression parseTerm() {
         CompiledExpression left = parseUnary();
         while (true) {
@@ -165,24 +202,28 @@ public final class ExpressionParser {
         }
     }
 
-    // ! and unary -
+    // Parses a negation or logical not.
     private CompiledExpression parseUnary() {
         skipWhitespace();
         char c = peek();
-        if (c == '-') {
+        if (c == '-' || c == '!') {
             pos++;
-            CompiledExpression operand = parseUnary();
-            return ctx -> operand.evaluate(ctx).map(v -> -v);
-        }
-        if (c == '!') {
-            pos++;
-            CompiledExpression operand = parseUnary();
+            enter();
+            CompiledExpression operand;
+            try {
+                operand = parseUnary();
+            } finally {
+                this.depth--;
+            }
+            if (c == '-') {
+                return ctx -> operand.evaluate(ctx).map(v -> -v);
+            }
             return ctx -> CustomUniformValue.bool(!operand.evaluate(ctx).asBoolean());
         }
         return parsePrimary();
     }
 
-    // Literals, calls, identifiers, parentheses and swizzles
+    // Parses a number or name or call or parenthesized expression.
     private CompiledExpression parsePrimary() {
         skipWhitespace();
         char c = peek();
@@ -205,21 +246,20 @@ public final class ExpressionParser {
             if (peek() == '(') {
                 return parseCall(ident);
             }
-            // Constants and boolean literals.
             switch (ident) {
                 case "true":
-                    return ctx -> CustomUniformValue.bool(true);
+                    return ctx -> TRUE;
                 case "false":
-                    return ctx -> CustomUniformValue.bool(false);
+                    return ctx -> FALSE;
                 case "pi":
                 case "PI":
-                    return ctx -> CustomUniformValue.scalar((float) Math.PI);
+                    return ctx -> PI;
                 default:
                     Float constant = namedConstant(ident);
                     if (constant != null) {
-                        return ctx -> CustomUniformValue.scalar(constant);
+                        CustomUniformValue named = CustomUniformValue.scalar(constant);
+                        return ctx -> named;
                     }
-                    // Component/swizzle access (eyeBrightness.y, delta.xz): the identifier grammar swallows the dots, so decompose here; otherwise the dotted name misses the input table and SILENTLY evaluates to 0, which rendered SDV and MakeUp cave-black
                     int dot = ident.indexOf('.');
                     if (dot > 0) {
                         String base = ident.substring(0, dot);
@@ -232,7 +272,7 @@ public final class ExpressionParser {
                                 }
                                 CustomUniformValue value = ctx.resolve(base);
                                 if (value == null) {
-                                    return CustomUniformValue.scalar(0.0f);
+                                    return ZERO;
                                 }
                                 float[] out = new float[indices.length];
                                 for (int i = 0; i < indices.length; i++) {
@@ -244,7 +284,7 @@ public final class ExpressionParser {
                     }
                     return ctx -> {
                         CustomUniformValue value = ctx.resolve(ident);
-                        return value != null ? value : CustomUniformValue.scalar(0.0f);
+                        return value != null ? value : ZERO;
                     };
             }
         }
@@ -252,7 +292,7 @@ public final class ExpressionParser {
         throw new ParseException("Unexpected character '" + c + "' at " + pos + " in: " + source);
     }
 
-    // Integer or float literal
+    // Parses a number literal into a constant and rejects a malformed one.
     private CompiledExpression parseNumber() {
         int start = pos;
         while (pos < source.length() && (Character.isDigit(source.charAt(pos)) || source.charAt(pos) == '.'
@@ -261,11 +301,18 @@ public final class ExpressionParser {
                 && (source.charAt(pos - 1) == 'e' || source.charAt(pos - 1) == 'E')))) {
             pos++;
         }
-        float value = Float.parseFloat(source.substring(start, pos));
-        return ctx -> CustomUniformValue.scalar(value);
+        float value;
+        try {
+            value = Float.parseFloat(source.substring(start, pos));
+        } catch (NumberFormatException e) {
+            throw new ParseException("Invalid number '" + source.substring(start, pos) + "' at " + start + " in: " + source);
+        }
+        // Reuses one immutable value for every evaluation
+        CustomUniformValue constant = CustomUniformValue.scalar(value);
+        return ctx -> constant;
     }
 
-    // Argument list for a function call
+    // Parses the arguments of a call.
     private CompiledExpression parseCall(String name) {
         expect('(');
         List<CompiledExpression> args = new ArrayList<>();
@@ -282,7 +329,7 @@ public final class ExpressionParser {
         return buildFunction(name, args);
     }
 
-    // Dispatches to the right builtin by name
+    // Returns the tree of a named function and rejects an unknown one.
     private CompiledExpression buildFunction(String name, List<CompiledExpression> args) {
         switch (name) {
             case "vec2":
@@ -336,7 +383,7 @@ public final class ExpressionParser {
         }
     }
 
-    // if(cond, a, b)
+    // Returns the tree of an if call with pairs of conditions and values.
     private CompiledExpression buildIf(List<CompiledExpression> args) {
         if (args.size() < 3 || (args.size() & 1) == 0) {
             throw new ParseException("if() expects condition/value pairs plus a fallback, got " + args.size());
@@ -351,7 +398,7 @@ public final class ExpressionParser {
         };
     }
 
-    // sin, cos, abs and the rest of the one-argument builtins
+    // Returns the expression of a one argument function.
     private CompiledExpression buildUnaryFunction(String name, List<CompiledExpression> args) {
         requireArity(name, args, 1);
         CompiledExpression arg = args.get(0);
@@ -384,7 +431,7 @@ public final class ExpressionParser {
         return ctx -> arg.evaluate(ctx).map(op);
     }
 
-    // in(value, a, b, c): membership test
+    // Returns the tree of an in call that matches any of its values.
     private CompiledExpression buildIn(List<CompiledExpression> args) {
         if (args.size() < 2) {
             throw new ParseException("in() expects at least 2 arguments, got " + args.size());
@@ -402,7 +449,7 @@ public final class ExpressionParser {
         };
     }
 
-    // equals(a, b, epsilon)
+    // Returns the tree of an equals call with a tolerance.
     private CompiledExpression buildEquals(List<CompiledExpression> args) {
         if (args.size() != 2 && args.size() != 3) {
             throw new ParseException("equals() expects 2 or 3 arguments, got " + args.size());
@@ -421,9 +468,8 @@ public final class ExpressionParser {
         };
     }
 
-    // smooth(id, value, up, down): exponential smoothing with per-id state
+    // Returns the tree of a smooth call with its own state slot.
     private CompiledExpression buildSmooth(List<CompiledExpression> args) {
-        // smooth(value[, fadeUp[, fadeDown]]) or OptiFine-style smooth(id, value, fadeUp, fadeDown).
         if (args.isEmpty() || args.size() > 4) {
             throw new ParseException("smooth() takes 1-4 arguments in: " + source);
         }
@@ -444,7 +490,6 @@ public final class ExpressionParser {
             float up = upExpr != null ? upExpr.evaluate(ctx).x() : 1.0f;
             float down = downExpr != null ? downExpr.evaluate(ctx).x() : up;
             float halfLife = target > state.value ? up : down;
-            // Matches Umbra SmoothFloat: shaderpack fade values are tenths of a second.
             float scaledHalfLife = halfLife * 0.1f;
             float rate = scaledHalfLife <= 0.0f ? 1.0f
                     : (float) (1.0 - Math.pow(0.5, ctx.frameTime() / scaledHalfLife));
@@ -453,7 +498,7 @@ public final class ExpressionParser {
         };
     }
 
-    // vec2/vec3/vec4 constructors
+    // Returns the tree of a vector constructor of a width.
     private CompiledExpression vector(List<CompiledExpression> args, int width) {
         return ctx -> {
             float[] out = new float[width];
@@ -464,7 +509,6 @@ public final class ExpressionParser {
                     out[i++] = v.components[k];
                 }
             }
-            // Broadcast a single scalar across all components (GLSL vecN(scalar) behaviour).
             if (args.size() == 1 && i == 1) {
                 for (; i < width; i++) {
                     out[i] = out[0];
@@ -474,24 +518,24 @@ public final class ExpressionParser {
         };
     }
 
-    // Argument count check with a readable error
+    // Rejects a call with the wrong number of arguments.
     private static void requireArity(String name, List<CompiledExpression> args, int arity) {
         if (args.size() != arity) {
             throw new ParseException(name + "() expects " + arity + " arguments, got " + args.size());
         }
     }
 
-    // One component, or x when the value is scalar
+    // Returns a component of a value or its last component.
     private static float component(CustomUniformValue value, int index) {
         return value.width == 1 ? value.components[0] : value.components[Math.min(index, value.width - 1)];
     }
 
-    // Component-wise binary op
-    private CompiledExpression binary(CompiledExpression left, CompiledExpression right, java.util.function.DoubleBinaryOperator op) {
+    // Returns the tree of a component wise binary operator.
+    private CompiledExpression binary(CompiledExpression left, CompiledExpression right, DoubleBinaryOperator op) {
         return ctx -> CustomUniformValue.combine(left.evaluate(ctx), right.evaluate(ctx), op);
     }
 
-    // PI and similar; null for anything else
+    // Returns the value of a named constant or null.
     private static Float namedConstant(String name) {
         switch (name) {
             case "PPT_NONE":
@@ -513,9 +557,7 @@ public final class ExpressionParser {
         }
     }
 
-    // --- lexer helpers ---
-
-    // Maps a swizzle suffix (y, xz, rgb) to component indices; null when not a pure swizzle (matrix cell access like m.0.1), which the caller reports rather than mis-reading
+    // Returns the component indices of a swizzle or null for a malformed one.
     private static int[] swizzleIndices(String suffix) {
         if (suffix.isEmpty() || suffix.length() > 4 || suffix.indexOf('.') >= 0) {
             return null;
@@ -542,7 +584,7 @@ public final class ExpressionParser {
         return indices;
     }
 
-    // Consumes an identifier
+    // Parses a name with dots.
     private String parseIdentifier() {
         int start = pos;
         while (pos < source.length()) {
@@ -556,20 +598,20 @@ public final class ExpressionParser {
         return source.substring(start, pos);
     }
 
-    // Advances past spaces
+    // Moves past whitespace.
     private void skipWhitespace() {
         while (pos < source.length() && Character.isWhitespace(source.charAt(pos))) {
             pos++;
         }
     }
 
-    // Next character, or a sentinel at end
+    // Returns the next character after whitespace or zero at the end.
     private char peek() {
         skipWhitespace();
         return pos < source.length() ? source.charAt(pos) : '\0';
     }
 
-    // Consumes if next matches
+    // Consumes a character after whitespace and returns whether it matched.
     private boolean consume(char expected) {
         skipWhitespace();
         if (pos < source.length() && source.charAt(pos) == expected) {
@@ -579,7 +621,7 @@ public final class ExpressionParser {
         return false;
     }
 
-    // Consumes if the next characters match
+    // Consumes a text after whitespace and returns whether it matched.
     private boolean consumeSequence(String expected) {
         skipWhitespace();
         if (source.regionMatches(pos, expected, 0, expected.length())) {
@@ -589,7 +631,7 @@ public final class ExpressionParser {
         return false;
     }
 
-    // Consumes or fails with position
+    // Consumes a character and rejects a different one.
     private void expect(char expected) {
         if (!consume(expected)) {
             throw new ParseException("Expected '" + expected + "' at " + pos + " in: " + source);

@@ -12,40 +12,41 @@ import it.unimi.dsi.fastutil.longs.LongArrayList;
 import java.util.Arrays;
 import java.util.function.IntConsumer;
 
-/**
- * Decomposes a section's opaque voxels into disjoint occluder boxes. Input is 64 longs of occupancy
- * for a 16x16x16 section.
- *
- * <p>Rectangles are found in the low two axes of the index and extended along the high one, so a
- * caller with a different axis order permutes the resulting {@link PackedBox} instead of the input.
- *
- * <p>Boxes never cover a voxel the source left clear, but may leave some covered voxels out: two
- * passes run and any residue is dropped. That costs culling, never correctness.
- */
+// Splits the opaque cells of a section into boxes that do not overlap.
 public class BoxFinder {
-    /** One bit per voxel of a 16x16x16 section. */
+    // Number of longs with one bit per cell of a section.
     public static final int INTERIOR_CACHE_WORDS = 64;
 
+    // Number of longs of one slice.
     public static final int SLICE_WORD_COUNT = 4;
 
+    // Boxes found by the last search.
     public final IntArrayList boxes = new IntArrayList();
+    // Finder of rectangles in one slice.
     public final AreaFinder areaFinder;
+    // Copy of the cells of the search.
     final long[] source = new long[INTERIOR_CACHE_WORDS];
+    // Cells that boxes cover already.
     final long[] filled = new long[INTERIOR_CACHE_WORDS];
-    /**
-     * Bits 0-15 indicate which slices contain the area with the same index of the value.
-     */
+    // Slices that hold each rectangle.
     final int[] areaSlices = new int[Area.AREA_COUNT];
+    // Candidate boxes ordered by volume.
     private final LongArrayList sortedBoxes = new LongArrayList();
+    // Mask of the slice being marked.
     int mask;
+    // Marks the slice of a rectangle.
     private final IntConsumer markSliceConsumer = areaIndex -> areaSlices[areaIndex] |= mask;
+    // Number of cells not covered yet.
     private int voxelCount;
 
+    // Creates a finder and rejects a null rectangle finder.
     public BoxFinder(AreaFinder areaFinder) {
-        this.areaFinder = areaFinder;
+        this.areaFinder = java.util.Objects.requireNonNull(areaFinder, "areaFinder");
     }
 
+    // Finds the boxes of the cells at an offset of the array and rejects an array that is too short.
     public void findBoxes(long[] sourceBits, int sourceIndex) {
+        java.util.Objects.checkFromIndexSize(sourceIndex, INTERIOR_CACHE_WORDS, sourceBits.length);
         Arrays.fill(filled, 0L);
         System.arraycopy(sourceBits, sourceIndex, source, 0, INTERIOR_CACHE_WORDS);
         boxes.clear();
@@ -76,6 +77,7 @@ public class BoxFinder {
         }
     }
 
+    // Orders the boxes that span a full slice.
     private void buildSortedSections() {
         final LongArrayList sortedBoxes = this.sortedBoxes;
         sortedBoxes.clear();
@@ -83,7 +85,7 @@ public class BoxFinder {
         final int[] areaSlices = this.areaSlices;
 
         if (areaSlices[0] != 0) {
-            // handle special case of full Z-plane
+            // Handles the full plane
             addBoxesFromSlice(Area.indexToKey(0), areaSlices[0]);
         }
 
@@ -103,6 +105,7 @@ public class BoxFinder {
         sortedBoxes.sort((a, b) -> Long.compare(b, a));
     }
 
+    // Extends the slices of the rectangles into their neighbors.
     private void markBoxNeighborSlices() {
         final int[] areaSlices = this.areaSlices;
 
@@ -111,7 +114,7 @@ public class BoxFinder {
 
             if (slice != 0) {
                 if ((slice & 1) == 1 && (slice & 2) == 0) {
-                    // special case first slice - can only transfer up
+                    // Moves the first slice up
                     if (Area.isIncludedBySample(source, SLICE_WORD_COUNT, areaIndex)) {
                         slice |= 2;
                     }
@@ -121,7 +124,7 @@ public class BoxFinder {
 
                 for (int z = 1; z < 15; z++) {
                     if ((slice & mask) != 0) {
-                        // transfer to lower slice if not already present
+                        // Moves to the lower slice
                         final int lowMask = (mask >> 1);
 
                         if ((slice & lowMask) == 0) {
@@ -130,7 +133,7 @@ public class BoxFinder {
                             }
                         }
 
-                        // transfer to upper slice if not already present
+                        // Moves to the upper slice
                         final int highMask = (mask << 1);
 
                         if ((slice & highMask) == 0) {
@@ -154,6 +157,7 @@ public class BoxFinder {
         }
     }
 
+    // Orders the candidate boxes.
     private void buildSortedBoxes() {
         final LongArrayList sortedBoxes = this.sortedBoxes;
         sortedBoxes.clear();
@@ -171,6 +175,7 @@ public class BoxFinder {
         sortedBoxes.sort((a, b) -> Long.compare(b, a));
     }
 
+    // Adds a box for every run of slices.
     private void addBoxesFromSlice(int areaKey, int slice) {
         int z0 = -1;
         int mask = 1;
@@ -182,7 +187,7 @@ public class BoxFinder {
 
         for (int z = 0; z < 16; z++) {
             if ((slice & mask) == 0) {
-                // no bit, end run if started
+                // Ends the run
                 if (z0 != -1) {
                     final int dz = (z - z0);
                     final int dy = (y1 - y0 + 1);
@@ -192,7 +197,7 @@ public class BoxFinder {
                     z0 = -1;
                 }
             } else {
-                // bit set, start run if not started
+                // Starts the run
                 if (z0 == -1) {
                     z0 = z;
                 }
@@ -201,7 +206,7 @@ public class BoxFinder {
             mask <<= 1;
         }
 
-        // handle case when run extends to last bit
+        // Ends the last run
         if (z0 != -1) {
             final int dz = (16 - z0);
             final int dy = (y1 - y0 + 1);
@@ -212,7 +217,7 @@ public class BoxFinder {
         }
     }
 
-    // PERF: still slow on relative basis to rest of chunk baking
+    // Marks the slices that hold each rectangle.
     private void markBoxSlices() {
         final long[] sourceBits = source;
         final AreaFinder areaFinder = this.areaFinder;
@@ -228,6 +233,7 @@ public class BoxFinder {
         }
     }
 
+    // Marks the slices that hold the section rectangles.
     private void markSectionSlices() {
         final long[] sourceBits = source;
         final AreaFinder areaFinder = this.areaFinder;
@@ -243,6 +249,7 @@ public class BoxFinder {
         }
     }
 
+    // Finds the boxes that span a full row or column.
     private void findSections() {
         final LongArrayList sortedBoxes = this.sortedBoxes;
         final int limit = sortedBoxes.size();
@@ -263,6 +270,7 @@ public class BoxFinder {
         }
     }
 
+    // Chooses boxes that do not overlap.
     private void findDisjointBoxes() {
         final LongArrayList sortedBoxes = this.sortedBoxes;
         final int limit = sortedBoxes.size();
@@ -288,10 +296,12 @@ public class BoxFinder {
         }
     }
 
+    // Returns the range class of a volume.
     private int rangeFromVolume(int maxArea) {
         return maxArea <= 64 ? PackedBox.RANGE_NEAR : maxArea > 512 ? PackedBox.RANGE_FAR : PackedBox.RANGE_MID;
     }
 
+    // Returns the number of cells set in an array.
     private int voxelCount(long[] sourceBits, int sourceIndex) {
         int result = 0;
         final int limit = sourceIndex + INTERIOR_CACHE_WORDS;
@@ -304,6 +314,7 @@ public class BoxFinder {
         return result;
     }
 
+    // Marks the cells of a box as covered.
     private void fill(int areaIndex, int z0, int z1) {
         final long[] filled = this.filled;
         int index = z0 * SLICE_WORD_COUNT;
@@ -318,6 +329,7 @@ public class BoxFinder {
         }
     }
 
+    // Returns whether a box overlaps covered cells.
     private boolean intersects(int areaIndex, int z0, int z1) {
         final long[] filled = this.filled;
         int index = z0 * SLICE_WORD_COUNT;
@@ -333,6 +345,7 @@ public class BoxFinder {
         return false;
     }
 
+    // Returns whether a box adds uncovered cells.
     private boolean isAdditive(int areaIndex, int z0, int z1) {
         final long[] filled = this.filled;
         int index = z0 * SLICE_WORD_COUNT;
@@ -351,6 +364,7 @@ public class BoxFinder {
         return false;
     }
 
+    // Clears the cells of the section boxes.
     private void clearSectionBits() {
         for (int i = 0; i < INTERIOR_CACHE_WORDS; ++i) {
             source[i] &= ~filled[i];

@@ -5,19 +5,28 @@ import com.bdmajora.impetus.engine.impl.render.mesh.gl.BindlessBuffer;
 import com.bdmajora.impetus.engine.impl.render.mesh.gl.DeviceBuffer;
 import com.bdmajora.impetus.engine.impl.render.mesh.gl.SparseBindlessBuffer;
 
-// Every section's geometry in one buffer addressed by quad index (mesh shader skips a multiply); sparse-backed where pages commit properly so fragmentation costs address space not VRAM
+// Buffer that holds the quads of every section.
 public class QuadArena {
-    // Sparse address space, deliberately far beyond real VRAM: it is virtual, never resident, and a huge span means the allocator never compacts
+    // Address space of a sparse buffer in bytes.
     private static final long SPARSE_ADDRESS_SPACE = 80L * 1024L * 1024L * 1024L;
 
+    // Allocator of the quad ranges.
     private final SegmentedAllocator allocator = new SegmentedAllocator();
+    // Backing buffer.
     private final DeviceBuffer buffer;
+    // Bytes of one vertex.
     private final int bytesPerVertex;
+    // Size of a dense buffer or zero.
     private final long denseCapacity;
 
+    // Number of quads in use.
     private long liveQuads;
 
+    // Creates an arena and rejects a negative budget or a vertex size that is not positive.
     public QuadArena(long memoryBudget, int bytesPerVertex) {
+        if (memoryBudget < 0 || bytesPerVertex <= 0) {
+            throw new IllegalArgumentException("Invalid budget " + memoryBudget + " or vertex size " + bytesPerVertex);
+        }
         this.bytesPerVertex = bytesPerVertex;
 
         if (MeshShaderSupport.supportsSparseGeometry()) {
@@ -29,16 +38,20 @@ public class QuadArena {
             this.allocator.setLimit(memoryBudget / (4L * bytesPerVertex));
         }
 
-        // Burn quad 0 so a zeroed section header cannot be mistaken for geometry starting at the very beginning of the arena
         this.alloc(1);
     }
 
-    // The backing GPU buffer
+    // Returns the bytes of one quad.
+    public int bytesPerQuad() {
+        return Math.multiplyExact(4, this.bytesPerVertex);
+    }
+
+    // Returns the backing buffer.
     public DeviceBuffer getBuffer() {
         return this.buffer;
     }
 
-    // Returns the quad index of the allocation, or SegmentedAllocator.OUT_OF_SPACE when the arena is full
+    // Returns the quad index of a new range or the out of space marker.
     public int alloc(int quadCount) {
         long address = this.allocator.alloc(quadCount);
 
@@ -55,7 +68,7 @@ public class QuadArena {
         return (int) address;
     }
 
-    // Returns a quad range to the allocator
+    // Releases a quad range.
     public void free(int quadAddress) {
         int quadCount = this.allocator.free(quadAddress);
         this.liveQuads -= quadCount;
@@ -65,18 +78,18 @@ public class QuadArena {
         }
     }
 
-    // Whether an existing allocation is exactly the right size for a rebuild, so a same-count rebuild keeps its address and skips the free/alloc round trip
+    // Returns whether an allocation has exactly a quad count.
     public boolean canReuse(int quadAddress, int quadCount) {
         return this.allocator.getSize(quadAddress) == quadCount;
     }
 
-    // Reserves staging space for the whole allocation at quadAddress and returns where to write it
+    // Reserves staging space for an allocation and returns the write address.
     public long beginUpload(UploadStream stream, int quadAddress) {
         long quadCount = this.allocator.getSize(quadAddress);
         return stream.upload(this.buffer, byteOffset(quadAddress), byteLength((int) quadCount));
     }
 
-    // What the arena physically costs right now: committed pages on the sparse path, not the address space
+    // Returns the bytes that the arena occupies in video memory.
     public long getResidentBytes() {
         if (this.buffer instanceof SparseBindlessBuffer sparse) {
             return sparse.getCommittedBytes();
@@ -84,22 +97,22 @@ public class QuadArena {
         return this.denseCapacity;
     }
 
-    // For the debug screen
+    // Returns the bytes of the quads in use.
     public long getUsedBytes() {
         return byteLength((int) this.liveQuads);
     }
 
-    // Frees the buffer
+    // Deletes the backing buffer.
     public void delete() {
         this.buffer.delete();
     }
 
-    // Quad indices are unsigned, so the arena can address twice what a signed int would reach
+    // Returns the byte offset of a quad index.
     private long byteOffset(int quadAddress) {
         return Integer.toUnsignedLong(quadAddress) * 4L * this.bytesPerVertex;
     }
 
-    // Quads to bytes at the quad stride
+    // Returns the bytes of a number of quads.
     private long byteLength(int quadCount) {
         return (long) quadCount * 4L * this.bytesPerVertex;
     }

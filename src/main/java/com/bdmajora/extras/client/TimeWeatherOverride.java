@@ -7,18 +7,24 @@ import net.minecraft.world.GameType;
 import net.minecraft.world.WorldServer;
 import net.minecraft.world.storage.WorldInfo;
 
-// OptiFine's Time and Weather locks on the integrated server, confined to single-player creative since they change world state; time is nudged past the boundary rather than pinned so the cycle keeps running
+// Forces the time and weather in creative worlds.
 public final class TimeWeatherOverride {
+    // Length of a day in ticks.
     private static final long DAY_LENGTH = 24000L;
+    // First tick of the day.
     private static final long DAY_START = 1000L;
+    // Last tick of the day.
     private static final long DAY_END = 11000L;
+    // First tick of the night.
     private static final long NIGHT_START = 14000L;
+    // Last tick of the night.
     private static final long NIGHT_END = 22000L;
 
+    // Prevents instantiation
     private TimeWeatherOverride() {
     }
 
-    // Applies both locks; called from the integrated server's world tick
+    // Applies the configured time and weather.
     public static void apply(WorldServer world) {
         ExtrasConfig.ExtraSettings settings = Extras.options().extra;
 
@@ -31,14 +37,14 @@ public final class TimeWeatherOverride {
         }
     }
 
-    // Nudges the clock past the boundary rather than pinning it, so the cycle keeps advancing
+    // Moves the time into the forced part of the day.
     private static void applyTime(WorldServer world, ExtrasConfig.TimeOverride override) {
         if (!isCreative(world)) {
             return;
         }
 
         long time = world.getWorldTime();
-        long timeOfDay = time % DAY_LENGTH;
+        long timeOfDay = Math.floorMod(time, DAY_LENGTH);
 
         switch (override) {
             case DAY -> {
@@ -60,7 +66,7 @@ public final class TimeWeatherOverride {
         }
     }
 
-    // Forces the world info's rain and thunder flags to the chosen state
+    // Sets the forced weather and informs the players.
     private static void applyWeather(WorldServer world, ExtrasConfig.WeatherOverride override) {
         if (!isCreative(world)) {
             return;
@@ -74,7 +80,6 @@ public final class TimeWeatherOverride {
             return;
         }
 
-        // Zero the countdowns too, or vanilla's weather scheduler undoes this within the tick.
         info.setRaining(raining);
         info.setRainTime(0);
         info.setThundering(thundering);
@@ -82,7 +87,6 @@ public final class TimeWeatherOverride {
         world.setRainStrength(raining ? 1.0F : 0.0F);
         world.setThunderStrength(thundering ? 1.0F : 0.0F);
 
-        // The client renders from its own copy of the weather state, so it has to be told.
         if (world.getMinecraftServer() != null) {
             world.getMinecraftServer().getPlayerList()
                     .sendPacketToAllPlayers(new SPacketChangeGameState(raining ? 1 : 2, 0.0F));
@@ -93,7 +97,7 @@ public final class TimeWeatherOverride {
         }
     }
 
-    // The overrides only apply in creative, matching OptiFine
+    // Returns whether the world uses creative mode.
     private static boolean isCreative(WorldServer world) {
         return world.getWorldInfo().getGameType() == GameType.CREATIVE;
     }

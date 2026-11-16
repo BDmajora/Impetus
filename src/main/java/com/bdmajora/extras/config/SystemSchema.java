@@ -6,9 +6,9 @@ import com.bdmajora.extras.ExtrasConfig.LoadingSettings;
 import com.bdmajora.extras.ExtrasConfig.NetworkSettings;
 import com.bdmajora.extras.ExtrasConfig.ThreadSettings;
 
-// Settings of parallel ticking and the network and thread scheduling and client ticks and loading
+// Schema of the system settings.
 final class SystemSchema {
-    // Parallel server ticking switches and worker count and serial entity list
+    // Schema of the async settings.
     static final SettingGroup<AsyncSettings> ASYNC = SettingGroup.builder("parallel_ticking", c -> c.async, AsyncSettings::new)
             .bool("enabled", "Master switch for parallel server ticking (entities, random ticks, mob spawning across the worker pool); takes effect on the next launch",
                     s -> s.enabled, (s, v) -> s.enabled = v)
@@ -25,7 +25,7 @@ final class SystemSchema {
                     s -> s.synchronizedEntities, (s, v) -> s.synchronizedEntities = v)
             .build();
 
-    // Wire limit and timeout and Krypton switches
+    // Schema of the network settings.
     static final SettingGroup<NetworkSettings> NETWORK = SettingGroup.builder("network", c -> c.network, NetworkSettings::new)
             .bool("largePackets", "Lift vanilla's packet, payload, NBT, string and chunk data size caps (2 MB frames, 32 KB strings, 1 MB payloads)",
                     s -> s.largePackets, (s, v) -> s.largePackets = v)
@@ -46,7 +46,7 @@ final class SystemSchema {
                     s -> s.keepAliveTimeoutSeconds, (s, v) -> s.keepAliveTimeoutSeconds = v)
             .build();
 
-    // Thread priorities and the render loop yield switch
+    // Schema of the threads settings.
     static final SettingGroup<ThreadSettings> THREADS = SettingGroup.builder("thread_scheduling", c -> c.threads, ThreadSettings::new)
             .bool("removeRenderYield", "Skip the Thread.yield() the render loop makes once per frame",
                     s -> s.removeRenderYield, (s, v) -> s.removeRenderYield = v)
@@ -61,13 +61,13 @@ final class SystemSchema {
                     s -> s.chunkBuilderPriority, (s, v) -> s.chunkBuilderPriority = v)
             .build();
 
-    // Lightmap caching switch
+    // Schema of the client tick settings.
     static final SettingGroup<ClientTickSettings> CLIENT_TICK = SettingGroup.builder("client_tick", c -> c.clientTick, ClientTickSettings::new)
             .bool("lightmapCaching", "Skip rebuilding and uploading the lightmap while nothing but the torch flicker has changed",
                     s -> s.lightmapCaching, (s, v) -> s.lightmapCaching = v)
             .build();
 
-    // World load and screenshot and atlas switches
+    // Schema of the loading settings.
     static final SettingGroup<LoadingSettings> LOADING = SettingGroup.builder("loading", c -> c.loading, LoadingSettings::new)
             .bool("skipWorldLoadGc", "Skip the forced full garbage collection on world load and unload",
                     s -> s.skipWorldLoadGc, (s, v) -> s.skipWorldLoadGc = v)

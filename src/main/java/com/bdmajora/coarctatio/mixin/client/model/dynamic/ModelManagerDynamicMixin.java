@@ -14,37 +14,39 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.Shadow;
 
-// The reload no longer runs ModelLoader.setupModelRegistry; the registry it installs bakes on request
+// Mixin that changes ModelManager.
 @Mixin(ModelManager.class)
 public abstract class ModelManagerDynamicMixin implements DynamicModels.ModelManagerAccess {
     @Shadow
     private IRegistry<ModelResourceLocation, IBakedModel> modelRegistry;
 
+    // Reference to the field default model of the target.
     @Shadow
     private IBakedModel defaultModel;
 
+    // Reference to the field tex map of the target.
     @Shadow
     @Final
     private TextureMap texMap;
 
+    // Reference to the field model provider of the target.
     @Shadow
     @Final
     private BlockModelShapes modelProvider;
 
-    /**
-     * @author embeddedt, Runemoro, bdmajora
-     * @reason Replace the eager load-and-bake of every model with the dynamic providers
-     */
+    // Replaces the whole method onResourceManagerReload.
     @Overwrite
     public void onResourceManagerReload(IResourceManager resourceManager) {
         DynamicModels.reload((ModelManager) (Object) this, resourceManager, this.texMap, this.modelProvider);
     }
 
+    // Handles set model registry.
     @Override
     public void coarctatio$setModelRegistry(BakedModelProvider registry) {
         this.modelRegistry = registry;
     }
 
+    // Handles set default model.
     @Override
     public void coarctatio$setDefaultModel(IBakedModel model) {
         this.defaultModel = model;

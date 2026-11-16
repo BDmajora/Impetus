@@ -24,31 +24,37 @@ import java.util.concurrent.ForkJoinWorkerThread;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 
-// Every model file the packs hold is read and parsed across all cores before the loader walks blocks and items, which otherwise reads them one at a time on the client thread; a server pack with thousands of item override models spent most of its join there
+// Reads model files on worker threads before the bake needs them.
 public final class ModelPrefetch {
+    // Prefix of asset paths.
     private static final String ASSETS = "assets/";
+    // Folder segment that holds models.
     private static final String MODELS_DIR = "/models/";
+    // Suffix of model files.
     private static final String JSON = ".json";
+    // Prefetched models by location.
     private static final Map<ResourceLocation, ModelBlock> MODEL_BLOCKS = new ConcurrentHashMap<>();
-    // Keyed by armature location, the form VanillaLoader asks for it in
+    // Prefetched armatures by location.
     private static final Map<ResourceLocation, ModelBlockAnimation> ANIMATIONS = new ConcurrentHashMap<>();
 
+    // Prevents instantiation
     private ModelPrefetch() {
     }
 
-    // The bakery's own loadModel, so every other hook on it still runs for a prefetched model
+    // Reader of one model.
     @FunctionalInterface
     public interface ModelReader {
+        // Returns the model of the location.
         ModelBlock read(ResourceLocation location) throws IOException;
     }
 
+    // Reads every model of the manager in parallel and stores the results.
     public static void run(IResourceManager manager, ModelReader reader) {
         clear();
         if (!(manager instanceof SimpleReloadableResourceManager)) {
             return;
         }
         long start = System.nanoTime();
-        // Listed on this thread so every pack's index is built before the workers probe it
         Set<ResourceLocation> locations = new HashSet<>();
         for (IResourcePack pack : PackPathLister.packsOf((SimpleReloadableResourceManager) manager)) {
             if (!listable(pack)) {
@@ -61,7 +67,6 @@ public final class ModelPrefetch {
                 }
             }
         }
-        // Summed across workers, so the log says whether reading or the armature probes dominate and how many threads actually ran
         LongAdder readNanos = new LongAdder();
         LongAdder armatureNanos = new LongAdder();
         Set<Thread> workers = ConcurrentHashMap.newKeySet();
@@ -79,7 +84,6 @@ public final class ModelPrefetch {
                     armatureNanos.add(System.nanoTime() - armatureStart);
                     MODEL_BLOCKS.put(location, model);
                 } catch (Throwable t) {
-                    // Left to the loader, which reports a missing or broken model against whatever asked for it
                 }
             })).join();
         } finally {
@@ -90,7 +94,7 @@ public final class ModelPrefetch {
                 readNanos.sum() / 1_000_000L, armatureNanos.sum() / 1_000_000L);
     }
 
-    // A pool of its own, so whatever else holds the common pool's workers cannot leave the read on one thread; the workers carry the client thread's context loader for anything that looks classes up through it
+    // Returns a pool of named worker threads.
     private static ForkJoinPool readerPool() {
         ClassLoader loader = Thread.currentThread().getContextClassLoader();
         AtomicInteger counter = new AtomicInteger();
@@ -102,13 +106,13 @@ public final class ModelPrefetch {
         }, null, false);
     }
 
-    // Zip and folder packs (resource packs and mod jars) list from the existence index; the built-in pack would mean walking the whole classpath, and its small models load quickly the usual way
+    // Returns whether the pack is a file or folder pack.
     private static boolean listable(IResourcePack pack) {
         IResourcePack inner = pack instanceof LegacyV2Adapter ? ((LegacyV2AdapterAccessor) pack).coarctatio$pack() : pack;
         return inner instanceof FileResourcePack || inner instanceof FolderResourcePack;
     }
 
-    // "assets/ns/models/item/x.json" to ns:models/item/x, the location VanillaLoader hands the bakery; null for anything else
+    // Returns the model location of an asset path or null when the path is not a model.
     @Nullable
     static ResourceLocation modelLocation(String path) {
         if (!path.startsWith(ASSETS) || !path.endsWith(JSON)) {
@@ -126,22 +130,24 @@ public final class ModelPrefetch {
         return new ResourceLocation(path.substring(ASSETS.length(), slash), "models/" + path.substring(modelStart, end));
     }
 
-    // VanillaLoader's armature beside every model: ns:models/x to ns:armatures/x.json
+    // Returns the armature location of a model.
     static ResourceLocation armatureOf(ResourceLocation model) {
         return new ResourceLocation(model.getNamespace(), "armatures/" + model.getPath().substring("models/".length()) + JSON);
     }
 
-    // Handed out once, since the loader goes on to set the model's parent link; null takes the usual path
+    // Removes and returns the prefetched model of the location.
     @Nullable
     public static ModelBlock takeModel(ResourceLocation location) {
         return MODEL_BLOCKS.isEmpty() ? null : MODEL_BLOCKS.remove(location);
     }
 
+    // Removes and returns the prefetched armature of the location.
     @Nullable
     public static ModelBlockAnimation takeAnimation(ResourceLocation armature) {
         return ANIMATIONS.isEmpty() ? null : ANIMATIONS.remove(armature);
     }
 
+    // Discards every prefetched result.
     public static void clear() {
         MODEL_BLOCKS.clear();
         ANIMATIONS.clear();

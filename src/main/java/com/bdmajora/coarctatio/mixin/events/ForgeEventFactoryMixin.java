@@ -24,47 +24,52 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.EnumSet;
 
-// Recycles the capability-attach event of the four object kinds constructed in bulk (tile entities, entities, item stacks, chunks) and the neighbour-notify event fired per block update. remap = false, Forge class
+// Mixin that changes ForgeEventFactory.
 @Mixin(value = ForgeEventFactory.class, remap = false)
 public abstract class ForgeEventFactoryMixin {
-    // Neighbour notifications nest (a handler placing a block fires another), so the recycled instance is only reused once the outer caller has read its own; vanilla reads the cancel flag and sides before recursing
+    // Field coarctatio neighbor notify added to the target.
     @Unique
     private static final ThreadLocal<BlockEvent.NeighborNotifyEvent> COARCTATIO_NEIGHBOR_NOTIFY = new ThreadLocal<>();
 
-    // The constructor is AttachCapabilitiesEvent(Class<T>, T), so its erased descriptor takes Object and a constructor redirect must declare exactly that (Mixin validates the handler against the erased signature); the typed object is cast back inside
+    // Replaces the creation of AttachCapabilitiesEvent in gatherCapabilities.
     @Redirect(method = "gatherCapabilities(Lnet/minecraft/tileentity/TileEntity;)Lnet/minecraftforge/common/capabilities/CapabilityDispatcher;",
             at = @At(value = "NEW", target = "net/minecraftforge/event/AttachCapabilitiesEvent"))
     private static AttachCapabilitiesEvent<TileEntity> coarctatio$tileEvent(Class<?> type, Object tile) {
         return RecycledEvents.tileCapabilities((TileEntity) tile);
     }
 
+    // Replaces the creation of AttachCapabilitiesEvent in gatherCapabilities.
     @Redirect(method = "gatherCapabilities(Lnet/minecraft/entity/Entity;)Lnet/minecraftforge/common/capabilities/CapabilityDispatcher;",
             at = @At(value = "NEW", target = "net/minecraftforge/event/AttachCapabilitiesEvent"))
     private static AttachCapabilitiesEvent<Entity> coarctatio$entityEvent(Class<?> type, Object entity) {
         return RecycledEvents.entityCapabilities((Entity) entity);
     }
 
+    // Replaces the creation of AttachCapabilitiesEvent in gatherCapabilities.
     @Redirect(method = "gatherCapabilities(Lnet/minecraft/item/ItemStack;Lnet/minecraftforge/common/capabilities/ICapabilityProvider;)Lnet/minecraftforge/common/capabilities/CapabilityDispatcher;",
             at = @At(value = "NEW", target = "net/minecraftforge/event/AttachCapabilitiesEvent"))
     private static AttachCapabilitiesEvent<ItemStack> coarctatio$stackEvent(Class<?> type, Object stack) {
         return RecycledEvents.stackCapabilities((ItemStack) stack);
     }
 
+    // Replaces the creation of AttachCapabilitiesEvent in gatherCapabilities.
     @Redirect(method = "gatherCapabilities(Lnet/minecraft/world/chunk/Chunk;)Lnet/minecraftforge/common/capabilities/CapabilityDispatcher;",
             at = @At(value = "NEW", target = "net/minecraftforge/event/AttachCapabilitiesEvent"))
     private static AttachCapabilitiesEvent<Chunk> coarctatio$chunkEvent(Class<?> type, Object chunk) {
         return RecycledEvents.chunkCapabilities((Chunk) chunk);
     }
 
-    // The dispatcher has copied the providers out by the time the shared gather returns
+    // Runs before every return of gatherCapabilities.
     @Inject(method = "gatherCapabilities(Lnet/minecraftforge/event/AttachCapabilitiesEvent;Lnet/minecraftforge/common/capabilities/ICapabilityProvider;)Lnet/minecraftforge/common/capabilities/CapabilityDispatcher;",
             at = @At("RETURN"))
     private static void coarctatio$releaseEvent(AttachCapabilitiesEvent<?> event, ICapabilityProvider parent, CallbackInfoReturnable<CapabilityDispatcher> cir) {
         RecycledEvents.releaseCapabilities(event);
     }
 
+    // Replaces the creation of NeighborNotifyEvent in onNeighborNotify.
     @Redirect(method = "onNeighborNotify", at = @At(value = "NEW", target = "net/minecraftforge/event/world/BlockEvent$NeighborNotifyEvent"))
     private static BlockEvent.NeighborNotifyEvent coarctatio$neighborEvent(World world, BlockPos pos, IBlockState state,
+                                                                          // Notified sides and redstone flag.
                                                                           EnumSet<EnumFacing> notifiedSides, boolean forceRedstoneUpdate) {
         BlockEvent.NeighborNotifyEvent event = COARCTATIO_NEIGHBOR_NOTIFY.get();
         if (event == null) {

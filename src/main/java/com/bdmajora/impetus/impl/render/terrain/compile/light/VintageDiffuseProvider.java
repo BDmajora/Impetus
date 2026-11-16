@@ -7,15 +7,17 @@ import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFacing;
 
 import static com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFacing.*;
 
+// Choices of the vintage diffuse provider setting.
 public enum VintageDiffuseProvider implements DiffuseProvider {
+    // Value that selects instance.
     INSTANCE;
 
-    // True when the pack set oldLighting=false, so vanilla's per-face 0.5/0.6/0.8 shading must NOT be baked into the vertex colour on top of the pack's own normal-derived lighting; Iris forces the shade lookup to UP, OptiFine sets its shade constants to 1.0
+    // Flag set when directional shading is off.
     private static boolean directionalShadingDisabled() {
         return com.bdmajora.impetus.umbra.material.WorldRenderingSettings.shouldDisableDirectionalShading();
     }
 
-    // Vanilla's per-normal diffuse, or full brightness when shading is off
+    // Returns the shade of a normal.
     @Override
     public float getDiffuse(float normalX, float normalY, float normalZ, boolean shade) {
         if (!shade || directionalShadingDisabled()) {
@@ -24,7 +26,7 @@ public enum VintageDiffuseProvider implements DiffuseProvider {
         return LightUtil.diffuseLight(normalX, normalY, normalZ);
     }
 
-    // Sodium facing to vanilla; UNASSIGNED has no equivalent and yields null
+    // Returns the facing of a quad facing.
     public static EnumFacing toEnumFacing(ModelQuadFacing facing) {
         return switch (facing) {
             case NEG_Y -> EnumFacing.DOWN;
@@ -37,7 +39,7 @@ public enum VintageDiffuseProvider implements DiffuseProvider {
         };
     }
 
-    // Vanilla facing to Sodium
+    // Creates from the enum facing.
     public static ModelQuadFacing fromEnumFacing(EnumFacing facing) {
         return switch (facing) {
             case DOWN  -> NEG_Y;
@@ -49,7 +51,7 @@ public enum VintageDiffuseProvider implements DiffuseProvider {
         };
     }
 
-    // Null-tolerant variant for quads with no light face
+    // Creates from the enum facing or unassigned.
     public static ModelQuadFacing fromEnumFacingOrUnassigned(EnumFacing facing) {
         if (facing == null) {
             return UNASSIGNED;
@@ -57,7 +59,7 @@ public enum VintageDiffuseProvider implements DiffuseProvider {
         return fromEnumFacing(facing);
     }
 
-    // Per-face diffuse from the table; this runs per quad and LightUtil recomputes the formula on every call
+    // Returns the shade of a face.
     @Override
     public float getDiffuse(ModelQuadFacing lightFace, boolean shade) {
         if (!shade || directionalShadingDisabled()) {
@@ -66,9 +68,10 @@ public enum VintageDiffuseProvider implements DiffuseProvider {
         return DIFFUSE_BY_FACING[lightFace.ordinal()];
     }
 
-    // Vanilla's six per-face constants (0.5 down, 1.0 up, 0.8 N/S, 0.6 E/W) indexed by ModelQuadFacing ordinal; UNASSIGNED gets full brightness
+    // Diffuse by facing.
     private static final float[] DIFFUSE_BY_FACING = buildDiffuseTable();
 
+    // Returns the shade of each face.
     private static float[] buildDiffuseTable() {
         float[] table = new float[ModelQuadFacing.COUNT];
         for (ModelQuadFacing facing : ModelQuadFacing.DIRECTIONS) {

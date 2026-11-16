@@ -7,14 +7,15 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
-// Disables blending for shader-pack hand passes.
+// Mixin that changes RenderPlayer.
 @Mixin(RenderPlayer.class)
 public class RenderPlayerArmBlendMixin {
-    // Solid hand render stage id.
+    // Render stage of the solid hand.
     private static final int HAND_SOLID = 16;
-    // Translucent hand render stage id.
+    // Render stage of the translucent hand.
     private static final int HAND_TRANSLUCENT = 23;
 
+    // Replaces the call of GlStateManager.enableBlend in renderRightArm and renderLeftArm.
     @Redirect(
             method = {"renderRightArm", "renderLeftArm"},
             at = @At(value = "INVOKE",

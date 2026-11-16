@@ -7,9 +7,10 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
-// The one place the in-game overlay is drawn each frame
+// Mixin that changes EntityRenderer.
 @Mixin(EntityRenderer.class)
 public abstract class EntityRendererHudCacheMixin {
+    // Replaces the call of GuiIngame.renderGameOverlay in updateCameraAndRender.
     @Redirect(method = "updateCameraAndRender", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/GuiIngame;renderGameOverlay(F)V"))
     private void impetus$renderThroughCache(GuiIngame gui, float partialTicks) {
         HudCache.render((EntityRenderer) (Object) this, gui, partialTicks);

@@ -6,16 +6,16 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 
 import java.nio.FloatBuffer;
 
-// Exposes the static projection/modelview buffers ActiveRenderInfo keeps private
+// Mixin that changes ActiveRenderInfo.
 @Mixin(ActiveRenderInfo.class)
 public interface ActiveRenderInfoAccessor {
-    // Accessor
+    // Gives access to the field get projection matrix.
     @Accessor("PROJECTION")
     static FloatBuffer getProjectionMatrix() {
         throw new AssertionError();
     }
 
-    // Accessor
+    // Gives access to the field get model view matrix.
     @Accessor("MODELVIEW")
     static FloatBuffer getModelViewMatrix() {
         throw new AssertionError();

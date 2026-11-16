@@ -15,31 +15,34 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-// Routes each particle layer through the particle pool and samples light at tick time; the spawn queue is always concurrent since a ticking particle (fireworks, large explosions) spawns more, and mods add effects off-thread regardless
+// Mixin that changes ParticleManager.
 @Mixin(ParticleManager.class)
 public abstract class ParticleManagerParallelMixin {
+    // Reference to the field queue of the target.
     @Shadow
     @Final
     @Mutable
     private Queue<Particle> queue;
 
-    // Private on the target, so declared private with a placeholder body rather than abstract
+    // Reference to the method tick particle of the target.
     @Shadow
     private void tickParticle(Particle particle) {
         throw new AssertionError();
     }
 
+    // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void impetus$concurrentQueue(CallbackInfo ci) {
         this.queue = new ConcurrentLinkedQueue<>(this.queue);
     }
 
+    // Runs at the start of updateEffects.
     @Inject(method = "updateEffects", at = @At("HEAD"))
     private void impetus$beginTick(CallbackInfo ci) {
         ParticleTicker.beginTick();
     }
 
-    // Small layers keep vanilla's iterator loop; large ones are sliced across the pool with the same per-particle tick and crash handling
+    // Runs at the start of tickParticleList and can cancel it.
     @Inject(method = "tickParticleList", at = @At("HEAD"), cancellable = true)
     private void impetus$tickLayerParallel(Queue<Particle> layer, CallbackInfo ci) {
         if (!ParticleTicker.shouldParallelize(layer)) {
@@ -49,7 +52,7 @@ public abstract class ParticleManagerParallelMixin {
         ci.cancel();
     }
 
-    // Sampled after every tick on whichever thread ran it, so the render pass reads a value instead of walking the chunk
+    // Runs at the end of tickParticle.
     @Inject(method = "tickParticle", at = @At("TAIL"))
     private void impetus$sampleLight(Particle particle, CallbackInfo ci) {
         if (ParticleTicker.lightCache && particle.isAlive()) {

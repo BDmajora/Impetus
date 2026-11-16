@@ -11,54 +11,57 @@ import net.minecraft.world.WorldType;
 import net.minecraft.world.biome.Biome;
 import org.jetbrains.annotations.Nullable;
 
-// Stub world used when a real IBlockAccess isn't available yet (e.g. before world load); everything is air
+// Choices of the empty block access setting.
 public enum EmptyBlockAccess implements IBlockAccess {
+    // Value that selects instance.
     INSTANCE;
 
+    // Air block state.
     private static final IBlockState AIR = Blocks.AIR.getDefaultState();
 
+    // Returns the tile entity.
     @Override
     public @Nullable TileEntity getTileEntity(BlockPos pos) {
         return null;
     }
 
-    // Full brightness
+    // Returns the combined light.
     @Override
     public int getCombinedLight(BlockPos blockPos, int lightValue) {
         return 0;
     }
 
-    // Always air
+    // Returns the block state.
     @Override
     public IBlockState getBlockState(BlockPos pos) {
         return AIR;
     }
 
-    // Always
+    // Returns whether air block.
     @Override
     public boolean isAirBlock(BlockPos pos) {
         return true;
     }
 
-    // Plains
+    // Returns the biome.
     @Override
     public Biome getBiome(BlockPos pos) {
         return Biomes.PLAINS;
     }
 
-    // None
+    // Returns the strong power.
     @Override
     public int getStrongPower(BlockPos blockPos, EnumFacing direction) {
         return 0;
     }
 
-    // Default
+    // Returns the world type.
     @Override
     public WorldType getWorldType() {
         return WorldType.DEFAULT;
     }
 
-    // Never
+    // Returns whether side solid.
     @Override
     public boolean isSideSolid(BlockPos blockPos, EnumFacing enumFacing, boolean bl) {
         return false;

@@ -7,9 +7,10 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 
 import java.util.List;
 
-// The packs serving one domain, in lookup order
+// Mixin that changes FallbackResourceManager.
 @Mixin(FallbackResourceManager.class)
 public interface FallbackResourceManagerAccessor {
+    // Gives access to the field packs.
     @Accessor("resourcePacks")
     List<IResourcePack> coarctatio$packs();
 }

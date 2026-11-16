@@ -11,23 +11,27 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Tracks the lid: the moment it leaves or returns to rest the section is rebuilt so the static chest disappears or reappears, and the renderer keeps drawing for a few ticks after rest so the rebuild has landed before it stops
+// Mixin that changes TileEntityChest.
 @Mixin(TileEntityChest.class)
 public abstract class TileEntityChestAnimationMixin extends TileEntity implements AnimatedBlockEntity {
+    // Field lid added to the target.
     @Unique
     private int impetus$lid = LidTracking.INITIAL;
 
+    // Returns whether settled.
     @Override
     public boolean impetus$isSettled() {
         TileEntityChest self = (TileEntityChest) (Object) this;
         return self.lidAngle == 0.0F && self.prevLidAngle == 0.0F;
     }
 
+    // Returns whether renderer.
     @Override
     public boolean impetus$needsRenderer() {
         return LidTracking.needsRenderer(this.impetus$lid, impetus$isSettled());
     }
 
+    // Runs at the end of update.
     @Inject(method = "update", at = @At("TAIL"))
     private void impetus$trackLid(CallbackInfo ci) {
         if (this.world == null || !this.world.isRemote) {
@@ -40,7 +44,7 @@ public abstract class TileEntityChestAnimationMixin extends TileEntity implement
         this.impetus$lid = next;
     }
 
-    // Both halves of a pair share one lid state in the mesh, so both positions are marked
+    // Helper method rebuild pair added to the target.
     @Unique
     private void impetus$rebuildPair() {
         TileEntityChest self = (TileEntityChest) (Object) this;
@@ -51,7 +55,6 @@ public abstract class TileEntityChestAnimationMixin extends TileEntity implement
             if (neighbour == null) {
                 continue;
             }
-            // A pair is always level, so only X and Z can differ
             BlockPos other = neighbour.getPos();
             minX = Math.min(minX, other.getX());
             maxX = Math.max(maxX, other.getX());

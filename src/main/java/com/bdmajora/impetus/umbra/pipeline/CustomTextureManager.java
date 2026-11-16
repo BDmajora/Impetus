@@ -34,29 +34,35 @@ import java.util.function.IntSupplier;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// The GL textures behind the pack's custom-texture directives plus per-stage sampler-unit overrides; each gets a dedicated unit above the reserved range, texture.<stage>.<sampler> is per stage, customTexture.<name> global, texture.noise replaces noisetex
+// Custom textures of a shader pack with the texture units they bind to.
 public class CustomTextureManager {
+    // Logger of texture failures.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
 
-    // One sampler-unit override: programs belonging to the stage point that sampler's uniform at this unit
+    // Unit that replaces a sampler and the color target it stands for.
     public static final class Override {
-        // The dedicated texture unit the custom texture is bound to for the whole frame
+        // Texture unit of the replacement.
         public final int unit;
-        // The colortex index this override shadows, or -1 for a non-colour sampler; needed for Iris's flip deactivation, so once a composite pass has written that buffer later passes read the chain's content rather than the stand-in
+        // Color target index or minus one.
         public final int colorTarget;
 
+        // Creates an override.
         public Override(int unit, int colorTarget) {
             this.unit = unit;
             this.colorTarget = colorTarget;
         }
     }
 
-    // One dedicated unit and its texture, resolved per frame because a resource reload can recreate the texture and leave the old GL id pointing at nothing
+    // Texture bound to a unit before drawing.
     private static final class Binding {
+        // Texture unit.
         final int unit;
+        // GL texture target.
         final int target;
+        // Source of the GL texture name.
         final IntSupplier texture;
 
+        // Creates a binding.
         Binding(int unit, int target, IntSupplier texture) {
             this.unit = unit;
             this.target = target;
@@ -64,37 +70,62 @@ public class CustomTextureManager {
         }
     }
 
+    // GL target and name source of a created texture.
     private static final class TextureRef {
+        // GL texture target.
         final int target;
+        // Source of the GL texture name.
         final IntSupplier texture;
 
+        // Creates a reference.
         TextureRef(int target, IntSupplier texture) {
             this.target = target;
             this.texture = texture;
         }
     }
 
+    // Sampler overrides by stage.
     private final Map<TextureStage, Map<String, Override>> overrides = new EnumMap<>(TextureStage.class);
+    // Bindings in creation order.
     private final List<Binding> bindings = new ArrayList<>();
+    // Image textures to delete.
     private final List<PngTexture> ownedTextures = new ArrayList<>();
+    // Raw textures to delete.
     private final List<Integer> ownedRawTextures = new ArrayList<>();
-    // The pack's own noisetex, or null to keep the generated one
+    // Custom noise texture or null.
     private final PngTexture noiseTexture;
 
+    // First unit custom textures may use.
     private final int firstUnit;
+    // Last unit custom textures may use.
     private final int lastUnit;
+    // Next free unit.
     private int nextUnit;
 
-    // Cached EntityRenderer.lightmapTexture field, located by TYPE rather than name so it works under both MCP and SRG mappings
+    // Lightmap texture field of the entity renderer or null.
     private static Field lightmapTextureField;
+    // Searched state of the lightmap field.
+    private static boolean lightmapFieldSearched;
 
-    // samplerUnitsByStage expands a directive's sampler name to every ALIAS sharing its unit (overriding gaux4 also overrides colortex7), colorTargetsByName drives flip deactivation, and a directive past the inclusive lastUnit is skipped with an error rather than wrapping onto someone else's unit
+    // Creates every custom texture of a pack and deletes them all when one fails.
     public CustomTextureManager(ShaderPack pack, Map<TextureStage, Map<String, Integer>> samplerUnitsByStage,
                                 Map<String, Integer> colorTargetsByName, int firstUnit, int lastUnit) {
         this.firstUnit = firstUnit;
         this.lastUnit = lastUnit;
         this.nextUnit = firstUnit;
 
+        // Releases every created texture when a later texture fails
+        try {
+            this.noiseTexture = loadNoise(pack);
+            this.loadTextures(pack, samplerUnitsByStage, colorTargetsByName);
+        } catch (RuntimeException | Error e) {
+            this.destroy();
+            throw e;
+        }
+    }
+
+    // Returns the custom noise texture of a pack or null.
+    private PngTexture loadNoise(ShaderPack pack) {
         PngTexture noise = null;
         CustomTextureData noiseData = pack.getCustomNoiseTexture();
         if (noiseData != null) {
@@ -109,16 +140,22 @@ public class CustomTextureManager {
                 LOGGER.warn("[Umbra] texture.noise only supports pack PNG paths; keeping the generated noisetex");
             }
         }
-        this.noiseTexture = noise;
+        return noise;
+    }
 
+    // Creates the stage textures and the named textures of a pack.
+    private void loadTextures(ShaderPack pack, Map<TextureStage, Map<String, Integer>> samplerUnitsByStage,
+                              Map<String, Integer> colorTargetsByName) {
         pack.getCustomTextureDataMap().forEach((stage, stageTextures) ->
                 stageTextures.forEach((samplerName, data) ->
                         addOverride(stage, samplerName,
                                 samplerUnitsByStage.getOrDefault(stage, Collections.<String, Integer>emptyMap()),
                                 colorTargetsByName, data)));
 
-        // customTexture.<name> samplers exist in every stage, like Umbra passing getUmbraCustomTextures() to each stage; one texture/unit shared by all
         pack.getUmbraCustomTextureDataMap().forEach((name, data) -> {
+            if (!this.hasFreeUnit(name)) {
+                return;
+            }
             TextureRef texture = createTexture(name, data);
             if (texture == null) {
                 return;
@@ -135,8 +172,12 @@ public class CustomTextureManager {
         });
     }
 
+    // Creates a stage texture and overrides every sampler that shares its standard unit.
     private void addOverride(TextureStage stage, String samplerName, Map<String, Integer> samplerUnits,
                              Map<String, Integer> colorTargetsByName, CustomTextureData data) {
+        if (!this.hasFreeUnit(samplerName)) {
+            return;
+        }
         TextureRef texture = createTexture(stage + "." + samplerName, data);
         if (texture == null) {
             return;
@@ -150,10 +191,8 @@ public class CustomTextureManager {
         Map<String, Override> stageOverrides = this.overrides.computeIfAbsent(stage, s -> new LinkedHashMap<>());
         Integer standardUnit = samplerUnits.get(samplerName);
         if (standardUnit == null) {
-            // Not a standard sampler name: override by name only (a pack-declared sampler of that exact name).
             stageOverrides.put(samplerName, new Override(unit, -1));
         } else {
-            // Override the name and every alias sharing its unit (gaux4 <-> colortex7, composite <-> colortex3), matching Umbra's getOverride(names...)
             Integer colorTargetIndex = colorTargetsByName.get(samplerName);
             int colorTarget = colorTargetIndex == null ? -1 : colorTargetIndex;
             Override override = new Override(unit, colorTarget);
@@ -165,22 +204,27 @@ public class CustomTextureManager {
         }
     }
 
-    // Next free unit in the fixed layout
-    private int allocateUnit(String samplerName) {
+    // Returns whether a unit is left and reports the texture that has none.
+    private boolean hasFreeUnit(String samplerName) {
         if (this.nextUnit > this.lastUnit) {
-            LOGGER.error("[Umbra] Out of texture units for custom texture '{}' (units {}..{} exhausted); ignoring it",
+            LOGGER.error("[Umbra] Out of texture units for custom texture '{}' (units {} to {} exhausted); ignoring it",
                     samplerName, this.firstUnit, this.lastUnit);
-            return -1;
+            return false;
         }
-        return this.nextUnit++;
+        return true;
     }
 
-    // The first texture unit still free once every custom-texture directive has been assigned
+    // Returns the next unit or minus one when none is left.
+    private int allocateUnit(String samplerName) {
+        return this.hasFreeUnit(samplerName) ? this.nextUnit++ : -1;
+    }
+
+    // Returns the next free unit.
     public int getNextAvailableUnit() {
         return this.nextUnit;
     }
 
-    // Turns parsed texture data into a per-frame texture-id supplier: PNG data becomes an owned GL texture, a resource location a supplier that re-resolves each frame
+    // Creates a texture from pack data or returns null for unsupported data.
     private TextureRef createTexture(String name, CustomTextureData data) {
         if (data instanceof CustomTextureData.PngData) {
             try {
@@ -208,14 +252,17 @@ public class CustomTextureManager {
         return null;
     }
 
-    // A texture from raw bytes with the declared dimensions and format
+    // Uploads a raw texture or returns null for an unsupported layout.
     private TextureRef createRawTexture(String name, CustomTextureData.RawData data) {
         try {
             int target = textureTarget(data.getTextureType());
             int internalFormat = internalFormat(data.getInternalFormat());
             int pixelFormat = pixelFormat(data.getPixelFormat());
             int pixelType = pixelType(data.getPixelType());
+            requireEnoughPixels(data, target);
             int texture = LWJGL.glGenTextures();
+            // Owns the texture before the upload so a failure still deletes it
+            this.ownedRawTextures.add(texture);
 
             ByteBuffer pixels = ByteBuffer.allocateDirect(data.getContent().length).order(ByteOrder.nativeOrder());
             pixels.put(data.getContent());
@@ -230,17 +277,19 @@ public class CustomTextureManager {
                 LWJGL.glTexParameteri(target, GL12.GL_TEXTURE_WRAP_R, GL11.GL_REPEAT);
             }
             LWJGL.glPixelStorei(GL11.GL_UNPACK_ALIGNMENT, 1);
-            if (target == GL12.GL_TEXTURE_3D) {
-                LWJGL.glTexImage3D(target, 0, internalFormat, data.getWidth(), data.getHeight(), data.getDepth(),
-                        0, pixelFormat, pixelType, pixels);
-            } else {
-                LWJGL.glTexImage2D(target, 0, internalFormat, data.getWidth(), data.getHeight(),
-                        0, pixelFormat, pixelType, pixels);
+            try {
+                if (target == GL12.GL_TEXTURE_3D) {
+                    LWJGL.glTexImage3D(target, 0, internalFormat, data.getWidth(), data.getHeight(), data.getDepth(),
+                            0, pixelFormat, pixelType, pixels);
+                } else {
+                    LWJGL.glTexImage2D(target, 0, internalFormat, data.getWidth(), data.getHeight(),
+                            0, pixelFormat, pixelType, pixels);
+                }
+            } finally {
+                LWJGL.glPixelStorei(GL11.GL_UNPACK_ALIGNMENT, 4);
+                LWJGL.glBindTexture(target, 0);
             }
-            LWJGL.glPixelStorei(GL11.GL_UNPACK_ALIGNMENT, 4);
-            LWJGL.glBindTexture(target, 0);
 
-            this.ownedRawTextures.add(texture);
             return new TextureRef(target, () -> texture);
         } catch (IllegalArgumentException e) {
             LOGGER.error("[Umbra] Unsupported raw custom texture '{}': {}", name, e.getMessage());
@@ -248,7 +297,40 @@ public class CustomTextureManager {
         }
     }
 
-    // 1D, 2D or 3D from the directive
+    // Returns the bytes a raw texture needs and rejects a size that is not positive.
+    static long requiredBytes(CustomTextureData.RawData data, int target) {
+        int depth = target == GL12.GL_TEXTURE_3D ? data.getDepth() : 1;
+        if (data.getWidth() <= 0 || data.getHeight() <= 0 || depth <= 0) {
+            throw new IllegalArgumentException("size " + data.getWidth() + "x" + data.getHeight() + "x" + depth);
+        }
+        int components;
+        switch (data.getPixelFormat().toUpperCase(Locale.ROOT)) {
+            case "RED": components = 1; break;
+            case "RG": components = 2; break;
+            case "RGB": components = 3; break;
+            default: components = 4; break;
+        }
+        int typeSize;
+        switch (data.getPixelType().toUpperCase(Locale.ROOT)) {
+            case "BYTE":
+            case "UNSIGNED_BYTE": typeSize = 1; break;
+            case "SHORT":
+            case "UNSIGNED_SHORT":
+            case "HALF_FLOAT": typeSize = 2; break;
+            default: typeSize = 4; break;
+        }
+        return (long) data.getWidth() * data.getHeight() * depth * components * typeSize;
+    }
+
+    // Rejects raw content shorter than its size needs.
+    private static void requireEnoughPixels(CustomTextureData.RawData data, int target) {
+        long required = requiredBytes(data, target);
+        if (data.getContent() == null || data.getContent().length < required) {
+            throw new IllegalArgumentException("content is shorter than the " + required + " bytes the size needs");
+        }
+    }
+
+    // Returns the GL target of a texture type.
     private static int textureTarget(String value) {
         switch (value.toUpperCase(Locale.ROOT)) {
             case "TEXTURE_2D":
@@ -260,7 +342,7 @@ public class CustomTextureManager {
         }
     }
 
-    // Pack format name to GL
+    // Returns the GL internal format of a format name.
     private static int internalFormat(String value) {
         switch (value.toUpperCase(Locale.ROOT)) {
             case "R8": return GL30.GL_R8;
@@ -277,7 +359,7 @@ public class CustomTextureManager {
         }
     }
 
-    // Pack format name to GL client format
+    // Returns the GL pixel format of a format name.
     private static int pixelFormat(String value) {
         switch (value.toUpperCase(Locale.ROOT)) {
             case "RED": return GL11.GL_RED;
@@ -289,7 +371,7 @@ public class CustomTextureManager {
         }
     }
 
-    // Pack type name to GL
+    // Returns the GL pixel type of a type name.
     private static int pixelType(String value) {
         switch (value.toUpperCase(Locale.ROOT)) {
             case "BYTE": return GL11.GL_BYTE;
@@ -303,7 +385,7 @@ public class CustomTextureManager {
         }
     }
 
-    // Resolves a namespace:path texture through the TextureManager every frame like Iris, since a reload replaces the texture; 1.12.2 registers atlases WITHOUT the .png modern packs write, so the extension is retried stripped
+    // Returns the GL name of a game texture or the missing texture.
     private static int resolveResource(String namespace, String location) {
         ITextureObject texture = Minecraft.getMinecraft().getTextureManager()
                 .getTexture(new ResourceLocation(namespace, location));
@@ -314,15 +396,16 @@ public class CustomTextureManager {
         return texture != null ? texture.getGlTextureId() : TextureUtil.MISSING_TEXTURE.getGlTextureId();
     }
 
-    // The lightmap's GL id for callers binding it on a unit of their own (the DH compat puts it on the pack's `lightmap` unit)
+    // Returns the GL name of the lightmap.
     public static int getLightmapTextureId() {
         return resolveLightmap();
     }
 
-    // The live lightmap texture, EntityRenderer.lightmapTexture, found by FIELD TYPE since the class has exactly one DynamicTexture field and that works under MCP and SRG alike
+    // Returns the GL name of the lightmap and looks up its field once.
     private static int resolveLightmap() {
         try {
-            if (lightmapTextureField == null) {
+            if (!lightmapFieldSearched) {
+                lightmapFieldSearched = true;
                 for (Field field : EntityRenderer.class.getDeclaredFields()) {
                     if (field.getType() == DynamicTexture.class) {
                         field.setAccessible(true);
@@ -338,29 +421,29 @@ public class CustomTextureManager {
                 }
             }
         } catch (ReflectiveOperationException e) {
-            // fall through to the missing texture
+            // Falls back to the missing texture when the field cannot be read
+            return TextureUtil.MISSING_TEXTURE.getGlTextureId();
         }
         return TextureUtil.MISSING_TEXTURE.getGlTextureId();
     }
 
-    // The sampler-unit overrides for one stage keyed by sampler name, the directive's own plus every alias sharing that unit
+    // Returns a read only view of the overrides of a stage.
     public Map<String, Override> getOverrides(TextureStage stage) {
-        return this.overrides.containsKey(stage)
-                ? Collections.unmodifiableMap(this.overrides.get(stage))
-                : Collections.emptyMap();
+        Map<String, Override> stageOverrides = this.overrides.get(stage);
+        return stageOverrides != null ? Collections.unmodifiableMap(stageOverrides) : Collections.emptyMap();
     }
 
-    // The pack's texture.noise GL id, or -1 meaning "use the generated noise texture"
+    // Returns the GL name of the noise texture or minus one.
     public int getNoiseTextureId() {
         return this.noiseTexture != null ? this.noiseTexture.getTextureId() : -1;
     }
 
-    // Whether the pack declared any custom textures
+    // Returns whether no texture is bound.
     public boolean isEmpty() {
         return this.bindings.isEmpty();
     }
 
-    // Binds every custom texture on its dedicated unit; raw binds are correct because every unit sits above GlStateManager's 8-slot cache, and unit 0 is left active afterwards
+    // Binds every texture to its unit.
     public void bindAll() {
         for (Binding binding : this.bindings) {
             GlTextureUnits.selectScratch(binding.unit);
@@ -369,7 +452,7 @@ public class CustomTextureManager {
         GlTextureUnits.resetToUnit0();
     }
 
-    // Unbinds the custom-texture units at frame teardown, mirroring the pipeline's other unit restores
+    // Unbinds every texture from its unit.
     public void unbindAll() {
         for (Binding binding : this.bindings) {
             GlTextureUnits.selectScratch(binding.unit);
@@ -378,13 +461,13 @@ public class CustomTextureManager {
         GlTextureUnits.resetToUnit0();
     }
 
-    // Frees every texture
+    // Deletes every owned texture and forgets every binding.
     public void destroy() {
         for (PngTexture texture : this.ownedTextures) {
             texture.destroy();
         }
-        for (Integer texture : this.ownedRawTextures) {
-            LWJGL.glDeleteTextures(texture);
+        for (int i = 0; i < this.ownedRawTextures.size(); i++) {
+            LWJGL.glDeleteTextures(this.ownedRawTextures.get(i));
         }
         this.ownedTextures.clear();
         this.ownedRawTextures.clear();

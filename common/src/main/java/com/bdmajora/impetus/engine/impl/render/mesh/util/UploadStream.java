@@ -10,37 +10,47 @@ import it.unimi.dsi.fastutil.longs.LongArrayList;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.Objects;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// The only path to a device buffer: upload hands back a fenced staging address (never overwritten in flight), commit flushes and batches the copies
+// Copies data to device buffers through a mapped staging ring.
 public class UploadStream {
+    // Allocator of the staging ring.
     private final SegmentedAllocator allocator = new SegmentedAllocator();
+    // Staging buffer.
     private final MappedUploadBuffer staging;
 
-    // Copies queued for the next commit
+    // Copies queued for the next commit.
     private final Deque<PendingCopy> pending = new ArrayDeque<>();
-    // Staging allocations written since the last commit and still needing a flush
+    // Staging allocations that were written and need a flush.
     private final LongArrayList toFlush = new LongArrayList();
-    // Staging allocations flushed this frame, waiting on the frame's fence before they can be reused
+    // Staging allocations flushed in this frame.
     private final LongArrayList inFlight = new LongArrayList();
+    // Frames that wait for their fence.
     private final Deque<Frame> frames = new ArrayDeque<>();
 
-    // The allocation the next upload tries to extend and how far into it we have written; -1 forces a fresh allocation
+    // Allocation that the next upload extends or minus one.
     private long currentAllocation = -1L;
+    // Bytes written into the current allocation.
     private long currentOffset;
+    // Deleted state of the stream.
+    private boolean deleted;
 
+    // Creates a stream with a staging ring of a size.
     public UploadStream(long size) {
         this.allocator.setLimit(size);
         this.staging = new MappedUploadBuffer(size);
     }
 
-    // Reserves size bytes of staging space and returns the address to write to; valid only until the next commit()
+    // Reserves staging space and returns the address to write and rejects a deleted stream or a null target or a range outside it.
     public long upload(DeviceBuffer target, long targetOffset, long size) {
+        this.checkLive();
+        Objects.requireNonNull(target, "target");
         if (size <= 0 || size > Integer.MAX_VALUE) {
             throw new IllegalArgumentException("Bad upload size: " + size);
         }
-        if (targetOffset < 0 || targetOffset + size > target.getSize()) {
+        if (targetOffset < 0 || size > target.getSize() - targetOffset) {
             throw new IllegalArgumentException("Upload runs past the end of the target buffer");
         }
 
@@ -66,8 +76,9 @@ public class UploadStream {
         return this.staging.getClientAddress() + address;
     }
 
-    // Flushes staging writes and issues every queued copy; once per frame from the pipeline, and again from reclaimSpace when the ring fills mid-frame
+    // Flushes the staging writes and issues the queued copies and rejects a deleted stream.
     public void commit() {
+        this.checkLive();
         if (!this.toFlush.isEmpty()) {
             for (int i = 0; i < this.toFlush.size(); i++) {
                 long allocation = this.toFlush.getLong(i);
@@ -78,7 +89,6 @@ public class UploadStream {
         }
 
         if (!this.pending.isEmpty()) {
-            // Make the persistent mapping's writes visible to the copies that follow
             LWJGL.glMemoryBarrier(GL44.GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
 
             for (PendingCopy copy : this.pending) {
@@ -87,7 +97,6 @@ public class UploadStream {
             }
             this.pending.clear();
 
-            // And the copies' writes visible to the shaders that read them through resident pointers
             LWJGL.glMemoryBarrier(GL42.GL_BUFFER_UPDATE_BARRIER_BIT);
         }
 
@@ -95,7 +104,7 @@ public class UploadStream {
         this.currentOffset = 0L;
     }
 
-    // Closes the frame: commits what is left, fences it, and reclaims staging space of every earlier frame the GPU finished
+    // Commits the queued copies and fences the frame and reclaims finished frames and rejects a deleted stream.
     public void endFrame() {
         this.commit();
 
@@ -107,19 +116,27 @@ public class UploadStream {
         releaseCompletedFrames();
     }
 
-    // Frees the staging ring
+    // Deletes the staging ring once.
     public void delete() {
-        for (Frame frame : this.frames) {
-            frame.fence.delete();
+        if (this.deleted) {
+            return;
         }
-        this.frames.clear();
-        this.staging.delete();
+        this.deleted = true;
+
+        try {
+            for (Frame frame : this.frames) {
+                frame.fence.delete();
+            }
+        } finally {
+            this.frames.clear();
+            this.pending.clear();
+            this.staging.delete();
+        }
     }
 
-    // Reclaims staging space whose fences have signalled
+    // Frees the staging space of the frames the GPU finished.
     private void releaseCompletedFrames() {
         while (!this.frames.isEmpty()) {
-            // Frames were fenced in submission order, so the first unsignalled one means every later one is too
             if (!this.frames.peek().fence.isCompleted()) {
                 break;
             }
@@ -134,7 +151,7 @@ public class UploadStream {
         }
     }
 
-    // The staging ring filled inside one frame (many chunks finishing at once): push what is queued, then stall until earlier frames retire; a hitch beats dropping geometry
+    // Waits for earlier frames until a request fits and rejects a request that never fits.
     private long reclaimSpace(int size) {
         this.commit();
 
@@ -152,14 +169,21 @@ public class UploadStream {
         throw new IllegalStateException("Terrain upload buffer could not fit a " + size + " byte upload after flushing");
     }
 
-    // glFenceSync
+    // Rejects a deleted stream.
+    private void checkLive() {
+        if (this.deleted) {
+            throw new IllegalStateException("Upload stream was deleted");
+        }
+    }
+
+    // Creates a fence for the commands so far.
     private static GlFence createFence() {
         return new GlFence(LWJGL.glFenceSync(GL32.GL_SYNC_GPU_COMMANDS_COMPLETE, 0));
     }
 
-    // A staged copy awaiting flush
+    // Copy from staging to a target.
     private record PendingCopy(DeviceBuffer target, long stagingOffset, long targetOffset, long size) {}
 
-    // A frame's staging allocations, reclaimed when its fence signals
+    // Staging allocations of one frame and its fence.
     private record Frame(GlFence fence, LongArrayList allocations) {}
 }

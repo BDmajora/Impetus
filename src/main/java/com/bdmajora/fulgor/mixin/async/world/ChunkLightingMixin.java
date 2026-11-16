@@ -18,54 +18,67 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Takes over the vanilla chunk lighting bookkeeping that would otherwise write around the async engine: heightmaps stay vanilla's job, every light write is the engine's
+// Mixin that changes Chunk.
 @Mixin(Chunk.class)
 public abstract class ChunkLightingMixin {
+    // Reference to the field x of the target.
     @Shadow
     @Final
     public int x;
 
+    // Reference to the field z of the target.
     @Shadow
     @Final
     public int z;
 
+    // Reference to the field is light populated of the target.
     @Shadow
     private boolean isLightPopulated;
 
+    // Reference to the field is terrain populated of the target.
     @Shadow
     private boolean isTerrainPopulated;
 
+    // Reference to the field height map of the target.
     @Shadow
     @Final
     private int[] heightMap;
 
+    // Reference to the field precipitation height map of the target.
     @Shadow
     @Final
     private int[] precipitationHeightMap;
 
+    // Reference to the field height map minimum of the target.
     @Shadow
     private int heightMapMinimum;
 
+    // Reference to the field world of the target.
     @Shadow
     @Final
     private World world;
 
+    // Reference to the method get block storage array of the target.
     @Shadow
     public abstract ExtendedBlockStorage[] getBlockStorageArray();
 
+    // Reference to the method get top filled segment of the target.
     @Shadow
     public abstract int getTopFilledSegment();
 
+    // Reference to the method get block state of the target.
     @Shadow
     public abstract IBlockState getBlockState(int x, int y, int z);
 
+    // Reference to the method mark dirty of the target.
     @Shadow
     public abstract void markDirty();
 
+    // Field lookup pos added to the target.
     @Unique
     private final BlockPos.MutableBlockPos fulgor$lookupPos = new BlockPos.MutableBlockPos();
 
-    // Rebuilds the heightmap and, for a chunk not yet lit, a scalar skylight baseline; the engine owns the real pass, and repainting a lit chunk would overwrite what it propagated
+    // Runs at the start of generateSkylightMap and can cancel it.
     @Inject(method = "generateSkylightMap", at = @At("HEAD"), cancellable = true)
     private void fulgor$generateSkylightMap(CallbackInfo ci) {
         int topSegment = getTopFilledSegment();
@@ -101,7 +114,7 @@ public abstract class ChunkLightingMixin {
         ci.cancel();
     }
 
-    // Vanilla's heightmap update minus its skylight writes; the column's light is the engine's to redo when the block change reaches it
+    // Runs at the start of relightBlock and can cancel it.
     @Inject(method = "relightBlock", at = @At("HEAD"), cancellable = true)
     private void fulgor$relightBlock(int x, int y, int z, CallbackInfo ci) {
         ci.cancel();
@@ -130,7 +143,7 @@ public abstract class ChunkLightingMixin {
         markDirty();
     }
 
-    // Vanilla opacity with Forge's contextual value and, when present, the fluidlogged layer
+    // Helper method opacity at added to the target.
     @Unique
     private int fulgor$opacityAt(int x, int y, int z) {
         IBlockState state = getBlockState(x, y, z);
@@ -145,7 +158,7 @@ public abstract class ChunkLightingMixin {
         return FluidLightBridge.maxOpacityAt((Chunk) (Object) this, opacity, x, y, z, this.fulgor$lookupPos);
     }
 
-    // One column of the pre-pass baseline, top down
+    // Helper method fill vanilla sky column added to the target.
     @Unique
     private void fulgor$fillVanillaSkyColumn(int x, int z, int topSegment) {
         ExtendedBlockStorage[] storageArrays = getBlockStorageArray();
@@ -173,25 +186,25 @@ public abstract class ChunkLightingMixin {
         }
     }
 
-    // The engine's edge reconciliation replaces vanilla's gap checks
+    // Runs at the start of recheckGaps and can cancel it.
     @Inject(method = "recheckGaps", at = @At("HEAD"), cancellable = true)
     private void fulgor$skipRecheckGaps(boolean onlyOne, CallbackInfo ci) {
         ci.cancel();
     }
 
-    // Only ever flagged a column for recheckGaps, which no longer runs
+    // Runs at the start of propagateSkylightOcclusion and can cancel it.
     @Inject(method = "propagateSkylightOcclusion", at = @At("HEAD"), cancellable = true)
     private void fulgor$skipSkylightOcclusion(int x, int z, CallbackInfo ci) {
         ci.cancel();
     }
 
-    // Vanilla's round-robin relight sweep, redundant against a queue that already covers every change
+    // Runs at the start of enqueueRelightChecks and can cancel it.
     @Inject(method = "enqueueRelightChecks", at = @At("HEAD"), cancellable = true)
     private void fulgor$skipRelightChecks(CallbackInfo ci) {
         ci.cancel();
     }
 
-    // Vanilla's method also marks terrain and light population complete, which must survive its bypass
+    // Runs at the start of checkLight and can cancel it.
     @Inject(method = "checkLight()V", at = @At("HEAD"), cancellable = true)
     private void fulgor$skipCheckLight(CallbackInfo ci) {
         this.isTerrainPopulated = true;

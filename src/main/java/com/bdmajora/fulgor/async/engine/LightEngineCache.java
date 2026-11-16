@@ -14,45 +14,70 @@ import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 
 import java.util.Arrays;
 
-// The 5x5 chunk window one task works in (Starlight's StarLightEngine cache): sections, nibbles and emptiness maps indexed x + 5z + 25y relative to the window, recentred per task and cleared before the engine returns to its pool
+// Cache of chunks and sections used by a light engine.
 abstract class LightEngineCache {
+    // Lowest block section.
     static final int MIN_SECTION = 0;
+    // Highest block section.
     static final int MAX_SECTION = 15;
+    // Lowest light section.
     static final int MIN_LIGHT_SECTION = ChunkLightHelper.MIN_LIGHT_SECTION;
+    // Highest light section.
     static final int MAX_LIGHT_SECTION = ChunkLightHelper.MAX_LIGHT_SECTION;
-    // One section of slack above and below the light sections so a neighbour index never leaves the array
+    // Sections per cached column.
     private static final int CACHE_SECTIONS = ChunkLightHelper.LIGHT_SECTIONS + 2;
+    // Entries of the section caches.
     private static final int CACHE_SIZE = 5 * 5 * CACHE_SECTIONS;
+    // Air block state.
     static final IBlockState AIR = Blocks.AIR.getDefaultState();
 
+    // Cached block sections.
     protected final ExtendedBlockStorage[] sectionCache = new ExtendedBlockStorage[CACHE_SIZE];
+    // Cached light nibbles.
     protected final SWMRNibbleArray[] nibbleCache = new SWMRNibbleArray[CACHE_SIZE];
+    // Flags of sections that changed light.
     protected final boolean[] notifyUpdateCache = new boolean[CACHE_SIZE];
+    // Changed block boxes of each section.
     protected final long[] notifyBoundsCache = new long[CACHE_SIZE];
+    // Cached chunks.
     protected final Chunk[] chunkCache = new Chunk[5 * 5];
+    // Cached emptiness maps.
     protected final boolean[][] emptinessMapCache = new boolean[5 * 5][];
+    // Cached fluid capabilities.
     protected final Object[] fluidCapCache = new Object[5 * 5];
+    // Flag set on the client.
     protected final boolean isClientSide;
+    // World read by the engine.
     protected final World world;
+    // Reusable position for contextual light.
     private final BlockPos.MutableBlockPos contextualLightPos = new BlockPos.MutableBlockPos();
+    // X offset of packed coordinates.
     protected int encodeOffsetX;
+    // Y offset of packed coordinates.
     protected int encodeOffsetY;
+    // Z offset of packed coordinates.
     protected int encodeOffsetZ;
+    // Offset of packed coordinates.
     protected int coordinateOffset;
+    // X offset of cache chunks.
     protected int chunkOffsetX;
+    // Y offset of cache sections.
     protected int chunkOffsetY;
+    // Z offset of cache chunks.
     protected int chunkOffsetZ;
+    // Offset of chunk cache indices.
     protected int chunkIndexOffset;
+    // Offset of section cache indices.
     protected int chunkSectionIndexOffset;
 
+    // Creates a light engine cache from its world.
     LightEngineCache(World world) {
         this.isClientSide = world.isRemote;
         this.world = world;
     }
 
-    // Loads the window around a centre; the outer ring only contributes emptiness maps, and a missing 1-radius neighbour is an error unless relaxed
+    // Sets up the caches.
     protected final void setupCaches(int centerX, int centerY, int centerZ, boolean relaxed, boolean tryToLoadChunksFor2Radius) {
-        // Reset first so an overflow stays observable after the task returns and stale queue lengths never cross tasks
         resetTaskState();
 
         int centerChunkX = centerX >> 4;
@@ -90,6 +115,7 @@ abstract class LightEngineCache {
         }
     }
 
+    // Sets up the encode offset.
     private void setupEncodeOffset(int centerX, int centerY, int centerZ) {
         this.encodeOffsetX = 31 - centerX;
         this.encodeOffsetY = (-(MIN_LIGHT_SECTION - 1) << 4);
@@ -102,15 +128,17 @@ abstract class LightEngineCache {
         this.chunkSectionIndexOffset = this.chunkIndexOffset + ((5 * 5) * this.chunkOffsetY);
     }
 
+    // Returns a cached chunk or null.
     protected final Chunk getChunkInCache(int chunkX, int chunkZ) {
         return this.chunkCache[chunkX + 5 * chunkZ + this.chunkIndexOffset];
     }
 
+    // Stores the chunk in cache.
     protected final void setChunkInCache(int chunkX, int chunkZ, Chunk chunk) {
         this.chunkCache[chunkX + 5 * chunkZ + this.chunkIndexOffset] = chunk;
     }
 
-    // The packed light info for a state at a position, with position-aware blocks and the fluid layer resolved
+    // Returns the packed light info of a state at a position.
     protected final int lightInfoAt(IBlockState state, int worldX, int worldY, int worldZ) {
         int info = LightInfo.of(state);
         if (LightInfo.hasContextualValues(info)) {
@@ -124,10 +152,12 @@ abstract class LightEngineCache {
                 : FluidLightBridge.merge(info, capability, worldX, worldY, worldZ, this.world, this.contextualLightPos);
     }
 
+    // Returns a cached section or null.
     protected final ExtendedBlockStorage getChunkSection(int chunkX, int chunkY, int chunkZ) {
         return this.sectionCache[chunkX + 5 * chunkZ + (5 * 5) * chunkY + this.chunkSectionIndexOffset];
     }
 
+    // Stores the blocks for chunk in cache.
     protected final void setBlocksForChunkInCache(int chunkX, int chunkZ, ExtendedBlockStorage[] sections) {
         for (int sectionY = MIN_LIGHT_SECTION; sectionY <= MAX_LIGHT_SECTION; ++sectionY) {
             ExtendedBlockStorage section = sections == null || sectionY < MIN_SECTION || sectionY > MAX_SECTION
@@ -136,29 +166,34 @@ abstract class LightEngineCache {
         }
     }
 
+    // Returns a cached nibble array or null.
     protected final SWMRNibbleArray getNibbleFromCache(int chunkX, int chunkY, int chunkZ) {
         return this.nibbleCache[chunkX + 5 * chunkZ + (5 * 5) * chunkY + this.chunkSectionIndexOffset];
     }
 
+    // Stores the nibble in cache.
     protected final void setNibbleInCache(int chunkX, int chunkY, int chunkZ, SWMRNibbleArray nibble) {
         this.nibbleCache[chunkX + 5 * chunkZ + (5 * 5) * chunkY + this.chunkSectionIndexOffset] = nibble;
     }
 
+    // Stores the nibbles for chunk in cache.
     protected final void setNibblesForChunkInCache(int chunkX, int chunkZ, SWMRNibbleArray[] nibbles) {
         for (int sectionY = MIN_LIGHT_SECTION; sectionY <= MAX_LIGHT_SECTION; ++sectionY) {
             setNibbleInCache(chunkX, sectionY, chunkZ, nibbles == null ? null : nibbles[sectionY - MIN_LIGHT_SECTION]);
         }
     }
 
+    // Returns the cached emptiness map of a chunk.
     protected final boolean[] getEmptinessMap(int chunkX, int chunkZ) {
         return this.emptinessMapCache[chunkX + 5 * chunkZ + this.chunkIndexOffset];
     }
 
+    // Stores the emptiness map cache.
     protected final void setEmptinessMapCache(int chunkX, int chunkZ, boolean[] emptinessMap) {
         this.emptinessMapCache[chunkX + 5 * chunkZ + this.chunkIndexOffset] = emptinessMap;
     }
 
-    // Publishes every dirty nibble in the window, mirrors it into vanilla storage, and on the client marks the changed range for a rebuild
+    // Publishes every changed nibble and marks rerenders.
     protected final void updateVisible() {
         for (int index = 0, max = this.nibbleCache.length; index < max; ++index) {
             SWMRNibbleArray nibble = this.nibbleCache[index];
@@ -176,6 +211,7 @@ abstract class LightEngineCache {
         }
     }
 
+    // Records a rerender box of a section.
     private void markRenderUpdate(int cacheIndex, long bounds) {
         int localChunkX = cacheIndex % 5;
         int localChunkZ = (cacheIndex / 5) % 5;
@@ -188,6 +224,7 @@ abstract class LightEngineCache {
                 sectionX + RenderBounds.maxX(bounds), sectionY + RenderBounds.maxY(bounds), sectionZ + RenderBounds.maxZ(bounds));
     }
 
+    // Clears every cache.
     protected final void destroyCaches() {
         Arrays.fill(this.sectionCache, null);
         Arrays.fill(this.nibbleCache, null);
@@ -199,26 +236,31 @@ abstract class LightEngineCache {
         }
     }
 
+    // Returns the block state.
     protected final IBlockState getBlockState(int worldX, int worldY, int worldZ) {
         ExtendedBlockStorage section = this.sectionCache[(worldX >> 4) + 5 * (worldZ >> 4) + (5 * 5) * (worldY >> 4) + this.chunkSectionIndexOffset];
         return section == null ? AIR : section.get(worldX & 15, worldY & 15, worldZ & 15);
     }
 
+    // Returns a block state of a cached section.
     protected final IBlockState getBlockStateFast(int sectionIndex, int x, int y, int z) {
         ExtendedBlockStorage section = this.sectionCache[sectionIndex];
         return section == null ? AIR : section.get(x, y, z);
     }
 
+    // Returns the light level.
     protected int getLightLevel(int worldX, int worldY, int worldZ) {
         SWMRNibbleArray nibble = this.nibbleCache[(worldX >> 4) + 5 * (worldZ >> 4) + (5 * 5) * (worldY >> 4) + this.chunkSectionIndexOffset];
         return nibble == null ? 0 : nibble.getUpdating((worldX & 15) | ((worldZ & 15) << 4) | ((worldY & 15) << 8));
     }
 
+    // Returns the light level of a cached section index.
     protected int getLightLevel(int sectionIndex, int localIndex) {
         SWMRNibbleArray nibble = this.nibbleCache[sectionIndex];
         return nibble == null ? 0 : nibble.getUpdating(localIndex);
     }
 
+    // Stores the light level.
     protected void setLightLevel(int worldX, int worldY, int worldZ, int level) {
         int sectionIndex = (worldX >> 4) + 5 * (worldZ >> 4) + (5 * 5) * (worldY >> 4) + this.chunkSectionIndexOffset;
         SWMRNibbleArray nibble = this.nibbleCache[sectionIndex];
@@ -233,7 +275,7 @@ abstract class LightEngineCache {
         postLightUpdate(sectionIndex, worldX & 15, worldY & 15, worldZ & 15);
     }
 
-    // Grows the section's changed-block bounds for the render mark; server side has no renderer to tell
+    // Records a light change of a section.
     protected final void postLightUpdate(int sectionIndex, int localX, int localY, int localZ) {
         if (!this.isClientSide) {
             return;
@@ -247,16 +289,19 @@ abstract class LightEngineCache {
         }
     }
 
-    // Lane-specific per-task state such as the BFS queue lengths
+    // Resets the task state.
     protected abstract void resetTaskState();
 
+    // Returns the emptiness map.
     protected abstract boolean[] getEmptinessMap(Chunk chunk);
 
+    // Returns the light nibbles of a chunk.
     protected abstract SWMRNibbleArray[] getNibblesOnChunk(Chunk chunk);
 
+    // Returns whether use chunk.
     protected abstract boolean canUseChunk(Chunk chunk);
 
-    // Called after a dirty nibble is published
+    // Handles the nibble visible.
     protected void onNibbleVisible(int cacheIndex, SWMRNibbleArray nibble) {
     }
 }

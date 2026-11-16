@@ -11,19 +11,22 @@ import org.spongepowered.asm.mixin.gen.Invoker;
 import java.util.Map;
 import java.util.Set;
 
-// The registry's loader set, seeded cache and texture set, which the dynamic provider takes over. remap = false, Forge class
+// Mixin that changes ModelLoaderRegistry.
 @Mixin(value = ModelLoaderRegistry.class, remap = false)
 public interface ModelLoaderRegistryAccessor {
+    // Gives access to the field loaders.
     @Accessor("loaders")
     static Set<ICustomModelLoader> coarctatio$loaders() {
         throw new AssertionError();
     }
 
+    // Gives access to the field cache.
     @Accessor("cache")
     static Map<ResourceLocation, IModel> coarctatio$cache() {
         throw new AssertionError();
     }
 
+    // Calls the method textures.
     @Invoker("getTextures")
     static Iterable<ResourceLocation> coarctatio$textures() {
         throw new AssertionError();

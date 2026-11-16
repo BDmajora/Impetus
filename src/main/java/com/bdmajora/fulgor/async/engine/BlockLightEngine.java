@@ -8,37 +8,44 @@ import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.NibbleArray;
 import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 
-// Block-light lane: BFS from emitters with per-block emission and per-face opacity, reading the packed LightInfo instead of making virtual calls per visit
+// Light engine of block light.
 public class BlockLightEngine extends BfsLightEngine {
+    // Creates a block light engine from its world.
     public BlockLightEngine(World world) {
         super(false, world);
     }
 
+    // Returns the emptiness map.
     @Override
     protected boolean[] getEmptinessMap(Chunk chunk) {
         return ((AsyncLitChunk) chunk).fulgor$getBlockEmptinessMap();
     }
 
+    // Stores the emptiness map.
     @Override
     protected void setEmptinessMap(Chunk chunk, boolean[] to) {
         ((AsyncLitChunk) chunk).fulgor$setBlockEmptinessMap(to);
     }
 
+    // Returns the block light nibbles of a chunk.
     @Override
     protected SWMRNibbleArray[] getNibblesOnChunk(Chunk chunk) {
         return ((AsyncLitChunk) chunk).fulgor$getBlockNibbles();
     }
 
+    // Stores the nibbles.
     @Override
     protected void setNibbles(Chunk chunk, SWMRNibbleArray[] to) {
         ((AsyncLitChunk) chunk).fulgor$setBlockNibbles(to);
     }
 
+    // Returns the vanilla block light array of a section.
     @Override
     protected NibbleArray vanillaLightArray(ExtendedBlockStorage section) {
         return section.getBlockLight();
     }
 
+    // Initializes the nibble.
     @Override
     protected void initNibble(int chunkX, int chunkY, int chunkZ, boolean extrude, boolean initRemovedNibbles) {
         if (chunkY < MIN_LIGHT_SECTION || chunkY > MAX_LIGHT_SECTION || getChunkInCache(chunkX, chunkZ) == null) {
@@ -55,7 +62,7 @@ public class BlockLightEngine extends BfsLightEngine {
         }
     }
 
-    // Hidden rather than null so the data survives for a decrease still propagating through it
+    // Stores the nibble null.
     @Override
     protected void setNibbleNull(int chunkX, int chunkY, int chunkZ) {
         SWMRNibbleArray nib = this.nibbleCache[chunkX + 5 * chunkZ + (5 * 5) * chunkY + this.chunkSectionIndexOffset];
@@ -64,7 +71,7 @@ public class BlockLightEngine extends BfsLightEngine {
         }
     }
 
-    // No early-out on an unchanged level: a slab swap can keep the cell's level while flipping which faces it feeds
+    // Queues a recheck of one block.
     @Override
     protected void checkBlock(int worldX, int worldY, int worldZ) {
         int encodeOffset = this.coordinateOffset;
@@ -83,12 +90,12 @@ public class BlockLightEngine extends BfsLightEngine {
                     | sidedFlag(info));
         }
 
-        // No sided flag on the decrease: the light being erased flowed through the old block, not the new one's faces
         appendToDecreaseQueue(encodeCoords(worldX, worldZ, worldY, encodeOffset)
                 | encodeQueueLevel(currentLevel)
                 | (((long) ALL_DIRECTIONS_BITSET) << DIRECTION_SHIFT));
     }
 
+    // Returns the block light a block should have.
     @Override
     protected int calculateLightValue(int worldX, int worldY, int worldZ, int expect) {
         int info = lightInfoAt(getBlockState(worldX, worldY, worldZ), worldX, worldY, worldZ);
@@ -101,12 +108,14 @@ public class BlockLightEngine extends BfsLightEngine {
         return attenuateFromNeighbours(worldX, worldY, worldZ, expect, info, level);
     }
 
+    // Queues the light changes of one changed block.
     @Override
     protected void propagateBlockChanges(Chunk atChunk, int blockX, int blockY, int blockZ) {
         checkBlock(blockX, blockY, blockZ);
         performLightDecrease();
     }
 
+    // Lights a chunk from its emitting blocks.
     @Override
     protected void lightChunk(Chunk chunk, boolean needsEdgeChecks) {
         int offX = chunk.x << 4;

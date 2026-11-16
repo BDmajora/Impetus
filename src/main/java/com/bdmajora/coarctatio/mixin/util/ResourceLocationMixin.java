@@ -10,21 +10,22 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Interns the two strings behind every ResourceLocation (Hydrogen's MixinIdentifier); hundreds of thousands exist on a modded instance, and equals/hashCode/compareTo all go through String.equals so it is safe
+// Mixin that changes ResourceLocation.
 @Mixin(ResourceLocation.class)
 public class ResourceLocationMixin {
-    // namespace and path are the field names in mcp_stable/39, NOT resourceDomain/resourcePath; a @Shadow on a missing field compiles fine and only fails at Mixin resolution, so these were checked against mcp-srg.srg
+    // Reference to the field namespace of the target.
     @Mutable
     @Shadow
     @Final
     protected String namespace;
 
+    // Reference to the field path of the target.
     @Mutable
     @Shadow
     @Final
     protected String path;
 
-    // The varargs constructor every other one funnels through, so the (String) and (String, String) forms are both covered
+    // Runs before every return of constructor.
     @Inject(method = "<init>(I[Ljava/lang/String;)V", at = @At("RETURN"))
     private void coarctatio$internComponents(int unused, String[] parts, CallbackInfo ci) {
         this.namespace = ResourceLocationCaches.DOMAINS.deduplicate(this.namespace);

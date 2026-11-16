@@ -19,38 +19,40 @@ package grondag.bitraster;
 import static grondag.bitraster.Constants.TILE_AXIS_SHIFT;
 import static grondag.bitraster.Constants.TILE_PIXEL_INDEX_MASK;
 
+// Index math of the pixels of a tile.
 abstract class Indexer {
+	// Prevents instantiation
 	private Indexer() {
 	}
 
-	// only handle 0-7  values
+	// Returns the interleaved bits of two coordinates from zero to seven.
 	static int mortonNumber(int x, int y) {
 		int z = (x & 0b001) | ((y & 0b001) << 1);
 		z |= ((x & 0b010) << 1) | ((y & 0b010) << 2);
 		return z | ((x & 0b100) << 2) | ((y & 0b100) << 3);
 	}
 
-
-
+	// Returns the bit index of a pixel in a tile.
 	static int pixelIndex(int x, int y) {
 		return ((y & TILE_PIXEL_INDEX_MASK) << TILE_AXIS_SHIFT) | (x & TILE_PIXEL_INDEX_MASK);
 	}
 
+	// Returns whether a pixel is clear in a word.
 	static boolean isPixelClear(long word, int x, int y) {
 		return (word & (1L << pixelIndex(x, y))) == 0;
 	}
 
+	// Returns the mask of a pixel.
 	static long pixelMask(int x, int y) {
 		return 1L << pixelIndex(x, y);
 	}
 
-	/**
-	 * REQUIRES 0-7 inputs!
-	 */
+	// Returns whether a pixel with coordinates from zero to seven is clear.
 	static boolean testPixelInWordPreMasked(long word, int x, int y) {
 		return (word & (1L << ((y << TILE_AXIS_SHIFT) | x))) == 0;
 	}
 
+	// Returns the word with a pixel set where the coordinates are from zero to seven.
 	static long setPixelInWordPreMasked(long word, int x, int y) {
 		return word | (1L << ((y << TILE_AXIS_SHIFT) | x));
 	}

@@ -7,9 +7,10 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.Constant;
 import org.spongepowered.asm.mixin.injection.ModifyConstant;
 
-// OptiFine's Autosave switch for the integrated server (vanilla's 900-tick default hitches on large worlds); zero means never and is translated to an interval nothing is congruent to, since tickCounter % 0 would throw. Single-player only
+// Mixin that changes MinecraftServer.
 @Mixin(MinecraftServer.class)
 public class MinecraftServerMixin {
+    // Changes a constant in tick.
     @ModifyConstant(method = "tick", constant = @Constant(intValue = 900))
     private int impetus$autosaveInterval(int vanillaInterval) {
         int configured = Extras.options().extra.autosaveInterval;

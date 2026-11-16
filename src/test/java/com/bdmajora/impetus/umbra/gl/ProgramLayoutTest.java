@@ -301,4 +301,20 @@ class ProgramLayoutTest {
             GlTextureUnits.resetToUnit0();
         }
     }
+
+    // Keeps a uniform whose declared GL type is not listed and uploads it.
+    @Test
+    void unlistedDeclaredTypesKeepTheirUniforms() {
+        Map<String, Integer> declared = new LinkedHashMap<>();
+        declared.put("arrayTex", 0x8DC1);
+        declared.put("shadowArray", 0x8DC4);
+        declare(declared);
+        ProgramUniforms uniforms = ProgramUniforms.builder("test", PROGRAM)
+                .uniform1i(UniformUpdateFrequency.ONCE, "arrayTex", () -> 5)
+                .uniform1f(UniformUpdateFrequency.ONCE, "shadowArray", () -> 6.0F)
+                .buildUniforms();
+        uniforms.update();
+        verify(TestGl.gl()).glUniform1i(1, 5);
+        verify(TestGl.gl()).glUniform1f(2, 6.0F);
+    }
 }

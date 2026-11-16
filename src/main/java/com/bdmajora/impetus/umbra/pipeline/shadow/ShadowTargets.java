@@ -12,35 +12,35 @@ import java.util.Objects;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Owns the shadow depth and colour textures and the framebuffer that renders into them
+// Depth and color textures and the framebuffer of the shadow map.
 public final class ShadowTargets {
-    // Empty draw buffer mask that draws no colour at all
+    // Empty draw buffer list.
     private static final int[] NO_DRAW_BUFFERS = new int[0];
 
-    // Width and height of every shadow texture in pixels
+    // Side of the shadow map in pixels.
     private final int resolution;
-    // Depth of every shadow caster sampled as shadowtex0
+    // Depth texture of every caster.
     private final DepthTexture depth;
-    // Depth copied before translucent casters draw and sampled as shadowtex1
+    // Depth texture without translucent casters.
     private final DepthTexture depthNoTranslucents;
-    // Mipmap flag per depth texture
+    // Mipmapping of each depth texture.
     private final boolean[] mipmapDepth;
-    // Nearest filtering flag per depth texture
+    // Nearest filtering of each depth texture.
     private final boolean[] nearestDepth;
-    // Per buffer format and clear and filtering settings
+    // Formats and filters of the color textures.
     private final ShadowColorSettings colorSettings;
-    // Texture name per addressable colour buffer with 0 for a buffer that was never allocated
+    // GL names of the color textures or zero for unused ones.
     private final int[] colorTextures;
-    // Names of the allocated colour textures that get a mip chain after each pass
+    // GL names of the mipmapped color textures.
     private final int[] mipmappedColors;
-    // Framebuffer with every allocated colour buffer and shadowtex0 attached
+    // Framebuffer of the shadow pass.
     private final UmbraFramebuffer framebuffer;
-    // Per pass clears of the allocated colour buffers
+    // Clear operations of the color textures.
     private final ShadowColorClears clears;
-    // Flag set once destroy has run
+    // Released state of the targets.
     private boolean destroyed;
 
-    // Allocates both depth textures and every colour buffer that is one of the first two or marked as used
+    // Creates the textures and the framebuffer and releases them when creation fails.
     public ShadowTargets(int resolution, boolean[] hardwareFiltering, boolean[] mipmapDepth, boolean[] nearestDepth,
                          boolean separateHardwareSamplers, ShadowColorSettings colorSettings, BitSet usedColorBuffers) {
         this.resolution = ShadowTextures.checkResolution(resolution);
@@ -65,7 +65,6 @@ public final class ShadowTargets {
             int allocatedCount = 0;
             int mipmappedCount = 0;
             for (int index = 0; index < this.colorTextures.length; index++) {
-                // shadowcolor0 and shadowcolor1 always exist and the rest only when referenced
                 if (index >= ShadowColorSettings.OPTIFINE_BUFFERS && !usedColorBuffers.get(index)) {
                     continue;
                 }
@@ -93,7 +92,7 @@ public final class ShadowTargets {
         this.framebuffer = framebuffer;
     }
 
-    // Returns a copy of a two entry flag array or rejects a null or shorter one
+    // Returns a copy of the first two flags and rejects a null or short array.
     private static boolean[] depthFlags(boolean[] flags, String name) {
         Objects.requireNonNull(flags, name);
         if (flags.length < 2) {
@@ -102,18 +101,32 @@ public final class ShadowTargets {
         return new boolean[]{flags[0], flags[1]};
     }
 
-    // Deletes the framebuffer and the depth textures and every allocated colour texture that exists
+    // Releases the framebuffer and every texture and continues after a failure.
     private static void release(DepthTexture depth, DepthTexture depthNoTranslucents, UmbraFramebuffer framebuffer,
                                 int[] colorTextures) {
-        if (framebuffer != null) {
-            framebuffer.destroy();
+        try {
+            if (framebuffer != null) {
+                framebuffer.destroy();
+            }
+        } finally {
+            try {
+                if (depth != null) {
+                    depth.destroy();
+                }
+            } finally {
+                try {
+                    if (depthNoTranslucents != null) {
+                        depthNoTranslucents.destroy();
+                    }
+                } finally {
+                    releaseColors(colorTextures);
+                }
+            }
         }
-        if (depth != null) {
-            depth.destroy();
-        }
-        if (depthNoTranslucents != null) {
-            depthNoTranslucents.destroy();
-        }
+    }
+
+    // Deletes every created color texture in one call and forgets their names.
+    private static void releaseColors(int[] colorTextures) {
         int count = 0;
         for (int texture : colorTextures) {
             if (texture != 0) {
@@ -130,10 +143,11 @@ public final class ShadowTargets {
                 names[slot++] = texture;
             }
         }
+        Arrays.fill(colorTextures, 0);
         LWJGL.glDeleteTextures(names);
     }
 
-    // Returns the declared draw buffers limited to allocated buffers or shadowcolor0 alone when none remain
+    // Returns the declared draw buffers that have a texture or the first one.
     public int[] drawMask(int[] declared) {
         int[] sanitized = DrawBuffers.sanitize(declared, this.colorTextures.length);
         int[] kept = new int[sanitized.length];
@@ -149,20 +163,20 @@ public final class ShadowTargets {
         return this.colorTextures.length > 0 && this.colorTextures[0] != 0 ? new int[]{0} : NO_DRAW_BUFFERS;
     }
 
-    // Binds the framebuffer and sets the viewport to the whole shadow map
+    // Binds the framebuffer and sets the viewport to the map.
     public void bind() {
         this.framebuffer.bind();
         LWJGL.glViewport(0, 0, this.resolution, this.resolution);
     }
 
-    // Clears the colour buffers that ask for it and the depth buffer and then selects the draw mask
+    // Clears the color and depth textures and selects the draw buffers.
     public void clear(int[] drawMask) {
         this.clears.run(this.framebuffer);
         LWJGL.glClear(GL11.GL_DEPTH_BUFFER_BIT);
         this.framebuffer.drawBuffers(drawMask);
     }
 
-    // Copies the bound framebuffer depth into shadowtex1
+    // Copies the depth into the texture without translucents.
     public void copyDepthWithoutTranslucents() {
         GlTextureUnits.selectScratch(ShadowTextures.SETUP_UNIT);
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, this.depthNoTranslucents.getTextureId());
@@ -171,7 +185,7 @@ public final class ShadowTargets {
         GlTextureUnits.resetToUnit0();
     }
 
-    // Builds the mip chains the pack asked for and leaves unit 0 selected
+    // Generates the mipmaps of the mipmapped textures.
     public void generateMipmaps() {
         boolean depthMips = this.mipmapDepth[0] || this.mipmapDepth[1];
         if (depthMips || this.mipmappedColors.length > 0) {
@@ -191,7 +205,7 @@ public final class ShadowTargets {
         GlTextureUnits.resetToUnit0();
     }
 
-    // Builds one depth mip chain and sets its mipmapped minifying filter on the selected unit
+    // Generates the mipmaps of a depth texture and sets its filter.
     private static void generateDepthMipmap(DepthTexture texture, boolean nearest) {
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, texture.getTextureId());
         LWJGL.glGenerateMipmap(GL11.GL_TEXTURE_2D);
@@ -199,22 +213,22 @@ public final class ShadowTargets {
         LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, 0);
     }
 
-    // Returns the width and height of the shadow map in pixels
+    // Returns the side of the shadow map.
     public int resolution() {
         return this.resolution;
     }
 
-    // Returns the shadowtex0 texture name or throws once destroyed
+    // Returns the GL name of the depth texture.
     public int depthTextureId() {
         return this.depth.getTextureId();
     }
 
-    // Returns the shadowtex1 texture name or throws once destroyed
+    // Returns the GL name of the depth texture without translucents.
     public int depthNoTranslucentsTextureId() {
         return this.depthNoTranslucents.getTextureId();
     }
 
-    // Returns the texture name of a colour buffer or 0 for an index that was never allocated
+    // Returns the GL name of a color texture or zero and rejects released targets.
     public int colorTextureId(int index) {
         if (this.destroyed) {
             throw new IllegalStateException("Shadow colour textures were destroyed");
@@ -222,22 +236,22 @@ public final class ShadowTargets {
         return index >= 0 && index < this.colorTextures.length ? this.colorTextures[index] : 0;
     }
 
-    // Returns the internal format of a colour buffer or 0 for an index outside the addressable buffers
+    // Returns the internal format of a color texture or zero.
     public int colorInternalFormat(int index) {
         return index >= 0 && index < this.colorTextures.length ? this.colorSettings.format(index).getInternalFormat() : 0;
     }
 
-    // Returns how many colour buffers the pack may address
+    // Returns the number of color textures.
     public int colorBufferCount() {
         return this.colorTextures.length;
     }
 
-    // Returns the framebuffer that the pass renders into
+    // Returns the shadow framebuffer.
     public UmbraFramebuffer framebuffer() {
         return this.framebuffer;
     }
 
-    // Deletes the framebuffer and every texture once
+    // Releases every resource once.
     public void destroy() {
         if (this.destroyed) {
             return;

@@ -6,22 +6,36 @@ import com.bdmajora.impetus.engine.impl.render.chunk.sorting.SortState;
 import com.bdmajora.impetus.engine.impl.render.chunk.sorting.TranslucentQuadRecorder;
 import org.jetbrains.annotations.Nullable;
 import java.nio.ByteBuffer;
+import java.util.Objects;
 import org.lwjgl.system.MemoryUtil;
 
+// Collects the encoded vertices of a mesh in native memory.
 public class ChunkMeshBufferBuilder {
+    // Encoder of the vertices.
     private final ChunkVertexEncoder encoder;
+    // Bytes of one vertex.
     private final int stride;
 
+    // Smallest size of the buffer.
     private final int initialCapacity;
+    // Recorder of the sorting data or null.
     private final TranslucentQuadRecorder analyzer;
 
+    // Native buffer or null.
     private ByteBuffer buffer;
+    // Number of vertices written.
     private int count;
+    // Size of the buffer in bytes.
     private int capacity;
+    // Index of the section being built.
     private int sectionIndex;
 
+    // Creates a builder and rejects a null encoder or a stride that is not positive.
     public ChunkMeshBufferBuilder(ChunkVertexEncoder encoder, int stride, int initialCapacity, boolean collectSortState) {
-        this.encoder = encoder;
+        if (stride <= 0 || initialCapacity < 0) {
+            throw new IllegalArgumentException("Invalid stride " + stride + " or capacity " + initialCapacity);
+        }
+        this.encoder = Objects.requireNonNull(encoder, "encoder");
         this.stride = stride;
 
         this.buffer = null;
@@ -32,35 +46,40 @@ public class ChunkMeshBufferBuilder {
         this.analyzer = collectSortState ? new TranslucentQuadRecorder() : null;
     }
 
-    // Encodes one quad, growing the buffer and feeding the translucency analyzer
+    // Encodes one quad and grows the buffer and records the sorting data and ignores an empty quad.
     public void push(ChunkVertexEncoder.Vertex[] vertices, Material material) {
+        if (vertices.length == 0) {
+            return;
+        }
         if (this.encoder.supportsBilinearCorrection()) {
             postprocessVertices(vertices);
         }
 
-        var vertexStart = this.count * this.stride;
-        var vertexSize = vertices.length * this.stride;
+        var vertexStart = Math.multiplyExact(this.count, this.stride);
+        var vertexSize = Math.multiplyExact(vertices.length, this.stride);
 
-        if (vertexStart + vertexSize >= this.capacity) {
+        if (Math.addExact(vertexStart, vertexSize) > this.capacity) {
             this.grow(vertexSize);
         }
 
         long ptr = MemoryUtil.memAddress(this.buffer, vertexStart);
 
-        // One walk for both; the encoder never mutates the vertex, so the analyzer can read it first
         var analyzer = this.analyzer;
 
         for (ChunkVertexEncoder.Vertex vertex : vertices) {
-            if (analyzer != null) {
+            ptr = this.encoder.write(ptr, material, vertex, this.sectionIndex);
+        }
+
+        if (analyzer != null) {
+            for (ChunkVertexEncoder.Vertex vertex : vertices) {
                 analyzer.capture(vertex);
             }
-
-            ptr = this.encoder.write(ptr, material, vertex, this.sectionIndex);
         }
 
         this.count += vertices.length;
     }
 
+    // Calculates the bilinear correction of a quad.
     private static void postprocessVertices(ChunkVertexEncoder.Vertex[] vertices) {
         if (vertices.length != 4) {
             for (var vertex : vertices) {
@@ -73,7 +92,6 @@ public class ChunkMeshBufferBuilder {
         int color1 = vertices[1].color;
         int color2 = vertices[2].color;
         int color3 = vertices[3].color;
-        // TODO can likely do SWAR tricks if performance is an issue
         int factor = encodeBilinearCorrection(color3, color1, color0, color2, 0)
                 | encodeBilinearCorrection(color3, color1, color0, color2, 8) << 8
                 | encodeBilinearCorrection(color3, color1, color0, color2, 16) << 16
@@ -84,45 +102,50 @@ public class ChunkMeshBufferBuilder {
         }
     }
 
+    // Returns the correction of one color channel.
     private static int encodeBilinearCorrection(int positive0, int positive1, int negative0, int negative1, int shift) {
         int factor = ((positive0 >> shift) & 0xFF) + ((positive1 >> shift) & 0xFF)
                 - ((negative0 >> shift) & 0xFF) - ((negative1 >> shift) & 0xFF);
         return Math.round(factor * (127.0F / 510.0F)) & 0xFF;
     }
 
+    // Grows the buffer to hold more bytes and rejects a failed allocation.
     private void grow(int bytesNeeded) {
-        // Grow by a factor of 2, or by however many bytes more we need, whichever is larger.
-        int newCapacity = Math.max(this.capacity * 2, this.capacity + bytesNeeded);
-        // Ensure we allocate at least initialCapacity bytes
+        int newCapacity = Math.max((int) Math.min(Integer.MAX_VALUE, this.capacity * 2L), Math.addExact(this.capacity, bytesNeeded));
         newCapacity = Math.max(newCapacity, this.initialCapacity);
 
-        this.buffer = MemoryUtil.memRealloc(this.buffer, newCapacity);
+        ByteBuffer grown = MemoryUtil.memRealloc(this.buffer, newCapacity);
+        // Keeps the old buffer when the allocation fails
+        if (grown == null) {
+            throw new OutOfMemoryError("Failed to grow the mesh buffer to " + newCapacity + " bytes");
+        }
+        this.buffer = grown;
         this.capacity = newCapacity;
     }
 
-    // Resets for a new section
+    // Starts a new section.
     public void start(int sectionIndex) {
         this.count = 0;
         this.sectionIndex = sectionIndex;
-        if(this.analyzer != null) {
+        if (this.analyzer != null) {
             this.analyzer.clear();
         }
     }
 
-    // The analyzer's classification of what was pushed
+    // Returns the sort state of the written quads or null.
     @Nullable
     public SortState getSortState() {
         return this.analyzer != null ? this.analyzer.getSortState() : null;
     }
 
-    // Clears the analyzer
+    // Clears the sorting data.
     public void resetSortState() {
         if (this.analyzer != null) {
             this.analyzer.clear();
         }
     }
 
-    // Frees the native buffer
+    // Frees the buffer and clears the state.
     public void destroy() {
         if (this.buffer != null) {
             MemoryUtil.memFree(this.buffer);
@@ -130,16 +153,17 @@ public class ChunkMeshBufferBuilder {
 
         this.buffer = null;
         this.capacity = 0;
+        this.count = 0;
 
         this.resetSortState();
     }
 
-    // No vertices
+    // Returns whether no vertex was written.
     public boolean isEmpty() {
         return this.count == 0;
     }
 
-    // A view over what was written
+    // Returns a view of the written vertices and rejects an empty buffer.
     public ByteBuffer slice() {
         if (this.isEmpty()) {
             throw new IllegalStateException("No vertex data in buffer");
@@ -148,7 +172,7 @@ public class ChunkMeshBufferBuilder {
         return MemoryUtil.memSlice(this.buffer, 0, this.stride * this.count);
     }
 
-    // Vertices written
+    // Returns the number of vertices.
     public int count() {
         return this.count;
     }

@@ -21,19 +21,25 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
-// Loaded item light definitions, rebuilt on every resource reload; code registrations beat pack ones and survive reloads
+// Registry of the item light sources.
 public final class ItemLightSources {
+    // Namespace of the definitions.
     private static final String NAMESPACE = "impetus";
+    // Folder of the definitions.
     private static final String DIRECTORY = "dynamiclights/item/";
+    // Index file that lists the definitions.
     private static final ResourceLocation INDEX = new ResourceLocation(NAMESPACE, "dynamiclights/index.json");
 
-    private static final Map<Item, ItemLightSource> LOADED = new Reference2ObjectOpenHashMap<>();
-    private static final Map<Item, ItemLightSource> REGISTERED = new Reference2ObjectOpenHashMap<>();
+    // Sources read from resources.
+    private static volatile Map<Item, ItemLightSource> loaded = new Reference2ObjectOpenHashMap<>();
+    // Sources registered by code.
+    private static final Map<Item, ItemLightSource> REGISTERED = new java.util.concurrent.ConcurrentHashMap<>();
 
+    // Prevents instantiation
     private ItemLightSources() {
     }
 
-    // Hooks the resource manager so #load runs on every pack reload.
+    // Reloads the sources whenever resources reload.
     public static void registerReloadListener() {
         IResourceManager manager = Minecraft.getMinecraft().getResourceManager();
 
@@ -46,24 +52,26 @@ public final class ItemLightSources {
         }
     }
 
-    // Rereads every definition; 1.12.2 cannot list a directory, so every pack's copy of an index resource is read and merged, letting a pack add sources for items this mod never heard of
+    // Reads every listed definition and replaces the loaded sources.
     public static void load(IResourceManager resourceManager) {
-        LOADED.clear();
+        Map<Item, ItemLightSource> next = new Reference2ObjectOpenHashMap<>();
 
         for (String fileName : readIndex(resourceManager)) {
             ResourceLocation location = new ResourceLocation(NAMESPACE, DIRECTORY + fileName);
 
             try {
                 for (IResource resource : resourceManager.getAllResources(location)) {
-                    loadOne(location, resource);
+                    loadOne(location, resource, next);
                 }
             } catch (IOException e) {
                 DynamicLights.LOGGER.warn("Could not read the item light source at {}", location);
             }
         }
+
+        loaded = next;
     }
 
-    // Reads every pack's index.json and unions the listed file names
+    // Returns the file names listed in the indexes.
     private static Set<String> readIndex(IResourceManager resourceManager) {
         Set<String> files = new LinkedHashSet<>();
 
@@ -91,8 +99,8 @@ public final class ItemLightSources {
         return files;
     }
 
-    // Parses one definition; a malformed file is logged and skipped rather than failing the reload
-    private static void loadOne(ResourceLocation location, IResource resource) {
+    // Reads one definition and stores it unless code registered the item.
+    private static void loadOne(ResourceLocation location, IResource resource, Map<Item, ItemLightSource> into) {
         ResourceLocation id = new ResourceLocation(location.getNamespace(),
                 location.getPath().replace(".json", ""));
 
@@ -101,15 +109,15 @@ public final class ItemLightSources {
 
             ItemLightSource.fromJson(id, json).ifPresent(data -> {
                 if (!REGISTERED.containsKey(data.item())) {
-                    LOADED.put(data.item(), data);
+                    into.put(data.item(), data);
                 }
             });
-        } catch (IOException | IllegalStateException e) {
+        } catch (IOException | RuntimeException e) {
             DynamicLights.LOGGER.warn("Could not load the item light source \"{}\"", id, e);
         }
     }
 
-    // Registers an item light source in code, the API counterpart of a JSON file: survives reloads and beats anything a pack declares for the same item
+    // Registers a source and rejects a duplicate item.
     public static void registerItemLightSource(ItemLightSource data) {
         ItemLightSource existing = REGISTERED.get(data.item());
 
@@ -120,10 +128,16 @@ public final class ItemLightSources {
         }
 
         REGISTERED.put(data.item(), data);
-        LOADED.remove(data.item());
+        synchronized (ItemLightSources.class) {
+            if (loaded.containsKey(data.item())) {
+                Map<Item, ItemLightSource> copy = new Reference2ObjectOpenHashMap<>(loaded);
+                copy.remove(data.item());
+                loaded = copy;
+            }
+        }
     }
 
-    // Luminance of a stack; anything that places a block falls back to that block's light value, so only non-block items (blaze rod, lava bucket) need a definition
+    // Returns the light level of the stack.
     public static int getLuminance(ItemStack stack, boolean submergedInWater) {
         if (stack.isEmpty()) {
             return 0;
@@ -133,7 +147,7 @@ public final class ItemLightSources {
 
         ItemLightSource data = REGISTERED.get(item);
         if (data == null) {
-            data = LOADED.get(item);
+            data = loaded.get(item);
         }
 
         if (data != null) {

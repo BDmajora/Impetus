@@ -6,17 +6,14 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.Unique;
 
-
-// The biome layer scratch pool per thread instead of one global pool behind a monitor: resetIntCache hands every in-use array back, so two threads walking layers at once (a spawn pass and a chunk generating, two dimensions) would reclaim each other's buffers mid-use; per thread the reuse pattern is exactly vanilla's, without the lock
+// Mixin that changes IntCache.
 @Mixin(IntCache.class)
 public abstract class IntCacheMixin {
+    // Field pool added to the target.
     @Unique
     private static final ThreadLocal<IntCachePool> equilibrium$pool = ThreadLocal.withInitial(IntCachePool::new);
 
-    /**
-     * @author bdmajora
-     * @reason per-thread pools, same allocation and reuse behaviour as vanilla
-     */
+    // Replaces the whole method getIntCache.
     @Overwrite
     public static int[] getIntCache(int size) {
         IntCachePool pool = equilibrium$pool.get();
@@ -48,10 +45,7 @@ public abstract class IntCacheMixin {
         return array;
     }
 
-    /**
-     * @author bdmajora
-     * @reason per-thread pools, same allocation and reuse behaviour as vanilla
-     */
+    // Replaces the whole method resetIntCache.
     @Overwrite
     public static void resetIntCache() {
         IntCachePool pool = equilibrium$pool.get();
@@ -67,10 +61,7 @@ public abstract class IntCacheMixin {
         pool.inUseSmall.clear();
     }
 
-    /**
-     * @author bdmajora
-     * @reason per-thread pools, same allocation and reuse behaviour as vanilla
-     */
+    // Replaces the whole method getCacheSizes.
     @Overwrite
     public static String getCacheSizes() {
         IntCachePool pool = equilibrium$pool.get();

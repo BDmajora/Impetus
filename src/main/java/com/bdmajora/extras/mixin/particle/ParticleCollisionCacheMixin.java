@@ -15,27 +15,33 @@ import org.spongepowered.asm.mixin.injection.At;
 import java.util.Collections;
 import java.util.List;
 
-// Particle Core's open-air shortcut: a particle drifting inside a block cell that has nothing to collide with, including the neighbours vanilla's query reaches into, keeps that answer until it leaves the cell, so the per-tick block sweep runs once per cell rather than once per tick
+// Mixin that changes Particle.
 @Mixin(Particle.class)
 public abstract class ParticleCollisionCacheMixin {
-    // Answers go stale if the world changes under a long-lived particle, so they are re-asked periodically even within one cell
+    // Ticks between collision rechecks.
     private static final int RECHECK_TICKS = 10;
 
+    // Field cell x added to the target.
     @Unique
     private int impetus$cellX = Integer.MIN_VALUE;
 
+    // Field cell y added to the target.
     @Unique
     private int impetus$cellY;
 
+    // Field cell z added to the target.
     @Unique
     private int impetus$cellZ;
 
+    // Field cell empty added to the target.
     @Unique
     private boolean impetus$cellEmpty;
 
+    // Field cell age added to the target.
     @Unique
     private int impetus$cellAge;
 
+    // Wraps the call of World.getCollisionBoxes in move.
     @WrapOperation(method = "move", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/world/World;getCollisionBoxes(Lnet/minecraft/entity/Entity;Lnet/minecraft/util/math/AxisAlignedBB;)Ljava/util/List;"))
     private List<AxisAlignedBB> impetus$cachedCollisions(World world, Entity entity, AxisAlignedBB sweep, Operation<List<AxisAlignedBB>> original) {
@@ -45,7 +51,6 @@ public abstract class ParticleCollisionCacheMixin {
         int cellX = MathHelper.floor(sweep.minX);
         int cellY = MathHelper.floor(sweep.minY);
         int cellZ = MathHelper.floor(sweep.minZ);
-        // The sweep must sit inside one cell for the cached answer to cover it
         boolean inside = sweep.maxX <= cellX + 1 && sweep.maxY <= cellY + 1 && sweep.maxZ <= cellZ + 1;
         if (!inside) {
             return original.call(world, entity, sweep);
@@ -55,7 +60,6 @@ public abstract class ParticleCollisionCacheMixin {
             this.impetus$cellY = cellY;
             this.impetus$cellZ = cellZ;
             this.impetus$cellAge = 0;
-            // Vanilla's query over the whole cell reaches one block out on every side, which is exactly what a sweep inside the cell could touch
             this.impetus$cellEmpty = original.call(world, entity, new AxisAlignedBB(cellX, cellY, cellZ, cellX + 1, cellY + 1, cellZ + 1)).isEmpty();
         }
         if (this.impetus$cellEmpty) {

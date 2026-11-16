@@ -4,50 +4,52 @@ import com.bdmajora.impetus.umbra.compat.dh.DhCompat;
 import com.bdmajora.impetus.umbra.gl.sampler.ShadowSamplerKinds;
 import com.bdmajora.impetus.umbra.pipeline.UmbraShadowRenderer;
 
-// What the pipeline's entry points read from its state, so the state's fields stay package-private
+// Read only view of the pipeline state.
 public final class PipelineView {
+    // Pipeline state being viewed.
     private final PipelineState state;
 
+    // Creates a pipeline view from its state.
     public PipelineView(PipelineState state) {
         this.state = state;
     }
 
-    // Between beginWorldRendering and its end
+    // Returns whether active.
     public boolean isActive() {
         return this.state.active;
     }
 
-    // Between the deferred and composite stages
+    // Returns whether post deferred.
     public boolean isPostDeferred() {
         return this.state.active && this.state.isPostDeferred();
     }
 
-    // The camera pass, not the shadow pass that renders entities through the same vanilla renderers first
+    // Returns whether camera pass active.
     public boolean isCameraPassActive() {
         return this.state.active && !UmbraShadowRenderer.isShadowPass();
     }
 
-    // The shaders.properties switches
+    // Returns the pack switches.
     public PackSwitches switches() {
         return this.state.switches;
     }
 
-    // The Distant Horizons compat, null once destroyed
+    // Returns the Distant Horizons state.
     public DhCompat dhCompat() {
         return this.state.dhCompat;
     }
 
-    // The shadow pass, or null when the pack draws no shadow map
+    // Returns the shadow renderer.
     public UmbraShadowRenderer shadowRenderer() {
         return this.state.shadowRenderer;
     }
 
-    // The sampler flavour on the shadow units for the program about to draw
+    // Applies the shadow sampler kinds.
     public void applyShadowSamplerKinds(ShadowSamplerKinds kinds, boolean gbufferStage) {
         this.state.shadowSamplers.apply(kinds, gbufferStage);
     }
 
-    // The pack's custom textures and images; nothing once destroyed
+    // Binds the pack textures.
     public void bindPackResources() {
         this.state.binder.bindPackResources();
     }

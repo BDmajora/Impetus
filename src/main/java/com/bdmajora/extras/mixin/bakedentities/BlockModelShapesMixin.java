@@ -9,9 +9,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Vanilla registers these blocks as built-in and never loads a model for them; the baked entity models are answered here, ahead of the state-to-model table that would return the missing model
+// Mixin that changes BlockModelShapes.
 @Mixin(BlockModelShapes.class)
 public abstract class BlockModelShapesMixin {
+    // Runs at the start of getModelForState and can cancel it.
     @Inject(method = "getModelForState", at = @At("HEAD"), cancellable = true)
     private void impetus$bakedEntityModel(IBlockState state, CallbackInfoReturnable<IBakedModel> cir) {
         IBakedModel model = BakedEntities.modelFor(state);

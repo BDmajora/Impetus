@@ -6,20 +6,24 @@ import net.minecraft.block.state.IBlockState;
 
 import java.util.Arrays;
 
-// property=a|b|c, one property against a set of values: one object and one array where vanilla builds a composite, a transformed Iterable and N closures; fields public for AllMatchAnyObject to fold
+// Predicate that needs one property to hold one of several values.
 public final class SingleMatchAny implements Predicate<IBlockState> {
+    // Property to test.
     public final IProperty<?> property;
+    // Allowed values.
     public final Object[] values;
 
+    // Hash computed once at construction.
     private final int hash;
 
+    // Creates a predicate and rejects a null property or value array.
     public SingleMatchAny(IProperty<?> property, Object[] values) {
-        this.property = property;
-        this.values = values;
+        this.property = java.util.Objects.requireNonNull(property, "property");
+        this.values = java.util.Objects.requireNonNull(values, "values");
         this.hash = 31 * property.hashCode() + Arrays.hashCode(values);
     }
 
-    // Linear scan of the accepted values; sets here are two or three long
+    // Returns whether the property holds an allowed value.
     @Override
     public boolean apply(IBlockState state) {
         if (state == null) {
@@ -37,7 +41,7 @@ public final class SingleMatchAny implements Predicate<IBlockState> {
         return false;
     }
 
-    // Structural equality, which is what lets the canonicalizer intern these
+    // Returns whether the object tests the same property and values.
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -52,7 +56,7 @@ public final class SingleMatchAny implements Predicate<IBlockState> {
                 && Arrays.equals(this.values, other.values);
     }
 
-    // Precomputed at construction; the predicate is immutable
+    // Returns the stored hash.
     @Override
     public int hashCode() {
         return this.hash;

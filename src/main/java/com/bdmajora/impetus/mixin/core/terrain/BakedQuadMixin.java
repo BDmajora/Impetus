@@ -17,39 +17,48 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import com.bdmajora.impetus.impl.render.terrain.compile.light.VintageDiffuseProvider;
 
-// Implements BakedQuadView directly on BakedQuad so the chunk renderer can read vertex data without extra allocations
+// Mixin that changes BakedQuad.
 @Mixin(BakedQuad.class)
 public abstract class BakedQuadMixin implements BakedQuadView {
+    // Reference to the field face of the target.
     @Shadow
     @Final
     protected EnumFacing face;
 
+    // Reference to the field apply diffuse lighting of the target.
     @Shadow
     @Final
     protected boolean applyDiffuseLighting;
 
+    // Reference to the method get vertex data of the target.
     @Shadow
     public abstract int[] getVertexData();
 
+    // Reference to the method get format of the target.
     @Shadow
     public abstract VertexFormat getFormat();
 
+    // Reference to the field sprite of the target.
     @Shadow
     @Final
     protected TextureAtlasSprite sprite;
+    // Reference to the field tint index of the target.
     @Shadow
     @Final
     protected int tintIndex;
+    // Field flags added to the target.
     @Unique
     private int flags;
 
+    // Field normal added to the target.
     @Unique
     private int normal;
 
+    // Field normal face added to the target.
     @Unique
     private ModelQuadFacing normalFace;
 
-    // Lazily derived from the computed normal and cached; most quads are only ever asked once
+    // Returns the normal face.
     @Override
     public ModelQuadFacing getNormalFace() {
         var face = this.normalFace;
@@ -59,7 +68,7 @@ public abstract class BakedQuadMixin implements BakedQuadView {
         return face;
     }
 
-    // Lazily populated on first read, marked by IS_POPULATED so the work is done once
+    // Returns the flags.
     @Override
     public int getFlags() {
         int f = this.flags;
@@ -69,54 +78,55 @@ public abstract class BakedQuadMixin implements BakedQuadView {
         return f;
     }
 
-    // ORs in flags set by the model builder, e.g. IS_VANILLA_SHADED
+    // Handles add flags.
     @Override
     public void addFlags(int flags) {
         this.flags |= flags;
     }
 
-    // Vanilla's diffuse lighting flag, exposed under Sodium's name
+    // Returns whether shade.
     @Override
     public boolean hasShade() {
         return this.applyDiffuseLighting;
     }
 
-    // Derived from the raw array length and the format stride, so it is right for any vertex format
+    // Returns the vertices count.
     @Override
     public int getVerticesCount() {
         return this.getVertexData().length / impetus$layout().impetus$intStride();
     }
 
+    // Returns the transparency level.
     @Override
     public @Nullable SpriteTransparencyLevel getTransparencyLevel() {
         return null;
     }
 
-    // The format's cached int layout, through the getter since subclasses may override it; the layout is re-derived if the format itself is mutated
+    // Helper method layout added to the target.
     @Unique
     private VertexFormatExtension impetus$layout() {
         return (VertexFormatExtension) this.getFormat();
     }
 
-    // Position is always the first element of a vertex
+    // Returns the x of a vertex.
     @Override
     public float getX(int idx) {
         return Float.intBitsToFloat(this.getVertexData()[idx * impetus$layout().impetus$intStride()]);
     }
 
-    // Position is always the first element of a vertex
+    // Returns the y of a vertex.
     @Override
     public float getY(int idx) {
         return Float.intBitsToFloat(this.getVertexData()[idx * impetus$layout().impetus$intStride() + 1]);
     }
 
-    // Position is always the first element of a vertex
+    // Returns the z of a vertex.
     @Override
     public float getZ(int idx) {
         return Float.intBitsToFloat(this.getVertexData()[idx * impetus$layout().impetus$intStride() + 2]);
     }
 
-    // Reads the colour element if the format has one, else zero
+    // Returns the color of a vertex.
     @Override
     public int getColor(int idx) {
         var layout = impetus$layout();
@@ -124,26 +134,27 @@ public abstract class BakedQuadMixin implements BakedQuadView {
         return index >= 0 ? this.getVertexData()[idx * layout.impetus$intStride() + index] : 0;
     }
 
+    // Returns the sprite.
     @Override
     public Object impetus$getSprite() {
         return this.sprite;
     }
 
-    // First UV set; the block atlas coordinates
+    // Returns the u of a vertex.
     @Override
     public float getTexU(int idx) {
         var layout = impetus$layout();
         return Float.intBitsToFloat(this.getVertexData()[idx * layout.impetus$intStride() + layout.impetus$uvIndex()]);
     }
 
-    // First UV set; the block atlas coordinates
+    // Returns the v of a vertex.
     @Override
     public float getTexV(int idx) {
         var layout = impetus$layout();
         return Float.intBitsToFloat(this.getVertexData()[idx * layout.impetus$intStride() + layout.impetus$uvIndex() + 1]);
     }
 
-    // Second UV set holds packed lightmap coordinates when present, else zero
+    // Returns the packed light of a vertex.
     @Override
     public int getLight(int idx) {
         var layout = impetus$layout();
@@ -151,7 +162,7 @@ public abstract class BakedQuadMixin implements BakedQuadView {
         return index >= 0 ? this.getVertexData()[idx * layout.impetus$intStride() + index] : 0;
     }
 
-    // Forge's packed per-vertex normal if the format carries one, else zero
+    // Returns the packed normal of a vertex.
     @Override
     public int getForgeNormal(int idx) {
         var layout = impetus$layout();
@@ -159,15 +170,14 @@ public abstract class BakedQuadMixin implements BakedQuadView {
         return index >= 0 ? this.getVertexData()[idx * layout.impetus$intStride() + index] : 0;
     }
 
-    // Mods sometimes leave the face null; treated as up so the quad still shades
+    // Returns the light face.
     @Override
     public ModelQuadFacing getLightFace() {
-        // Handle mods not supplying a light face
         var face = this.face;
         return face == null ? ModelQuadFacing.POS_Y : VintageDiffuseProvider.fromEnumFacing(face);
     }
 
-    // Lazily computed from the vertex positions and cached; zero doubles as the unset marker
+    // Returns the computed face normal.
     @Override
     public int getComputedFaceNormal() {
         int n = this.normal;
@@ -177,7 +187,7 @@ public abstract class BakedQuadMixin implements BakedQuadView {
         return n;
     }
 
-    // Vanilla's tint index, exposed under Sodium's name
+    // Returns the color index.
     @Override
     public int getColorIndex() {
         return this.tintIndex;

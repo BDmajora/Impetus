@@ -10,9 +10,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Constant;
 import org.spongepowered.asm.mixin.injection.ModifyConstant;
 
-// Star visibility via brightness (zero makes vanilla skip the pass, so it flips without rebuilding geometry) and count via a constant swap in the generator, effective on renderer reload
+// Mixin that changes RenderGlobal.
 @Mixin(RenderGlobal.class)
 public class RenderGlobalStarsMixin {
+    // Wraps the call of WorldClient.getStarBrightness in renderSky.
     @WrapOperation(
             method = "renderSky(FI)V",
             at = @At(value = "INVOKE",
@@ -25,6 +26,7 @@ public class RenderGlobalStarsMixin {
         return original.call(world, partialTicks);
     }
 
+    // Changes a constant in renderStars.
     @ModifyConstant(
             method = "renderStars(Lnet/minecraft/client/renderer/BufferBuilder;)V",
             constant = @Constant(intValue = 1500)

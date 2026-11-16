@@ -2,16 +2,17 @@ package com.bdmajora.fulgor.async;
 
 import net.minecraft.world.chunk.Chunk;
 
-// Implemented by World under the async engine
+// Contract of the async lit world.
 public interface AsyncLitWorld {
-    // The world's manager, created on first use; null for a world the engine refuses (JEI / GregTech preview worlds)
+    // Returns the light manager.
     WorldLightManager fulgor$getLightManager();
 
-    // The chunk if registered with the manager, never loading one; safe from any thread
+    // Returns a loaded chunk without loading or generating it.
     Chunk fulgor$getAnyChunkImmediately(int chunkX, int chunkZ);
 
-    // Whether a registered chunk's initial pass is still pending
+    // Returns whether chunk pending light.
     boolean fulgor$hasChunkPendingLight(int chunkX, int chunkZ);
 
+    // Shuts down the light manager.
     void fulgor$shutdownLightManager();
 }

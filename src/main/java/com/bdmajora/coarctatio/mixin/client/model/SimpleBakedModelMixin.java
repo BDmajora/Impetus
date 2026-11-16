@@ -19,9 +19,10 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 
-// Compacts SimpleBakedModel's quad lists (vanilla's Lists.newArrayList leaves each an oversized buffer); faceQuads is rebuilt as an EnumMap since some mods pass an ImmutableMap, and every constructor is targeted since CollectionHelper.fixed is idempotent
+// Mixin that changes SimpleBakedModel.
 @Mixin(SimpleBakedModel.class)
 public class SimpleBakedModelMixin {
+    // Reference to the field general quads of the target.
     @Mutable
     @Shadow
     @Final
@@ -32,19 +33,21 @@ public class SimpleBakedModelMixin {
     @Final
     protected Map<EnumFacing, List<BakedQuad>> faceQuads;
 
+    // Reference to the field camera transforms of the target.
     @Mutable
     @Shadow
     @Final
     protected ItemCameraTransforms cameraTransforms;
 
+    // Reference to the field item override list of the target.
     @Mutable
     @Shadow
     @Final
     protected ItemOverrideList itemOverrideList;
 
+    // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void coarctatio$compactQuadLists(CallbackInfo ci) {
-        // Every model carries these two and almost none of them differ — see TransformCaches.
         this.cameraTransforms = TransformCaches.TRANSFORMS.deduplicate(this.cameraTransforms);
         this.itemOverrideList = TransformCaches.deduplicate(this.itemOverrideList);
 

@@ -14,122 +14,144 @@ import java.util.Deque;
 import java.util.function.IntConsumer;
 import org.lwjgl.system.MemoryUtil;
 
-
-// Region and section header buffers the GPU walks to find geometry (section id = (regionId << 8) | slot), plus when each section was placed for the chunk fade-in; headers and times are staged per region and uploaded as one 8 KB and one 1 KB block
+// Region and section tables that the GPU reads to find geometry.
 public class MeshRegionStore {
-    // Bytes per region header: two packed uint64s
+    // Bytes of one region header.
     public static final int REGION_HEADER_BYTES = 16;
-    // Bytes per section header: ivec4 header + ivec4 face ranges
+    // Bytes of one section header.
     public static final int SECTION_HEADER_BYTES = 32;
-    // Sections per region, and therefore the shift between a section id and its region id
+    // Sections in a region.
     public static final int SECTIONS_PER_REGION = RenderRegion.REGION_SIZE;
+    // Shift of the region id in a section id.
     private static final int SECTION_ID_SHIFT = 8;
 
+    // Bytes of the section headers of a region.
     private static final int REGION_SECTION_BLOCK_BYTES = SECTIONS_PER_REGION * SECTION_HEADER_BYTES;
-    // One uint32 placement time per section, in the store's millisecond clock
+    // Bytes of the placement times of a region.
     private static final int REGION_TIME_BLOCK_BYTES = SECTIONS_PER_REGION * 4;
 
+    // Buffer of the region headers.
     private final BindlessBuffer regionBuffer;
+    // Buffer of the section headers.
     private final BindlessBuffer sectionBuffer;
+    // Buffer of the placement times.
     private final BindlessBuffer timeBuffer;
+    // Stream that copies the tables.
     private final UploadStream uploadStream;
-    // The millisecond clock's zero, so it fits a uint32 for 49 days
+    // Time at which the clock started.
     private final long epochNanos = System.nanoTime();
 
+    // Region id of each region key.
     private final Long2IntOpenHashMap regionIdByKey = new Long2IntOpenHashMap();
+    // Allocator of the region ids.
     private final IdAllocator regionIds = new IdAllocator();
+    // Regions by id.
     private final Region[] regions;
 
+    // Regions that need an upload.
     private final Deque<Region> dirtyRegions = new ArrayDeque<>();
 
-    // Told the id of every region whose headers were re-uploaded, since that resets the GPU-side translucent draw order the section sorter wrote
+    // Receiver of the id of every uploaded region.
     private IntConsumer uploadListener = regionId -> {};
 
+    // Creates the store and rejects a region count that is not positive or a null stream.
     public MeshRegionStore(int maxRegions, UploadStream uploadStream) {
+        if (maxRegions <= 0) {
+            throw new IllegalArgumentException("Region count must be positive");
+        }
         this.regionIdByKey.defaultReturnValue(-1);
-        this.uploadStream = uploadStream;
+        this.uploadStream = java.util.Objects.requireNonNull(uploadStream, "uploadStream");
         this.regions = new Region[maxRegions];
         this.regionBuffer = new BindlessBuffer((long) maxRegions * REGION_HEADER_BYTES);
         this.sectionBuffer = new BindlessBuffer((long) maxRegions * REGION_SECTION_BLOCK_BYTES);
         this.timeBuffer = new BindlessBuffer((long) maxRegions * REGION_TIME_BLOCK_BYTES);
     }
 
-    // GPU address of the section placement times, indexed like the section table
+    // Returns the GPU address of the placement times.
     public long getSectionTimeBufferAddress() {
         return this.timeBuffer.getDeviceAddress();
     }
 
-    // Milliseconds since the store was made, the clock the placement times use
+    // Returns the milliseconds since the store was made.
     public int currentTimeMs() {
         return (int) ((System.nanoTime() - this.epochNanos) / 1_000_000L);
     }
 
-    // GPU address of the region table
+    // Returns the GPU address of the region table.
     public long getRegionBufferAddress() {
         return this.regionBuffer.getDeviceAddress();
     }
 
-    // GPU address of the section table
+    // Returns the GPU address of the section table.
     public long getSectionBufferAddress() {
         return this.sectionBuffer.getDeviceAddress();
     }
 
-    // Capacity
+    // Returns the capacity.
     public int getMaxRegions() {
         return this.regions.length;
     }
 
-    // Called with each region id commit() uploads
+    // Stores the receiver of uploaded region ids and rejects null.
     public void setUploadListener(IntConsumer listener) {
-        this.uploadListener = listener;
+        this.uploadListener = java.util.Objects.requireNonNull(listener, "listener");
     }
 
-    // Whether the region a section belongs to is already allocated, i.e. placing it needs no new region id
+    // Returns whether the region of a section is allocated.
     public boolean hasRegionFor(int sectionX, int sectionY, int sectionZ) {
         return this.regionIdByKey.containsKey(regionKey(sectionX, sectionY, sectionZ));
     }
 
-    // Live regions
+    // Returns the number of regions.
     public int getRegionCount() {
         return this.regionIdByKey.size();
     }
 
-    // One past the highest live region id, i.e. how far the per-frame region scan has to go
+    // Returns one past the highest region id.
     public int getMaxRegionIndex() {
         return this.regionIds.maxIndex();
     }
 
-    // Whether an id is allocated
+    // Returns whether a region id is allocated.
     public boolean regionExists(int regionId) {
-        return this.regions[regionId] != null;
+        return regionId >= 0 && regionId < this.regions.length && this.regions[regionId] != null;
     }
 
-    // Live sections in a region, which are its slots 0..count-1 since removal compacts them
+    // Returns the number of sections of a region.
     public int getSectionCount(int regionId) {
         return this.regions[regionId].count;
     }
 
-    // Packed region coordinates
+    // Returns the key of a region.
     public long getRegionKey(int regionId) {
         return this.regions[regionId].key;
     }
 
-    // Claims a slot for a section, creating its region if needed; returns region id in the high bits and slot in the low 8
+    // Claims a slot for a section and creates its region when needed and rejects a taken slot.
     public int allocateSection(int sectionX, int sectionY, int sectionZ) {
         long key = regionKey(sectionX, sectionY, sectionZ);
+        if (!this.regionIdByKey.containsKey(key) && this.regionIdByKey.size() >= this.regions.length) {
+            throw new IllegalStateException("No free region ids");
+        }
         int regionId = this.regionIdByKey.computeIfAbsent(key, k -> this.regionIds.allocate());
 
         Region region = this.regions[regionId];
 
         if (region == null) {
-            region = new Region(regionId, sectionX >> 3, sectionY >> 2, sectionZ >> 3);
+            try {
+                region = new Region(regionId, sectionX >> 3, sectionY >> 2, sectionZ >> 3);
+            } catch (Throwable failure) {
+                // Releases the id of a region that could not be created
+                this.regionIdByKey.remove(key);
+                this.regionIds.release(regionId);
+                throw failure;
+            }
             this.regions[regionId] = region;
         }
 
         int slot = slotWithinRegion(sectionX, sectionY, sectionZ);
         int index = region.count;
 
-        // Validate before claiming the index, or a rejected duplicate leaves a phantom entry the next removal trips over
         if (region.slotToIndex[slot] != -1 || region.indexToSlot[index] != -1) {
             throw new IllegalStateException("Section slot " + slot + " in region " + regionId + " is already taken");
         }
@@ -138,7 +160,6 @@ public class MeshRegionStore {
 
         region.slotToIndex[slot] = index;
         region.indexToSlot[index] = slot;
-        // Placement is what the fade-in counts from; later geometry updates keep the time, so a rebuilt section does not fade again
         MemoryUtil.memPutInt(region.sectionTimes + (long) index * 4, currentTimeMs());
 
         markDirty(region);
@@ -146,9 +167,9 @@ public class MeshRegionStore {
         return slot | (regionId << SECTION_ID_SHIFT);
     }
 
-    // Pointer to a section's 32 header bytes in the staging copy, valid until the next call; marks the region dirty so the write goes up on the next commit
+    // Returns the address of the header of a section and marks its region for upload.
     public long beginSectionUpdate(int sectionId) {
-        Region region = this.regions[sectionId >>> SECTION_ID_SHIFT];
+        Region region = this.regionOf(sectionId);
         int index = region.slotToIndex[sectionId & 0xFF];
 
         if (index < 0) {
@@ -160,15 +181,16 @@ public class MeshRegionStore {
         return region.sectionHeaders + (long) index * SECTION_HEADER_BYTES;
     }
 
-    // The section's index in the region's packed array; the GPU addresses its visibility byte and draw slot by dense index, not by region position
+    // Returns the dense index of a section.
     public int getSectionIndex(int sectionId) {
-        Region region = this.regions[sectionId >>> SECTION_ID_SHIFT];
+        Region region = this.regionOf(sectionId);
         return region.slotToIndex[sectionId & 0xFF];
     }
 
-    // Removes a section and compacts the region's dense array so live sections stay in 0..count-1, letting the GPU dispatch exactly `count` meshlets
+    // Removes a section and moves the last section into the gap.
     public void removeSection(int sectionId) {
-        Region region = this.regions[sectionId >>> SECTION_ID_SHIFT];
+        int regionId = sectionId >>> SECTION_ID_SHIFT;
+        Region region = regionId < this.regions.length ? this.regions[regionId] : null;
 
         if (region == null) {
             return;
@@ -188,7 +210,6 @@ public class MeshRegionStore {
         int lastIndex = --region.count;
 
         if (lastIndex != index) {
-            // Move the tail entry into the hole
             int movedSlot = region.indexToSlot[lastIndex];
 
             MemoryUtil.memCopy(region.sectionHeaders + (long) lastIndex * SECTION_HEADER_BYTES,
@@ -200,7 +221,6 @@ public class MeshRegionStore {
             region.indexToSlot[index] = movedSlot;
             region.slotToIndex[movedSlot] = index;
 
-            // The header carries its own index, for the translucency draw order, so patch it after the move
             long headerY = region.sectionHeaders + (long) index * SECTION_HEADER_BYTES + 4L;
             int packed = MemoryUtil.memGetInt(headerY);
             packed = (packed & ~(0xFF << 18)) | (index << 18);
@@ -218,19 +238,17 @@ public class MeshRegionStore {
         markDirty(region);
     }
 
-    // Pushes every dirty region's header and section block to the GPU
+    // Uploads every region that changed.
     public void commit() {
         while (!this.dirtyRegions.isEmpty()) {
             Region region = this.dirtyRegions.poll();
             region.dirty = false;
 
             if (region.removed) {
-                // A new region may already have claimed the id; its own upload overwrites this one and clearing here would corrupt it
                 if (this.regions[region.id] != null) {
                     continue;
                 }
 
-                // Wipe both blocks, or the GPU renders whatever the departed region left behind
                 long header = this.uploadStream.upload(this.regionBuffer,
                         (long) region.id * REGION_HEADER_BYTES, REGION_HEADER_BYTES);
                 MemoryUtil.memSet(header, -1, REGION_HEADER_BYTES);
@@ -241,22 +259,27 @@ public class MeshRegionStore {
                 continue;
             }
 
-            long header = this.uploadStream.upload(this.regionBuffer,
-                    (long) region.id * REGION_HEADER_BYTES, REGION_HEADER_BYTES);
-            writeRegionHeader(header, region);
+            try {
+                long header = this.uploadStream.upload(this.regionBuffer,
+                        (long) region.id * REGION_HEADER_BYTES, REGION_HEADER_BYTES);
+                writeRegionHeader(header, region);
 
-            long sections = this.uploadStream.upload(this.sectionBuffer,
-                    (long) region.id * REGION_SECTION_BLOCK_BYTES, REGION_SECTION_BLOCK_BYTES);
-            MemoryUtil.memCopy(region.sectionHeaders, sections, REGION_SECTION_BLOCK_BYTES);
+                long sections = this.uploadStream.upload(this.sectionBuffer,
+                        (long) region.id * REGION_SECTION_BLOCK_BYTES, REGION_SECTION_BLOCK_BYTES);
+                MemoryUtil.memCopy(region.sectionHeaders, sections, REGION_SECTION_BLOCK_BYTES);
 
-            long times = this.uploadStream.upload(this.timeBuffer, (long) region.id * REGION_TIME_BLOCK_BYTES, REGION_TIME_BLOCK_BYTES);
-            MemoryUtil.memCopy(region.sectionTimes, times, REGION_TIME_BLOCK_BYTES);
+                long times = this.uploadStream.upload(this.timeBuffer, (long) region.id * REGION_TIME_BLOCK_BYTES, REGION_TIME_BLOCK_BYTES);
+                MemoryUtil.memCopy(region.sectionTimes, times, REGION_TIME_BLOCK_BYTES);
+            } catch (Throwable failure) {
+                this.markDirty(region);
+                throw failure;
+            }
 
             this.uploadListener.accept(region.id);
         }
     }
 
-    // Frustum test on the region's bounds, for CPU-side stats
+    // Returns whether the bounds of a region are inside the frustum.
     public boolean isRegionVisible(Viewport viewport, int regionId) {
         Region region = this.regions[regionId];
 
@@ -264,12 +287,11 @@ public class MeshRegionStore {
             return false;
         }
 
-        // Half-extents of a region in blocks: 8x4x8 sections of 16 blocks
         return viewport.isBoxVisible((region.x << 7) + (1 << 6), (region.y << 6) + (1 << 5), (region.z << 7) + (1 << 6),
                 1 << 6, 1 << 5, 1 << 6);
     }
 
-    // Manhattan distance from camera to region, averaged over two opposite corners; only used for front-to-back sorting so cheapness beats exactness
+    // Returns the approximate distance from the camera to a region.
     public int distanceTo(int regionId, int cameraSectionX, int cameraSectionY, int cameraSectionZ) {
         Region region = this.regions[regionId];
 
@@ -281,7 +303,7 @@ public class MeshRegionStore {
                 + Math.abs((region.z << 3) + 3 - cameraSectionZ)) >> 1;
     }
 
-    // Whether the camera sits inside the region's slab on any axis, where moving even slightly can change which of its sections is farther
+    // Returns whether the camera is inside the slab of a region on any axis.
     public boolean isRegionInCameraAxis(int regionId, double cameraX, double cameraY, double cameraZ) {
         Region region = this.regions[regionId];
 
@@ -290,7 +312,7 @@ public class MeshRegionStore {
                 || ((region.z << 7) <= cameraZ && cameraZ <= ((region.z + 1) << 7));
     }
 
-    // Whether the region's centre lies within a square of the given chunk radius around the camera's section, on every axis
+    // Returns whether the center of a region is within a chunk distance on every axis.
     public boolean isWithinChunks(int regionId, int distance, int cameraSectionX, int cameraSectionY, int cameraSectionZ) {
         Region region = this.regions[regionId];
 
@@ -299,7 +321,7 @@ public class MeshRegionStore {
                 && Math.abs((region.z << 3) + 4 - cameraSectionZ) <= distance;
     }
 
-    // Frees the GPU tables
+    // Frees the tables.
     public void delete() {
         for (Region region : this.regions) {
             if (region != null) {
@@ -314,7 +336,17 @@ public class MeshRegionStore {
         this.timeBuffer.delete();
     }
 
-    // Queues the region's table entry for re-upload
+    // Returns the region of a section id and rejects a missing region.
+    private Region regionOf(int sectionId) {
+        int regionId = sectionId >>> SECTION_ID_SHIFT;
+        Region region = regionId < this.regions.length ? this.regions[regionId] : null;
+        if (region == null) {
+            throw new IllegalStateException("Region of section " + sectionId + " is not allocated");
+        }
+        return region;
+    }
+
+    // Queues a region for upload.
     private void markDirty(Region region) {
         if (region.dirty) {
             return;
@@ -323,7 +355,7 @@ public class MeshRegionStore {
         this.dirtyRegions.add(region);
     }
 
-    // Two packed uint64s for the region rasteriser: a = [0..23] y, [24..47] x, [48..55] highest live index, [56..58] size z, [59..61] size x, [62..63] size y; b = [40..63] z; extents cover only the occupied part
+    // Writes the header of a region.
     private static void writeRegionHeader(long ptr, Region region) {
         int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, minZ = Integer.MAX_VALUE;
         int maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE, maxZ = Integer.MIN_VALUE;
@@ -357,34 +389,43 @@ public class MeshRegionStore {
         MemoryUtil.memPutLong(ptr + 8, z);
     }
 
-    // Section coordinates to the containing region's key
+    // Returns the key of the region of a section.
     private static long regionKey(int sectionX, int sectionY, int sectionZ) {
         return PositionUtil.packSection(sectionX >> 3, sectionY >> 2, sectionZ >> 3);
     }
 
-    // Slot layout within a region: y in the top two bits, then z, then x, matching what the section rasteriser's mesh shader unpacks
+    // Returns the slot of a section inside its region.
     private static int slotWithinRegion(int sectionX, int sectionY, int sectionZ) {
         return ((sectionY & 3) << 6) | ((sectionZ & 7) << 3) | (sectionX & 7);
     }
 
+    // State of one region.
     private static final class Region {
+        // Id of the region.
         private final int id;
+        // Position of the region.
         private final int x, y, z;
+        // Key of the region.
         private final long key;
 
-        // Slot within the 8x4x8 grid <-> dense index in the uploaded array; -1 when unused
+        // Dense index of each slot.
         private final int[] slotToIndex = new int[SECTIONS_PER_REGION];
+        // Slot of each dense index.
         private final int[] indexToSlot = new int[SECTIONS_PER_REGION];
+        // Number of sections.
         private int count;
 
-        // The whole region's section headers, staged off-heap so a dirty region uploads as one contiguous copy
+        // Address of the section headers.
         private long sectionHeaders;
-        // Each section's placement time, by the same dense index
+        // Address of the placement times.
         private long sectionTimes;
 
+        // Upload queue state of the region.
         private boolean dirty;
+        // Removed state of the region.
         private boolean removed;
 
+        // Creates a region with zeroed native blocks and rejects a failed allocation.
         private Region(int id, int x, int y, int z) {
             this.id = id;
             this.x = x;
@@ -395,18 +436,33 @@ public class MeshRegionStore {
             Arrays.fill(this.slotToIndex, -1);
             Arrays.fill(this.indexToSlot, -1);
 
-            this.sectionHeaders = MemoryUtil.nmemAlloc(REGION_SECTION_BLOCK_BYTES);
-            MemoryUtil.memSet(this.sectionHeaders, 0, REGION_SECTION_BLOCK_BYTES);
-            this.sectionTimes = MemoryUtil.nmemCalloc(1, REGION_TIME_BLOCK_BYTES);
+            long headers = MemoryUtil.nmemCalloc(1, REGION_SECTION_BLOCK_BYTES);
+            long times = MemoryUtil.nmemCalloc(1, REGION_TIME_BLOCK_BYTES);
+            // Frees a partial allocation and rejects a failed one
+            if (headers == 0L || times == 0L) {
+                if (headers != 0L) {
+                    MemoryUtil.nmemFree(headers);
+                }
+                if (times != 0L) {
+                    MemoryUtil.nmemFree(times);
+                }
+                throw new OutOfMemoryError("Failed to allocate the native blocks of region " + id);
+            }
+            this.sectionHeaders = headers;
+            this.sectionTimes = times;
         }
 
-        // Releases the native mirrors
+        // Frees the native memory once.
         private void free() {
-            if (this.sectionHeaders != 0L) {
-                MemoryUtil.nmemFree(this.sectionHeaders);
-                MemoryUtil.nmemFree(this.sectionTimes);
-                this.sectionHeaders = 0L;
-                this.sectionTimes = 0L;
+            long headers = this.sectionHeaders;
+            long times = this.sectionTimes;
+            this.sectionHeaders = 0L;
+            this.sectionTimes = 0L;
+            if (headers != 0L) {
+                MemoryUtil.nmemFree(headers);
+            }
+            if (times != 0L) {
+                MemoryUtil.nmemFree(times);
             }
         }
     }

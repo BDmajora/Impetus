@@ -14,32 +14,34 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 
-// Which entity and block entity types the user switched off, built from Forge's entity registry and TileEntity's class map; only the disabled sets are user data
+// Switches that disable light sources by type.
 public final class LightSourceSettings {
+    // Single instance.
     private static final LightSourceSettings INSTANCE = new LightSourceSettings();
 
-    // Registry ids the user has switched off. The only authoritative persisted state here.
+    // Identifiers of disabled entity types.
     private final Set<String> disabledEntities = ConcurrentHashMap.newKeySet();
+    // Identifiers of disabled block entity types.
     private final Set<String> disabledBlockEntities = ConcurrentHashMap.newKeySet();
 
-    // Per-class memo of the registry id, so the hot tick path resolves it at most once per class.
+    // Identifier of each entity class.
     private final Map<Class<?>, String> entityIds = new ConcurrentHashMap<>();
+    // Identifier of each block entity class.
     private final Map<Class<?>, String> blockEntityIds = new ConcurrentHashMap<>();
 
-    // Stands in for "this class has no registry id", which a ConcurrentHashMap cannot store.
+    // Identifier of a class without registration.
     private static final String UNREGISTERED = "";
 
+    // Prevents instantiation
     private LightSourceSettings() {
     }
 
-    // Single client-wide instance
+    // Returns the single instance.
     public static LightSourceSettings getInstance() {
         return INSTANCE;
     }
 
-    // Lookups on the tick path
-
-    // Whether this entity's type may light up.
+    // Returns whether the entity may emit light.
     public boolean isEntityEnabled(Entity entity) {
         if (this.disabledEntities.isEmpty()) {
             return true;
@@ -49,7 +51,7 @@ public final class LightSourceSettings {
         return id == null || !this.disabledEntities.contains(id);
     }
 
-    // Whether this block entity's type may light up.
+    // Returns whether the block entity may emit light.
     public boolean isBlockEntityEnabled(TileEntity tileEntity) {
         if (this.disabledBlockEntities.isEmpty()) {
             return true;
@@ -59,7 +61,7 @@ public final class LightSourceSettings {
         return id == null || !this.disabledBlockEntities.contains(id);
     }
 
-    // Registry id for this entity or null, keyed on the concrete class since EntityList#getKey is a map lookup run per entity per tick; an unregistered subclass resolves to null and is never filtered, the safe failure
+    // Returns the identifier of the entity class or null when unregistered.
     private String entityId(Entity entity) {
         Class<?> clazz = entity.getClass();
         String cached = this.entityIds.get(clazz);
@@ -73,7 +75,7 @@ public final class LightSourceSettings {
         return cached.isEmpty() ? null : cached;
     }
 
-    // Registry id for a block entity's class, memoised per class since the registry lookup is a map walk
+    // Returns the identifier of the block entity class or null when unregistered.
     private String blockEntityId(TileEntity tileEntity) {
         Class<?> clazz = tileEntity.getClass();
         String cached = this.blockEntityIds.get(clazz);
@@ -87,18 +89,17 @@ public final class LightSourceSettings {
         return cached.isEmpty() ? null : cached;
     }
 
-    // The disabled sets
-
+    // Returns whether the entity type is disabled.
     public boolean isEntityTypeDisabled(String id) {
         return this.disabledEntities.contains(id);
     }
 
-    // Whether the user switched this block entity type off
+    // Returns whether the block entity type is disabled.
     public boolean isBlockEntityTypeDisabled(String id) {
         return this.disabledBlockEntities.contains(id);
     }
 
-    // Toggles one entity type; the set only stores disabled ids
+    // Enables or disables an entity type.
     public void setEntityTypeEnabled(String id, boolean enabled) {
         if (enabled) {
             this.disabledEntities.remove(id);
@@ -107,7 +108,7 @@ public final class LightSourceSettings {
         }
     }
 
-    // Toggles one block entity type; the set only stores disabled ids
+    // Enables or disables a block entity type.
     public void setBlockEntityTypeEnabled(String id, boolean enabled) {
         if (enabled) {
             this.disabledBlockEntities.remove(id);
@@ -116,29 +117,32 @@ public final class LightSourceSettings {
         }
     }
 
-    // Replaces the disabled entity set from the config file
+    // Replaces the disabled entity types and ignores empty entries.
     public void loadDisabledEntities(String[] ids) {
         load(this.disabledEntities, ids);
     }
 
-    // Replaces the disabled block entity set from the config file
+    // Replaces the disabled block entity types and ignores empty entries.
     public void loadDisabledBlockEntities(String[] ids) {
         load(this.disabledBlockEntities, ids);
     }
 
-    // Sorted for a stable config file
+    // Returns the sorted identifiers of disabled entity types.
     public String[] getDisabledEntitiesArray() {
         return this.disabledEntities.stream().sorted().toArray(String[]::new);
     }
 
-    // Sorted for a stable config file
+    // Returns the sorted identifiers of disabled block entity types.
     public String[] getDisabledBlockEntitiesArray() {
         return this.disabledBlockEntities.stream().sorted().toArray(String[]::new);
     }
 
-    // Clears and refills, skipping blanks a hand-edited config might contain
+    // Replaces the set with the identifiers and ignores null and empty entries.
     private static void load(Set<String> target, String[] ids) {
         target.clear();
+        if (ids == null) {
+            return;
+        }
         for (String id : ids) {
             if (id != null && !id.isEmpty()) {
                 target.add(id);
@@ -146,9 +150,7 @@ public final class LightSourceSettings {
         }
     }
 
-    // Enumeration, for the options page
-
-    // Every registered entity type as "namespace:path" -> display name sorted by id; built on demand since the page reads it once per open and the registry can change on world join
+    // Returns the display name of every registered entity type.
     public static Map<String, String> listEntityTypes() {
         Map<String, String> types = new TreeMap<>();
 
@@ -162,7 +164,7 @@ public final class LightSourceSettings {
         return types;
     }
 
-    // Every registered block entity type as "namespace:path" -> display name; block entities are vanilla-registered on 1.12.2, so this reaches TileEntity.REGISTRY via an accessor mixin
+    // Returns the display name of every registered block entity type.
     public static Map<String, String> listBlockEntityTypes() {
         Map<String, String> types = new TreeMap<>();
 
@@ -173,7 +175,7 @@ public final class LightSourceSettings {
         return types;
     }
 
-    // A human-readable label: the registered name where there is one, else the id's path.
+    // Returns the registered name or a name made from the path.
     private static String displayName(String registeredName, ResourceLocation id) {
         if (registeredName != null && !registeredName.isEmpty()) {
             return registeredName;
@@ -181,7 +183,7 @@ public final class LightSourceSettings {
         return prettify(id.getPath());
     }
 
-    // wall_banner -> Wall Banner.
+    // Returns the path with words separated and capitalised.
     private static String prettify(String path) {
         StringBuilder out = new StringBuilder(path.length());
         boolean capitalise = true;

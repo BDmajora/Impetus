@@ -1,10 +1,13 @@
 package com.bdmajora.extras.client.culling;
 
-// Implemented on Entity and TileEntity: the occlusion thread's latest verdict plus when it was written, so a verdict the thread has not refreshed (world change, thread stall) expires back to visible rather than hiding something
+// Object that can be hidden by occlusion.
 public interface Cullable {
+    // Returns whether the object is hidden.
     boolean impetus$isOccluded();
 
+    // Stores the hidden state and the time of the test.
     void impetus$setOccluded(boolean occluded, long stampNanos);
 
+    // Returns the time of the last test.
     long impetus$occlusionStamp();
 }

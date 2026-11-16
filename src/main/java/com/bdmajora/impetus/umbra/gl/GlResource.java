@@ -1,22 +1,23 @@
 package com.bdmajora.impetus.umbra.gl;
 
-// Base for a GL object owning one integer handle (shader, program, texture, FBO); subclasses free in destroyInternal, callers only touch destroy(), and every GL call goes through com.bdmajora.impetus.lwjgl
+// Base of a GL object with one name.
 public abstract class GlResource {
+    // Name of the GL object.
     private int handle;
-    // Latched by destroy(), which is what makes destroy() idempotent and getGlId() able to fail loudly
+    // Flag set after the object is deleted.
     private boolean destroyed;
 
+    // Creates a resource without a name.
     protected GlResource() {
-        // -1 rather than 0, since 0 is a valid-looking "no object" name that would bind silently; -1 makes use-before-assignment a GL error naming an impossible object
         this.handle = -1;
     }
 
-    // Called once by the subclass constructor
+    // Stores the GL name.
     protected final void setHandle(int handle) {
         this.handle = handle;
     }
 
-    // Throws rather than returning the stale handle: the driver can REUSE a destroyed name, so use-after-destroy would silently operate on someone else's texture
+    // Returns the GL name and rejects a deleted resource.
     public final int getGlId() {
         if (this.destroyed) {
             throw new IllegalStateException("Tried to use a destroyed GL resource (" + getClass().getSimpleName() + ")");
@@ -24,12 +25,12 @@ public abstract class GlResource {
         return this.handle;
     }
 
-    // Whether destroy has run
+    // Returns whether the resource was deleted.
     public final boolean isDestroyed() {
         return this.destroyed;
     }
 
-    // Idempotent, because teardown paths overlap (pack reload and pipeline destroy) and double-deleting a recycled GL name corrupts an unrelated object
+    // Deletes the object once and keeps it usable when the delete throws.
     public final void destroy() {
         if (this.destroyed) {
             return;
@@ -39,5 +40,6 @@ public abstract class GlResource {
         this.handle = -1;
     }
 
+    // Deletes the GL object.
     protected abstract void destroyInternal();
 }

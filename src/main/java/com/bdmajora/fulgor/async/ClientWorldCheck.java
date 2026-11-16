@@ -5,12 +5,14 @@ import net.minecraft.world.World;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
-// Whether a remote world is the one the client is actually in, since JEI and GregTech preview worlds are also World instances with isRemote set and must not get worker threads
+// Check of whether a world is the client world.
 @SideOnly(Side.CLIENT)
 public final class ClientWorldCheck {
+    // Prevents instantiation
     private ClientWorldCheck() {
     }
 
+    // Returns whether current client world.
     public static boolean isCurrentClientWorld(World world) {
         return Minecraft.getMinecraft().world == world;
     }

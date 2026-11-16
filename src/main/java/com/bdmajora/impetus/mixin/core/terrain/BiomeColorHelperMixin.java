@@ -8,15 +8,14 @@ import org.spongepowered.asm.mixin.Overwrite;
 import com.bdmajora.impetus.ImpetusVintage;
 import com.bdmajora.impetus.impl.world.cloned.ImpetusBlockAccess;
 
-// Overwrites BiomeColorHelper#getColorAtPos to cut allocations and use Sodium's biome cache when available
+// Mixin that changes BiomeColorHelper.
 @Mixin(value = BiomeColorHelper.class, priority = 1200)
 public class BiomeColorHelperMixin {
-    // author: embeddedt
+    // Replaces the whole method getColorAtPos.
     @Overwrite
     private static int getColorAtPos(IBlockAccess blockAccess, BlockPos pos, BiomeColorHelper.ColorResolver colorResolver)
     {
         if (blockAccess instanceof ImpetusBlockAccess) {
-            // Use Sodium's more efficient biome cache
             return ((ImpetusBlockAccess)blockAccess).getBlockTint(pos, colorResolver);
         }
 

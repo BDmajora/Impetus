@@ -17,10 +17,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// The catch-all particle gate (block-break/hit switches, master switch, per-class filter); every particle reaches addEffect, which is what makes per-class toggles work for mods, while id-keyed switches live in RenderGlobalParticleMixin
+// Mixin that changes ParticleManager.
 @Mixin(ParticleManager.class)
 public class ParticleManagerMixin {
-    // Records which mod registered each factory while its container is active, the only reliable attribution for lambda/anonymous factories
+    // Runs at the start of registerParticle.
     @Inject(method = "registerParticle", at = @At("HEAD"))
     private void impetus$captureFactoryMod(int id, IParticleFactory particleFactory, CallbackInfo ci) {
         if (particleFactory == null) {
@@ -34,12 +34,12 @@ public class ParticleManagerMixin {
                 modId = container.getModId();
             }
         } catch (Throwable t) {
-            // Attribution is a nicety; never let it break particle registration.
         }
 
         ParticleClassRegistry.getInstance().registerFactoryMod(particleFactory, modId);
     }
 
+    // Runs at the start of addBlockDestroyEffects and can cancel it.
     @Inject(method = "addBlockDestroyEffects", at = @At("HEAD"), cancellable = true)
     private void impetus$blockDestroyEffects(BlockPos pos, IBlockState state, CallbackInfo ci) {
         ExtrasConfig.ParticleSettings settings = Extras.options().particle;
@@ -48,6 +48,7 @@ public class ParticleManagerMixin {
         }
     }
 
+    // Runs at the start of addBlockHitEffects and can cancel it.
     @Inject(
             method = "addBlockHitEffects(Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/util/EnumFacing;)V",
             at = @At("HEAD"),
@@ -60,7 +61,7 @@ public class ParticleManagerMixin {
         }
     }
 
-    // Records the class and applies the master and per-class filters, then the render budget; recordClass is identity-guarded and isEmptyDisabled short-circuits the no-filter case, and the budget runs last so a particle the user switched off never spends budget
+    // Runs at the start of addEffect and can cancel it.
     @Inject(method = "addEffect", at = @At("HEAD"), cancellable = true)
     private void impetus$filterEffect(Particle effect, CallbackInfo ci) {
         if (effect == null) {

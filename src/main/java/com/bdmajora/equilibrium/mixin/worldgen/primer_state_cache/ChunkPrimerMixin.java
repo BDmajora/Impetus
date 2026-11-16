@@ -9,36 +9,37 @@ import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 
-// Terrain generation writes long runs of the same state (stone, water) and reads them back column by column; one-entry caches in both directions turn the identity-map lookup per block into a reference compare, with the same ids and states as before
+// Mixin that changes ChunkPrimer.
 @Mixin(ChunkPrimer.class)
 public abstract class ChunkPrimerMixin {
+    // Reference to the field data of the target.
     @Shadow
     @Final
     private char[] data;
 
+    // Reference to the field default state of the target.
     @Shadow
     @Final
     private static IBlockState DEFAULT_STATE;
 
+    // Field last set state added to the target.
     @Unique
     private IBlockState equilibrium$lastSetState;
 
+    // Field last set id added to the target.
     @Unique
     private char equilibrium$lastSetId;
 
+    // Field last get id added to the target.
     @Unique
     private char equilibrium$lastGetId;
 
+    // Field last get state added to the target.
     @Unique
     private IBlockState equilibrium$lastGetState;
 
-    // Same table read as vanilla, skipped while consecutive reads land on the same id. @author/@reason are Mixin's required @Overwrite metadata
-    /**
-     * @author bdmajora
-     * @reason one-entry decode cache on the primer's hot read path
-     */
+    // Replaces the whole method getBlockState.
     @Overwrite
-    // Forge deprecates BLOCK_STATE_IDS for its registry, but it is the table vanilla's primer encodes with
     @SuppressWarnings("deprecation")
     public IBlockState getBlockState(int x, int y, int z) {
         char id = this.data[x << 12 | z << 8 | y];
@@ -54,11 +55,7 @@ public abstract class ChunkPrimerMixin {
         return state;
     }
 
-    // Same id as vanilla's identity lookup, resolved once per run of a state. @author/@reason are Mixin's required @Overwrite metadata
-    /**
-     * @author bdmajora
-     * @reason one-entry encode cache on the primer's hot write path
-     */
+    // Replaces the whole method setBlockState.
     @Overwrite
     @SuppressWarnings("deprecation")
     public void setBlockState(int x, int y, int z, IBlockState state) {

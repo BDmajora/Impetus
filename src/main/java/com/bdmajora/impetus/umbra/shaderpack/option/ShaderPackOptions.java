@@ -10,12 +10,15 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-// Discovers, merges and applies the pack's options across every source file (from Iris); Impetus flattens includes after option application, so this edits the raw source map, and #define references are taken pack-wide as a safe over-approximation
+// Options and values of a pack with the edited sources.
 public class ShaderPackOptions {
+    // Option set.
     private final OptionSet optionSet;
+    // Option values.
     private final OptionValues optionValues;
     private final Map<AbsolutePackPath, String> editedSources;
 
+    // Creates a shader pack options from its sources and changed configs.
     public ShaderPackOptions(Map<AbsolutePackPath, String> sources, Map<String, String> changedConfigs) {
         Map<AbsolutePackPath, OptionAnnotatedSource> allAnnotations = new HashMap<>();
         Set<String> referencedBooleanDefines = new HashSet<>();
@@ -42,17 +45,17 @@ public class ShaderPackOptions {
         this.editedSources = Collections.unmodifiableMap(edited);
     }
 
-    // Every option the pack declares
+    // Returns the option set.
     public OptionSet getOptionSet() {
         return optionSet;
     }
 
-    // Current values
+    // Returns the option values.
     public OptionValues getOptionValues() {
         return optionValues;
     }
 
-    // The pack's sources with every option edit applied (define toggles flipped, const and value assignments rewritten); what the include flattener consumes
+    // Returns the edited sources.
     public Map<AbsolutePackPath, String> getEditedSources() {
         return editedSources;
     }

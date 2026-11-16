@@ -14,33 +14,36 @@ import java.util.BitSet;
 import java.util.List;
 import java.util.Optional;
 
-// ONE baked frame schedule like Umbra, in its family order (setup, begin, shadowcomp, prepare, gbuffers, deferred, translucents, composite, final); buffers the chain leaves odd-flipped are copied back at frame end, so every frame starts from "main = latest" and every baked FBO and snapshot stays valid
+// Fullscreen and compute passes of a pack in draw order with the gbuffers between them.
 public final class PassSchedule {
-    // Compute-only, dispatched once after the pipeline is built (Umbra runs it on dimension change, Photon seeds its LPV volumes with it)
+    // Passes that run once after a load.
     final List<FullscreenPass> setup = new ArrayList<>();
-    // Runs at the very start of world rendering, before anything is drawn
+    // Passes that run at the start of each frame.
     final List<FullscreenPass> begin = new ArrayList<>();
-    // Dispatched right after the shadow map renders (Umbra's ShadowCompositeRenderer)
+    // Passes that run after the shadow pass.
     final List<FullscreenPass> shadowComposite = new ArrayList<>();
-    // After the shadow map and before the gbuffers; Photon builds its cloud shadow and coverage maps into colortex8 here
+    // Passes that run before the gbuffers.
     final List<FullscreenPass> prepare = new ArrayList<>();
+    // Passes that run between the opaque and translucent gbuffers.
     final List<FullscreenPass> deferred = new ArrayList<>();
-    // Composite then final
+    // Passes that run after the gbuffers with the final pass last.
     final List<FullscreenPass> composite = new ArrayList<>();
-    // Every colour target any pass mipmaps, so frame end only resets what was touched
+    // Targets that some pass mipmaps.
     final BitSet mipmapped = new BitSet();
+    // Framebuffer of the opaque gbuffers.
     UmbraFramebuffer gbuffer;
+    // Framebuffer of the translucent gbuffers.
     UmbraFramebuffer translucentGbuffer;
-    // The post-composite colortex0 shown when the pack has no working final program
+    // Framebuffer read by the fallback blit or null with a final pass.
     UmbraFramebuffer blitSource;
-    // The colortex flip snapshots gbuffer programs read before and after the deferred chain
+    // Flip state before the deferred passes.
     BitSet preTranslucentFlips = new BitSet();
+    // Flip state before the translucent gbuffers.
     BitSet translucentFlips = new BitSet();
 
-    // Bakes the schedule from the flipper's reset state, advancing it as it goes
+    // Creates every pass in draw order and the gbuffers and the fallback blit.
     public void build(ProgramSet programs, ShaderProperties properties, PassFactory factory, ComputeBuilder computes,
                       GbufferTargets gbuffers, BufferFlipper flipper) {
-        // Setup is compute-only like Iris's; a stray setup.vsh/fsh used to be scheduled, flipping buffers for a draw that never ran
         family(programs, properties, ProgramArrayId.Setup, TextureStage.SETUP, false, factory, computes, flipper, this.setup);
         family(programs, properties, ProgramArrayId.Begin, TextureStage.BEGIN, true, factory, computes, flipper, this.begin);
         shadowComposites(programs, properties, factory, computes, flipper);
@@ -60,7 +63,6 @@ public final class PassSchedule {
         if (finalPass != null) {
             this.composite.add(finalPass);
         } else {
-            // No working final program: show the post-composite colortex0 by blitting it to the screen
             UmbraFramebuffer blit = new UmbraFramebuffer();
             this.blitSource = blit;
             blit.addColorAttachment(0, factory.front(flipper, 0));
@@ -74,7 +76,7 @@ public final class PassSchedule {
         }
     }
 
-    // One numbered family in index order: a vertex+fragment pair draws, a .csh-only entry is compute-only (how Photon's deferred4_a.csh runs at all), and a draw that fails to build still runs its computes as Umbra would
+    // Adds the enabled programs of an array as raster or compute only passes.
     private static void family(ProgramSet programs, ShaderProperties properties, ProgramArrayId id, TextureStage stage,
                                boolean draws, PassFactory factory, ComputeBuilder computes, BufferFlipper flipper,
                                List<FullscreenPass> target) {
@@ -95,7 +97,7 @@ public final class PassSchedule {
         }
     }
 
-    // The shadowcomp family (Complementary's floodfill computes); a raster entry draws into shadowcolor, and program.<name>.enabled now applies to it too
+    // Adds the enabled shadow composite programs as raster or compute only passes.
     private void shadowComposites(ProgramSet programs, ShaderProperties properties, PassFactory factory,
                                   ComputeBuilder computes, BufferFlipper flipper) {
         for (int i = 0; i < ProgramArrayId.ShadowComposite.getNumPrograms(); i++) {
@@ -115,17 +117,17 @@ public final class PassSchedule {
         }
     }
 
-    // program.<name>.enabled
+    // Returns whether the pack properties enable a program.
     static boolean enabled(ShaderProperties properties, ProgramSource source) {
         return properties.getProgramEnabled(source.getName()).orElse(Boolean.TRUE);
     }
 
-    // Every family, in run order
+    // Returns every pass list in draw order.
     List<List<FullscreenPass>> families() {
         return List.of(this.setup, this.begin, this.shadowComposite, this.prepare, this.deferred, this.composite);
     }
 
-    // Frees every compute, the raster shadowcomp framebuffers, the blit source and both gbuffer FBOs; the colour FBOs belong to the render targets and the draw programs to the program cache
+    // Destroys the compute programs and the owned framebuffers and forgets every pass.
     public void destroy() {
         for (List<FullscreenPass> family : families()) {
             for (FullscreenPass pass : family) {

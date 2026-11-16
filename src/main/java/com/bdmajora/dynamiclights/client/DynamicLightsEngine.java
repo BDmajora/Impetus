@@ -25,44 +25,49 @@ import java.util.Set;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Predicate;
 
-// Tracked light sources and the lightmap arithmetic over them, read from client, render and chunk-builder threads under a read/write lock; sourceCount is a lock-free fast path for the "nothing is glowing" case
+// Tracks every moving light source and computes the light it adds.
 public final class DynamicLightsEngine {
+    // Single instance.
     private static final DynamicLightsEngine INSTANCE = new DynamicLightsEngine();
 
-    // How far a source's light reaches, in blocks; short of vanilla's 15 since every extra block is another ring of chunk sections to rebuild on move
+    // Distance at which a light fades out.
     private static final double MAX_RADIUS = 7.75;
+    // Square of the fade distance.
     private static final double MAX_RADIUS_SQUARED = MAX_RADIUS * MAX_RADIUS;
 
-    // Clamped here rather than at 15 so a source never reads as a full-bright block
+    // Largest light level of an item.
     private static final int MAX_LUMINANCE = 14;
 
+    // Tracked sources.
     private final Set<DynamicLightSource> dynamicLightSources = new HashSet<>();
+    // Lock that guards the sources.
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
-    // Mirrors dynamicLightSources.size() for readers that must not take the lock
+    // Number of tracked sources.
     private volatile int sourceCount;
 
+    // Time of the last full update.
     private long lastUpdate = System.currentTimeMillis();
+    // Number of sources changed by the last update.
     private int lastUpdateCount;
 
+    // Prevents instantiation
     private DynamicLightsEngine() {
     }
 
-    // Single client-wide instance
+    // Returns the single engine.
     public static DynamicLightsEngine get() {
         return INSTANCE;
     }
 
-    // Per-frame update
-
-    // Gives every tracked source the chance to re-light the chunks around it; rate-limited to once per tick (50ms) since sources can't move faster
+    // Updates every source at most every fifty milliseconds.
     public void updateAll(RenderGlobal renderer) {
         if (!DynamicLights.options().mode.isEnabled() || this.sourceCount == 0) {
             return;
         }
 
         long now = System.currentTimeMillis();
-        if (now < this.lastUpdate + 50L) {
+        if (now >= this.lastUpdate && now < this.lastUpdate + 50L) {
             return;
         }
 
@@ -83,24 +88,22 @@ public final class DynamicLightsEngine {
         this.lastUpdateCount = updated;
     }
 
-    // How many sources scheduled a rebuild on the last update pass; for the F3 overlay
+    // Returns the number of sources changed by the last update.
     public int getLastUpdateCount() {
         return this.lastUpdateCount;
     }
 
-    // How many sources are currently tracked; for the F3 overlay
+    // Returns the number of tracked sources.
     public int getLightSourcesCount() {
         return this.sourceCount;
     }
 
-    // Lightmap arithmetic
-
-    // Folds the dynamic light at pos into a packed vanilla lightmap coordinate
+    // Returns the light map value raised by the lights at the position.
     public int getLightmapWithDynamicLight(BlockPos pos, int lightmap) {
         return this.getLightmapWithDynamicLight(this.getDynamicLightLevel(pos), lightmap);
     }
 
-    // Folds the light at the entity's feet and its own luminance into lightmap; once per rendered entity per frame, so the empty case returns before allocating a BlockPos
+    // Returns the light map value raised by the lights at the entity.
     public int getLightmapWithDynamicLight(Entity entity, int lightmap) {
         if (this.sourceCount == 0) {
             return lightmap;
@@ -112,7 +115,7 @@ public final class DynamicLightsEngine {
         return this.getLightmapWithDynamicLight(Math.max(atPosition, ownLuminance), lightmap);
     }
 
-    // Raises the block-light half of lightmap to dynamicLightLevel if brighter; sky light is carried through untouched, a torch shouldn't fake daytime
+    // Returns the light map value raised to the light level.
     public int getLightmapWithDynamicLight(double dynamicLightLevel, int lightmap) {
         if (dynamicLightLevel <= 0) {
             return lightmap;
@@ -128,12 +131,12 @@ public final class DynamicLightsEngine {
         return (skyLight << 20) | (blockLight << 4);
     }
 
-    // Brightest dynamic light reaching pos on the 0-15 scale; hot path (once per block per section compile), so the empty-set check short-circuits before the lock
+    // Returns the strongest light level at the position.
     public double getDynamicLightLevel(BlockPos pos) {
         return getDynamicLightLevel(pos.getX(), pos.getY(), pos.getZ());
     }
 
-    // Block-coordinate form, so a per-frame caller (particles) need not allocate a BlockPos
+    // Returns the strongest light level at the coordinates.
     public double getDynamicLightLevel(int x, int y, int z) {
         if (this.sourceCount == 0) {
             return 0.0D;
@@ -153,7 +156,7 @@ public final class DynamicLightsEngine {
         return result < 0.0D ? 0.0D : Math.min(result, 15.0D);
     }
 
-    // currentLightLevel, or this source's contribution at the block if brighter; linear falloff rather than per-block subtraction since there is no grid to step and a ramp avoids banding on a moving source
+    // Returns the larger of the current level and the level the source adds.
     public static double maxDynamicLightLevel(int x, int y, int z, DynamicLightSource lightSource,
                                               double currentLightLevel) {
         int luminance = lightSource.impetus$getLuminance();
@@ -161,7 +164,6 @@ public final class DynamicLightsEngine {
             return currentLightLevel;
         }
 
-        // Not Entity#getDistanceSq: the source's Y is its eye height, not its feet.
         double dx = (x + 0.5D) - lightSource.impetus$getDynamicLightX();
         double dy = (y + 0.5D) - lightSource.impetus$getDynamicLightY();
         double dz = (z + 0.5D) - lightSource.impetus$getDynamicLightZ();
@@ -175,8 +177,7 @@ public final class DynamicLightsEngine {
         return lightLevel > currentLightLevel ? lightLevel : currentLightLevel;
     }
 
-    // The tracked set
-
+    // Starts tracking a source of the client world.
     public void addLightSource(DynamicLightSource lightSource) {
         World world = lightSource.impetus$getDynamicLightWorld();
         if (world == null || !world.isRemote) {
@@ -196,7 +197,7 @@ public final class DynamicLightsEngine {
         }
     }
 
-    // Lock-free negative answers for the common cases before taking the read lock
+    // Returns whether the source is tracked.
     public boolean containsLightSource(DynamicLightSource lightSource) {
         World world = lightSource.impetus$getDynamicLightWorld();
         if (world == null || !world.isRemote || this.sourceCount == 0) {
@@ -211,7 +212,7 @@ public final class DynamicLightsEngine {
         }
     }
 
-    // Drops a source and rebuilds whatever it was lighting, so its glow does not linger
+    // Stops tracking the source and rebuilds its chunks.
     public void removeLightSource(DynamicLightSource lightSource) {
         this.lock.writeLock().lock();
         try {
@@ -224,7 +225,7 @@ public final class DynamicLightsEngine {
         }
     }
 
-    // Drops every source and re-lights whatever they were lighting
+    // Stops tracking every source and rebuilds their chunks.
     public void clearLightSources() {
         this.lock.writeLock().lock();
         try {
@@ -246,7 +247,7 @@ public final class DynamicLightsEngine {
         }
     }
 
-    // Drops every source matching filter; upstream breaks after the first match, but removing every match is what the callers mean
+    // Stops tracking the sources that match the filter.
     public void removeLightSources(Predicate<DynamicLightSource> filter) {
         this.lock.writeLock().lock();
         try {
@@ -276,29 +277,27 @@ public final class DynamicLightsEngine {
         }
     }
 
-    // Drops every non-player entity source, for the entities toggle
+    // Stops tracking entities other than players.
     public void removeEntitiesLightSource() {
         this.removeLightSources(source -> source instanceof Entity && !(source instanceof EntityPlayer));
     }
 
-    // Drops creeper sources, for the creeper mode switch
+    // Stops tracking creepers.
     public void removeCreeperLightSources() {
         this.removeLightSources(source -> source instanceof EntityCreeper);
     }
 
-    // Drops primed TNT sources, for the TNT mode switch
+    // Stops tracking primed explosives.
     public void removeTntLightSources() {
         this.removeLightSources(source -> source instanceof EntityTNTPrimed);
     }
 
-    // Drops block entity sources, for the block entities toggle
+    // Stops tracking block entities.
     public void removeBlockEntitiesLightSource() {
         this.removeLightSources(source -> source instanceof TileEntity);
     }
 
-    // Tracking and chunk rebuilds
-
-    // Starts tracking a source that has become lit, or stops tracking one that has gone dark
+    // Starts or stops tracking to match the light level of the source.
     public static void updateTracking(DynamicLightSource lightSource) {
         boolean enabled = lightSource.impetus$isDynamicLightEnabled();
         int luminance = lightSource.impetus$getLuminance();
@@ -310,17 +309,17 @@ public final class DynamicLightsEngine {
         }
     }
 
-    // BlockPos overload of the section rebuild
+    // Marks the section at the position for a rebuild.
     public static void scheduleChunkRebuild(RenderGlobal renderer, BlockPos chunkPos) {
         scheduleChunkRebuild(renderer, chunkPos.getX(), chunkPos.getY(), chunkPos.getZ());
     }
 
-    // Packed-long overload, the form the tracked-section sets store
+    // Marks the packed section for a rebuild.
     public static void scheduleChunkRebuild(RenderGlobal renderer, long packedChunkPos) {
         scheduleChunkRebuild(renderer, unpackX(packedChunkPos), unpackY(packedChunkPos), unpackZ(packedChunkPos));
     }
 
-    // Queues a rebuild of the section at chunk coordinates (x, y, z) via markBlocksForUpdate, which Impetus overwrites to route into its own renderer
+    // Marks the section for a rebuild.
     public static void scheduleChunkRebuild(RenderGlobal renderer, int x, int y, int z) {
         if (Minecraft.getMinecraft().world == null) {
             return;
@@ -334,7 +333,7 @@ public final class DynamicLightsEngine {
                 .impetus$markBlocksForUpdate(minX, minY, minZ, minX + 15, minY + 15, minZ + 15, false);
     }
 
-    // Whether a source may re-light its surroundings yet under the configured rate: returns the stamp to store, or -1 when the delay since lastUpdate has not elapsed (or the mode is off)
+    // Returns the new update time or minus one when the update is not due.
     public static long nextUpdateStamp(long lastUpdate) {
         DynamicLightsMode mode = DynamicLights.options().mode;
         if (!mode.isEnabled()) {
@@ -344,10 +343,10 @@ public final class DynamicLightsEngine {
             return lastUpdate;
         }
         long now = System.currentTimeMillis();
-        return now < lastUpdate + mode.getDelay() ? -1L : now;
+        return now >= lastUpdate && now < lastUpdate + mode.getDelay() ? -1L : now;
     }
 
-    // The eight sections a source at (x, y, z) reaches: its own, the neighbour on the near side of each axis and the diagonals between them, since a 7.75-block reach spills that far; each is moved from old into lit (either may be null) and rebuilt when a renderer is given
+    // Visits the eight sections nearest to a point and tracks them.
     public static void walkLitSections(RenderGlobal renderer, double x, double y, double z, LongOpenHashSet old, LongOpenHashSet lit) {
         int blockX = MathHelper.floor(x);
         int blockY = MathHelper.floor(y);
@@ -358,7 +357,6 @@ public final class DynamicLightsEngine {
         EnumFacing directionZ = (blockZ & 15) >= 8 ? EnumFacing.SOUTH : EnumFacing.NORTH;
 
         visitLitSection(renderer, chunkPos, old, lit);
-        // Walks the four sections of the near layer in a ring, then steps up (or down) and walks the ring again
         for (int i = 0; i < 7; i++) {
             switch (i & 3) {
                 case 0 -> chunkPos.move(directionX);
@@ -373,6 +371,7 @@ public final class DynamicLightsEngine {
         }
     }
 
+    // Marks the section for a rebuild and updates the tracked sets.
     private static void visitLitSection(RenderGlobal renderer, BlockPos chunkPos, LongOpenHashSet old, LongOpenHashSet lit) {
         if (renderer != null) {
             scheduleChunkRebuild(renderer, chunkPos);
@@ -380,7 +379,7 @@ public final class DynamicLightsEngine {
         updateTrackedChunks(chunkPos, old, lit);
     }
 
-    // Moves chunkPos from the old tracked set into newPos
+    // Moves a section from the old set to the new set.
     public static void updateTrackedChunks(BlockPos chunkPos, LongOpenHashSet old, LongOpenHashSet newPos) {
         if (old == null && newPos == null) {
             return;
@@ -395,36 +394,34 @@ public final class DynamicLightsEngine {
         }
     }
 
-    // Packs signed 26/12/26-bit chunk coordinates into one long
+    // Returns the section position packed into a long.
     public static long packChunkPos(BlockPos pos) {
         return (((long) pos.getX() & 0x3FFFFFFL) << 38)
                 | (((long) pos.getY() & 0xFFFL) << 26)
                 | ((long) pos.getZ() & 0x3FFFFFFL);
     }
 
-    // Top 26 bits, sign-extended by the arithmetic shift
+    // Returns the x part of a packed section.
     public static int unpackX(long packed) {
         return (int) (packed >> 38);
     }
 
-    // Middle 12 bits
+    // Returns the y part of a packed section.
     public static int unpackY(long packed) {
         return (int) ((packed >> 26) & 0xFFFL);
     }
 
-    // Bottom 26 bits, sign-extended by shifting up then down
+    // Returns the z part of a packed section.
     public static int unpackZ(long packed) {
         return (int) (packed << 38 >> 38);
     }
 
-    // Item luminance
-
-    // True when the entity's eyes are inside a fluid and the water-sensitivity check is on
+    // Returns whether the eyes of the entity are in a fluid and the check is enabled.
     public static boolean isEyeSubmergedInFluid(EntityLivingBase entity) {
         return DynamicLights.options().waterSensitiveCheck && FluidHandler.isFluid(entity);
     }
 
-    // Brightest item the entity holds or wears; runs every tick per living entity, so the submersion block lookup is deferred until a non-empty stack, with a tri-state to stay allocation-free
+    // Returns the largest light level of the held and worn items.
     public static int getLivingEntityLuminanceFromItems(EntityLivingBase entity) {
         int luminance = 0;
         int submerged = SUBMERSION_UNKNOWN;
@@ -452,10 +449,10 @@ public final class DynamicLightsEngine {
         return luminance;
     }
 
-    // Sentinel for "the submersion test has not been run yet"
+    // Marker for an unchecked submersion state.
     private static final int SUBMERSION_UNKNOWN = -1;
 
-    // Luminance of an item stack, capped at MAX_LUMINANCE so held light tops out one step below full-bright (which would defeat distance falloff)
+    // Returns the light level of the stack limited to the maximum.
     public static int getLuminanceFromItemStack(ItemStack stack, boolean submergedInWater) {
         int luminance = ItemLightSources.getLuminance(stack, submergedInWater);
         return Math.min(luminance, MAX_LUMINANCE);

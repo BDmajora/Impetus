@@ -11,23 +11,34 @@ import com.bdmajora.impetus.engine.impl.util.Dim2i;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Stream;
 
+// Base of widgets that hold and forward to child widgets.
 public abstract class AbstractFrame extends AbstractWidget implements InteractableContainer {
+    // Bounds of the frame.
     protected Dim2i dim;
+    // Child widgets in tree order.
     protected final List<AbstractWidget> children = new ArrayList<>();
+    // Children that draw.
     protected final List<Renderable> drawable = new ArrayList<>();
+    // Option rows of this frame and its nested frames.
     protected final List<ControlElement<?>> controlElements = new ArrayList<>();
+    // Outline state of the frame.
     protected boolean renderOutline;
+    // Child that captured the last click.
     private Interactable capturedChild;
 
+    // Creates a frame and rejects null bounds.
     public AbstractFrame(Dim2i dim, boolean renderOutline) {
-        this.dim = dim;
+        this.dim = Objects.requireNonNull(dim, "dim");
         this.renderOutline = renderOutline;
     }
 
-    // Subclasses populate children here
+    // Replaces the drawable children and option rows with those of the current children.
     public void buildFrame() {
+        this.drawable.clear();
+        this.controlElements.clear();
         for (AbstractWidget element : this.children) {
             if (element instanceof AbstractFrame) {
                 this.controlElements.addAll(((AbstractFrame) element).controlElements);
@@ -41,19 +52,19 @@ public abstract class AbstractFrame extends AbstractWidget implements Interactab
         }
     }
 
-    // Draws every child, plus the outline when enabled; a row whose control throws is replaced and its placeholder drawn in its place the same frame
+    // Draws the outline and every child and replaces a row that throws.
     @Override
     public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
         if (this.renderOutline) {
             drawContext.drawBorder(this.dim.x(), this.dim.y(), this.dim.getLimitX(), this.dim.getLimitY(), 0xFFAAAAAA);
         }
-        // What is pushed around the children, which a child that fails halfway is unwound back to
+        // Records the draw state to restore after a failure
         int matrices = drawContext.matrixDepth();
         int scissors = drawContext.scissorDepth();
-        // By index, since a replaced row is swapped in place
+        // Visits each drawable child by index
         for (int i = 0; i < this.drawable.size(); i++) {
             Renderable drawable = this.drawable.get(i);
-            // While a child is captured (mid-drag), don't let the cursor also "hover" its siblings.
+            // Moves the cursor away from siblings of a captured child
             boolean isOtherWhileCapturing = this.capturedChild != null && drawable != this.capturedChild;
             int x = isOtherWhileCapturing ? -1 : mouseX;
             int y = isOtherWhileCapturing ? -1 : mouseY;
@@ -69,7 +80,7 @@ public abstract class AbstractFrame extends AbstractWidget implements Interactab
         }
     }
 
-    // Puts a placeholder in place of an option row of this frame whose own code threw, in every list holding it; VM errors, other widgets and placeholders are never replaced
+    // Replaces a failed option row with a placeholder and returns whether it did.
     @Override
     public boolean recoverChild(Interactable child, Throwable failure) {
         if (failure instanceof VirtualMachineError || !(child instanceof ControlElement<?> row)) {
@@ -80,21 +91,21 @@ public abstract class AbstractFrame extends AbstractWidget implements Interactab
             return false;
         }
         ControlElement<?> placeholder = Control.placeholderFor(row, failure);
-        // A placeholder runs no control code, so one that throws has nothing better to fall back to
+        // Rejects a placeholder that is the failed row itself
         if (placeholder == row) {
             return false;
         }
         this.children.set(index, placeholder);
         replace(this.drawable, row, placeholder);
         replace(this.controlElements, row, placeholder);
-        // A drag on the broken row ends with it
+        // Ends a drag on the replaced row
         if (this.capturedChild == row) {
             this.capturedChild = null;
         }
         return true;
     }
 
-    // Position by identity, since an element may define its own equality
+    // Returns the index of an element by identity or minus one.
     private static int indexOf(List<?> list, Object element) {
         for (int i = 0; i < list.size(); i++) {
             if (list.get(i) == element) {
@@ -104,7 +115,7 @@ public abstract class AbstractFrame extends AbstractWidget implements Interactab
         return -1;
     }
 
-    // Swaps one element for another where the list holds it
+    // Replaces an element by identity when the list holds it.
     private static <T> void replace(List<T> list, Object element, T replacement) {
         int index = indexOf(list, element);
         if (index >= 0) {
@@ -112,22 +123,25 @@ public abstract class AbstractFrame extends AbstractWidget implements Interactab
         }
     }
 
-    // Children that take input
+    // Returns the children that take input.
     @Override
     public Stream<? extends Interactable> interactableChildren() {
         return this.children.stream();
     }
 
+    // Returns the child that captured the last click.
     @Override
     public Interactable getCapturedChild() {
         return this.capturedChild;
     }
 
+    // Stores the child that captured the last click.
     @Override
     public void setCapturedChild(Interactable child) {
         this.capturedChild = child;
     }
 
+    // Returns the bounds of the frame.
     public Dim2i getDimensions() {
         return this.dim;
     }

@@ -9,19 +9,27 @@ import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 
-// Cheap answers to the questions the engine's innermost loop asks per position (six neighbours each, tens of thousands of positions per bulk edit)
+// Helpers for light opacity and emission.
 public final class LightUtil {
+    // Air block state.
     private static final IBlockState AIR = Blocks.AIR.getDefaultState();
 
+    // Prevents instantiation
     private LightUtil() {
     }
 
-    // Skips Chunk.getBlockState's section re-derivation, bounds check and crash-report machinery; positions here are decoded from a known-good key in a resolved chunk
+    // Returns the state at a position of a chunk.
     public static IBlockState posToState(BlockPos pos, Chunk chunk) {
-        return posToState(pos, chunk.getBlockStorageArray()[pos.getY() >> 4]);
+        int y = pos.getY();
+
+        if (y < 0 || y > 255) {
+            return AIR;
+        }
+
+        return posToState(pos, chunk.getBlockStorageArray()[y >> 4]);
     }
 
-    // Section-local state read, masking the position to its 0-15 coordinates
+    // Returns the state at a position of a section.
     public static IBlockState posToState(BlockPos pos, ExtendedBlockStorage section) {
         if (section == Chunk.NULL_BLOCK_STORAGE) {
             return AIR;
@@ -30,7 +38,7 @@ public final class LightUtil {
         return section.getData().get(pos.getX() & 15, pos.getY() & 15, pos.getZ() & 15);
     }
 
-    // Skips the position-aware overload when LightInfoBlock knows the block does not override it, avoiding two megamorphic virtual calls Forge's default just forwards back to the state
+    // Returns the light value.
     @SuppressWarnings("deprecation")
     public static int getLightValue(IBlockState state, IBlockAccess world, BlockPos pos, Chunk chunk) {
         if (Fulgor.hasDynamicLights() && DynamicLightsBridge.isAvailable()) {
@@ -49,7 +57,7 @@ public final class LightUtil {
         return value;
     }
 
-    // Same fast-path trade as getLightValue but hotter: opacity is asked once per position plus once per each of six neighbours
+    // Returns the light opacity.
     @SuppressWarnings("deprecation")
     public static int getLightOpacity(IBlockState state, IBlockAccess world, BlockPos pos, Chunk chunk) {
         if (Fulgor.hasFluidloggedApi()) {

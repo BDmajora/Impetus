@@ -7,14 +7,16 @@ import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.net.URL;
 
-// Defines a class into another class's runtime package for package-private access, through a private lookup on the host; injected classes may reference only their host package and java.*
+// Defines extra classes into the package of a host class.
 public final class ClassDefineTool {
+    // Whether the failure warning was logged.
     private static boolean warned;
 
+    // Prevents instantiation
     private ClassDefineTool() {
     }
 
-    // Reads name from our resources and defines it alongside host, borrowing its loader and package; name must be in host's package, and null means the JVM refused, a normal outcome
+    // Returns the class defined next to the host or null when it cannot be defined.
     public static Class<?> defineClass(Class<?> host, String name) {
         byte[] bytecode = readBytecode(name);
 
@@ -22,11 +24,9 @@ public final class ClassDefineTool {
             return null;
         }
 
-        // Already present from a previous attempt (or a duplicate call) — reuse rather than fail.
         try {
             return Class.forName(name, false, host.getClassLoader());
         } catch (ClassNotFoundException ignored) {
-            // Expected on the first call.
         }
 
         Class<?> defined = defineWithLookup(host, bytecode);
@@ -40,17 +40,16 @@ public final class ClassDefineTool {
         return defined;
     }
 
-    // privateLookupIn works across loaders here because both sides are unnamed modules, which read and open everything; the resulting lookup keeps package access, which is all defineClass needs
+    // Returns the class defined through a private lookup or null when access fails.
     private static Class<?> defineWithLookup(Class<?> host, byte[] bytecode) {
         try {
             return MethodHandles.privateLookupIn(host, MethodHandles.lookup()).defineClass(bytecode);
         } catch (IllegalAccessException | RuntimeException | LinkageError e) {
-            // A named, closed host module, or a class already defined under that name by another path
             return null;
         }
     }
 
-    // Loads the class file bytes from our own jar, since the target loader cannot see it
+    // Returns the bytecode of the named class or null when it cannot be read.
     private static byte[] readBytecode(String name) {
         String path = "/" + name.replace('.', '/') + ".class";
         URL url = ClassDefineTool.class.getResource(path);

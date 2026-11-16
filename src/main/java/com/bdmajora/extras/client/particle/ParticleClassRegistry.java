@@ -20,47 +20,48 @@ import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 
-// Particle classes seen so far and which the user disabled; 1.12.2 has no particle registry, so classes are discovered by reflecting over factories, recording at spawn, and the mod captured at registerParticle, and only disabledClasses is user data
+// Remembers every particle class and its mod.
 public final class ParticleClassRegistry {
+    // Single instance.
     private static final ParticleClassRegistry INSTANCE = new ParticleClassRegistry();
 
-    // Fully-qualified name to display name; the display name is never empty.
+    // Display name of each class name.
     private final ConcurrentHashMap<String, String> discoveredClasses = new ConcurrentHashMap<>();
 
-    // Fully-qualified name to owning mod id.
+    // Mod of each class name.
     private final ConcurrentHashMap<String, String> classModIds = new ConcurrentHashMap<>();
 
-    // Factory instance to owning mod id, captured while registerParticle runs.
+    // Mod of each factory.
     private final Map<IParticleFactory, String> factoryModIds =
             Collections.synchronizedMap(new WeakHashMap<>());
 
-    // The user's switched-off set. The only authoritative persisted state here.
+    // Class names that are switched off.
     private final Set<String> disabledClasses = ConcurrentHashMap.newKeySet();
 
-    // Per-session identity guard, so the spawn path does real work at most once per class.
+    // Classes that were recorded.
     private final Set<Class<?>> seenClasses = ConcurrentHashMap.newKeySet();
 
+    // Whether the data changed since the last save.
     private volatile boolean dirty;
 
-    // Mod source jar/directory to mod id, built on first attribution.
+    // Mod of each source file or null before the first use.
     private volatile Map<File, String> sourceToModId;
 
+    // Prevents instantiation
     private ParticleClassRegistry() {
     }
 
-    // Single client-wide instance
+    // Returns the single instance.
     public static ParticleClassRegistry getInstance() {
         return INSTANCE;
     }
 
-    // Discovery
-
-    // Records a class seen at spawn time, where there is no factory to attribute it with.
+    // Records a class without a factory.
     public void recordClass(Class<?> clazz) {
         recordClass(clazz, null);
     }
 
-    // Records a discovered particle class, identity-guarded so naming and attribution happen once per class per session, cheap enough to call per spawn
+    // Records a class and finds its mod.
     public void recordClass(Class<?> clazz, IParticleFactory factory) {
         if (clazz == null) {
             return;
@@ -83,14 +84,14 @@ public final class ParticleClassRegistry {
         }
     }
 
-    // Captures which mod registered a factory. The strongest attribution signal available.
+    // Stores the mod of a factory.
     public void registerFactoryMod(IParticleFactory factory, String modId) {
         if (factory != null && modId != null) {
             factoryModIds.put(factory, modId);
         }
     }
 
-    // Walks ParticleManager's factories for the classes they produce: inner-class factories (ParticleFlame.Factory) and covariant return types; lambdas and anonymous factories are left to spawn-time discovery
+    // Records the particle classes of every factory.
     public void scanFactories(ParticleManager particleManager) {
         if (particleManager == null) {
             return;
@@ -129,12 +130,11 @@ public final class ParticleClassRegistry {
                     }
                 }
             } catch (Throwable t) {
-                // One unreflectable factory must not abort the scan for all the others.
             }
         }
     }
 
-    // Reconciles the persisted cache against what currently loads: drops entries whose mod is gone, keeps unlinkable ones, and back-fills mod attribution
+    // Forgets classes that no longer exist and fills missing mods.
     public void pruneDiscoveredCache() {
         ClassLoader loader = ParticleClassRegistry.class.getClassLoader();
 
@@ -148,7 +148,6 @@ public final class ParticleClassRegistry {
                 dirty = true;
                 continue;
             } catch (Throwable t) {
-                // Present but not linkable at the moment; not evidence the mod was removed.
                 continue;
             }
 
@@ -161,8 +160,7 @@ public final class ParticleClassRegistry {
         }
     }
 
-    // Mod attribution
-
+    // Returns the mod of the class or null.
     private String resolveModId(Class<?> clazz, IParticleFactory factory) {
         String name = clazz.getName();
         if (name.startsWith("net.minecraft.")) {
@@ -179,7 +177,7 @@ public final class ParticleClassRegistry {
         return modIdFromCodeSource(clazz);
     }
 
-    // Maps a class to its mod by the jar it loaded from; null when it cannot be told
+    // Returns the mod that owns the file of the class.
     private String modIdFromCodeSource(Class<?> clazz) {
         try {
             CodeSource source = clazz.getProtectionDomain().getCodeSource();
@@ -205,7 +203,7 @@ public final class ParticleClassRegistry {
         }
     }
 
-    // Jar-to-mod-id map, built lazily from the loaded mod list and cached
+    // Returns the mod of each source file.
     private Map<File, String> sourceMap() {
         Map<File, String> map = sourceToModId;
         if (map == null) {
@@ -218,14 +216,13 @@ public final class ParticleClassRegistry {
                     }
                 }
             } catch (Throwable t) {
-                // Best effort; keep whatever was collected.
             }
             sourceToModId = map;
         }
         return map;
     }
 
-    // The owning mod id, "minecraft" for vanilla classes, or null when unattributable.
+    // Returns the mod of the class name or null.
     public String getModId(String fullClassName) {
         String modId = classModIds.get(fullClassName);
         if (modId != null) {
@@ -234,18 +231,17 @@ public final class ParticleClassRegistry {
         return fullClassName.startsWith("net.minecraft.") ? "minecraft" : null;
     }
 
-    // The disabled set
-
+    // Returns whether the class is switched off.
     public boolean isClassDisabled(String fullClassName) {
         return disabledClasses.contains(fullClassName);
     }
 
-    // True when nothing is filtered, so the spawn path can skip the lookup entirely.
+    // Returns whether no class is switched off.
     public boolean isEmptyDisabled() {
         return disabledClasses.isEmpty();
     }
 
-    // Toggles one class and marks the config dirty only if something actually changed
+    // Switches a class on or off.
     public void setClassEnabled(String fullClassName, boolean enabled) {
         boolean changed = enabled
                 ? disabledClasses.remove(fullClassName)
@@ -255,9 +251,12 @@ public final class ParticleClassRegistry {
         }
     }
 
-    // Replaces the disabled set from the config file, skipping blanks
+    // Replaces the switched off classes and ignores null and empty names.
     public void loadDisabledClasses(String[] classes) {
         disabledClasses.clear();
+        if (classes == null) {
+            return;
+        }
         for (String name : classes) {
             if (name != null && !name.isEmpty()) {
                 disabledClasses.add(name);
@@ -265,30 +264,31 @@ public final class ParticleClassRegistry {
         }
     }
 
-    // Sorted for a stable config file
+    // Returns the sorted switched off class names.
     public String[] getDisabledClassesArray() {
         return disabledClasses.stream().sorted().toArray(String[]::new);
     }
 
-    // Discovered-class cache
-
-    // An unmodifiable fullClassName -> displayName view.
+    // Returns a read only view of the classes.
     public Map<String, String> getDiscoveredClasses() {
         return Collections.unmodifiableMap(discoveredClasses);
     }
 
-    // Whether a toggle changed since the last save
+    // Returns whether the data changed since the last save.
     public boolean isDirty() {
         return dirty;
     }
 
-    // Called after the config is written
+    // Marks the data as saved.
     public void markClean() {
         dirty = false;
     }
 
-    // Reads back "fullName|simpleName" entries so toggles exist before anything spawns.
+    // Adds the stored classes and ignores null and empty entries.
     public void loadDiscoveredClasses(String[] entries) {
+        if (entries == null) {
+            return;
+        }
         for (String entry : entries) {
             if (entry == null || entry.isEmpty()) {
                 continue;
@@ -313,7 +313,7 @@ public final class ParticleClassRegistry {
         }
     }
 
-    // Serialises the cache as class|modId lines, sorted for stability
+    // Returns the classes as sorted text entries.
     public String[] getDiscoveredClassesArray() {
         return discoveredClasses.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
@@ -321,16 +321,14 @@ public final class ParticleClassRegistry {
                 .toArray(String[]::new);
     }
 
-    // Naming
-
-    // com.foo.Bar$Baz -> Baz, com.foo.Bar$1 -> 1.
+    // Returns the name without package and outer class.
     private static String toSimpleName(String fullName) {
         String name = fullName.substring(fullName.lastIndexOf('.') + 1);
         int dollar = name.lastIndexOf('$');
         return dollar >= 0 ? name.substring(dollar + 1) : name;
     }
 
-    // A display name that is always usable, even for synthetic classes whose getSimpleName() is empty or throws
+    // Returns the display name of the class.
     private static String simpleNameOf(Class<?> clazz) {
         String name;
         try {
@@ -349,7 +347,7 @@ public final class ParticleClassRegistry {
         return name;
     }
 
-    // Resolves symlinks so a jar reached two ways maps to one entry; falls back to absolute on IO failure
+    // Returns the canonical file or the absolute file.
     private static File canonical(File file) {
         try {
             return file.getCanonicalFile();

@@ -2,34 +2,37 @@ package com.bdmajora.impetus.umbra.gl.uniform;
 
 import java.util.function.Supplier;
 
-// The shared shape of every vector uniform: pull the supplier, diff against the last upload, and only then touch GL; the cache is copied in place since the supplier may mutate and return the same object, and initialized forces the first upload even when it equals the zero default
+// Uniform that uploads only when its value changes.
 abstract class CachedUniform<T> extends Uniform {
+    // Source of the value.
     private final Supplier<T> value;
-    // Owned copy of the last uploaded value
+    // Copy of the last uploaded value.
     private final T cached;
+    // Flag set after the first upload.
     private boolean initialized;
 
+    // Creates a uniform with a holder of the last value.
     protected CachedUniform(int location, Supplier<T> value, T cached) {
         super(location);
         this.value = value;
         this.cached = cached;
     }
 
-    // Uploads only when the value changed
+    // Uploads the value on the first call and whenever it changes and retries after a failed upload.
     @Override
     public final void update() {
         T newValue = this.value.get();
 
         if (!this.initialized || !this.cached.equals(newValue)) {
-            this.initialized = true;
-            this.store(this.cached, newValue);
             this.upload(newValue);
+            this.store(this.cached, newValue);
+            this.initialized = true;
         }
     }
 
-    // Copies the new value into the owned cache
+    // Copies a new value into the holder.
     protected abstract void store(T cached, T newValue);
 
-    // The glUniform* call for this vector type
+    // Uploads a value.
     protected abstract void upload(T newValue);
 }

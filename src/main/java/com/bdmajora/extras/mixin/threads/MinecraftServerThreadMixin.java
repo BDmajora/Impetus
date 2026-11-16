@@ -7,14 +7,16 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Hands the server thread to the tuner when its loop starts, since the getter for it is stripped from the client jar
+// Mixin that changes MinecraftServer.
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerThreadMixin {
+    // Runs at the start of run.
     @Inject(method = "run", at = @At("HEAD"))
     private void impetus$announceServerThread(CallbackInfo ci) {
         ThreadTuning.onServerThreadStarted(Thread.currentThread());
     }
 
+    // Runs before every return of run.
     @Inject(method = "run", at = @At("RETURN"))
     private void impetus$forgetServerThread(CallbackInfo ci) {
         ThreadTuning.onServerThreadStopped();

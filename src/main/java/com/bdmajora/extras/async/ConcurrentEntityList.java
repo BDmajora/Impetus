@@ -13,16 +13,19 @@ import java.util.concurrent.locks.StampedLock;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
-// Drop-in for World.loadedEntityList when entities tick in parallel: vanilla walks it by index on the main thread while worker-side spawns append, and any thread may iterate it (getEntities, countEntities), so index reads are optimistic, writes take the lock, and iterators walk a snapshot
+// List of entities that many threads can read and change.
 public final class ConcurrentEntityList extends AbstractList<Entity> {
+    // Lock that guards the list.
     private final StampedLock lock = new StampedLock();
+    // Entities in order.
     private final ArrayList<Entity> backing;
 
+    // Creates a list holding a copy of the entities.
     public ConcurrentEntityList(Collection<? extends Entity> initial) {
         this.backing = new ArrayList<>(initial);
     }
 
-    // Optimistic first: a racing remove can make ArrayList throw or hand back a stale slot, and either way the stamp fails validation and the locked read settles it
+    // Returns the entity at the index.
     @Override
     public Entity get(int index) {
         long stamp = this.lock.tryOptimisticRead();
@@ -33,7 +36,6 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
                     return value;
                 }
             } catch (IndexOutOfBoundsException ignored) {
-                // Fall through to the locked read, which throws the real one if the index is bad
             }
         }
         stamp = this.lock.readLock();
@@ -44,6 +46,7 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
         }
     }
 
+    // Returns the number of entities.
     @Override
     public int size() {
         long stamp = this.lock.tryOptimisticRead();
@@ -59,6 +62,7 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
         }
     }
 
+    // Appends the entity.
     @Override
     public boolean add(Entity entity) {
         long stamp = this.lock.writeLock();
@@ -69,6 +73,7 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
         }
     }
 
+    // Inserts the entity at the index.
     @Override
     public void add(int index, Entity entity) {
         long stamp = this.lock.writeLock();
@@ -79,6 +84,7 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
         }
     }
 
+    // Replaces the entity at the index.
     @Override
     public Entity set(int index, Entity entity) {
         long stamp = this.lock.writeLock();
@@ -89,6 +95,7 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
         }
     }
 
+    // Removes the entity at the index.
     @Override
     public Entity remove(int index) {
         long stamp = this.lock.writeLock();
@@ -99,6 +106,7 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
         }
     }
 
+    // Removes the first occurrence of the entity.
     @Override
     public boolean remove(Object o) {
         long stamp = this.lock.writeLock();
@@ -109,6 +117,7 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
         }
     }
 
+    // Appends every entity.
     @Override
     public boolean addAll(Collection<? extends Entity> c) {
         long stamp = this.lock.writeLock();
@@ -119,6 +128,7 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
         }
     }
 
+    // Inserts every entity at the index.
     @Override
     public boolean addAll(int index, Collection<? extends Entity> c) {
         long stamp = this.lock.writeLock();
@@ -129,6 +139,7 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
         }
     }
 
+    // Removes every entity that the collection holds.
     @Override
     public boolean removeAll(Collection<?> c) {
         long stamp = this.lock.writeLock();
@@ -139,6 +150,7 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
         }
     }
 
+    // Removes every entity that the collection lacks.
     @Override
     public boolean retainAll(Collection<?> c) {
         long stamp = this.lock.writeLock();
@@ -149,6 +161,7 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
         }
     }
 
+    // Removes every entity that matches the filter.
     @Override
     public boolean removeIf(Predicate<? super Entity> filter) {
         long stamp = this.lock.writeLock();
@@ -159,6 +172,7 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
         }
     }
 
+    // Removes every entity.
     @Override
     public void clear() {
         long stamp = this.lock.writeLock();
@@ -169,6 +183,7 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
         }
     }
 
+    // Returns whether the entity is present.
     @Override
     public boolean contains(Object o) {
         long stamp = this.lock.readLock();
@@ -179,6 +194,7 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
         }
     }
 
+    // Returns the first position of the entity or minus one.
     @Override
     public int indexOf(Object o) {
         long stamp = this.lock.readLock();
@@ -189,6 +205,7 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
         }
     }
 
+    // Returns the entities as an array.
     @Override
     public Object[] toArray() {
         long stamp = this.lock.readLock();
@@ -199,6 +216,7 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
         }
     }
 
+    // Copies the entities into the array.
     @Override
     public <T> T[] toArray(T[] a) {
         long stamp = this.lock.readLock();
@@ -209,6 +227,7 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
         }
     }
 
+    // Runs the action on a snapshot of the entities.
     @Override
     public void forEach(Consumer<? super Entity> action) {
         for (Entity entity : snapshot()) {
@@ -216,13 +235,14 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
         }
     }
 
-    // Iteration is over a copy; remove() still reaches the live list by identity so vanilla's iterator-driven removals keep working
+    // Returns an iterator over a snapshot.
     @Override
     public Iterator<Entity> iterator() {
+        // Creates an iterator over the snapshot.
         return new SnapshotIterator(snapshot());
     }
 
-    // A copy taken under the read lock, shared by every iterating path
+    // Returns a copy of the entities as an array.
     public Entity[] snapshot() {
         long stamp = this.lock.readLock();
         try {
@@ -232,7 +252,7 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
         }
     }
 
-    // Copy of the current contents as a list, for callers that want to keep it
+    // Returns a copy of the entities as a list.
     public List<Entity> copy() {
         long stamp = this.lock.readLock();
         try {
@@ -242,20 +262,26 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
         }
     }
 
+    // Iterator over a snapshot that removes from the live list.
     private final class SnapshotIterator implements Iterator<Entity> {
+        // Entities of the snapshot.
         private final Entity[] items;
+        // Position of the next entity.
         private int cursor;
+        // Entity returned last.
         private Entity last;
 
         SnapshotIterator(Entity[] items) {
             this.items = items;
         }
 
+        // Returns whether another entity remains.
         @Override
         public boolean hasNext() {
             return this.cursor < this.items.length;
         }
 
+        // Returns the next entity.
         @Override
         public Entity next() {
             if (this.cursor >= this.items.length) {
@@ -265,6 +291,7 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
             return this.last;
         }
 
+        // Removes the entity returned last from the live list.
         @Override
         public void remove() {
             Entity target = this.last;
@@ -287,11 +314,13 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
         }
     }
 
+    // Returns whether the object is a list with equal entities.
     @Override
     public boolean equals(Object o) {
         return this == o || (o instanceof List && Objects.equals(copy(), o));
     }
 
+    // Returns the identity hash because the contents change.
     @Override
     public int hashCode() {
         return System.identityHashCode(this);

@@ -5,23 +5,23 @@ import org.lwjgl.opengl.GL11;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Saves the culling and depth state before the shadow pass and puts it back afterwards
+// Saver of the GL state around the shadow pass.
 public final class ShadowPassState {
-    // Face culling switch read by the latest save
+    // Flag set when culling was on.
     private boolean cullWasEnabled;
-    // Depth function in effect when save ran
+    // Depth function before the pass.
     private int previousDepthFunc = GL11.GL_LEQUAL;
-    // Flag set from a save until its restore
+    // Flag set while a state is saved.
     private boolean saved;
 
-    // Reads the face culling switch and the depth function from GL
+    // Saves the viewport and bound framebuffer.
     public void save() {
         this.cullWasEnabled = LWJGL.glGetBoolean(GL11.GL_CULL_FACE);
         this.previousDepthFunc = LWJGL.glGetInteger(GL11.GL_DEPTH_FUNC);
         this.saved = true;
     }
 
-    // Enables depth writes with a less or equal test and a far clear depth and disables face culling
+    // Sets the GL state for drawing shadows.
     public static void prepare() {
         GlStateManager.enableDepth();
         GlStateManager.depthMask(true);
@@ -30,7 +30,7 @@ public final class ShadowPassState {
         GlStateManager.disableCull();
     }
 
-    // Puts back the saved culling switch and depth function with depth writes on and does nothing without a pending save
+    // Restores the saved state.
     public void restore() {
         if (!this.saved) {
             return;

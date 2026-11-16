@@ -8,9 +8,10 @@ import net.minecraft.entity.EntityTracker;
 import net.minecraft.network.Packet;
 import org.spongepowered.asm.mixin.Mixin;
 
-// Tracker tables are touched by spawns (track) and deaths (untrack) from any thread and by status packets (sendToTracking) mid-tick; the tracker's own tick runs after the batch, so one monitor over the mutators and senders is enough
+// Mixin that changes EntityTracker.
 @Mixin(EntityTracker.class)
 public abstract class EntityTrackerParallelMixin {
+    // Handles locked track.
     @WrapMethod(method = "track(Lnet/minecraft/entity/Entity;IIZ)V")
     private void impetus$lockedTrack(Entity entity, int range, int frequency, boolean sendVelocity, Operation<Void> original) {
         if (!ParallelProcessor.INSTALLED) {
@@ -22,6 +23,7 @@ public abstract class EntityTrackerParallelMixin {
         }
     }
 
+    // Handles locked untrack.
     @WrapMethod(method = "untrack")
     private void impetus$lockedUntrack(Entity entity, Operation<Void> original) {
         if (!ParallelProcessor.INSTALLED) {
@@ -33,6 +35,7 @@ public abstract class EntityTrackerParallelMixin {
         }
     }
 
+    // Handles locked send to tracking.
     @WrapMethod(method = "sendToTracking")
     private void impetus$lockedSendToTracking(Entity entity, Packet<?> packet, Operation<Void> original) {
         if (!ParallelProcessor.INSTALLED) {
@@ -44,6 +47,7 @@ public abstract class EntityTrackerParallelMixin {
         }
     }
 
+    // Handles locked send to tracking and self.
     @WrapMethod(method = "sendToTrackingAndSelf")
     private void impetus$lockedSendToTrackingAndSelf(Entity entity, Packet<?> packet, Operation<Void> original) {
         if (!ParallelProcessor.INSTALLED) {
@@ -55,6 +59,7 @@ public abstract class EntityTrackerParallelMixin {
         }
     }
 
+    // Handles locked tick.
     @WrapMethod(method = "tick")
     private void impetus$lockedTick(Operation<Void> original) {
         if (!ParallelProcessor.INSTALLED) {

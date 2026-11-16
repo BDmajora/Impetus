@@ -12,16 +12,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.Map;
 
-// Compacts the synced-data map every entity carries (FoamFix's FoamyArrayBackedDataManagerMap); Int2ObjectOpenHashMap still implements Map<Integer, V> but drops boxing, Nodes and the eager table
+// Mixin that changes EntityDataManager.
 @Mixin(EntityDataManager.class)
 public abstract class EntityDataManagerMixin {
-    // Declared as Map<Integer, ...>, which the primitive-keyed replacement still satisfies
     @Mutable
     @Shadow
     @Final
     private Map<Integer, EntityDataManager.DataEntry<?>> entries;
 
-    // Replaced rather than copied: vanilla's constructor leaves the map empty, so there is nothing to carry over
+    // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void coarctatio$compactEntries(CallbackInfo ci) {
         this.entries = new Int2ObjectOpenHashMap<>();

@@ -13,22 +13,27 @@ import org.spongepowered.asm.mixin.Shadow;
 
 import java.util.zip.Deflater;
 
-// The sending side: vanilla copies every packet over the threshold into a new byte[] before deflating it; with pooled compression on, the buffer's own array or the handler's scratch is deflated in place, and the 8 KB staging array vanilla already keeps is retained for the output loop
+// Mixin that changes NettyCompressionEncoder.
 @Mixin(NettyCompressionEncoder.class)
 public abstract class NettyCompressionEncoderMixin {
+    // Reference to the field buffer of the target.
     @Shadow
     @Final
     private byte[] buffer;
 
+    // Reference to the field deflater of the target.
     @Shadow
     @Final
     private Deflater deflater;
 
+    // Reference to the field threshold of the target.
     @Shadow
     private int threshold;
 
+    // Reusable buffers of the encoder.
     private final CompressionScratch impetus$scratch = new CompressionScratch();
 
+    // Replaces the whole method encode.
     @Overwrite
     protected void encode(ChannelHandlerContext ctx, ByteBuf in, ByteBuf out) throws Exception {
         int size = in.readableBytes();

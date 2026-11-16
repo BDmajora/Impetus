@@ -11,30 +11,35 @@ import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFlags;
 import com.bdmajora.impetus.engine.api.util.NormI8;
 import com.bdmajora.impetus.engine.impl.util.PositionUtil;
 
-// Vanilla's smooth lighting ported from Sodium: gathers the neighbourhood once per face and bilinearly blends the four corners per vertex, with depth blending for inset quads
+import java.util.Objects;
+
+// Smooth lighter that blends the corner light of each face.
 public class SmoothLightPipeline implements LightPipeline {
-    // the cache the light data is read from
+    // Cache the light data is read from.
     private final LightDataAccess lightCache;
 
-    // the cached face data for each side of a block, both inset and outset
+    // Face data of each side of a block with and without an offset.
     private final AoFaceData[] cachedFaceData = new AoFaceData[6 * 2];
 
-    // the position the cached face data was taken at
+    // Block position of the cached face data.
     private long cachedPos = Long.MIN_VALUE;
 
-    // scratch array holding the intermediary weight data for non-aligned face blending
+    // Scratch array of corner weights.
     private final float[] weights = new float[4];
 
-    // whether to even attempt to shade quads using their normals rather than their light face
+    // Quad normal shading state of the lighter.
     private final boolean useQuadNormalsForShading;
 
-    // supplies the directional shading value for quads
+    // Source of the diffuse shading.
     private final DiffuseProvider diffuseProvider;
 
+    // Occlusion and block and sky light of the last vertex.
     private float lastAo, lastBl, lastSl;
 
+    // Creates a lighter and rejects a null cache or diffuse provider.
     public SmoothLightPipeline(LightDataAccess cache, DiffuseProvider diffuseProvider, boolean useQuadNormalsForShading) {
-        this.lightCache = cache;
+        Objects.requireNonNull(diffuseProvider, "diffuseProvider");
+        this.lightCache = Objects.requireNonNull(cache, "cache");
 
         for (int i = 0; i < this.cachedFaceData.length; i++) {
             this.cachedFaceData[i] = new AoFaceData();
@@ -44,6 +49,7 @@ public class SmoothLightPipeline implements LightPipeline {
         this.diffuseProvider = diffuseProvider;
     }
 
+    // Calculates the brightness and lightmap of the four vertices of a quad.
     @Override
     public void calculate(ModelQuadView quad, int x, int y, int z, QuadLightData out, ModelQuadFacing cullFace, ModelQuadFacing lightFace,
                           boolean shade, boolean applyAoDepthBlending) {
@@ -53,7 +59,7 @@ public class SmoothLightPipeline implements LightPipeline {
 
         final AoNeighborInfo neighborInfo = AoNeighborInfo.get(lightFace);
 
-        // Aligned quads covering the whole face take the fast path of mapping corner values straight onto the vertices; a parallel face on a full cube counts as aligned to match vanilla
+        // Takes the aligned path for aligned quads and parallel quads of a full cube
         if ((flags & ModelQuadFlags.IS_ALIGNED) != 0 || ((flags & ModelQuadFlags.IS_PARALLEL) != 0 && LightDataAccess.unpackFC(this.lightCache.get(x, y, z)))) {
             if ((flags & ModelQuadFlags.IS_PARTIAL) == 0) {
                 this.applyAlignedFullFace(neighborInfo, x, y, z, lightFace, out);
@@ -62,51 +68,54 @@ public class SmoothLightPipeline implements LightPipeline {
             }
         } else {
             if ((flags & ModelQuadFlags.IS_VANILLA_SHADED) == 0 && quad.getNormalFace() == ModelQuadFacing.UNASSIGNED) {
-                // Normal has multiple nonzero components
+                // Handles a normal with several components
                 this.applyIrregularFace(quad, x, y, z, out, applyAoDepthBlending);
             } else {
-                // Normal has a single nonzero component
+                // Handles a normal with one component
                 this.applyNonParallelFace(neighborInfo, quad, x, y, z, lightFace, out, applyAoDepthBlending);
             }
         }
 
-        if((flags & ModelQuadFlags.IS_VANILLA_SHADED) != 0 || !this.useQuadNormalsForShading) {
+        if ((flags & ModelQuadFlags.IS_VANILLA_SHADED) != 0 || !this.useQuadNormalsForShading) {
             this.applySidedBrightness(out, lightFace, shade);
         } else {
             this.applySidedBrightnessFromNormals(out, quad, shade);
         }
     }
 
-    // Clears the per-face cache between blocks
+    // Clears the cached face data and forgets the cached position.
     @Override
     public void reset() {
+        for (AoFaceData data : this.cachedFaceData) {
+            data.reset();
+        }
         this.cachedPos = Long.MIN_VALUE;
     }
 
-    // Fast path for a full grid-aligned quad (IS_ALIGNED, !IS_PARTIAL): the most common case, each corner has only two contributing sides so no interpolation is needed
+    // Maps the corner data of a face straight onto a full aligned quad.
     private void applyAlignedFullFace(AoNeighborInfo neighborInfo, int x, int y, int z, ModelQuadFacing dir, QuadLightData out) {
         AoFaceData faceData = this.getCachedFaceData(x, y, z, dir, true);
         neighborInfo.mapCorners(faceData.lm, faceData.ao, out.lm, out.br);
     }
 
-    // Light data for a grid-aligned quad that does not cover the whole face (IS_ALIGNED, IS_PARTIAL)
+    // Calculates the light of an aligned quad that covers part of its face.
     private void applyAlignedPartialFace(AoNeighborInfo neighborInfo, ModelQuadView quad, int x, int y, int z, ModelQuadFacing dir, QuadLightData out) {
         this.applyPerVertex(neighborInfo, quad, x, y, z, dir, out, false, true);
     }
 
-    // flags: !IS_ALIGNED, !IS_PARALLEL
+    // Calculates the light of a quad that is neither aligned nor parallel.
     private void applyNonParallelFace(AoNeighborInfo neighborInfo, ModelQuadView quad, int x, int y, int z, ModelQuadFacing dir,
                                       QuadLightData out, boolean applyAoDepthBlending) {
         this.applyPerVertex(neighborInfo, quad, x, y, z, dir, out, true, applyAoDepthBlending);
     }
 
-    // Shared per-vertex loop: bilinear corner weights per vertex, then either the face data straight (aligned) or depth-picked/blended (non-parallel)
+    // Calculates the light of each vertex from its corner weights.
     private void applyPerVertex(AoNeighborInfo neighborInfo, ModelQuadView quad, int x, int y, int z, ModelQuadFacing dir,
                                 QuadLightData out, boolean useDepth, boolean applyAoDepthBlending) {
         float[] weights = this.weights;
 
         for (int i = 0; i < 4; i++) {
-            // Clamp the vertex positions to the block's boundaries to prevent weird errors in lighting
+            // Limits the vertex to the block
             float cx = MathUtil.saturate(quad.getX(i));
             float cy = MathUtil.saturate(quad.getY(i));
             float cz = MathUtil.saturate(quad.getZ(i));
@@ -119,7 +128,7 @@ public class SmoothLightPipeline implements LightPipeline {
                 float depth = neighborInfo.getDepth(cx, cy, cz);
 
                 if (applyAoDepthBlending) {
-                    // Blend occlusion between the blocks beside this face and those above it based on how inset it is; fixes farmland and paths
+                    // Blends the near and far data by depth
                     this.applyInsetPartialFaceVertex(x, y, z, dir, depth, 1.0f - depth, weights);
                 } else {
                     this.applyAlignedPartialFaceVertex(x, y, z, dir, weights, MathUtil.roughlyEqual(depth, 0.0F));
@@ -131,9 +140,9 @@ public class SmoothLightPipeline implements LightPipeline {
         }
     }
 
-    // Blends between the near and far face data for a vertex set back from the face
+    // Blends the near and far face data of a vertex that is set back from the face.
     private void applyInsetPartialFaceVertex(int x, int y, int z, ModelQuadFacing dir, float n1d, float n2d, float[] w) {
-        // Avoid blending when the depth is close to one value or the other
+        // Skips blending near either end
         if (MathUtil.roughlyEqual(n1d, 0.0f)) {
             this.applyAlignedPartialFaceVertex(x, y, z, dir, w, true);
             return;
@@ -147,19 +156,21 @@ public class SmoothLightPipeline implements LightPipeline {
         AoFaceData n1 = this.getUnpackedFaceData(x, y, z, dir, false);
         AoFaceData n2 = this.getUnpackedFaceData(x, y, z, dir, true);
 
-        // Blend between the direct neighbors and above based on the passed weights
+        // Blends by the depth weights
         this.lastAo = (n1.getBlendedShade(w) * n1d) + (n2.getBlendedShade(w) * n2d);
         this.lastSl = (n1.getBlendedSkyLight(w) * n1d) + (n2.getBlendedSkyLight(w) * n2d);
         this.lastBl = (n1.getBlendedBlockLight(w) * n1d) + (n2.getBlendedBlockLight(w) * n2d);
     }
 
+    // Share of the weighted average in an irregular face.
     private static final float BLENDED_WEIGHT = 0.75f;
+    // Share of the maximum in an irregular face.
     private static final float MAX_WEIGHT = 1f - BLENDED_WEIGHT;
 
-    // Non-axis-aligned quads: weights each vertex against the face nearest its normal
+    // Calculates the light of a quad with an irregular normal.
     private void applyIrregularFace(ModelQuadView quad, int x, int y, int z, QuadLightData out, boolean applyAoDepthBlending) {
         for (int i = 0; i < 4; i++) {
-            // Clamp the vertex positions to the block's boundaries to prevent weird errors in lighting
+            // Limits the vertex to the block
             float cx = MathUtil.saturate(quad.getX(i));
             float cy = MathUtil.saturate(quad.getY(i));
             float cz = MathUtil.saturate(quad.getZ(i));
@@ -172,12 +183,12 @@ public class SmoothLightPipeline implements LightPipeline {
             float weightedAo = 0, weightedBl = 0, weightedSl = 0;
             float maxAo = 0, maxBl = 0, maxSl = 0;
 
-            // Compute the values that each axis would contribute, then combine them
+            // Combines the contribution of each axis
             for (int axis = 0; axis < 3; axis++) {
-                // Unpack the desired normal component
+                // Reads the normal component
                 float projectedNormal = NormI8.unpackX(normal >> (axis * 8));
 
-                // Skip any components that are zero (they will never contribute anything)
+                // Skips a zero component
                 if (projectedNormal == 0) {
                     continue;
                 }
@@ -192,10 +203,10 @@ public class SmoothLightPipeline implements LightPipeline {
                 float depth = neighborInfo.getDepth(cx, cy, cz);
 
                 if (applyAoDepthBlending) {
-                    // Blend occlusion between the blocks beside this face and those above it based on how inset it is; fixes farmland and paths
+                    // Blends the near and far data by depth
                     this.applyInsetPartialFaceVertex(x, y, z, dir, depth, 1.0f - depth, weights);
                 } else {
-                    // Use inset data as soon as the face is even partially inset
+                    // Uses the inset data once the face is inset
                     this.applyAlignedPartialFaceVertex(x, y, z, dir, weights, MathUtil.roughlyEqual(depth, 0.0F));
                 }
 
@@ -217,7 +228,7 @@ public class SmoothLightPipeline implements LightPipeline {
         }
     }
 
-    // A vertex on an axis-aligned face, optionally offset one block
+    // Calculates the light of a vertex from the face data with an optional offset.
     private void applyAlignedPartialFaceVertex(int x, int y, int z, ModelQuadFacing dir, float[] w, boolean offset) {
         AoFaceData faceData = this.getUnpackedFaceData(x, y, z, dir, offset);
 
@@ -226,25 +237,25 @@ public class SmoothLightPipeline implements LightPipeline {
         this.lastAo = faceData.getBlendedShade(w);
     }
 
-    // Multiplies in vanilla's per-face diffuse
+    // Scales the brightness by the diffuse of the face.
     private void applySidedBrightness(QuadLightData out, ModelQuadFacing face, boolean shade) {
         scaleBrightness(out.br, this.diffuseProvider.getDiffuse(face, shade));
     }
 
-    // Per-vertex diffuse from the vertex normals, for irregular quads
+    // Scales the brightness by the diffuse of the quad normal.
     private void applySidedBrightnessFromNormals(QuadLightData out, ModelQuadView quad, boolean shade) {
-        // TODO: consider calculating for vertex if mods actually change normals per-vertex
         int normal = quad.getModFaceNormal();
         scaleBrightness(out.br, this.diffuseProvider.getDiffuse(NormI8.unpackX(normal), NormI8.unpackY(normal), NormI8.unpackZ(normal), shade));
     }
 
+    // Multiplies every brightness by a factor.
     private static void scaleBrightness(float[] br, float brightness) {
         for (int i = 0; i < br.length; i++) {
             br[i] *= brightness;
         }
     }
 
-    // the cached data for a given facing, calculating it if it has not been cached yet
+    // Returns the face data and reads it when missing.
     private AoFaceData getCachedFaceData(int x, int y, int z, ModelQuadFacing face, boolean offset) {
         AoFaceData data = this.cachedFaceData[offset ? face.ordinal() : face.ordinal() + 6];
 
@@ -255,7 +266,7 @@ public class SmoothLightPipeline implements LightPipeline {
         return data;
     }
 
-    // Cached face data with the sky/block split done, for the blended reads
+    // Returns the face data and unpacks it when needed.
     private AoFaceData getUnpackedFaceData(int x, int y, int z, ModelQuadFacing face, boolean offset) {
         AoFaceData data = this.getCachedFaceData(x, y, z, face, offset);
 
@@ -266,7 +277,7 @@ public class SmoothLightPipeline implements LightPipeline {
         return data;
     }
 
-    // Loads face data for a new block position, reusing the cache across a block's faces
+    // Clears the cache when the block position changes.
     private void updateCachedData(long key) {
         if (this.cachedPos != key) {
             for (AoFaceData data : this.cachedFaceData) {
@@ -277,7 +288,7 @@ public class SmoothLightPipeline implements LightPipeline {
         }
     }
 
-    // the light map texture coordinate for the given block and sky light values
+    // Returns the packed lightmap of sky and block light.
     private static int getLightMapCoord(float sl, float bl) {
         return (((int) sl & 0xFF) << 16) | ((int) bl & 0xFF);
     }

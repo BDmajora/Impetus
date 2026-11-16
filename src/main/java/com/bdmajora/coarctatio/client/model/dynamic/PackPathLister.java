@@ -39,12 +39,13 @@ import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
-// Every path a resource pack holds, the way 1.19.3+'s texture loading lists a pack's folders; the file and folder packs hand back the index the existence cache built, everything else is walked here
+// Lists the files of resource packs.
 public final class PackPathLister {
+    // Prevents instantiation
     private PackPathLister() {
     }
 
-    // The packs behind every domain, in the manager's own order and without repeats
+    // Returns every pack of the manager once.
     public static List<IResourcePack> packsOf(SimpleReloadableResourceManager manager) {
         Set<IResourcePack> packs = new LinkedHashSet<>();
         for (FallbackResourceManager domain : ((SimpleReloadableResourceManagerAccessor) manager).coarctatio$domainManagers().values()) {
@@ -53,7 +54,7 @@ public final class PackPathLister {
         return new ArrayList<>(packs);
     }
 
-    // Paths are relative to the pack root with forward slashes ("assets/mod/textures/x.png"); a pack of a kind this cannot list contributes nothing, and says so once
+    // Returns the file paths of the pack or an empty list when it cannot be listed.
     public static Collection<String> paths(IResourcePack pack) {
         if (pack instanceof IndexedResourcePack) {
             Set<String> index = ((IndexedResourcePack) pack).coarctatio$indexedPaths();
@@ -82,6 +83,7 @@ public final class PackPathLister {
         return Collections.emptyList();
     }
 
+    // Returns the entry names of the archive.
     private static Collection<String> zipEntries(ZipFile zip) {
         List<String> paths = new ArrayList<>(zip.size());
         Enumeration<? extends ZipEntry> entries = zip.entries();
@@ -91,7 +93,7 @@ public final class PackPathLister {
         return paths;
     }
 
-    // The vanilla pack reads from the classpath, so its contents are the assets folder of the client jar and of every jar on the launch class loader; synchronised because opening the same zip filesystem from two threads fails
+    // Returns the asset paths of the game jar and the class path.
     private static synchronized Collection<String> classpathAssets() throws IOException {
         Set<String> paths = new HashSet<>();
         URI root;
@@ -107,7 +109,6 @@ public final class PackPathLister {
         ClassLoader loader = DefaultResourcePack.class.getClassLoader();
         if (loader instanceof URLClassLoader) {
             for (URL url : ((URLClassLoader) loader).getURLs()) {
-                // Only real files can be opened as zip filesystems; asmgen and similar synthetic protocols are skipped
                 if (!"file".equals(url.getProtocol())) {
                     continue;
                 }
@@ -123,7 +124,7 @@ public final class PackPathLister {
         return paths;
     }
 
-    // Adds every file under /assets of the zip at uri; a filesystem this call opened is closed again, one another holder opened is left alone
+    // Adds every asset path of the archive.
     private static void walkZipUri(URI uri, Set<String> into) throws IOException {
         FileSystem fs;
         boolean opened = false;
@@ -150,7 +151,7 @@ public final class PackPathLister {
         }
     }
 
-    // Path.toString on a zip filesystem already uses '/', but joining the names is separator-proof for folder walks too
+    // Returns the path parts joined with slashes.
     private static String join(Path relative) {
         StringBuilder out = new StringBuilder();
         for (Path part : relative) {

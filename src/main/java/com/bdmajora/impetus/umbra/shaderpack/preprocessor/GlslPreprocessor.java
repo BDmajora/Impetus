@@ -12,20 +12,21 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-// Light-touch GLSL transformation after #include flattening and before compilation: find #version, inject #define macros after it, default to #version 120 when missing; legacy built-in substitution is NOT done here
+// Preprocessor of pack sources.
 public final class GlslPreprocessor {
 
-    // Trailing \r? is load-bearing: callers split on "\n" and call matches(), and Windows line endings failed every #version match, silently breaking detectVersion, injectDefines and hoistExtensionDirectives
+    // Pattern of the version line.
     private static final Pattern VERSION_PATTERN =
             Pattern.compile("^\\s*#version\\s+(\\d+)(?:\\s+(\\w+))?.*\\r?$");
 
-    // Default GLSL version assumed for 1.12.2-era packs that omit a #version directive
+    // Version used without a version line.
     public static final int DEFAULT_VERSION = 120;
 
+    // Prevents instantiation
     private GlslPreprocessor() {
     }
 
-    // Inserts defines right after #version (prepending a default if none); defines is ordered name -> value, an empty value yielding a bare #define NAME
+    // Adds define lines after the version line.
     public static List<String> injectDefines(List<String> lines, Map<String, String> defines) {
         List<String> out = new ArrayList<>(lines.size() + defines.size() + 1);
 
@@ -38,7 +39,6 @@ public final class GlslPreprocessor {
         }
 
         if (versionIndex < 0) {
-            // No #version present: prepend a default one, then defines, then the original source.
             out.add("#version " + DEFAULT_VERSION);
             out.addAll(toDefineLines(defines));
             out.addAll(lines);
@@ -56,7 +56,7 @@ public final class GlslPreprocessor {
         return out;
     }
 
-    // #define lines to inject
+    // Returns the define lines of a map.
     private static List<String> toDefineLines(Map<String, String> defines) {
         List<String> result = new ArrayList<>(defines.size());
         for (Map.Entry<String, String> e : defines.entrySet()) {
@@ -69,44 +69,43 @@ public final class GlslPreprocessor {
         return result;
     }
 
-    // Drops #if/#ifdef branches the macro set does not take, so a scanner sees what the GPU compiles; for directive extraction only (every # line is consumed), call once per stage, and #define-form directives (SHADOWRES) still need raw source. Returns source unchanged if unevaluable
+    // Removes inactive preprocessor branches.
     public static String resolveConditionals(String source, Map<String, String> defines) {
         if (source == null || source.isEmpty()) {
             return source;
         }
         try {
             String resolved = PropertiesPreprocessor.preprocess(source, defines);
-            // An unterminated #if can swallow the rest of the file; keep the raw source rather than scan nothing.
             return resolved.trim().isEmpty() ? source : resolved;
         } catch (RuntimeException e) {
             return source;
         }
     }
 
-    // A GLSL floating-point literal: 1.0, .5, 0., 1e-3
+    // Pattern of a float literal.
     private static final Pattern FLOAT_LITERAL =
             Pattern.compile("(?<![A-Za-z0-9_.])(?:\\d+\\.\\d*|\\.\\d+|\\d+[eE][-+]?\\d+)");
-    // "defined X" / "defined(X)" - the one place an identifier must NOT be macro-expanded
+    // Pattern of a defined operator.
     private static final Pattern DEFINED_OPERATOR =
             Pattern.compile("\\bdefined\\s*(?:\\(\\s*\\w+\\s*\\)|\\s+\\w+)");
+    // Pattern of an identifier.
     private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z_]\\w*");
+    // Pattern of a conditional directive.
     private static final Pattern CONDITIONAL_DIRECTIVE =
             Pattern.compile("(?m)^([\\t ]*#[\\t ]*)(if|elif)\\b([^\\n]*)$");
 
-    // Folds #if/#elif conditionals resolving to a float comparison into a literal 1/0, since the C preprocessor is integer-only and `#if MOTION_BLUR > 0.0` crashes NVIDIA with C0105 (Clarity's composite.csh); Iris's JCPP truncates floats, this is the narrow equivalent, leaving anything unparseable (including backslash-continued lines) as taken and unfolded
+    // Evaluates conditionals that compare float macros.
     public static String foldFloatConditionals(String source, Map<String, String> defines) {
         if (source == null || source.indexOf('#') < 0) {
             return source;
         }
         Map<String, String> active = new LinkedHashMap<>(defines);
         StringBuilder out = new StringBuilder(source.length());
-        // Nesting levels, each [0] = this branch active, [1] = some branch already taken.
         Deque<boolean[]> stack = new ArrayDeque<>();
         String[] lines = source.split("\n", -1);
         boolean inBlockComment = false;
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i];
-            // The real preprocessor strips comments before finding directives, so a `#if` inside /* */ is not one; Clarity parks a dead #ifdef/#endif pair in a comment block, and interpreting it would desync the macro bookkeeping
             boolean commented = inBlockComment;
             inBlockComment = advanceBlockComment(line, inBlockComment);
             out.append(commented ? line : foldDirective(line, active, stack));
@@ -117,7 +116,7 @@ public final class GlslPreprocessor {
         return out.toString();
     }
 
-    // Whether the line ENDS inside a block comment given whether it started in one, carried across lines so a directive commented out by a multi-line block is not evaluated
+    // Tracks block comments on a line and returns whether one is open.
     private static boolean advanceBlockComment(String line, boolean inBlockComment) {
         for (int i = 0; i < line.length() - 1; i++) {
             if (inBlockComment) {
@@ -135,7 +134,7 @@ public final class GlslPreprocessor {
         return inBlockComment;
     }
 
-    // Evaluates one #if-family line and updates the active stack
+    // Returns a directive with float comparisons folded.
     private static String foldDirective(String line, Map<String, String> defines, Deque<boolean[]> stack) {
         Matcher conditional = CONDITIONAL_DIRECTIVE.matcher(line);
         if (conditional.matches()) {
@@ -156,7 +155,6 @@ public final class GlslPreprocessor {
         if (!trimmed.startsWith("#")) {
             return line;
         }
-        // Comments come off first as the real preprocessor does: `#endif // label` and `#else /* label */` are idiomatic, and a trailing label stopping `#else` from being recognized would desync the branch stack
         String directive = stripComment(trimmed.substring(1)).trim();
         if (directive.startsWith("ifdef ") || directive.startsWith("ifndef ")) {
             boolean defined = defines.containsKey(directive.substring(directive.indexOf(' ') + 1).trim());
@@ -176,13 +174,13 @@ public final class GlslPreprocessor {
         return line;
     }
 
-    // Whether this directive is only the FIRST line of a backslash-continued one, so its balancing parentheses follow; Photon has three (e.g. a bare `#elif ( \`) that look unbalanced alone, and folding them to 0 would delete live branches from its gbuffer programs
+    // Returns whether an expression continues on the next line.
     private static boolean isContinued(String expression) {
         String trimmed = expression.trim();
         return trimmed.endsWith("\\");
     }
 
-    // Whether the expression is something NO preprocessor could accept, so folding to 0 beats forwarding; deliberately narrow (our parser failing is not grounds), with unbalanced parentheses the one sure signal: Pastel v1.200's `#if (in(biome, BIOME_SOUL_SAND_VALLEY)` costs NVIDIA its whole deferred1 pass, and false is what the pack means
+    // Returns whether an expression cannot be parsed.
     private static boolean isSyntacticallyInvalid(String expression) {
         int depth = 0;
         for (int i = 0; i < expression.length(); i++) {
@@ -196,7 +194,7 @@ public final class GlslPreprocessor {
         return depth != 0;
     }
 
-    // Whether every enclosing conditional is currently true
+    // Returns whether every branch on the stack is active.
     private static boolean allActive(Deque<boolean[]> stack) {
         for (boolean[] frame : stack) {
             if (!frame[0]) {
@@ -206,7 +204,7 @@ public final class GlslPreprocessor {
         return true;
     }
 
-    // Truncates at the first comment opener of either kind — a directive never carries meaning past one
+    // Returns text without its line comment.
     private static String stripComment(String text) {
         int line = text.indexOf("//");
         int block = text.indexOf("/*");
@@ -214,7 +212,7 @@ public final class GlslPreprocessor {
         return comment < 0 ? text : text.substring(0, comment);
     }
 
-    // Whether the expression contains a float literal ONCE ITS MACROS ARE SUBSTITUTED, as the driver sees it; a macro expanding to 0.5 makes an integer-looking conditional a float one
+    // Returns whether an expression uses a float macro.
     private static boolean expandsToFloat(String expression, Map<String, String> defines, int depth) {
         if (FLOAT_LITERAL.matcher(expression).find()) {
             return true;
@@ -232,15 +230,15 @@ public final class GlslPreprocessor {
         return false;
     }
 
-    // #extension GL_FOO : enable in any legal spacing; the trailing \r? is for CRLF pack files, as with VERSION_PATTERN
+    // Extension pattern.
     private static final Pattern EXTENSION_PATTERN = Pattern.compile("^\\s*#\\s*extension\\s+.*\\r?$");
 
-    // Every rewrite that must happen between the transformers and glShaderSource because packs are authored against NVIDIA while this port must satisfy Mesa; all no-ops unless tripped. Call from EVERY path handing pack source to the driver: there are two GlShader classes, and hanging this off the Umbra one missed the engine one the terrain/shadow override uses, so the #extension fix in 0323d2aaa never ran on gbuffers_terrain
+    // Applies the last fixes before a driver compile.
     public static String finalizeForDriver(String name, String source) {
         return rewriteIntegerSamplerLookups(name, hoistExtensionDirectives(source));
     }
 
-    // Moves every #extension up to just below #version where GLSL requires it: NVIDIA honours them anywhere but MESA ENFORCES the rule, and include flattening puts Complementary's worldSpaceRef.glsl `#extension` mid-program (Iris does the same in JcppProcessor); only rewrites when needed, de-duplicates, keeps order, leaves a blank line for line numbers, and hoisting out of an #if is safe since `: enable` warns rather than fails
+    // Moves extension lines to just after the version line.
     public static String hoistExtensionDirectives(String source) {
         if (source == null || !source.contains("#extension")) {
             return source;
@@ -285,7 +283,6 @@ public final class GlslPreprocessor {
         return String.join("\n", kept);
     }
 
-    // The compatibility-profile texture lookups and the core built-in replacing each; every entry requires ( immediately after the name, so texture2D never matches inside texture2DLod and iteration order is irrelevant
     private static final Map<String, String> LEGACY_TEXTURE_LOOKUPS;
 
     static {
@@ -307,11 +304,11 @@ public final class GlslPreprocessor {
         LEGACY_TEXTURE_LOOKUPS = Collections.unmodifiableMap(lookups);
     }
 
-    // An integer sampler type followed by whatever it declares, up to ; or ); deliberately NOT anchored to `uniform`, since a helper like `uint readVoxel(usampler3D s, vec3 p)` declares the sampler as a PARAMETER and that is the call site the driver rejects
+    // Pattern of an integer sampler declaration.
     private static final Pattern INTEGER_SAMPLER_DECLARATION =
             Pattern.compile("\\b[ui]sampler[A-Za-z0-9]*[ \\t]+([^;)\\n]+)");
 
-    // Points legacy texture2D-family lookups at their core equivalents ONLY where this source declares the sampler as usampler*/isampler*: no texture2D(usampler2D, vec2) overload exists, NVIDIA resolves it anyway but Mesa rejects it, so Complementary Unbound's terrain programs failed on Mesa with coloured lighting on and leaves stopped waving; restricted to integer samplers since the legacy names stay live here, keyed off the DECLARATION, and never shifts a line number
+    // Rewrites lookups on integer samplers to return floats.
     public static String rewriteIntegerSamplerLookups(String name, String source) {
         if (source == null || !source.contains("sampler")) {
             return source;
@@ -334,7 +331,6 @@ public final class GlslPreprocessor {
             if (!result.contains(lookup.getKey())) {
                 continue;
             }
-            // The trailing (?=[,)]) is the correctness guard: the sampler (optionally with one flat subscript) must be the entire first argument, so texture2D(pick(voxel_sampler), uv) is left for the driver
             Matcher call = Pattern.compile("(?<![A-Za-z0-9_])" + Pattern.quote(lookup.getKey())
                     + "[ \\t]*\\([ \\t]*(" + alternation + ")(\\[[^\\[\\]]*\\])?[ \\t]*(?=[,)])").matcher(result);
             StringBuffer rewrite = new StringBuffer();
@@ -350,7 +346,7 @@ public final class GlslPreprocessor {
         return result;
     }
 
-    // Every identifier this source declares as a usampler* or isampler*, whether as a uniform or a function parameter
+    // Returns the names of integer samplers.
     private static Set<String> integerSamplerNames(String source) {
         Set<String> names = new LinkedHashSet<>();
         Matcher declaration = INTEGER_SAMPLER_DECLARATION.matcher(source);
@@ -362,7 +358,6 @@ public final class GlslPreprocessor {
                 if (identifier.isEmpty()) {
                     break;
                 }
-                // Only the first declarator surely belongs to the sampler type: a comma continues `usampler2D a, b;` but starts a new parameter in `usampler3D s, vec3 p`, so stop at the first non-bare one
                 if (i > 0 && !isBareDeclarator(declarator, identifier)) {
                     break;
                 }
@@ -372,13 +367,13 @@ public final class GlslPreprocessor {
         return names;
     }
 
-    // Whether the declarator is just that identifier, optionally with an array subscript; anything more means the match caught something other than a plain declaration
+    // Returns whether a declarator is a plain name.
     private static boolean isBareDeclarator(String declarator, String identifier) {
         String remainder = declarator.substring(identifier.length()).trim();
         return remainder.isEmpty() || (remainder.startsWith("[") && remainder.endsWith("]"));
     }
 
-    // Strips an array subscript ("shadowVoxels[2]" gives "shadowVoxels"); anything not starting with an identifier yields "", which the caller treats as no match
+    // Returns the leading identifier of a declarator.
     private static String identifierPrefix(String declarator) {
         int end = 0;
         while (end < declarator.length()
@@ -388,7 +383,7 @@ public final class GlslPreprocessor {
         return declarator.substring(0, end);
     }
 
-    // The index of the first line carrying a real GLSL token, or -1 for pure directives; where a hoisted #extension must land before, skipping blanks, comments, # directives and block comments
+    // Returns the index of the first line that is not a directive.
     private static int indexOfFirstNonPreprocessorLine(String[] lines) {
         boolean inBlockComment = false;
         for (int i = 0; i < lines.length; i++) {

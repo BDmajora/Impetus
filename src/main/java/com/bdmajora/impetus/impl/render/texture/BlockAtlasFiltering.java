@@ -8,14 +8,16 @@ import org.lwjgl.opengl.EXTTextureFilterAnisotropic;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL;
 
-// Applies the block atlas sampler state on rebuild and options apply; minification is pinned to NEAREST_MIPMAP_LINEAR since the atlas has no sprite borders and any wider filter bleeds neighbours, while magnification stays configurable
+// Applier of the block atlas filtering settings.
 public final class BlockAtlasFiltering {
+    // Anisotropic filtering support or null before the first check.
     private static Boolean anisotropySupported;
 
+    // Prevents instantiation
     private BlockAtlasFiltering() {
     }
 
-    // Re-applies filtering to the currently loaded block atlas (safe to call on the client thread).
+    // Reapplies the to block atlas.
     public static void reapplyToBlockAtlas() {
         var mc = Minecraft.getMinecraft();
         if (mc == null) {
@@ -28,7 +30,7 @@ public final class BlockAtlasFiltering {
         }
     }
 
-    // Sets the three parameters on the bound texture; they persist across binds
+    // Sets the filtering of an atlas texture.
     public static void apply(int glTextureId) {
         if (glTextureId <= 0) {
             return;
@@ -45,14 +47,13 @@ public final class BlockAtlasFiltering {
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, minFilter);
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, magFilter);
 
-        // Written every time: the parameter lives on the texture object, so a level set by a driver profile or another mod would otherwise survive and bleed the atlas
         if (isAnisotropySupported()) {
             GL11.glTexParameterf(GL11.GL_TEXTURE_2D,
                     EXTTextureFilterAnisotropic.GL_TEXTURE_MAX_ANISOTROPY_EXT, 1.0f);
         }
     }
 
-    // Extension check, so the reset is skipped on drivers without it
+    // Returns whether anisotropy supported.
     private static boolean isAnisotropySupported() {
         if (anisotropySupported == null) {
             try {

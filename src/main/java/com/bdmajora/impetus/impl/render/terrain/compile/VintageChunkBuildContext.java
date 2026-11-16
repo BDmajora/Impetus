@@ -32,26 +32,38 @@ import java.nio.ByteBuffer;
 import java.util.Objects;
 import org.lwjgl.system.MemoryUtil;
 
-
+// Build context of the vintage block renderers.
 public class VintageChunkBuildContext extends ChunkBuildContext {
+    // Block render layers.
     public static final BlockRenderLayer[] LAYERS = BlockRenderLayer.values();
+    // Block texture atlas.
     private final TextureMapExtension textureAtlas;
+    // Vanilla buffers of each layer.
     private final BufferBuilder[] worldRenderers = new BufferBuilder[LAYERS.length];
+    // Flags of the layers that got vertices.
     private final boolean[] usedWorldRenderers = new boolean[LAYERS.length];
-    // Per layer, block attribution of vanilla-sourced quads (fluids and other non-model renders) as runs of (quadEndExclusive, mcEntityId, renderType, metadata, emission, localX/Y/Z), recorded under a shader pack so mc_Entity and at_midBlock survive the BufferBuilder round-trip
+    // Block runs of each layer.
     private final IntArrayList[] vanillaBlockRuns =
             new IntArrayList[LAYERS.length];
+    // Ints per block run.
     private static final int VANILLA_BLOCK_RUN_STRIDE = 8;
+    // Origin of the section.
     @Getter
     private int offX, offY, offZ;
+    // Block access of the section.
     @Getter
     private final WorldSlice worldSlice;
+    // Renderer of blocks.
     @Getter
     private final VintageBlockRenderer blockRenderer;
+    // Render pass configuration.
     private final RenderPassConfiguration<?> renderPassConfiguration;
+    // Cache of light data.
     private final LightDataCache lightDataCache;
+    // Flag set when quads choose their pass by sprite.
     private final boolean useRenderPassOptimization;
 
+    // Creates a vintage chunk build context from its world and render pass configuration.
     public VintageChunkBuildContext(WorldClient world, RenderPassConfiguration renderPassConfiguration) {
         super(renderPassConfiguration);
         this.renderPassConfiguration = renderPassConfiguration;
@@ -62,7 +74,7 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         this.useRenderPassOptimization = ImpetusVintage.options().performance.useRenderPassOptimization;
     }
 
-    // Offsets vanilla buffers so tile entity renderers see section-relative coordinates
+    // Sets up the translation.
     public void setupTranslation(int x, int y, int z) {
         this.lightDataCache.reset(x, y, z);
 
@@ -71,7 +83,7 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         this.offZ = z;
     }
 
-    // Vanilla buffer for blocks that bypass the Impetus pipeline, one per layer
+    // Returns the vanilla buffer of a layer and starts it.
     public BufferBuilder getBufferForLayer(BlockRenderLayer layer) {
         var builder = this.worldRenderers[layer.ordinal()];
         if (builder == null) {
@@ -89,7 +101,7 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         return builder;
     }
 
-    // Records which block the vanilla-buffered quads since the last call belong to, so copyBlockData can fill mc_Entity, at_midBlock and emission; call right after every dispatcher.renderBlock, no-op without a shader pack
+    // Records which block made the next vanilla vertices.
     public void recordVanillaBlockAttribution(BlockRenderLayer layer, net.minecraft.block.state.IBlockState state, BlockPos pos) {
         if (!com.bdmajora.impetus.umbra.terrain.UmbraTerrainProgramOverride.areShadersActive()) {
             return;
@@ -107,7 +119,7 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         int quadCount = builder.getVertexCount() / 4;
         int lastEnd = runs.isEmpty() ? 0 : runs.getInt(runs.size() - VANILLA_BLOCK_RUN_STRIDE);
         if (quadCount <= lastEnd) {
-            return; // the block emitted nothing into this layer
+            return;
         }
         int renderType = state.getRenderType().ordinal();
         int metadata = state.getBlock().getMetaFromState(state);
@@ -122,7 +134,7 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         runs.add(pos.getZ() & 15);
     }
 
-    // Copies anything vanilla-rendered into the Impetus mesh buffers
+    // Moves the vanilla buffers into the mesh builders.
     public void convertVanillaDataToImpetusData(ChunkBuildBuffers buffers) {
         var renderers = this.worldRenderers;
         var used = this.usedWorldRenderers;
@@ -139,7 +151,7 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         }
     }
 
-    // Resets the vanilla buffers between sections
+    // Resets the context for reuse.
     @Override
     public void cleanup() {
         super.cleanup();
@@ -152,21 +164,20 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         }
     }
 
-    // Upgrades the material when the sprite needs alpha or mipmap handling
+    // Returns the material for a quad sprite.
     private Material selectMaterial(Material material, TextureAtlasSprite sprite) {
         if (sprite != null && sprite.getClass() == TextureAtlasSprite.class && !sprite.hasAnimationMetadata() && this.useRenderPassOptimization) {
             var transparencyLevel = ((SpriteTransparencyLevel.Holder)sprite).impetus$getTransparencyLevel();
             if (transparencyLevel == SpriteTransparencyLevel.OPAQUE) {
-                // Downgrade to solid
                 return this.renderPassConfiguration.defaultSolidMaterial();
             } else if (material == this.renderPassConfiguration.defaultTranslucentMaterial() && transparencyLevel != SpriteTransparencyLevel.TRANSLUCENT) {
-                // Downgrade to cutout
                 return this.renderPassConfiguration.defaultCutoutMippedMaterial();
             }
         }
         return material;
     }
 
+    // Bytes of a vanilla block vertex.
     private static final int BLOCK_VERTEX_FORMAT_SIZE;
 
     static {
@@ -178,6 +189,7 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         BLOCK_VERTEX_FORMAT_SIZE = size;
     }
 
+    // Copies the block data.
     private void copyBlockData(ByteBuffer source, ChunkBuildBuffers buffers, Material material,
                                IntArrayList blockRuns) {
         int vsize = BLOCK_VERTEX_FORMAT_SIZE;
@@ -187,7 +199,6 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         @SuppressWarnings("unchecked")
         var bundle = (MinecraftBuiltRenderSectionData<TextureAtlasSprite, TileEntity>) buffers.getSectionContextBundle();
         var animatedSpritesList = bundle.animatedSprites;
-        // Walk the per-block attribution runs in lockstep with the quads (see recordVanillaBlockAttribution).
         int runCursor = 0;
         int runId = 0;
         int runRenderType = 0;
@@ -242,7 +253,6 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
                 vertex.trueNormal = trueNormal;
             }
             if (shadersActive) {
-                // OptiFine attributes for the vanilla-sourced path: mc_Entity from the attribution runs, mid-tex as the centre of this quad's mapped region (not the sprite centre, see VintageBlockRenderer.populateUmbraVertexData), tangent derived here
                 float midU = uSum * 0.25f;
                 float midV = vSum * 0.25f;
                 int tangent = com.bdmajora.impetus.umbra.vertices.NormalHelper.computeTangent(
@@ -279,12 +289,12 @@ public class VintageChunkBuildContext extends ChunkBuildContext {
         }
     }
 
-    // The emission byte of at_midBlock; vanilla is 0-15 but a mod's getLightValue may answer past that
+    // Limits the block emission.
     private static int clampBlockEmission(int value) {
         return MathUtil.clamp(value, 0, 255);
     }
 
-    // Section-local coordinates are 0-15
+    // Limits the section coord.
     private static int clampSectionCoord(int value) {
         return MathUtil.clamp(value, 0, 15);
     }

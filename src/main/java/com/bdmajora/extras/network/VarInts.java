@@ -2,9 +2,9 @@ package com.bdmajora.extras.network;
 
 import io.netty.buffer.ByteBuf;
 
-// Branch-free varint sizing and one-write encoding for the short cases, after Krypton (Andrew Steinborn's "how fast can you write a varint"): vanilla loops a byte at a time through ByteBuf bounds checks, and every packet carries at least two varints (frame length and packet id)
+// Readers and writers of variable length integers.
 public final class VarInts {
-    // Indexed by Integer.numberOfLeadingZeros(value); 32 leading zeros (value 0) still takes one byte
+    // Constant size by leading zeros.
     private static final int[] SIZE_BY_LEADING_ZEROS = new int[33];
 
     static {
@@ -14,13 +14,16 @@ public final class VarInts {
         SIZE_BY_LEADING_ZEROS[32] = 1;
     }
 
+    // Prevents instantiation
     private VarInts() {
     }
 
+    // Handles the size.
     public static int size(int value) {
         return SIZE_BY_LEADING_ZEROS[Integer.numberOfLeadingZeros(value)];
     }
 
+    // Writes the value.
     public static void write(ByteBuf buf, int value) {
         if ((value & (0xFFFFFFFF << 7)) == 0) {
             buf.writeByte(value);

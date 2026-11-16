@@ -2,8 +2,8 @@ package com.bdmajora.coarctatio.client.model.dynamic;
 
 import java.util.Set;
 
-// Implemented on the file and folder packs by the existence-cache mixins; every path the pack holds, so the texture scan reads the index those already built instead of walking the pack again
+// Resource pack that lists its files.
 public interface IndexedResourcePack {
-    // Null when the pack could not be indexed
+    // Returns the paths of every file in the pack.
     Set<String> coarctatio$indexedPaths();
 }

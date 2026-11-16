@@ -22,9 +22,10 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Map;
 
-// Decodes the atlas's sprites in parallel before the load loop, then feeds the loop from the prefetch; dependencies registered mid-loop and custom-loader sprites keep the vanilla path
+// Mixin that changes TextureMap.
 @Mixin(TextureMap.class)
 public abstract class TextureMapPrefetchMixin {
+    // Field load texture added to the target.
     @Unique
     private static final String LOAD_TEXTURE = "loadTexture(Lnet/minecraft/client/renderer/texture/Stitcher;Lnet/minecraft/client/resources/IResourceManager;"
             + "Lnet/minecraft/util/ResourceLocation;Lnet/minecraft/client/renderer/texture/TextureAtlasSprite;"
@@ -34,20 +35,23 @@ public abstract class TextureMapPrefetchMixin {
     @Final
     private Map<String, TextureAtlasSprite> mapRegisteredSprites;
 
+    // Reference to the method get resource location of the target.
     @Shadow
     protected abstract ResourceLocation getResourceLocation(TextureAtlasSprite sprite);
 
+    // Runs at the start of loadTextureAtlas.
     @Inject(method = "loadTextureAtlas", at = @At("HEAD"))
     private void coarctatio$prefetchSprites(IResourceManager resourceManager, CallbackInfo ci) {
         SpritePrefetch.run(resourceManager, new ArrayList<>(this.mapRegisteredSprites.values()), this::getResourceLocation);
     }
 
+    // Runs before every return of loadTextureAtlas.
     @Inject(method = "loadTextureAtlas", at = @At("RETURN"))
     private void coarctatio$dropPrefetch(IResourceManager resourceManager, CallbackInfo ci) {
         SpritePrefetch.clear();
     }
 
-    // Both lookups in loadTexture, the header read and the metadata read; the full descriptor names Forge's added overload, which keeps its name at runtime, rather than the inherited loadTexture(IResourceManager)
+    // Wraps a call.
     @WrapOperation(method = LOAD_TEXTURE, at = @At(value = "INVOKE",
             target = "Lnet/minecraft/client/resources/IResourceManager;getResource(Lnet/minecraft/util/ResourceLocation;)Lnet/minecraft/client/resources/IResource;"))
     private IResource coarctatio$prefetchedForLoad(IResourceManager manager, ResourceLocation location, Operation<IResource> original,
@@ -56,7 +60,7 @@ public abstract class TextureMapPrefetchMixin {
         return prefetched != null ? prefetched : original.call(manager, location);
     }
 
-    // The header is already parsed; the vanilla call would reopen the file for it
+    // Wraps a call.
     @WrapOperation(method = LOAD_TEXTURE, at = @At(value = "INVOKE",
             target = "Lnet/minecraft/client/renderer/texture/PngSizeInfo;makeFromResource(Lnet/minecraft/client/resources/IResource;)Lnet/minecraft/client/renderer/texture/PngSizeInfo;"))
     private PngSizeInfo coarctatio$prefetchedSize(IResource resource, Operation<PngSizeInfo> original) throws IOException {
@@ -66,7 +70,7 @@ public abstract class TextureMapPrefetchMixin {
         return original.call(resource);
     }
 
-    // The frame read after stitching, which is where the decoded image is finally consumed
+    // Wraps the call of IResourceManager.getResource in generateMipmaps.
     @WrapOperation(method = "generateMipmaps", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/client/resources/IResourceManager;getResource(Lnet/minecraft/util/ResourceLocation;)Lnet/minecraft/client/resources/IResource;"))
     private IResource coarctatio$prefetchedForFrames(IResourceManager manager, ResourceLocation location, Operation<IResource> original,

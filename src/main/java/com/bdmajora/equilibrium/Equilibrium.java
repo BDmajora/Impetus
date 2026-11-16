@@ -9,36 +9,47 @@ import org.apache.logging.log4j.Logger;
 import java.util.ArrayList;
 import java.util.List;
 
-// Lithium backport for 1.12.2 owning the logger and shared config; not an FML entry point, mixins are gated on options resolved during coremod setup
+// Entry points of the general performance patches.
 public final class Equilibrium {
+    // Logger of the module.
     public static final Logger LOGGER = LogManager.getLogger("Equilibrium");
 
-    // Set once by EquilibriumMixinPlugin during coremod setup; the accessor lazy-loads so tooling outside the game still gets a usable config
-    private static EquilibriumConfig config;
+    // Loaded settings or null before first use.
+    private static volatile EquilibriumConfig config;
 
+    // Prevents instantiation
     private Equilibrium() {
     }
 
-    // Loads on first use, so callers outside the mixin plugin need not order themselves after it
+    // Returns the settings and loads them on first use.
     public static EquilibriumConfig config() {
-        if (config == null) {
-            config = EquilibriumConfig.load(EquilibriumConfig.defaultFile());
+        EquilibriumConfig loaded = config;
+
+        if (loaded == null) {
+            synchronized (Equilibrium.class) {
+                loaded = config;
+
+                if (loaded == null) {
+                    loaded = EquilibriumConfig.load(EquilibriumConfig.defaultFile());
+                    config = loaded;
+                }
+            }
         }
 
-        return config;
+        return loaded;
     }
 
-    // Called by the mixin plugin once it has loaded the file, so nothing loads it twice
+    // Replaces the settings.
     public static void setConfig(EquilibriumConfig loaded) {
         config = loaded;
     }
 
-    // Convenience for code that wants one rule without touching the config object
+    // Returns whether the named switch and its parents are on.
     public static boolean isEnabled(String optionName) {
         return config().isOptionEnabled(optionName);
     }
 
-    // Shared by the startup log line and /equilibrium; the disabled list matters more than the count
+    // Returns the active and disabled switches as text lines.
     public static List<String> statistics() {
         EquilibriumConfig config = config();
 
@@ -61,7 +72,6 @@ public final class Equilibrium {
             } else if (option.isModDefined()) {
                 disabledByMod.add(entry.name() + " (" + String.join(", ", option.getDefiningMods()) + ")");
             } else if (entry.enabledByDefault()) {
-                // On by default but off now, and nobody claimed it: a dependency of it was disabled.
                 disabledByDependency.add(entry.name());
             }
         }
@@ -76,7 +86,7 @@ public final class Equilibrium {
         return lines;
     }
 
-    // Appends a heading and its indented members, or nothing at all when the group is empty
+    // Adds a heading and its members when the list is not empty.
     private static void appendGroup(List<String> lines, String heading, List<String> members) {
         if (members.isEmpty()) {
             return;
@@ -89,7 +99,7 @@ public final class Equilibrium {
         }
     }
 
-    // The single line Impetus adds to the F3 overlay when the option is on
+    // Returns the line shown in the debug overlay.
     public static String debugOverlayLine() {
         EquilibriumConfig config = config();
 

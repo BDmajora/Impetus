@@ -14,20 +14,23 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 
-// Vanilla's shulker box shimmer: over the lid's lower rows base and lid share their side planes, the lid see-through where the base's teeth are solid, and the two differently sized quads disagree at the edges each frame the camera moves; a shut box draws both parts cut at each other's edges so those rows are one identical quad in each (this covers shulker box items too), a moving lid keeps vanilla's parts
+// Mixin that changes TileEntityShulkerBoxRenderer.
 @Mixin(TileEntityShulkerBoxRenderer.class)
 public abstract class TileEntityShulkerBoxRendererLidSeamMixin {
+    // Reference to the field model of the target.
     @Shadow
     @Final
     private ModelShulker model;
 
-    // Built from this renderer's own model the first time a shut box is drawn
+    // Field shut base added to the target.
     @Unique
     private ModelRenderer impetus$shutBase;
 
+    // Field shut lid added to the target.
     @Unique
     private ModelRenderer impetus$shutLid;
 
+    // Wraps the call of ModelRenderer.render in render.
     @WrapOperation(method = "render(Lnet/minecraft/tileentity/TileEntityShulkerBox;DDDFIF)V",
             at = @At(value = "INVOKE", target = "Lnet/minecraft/client/model/ModelRenderer;render(F)V", ordinal = 0))
     private void impetus$drawShutBase(ModelRenderer base, float scale, Operation<Void> original,
@@ -43,6 +46,7 @@ public abstract class TileEntityShulkerBoxRendererLidSeamMixin {
         this.impetus$shutBase.render(scale);
     }
 
+    // Wraps the call of ModelRenderer.render in render.
     @WrapOperation(method = "render(Lnet/minecraft/tileentity/TileEntityShulkerBox;DDDFIF)V",
             at = @At(value = "INVOKE", target = "Lnet/minecraft/client/model/ModelRenderer;render(F)V", ordinal = 1))
     private void impetus$drawShutLid(ModelRenderer lid, float scale, Operation<Void> original,

@@ -1,26 +1,29 @@
 package com.bdmajora.impetus.umbra.shaderpack.texture;
 
-// The blur/clamp flags from a custom texture's .png.mcmeta ({"texture":{"blur":..,"clamp":..}}): blur picks GL_LINEAR, clamp picks GL_CLAMP_TO_EDGE, both default false like vanilla
+// Blur and clamp flags of a texture.
 public final class TextureFilteringData {
+    // Flag of linear filtering.
     private final boolean blur;
+    // Flag of edge clamping.
     private final boolean clamp;
 
+    // Creates a texture filtering data from its blur and clamp.
     public TextureFilteringData(boolean blur, boolean clamp) {
         this.blur = blur;
         this.clamp = clamp;
     }
 
-    // LINEAR rather than NEAREST
+    // Returns whether blur.
     public boolean shouldBlur() {
         return this.blur;
     }
 
-    // CLAMP_TO_EDGE rather than REPEAT
+    // Returns whether clamp.
     public boolean shouldClamp() {
         return this.clamp;
     }
 
-    // For logging
+    // Returns the text of the flags.
     @Override
     public String toString() {
         return "TextureFilteringData{blur=" + this.blur + ", clamp=" + this.clamp + "}";

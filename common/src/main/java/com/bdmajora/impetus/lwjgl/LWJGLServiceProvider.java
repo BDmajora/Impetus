@@ -1,12 +1,14 @@
 package com.bdmajora.impetus.lwjgl;
 
-// Holds the one LWJGLService, built at class init; separate from the record so a test backend can be mocked from it without a class-init cycle
+// Holds the one LWJGL service.
 public final class LWJGLServiceProvider {
+    // The service.
     public static final LWJGLService LWJGL = createInstance();
 
+    // Prevents instantiation
     private LWJGLServiceProvider() {}
 
-    // Unit tests name a factory class through impetus.lwjgl.service, since the real service needs a GL context
+    // Creates the service or the service of the factory class named by the system property.
     static LWJGLService createInstance() {
         String override = System.getProperty("impetus.lwjgl.service");
         if (override == null) {

@@ -10,15 +10,16 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Dedups BakedQuad.vertexData (identical geometry bakes to byte-identical 28-int arrays); restricted to exact BakedQuad instances since BakedQuadRetextured/UnpackedBakedQuad mutate after construction, and only during the model bake
+// Mixin that changes BakedQuad.
 @Mixin(BakedQuad.class)
 public class CoarctatioBakedQuadMixin {
+    // Reference to the field vertex data of the target.
     @Mutable
     @Shadow
     @Final
     protected int[] vertexData;
 
-    // Pinned to the six-arg ctor by full descriptor: a bare "<init>" binds to the deprecated four-arg ctor and silently never fires
+    // Runs before every return of constructor.
     @Inject(
             method = "<init>([IILnet/minecraft/util/EnumFacing;Lnet/minecraft/client/renderer/texture/TextureAtlasSprite;ZLnet/minecraft/client/renderer/vertex/VertexFormat;)V",
             at = @At("RETURN")

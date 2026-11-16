@@ -5,9 +5,15 @@ import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 
 import java.util.List;
 
+// Components and pass that make up a chunk shader.
 public record ChunkShaderOptions(List<ChunkShaderComponent.Factory<?>> components, TerrainRenderPass pass) {
+    // Rejects null components or pass.
+    public ChunkShaderOptions {
+        java.util.Objects.requireNonNull(components, "components");
+        java.util.Objects.requireNonNull(pass, "pass");
+    }
 
-    // Defines from every component
+    // Returns the shader definitions of the components and the pass.
     public ShaderConstants constants() {
         ShaderConstants.Builder constants = ShaderConstants.builder();
         for (var component : components) {

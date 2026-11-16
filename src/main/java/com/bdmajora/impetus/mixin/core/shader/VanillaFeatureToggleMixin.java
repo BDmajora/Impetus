@@ -7,9 +7,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// The "weather" shaders.properties toggle via VanillaFeatureToggles: a pack rendering its own precipitation asks vanilla to stop drawing rain and snow
+// Mixin that changes EntityRenderer.
 @Mixin(EntityRenderer.class)
 public class VanillaFeatureToggleMixin {
+    // Runs at the start of renderRainSnow and can cancel it.
     @Inject(method = "renderRainSnow", at = @At("HEAD"), cancellable = true, require = 0)
     private void impetus$suppressWeather(float partialTicks, CallbackInfo ci) {
         if (!VanillaFeatureToggles.shouldRenderWeather()) {

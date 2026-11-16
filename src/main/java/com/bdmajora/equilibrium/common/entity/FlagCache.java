@@ -1,6 +1,7 @@
 package com.bdmajora.equilibrium.common.entity;
 
-// Implemented on Entity: drops the cached flags byte so the next getFlag re-reads the data manager
+// Entity that caches its flags.
 public interface FlagCache {
+    // Discards the cached flags.
     void equilibrium$invalidateFlags();
 }

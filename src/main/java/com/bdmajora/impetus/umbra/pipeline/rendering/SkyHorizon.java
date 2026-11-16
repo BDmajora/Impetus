@@ -11,18 +11,23 @@ import org.apache.logging.log4j.Logger;
 import org.joml.Vector3f;
 import org.lwjgl.opengl.GL11;
 
-// Port of OptiFine's Shaders.drawHorizon: an octagonal ring at the render-distance edge from ground level to y = 16 through gbuffers_skybasic, right before the sky disc; vanilla leaves a band at the horizon uncovered, which kept last frame's non-cleared colortex1 and self-perpetuated into a blown band
+// Fog colored octagonal wall that hides the void below the horizon.
 public final class SkyHorizon {
+    // Logger of draw failures.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
-    // At high render distances the ring reaches the far plane and clips, letting the band return; 256 blocks is beyond the terrain fog yet inside the sky projection (Umbra HorizonRenderer)
+    // Largest radius of the wall in blocks.
     private static final float MAX_RADIUS = 256.0f;
+    // Height of the wall top above the camera.
     private static final double TOP = 16.0;
-    // OptiFine's ring corners as indices into {d0, d1, d2, d3} = {0.9238r, 0.3826r, -0.3826r, -0.9238r}, x then z; each quad joins one corner to the next
+    // Corner index pairs of the octagon in order.
     private static final int[][] RING = {{2, 3}, {3, 2}, {3, 1}, {2, 1}, {1, 0}, {0, 1}, {0, 2}, {1, 3}};
 
+    // Drawing state that blocks reentry.
     private boolean drawing;
+    // Corner offsets of the octagon.
+    private final double[] corners = new double[4];
 
-    // Draws the ring; re-entry (a mod drawing the sky from inside this) is ignored, and a failure leaves the shared BufferBuilder usable for vanilla's next begin
+    // Draws the wall once at a time and finishes the buffer when drawing fails.
     public void draw() {
         if (this.drawing) {
             return;
@@ -32,7 +37,11 @@ public final class SkyHorizon {
         boolean begun = false;
         try {
             float radius = Math.min(Minecraft.getMinecraft().gameSettings.renderDistanceChunks * 16.0f, MAX_RADIUS);
-            double[] corners = {radius * 0.9238D, radius * 0.3826D, -(radius * 0.3826D), -(radius * 0.9238D)};
+            double[] corners = this.corners;
+            corners[0] = radius * 0.9238D;
+            corners[1] = radius * 0.3826D;
+            corners[2] = -corners[1];
+            corners[3] = -corners[0];
             double bottom = -CapturedRenderingState.INSTANCE.getCameraPosition().y;
             Vector3f fog = CapturedRenderingState.INSTANCE.getFogColor();
             GlStateManager.color(fog.x, fog.y, fog.z);
@@ -51,7 +60,6 @@ public final class SkyHorizon {
         } catch (VirtualMachineError e) {
             throw e;
         } catch (Throwable t) {
-            // A half-built ring left the buffer "already building" and vanilla's next begin crashed the client
             if (begun) {
                 buffer.finishDrawing();
             }

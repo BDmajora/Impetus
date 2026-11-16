@@ -5,41 +5,53 @@ import net.minecraft.world.chunk.NibbleArray;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 
-// Starlight's single-writer multi-reader nibble array (via Pulsar): the worker writes an updating copy and publishes it as the visible copy in one step, so readers on other threads never see a half-written section
+// Light nibble array with one writer copy and one published copy for readers.
 public final class SWMRNibbleArray {
-    // Section does not exist; reads as zero and is never written
+    // State of a section without light storage.
     public static final int INIT_STATE_NULL = 0;
-    // Section exists conceptually but is all zero, backing array not allocated
+    // State of a section that reads as zero light.
     public static final int INIT_STATE_UNINIT = 1;
-    // Section holds light data
+    // State of a section with stored light.
     public static final int INIT_STATE_INIT = 2;
-    // Initialised but hidden from the vanilla view; block light uses it to keep data around for a decrease that is still propagating
+    // State of a section with stored light that readers treat as absent.
     public static final int INIT_STATE_HIDDEN = 3;
 
+    // Bytes of one section of four bit values.
     public static final int ARRAY_SIZE = 16 * 16 * 16 / 2;
 
-    // Per-thread pool of 2048-byte arrays, since a pass allocates and frees a working copy per touched section
+    // Per thread pool of released writer arrays.
     private static final ThreadLocal<ArrayDeque<byte[]>> WORKING_BYTES_POOL = ThreadLocal.withInitial(ArrayDeque::new);
 
+    // State seen by the writer.
     private int stateUpdating;
+    // State seen by readers.
     private volatile int stateVisible;
+    // Array written by the writer.
     private byte[] storageUpdating;
+    // Flag set when the writer array is private and holds unpublished changes.
     private boolean updatingDirty;
+    // Array read by readers.
     private volatile byte[] storageVisible;
-    // Whole-section shortcuts so edge checks can skip a pair of full or empty sections without reading them
+    // Flag set when every writer value is fifteen.
     private boolean fullFlag;
+    // Flag set when every writer value is zero.
     private boolean zeroFlag;
+    // Published full flag.
     private volatile boolean fullFlagVisible;
+    // Published zero flag.
     private volatile boolean zeroFlagVisible;
 
+    // Creates a uninitialised array that reads as zero.
     public SWMRNibbleArray() {
         this(null, false);
     }
 
+    // Creates an array over the bytes or an uninitialised array for null.
     public SWMRNibbleArray(byte[] bytes) {
         this(bytes, false);
     }
 
+    // Creates an array over the bytes or a null or uninitialised array for null and rejects a wrong length.
     public SWMRNibbleArray(byte[] bytes, boolean isNullNibble) {
         if (bytes != null && bytes.length != ARRAY_SIZE) {
             throw new IllegalArgumentException("Data of wrong length: " + bytes.length);
@@ -53,9 +65,13 @@ public final class SWMRNibbleArray {
         this.zeroFlagVisible = this.zeroFlag;
     }
 
+    // Creates an array in a saved state and rejects a wrong length or an unknown state or missing data.
     public SWMRNibbleArray(byte[] bytes, int state) {
         if (bytes != null && bytes.length != ARRAY_SIZE) {
             throw new IllegalArgumentException("Data of wrong length: " + bytes.length);
+        }
+        if (state < INIT_STATE_NULL || state > INIT_STATE_HIDDEN) {
+            throw new IllegalArgumentException("Unknown state " + state);
         }
         if (bytes == null && (state == INIT_STATE_INIT || state == INIT_STATE_HIDDEN)) {
             throw new IllegalArgumentException("Data cannot be null and have state be initialised");
@@ -67,16 +83,18 @@ public final class SWMRNibbleArray {
         this.zeroFlagVisible = this.zeroFlag;
     }
 
+    // Returns a pooled array or a new one.
     private static byte[] allocateBytes() {
         byte[] inPool = WORKING_BYTES_POOL.get().pollFirst();
         return inPool != null ? inPool : new byte[ARRAY_SIZE];
     }
 
+    // Returns an array to the pool of this thread.
     private static void freeBytes(byte[] bytes) {
         WORKING_BYTES_POOL.get().addFirst(bytes);
     }
 
-    // Copies a vanilla array into a fresh SWMR array; a null vanilla array means the section has no light storage at all
+    // Creates an array from a copy of a vanilla nibble array.
     public static SWMRNibbleArray fromVanilla(NibbleArray nibble) {
         if (nibble == null) {
             return new SWMRNibbleArray(null, true);
@@ -85,6 +103,7 @@ public final class SWMRNibbleArray {
         return data == null ? new SWMRNibbleArray() : new SWMRNibbleArray(data.clone());
     }
 
+    // Returns whether every byte of the array is zero.
     private static boolean isAllZero(byte[] data) {
         for (int i = 0; i < (ARRAY_SIZE >>> 4); ++i) {
             byte whole = data[i << 4];
@@ -98,7 +117,7 @@ public final class SWMRNibbleArray {
         return true;
     }
 
-    // Snapshot of the visible side for saving; an all-zero initialised section saves as UNINIT so the file never carries 2 KB of zeros
+    // Returns the published data for saving or null when nothing needs saving.
     public SaveState getSaveState() {
         synchronized (this) {
             int state = this.stateVisible;
@@ -116,10 +135,10 @@ public final class SWMRNibbleArray {
         }
     }
 
-    // Fills every layer with the bottom layer of the section above, the skylight a column carries down through empty space
+    // Fills every layer with the bottom layer of another array and rejects a null source.
     public void extrudeLower(SWMRNibbleArray other) {
         if (other.stateUpdating == INIT_STATE_NULL) {
-            throw new IllegalArgumentException();
+            throw new IllegalArgumentException("Cannot extrude a null nibble");
         }
         if (other.storageUpdating == null) {
             this.setUninitialised();
@@ -139,7 +158,6 @@ public final class SWMRNibbleArray {
         }
 
         int end = (15 | (15 << 4)) >>> 1;
-        // Index layout is x | z << 4 | y << 8, so one layer is the first 128 bytes
         for (int y = 0; y <= 15; ++y) {
             System.arraycopy(src, 0, into, y << (8 - 1), end + 1);
         }
@@ -147,6 +165,7 @@ public final class SWMRNibbleArray {
         this.zeroFlag = other.zeroFlag;
     }
 
+    // Sets every writer value to fifteen.
     public void setFull() {
         if (this.stateUpdating != INIT_STATE_HIDDEN) {
             this.stateUpdating = INIT_STATE_INIT;
@@ -159,6 +178,7 @@ public final class SWMRNibbleArray {
         this.zeroFlag = false;
     }
 
+    // Sets every writer value to zero.
     public void setZero() {
         if (this.stateUpdating != INIT_STATE_HIDDEN) {
             this.stateUpdating = INIT_STATE_INIT;
@@ -171,6 +191,7 @@ public final class SWMRNibbleArray {
         this.zeroFlag = true;
     }
 
+    // Turns a null array into an uninitialised one and a hidden one into an initialised one.
     public void setNonNull() {
         if (this.stateUpdating == INIT_STATE_HIDDEN) {
             this.stateUpdating = INIT_STATE_INIT;
@@ -182,6 +203,7 @@ public final class SWMRNibbleArray {
         this.stateUpdating = INIT_STATE_UNINIT;
     }
 
+    // Drops the writer storage and marks the array null.
     public void setNull() {
         this.stateUpdating = INIT_STATE_NULL;
         if (this.updatingDirty && this.storageUpdating != null) {
@@ -193,6 +215,7 @@ public final class SWMRNibbleArray {
         this.zeroFlag = false;
     }
 
+    // Drops the writer storage and marks the array uninitialised.
     public void setUninitialised() {
         this.stateUpdating = INIT_STATE_UNINIT;
         if (this.storageUpdating != null && this.updatingDirty) {
@@ -204,6 +227,7 @@ public final class SWMRNibbleArray {
         this.zeroFlag = true;
     }
 
+    // Hides an initialised array and nulls any other array.
     public void setHidden() {
         if (this.stateUpdating == INIT_STATE_HIDDEN) {
             return;
@@ -215,55 +239,67 @@ public final class SWMRNibbleArray {
         }
     }
 
+    // Returns whether the writer holds unpublished changes.
     public boolean isDirty() {
         return this.stateUpdating != this.stateVisible || this.updatingDirty;
     }
 
+    // Returns whether the writer state is null.
     public boolean isNullNibbleUpdating() {
         return this.stateUpdating == INIT_STATE_NULL;
     }
 
+    // Returns whether the published state is null.
     public boolean isNullNibbleVisible() {
         return this.stateVisible == INIT_STATE_NULL;
     }
 
+    // Returns whether the writer state is uninitialised.
     public boolean isUninitialisedUpdating() {
         return this.stateUpdating == INIT_STATE_UNINIT;
     }
 
+    // Returns whether the published state is uninitialised.
     public boolean isUninitialisedVisible() {
         return this.stateVisible == INIT_STATE_UNINIT;
     }
 
+    // Returns whether the writer state is initialised.
     public boolean isInitialisedUpdating() {
         return this.stateUpdating == INIT_STATE_INIT;
     }
 
+    // Returns whether the published state is initialised.
     public boolean isInitialisedVisible() {
         return this.stateVisible == INIT_STATE_INIT;
     }
 
+    // Returns whether the writer state is hidden.
     public boolean isHiddenUpdating() {
         return this.stateUpdating == INIT_STATE_HIDDEN;
     }
 
+    // Returns whether every writer value is fifteen.
     public boolean isFullUpdating() {
         return this.fullFlag;
     }
 
+    // Returns whether every writer value is zero.
     public boolean isZeroUpdating() {
         return this.zeroFlag;
     }
 
+    // Returns whether every published value is fifteen.
     public boolean isFullVisible() {
         return this.fullFlagVisible;
     }
 
+    // Returns whether every published value is zero.
     public boolean isZeroVisible() {
         return this.zeroFlagVisible;
     }
 
-    // First write of a pass: the updating side becomes a private copy so readers keep seeing the old visible array until publish
+    // Gives the writer a private copy of its array and marks it dirty.
     private void swapUpdatingAndMarkDirty() {
         if (this.updatingDirty) {
             return;
@@ -282,7 +318,7 @@ public final class SWMRNibbleArray {
         this.zeroFlag = false;
     }
 
-    // Publishes the updating side; copied in place into the visible array when one exists, so a client whose vanilla nibble shares that array sees the new light without a swap
+    // Publishes the writer changes and returns whether anything changed.
     public boolean updateVisible() {
         if (!this.isDirty()) {
             return false;
@@ -309,15 +345,17 @@ public final class SWMRNibbleArray {
         return true;
     }
 
-    // The visible backing array, null for NULL and UNINIT; callers must not write to it
+    // Returns the published array or null.
     public byte[] getVisibleData() {
         return this.storageVisible;
     }
 
+    // Returns the writer value at a block position.
     public int getUpdating(int x, int y, int z) {
         return this.getUpdating((x & 15) | ((z & 15) << 4) | ((y & 15) << 8));
     }
 
+    // Returns the writer value at an index.
     public int getUpdating(int index) {
         byte[] bytes = this.storageUpdating;
         if (bytes == null) {
@@ -327,10 +365,12 @@ public final class SWMRNibbleArray {
         return ((value >>> ((index & 1) << 2)) & 0xF);
     }
 
+    // Returns the published value at a block position.
     public int getVisible(int x, int y, int z) {
         return this.getVisible((x & 15) | ((z & 15) << 4) | ((y & 15) << 8));
     }
 
+    // Returns the published value at an index.
     public int getVisible(int index) {
         byte[] visibleBytes = this.storageVisible;
         if (visibleBytes == null) {
@@ -340,10 +380,12 @@ public final class SWMRNibbleArray {
         return ((value >>> ((index & 1) << 2)) & 0xF);
     }
 
+    // Sets the writer value at a block position.
     public void set(int x, int y, int z, int value) {
         this.set((x & 15) | ((z & 15) << 4) | ((y & 15) << 8), value);
     }
 
+    // Sets the low four bits of a value at an index.
     public void set(int index, int value) {
         if (this.fullFlag | this.zeroFlag) {
             this.fullFlag = false;
@@ -354,14 +396,17 @@ public final class SWMRNibbleArray {
         }
         int shift = (index & 1) << 2;
         int i = index >>> 1;
-        this.storageUpdating[i] = (byte) ((this.storageUpdating[i] & (0xF0 >>> shift)) | (value << shift));
+        this.storageUpdating[i] = (byte) ((this.storageUpdating[i] & (0xF0 >>> shift)) | ((value & 0xF) << shift));
     }
 
-    // Saved form of one section: data is null for UNINIT
+    // Saved data and state of an array.
     public static final class SaveState {
+        // Saved bytes or null.
         public final byte[] data;
+        // Saved state.
         public final int state;
 
+        // Creates a saved state.
         public SaveState(byte[] data, int state) {
             this.data = data;
             this.state = state;

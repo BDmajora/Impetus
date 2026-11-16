@@ -7,29 +7,37 @@ import com.bdmajora.impetus.engine.impl.util.Dim2i;
 
 import java.util.Objects;
 
-// Sidebar header for a mod's group of pages, icon and name on one line, and a click folds or unfolds the pages beneath it; the fold marker on the right is plain "+" / "-" since the default font has no triangle glyphs
+// Sidebar header of a group of pages that folds the group on a click.
 public class TabHeaderWidget extends FlatButtonWidget {
+    // Icon used when a mod has no logo.
     private static final String FALLBACK_TEXTURE = "textures/misc/unknown_pack.png";
+    // Side of the icon in pixels.
     private static final int ICON_SIZE = 20;
+    // Space around the icon in pixels.
     private static final int ICON_PADDING = 5;
+    // Space right of the fold marker in pixels.
     private static final int MARKER_PADDING = 6;
+    // Color of the hover and focus wash.
     private static final int HOVER_COLOR = 0x30FFFFFF;
 
-    // Row height used by the sidebar when laying this widget out
+    // Height of the header row.
     public static final int HEIGHT = 30;
-    // Room the sidebar reserves on the right of the name for the fold marker
+    // Width reserved for the fold marker.
     public static final int MARKER_WIDTH = 14;
 
+    // Id of the group.
     private final String modId;
+    // Fold state of the group.
     private final boolean collapsed;
 
+    // Creates a header and rejects a null group id.
     public TabHeaderWidget(Dim2i dim, String modId, boolean collapsed, Runnable onToggle) {
         super(dim, TextComponent.literal(""), onToggle);
-        this.modId = modId;
+        this.modId = Objects.requireNonNull(modId, "modId");
         this.collapsed = collapsed;
     }
 
-    // Icon, name, fold marker and a faint hover wash; no button background so the header reads as a heading rather than a row. Focus washes it too and outlines it in the mod's accent
+    // Draws the icon and name and fold marker and a wash when hovered or focused.
     @Override
     public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
         if (this.isFocused() || this.isHovered(mouseX, mouseY)) {
@@ -40,13 +48,13 @@ public class TabHeaderWidget extends FlatButtonWidget {
         int iconY = this.dim.getCenterY() - (ICON_SIZE / 2);
         drawContext.blitWholeImage(icon, this.dim.x() + ICON_PADDING, iconY, ICON_SIZE, ICON_SIZE);
 
-        // Text starts past the icon and both paddings so every heading lines up whether the mod supplied a logo or fell back
+        // Starts the text after the icon and its padding
         int textX = this.dim.x() + ICON_PADDING + ICON_SIZE + ICON_PADDING;
         var name = drawContext.getFriendlyModName(this.modId);
         int accentColor = drawContext.getModAccentColor(this.modId);
         int textY = this.dim.getCenterY() - (drawContext.lineHeight() / 2);
 
-        // Vertically centred against the row rather than the icon, so the name stays put if ICON_SIZE changes
+        // Centers the text on the row
         drawContext.drawString(name, textX, textY, accentColor);
 
         String marker = this.collapsed ? "+" : "-";

@@ -12,27 +12,33 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.EnumMap;
 
-// The per-face edge bitmaps of a generated item model as one int array instead of four BitSets in an EnumMap, read once per pixel per face while the quads are built. remap = false, Forge class
+// Mixin that changes FaceData.
 @Mixin(targets = "net/minecraftforge/client/model/ItemLayerModel$FaceData", remap = false)
 public abstract class ItemLayerFaceDataMixin {
+    // Reference to the field v max of the target.
     @Shadow
     @Final
     private int vMax;
 
+    // Packed opacity bits of every face.
     private int[] coarctatio$bits;
+    // Number of words per face.
     private int coarctatio$wordsPerFace;
 
+    // Replaces the call of EnumMap.put in constructor.
     @Redirect(method = "<init>", at = @At(value = "INVOKE", target = "Ljava/util/EnumMap;put(Ljava/lang/Enum;Ljava/lang/Object;)Ljava/lang/Object;"))
     private Object coarctatio$skipBitSets(EnumMap<EnumFacing, Object> map, Enum<?> key, Object value) {
         return null;
     }
 
+    // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void coarctatio$allocate(int uMax, int vMax, CallbackInfo ci) {
         this.coarctatio$wordsPerFace = (uMax * vMax + 31) / 32;
         this.coarctatio$bits = new int[4 * this.coarctatio$wordsPerFace];
     }
 
+    // Handles face index.
     private static int coarctatio$faceIndex(EnumFacing facing) {
         return switch (facing) {
             case WEST -> 0;
@@ -43,20 +49,14 @@ public abstract class ItemLayerFaceDataMixin {
         };
     }
 
-    /**
-     * @author embeddedt, bdmajora
-     * @reason Bit in the flat array
-     */
+    // Replaces the whole method set.
     @Overwrite
     public void set(EnumFacing facing, int u, int v) {
         int index = v * this.vMax + u;
         this.coarctatio$bits[coarctatio$faceIndex(facing) * this.coarctatio$wordsPerFace + (index >> 5)] |= 1 << (index & 31);
     }
 
-    /**
-     * @author embeddedt, bdmajora
-     * @reason Bit in the flat array
-     */
+    // Replaces the whole method get.
     @Overwrite
     public boolean get(EnumFacing facing, int u, int v) {
         int index = v * this.vMax + u;

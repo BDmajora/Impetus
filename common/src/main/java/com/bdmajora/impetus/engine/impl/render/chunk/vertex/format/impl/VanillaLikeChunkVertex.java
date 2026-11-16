@@ -7,16 +7,17 @@ import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexEn
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexType;
 import org.lwjgl.system.MemoryUtil;
 
-// Wide full-precision terrain vertex for modded models with fine sub-block offsets, where CompactChunkVertex's quantised positions/UVs become visible
+// Terrain vertex of 32 bytes with full precision floats.
 public class VanillaLikeChunkVertex implements ChunkVertexType {
+    // Bytes of one vertex.
     public static final int STRIDE = 32;
 
-    // The base layout plus the bilinear AO correction factor the built-in terrain shader reads
+    // GL format of the vertex.
     public static final GlVertexFormat VERTEX_FORMAT = baseFormat(STRIDE)
             .addElement("a_RdhFactor", 28, GlVertexAttributeFormat.BYTE, 4, true, false)
             .build();
 
-    // The four base attributes at their fixed offsets, for a wider format that appends its own after byte 28
+    // Returns a builder with the four base attributes.
     public static GlVertexFormat.Builder baseFormat(int stride) {
         return GlVertexFormat.builder(stride)
                 .addElement("a_PosId", 0, GlVertexAttributeFormat.FLOAT, 3, false, false)
@@ -25,31 +26,31 @@ public class VanillaLikeChunkVertex implements ChunkVertexType {
                 .addElement("a_LightCoord", 24, GlVertexAttributeFormat.UNSIGNED_INT, 1, false, true);
     }
 
-    // Positions are stored as float
+    // Returns the position scale.
     @Override
     public float getPositionScale() {
         return 1f;
     }
 
-    // No offset
+    // Returns the position offset.
     @Override
     public float getPositionOffset() {
         return 0;
     }
 
-    // UVs are stored as float
+    // Returns the texture scale.
     @Override
     public float getTextureScale() {
         return 1f;
     }
 
-    // Vanilla-like layout the shader pack transform expects
+    // Returns the GL format.
     @Override
     public GlVertexFormat getVertexFormat() {
         return VERTEX_FORMAT;
     }
 
-    // Writes one vertex per call
+    // Creates an encoder that writes one vertex per call.
     @Override
     public ChunkVertexEncoder createEncoder() {
         return (ptr, material, vertex, sectionIndex) -> {
@@ -60,7 +61,7 @@ public class VanillaLikeChunkVertex implements ChunkVertexType {
         };
     }
 
-    // The 28-byte layout itself, shared with the shader-pack format that extends it
+    // Writes the first 28 bytes of a vertex.
     public static void writeBase(long ptr, Material material, ChunkVertexEncoder.Vertex vertex, int sectionIndex) {
         MemoryUtil.memPutFloat(ptr + 0, vertex.x);
         MemoryUtil.memPutFloat(ptr + 4, vertex.y);
@@ -71,19 +72,19 @@ public class VanillaLikeChunkVertex implements ChunkVertexType {
         MemoryUtil.memPutInt(ptr + 24, encodeDrawParameters(material, sectionIndex) | (encodeLight(vertex.light) << 16));
     }
 
-    // Material bits and section index into one int
+    // Returns the section index and material bits.
     private static int encodeDrawParameters(Material material, int sectionIndex) {
         return ((sectionIndex & 0xFF) << 8) | (material.bits() & 0xFF);
     }
 
-    // Packed light into the shader's lightmap coordinates
+    // Returns the packed light of block and sky.
     private static int encodeLight(int light) {
         int block = light & 0xFF;
         int sky = (light >> 16) & 0xFF;
         return block | (sky << 8);
     }
 
-    // UVs pass through
+    // Returns the texture coordinate limited below one.
     private static float encodeTexture(float value) {
         return Math.min(0.99999997F, value);
     }

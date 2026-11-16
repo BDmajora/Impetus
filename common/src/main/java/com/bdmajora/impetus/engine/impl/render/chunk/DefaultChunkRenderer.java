@@ -20,24 +20,32 @@ import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 import com.bdmajora.impetus.engine.impl.render.viewport.CameraTransform;
 import java.util.Iterator;
 
+// Chunk renderer that draws each region with a cached multi draw batch.
 public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
+    // Shared index buffers by primitive type.
     private final Reference2ReferenceMap<ChunkPrimitiveType, SharedQuadIndexBuffer> sharedIndexBuffers;
 
+    // Provider that creates region tessellations for the batch assembler.
     private final BatchAssembler.TessellationProvider tessellationProvider = this::prepareTessellation;
 
+    // Pass drawn by the current render call or null.
     private TerrainRenderPass currentRenderPass;
+    // Vertex format of the current pass or null.
     private GlVertexFormat currentVertexFormat;
 
+    // Creates the renderer and rejects null arguments.
     public DefaultChunkRenderer(RenderDevice device, RenderPassConfiguration<?> renderPassConfiguration, FogService fogService) {
         super(device, renderPassConfiguration, fogService);
 
         this.sharedIndexBuffers = new Reference2ReferenceOpenHashMap<>();
     }
 
+    // Returns true when hidden block faces are culled.
     protected boolean useBlockFaceCulling() {
         return true;
     }
 
+    // Returns the shared index buffer of a primitive type and creates it when missing.
     protected final SharedQuadIndexBuffer getSharedIndexBuffer(ChunkPrimitiveType type, CommandList commandList) {
         var buffer = this.sharedIndexBuffers.get(type);
         if (buffer == null) {
@@ -47,8 +55,10 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
         return buffer;
     }
 
+    // Sets the uniforms of a subclass on the shader.
     protected abstract void configureShaderInterface(ChunkShaderInterface shader);
 
+    // Draws every region of a pass and restores the pass state on every path.
     @Override
     public void render(ChunkRenderMatrices matrices,
                        CommandList commandList,
@@ -62,12 +72,22 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
 
         this.begin(renderPass);
 
-        // If there is no active program, shader compilation probably failed, and we can't render anything.
-        if (this.activeProgram != null) {
-            boolean useBlockFaceCulling = this.useBlockFaceCulling();
+        try {
+            // Skips drawing when the program failed to compile
+            if (this.activeProgram != null) {
+                this.drawRegions(matrices, commandList, renderLists, renderPass, occlusionCamera, camera);
+            }
+        } finally {
+            this.end(renderPass);
+        }
+    }
 
-            GLDebug.pushGroup(770, renderPass.name() + " terrain pass");
+    // Draws the regions of a pass inside a debug group.
+    private void drawRegions(ChunkRenderMatrices matrices, CommandList commandList, ChunkRenderListIterable renderLists,
+                             TerrainRenderPass renderPass, CameraTransform occlusionCamera, CameraTransform camera) {
+        GLDebug.pushGroup(770, renderPass.name() + " terrain pass");
 
+        try {
             ChunkShaderInterface shader = this.activeProgram.getInterface();
             shader.setProjectionMatrix(matrices.projection());
             shader.setModelViewMatrix(matrices.modelView());
@@ -77,16 +97,14 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
             Iterator<ChunkRenderList> iterator = renderLists.iterator(renderPass.isReverseOrder());
 
             this.currentRenderPass = renderPass;
-            this.currentVertexFormat = this.currentRenderPass.vertexType().getVertexFormat();
+            this.currentVertexFormat = renderPass.vertexType().getVertexFormat();
 
             this.configureShaderInterface(shader);
 
             long timestamp = System.nanoTime();
 
-            useBlockFaceCulling = useBlockFaceCulling && !renderPass.isSorted();
+            boolean useBlockFaceCulling = this.useBlockFaceCulling() && !renderPass.isSorted();
             var cacheParams = new SectionRenderDataStorage.BatchCacheParams(useBlockFaceCulling);
-
-            int numRebuilds = 0;
 
             while (iterator.hasNext()) {
                 ChunkRenderList renderList = iterator.next();
@@ -102,7 +120,6 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
 
                 if (cached == null || !cached.isValidFor(renderList.getSectionsWithGeometry(), renderList.getSectionsWithGeometryCount(),
                         occlusionCamera.intX, occlusionCamera.intY, occlusionCamera.intZ)) {
-                    numRebuilds++;
                     cached = BatchAssembler.createCachedBatch(region, storage, renderList, occlusionCamera, renderPass,
                             useBlockFaceCulling, commandList, this.tessellationProvider);
 
@@ -122,16 +139,15 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
                     batch.execute(commandList, cached.getTessellation(), primitiveType);
                 }
             }
-
+        } finally {
             this.currentVertexFormat = null;
             this.currentRenderPass = null;
 
             GLDebug.popGroup();
         }
-
-        this.end(renderPass);
     }
 
+    // Stores the offset of a region from the camera on the shader.
     private static void setModelMatrixUniforms(ChunkShaderInterface shader, RenderRegion region, CameraTransform camera) {
         float x = getCameraTranslation(region.getOriginX(), camera.intX, camera.fracX);
         float y = getCameraTranslation(region.getOriginY(), camera.intY, camera.fracY);
@@ -140,10 +156,12 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
         shader.setRegionOffset(x, y, z);
     }
 
+    // Returns the offset of a block coordinate from the camera.
     private static float getCameraTranslation(int chunkBlockPos, int cameraBlockPos, float cameraPos) {
         return (chunkBlockPos - cameraBlockPos) - cameraPos;
     }
 
+    // Returns the tessellation of a region for a pass and creates it when missing.
     private GlTessellation prepareTessellation(CommandList commandList, RenderRegion region, TerrainRenderPass pass) {
         var resources = region.getResources();
         var key = pass.tessellationKey();
@@ -158,6 +176,7 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
         return tessellation;
     }
 
+    // Creates the vertex and element bindings of a region for the current pass.
     protected TessellationBinding[] makeTessellationBindingArray(CommandList commandList, RenderRegion.DeviceResources resources) {
         return new TessellationBinding[] {
                 TessellationBinding.forVertexBuffer(resources.getVertexBuffer(), this.currentVertexFormat),
@@ -165,18 +184,35 @@ public abstract class DefaultChunkRenderer extends ShaderChunkRenderer {
         };
     }
 
+    // Creates a vertex array tessellation for a region and deletes it when setup fails.
     protected GlTessellation createRegionTessellation(CommandList commandList, RenderRegion.DeviceResources resources) {
         var bindings = makeTessellationBindingArray(commandList, resources);
         GlVertexArrayTessellation tessellation = new GlVertexArrayTessellation(new GlVertexArray(), bindings);
-        tessellation.init(commandList);
+        try {
+            tessellation.init(commandList);
+        } catch (RuntimeException | Error failure) {
+            try {
+                tessellation.delete(commandList);
+            } catch (RuntimeException suppressed) {
+                failure.addSuppressed(suppressed);
+            }
+            throw failure;
+        }
 
         return tessellation;
     }
 
+    // Deletes the programs and every shared index buffer once.
     @Override
     public void delete(CommandList commandList) {
-        super.delete(commandList);
-
-        this.sharedIndexBuffers.values().forEach(buffer -> buffer.delete(commandList));
+        try {
+            super.delete(commandList);
+        } finally {
+            var buffers = this.sharedIndexBuffers.values().toArray(new SharedQuadIndexBuffer[0]);
+            this.sharedIndexBuffers.clear();
+            for (SharedQuadIndexBuffer buffer : buffers) {
+                buffer.delete(commandList);
+            }
+        }
     }
 }

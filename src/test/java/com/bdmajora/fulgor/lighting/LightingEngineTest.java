@@ -188,4 +188,40 @@ class LightingEngineTest {
         assertEquals(15, small.blockLight(new BlockPos(8, 64, 8)));
         assertEquals(15, small.blockLight(new BlockPos(488, 64, 8)));
     }
+
+    // Waits for the running workers after an interrupt and keeps the interrupt flag.
+    @Test
+    void anInterruptedBatchWaitsForItsWorkersAndKeepsTheFlag() {
+        LightWorld fixture = new LightWorld();
+        FulgorConfig.get().parallelLightUpdates = true;
+        FulgorConfig.get().parallelLightThreads = 2;
+        FulgorConfig.get().parallelMinPositions = 8;
+        FulgorConfig.get().parallelMinChunks = 3;
+        LightingEngine engine = new LightingEngine(fixture.world);
+        BlockPos[] sources = new BlockPos[8];
+        for (int i = 0; i < sources.length; i++) {
+            sources[i] = new BlockPos(8 + 400 * (i % 4), 64, 8 + 400 * (i / 4));
+            fixture.chunk(sources[i].getX() >> 4, sources[i].getZ() >> 4);
+            fixture.setBlock(sources[i], Blocks.GLOWSTONE.getDefaultState());
+        }
+        for (BlockPos source : sources) {
+            for (int i = 0; i < 3; i++) {
+                engine.scheduleLightUpdate(EnumSkyBlock.BLOCK, source.up(i));
+            }
+        }
+        Thread.currentThread().interrupt();
+        try {
+            engine.processLightUpdates();
+            assertTrue(Thread.currentThread().isInterrupted());
+        } finally {
+            Thread.interrupted();
+        }
+        int lit = 0;
+        for (BlockPos source : sources) {
+            if (fixture.blockLight(source) == 15) {
+                lit++;
+            }
+        }
+        assertTrue(lit >= 1);
+    }
 }

@@ -371,7 +371,7 @@ class TerrainMixinsTest {
         MixinShaderChunkRenderer renderer = Mixins.instance(MixinShaderChunkRenderer.class);
         Map<ChunkShaderOptions, GlProgram<ChunkShaderInterface>> programs = new HashMap<>();
         Mixins.set(renderer, "programs", programs);
-        ChunkShaderOptions solid = new ChunkShaderOptions(List.of(), null);
+        ChunkShaderOptions solid = new ChunkShaderOptions(List.of(), mock(com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass.class));
         @SuppressWarnings("unchecked")
         GlProgram<ChunkShaderInterface> override = mock(GlProgram.class);
         @SuppressWarnings("unchecked")

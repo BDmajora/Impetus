@@ -9,9 +9,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Signs never declare a render type of their own and inherit BlockContainer's INVISIBLE, so the switch to MODEL has to sit here; isBaked keeps every other container on vanilla's answer
+// Mixin that changes BlockContainer.
 @Mixin(BlockContainer.class)
 public abstract class BlockContainerRenderTypeMixin {
+    // Runs at the start of getRenderType and can cancel it.
     @Inject(method = "getRenderType", at = @At("HEAD"), cancellable = true)
     private void impetus$bakedRenderType(IBlockState state, CallbackInfoReturnable<EnumBlockRenderType> cir) {
         if (BakedEntities.isBaked(state.getBlock())) {

@@ -6,46 +6,49 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
-// Every configurable option across a pack, deduplicated into boolean and string maps by name; where Iris DROPS an option whose duplicates disagree, this keeps the FIRST, since dropping leaves its preprocessor gates undefined and silently taking the wrong branch. From Iris with unmodifiable HashMaps
+// Options of a pack by name.
 public class OptionSet {
     private final Map<String, MergedBooleanOption> booleanOptions;
     private final Map<String, MergedStringOption> stringOptions;
 
+    // Creates an option set from its builder.
     private OptionSet(Builder builder) {
         this.booleanOptions = Collections.unmodifiableMap(new HashMap<>(builder.booleanOptions));
         this.stringOptions = Collections.unmodifiableMap(new HashMap<>(builder.stringOptions));
     }
 
-    // By name, merged across files
+    // Returns the boolean options.
     public Map<String, MergedBooleanOption> getBooleanOptions() {
         return this.booleanOptions;
     }
 
-    // By name, merged across files
+    // Returns the string options.
     public Map<String, MergedStringOption> getStringOptions() {
         return this.stringOptions;
     }
 
-    // Whether the name is a boolean rather than a valued option
+    // Returns whether a name is a boolean option.
     public boolean isBooleanOption(String name) {
         return booleanOptions.containsKey(name);
     }
 
-    // Starts an empty set
+    // Returns a new builder.
     public static Builder builder() {
         return new Builder();
     }
 
+    // Builder that merges options by name.
     public static class Builder {
         private final Map<String, MergedBooleanOption> booleanOptions;
         private final Map<String, MergedStringOption> stringOptions;
 
+        // Creates a builder with default state.
         public Builder() {
             this.booleanOptions = new HashMap<>();
             this.stringOptions = new HashMap<>();
         }
 
-        // Merges another set in
+        // Merges every option of another set.
         public void addAll(OptionSet other) {
             if (this.booleanOptions.isEmpty()) {
                 this.booleanOptions.putAll(other.booleanOptions);
@@ -60,27 +63,27 @@ public class OptionSet {
             }
         }
 
-        // Records a boolean option found at a location
+        // Adds a boolean option at a location.
         public void addBooleanOption(OptionLocation location, BooleanOption option) {
             addBooleanOption(new MergedBooleanOption(location, option));
         }
 
-        // Merges an already-merged option; conflicting definitions are logged
+        // Merges a boolean option.
         public void addBooleanOption(MergedBooleanOption proposed) {
             addMerged(this.booleanOptions, proposed, "boolean");
         }
 
-        // Records a valued option found at a location
+        // Adds a string option at a location.
         public void addStringOption(OptionLocation location, StringOption option) {
             addStringOption(new MergedStringOption(location, option));
         }
 
-        // Merges an already-merged option; conflicting definitions are logged
+        // Merges a string option.
         public void addStringOption(MergedStringOption proposed) {
             addMerged(this.stringOptions, proposed, "string");
         }
 
-        // The shared merge: a first declaration goes in as is, a repeat merges with what is there, and an irreconcilable one leaves the first definition standing
+        // Merges an option into a map and drops it when defaults clash.
         private static <O extends BaseOption, M extends MergedOption<O, M>> void addMerged(Map<String, M> into, M proposed, String kind) {
             String name = proposed.getOption().getName();
             M existing = into.get(name);
@@ -92,7 +95,7 @@ public class OptionSet {
             into.put(name, merged);
         }
 
-        // Finalises
+        // Returns the option set.
         public OptionSet build() {
             return new OptionSet(this);
         }

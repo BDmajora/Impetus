@@ -10,9 +10,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Drives the Panini post-effect through two hooks: one reads the effective FOV out of the projection as it is built (sprinting, speed, nausea all scale it), the other runs the pass where vanilla runs its own shader group, before the GUI with the main framebuffer bound
+// Mixin that changes EntityRenderer.
 @Mixin(EntityRenderer.class)
 public class EntityRendererPaniniMixin {
+    // Wraps the call of Project.gluPerspective in setupCameraTransform.
     @WrapOperation(
             method = "setupCameraTransform",
             at = @At(value = "INVOKE",
@@ -21,13 +22,13 @@ public class EntityRendererPaniniMixin {
     )
     private void impetus$captureProjection(float fovDegrees, float aspect, float near, float far,
                                            Operation<Void> original) {
-        // m11 of a perspective matrix is cot(fovY/2) and m00 is that over the aspect ratio; Panini wants their reciprocals, so hand over the entries and let it invert
         float cotHalfFov = (float) (1.0D / Math.tan(Math.toRadians(fovDegrees) / 2.0D));
         PaniniProjection.captureProjection(cotHalfFov / aspect, cotHalfFov);
 
         original.call(fovDegrees, aspect, near, far);
     }
 
+    // Runs around the call of RenderGlobal.renderEntityOutlineFramebuffer in updateCameraAndRender.
     @Inject(
             method = "updateCameraAndRender",
             at = @At(value = "INVOKE",

@@ -10,11 +10,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 
+// Finds the mixin classes in a folder of compiled classes.
 public class MixinClassValidator {
+    // Descriptor of the mixin annotation.
     private static final String MIXIN_DESC = "Lorg/spongepowered/asm/mixin/Mixin;";
 
-    // Recursively finds every .class under packageRoot with an @Mixin annotation, returns their dot-separated class names
+    // Returns the names of the mixin classes below a folder and returns the classes found so far after a read failure.
     public static List<String> scanMixinFolder(Path packageRoot) {
+        java.util.Objects.requireNonNull(packageRoot, "packageRoot");
         List<String> mixins = new ArrayList<>();
         try (Stream<Path> stream = Files.find(packageRoot, Integer.MAX_VALUE,
                 (path, attrs) -> attrs.isRegularFile() && path.getFileName().toString().endsWith(".class"))) {
@@ -28,7 +31,7 @@ public class MixinClassValidator {
         return mixins;
     }
 
-    // Class name from a path under the mixin root
+    // Returns the class name of a file below the root.
     private static String classifyMixin(Path baseFolder, Path path) {
         try {
             String className = baseFolder.relativize(path).toString().replace('/', '.').replace('\\', '.');
@@ -38,7 +41,7 @@ public class MixinClassValidator {
         }
     }
 
-    // Reads the class and checks for a @Mixin annotation
+    // Returns whether a class file has the mixin annotation and false for a file that cannot be read.
     public static boolean isMixinClass(Path classPath) {
         byte[] bytecode;
 
@@ -49,11 +52,16 @@ public class MixinClassValidator {
             return false;
         }
 
-        return isMixinClass(fromBytecode(bytecode));
+        try {
+            return isMixinClass(fromBytecode(bytecode));
+        } catch (RuntimeException unreadable) {
+            return false;
+        }
     }
 
-    // Parses skipping code and debug, since only annotations are needed
+    // Parses the annotations of a class and rejects null.
     public static ClassNode fromBytecode(byte[] bytecode) {
+        java.util.Objects.requireNonNull(bytecode, "bytecode");
         ClassNode node = new ClassNode();
         ClassReader reader = new ClassReader(bytecode);
         reader.accept(node, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
@@ -61,7 +69,7 @@ public class MixinClassValidator {
         return node;
     }
 
-    // Whether @Mixin appears in the invisible annotations
+    // Returns whether the class has the mixin annotation.
     public static boolean isMixinClass(ClassNode node) {
         if(node.invisibleAnnotations == null) {
             return false;

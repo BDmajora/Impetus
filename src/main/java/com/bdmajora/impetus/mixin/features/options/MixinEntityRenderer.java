@@ -11,27 +11,28 @@ import org.spongepowered.asm.mixin.injection.ModifyConstant;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import com.bdmajora.impetus.ImpetusVintage;
 
+// Mixin that changes EntityRenderer.
 @Mixin(EntityRenderer.class)
 public class MixinEntityRenderer {
-    // Weather quality follows the Impetus option rather than the global fancy toggle
+    // Replaces the field access GameSettings.fancyGraphics in renderRainSnow.
     @Redirect(method = "renderRainSnow", at = @At(value = "FIELD", target = "Lnet/minecraft/client/settings/GameSettings;fancyGraphics:Z", opcode = Opcodes.GETFIELD))
     private boolean redirectGetFancyWeather(GameSettings instance) {
         return ImpetusVintage.options().quality.weatherQuality.isFancy(Minecraft.getMinecraft().gameSettings.fancyGraphics);
     }
 
-    // Fast weather draws at half the configured radius, floored at one
+    // Changes a constant in renderRainSnow.
     @ModifyConstant(method = "renderRainSnow", constant = @Constant(intValue = 5))
     private int useConfiguredFastWeatherRadius(int radius) {
         return Math.max(1, ImpetusVintage.options().quality.weatherEffectRadius / 2);
     }
 
-    // Fancy weather draws at the full configured radius
+    // Changes a constant in renderRainSnow.
     @ModifyConstant(method = "renderRainSnow", constant = @Constant(intValue = 10))
     private int useConfiguredFancyWeatherRadius(int radius) {
         return Math.max(1, ImpetusVintage.options().quality.weatherEffectRadius);
     }
 
-    // Rain splash particles use the same radius as the weather itself
+    // Changes a constant in addRainParticles.
     @ModifyConstant(method = "addRainParticles", constant = @Constant(intValue = 10), require = 0)
     private int useConfiguredRainParticleRadius(int radius) {
         return Math.max(1, ImpetusVintage.options().quality.weatherEffectRadius);

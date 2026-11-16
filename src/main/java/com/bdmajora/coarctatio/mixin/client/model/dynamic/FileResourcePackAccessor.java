@@ -7,9 +7,10 @@ import org.spongepowered.asm.mixin.gen.Invoker;
 import java.io.IOException;
 import java.util.zip.ZipFile;
 
-// The zip behind a file pack, for listing when the existence index is off
+// Mixin that changes FileResourcePack.
 @Mixin(FileResourcePack.class)
 public interface FileResourcePackAccessor {
+    // Calls the method zip file.
     @Invoker("getResourcePackZipFile")
     ZipFile coarctatio$zipFile() throws IOException;
 }

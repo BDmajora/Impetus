@@ -8,28 +8,32 @@ import java.util.Set;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Which of a program's two shadow depth maps it declared as a plain sampler2D and so must read RAW depth: with a depth-comparison sampler on that unit this GL context returned a comparison result ("lit") for texelFetch, which is exactly what Complementary's composite1 does through `texelFetch(shadowtex0, ...)` for both its light-shaft march and its scene-aware probe, so the shafts had no shadow structure and the scene-aware mode never engaged (Iris binds the comparison sampler regardless and gets away with it on its core-profile context; measured here, this context does not). Read from the linked program's active uniform types, the only record of what the pack actually declared
+// Choice of comparison or raw sampling for each shadow sampler.
 public final class ShadowSamplerKinds {
+    // GL enum of the active uniform count.
     private static final int GL_ACTIVE_UNIFORMS = 0x8B86;
+    // Gl sampler 2 d.
     private static final int GL_SAMPLER_2D = 0x8B5E;
+    // Gl sampler 2 d shadow.
     private static final int GL_SAMPLER_2D_SHADOW = 0x8B62;
 
-    // Both units keep the comparison sampler: the OptiFine convention under shadowHardwareFiltering, and what a program that never samples the shadow map gets
+    // Kinds with every sampler compared.
     public static final ShadowSamplerKinds ALL_COMPARE = new ShadowSamplerKinds(false, false);
 
-    // Per shadow depth index (0 = shadowtex0, 1 = shadowtex1), true when the program wants the stored depth rather than a comparison
+    // Flags of the samplers read raw.
     private final boolean[] raw;
 
+    // Creates a shadow sampler kinds from its raw shadowtex0 and raw shadowtex1.
     private ShadowSamplerKinds(boolean rawShadowtex0, boolean rawShadowtex1) {
         this.raw = new boolean[]{rawShadowtex0, rawShadowtex1};
     }
 
-    // Whether shadow depth index 0/1 must be sampled without depth comparison
+    // Returns whether a shadow sampler is read raw.
     public boolean isRaw(int index) {
         return this.raw[index];
     }
 
-    // Walks the program's active uniforms and classifies every shadow depth alias by its declared sampler type; a unit declared both ways (invalid GLSL, one program cannot bind two sampler types to one unit) keeps the comparison sampler, and `shadow` follows the same aliasing rule as sampler-unit assignment: it means shadowtex1 only when `watershadow` is also declared
+    // Returns the sampler kinds of a linked program.
     public static ShadowSamplerKinds detect(int programId) {
         int activeUniforms = LWJGL.glGetProgrami(programId, GL_ACTIVE_UNIFORMS);
         if (activeUniforms <= 0) {
@@ -69,7 +73,7 @@ public final class ShadowSamplerKinds {
         return new ShadowSamplerKinds(raw0, raw1);
     }
 
-    // Raw only when at least one alias of the unit is a plain sampler2D and none is a sampler2DShadow
+    // Returns whether any alias of a sampler is declared plain.
     private static boolean wantsRaw(String[] aliases, Set<String> plain, Set<String> shadow) {
         boolean anyPlain = false;
         for (String alias : aliases) {

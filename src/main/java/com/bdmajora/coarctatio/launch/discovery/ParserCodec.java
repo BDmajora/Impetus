@@ -18,25 +18,44 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-// Writes and reads the result of one class scan: the class's type, version, super type, interfaces and every annotation with its values. Values are the kinds ASM's annotation visitor produces (strings, types, boxed primitives, enum holders, arrays as lists, nested annotations as their value maps); anything else fails the encode and that class is simply not cached
+// Stores mod class scan results as bytes.
 public final class ParserCodec {
+    // Tag of a null value.
     private static final byte T_NULL = 0;
+    // Tag of a string value.
     private static final byte T_STRING = 1;
+    // Tag of a type value.
     private static final byte T_TYPE = 2;
+    // Tag of an int value.
     private static final byte T_INT = 3;
+    // Tag of a long value.
     private static final byte T_LONG = 4;
+    // Tag of a boolean value.
     private static final byte T_BOOLEAN = 5;
+    // Tag of a float value.
     private static final byte T_FLOAT = 6;
+    // Tag of a double value.
     private static final byte T_DOUBLE = 7;
+    // Tag of an enum value.
     private static final byte T_ENUM = 8;
+    // Tag of a list value.
     private static final byte T_LIST = 9;
+    // Tag of a map value.
     private static final byte T_MAP = 10;
+    // Tag of a byte value.
     private static final byte T_BYTE = 11;
+    // Tag of a short value.
     private static final byte T_SHORT = 12;
+    // Tag of a char value.
     private static final byte T_CHAR = 13;
+    // Largest accepted element count.
+    private static final int MAX_COUNT = 1 << 20;
+    // Largest accepted nesting of values.
+    private static final int MAX_DEPTH = 32;
 
-    // ASMModParser.AnnotationType is package-private, so ModAnnotation's constructor and the enum's constants are reached reflectively
+    // Annotation kinds of the parser.
     private static final Object[] ANNOTATION_TYPES;
+    // Constructor of annotation objects.
     private static final java.lang.reflect.Constructor<?> ANNOTATION_CTOR;
 
     static {
@@ -47,18 +66,22 @@ public final class ParserCodec {
             constants = kind.getEnumConstants();
             ctor = ModAnnotation.class.getConstructor(kind, Type.class, String.class);
         } catch (ReflectiveOperationException | RuntimeException ignored) {
-            // Decoding is then refused; encoding still works since it only reads
         }
         ANNOTATION_TYPES = constants;
         ANNOTATION_CTOR = ctor;
     }
 
-    // The parser's five result fields and the annotation's value map, reached through VarHandles rather than accessor mixins: Cleanroom's discoverer loads both classes before any coremod can register a mixin, and a required config refuses an already-loaded target
+    // Access to the type field of a parser.
     private static final VarHandle ASM_TYPE;
+    // Access to the version field of a parser.
     private static final VarHandle CLASS_VERSION;
+    // Access to the super type field of a parser.
     private static final VarHandle ASM_SUPER_TYPE;
+    // Access to the annotation list of a parser.
     private static final VarHandle ANNOTATIONS;
+    // Access to the interface set of a parser.
     private static final VarHandle INTERFACES;
+    // Access to the value map of an annotation.
     private static final VarHandle VALUES;
 
     static {
@@ -72,7 +95,6 @@ public final class ParserCodec {
             interfaces = parser.findVarHandle(ASMModParser.class, "interfaces", Set.class);
             values = MethodHandles.privateLookupIn(ModAnnotation.class, MethodHandles.lookup()).findVarHandle(ModAnnotation.class, "values", Map.class);
         } catch (ReflectiveOperationException | RuntimeException ignored) {
-            // A loader whose parser has other fields simply gets no cache: encode and decode both refuse
         }
         ASM_TYPE = asmType;
         CLASS_VERSION = classVersion;
@@ -82,8 +104,9 @@ public final class ParserCodec {
         VALUES = values;
     }
 
-    // sun.misc.Unsafe looked up reflectively so javac's internal-API warning stays out of the build; allocateInstance (not one of the memory accessors Java 25 deprecates) skips the constructor, which would want a class stream to parse
+    // Unsafe instance used to create parsers without a constructor.
     private static final Object UNSAFE;
+    // Method that creates an object without a constructor.
     private static final java.lang.reflect.Method ALLOCATE_INSTANCE;
 
     static {
@@ -96,23 +119,26 @@ public final class ParserCodec {
             unsafe = field.get(null);
             allocate = type.getMethod("allocateInstance", Class.class);
         } catch (ReflectiveOperationException | RuntimeException ignored) {
-            // No Unsafe means no cached parsers can be built; the cache then only records, never serves
         }
         UNSAFE = unsafe;
         ALLOCATE_INSTANCE = allocate;
     }
 
+    // Prevents instantiation
     private ParserCodec() {
     }
 
+    // Returns whether the parser fields are reachable.
     public static boolean canEncode() {
         return VALUES != null;
     }
 
+    // Returns whether parsers can be rebuilt.
     public static boolean canDecode() {
         return canEncode() && UNSAFE != null && ALLOCATE_INSTANCE != null && ANNOTATION_TYPES != null && ANNOTATION_CTOR != null;
     }
 
+    // Writes the parser and rejects an unreachable parser or an unsupported value.
     @SuppressWarnings("unchecked")
     public static void encode(ASMModParser parser, DataOutputStream out) throws IOException {
         if (!canEncode()) {
@@ -140,6 +166,7 @@ public final class ParserCodec {
         }
     }
 
+    // Returns the parser read from the stream and rejects implausible data.
     public static ASMModParser decode(DataInputStream in) throws IOException {
         ASMModParser parser;
         try {
@@ -150,16 +177,20 @@ public final class ParserCodec {
         ASM_TYPE.set(parser, readType(in));
         CLASS_VERSION.set(parser, in.readInt());
         ASM_SUPER_TYPE.set(parser, readType(in));
-        int interfaceCount = in.readInt();
-        Set<String> interfaces = new HashSet<>(Math.max(4, interfaceCount * 2));
+        int interfaceCount = readCount(in);
+        Set<String> interfaces = new HashSet<>(Math.max(4, Math.min(interfaceCount, 1024) * 2));
         for (int i = 0; i < interfaceCount; i++) {
             interfaces.add(in.readUTF());
         }
         INTERFACES.set(parser, interfaces);
-        int annotationCount = in.readInt();
+        int annotationCount = readCount(in);
         LinkedList<ModAnnotation> annotations = new LinkedList<>();
         for (int i = 0; i < annotationCount; i++) {
-            Object kind = ANNOTATION_TYPES[in.readByte()];
+            byte kindIndex = in.readByte();
+            if (kindIndex < 0 || kindIndex >= ANNOTATION_TYPES.length) {
+                throw new IOException("Unknown annotation kind " + kindIndex);
+            }
+            Object kind = ANNOTATION_TYPES[kindIndex];
             Type type = readType(in);
             String member = readNullableUTF(in);
             ModAnnotation annotation;
@@ -168,22 +199,25 @@ public final class ParserCodec {
             } catch (ReflectiveOperationException | RuntimeException e) {
                 throw new IOException(e);
             }
-            VALUES.set(annotation, readMap(in));
+            VALUES.set(annotation, readMap(in, 0));
             annotations.add(annotation);
         }
         ANNOTATIONS.set(parser, annotations);
         return parser;
     }
 
+    // Writes a type or null.
     private static void writeType(DataOutputStream out, Type type) throws IOException {
         writeNullableUTF(out, type == null ? null : type.getDescriptor());
     }
 
+    // Returns a type or null.
     private static Type readType(DataInputStream in) throws IOException {
         String descriptor = readNullableUTF(in);
         return descriptor == null ? null : Type.getType(descriptor);
     }
 
+    // Writes a string or null.
     private static void writeNullableUTF(DataOutputStream out, String value) throws IOException {
         out.writeBoolean(value != null);
         if (value != null) {
@@ -191,10 +225,12 @@ public final class ParserCodec {
         }
     }
 
+    // Returns a string or null.
     private static String readNullableUTF(DataInputStream in) throws IOException {
         return in.readBoolean() ? in.readUTF() : null;
     }
 
+    // Writes a map of annotation values.
     private static void writeMap(DataOutputStream out, Map<String, Object> map) throws IOException {
         out.writeInt(map == null ? 0 : map.size());
         if (map != null) {
@@ -205,16 +241,30 @@ public final class ParserCodec {
         }
     }
 
-    private static Map<String, Object> readMap(DataInputStream in) throws IOException {
-        int size = in.readInt();
-        Map<String, Object> map = new HashMap<>(Math.max(4, size * 2));
+    // Returns an element count and rejects a negative or huge count.
+    private static int readCount(DataInputStream in) throws IOException {
+        int count = in.readInt();
+        if (count < 0 || count > MAX_COUNT) {
+            throw new IOException("Implausible count " + count);
+        }
+        return count;
+    }
+
+    // Returns a map of annotation values and rejects deep nesting.
+    private static Map<String, Object> readMap(DataInputStream in, int depth) throws IOException {
+        if (depth > MAX_DEPTH) {
+            throw new IOException("Annotation values nest too deeply");
+        }
+        int size = readCount(in);
+        Map<String, Object> map = new HashMap<>(Math.max(4, Math.min(size, 1024) * 2));
         for (int i = 0; i < size; i++) {
             String key = in.readUTF();
-            map.put(key, readValue(in));
+            map.put(key, readValue(in, depth + 1));
         }
         return map;
     }
 
+    // Writes one annotation value.
     @SuppressWarnings("unchecked")
     private static void writeValue(DataOutputStream out, Object value) throws IOException {
         if (value == null) {
@@ -268,7 +318,8 @@ public final class ParserCodec {
         }
     }
 
-    private static Object readValue(DataInputStream in) throws IOException {
+    // Returns one annotation value and rejects an unknown tag or deep nesting.
+    private static Object readValue(DataInputStream in, int depth) throws IOException {
         byte tag = in.readByte();
         switch (tag) {
             case T_NULL:
@@ -296,15 +347,18 @@ public final class ParserCodec {
             case T_ENUM:
                 return new ModAnnotation.EnumHolder(in.readUTF(), in.readUTF());
             case T_LIST: {
-                int size = in.readInt();
-                ArrayList<Object> list = new ArrayList<>(size);
+                if (depth > MAX_DEPTH) {
+                    throw new IOException("Annotation values nest too deeply");
+                }
+                int size = readCount(in);
+                ArrayList<Object> list = new ArrayList<>(Math.min(size, 1024));
                 for (int i = 0; i < size; i++) {
-                    list.add(readValue(in));
+                    list.add(readValue(in, depth + 1));
                 }
                 return list;
             }
             case T_MAP:
-                return readMap(in);
+                return readMap(in, depth + 1);
             default:
                 throw new IOException("Unknown annotation value tag " + tag);
         }

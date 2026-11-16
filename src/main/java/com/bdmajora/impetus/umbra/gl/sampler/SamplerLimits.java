@@ -2,22 +2,28 @@ package com.bdmajora.impetus.umbra.gl.sampler;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Driver sampler limits, queried once; GL_MAX_TEXTURE_IMAGE_UNITS (32 on tested hardware) caps distinct samplers per program, and Complementary at COLORED_LIGHTING=512 declares 49, so units must be allocated per program over the names it uses
+// Texture unit limits of the driver.
 public final class SamplerLimits {
+    // GL enum of the texture unit limit.
     private static final int GL_MAX_TEXTURE_IMAGE_UNITS = 0x8872;
+    // GL enum of the draw buffer limit.
     private static final int GL_MAX_DRAW_BUFFERS = 0x8824;
 
+    // Cached limits or null.
     private static SamplerLimits instance;
 
+    // Number of texture units.
     private final int maxTextureUnits;
+    // Number of draw buffers.
     private final int maxDrawBuffers;
 
+    // Creates a sampler limits with default state.
     private SamplerLimits() {
         this.maxTextureUnits = LWJGL.glGetInteger(GL_MAX_TEXTURE_IMAGE_UNITS);
         this.maxDrawBuffers = LWJGL.glGetInteger(GL_MAX_DRAW_BUFFERS);
     }
 
-    // Queried on first use and cached
+    // Returns the value.
     public static SamplerLimits get() {
         if (instance == null) {
             instance = new SamplerLimits();
@@ -25,17 +31,17 @@ public final class SamplerLimits {
         return instance;
     }
 
-    // Discards the cached query so a context recreation re-reads the limits
+    // Drops the cached limits.
     public static void reset() {
         instance = null;
     }
 
-    // GL_MAX_TEXTURE_IMAGE_UNITS
+    // Returns the max texture units.
     public int getMaxTextureUnits() {
         return this.maxTextureUnits;
     }
 
-    // GL_MAX_DRAW_BUFFERS
+    // Returns the max draw buffers.
     public int getMaxDrawBuffers() {
         return this.maxDrawBuffers;
     }

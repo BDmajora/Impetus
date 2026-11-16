@@ -9,15 +9,16 @@ import net.minecraft.util.EnumFacing;
 import java.util.Collections;
 import java.util.List;
 
-// Render-thread state for item-frame LOD (MoreCulling's "Frame LOD"): walls of framed blocks submit full models with four faces never visible; a plain static flag since it is render thread only
+// Reduces the faces of distant item frames.
 public final class ItemFrameLodState {
-    // True only while rendering the contents of a framed item beyond the LOD distance
+    // Whether the reduced detail applies.
     public static boolean active;
 
+    // Prevents instantiation
     private ItemFrameLodState() {
     }
 
-    // The model's quads for a face (coplanar faces resolved by ItemFaceCache), minus the four side faces when LOD is active on a 3D model; NORTH/SOUTH is the front/back axis under vanilla's zero-rotation display transform, and flat sprites have no sides
+    // Returns the quads of the model and drops the side faces while the reduced detail applies.
     public static List<BakedQuad> filterLodQuads(IBakedModel model, IBlockState state, EnumFacing side, long rand) {
         List<BakedQuad> quads = ItemFaceCache.quads(model, state, side, rand);
 

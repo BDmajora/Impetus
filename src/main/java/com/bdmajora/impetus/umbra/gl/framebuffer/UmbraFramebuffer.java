@@ -11,17 +11,22 @@ import java.nio.IntBuffer;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// A pipeline-owned framebuffer (not vanilla's single-attachment one) since a pack needs many colour attachments with independent draw-buffer masks; logical colortex indices map onto free slots, and every call binds this FBO since the LWJGL abstraction has no DSA
+// Framebuffer of the shader pipeline.
 public class UmbraFramebuffer extends GlResource {
-    // Indexed by logical colortex number: the texture (0 = none) and the physical attachment point (-1 = none); arrays rather than boxed maps since retainColorAttachments runs on every gbuffer phase switch
+    // Texture names of the color attachments.
     private final int[] colorAttachments = new int[UmbraRenderTargets.MAX_COLOR_BUFFERS];
+    // Attachment points by logical index.
     private final int[] logicalAttachmentPoints = new int[UmbraRenderTargets.MAX_COLOR_BUFFERS];
-    // Indexed by physical attachment point: the logical index bound there, -1 when free
+    // Logical indices by attachment point.
     private final int[] attachmentLogicalIndices;
+    // Draw buffer limit of the driver.
     private final int maxDrawBuffers;
+    // Color attachment limit of the driver.
     private final int maxColorAttachments;
+    // Has depth attachment.
     private boolean hasDepthAttachment;
 
+    // Creates an umbra framebuffer with default state.
     public UmbraFramebuffer() {
         setHandle(LWJGL.glGenFramebuffers());
         this.maxDrawBuffers = LWJGL.glGetInteger(GL30.GL_MAX_DRAW_BUFFERS);
@@ -31,27 +36,27 @@ public class UmbraFramebuffer extends GlResource {
         Arrays.fill(this.attachmentLogicalIndices, -1);
     }
 
-    // GL_FRAMEBUFFER
+    // Binds the framebuffer.
     public void bind() {
         LWJGL.glBindFramebuffer(GL30.GL_FRAMEBUFFER, getGlId());
     }
 
-    // GL_READ_FRAMEBUFFER, for blits
+    // Binds the framebuffer for reading.
     public void bindAsReadBuffer() {
         LWJGL.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, getGlId());
     }
 
-    // GL_DRAW_FRAMEBUFFER, for blits
+    // Binds the framebuffer for drawing.
     public void bindAsDrawBuffer() {
         LWJGL.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, getGlId());
     }
 
-    // Attaches at the next free slot
+    // Attaches a texture at a logical index.
     public void addColorAttachment(int index, int texture) {
         addColorAttachment(index, index, texture);
     }
 
-    // Attaches at a specific slot and records the logical mapping
+    // Attaches a texture at a logical index and attachment point.
     public void addColorAttachment(int logicalIndex, int attachmentIndex, int texture) {
         if (logicalIndex < 0 || logicalIndex >= this.colorAttachments.length) {
             throw new IllegalArgumentException("Logical color attachment index out of range: " + logicalIndex);
@@ -78,14 +83,14 @@ public class UmbraFramebuffer extends GlResource {
         this.attachmentLogicalIndices[attachmentIndex] = logicalIndex;
     }
 
-    // One depth texture; replaces any previous
+    // Attaches a depth texture.
     public void addDepthAttachment(int texture) {
         bind();
         LWJGL.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D, texture, 0);
         this.hasDepthAttachment = true;
     }
 
-    // Bitmask form (bit N keeps logical attachment N), the allocation-free spelling the per-phase gbuffer path uses; narrows the FBO's LIVE colour attachments to exactly the given logical set, as Iris gives each gbuffer program a framebuffer of only what it writes; a program SAMPLING a colortex it does not write (gbuffers_terrain reading gaux4 for fog) must not have it attached, or the feedback loop returned in-progress colortex1 and blew the horizon white
+    // Detaches the color attachments outside a mask.
     public void retainColorAttachments(int keepLogicalMask) {
         bind();
         int[] points = this.logicalAttachmentPoints;
@@ -100,18 +105,18 @@ public class UmbraFramebuffer extends GlResource {
         }
     }
 
-    // Depth-only rendering, for the shadow pass
+    // Disables every draw buffer.
     public void noDrawBuffers() {
         bind();
         LWJGL.glDrawBuffers(GL11.GL_NONE);
     }
 
-    // Sets the draw-buffer mask from colour attachment indices; a negative entry writes GL_NONE rather than being skipped, keeping the slot numbering DENSE so an unavailable optional target does not renumber every later gl_FragData write
+    // Sets the draw buffers of logical indices.
     public void drawBuffers(int[] colorIndices) {
         drawBuffers(colorIndices, colorIndices == null ? 0 : colorIndices.length);
     }
 
-    // The first count entries of colorIndices, so a caller can pass a reused scratch array
+    // Sets the draw buffers of the first logical indices.
     public void drawBuffers(int[] colorIndices, int count) {
         if (count > this.maxDrawBuffers) {
             throw new IllegalArgumentException("Cannot write to more than " + this.maxDrawBuffers + " draw buffers on this GPU");
@@ -123,7 +128,6 @@ public class UmbraFramebuffer extends GlResource {
         }
         try (MemoryStack stack = MemoryStack.stackPush()) {
             IntBuffer buffer = stack.mallocInt(count);
-            // Attachment points are bounded by the GL limit (8 on every real driver), so a mask replaces a per-call table
             long seen = 0L;
             for (int i = 0; i < count; i++) {
                 int colorIndex = colorIndices[i];
@@ -146,7 +150,7 @@ public class UmbraFramebuffer extends GlResource {
         }
     }
 
-    // Selects which logical attachment glReadPixels and blits read
+    // Sets the read buffer to a logical index.
     public void readBuffer(int colorIndex) {
         validateColorAttachmentIndex(colorIndex);
         validateAttachedColorAttachmentIndex(colorIndex);
@@ -154,7 +158,7 @@ public class UmbraFramebuffer extends GlResource {
         LWJGL.glReadBuffer(GL30.GL_COLOR_ATTACHMENT0 + colorIndex);
     }
 
-    // Within the driver's attachment limit
+    // Rejects a logical index outside the limits.
     private void validateColorAttachmentIndex(int colorIndex) {
         if (colorIndex < 0) {
             throw new IllegalArgumentException("Color attachment index must be non-negative: " + colorIndex);
@@ -165,35 +169,35 @@ public class UmbraFramebuffer extends GlResource {
         }
     }
 
-    // Within the limit and actually attached
+    // Rejects a logical index without an attachment.
     private void validateAttachedColorAttachmentIndex(int colorIndex) {
         if (this.attachmentLogicalIndices[colorIndex] < 0) {
             throw new IllegalArgumentException("No color texture is attached to physical color attachment " + colorIndex);
         }
     }
 
-    // Texture at a logical index
+    // Returns the color attachment.
     public int getColorAttachment(int index) {
         return index >= 0 && index < this.colorAttachments.length ? this.colorAttachments[index] : 0;
     }
 
-    // Whether addDepthAttachment was called
+    // Returns whether depth attachment.
     public boolean hasDepthAttachment() {
         return this.hasDepthAttachment;
     }
 
-    // glCheckFramebufferStatus
+    // Returns the status.
     public int getStatus() {
         bind();
         return LWJGL.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
     }
 
-    // Status is GL_FRAMEBUFFER_COMPLETE
+    // Returns whether complete.
     public boolean isComplete() {
         return getStatus() == GL30.GL_FRAMEBUFFER_COMPLETE;
     }
 
-    // Deletes the FBO; attached textures are owned elsewhere
+    // Deletes the framebuffer.
     @Override
     protected void destroyInternal() {
         LWJGL.glDeleteFramebuffers(getGlId());

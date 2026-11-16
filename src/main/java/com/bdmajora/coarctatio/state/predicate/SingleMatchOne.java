@@ -6,21 +6,24 @@ import net.minecraft.block.state.IBlockState;
 
 import java.util.Objects;
 
-// property=value, the leaf of every multipart condition tree; fields public because the AllMatch* tryFlatten methods read them
+// Predicate that needs one property to hold one value.
 public final class SingleMatchOne implements Predicate<IBlockState> {
+    // Property to test.
     public final IProperty<?> property;
+    // Required value.
     public final Object value;
 
-    // Computed once in the constructor: PropertyEnum.hashCode folds in the whole allowed value set (FoamFix patches it outright), and interned predicates are hashed constantly
+    // Hash computed once at construction.
     private final int hash;
 
+    // Creates a predicate and rejects a null property.
     public SingleMatchOne(IProperty<?> property, Object value) {
-        this.property = property;
+        this.property = java.util.Objects.requireNonNull(property, "property");
         this.value = value;
         this.hash = 31 * property.hashCode() + Objects.hashCode(value);
     }
 
-    // One property against one expected value
+    // Returns whether the property holds the required value.
     @Override
     public boolean apply(IBlockState state) {
         if (state == null) {
@@ -31,7 +34,7 @@ public final class SingleMatchOne implements Predicate<IBlockState> {
         return actual == this.value || actual.equals(this.value);
     }
 
-    // Properties compared by equals so two blocks each declaring PropertyBool.create("north") share one predicate; safe because IBlockState.getValue resolves through an ImmutableMap keyed the same way
+    // Returns whether the object tests the same property and value.
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -46,7 +49,7 @@ public final class SingleMatchOne implements Predicate<IBlockState> {
                 && Objects.equals(this.value, other.value);
     }
 
-    // Precomputed at construction; the predicate is immutable
+    // Returns the stored hash.
     @Override
     public int hashCode() {
         return this.hash;

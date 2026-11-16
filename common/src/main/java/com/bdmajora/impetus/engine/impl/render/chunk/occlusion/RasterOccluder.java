@@ -9,49 +9,46 @@ import grondag.bitraster.PerspectiveRasterizer;
 import com.bdmajora.impetus.engine.impl.render.viewport.Viewport;
 import org.joml.Matrix4fc;
 
+// Occlusion buffer that tests and draws sections with a software rasterizer.
 public final class RasterOccluder extends BoxOccluder {
-    /** Sections this close are drawn but never tested, since they're almost always visible and most costly to test */
+    // Squared chunk distance within which sections are drawn but not tested.
     public static final int NEAR_SQUARED_CHUNK_DIST = 3;
 
+    // Number of sections that were tested after a section behind them.
     private int backtrackCount;
 
-    /** Work counters for benchmarks; only maintained when {@link AbstractRasterizer#STATS} is set. */
+    // Work counters that are kept when statistics are on.
     public static long STAT_CENTER_HIT, STAT_AIR_TESTS, STAT_AIR_VISIBLE, STAT_NEAR, STAT_EMPTY_SKIP, STAT_BUDGET_SKIP;
     public static long STAT_TEST_NANOS, STAT_OCCLUDE_NANOS, STAT_SECTIONS, STAT_OCCLUDED_SECTIONS;
 
+    // Result of testing a section.
     public enum SectionVisibility {
-        /** nothing of the section is visible, and nothing behind it can be reached through it */
+        // Nothing is visible and nothing behind is reachable.
         HIDDEN,
-        /** the section draws nothing visible, but the space it occupies is not fully covered, so
-         *  traversal must continue through it or geometry behind it would be lost */
+        // Nothing is drawn but the space must be traversed.
         TRAVERSABLE,
-        /** the section is visible and can be used to occlude other sections */
+        // The section is visible and can occlude others.
         VISIBLE
     }
 
+    // Creates an occluder with a perspective rasterizer.
     public RasterOccluder() {
         super(new PerspectiveRasterizer());
     }
 
+    // Returns whether a box is visible from the perspective.
     @Override
     public boolean isBoxVisible(int packedBox, int fuzz) {
         return isBoxVisibleFromPerspective(packedBox, fuzz);
     }
 
+    // Draws a box into the buffer.
     @Override
     public void occludeBox(int packedBox) {
         occludeFromPerspective(packedBox);
     }
 
-    /**
-     * Clears the buffer for a new search. The matrix already carries rotation and projection but no
-     * camera translation, so it is supplied as the projection with an identity model matrix;
-     * {@link #prepareRegion} applies the camera-relative offset per section.
-     *
-     * @param testDistance farthest distance in blocks at which a section will be tested this search; the buffer
-     *                     is sized to resolve one-block gaps out to it, so a search that tests only nearby
-     *                     sections gets a smaller buffer and draws its occluders into fewer tiles
-     */
+    // Clears the buffer for a new search and sizes it for the test distance and rejects a viewport without a matrix.
     public void prepareScene(int viewVersion, Viewport viewport, float testDistance) {
         Matrix4fc vpMatrix = viewport.getVpMatrix();
 
@@ -69,10 +66,7 @@ public final class RasterOccluder extends BoxOccluder {
                 Matrix4L::loadIdentity, m -> copyMatrix(vpMatrix, m));
     }
 
-    /**
-     * {@link Matrix4L} indexes {@code a<row><col>} while JOML indexes {@code m<col><row>}, so this
-     * transposes. Feeding it straight through instead still produces plausible-looking output.
-     */
+    // Copies a matrix and transposes it.
     private static void copyMatrix(Matrix4fc src, Matrix4L dst) {
         dst.set(
                 src.m00(), src.m10(), src.m20(), src.m30(),
@@ -81,21 +75,9 @@ public final class RasterOccluder extends BoxOccluder {
                 src.m03(), src.m13(), src.m23(), src.m33());
     }
 
-    /**
-     * Sizes each axis of the buffer so that a block at the search distance spans at least one pixel along it,
-     * which is what keeps a one-block gap between occluders from closing under pixel-centre sampling. The
-     * projection scale of an axis is the length of the matching row of the view-projection matrix: for a
-     * perspective matrix those rows are {@code (1/(aspect tan(fov/2)), 0, 0, 0)} and {@code (0, 1/tan(fov/2), 0, 0)},
-     * and the camera rotation they are multiplied by preserves length. Bobbing folded into the matrix adds a
-     * rotation and a translation, neither of which changes that. The axes differ by the aspect ratio, so a
-     * widescreen view needs a wider buffer than it is tall.
-     *
-     * <p>Sizes are not limited to powers of two, so each axis holds close to what it needs rather than up to
-     * double it. An axis only grows when the current buffer falls short and only shrinks when it is more
-     * than a step above what is needed, so field-of-view animation cannot thrash it.
-     */
+    // Sizes the buffer so a block at the search distance spans one pixel.
     private void chooseBufferSize(Matrix4fc vp, float searchDistance) {
-        // orthographic or degenerate matrices have no perspective row; keep whatever we have
+        // Keeps the buffer for matrices without a perspective row
         float perspectiveRow = (float) Math.sqrt((vp.m03() * vp.m03()) + (vp.m13() * vp.m13()) + (vp.m23() * vp.m23()));
 
         if (!(perspectiveRow > 0.5f) || !(searchDistance > 0)) {
@@ -109,18 +91,14 @@ public final class RasterOccluder extends BoxOccluder {
             return;
         }
 
-        // pixels per block at distance d along an axis is size * scale / (2d)
+        // Calculates the pixels needed on each axis
         float required = 2.0f * searchDistance * PIXELS_PER_BLOCK;
         int widthTiles = chooseAxisTiles(bufferWidth() >> Constants.TILE_AXIS_SHIFT, required / scaleX);
         int heightTiles = chooseAxisTiles(bufferHeight() >> Constants.TILE_AXIS_SHIFT, required / scaleY);
         resizeBuffer(widthTiles, heightTiles);
     }
 
-    /**
-     * Grows an axis to the smallest step that meets its requirement, and shrinks it only to one step above
-     * the requirement, so the two thresholds never meet: a requirement wavering about a step boundary neither
-     * grows nor shrinks the axis, and a sweeping field of view resizes at most once per step.
-     */
+    // Returns the tile count of an axis with hysteresis.
     private static int chooseAxisTiles(int currentTiles, float requiredPixels) {
         int required = tilesFor(requiredPixels);
 
@@ -133,29 +111,20 @@ public final class RasterOccluder extends BoxOccluder {
         return shrunk < currentTiles ? shrunk : currentTiles;
     }
 
-    /** Tiles needed to hold the given pixels, rounded up to {@link #SIZE_STEP_TILES} and clamped to the buffer limits. */
+    // Returns the tiles that hold a number of pixels within the limits.
     private static int tilesFor(float pixels) {
         int tiles = ((int) Math.ceil(pixels / (8 * SIZE_STEP_TILES))) * SIZE_STEP_TILES;
 
         return Math.max(Constants.MIN_SIZE_TILES, Math.min(Constants.MAX_SIZE_TILES, tiles));
     }
 
-    /** Axis sizes are multiples of this many tiles (64 pixels). */
+    // Tiles in one size step.
     private static final int SIZE_STEP_TILES = 8;
 
-    /**
-     * Pixels a block at the search distance must span along each axis. Halving this measured within a few
-     * percent of the same frame time and culled within a few sections of the same count on the synthetic
-     * worlds, so the buffer is not sized for speed: this is what keeps a one-block gap between occluders
-     * from closing under pixel-centre sampling.
-     */
+    // Pixels a block at the search distance spans.
     private static final float PIXELS_PER_BLOCK = 1.0f;
 
-    /**
-     * tests the tight bounds of what the section draws first. a section whose geometry is hidden
-     * may still have unoccluded empty space, so a second test decides whether traversal continues.
-     * must run before occlude(), or a section would occlude itself.
-     */
+    // Tests the bounds of a section and then its full space.
     public SectionVisibility testSection(int originX, int originY, int originZ, int squaredChunkDist, int bounds) {
         if (!AbstractRasterizer.STATS) {
             return testSection0(originX, originY, originZ, squaredChunkDist, bounds);
@@ -180,13 +149,13 @@ public final class RasterOccluder extends BoxOccluder {
         }
     }
 
-    /** Draws a section's occluder boxes without a preceding {@link #testSection}, for a section the search never tests. */
+    // Draws the occluder boxes of a section that was not tested.
     public void occludeSectionAt(int originX, int originY, int originZ, int[] data) {
         prepareRegion(originX, originY, originZ, PackedBox.rangeFromSquareChunkDist(0), 0);
         occludeSection(data);
     }
 
-    /** Draws the section's occluder boxes for the region prepared by the last {@link #testSection}. */
+    // Draws the occluder boxes of the prepared section.
     public void occludeSection(int[] data) {
         if (!AbstractRasterizer.STATS) {
             occlude(data);
@@ -199,6 +168,7 @@ public final class RasterOccluder extends BoxOccluder {
         STAT_OCCLUDE_NANOS += System.nanoTime() - t0;
     }
 
+    // Tests a section without counting statistics.
     private SectionVisibility testSection0(int originX, int originY, int originZ, int squaredChunkDist, int bounds) {
         prepareRegion(originX, originY, originZ,
                 PackedBox.rangeFromSquareChunkDist(squaredChunkDist), squaredChunkDist);
@@ -212,7 +182,7 @@ public final class RasterOccluder extends BoxOccluder {
             return SectionVisibility.VISIBLE;
         }
 
-        // no world-space fuzz: RenderableBounds already carries the model extent
+        // Tests without extra margin
         if (isBoxVisible(bounds, 0)) {
             return SectionVisibility.VISIBLE;
         }
@@ -221,7 +191,7 @@ public final class RasterOccluder extends BoxOccluder {
             this.backtrackCount++;
         }
 
-        // only worth asking when the bounds were tighter than the section itself
+        // Tests the full space when the bounds were smaller
         if (bounds != PackedBox.FULL_BOX && (isBoxCenterClear(PackedBox.FULL_BOX) || isBoxVisible(PackedBox.FULL_BOX, 0))) {
             return SectionVisibility.TRAVERSABLE;
         }
@@ -229,9 +199,7 @@ public final class RasterOccluder extends BoxOccluder {
         return SectionVisibility.HIDDEN;
     }
 
-    // the buffer holds coverage only, with no depth, so it's correct only if sections are drawn
-    // front to back. our bfs visits in hop-count order, which approximates that but does not
-    // guarantee it, so this reports how often the approximation was wrong.
+    // Returns the number of sections that were tested out of order.
     public int backtrackCount() {
         return this.backtrackCount;
     }

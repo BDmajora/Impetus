@@ -5,15 +5,18 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Arrays;
 
+// Queue with a side that is filled and a side that is consumed.
 public final class DoubleBufferedQueue<E> {
+    // Side that is consumed and side that is filled.
     private QueueImpl<E> read, write;
 
+    // Creates empty sides.
     public DoubleBufferedQueue() {
         this.read = new QueueImpl<>();
         this.write = new QueueImpl<>();
     }
 
-    // Swaps read and write; returns whether there is anything to read
+    // Swaps the sides and returns whether the filled side had elements.
     public boolean flip() {
         if (this.write.isEmpty()) {
             return false;
@@ -28,36 +31,41 @@ public final class DoubleBufferedQueue<E> {
         return true;
     }
 
-    // Empties both sides
+    // Empties both sides.
     public void reset() {
         this.read.clear();
         this.write.clear();
     }
 
-    // The side being consumed
+    // Returns the side that is consumed.
     public ReadQueue<E> read() {
         return this.read;
     }
 
-    // The side being filled
+    // Returns the side that is filled.
     public WriteQueue<E> write() {
         return this.write;
     }
 
+    // Array queue that is consumed once and then cleared.
     private static final class QueueImpl<E> implements ReadQueue<E>, WriteQueue<E> {
+        // Elements of the queue.
         private E[] elements;
+        // Position of the next read and the next write.
         private int readIndex, writeIndex;
 
+        // Creates a queue with the default capacity.
         QueueImpl() {
             this(256);
         }
 
+        // Creates a queue with a capacity.
         @SuppressWarnings("unchecked")
         QueueImpl(int capacity) {
             this.elements = (E[]) new Object[capacity];
         }
 
-        // Grows ahead of a known batch to avoid repeated resizes
+        // Grows the queue to hold more elements.
         @Override
         public void ensureCapacity(int numElements) {
             int len = this.writeIndex + numElements;
@@ -67,6 +75,7 @@ public final class DoubleBufferedQueue<E> {
             }
         }
 
+        // Removes and returns the next element or null when empty.
         @Override
         public @Nullable E dequeue() {
             if (this.readIndex == this.writeIndex) {
@@ -76,9 +85,10 @@ public final class DoubleBufferedQueue<E> {
             return this.elements[this.readIndex++];
         }
 
-        // Appends, growing if full
+        // Adds an element and grows when full and rejects null.
         @Override
         public void enqueue(@NotNull E e) {
+            java.util.Objects.requireNonNull(e, "e");
             if (this.writeIndex >= this.elements.length) {
                 this.grow(this.writeIndex + 1);
             }
@@ -86,7 +96,7 @@ public final class DoubleBufferedQueue<E> {
             this.elements[this.writeIndex++] = e;
         }
 
-        // Nulls out references so they can be collected
+        // Removes every element and clears the references.
         public void clear() {
             if (this.writeIndex != 0) {
                 Arrays.fill(this.elements, 0, this.writeIndex, null);
@@ -96,21 +106,22 @@ public final class DoubleBufferedQueue<E> {
             this.writeIndex = 0;
         }
 
-        // Element count
+        // Returns the number of elements.
         public int size() {
             return this.writeIndex - this.readIndex;
         }
 
+        // Returns whether the queue has no elements.
         public boolean isEmpty() {
             return this.readIndex == this.writeIndex;
         }
 
-        // Resizes to the next size at least this large
+        // Grows to at least a size.
         private void grow(int minimumSize) {
             this.resize(getNextSize(minimumSize, this.elements.length));
         }
 
-        // Copies into a new array
+        // Copies the elements into an array of a length.
         private void resize(int length) {
             @SuppressWarnings("unchecked")
             E[] elements = (E[]) new Object[length];
@@ -119,7 +130,7 @@ public final class DoubleBufferedQueue<E> {
             this.elements = elements;
         }
 
-        // Doubles until large enough
+        // Returns the size to grow to.
         private static int getNextSize(int minimumSize, int currentSize) {
             return Math.max(minimumSize, currentSize << 1);
         }

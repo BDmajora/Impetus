@@ -9,25 +9,32 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 
+// Tree of cut planes that orders translucent quads for any camera position.
 public final class PartitionTree implements SortState.Resortable {
 
+    // Root of the tree.
     private final Node root;
+    // Number of quads.
     private final int quadCount;
+    // Cut planes of each axis.
     private final float[][] cutPlanes;
 
+    // Creates a tree.
     private PartitionTree(Node root, int quadCount, float[][] cutPlanes) {
         this.root = root;
         this.quadCount = quadCount;
         this.cutPlanes = cutPlanes;
     }
 
+    // Largest group that is ordered once for every camera.
     static final int STATIC_LEAF_QUADS = 256;
 
-    // null when some slab has no free cut
+    // Builds a tree for the quads or returns null when a group has no free cut.
     public static @Nullable PartitionTree build(QuadSet quads) {
         return build(quads, STATIC_LEAF_QUADS);
     }
 
+    // Builds a tree with a limit for static groups.
     static @Nullable PartitionTree build(QuadSet quads, int staticLeafQuads) {
         int[] all = new int[quads.count()];
         for (int i = 0; i < all.length; i++) all[i] = i;
@@ -43,6 +50,7 @@ public final class PartitionTree implements SortState.Resortable {
         return new PartitionTree(root, quads.count(), cutPlanes);
     }
 
+    // Returns the sorted cut planes of every tree without duplicates.
     public static float[][] mergeCutPlanes(Collection<PartitionTree> trees) {
         FloatArrayList[] merged = { new FloatArrayList(), new FloatArrayList(), new FloatArrayList() };
 
@@ -61,6 +69,7 @@ public final class PartitionTree implements SortState.Resortable {
         return result;
     }
 
+    // Returns the sorted values without duplicates.
     private static float[] sortAndDedup(FloatArrayList floats) {
         float[] array = floats.toFloatArray();
         FloatArrays.quickSort(array);
@@ -74,6 +83,7 @@ public final class PartitionTree implements SortState.Resortable {
         return FloatArrays.copy(array, 0, n);
     }
 
+    // Builds the node of a group of quads.
     private static Node partition(QuadSet quads, int[] group, int parentAxis, FloatArrayList[] collectedCuts, int staticLeafQuads) {
         if (group.length <= 1) {
             return new Leaf(group);
@@ -100,7 +110,6 @@ public final class PartitionTree implements SortState.Resortable {
             if (planes.length > 0) break;
         }
         if (planes.length == 0) {
-            // no free cut does not imply a cycle: a camera-independent order may still exist
             int[] topological = !triedStatic && group.length <= TranslucentSorter.MAX_TOPO_QUADS ? TranslucentSorter.topologicalOrder(quads, group) : null;
             if (topological != null) {
                 return new Leaf(topological);
@@ -110,8 +119,6 @@ public final class PartitionTree implements SortState.Resortable {
 
         Buckets buckets = bucket(quads, group, axis, planes);
 
-        // gaps between quads that are all parallel would only slice one static leaf into pieces, each gap a trigger
-        // plane: keep just the cuts carrying quads on the plane (some do, else the group itself was parallel)
         float[] carrying = planesWithQuads(planes, buckets.onPlane);
         if (carrying.length > 0 && carrying.length < planes.length && allParallel(quads, buckets.slabs)) {
             planes = carrying;
@@ -144,9 +151,10 @@ public final class PartitionTree implements SortState.Resortable {
         return new Split(axis, planes, slabs, onPlane);
     }
 
+    // Quads on each plane and in each slab.
     private record Buckets(IntArrayList[] onPlane, IntArrayList[] slabs) {}
 
-    /** sorts the group into the quads lying on each plane and those in each slab between the planes */
+    // Sorts a group into the quads on each plane and in each slab.
     private static Buckets bucket(QuadSet quads, int[] group, int axis, float[] planes) {
         IntArrayList[] onPlane = new IntArrayList[planes.length];
         for (int i = 0; i < planes.length; i++) onPlane[i] = new IntArrayList();
@@ -156,7 +164,6 @@ public final class PartitionTree implements SortState.Resortable {
         for (int quad : group) {
             float lo = quads.boundsMin(quad, axis), hi = quads.boundsMax(quad, axis);
 
-            // slab = number of planes at or below this quad's lo
             int slab = 0;
             while (slab < planes.length && planes[slab] <= lo + QuadSet.OVERLAP_EPSILON) slab++;
 
@@ -169,6 +176,7 @@ public final class PartitionTree implements SortState.Resortable {
         return new Buckets(onPlane, slabs);
     }
 
+    // Returns the planes that hold quads.
     private static float[] planesWithQuads(float[] planes, IntArrayList[] onPlane) {
         FloatArrayList kept = new FloatArrayList(planes.length);
         for (int i = 0; i < planes.length; i++) {
@@ -177,6 +185,7 @@ public final class PartitionTree implements SortState.Resortable {
         return kept.toFloatArray();
     }
 
+    // Returns whether the quads of every slab are parallel.
     private static boolean allParallel(QuadSet quads, IntArrayList[] slabs) {
         int reference = -1;
         for (IntArrayList slab : slabs) {
@@ -192,6 +201,7 @@ public final class PartitionTree implements SortState.Resortable {
         return true;
     }
 
+    // Builds a node for a group that has no free cut.
     private static @Nullable Node partitionIntersectors(QuadSet quads, int[] group, FloatArrayList[] collectedCuts, int staticLeafQuads) {
         int n = group.length;
         if (n > TranslucentSorter.MAX_TOPO_QUADS) return null;
@@ -232,6 +242,7 @@ public final class PartitionTree implements SortState.Resortable {
         return b == null ? null : new Fixed(a, b);
     }
 
+    // Returns whether two quads intersect.
     private static boolean intersects(QuadSet quads, int p, int q) {
         for (int axis = 0; axis < 3; axis++) {
             if (quads.boundsMin(p, axis) >= quads.boundsMax(q, axis) - QuadSet.OVERLAP_EPSILON
@@ -240,6 +251,7 @@ public final class PartitionTree implements SortState.Resortable {
         return true;
     }
 
+    // Returns the order of a group of parallel quads or null.
     private static int @Nullable [] parallelOrder(QuadSet quads, int[] group) {
         int reference = group[0];
         float nx = quads.normalX(reference), ny = quads.normalY(reference), nz = quads.normalZ(reference);
@@ -263,10 +275,10 @@ public final class PartitionTree implements SortState.Resortable {
         return order;
     }
 
+    // Returns the free cut planes of a group on an axis.
     private static float[] cutsOn(QuadSet quads, int[] group, int axis) {
         int n = group.length;
 
-        // a quad either spans an interval on this axis, or lies flat on a single plane
         float[] starts = new float[n], ends = new float[n], points = new float[n];
         int startCount = 0, endCount = 0, pointCount = 0;
 
@@ -292,14 +304,11 @@ public final class PartitionTree implements SortState.Resortable {
         int below = 0;
         int sinceCut = 0;
 
-        // only ends/planes can be cuts since a gap is always available at the last end before it,
-        // and a cut anywhere else in that gap would separate the same quads
         while (nextEnd < endCount || nextPoint < pointCount) {
             float plane = nextPoint == pointCount ? ends[nextEnd]
                     : nextEnd == endCount ? points[nextPoint]
                     : Math.min(ends[nextEnd], points[nextPoint]);
 
-            // ends first, then quads on the plane, then starts: a quad beginning here is not yet in the way
             while (nextEnd < endCount && ends[nextEnd] <= plane + QuadSet.OVERLAP_EPSILON) {
                 nextEnd++;
                 below++;
@@ -319,7 +328,7 @@ public final class PartitionTree implements SortState.Resortable {
             }
 
             int above = n - below - onPlane;
-            boolean free = opened == nextEnd; // nothing spans the plane
+            boolean free = opened == nextEnd;
             boolean useful = (below > 0 ? 1 : 0) + (onPlane > 0 ? 1 : 0) + (above > 0 ? 1 : 0) >= 2;
             boolean separatesSomethingNew = onPlane > 0 || sinceCut > 0;
 
@@ -328,7 +337,6 @@ public final class PartitionTree implements SortState.Resortable {
                 sinceCut = 0;
             }
 
-            // quads on this plane are behind the next one either way
             below += onPlane;
             sinceCut += onPlane;
         }
@@ -336,26 +344,29 @@ public final class PartitionTree implements SortState.Resortable {
         return cuts.toFloatArray();
     }
 
+    // Returns the cut planes of an axis.
     public float[] cutPlanes(int axis) {
         return cutPlanes[axis];
     }
 
-    /** Receives the quads of one leaf or one plane at a time, farthest first */
+    // Receiver of the quads of the draw order.
     public interface Sink {
         void accept(int[] quads);
     }
 
+    // Returns the draw order for a camera position.
     public int @Nullable [] order(float camX, float camY, float camZ) {
         var sink = new ArraySink(new int[quadCount]);
         order(camX, camY, camZ, sink);
         return sink.order;
     }
 
-    /** The draw order for the camera position, streamed so the caller can write it out without an array in between */
+    // Streams the draw order for a camera position.
     public void order(float camX, float camY, float camZ, Sink sink) {
         write(root, camX, camY, camZ, sink);
     }
 
+    // Writes the order of a node.
     private static void write(Node node, float camX, float camY, float camZ, Sink sink) {
         if (node instanceof Leaf leaf) {
             sink.accept(leaf.quads);
@@ -379,30 +390,32 @@ public final class PartitionTree implements SortState.Resortable {
         int slab = 0;
         while (slab < split.planes.length && split.planes[slab] <= camCoord + QuadSet.EPSILON) slab++;
 
-        // slabs below the camera's, farthest first, each followed by the plane above it
         for (int i = 0; i < slab; i++) {
             write(split.slabs[i], camX, camY, camZ, sink);
             sink.accept(split.onPlane[i]);
         }
 
-        // slabs above the camera's, farthest first, each followed by the plane below it
         for (int i = split.slabs.length - 1; i > slab; i--) {
             write(split.slabs[i], camX, camY, camZ, sink);
             sink.accept(split.onPlane[i - 1]);
         }
 
-        // the camera's own slab is nearest, drawn last
         write(split.slabs[slab], camX, camY, camZ, sink);
     }
 
+    // Sink that fills an array.
     private static final class ArraySink implements Sink {
+        // Target array.
         private final int[] order;
+        // Next position.
         private int pos;
 
+        // Creates a sink.
         private ArraySink(int[] order) {
             this.order = order;
         }
 
+        // Appends quads to the array.
         @Override
         public void accept(int[] quads) {
             System.arraycopy(quads, 0, order, pos, quads.length);
@@ -410,10 +423,12 @@ public final class PartitionTree implements SortState.Resortable {
         }
     }
 
+    // Returns whether a camera move crosses a cut plane.
     public boolean crossesCutPlane(double lastX, double lastY, double lastZ, double camX, double camY, double camZ) {
         return crossesOnAxis(0, lastX, camX) || crossesOnAxis(1, lastY, camY) || crossesOnAxis(2, lastZ, camZ);
     }
 
+    // Returns whether a move crosses a cut plane of an axis.
     private boolean crossesOnAxis(int axis, double from, double to) {
         double lo = Math.min(from, to), hi = Math.max(from, to);
 
@@ -426,20 +441,27 @@ public final class PartitionTree implements SortState.Resortable {
         return false;
     }
 
+    // Returns the debug position.
     @Override
     public int debugIndex() {
         return 2;
     }
 
+    // Returns the number of quads.
     @Override
     public int quadCount() {
         return quadCount;
     }
 
+    // Node without quads.
     private static final Node EMPTY = new Leaf(IntArrays.EMPTY_ARRAY);
 
+    // Node of the tree.
     sealed interface Node permits Leaf, Split, Fixed {}
+    // Node with a fixed order.
     record Leaf(int[] quads) implements Node {}
+    // Node that splits space by planes.
     record Split(int axis, float[] planes, Node[] slabs, int[][] onPlane) implements Node {}
+    // Node that draws one node and then another.
     record Fixed(Node first, Node rest) implements Node {}
 }

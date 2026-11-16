@@ -5,8 +5,7 @@ import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL32;
 import org.lwjgl.opengl.GL40;
 
-
-// The primitive topologies the terrain renderer draws with, each carrying its GL enum
+// Primitive topologies with their GL mode.
 public enum GlPrimitiveType {
     POINTS(GL11.GL_POINTS),
 
@@ -27,13 +26,15 @@ public enum GlPrimitiveType {
 
     QUADS(GL30.GL_QUADS);
 
+    // GL mode of the topology.
     private final int id;
 
+    // Creates a primitive type.
     GlPrimitiveType(int id) {
         this.id = id;
     }
 
-    // GL mode constant
+    // Returns the GL mode of the topology.
     public int getId() {
         return this.id;
     }

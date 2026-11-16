@@ -19,27 +19,33 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Keeps the engine and vanilla storage aligned when setBlockState creates a previously absent section
+// Mixin that changes Chunk.
 @Mixin(Chunk.class)
 public abstract class ChunkSectionMixin {
+    // Reference to the field x of the target.
     @Shadow
     @Final
     public int x;
 
+    // Reference to the field z of the target.
     @Shadow
     @Final
     public int z;
 
+    // Reference to the field world of the target.
     @Shadow
     @Final
     private World world;
 
+    // Reference to the method get block storage array of the target.
     @Shadow
     public abstract ExtendedBlockStorage[] getBlockStorageArray();
 
+    // Field section was empty added to the target.
     @Unique
     private boolean fulgor$sectionWasEmpty;
 
+    // Runs at the start of setBlockState.
     @Inject(method = "setBlockState", at = @At("HEAD"))
     private void fulgor$preSetBlockState(BlockPos pos, IBlockState state, CallbackInfoReturnable<IBlockState> cir) {
         int sectionY = pos.getY() >> 4;
@@ -47,6 +53,7 @@ public abstract class ChunkSectionMixin {
         this.fulgor$sectionWasEmpty = sectionY >= 0 && sectionY < storage.length && storage[sectionY] == Chunk.NULL_BLOCK_STORAGE;
     }
 
+    // Runs before every return of setBlockState.
     @Inject(method = "setBlockState", at = @At("RETURN"))
     private void fulgor$postSetBlockState(BlockPos pos, IBlockState state, CallbackInfoReturnable<IBlockState> cir) {
         if (!this.fulgor$sectionWasEmpty || cir.getReturnValue() == null) {
@@ -68,7 +75,6 @@ public abstract class ChunkSectionMixin {
         ChunkLightHelper.fillVanillaFromEngine(lit.fulgor$getSkyNibbles(), lit.fulgor$getBlockNibbles(), section, sectionY,
                 this.world.provider.hasSkyLight());
 
-        // The client shares storage with the vanilla arrays, so the new section's nibbles are wrapped like the packet's were
         if (this.world.isRemote) {
             NibbleArray blockNibble = section.getBlockLight();
             if (blockNibble != null) {

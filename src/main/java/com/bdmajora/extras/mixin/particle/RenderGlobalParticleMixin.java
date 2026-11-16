@@ -8,20 +8,23 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// OptiFine's named particle switches, applied while the id is known and before the particle exists; id-keyed since ParticleSuspendedTown alone backs three ids, and the full descriptor targets the spawnParticle0 overload that builds the particle
+// Mixin that changes RenderGlobal.
 @Mixin(RenderGlobal.class)
 public class RenderGlobalParticleMixin {
+    // Runs at the start of spawnParticle0 and can cancel it.
     @Inject(
             method = "spawnParticle0(IZZDDDDDD[I)Lnet/minecraft/client/particle/Particle;",
             at = @At("HEAD"),
             cancellable = true
     )
     private void impetus$filterParticle(int particleId, boolean ignoreRange, boolean minimal,
+                                        // Spawn position.
                                         double x, double y, double z,
+                                        // Spawn velocity.
                                         double xSpeed, double ySpeed, double zSpeed,
+                                        // Extra particle parameters.
                                         int[] parameters, CallbackInfoReturnable<Particle> cir) {
         if (!ParticleFilters.isAllowed(particleId)) {
-            // Vanilla's own "not spawned" answer; every caller already handles null.
             cir.setReturnValue(null);
         }
     }

@@ -18,23 +18,24 @@ import java.util.Map;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// The frame's target clears and the end-of-frame alt->main copy-back for buffers the chain leaves odd-flipped (Umbra's SwapPass)
+// Buffer swaps and clears that run around each frame of a shader pack.
 public final class FrameCopies {
-    // "from" reads the ALT texture, target is MAIN; the size is read per frame, a size baked at build copied the old region after a resize (GL_INVALID_VALUE once the window shrank)
+    // Copy of the alternate texture of a flipped target back into its main texture.
     private record Swap(UmbraFramebuffer from, int index, int target) {
     }
 
-    // One FBO over every target sharing a clear colour (null = fog) and size, so they clear in one glClear
+    // Framebuffer cleared to a color or to the fog color when the color is null.
     private record Clear(UmbraFramebuffer framebuffer, float[] color) {
     }
 
+    // Swaps of the flipped targets.
     private final List<Swap> swaps = new ArrayList<>();
-    // Only buffers whose colortexNClear directive is true, both sides
+    // Clears that run every frame.
     private final List<Clear> everyFrame = new ArrayList<>();
-    // First frame or resized storage: every materialised buffer, both sides
+    // Clears that run on a full reset.
     private final List<Clear> full = new ArrayList<>();
 
-    // Swaps for every buffer the schedule left flipped and not cleared at frame start; gbuffer attachments are not special-cased since Complementary marks some clear=false for temporal contents
+    // Creates the swaps and clears of the targets and copies each flipped target once.
     public void build(UmbraRenderTargets targets, TargetDirectives directives, BufferFlipper flipper, int maxGroup) {
         for (int i = 0; i < UmbraRenderTargets.MAX_COLOR_BUFFERS; i++) {
             UmbraRenderTarget target = targets.get(i);
@@ -60,7 +61,6 @@ public final class FrameCopies {
                 continue;
             }
             float[] color = directives.clearColor(i);
-            // An FBO of mixed sizes clears only their intersection, so size is part of the group
             String key = (color == null ? "fog" : Arrays.toString(color)) + "@"
                     + (targets.hasCustomSize(i) ? targets.getWidth(i) + "x" + targets.getHeight(i) : "render");
             colors.put(key, color);
@@ -73,26 +73,28 @@ public final class FrameCopies {
         addClears(targets, frameGroups, colors, Math.max(1, maxGroup), this.everyFrame);
     }
 
-    // Both sides of each group, cut into FBOs of at most maxGroup attachments (the driver's draw-buffer limit)
+    // Adds two clears for each group of at most the group size of targets that share a color.
     private static void addClears(UmbraRenderTargets targets, Map<String, List<Integer>> groups, Map<String, float[]> colors,
                                   int maxGroup, List<Clear> into) {
         groups.forEach((key, indices) -> {
             for (int start = 0; start < indices.size(); start += maxGroup) {
-                int[] chunk = indices.subList(start, Math.min(indices.size(), start + maxGroup)).stream()
-                        .mapToInt(Integer::intValue).toArray();
+                int end = Math.min(indices.size(), start + maxGroup);
+                int[] chunk = new int[end - start];
+                for (int i = start; i < end; i++) {
+                    chunk[i - start] = indices.get(i);
+                }
                 into.add(new Clear(targets.createClearFramebuffer(false, chunk), colors.get(key)));
                 into.add(new Clear(targets.createClearFramebuffer(true, chunk), colors.get(key)));
             }
         });
     }
 
-    // Runs the frame's clears; glClear ignores the viewport, so only the render-size viewport is set once afterwards rather than per clear
+    // Clears every target or only those that clear each frame and restores the viewport.
     public void clear(boolean everything, int renderWidth, int renderHeight) {
         for (Clear clear : everything ? this.full : this.everyFrame) {
             clear.framebuffer().bind();
             float[] color = clear.color();
             if (color == null) {
-                // Umbra clears colortex0 to the current fog colour by default
                 Vector3f fog = CapturedRenderingState.INSTANCE.getFogColor();
                 GlStateManager.clearColor(fog.x, fog.y, fog.z, 1.0f);
             } else {
@@ -103,7 +105,7 @@ public final class FrameCopies {
         LWJGL.glViewport(0, 0, renderWidth, renderHeight);
     }
 
-    // The copy-back at each target's own size (a size.buffer target must not be copied at the screen's); glCopyTexSubImage2D reads the GL_READ_BUFFER of GL_FRAMEBUFFER (bind(), not bindAsReadBuffer(), which broke TAA on many drivers for Umbra), and the destination is bound on a scratch unit no cached slot describes
+    // Copies each flipped target back into its main texture.
     public void swap(UmbraRenderTargets targets) {
         if (this.swaps.isEmpty()) {
             return;
@@ -122,7 +124,7 @@ public final class FrameCopies {
         }
     }
 
-    // Frees the swap FBOs; the clear FBOs belong to the render targets
+    // Destroys the swap framebuffers and forgets every clear.
     public void destroy() {
         for (Swap swap : this.swaps) {
             swap.from().destroy();

@@ -9,24 +9,31 @@ import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 
-// A blurred, darkened copy of the world behind an options screen so its text reads against anything; the frame is copied into a texture and redrawn a few times at small offsets with averaging alpha, which is a box blur with no shader, then tinted
+// Blurred copy of the frame drawn behind screens.
 public final class ScreenBlurBackdrop {
-    // Offsets in GUI pixels, so the softness is the same at every GUI scale
+    // Blur radius in pixels.
     private static final float RADIUS = 3.0f;
+    // Number of sample rings.
     private static final int RINGS = 2;
+    // Samples per ring.
     private static final int TAPS_PER_RING = 8;
-    // Vanilla's in-world tint is 0xC0101010 to 0xD0101010; a step darker, since the blur already takes the detail out
+    // Tint color at the top.
     private static final int TINT_TOP = 0xC8101010;
+    // Tint color at the bottom.
     private static final int TINT_BOTTOM = 0xDC101010;
 
+    // Texture name of the copy or minus one.
     private static int texture = -1;
+    // Width of the copy.
     private static int textureWidth;
+    // Height of the copy.
     private static int textureHeight;
 
+    // Prevents instantiation
     private ScreenBlurBackdrop() {
     }
 
-    // Called from drawWorldBackground before anything else is drawn, while the framebuffer still holds only the world
+    // Draws the blurred frame over the screen.
     public static void draw(int width, int height) {
         Minecraft mc = Minecraft.getMinecraft();
         capture(mc.displayWidth, mc.displayHeight);
@@ -35,7 +42,6 @@ public final class ScreenBlurBackdrop {
         GlStateManager.tryBlendFuncSeparate(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA, GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ZERO);
         GlStateManager.enableTexture2D();
         GlStateManager.bindTexture(texture);
-        // Tap n drawn at alpha 1/n over the previous taps averages them equally; the first is the plain copy
         int tap = 1;
         blit(width, height, 0.0f, 0.0f, 1.0f);
         for (int ring = 1; ring <= RINGS; ring++) {
@@ -53,7 +59,7 @@ public final class ScreenBlurBackdrop {
         GlStateManager.color(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
-    // Copies the current framebuffer into the texture, reallocating only when the window size changed
+    // Copies the frame into the texture.
     private static void capture(int width, int height) {
         if (texture == -1) {
             texture = GlStateManager.generateTexture();
@@ -72,7 +78,7 @@ public final class ScreenBlurBackdrop {
         }
     }
 
-    // One screen-sized quad of the captured frame, shifted by (dx, dy); the framebuffer's origin is bottom-left so V runs the other way
+    // Draws the copy with an offset and alpha.
     private static void blit(int width, int height, float dx, float dy, float alpha) {
         GlStateManager.color(1.0f, 1.0f, 1.0f, alpha);
         Tessellator tessellator = Tessellator.getInstance();
@@ -85,7 +91,7 @@ public final class ScreenBlurBackdrop {
         tessellator.draw();
     }
 
-    // GuiScreen.drawGradientRect without a screen instance
+    // Draws the tint gradient.
     private static void drawTint(int width, int height) {
         GlStateManager.shadeModel(GL11.GL_SMOOTH);
 
@@ -101,7 +107,7 @@ public final class ScreenBlurBackdrop {
         GlStateManager.shadeModel(GL11.GL_FLAT);
     }
 
-    // One corner of the gradient quad in its ARGB colour
+    // Adds a tinted vertex.
     private static void tintVertex(BufferBuilder buffer, double x, double y, int argb) {
         buffer.pos(x, y, 0.0)
                 .color(ColorARGB.unpackRed(argb), ColorARGB.unpackGreen(argb), ColorARGB.unpackBlue(argb), ColorARGB.unpackAlpha(argb))

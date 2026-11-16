@@ -1,6 +1,7 @@
 package com.bdmajora.equilibrium.common.world;
 
-// Implemented on World by the entity_cleanup mixin; runs the removal half of updateEntities without the ticking half
+// World that can remove unloaded entities.
 public interface UnloadedEntityRemover {
+    // Removes the entities of unloaded chunks.
     void equilibrium$removeUnloaded();
 }

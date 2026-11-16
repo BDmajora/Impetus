@@ -8,31 +8,51 @@ import com.bdmajora.impetus.engine.impl.util.Dim2i;
 
 import java.util.List;
 
-// One flat tile on a shader-option screen: label left and coloured value right, or a centred sub-screen link; left-click cycles forward, right-click backward like OptiFine
+// Button of a shader pack option with a label and a value.
 public class OptionButtonWidget extends AbstractWidget {
+    // Background color of an idle button.
     private static final int BG_DEFAULT = 0x40101010;
+    // Background color of a hovered button.
     private static final int BG_HOVERED = 0x90101010;
+    // Background color of a disabled button.
     private static final int BG_DISABLED = 0x20101010;
+    // Border color of an idle button.
     private static final int BORDER_DEFAULT = 0xFF404040;
+    // Border color of a hovered button.
     private static final int BORDER_HOVERED = 0xFF9A9A9A;
+    // Text color of an enabled button.
     private static final int TEXT_DEFAULT = 0xFFE0E0E0;
+    // Text color of a disabled button.
     private static final int TEXT_DISABLED = 0xFF707070;
 
+    // Bounds of the button.
     private final Dim2i dim;
+    // Label of the button.
     private final TextComponent label;
+    // Value text or null.
     private final String value;
+    // Value as a component or null.
+    private final TextComponent valueText;
+    // Color of the value text.
     private final int valueColor;
+    // Centered state of the label.
     private final boolean centered;
+    // Input state of the button.
     private final boolean enabled;
+    // Action of a left click or null.
     private final Runnable onLeft;
+    // Action of a right click or null.
     private final Runnable onRight;
+    // Tooltip lines.
     private final List<String> tooltip;
 
+    // Creates a button.
     public OptionButtonWidget(Dim2i dim, TextComponent label, String value, int valueColor, boolean centered,
                               boolean enabled, Runnable onLeft, Runnable onRight, List<String> tooltip) {
         this.dim = dim;
         this.label = label;
         this.value = value;
+        this.valueText = value == null ? null : TextComponent.literal(value);
         this.valueColor = valueColor;
         this.centered = centered;
         this.enabled = enabled;
@@ -41,7 +61,7 @@ public class OptionButtonWidget extends AbstractWidget {
         this.tooltip = tooltip;
     }
 
-    // Flat tile with label left and coloured value right, or a centred label for a link
+    // Draws the background and border and the label and value.
     @Override
     public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
         boolean hovered = this.enabled && this.dim.containsCursor(mouseX, mouseY);
@@ -59,13 +79,13 @@ public class OptionButtonWidget extends AbstractWidget {
             drawContext.drawString(this.label, this.dim.getCenterX() - width / 2, textY, textColor);
         } else {
             drawContext.drawString(this.label, this.dim.x() + 8, textY, textColor);
-            int valueWidth = drawContext.getStringWidth(TextComponent.literal(this.value));
-            drawContext.drawString(TextComponent.literal(this.value), this.dim.getLimitX() - 8 - valueWidth, textY,
+            int valueWidth = drawContext.getStringWidth(this.valueText);
+            drawContext.drawString(this.valueText, this.dim.getLimitX() - 8 - valueWidth, textY,
                     this.enabled ? this.valueColor : TEXT_DISABLED);
         }
     }
 
-    // Left runs the primary action, right the secondary
+    // Runs the action of a left or right click inside an enabled button.
     @Override
     public boolean mouseClicked(InteractionContext context, double mouseX, double mouseY, int button) {
         if (!this.enabled || !this.dim.containsCursor(mouseX, mouseY)) {
@@ -84,23 +104,23 @@ public class OptionButtonWidget extends AbstractWidget {
         return false;
     }
 
-    // Bounds test
+    // Returns whether the cursor is over the button.
     @Override
     public boolean isMouseOver(double mouseX, double mouseY) {
         return this.dim.containsCursor(mouseX, mouseY);
     }
 
-    // Always; tiles are never greyed
+    // Returns whether the button takes input.
     public boolean isEnabled() {
         return this.enabled;
     }
 
-    // The option's comment lines
+    // Returns the tooltip lines.
     public List<String> getTooltip() {
         return this.tooltip;
     }
 
-    // Tile bounds
+    // Returns the bounds of the button.
     public Dim2i getDim() {
         return this.dim;
     }

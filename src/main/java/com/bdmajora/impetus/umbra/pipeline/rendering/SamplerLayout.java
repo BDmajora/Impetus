@@ -9,63 +9,80 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-// Texture units for this fixed-unit 1.12 bridge: fullscreen programs keep colortexN -> unit N, gbuffers programs use OptiFine's 1.12 aux slots for gaux1..4/colortex4..7
+// Texture unit layout of the pack samplers.
 public final class SamplerLayout {
+    // Depth tex 0 unit.
     public static final int DEPTH_TEX_0_UNIT = 16;
+    // Depth tex 1 unit.
     public static final int DEPTH_TEX_1_UNIT = 17;
+    // Depth tex 2 unit.
     public static final int DEPTH_TEX_2_UNIT = 18;
+    // Shadow tex 0 unit.
     public static final int SHADOW_TEX_0_UNIT = 19;
+    // Shadow tex 1 unit.
     public static final int SHADOW_TEX_1_UNIT = 20;
+    // Shadow color 0 unit.
     public static final int SHADOW_COLOR_0_UNIT = 21;
+    // Shadow color 1 unit.
     public static final int SHADOW_COLOR_1_UNIT = 22;
+    // Noise tex unit.
     public static final int NOISE_TEX_UNIT = 23;
+    // Shadow tex 0 hw unit.
     public static final int SHADOW_TEX_0_HW_UNIT = 24;
+    // Shadow tex 1 hw unit.
     public static final int SHADOW_TEX_1_HW_UNIT = 25;
-    // Scratch unit for mipmap generation and reset, ABOVE every sampler allocation; raw binds on unit 0 desync GlStateManager's cache so bindColorSamplers' "already bound" checks skip the real rebind (BSL deferred1 read the black colortex6 and the screen went black)
+    // Mipmap scratch unit.
     public static final int MIPMAP_SCRATCH_UNIT = 32;
-    // High texture unit used transiently for depth-copy binds so no vanilla-tracked unit is disturbed
+    // Depth copy scratch unit.
     public static final int DEPTH_COPY_SCRATCH_UNIT = 33;
-    // The fullscreen-stage bind of the 1x1 iris_overlay dummy, ABOVE the sampleable range on purpose since no composite/deferred/final program declares it and a low unit only starved the pack's samplers
+    // Overlay tex unit.
     public static final int OVERLAY_TEX_UNIT = 34;
-    // Distant Horizons' LOD depth (dhDepthTex0/1), above every fixed and pack-allocated unit and shared by both layouts; any unit below GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS (48 minimum on 3.3) is addressable, and without DH they alias depthtex0/1
+    // Dh depth tex 0 unit.
     public static final int DH_DEPTH_TEX_0_UNIT = 35;
+    // Dh depth tex 1 unit.
     public static final int DH_DEPTH_TEX_1_UNIT = 36;
-    // shadowcolor2..7, which only exist under HIGHER_SHADOWCOLOR; shared by both layouts above the DH units, all still under the 48 combined units GL 3.3 guarantees
+    // Shadow color 2 unit.
     public static final int SHADOW_COLOR_2_UNIT = 37;
-    // OptiFine 1.12 gbuffers-stage units from Shaders.useProgram(): texture/lightmap/normals/specular 0..3, shadow maps 4/5, depthtex0 6, gaux1..4 7..10, depthtex1 12, shadowcolor0/1 13/14, noisetex 15
+    // Gbuffer shadow tex 0 unit.
     public static final int GBUFFER_SHADOW_TEX_0_UNIT = 4;
+    // Gbuffer shadow tex 1 unit.
     public static final int GBUFFER_SHADOW_TEX_1_UNIT = 5;
+    // Gbuffer depth tex 0 unit.
     public static final int GBUFFER_DEPTH_TEX_0_UNIT = 6;
-    // iris_overlay on the gbuffer stage; 1.12.2 draws the hurt flash fixed-function, so a fully transparent 1x1 sits on unit 11, the one gap in OptiFine's 1.12 layout
+    // Gbuffer overlay unit.
     public static final int GBUFFER_OVERLAY_UNIT = 11;
+    // Gbuffer depth tex 1 unit.
     public static final int GBUFFER_DEPTH_TEX_1_UNIT = 12;
+    // Gbuffer shadow color 0 unit.
     public static final int GBUFFER_SHADOW_COLOR_0_UNIT = 13;
+    // Gbuffer shadow color 1 unit.
     public static final int GBUFFER_SHADOW_COLOR_1_UNIT = 14;
+    // Gbuffer noise tex unit.
     public static final int GBUFFER_NOISE_TEX_UNIT = 15;
-    // The gaux1..4 / colortex4..7 range the gbuffer stage samples on units 7..10
+    // First gaux target.
     public static final int GAUX_FIRST = 4;
+    // Last gaux target.
     public static final int GAUX_LAST = 7;
-    // Highest logical colortex index gbuffer stages may address; FBO attachment points are packed
+    // Gbuffer attachment limit.
     public static final int GBUFFER_ATTACHMENT_LIMIT = UmbraRenderTargets.MAX_COLOR_BUFFERS;
-    // Lowest unit the pack's custom textures and images may use; the shadowtex*HW units are only real under SEPARATE_HARDWARE_SAMPLERS, otherwise they go to the pack (Complementary needs seven custom units and lost two at 26)
+    // Custom tex first unit.
     public static final int CUSTOM_TEX_FIRST_UNIT = SHADOW_TEX_0_HW_UNIT;
-    // Highest unit a custom texture may take, below the fixed scratch/overlay/DH/shadowcolor units; a driver reporting more than 32 units used to hand the pack units 32+ that those binds then overwrote
+    // Custom tex last unit.
     public static final int CUSTOM_TEX_LAST_UNIT = MIPMAP_SCRATCH_UNIT - 1;
-    // Every high unit the pipeline binds for the frame and unbinds at the end, in restore order
+    // Units bound for every frame.
     static final int[] FRAME_UNITS = {SHADOW_COLOR_0_UNIT, SHADOW_COLOR_1_UNIT, SHADOW_TEX_0_UNIT, SHADOW_TEX_1_UNIT,
             SHADOW_TEX_0_HW_UNIT, SHADOW_TEX_1_HW_UNIT, NOISE_TEX_UNIT, GBUFFER_DEPTH_TEX_0_UNIT,
             GBUFFER_DEPTH_TEX_1_UNIT, GBUFFER_SHADOW_COLOR_0_UNIT, GBUFFER_SHADOW_COLOR_1_UNIT,
             GBUFFER_SHADOW_TEX_0_UNIT, GBUFFER_SHADOW_TEX_1_UNIT, GBUFFER_NOISE_TEX_UNIT,
             DH_DEPTH_TEX_0_UNIT, DH_DEPTH_TEX_1_UNIT};
 
+    // Names of the legacy color targets.
     private static final String[] LEGACY = UmbraRenderTargets.LEGACY_COLOR_TARGETS;
-    // Sampler name -> logical colortex index, independent from the texture unit chosen for a stage
     private static final Map<String, Integer> COLOR_TARGETS_BY_NAME;
-    // Sampler name -> texture unit for deferred/composite/final programs
     private static final Map<String, Integer> FULLSCREEN;
-    // Sampler name -> texture unit for gbuffers/shadow-stage programs
     private static final Map<String, Integer> GBUFFER;
     private static final Map<TextureStage, Map<String, Integer>> BY_STAGE;
+    // Units of the gbuffer color targets.
     private static final int[] GBUFFER_COLOR_UNITS = new int[UmbraRenderTargets.MAX_COLOR_BUFFERS];
 
     static {
@@ -79,7 +96,6 @@ public final class SamplerLayout {
                 names.put(LEGACY[i], i);
                 fullscreen.put(LEGACY[i], i);
             }
-            // OptiFine 1.12 gbuffers stage: gaux1..4 live on units 7..10, and the colortex4..7 aliases share them
             GBUFFER_COLOR_UNITS[i] = i >= GAUX_FIRST && i <= GAUX_LAST ? i + 3 : -1;
         }
         for (int i = GAUX_FIRST; i <= GAUX_LAST; i++) {
@@ -93,7 +109,6 @@ public final class SamplerLayout {
                 DH_DEPTH_TEX_1_UNIT, DEPTH_TEX_2_UNIT, SHADOW_COLOR_1_UNIT, SHADOW_COLOR_0_UNIT, SHADOW_COLOR_0_UNIT,
                 SHADOW_TEX_0_UNIT, SHADOW_TEX_0_UNIT, SHADOW_TEX_0_UNIT, SHADOW_TEX_0_UNIT, SHADOW_TEX_1_UNIT,
                 SHADOW_TEX_1_UNIT, SHADOW_TEX_0_HW_UNIT, SHADOW_TEX_1_HW_UNIT, NOISE_TEX_UNIT};
-        // Shadow samplers are parked on unused units so a shadow-reading pack samples nothing instead of colortex0 (sampler uniforms default to unit 0)
         for (int i = 0; i < shared.length; i++) {
             fullscreen.put(shared[i], sharedUnits[i]);
             gbuffer.put(shared[i], sharedUnits[i]);
@@ -102,7 +117,6 @@ public final class SamplerLayout {
             fullscreen.put("shadowcolor" + i, shadowColorUnit(i));
             gbuffer.put("shadowcolor" + i, shadowColorUnit(i));
         }
-        // OptiFine gbuffer-stage PBR samplers; during fullscreen passes these units are also colortex2/3, so the mapping stays correct for packs leaving the aliases in shared includes
         String[] pbr = {"normals", "texNorm", "specular", "texSpecular"};
         int[] pbrUnits = {2, 2, 3, 3};
         for (int i = 0; i < pbr.length; i++) {
@@ -129,45 +143,46 @@ public final class SamplerLayout {
         BY_STAGE = Collections.unmodifiableMap(byStage);
     }
 
+    // Prevents instantiation
     private SamplerLayout() {
     }
 
-    // The shared unit of shadowcolor2..7
+    // Returns the unit of a shadow color.
     public static int shadowColorUnit(int index) {
         return SHADOW_COLOR_2_UNIT + index - ShadowColorSettings.OPTIFINE_BUFFERS;
     }
 
-    // The gbuffer-stage unit of a colortex, or -1 for the ones the gbuffer stage cannot sample
+    // Returns the unit of a gbuffer color target.
     public static int gbufferColorUnit(int index) {
         return index >= 0 && index < GBUFFER_COLOR_UNITS.length ? GBUFFER_COLOR_UNITS[index] : -1;
     }
 
-    // The fullscreen layout, read-only
+    // Returns the units of a fullscreen pass by sampler name.
     public static Map<String, Integer> fullscreen() {
         return FULLSCREEN;
     }
 
-    // The gbuffer and shadow layout, read-only
+    // Returns the units of a gbuffer pass by sampler name.
     public static Map<String, Integer> gbuffer() {
         return GBUFFER;
     }
 
-    // Layout for one stage; composite and final share, gbuffer differs
+    // Fors the stage.
     public static Map<String, Integer> forStage(TextureStage stage) {
         return stage == TextureStage.GBUFFERS_AND_SHADOW ? GBUFFER : FULLSCREEN;
     }
 
-    // Every stage's layout, built once
+    // Bies the stage.
     public static Map<TextureStage, Map<String, Integer>> byStage() {
         return BY_STAGE;
     }
 
-    // Sampler name -> colortex index, both spellings
+    // Returns the color target indices by name.
     public static Map<String, Integer> colorTargetsByName() {
         return COLOR_TARGETS_BY_NAME;
     }
 
-    // Distinguishes the two fixed layouts by a marker name, so a copy of either still answers
+    // Returns whether a layout is the gbuffer layout.
     public static boolean isGbufferLayout(Map<String, Integer> units) {
         return units.getOrDefault("depthtex0", -1) == GBUFFER_DEPTH_TEX_0_UNIT;
     }

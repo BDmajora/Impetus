@@ -20,27 +20,30 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Takes the debug-world test out of getBlockState, which every block read reaches: resolved once in the constructor into a boolean instead of a world-type lookup per read; the try/catch stays since its crash report is what makes a corruption diagnosable
+// Mixin that changes Chunk.
 @Mixin(Chunk.class)
 public abstract class ChunkMixin {
+    // Reference to the field storage arrays of the target.
     @Shadow
     @Final
     private ExtendedBlockStorage[] storageArrays;
 
+    // Reference to the field world of the target.
     @Shadow
     @Final
     private World world;
 
+    // Field debug world added to the target.
     @Unique
     private boolean equilibrium$debugWorld;
 
-    // Matches both constructors deliberately: the four-arg one delegates to the three-arg one so this runs twice and assigns the same value; a descriptor would need an obfuscated signature for no benefit
+    // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void equilibrium$resolveWorldType(CallbackInfo ci) {
         this.equilibrium$debugWorld = this.world.getWorldType() == WorldType.DEBUG_ALL_BLOCK_STATES;
     }
 
-    // Overwrite: skips the crash-report wrapping; an out-of-range read here is a programming error, not a data error
+    // Replaces the whole method getBlockState.
     @Overwrite
     public IBlockState getBlockState(final int x, final int y, final int z) {
         if (this.equilibrium$debugWorld) {

@@ -28,20 +28,25 @@ import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
-// The Extras pages: Sodium Extra plus the finer OptiFine switches, split by topic into their own sidebar group so no page runs past a screen or two; sub-options use setEnabledPredicate so a master switch greys out its children
+// Builder of the Extras pages of the video options screen.
 public final class ExtrasOptionPages {
-    // Its own sidebar group rather than a tab under Impetus, since nine pages of switches would bury General/Quality/Performance
+    // Mod id.
     private static final String MOD_ID = "extras";
+    // Prefix of the option language keys.
     private static final String LANG = "impetus.options.extras.";
+    // Prefix of the page language keys.
     private static final String PAGES = "impetus.options.pages.extras.";
+    // Prefix of the group language keys.
     private static final String GROUPS = "impetus.options.extras.group.";
 
+    // Option builders of the module.
     private static final ModuleOptions<ExtrasConfig> OPTIONS = new ModuleOptions<>(MOD_ID, "extras/", LANG, new ExtrasOptionsStorage());
 
+    // Prevents instantiation
     private ExtrasOptionPages() {
     }
 
-    // Every Extras page in sidebar order; the particle master is created first so the per-class toggles on the second page gate on the same pending value
+    // Returns the pages.
     public static List<OptionPage> pages() {
         OptionImpl<ExtrasConfig, Boolean> particlesMaster = OPTIONS.toggle("particles.all",
                 (config, value) -> config.particle.all = value,
@@ -65,18 +70,17 @@ public final class ExtrasOptionPages {
         return pages;
     }
 
-    // One page from its groups, named from impetus.options.pages.extras.<id>; "page." keeps the id clear of the extras/<path> group and option ids
+    // Returns the page.
     private static OptionPage page(String id, OptionGroup... groups) {
         return new OptionPage(OptionIdentifier.create(MOD_ID, "page." + id), TextComponent.translatable(PAGES + id), ImmutableList.copyOf(groups));
     }
 
-    // A group heading from impetus.options.extras.group.<id>
+    // Returns the translated name of a group.
     private static TextComponent groupName(String id) {
         return TextComponent.translatable(GROUPS + id);
     }
 
-    // Groups
-
+    // Returns the animation group.
     private static OptionGroup animations() {
         OptionImpl<ExtrasConfig, Boolean> master = OPTIONS.toggle("animations.all",
                 (config, value) -> config.animation.all = value,
@@ -112,7 +116,7 @@ public final class ExtrasOptionPages {
                 .build();
     }
 
-    // Master switch plus one toggle per discovered particle class, grouped by owning mod
+    // Returns the particle group.
     private static OptionGroup particles(OptionImpl<ExtrasConfig, Boolean> master) {
         BooleanSupplier enabled = master::getValue;
 
@@ -155,7 +159,7 @@ public final class ExtrasOptionPages {
                 .build();
     }
 
-    // Sky and world detail toggles; sub-options gate on their parent
+    // Returns the detail group.
     private static OptionGroup details() {
         OptionImpl<ExtrasConfig, Boolean> stars = OPTIONS.toggle("details.stars",
                 (config, value) -> config.detail.stars = value,
@@ -197,7 +201,7 @@ public final class ExtrasOptionPages {
                 .build();
     }
 
-    // Fog master plus the per-type toggles it governs
+    // Returns the fog group.
     private static OptionGroup fog() {
         OptionImpl<ExtrasConfig, Boolean> master = OPTIONS.toggle("render.fog",
                 (config, value) -> config.render.fog = value,
@@ -221,7 +225,7 @@ public final class ExtrasOptionPages {
                 .build();
     }
 
-    // Cloud scale, height and translucency, plus weather rendering
+    // Returns the cloud and weather group.
     private static OptionGroup cloudsAndWeather() {
         return OptionGroup.createBuilder()
                 .setId(OPTIONS.group("clouds"))
@@ -246,7 +250,7 @@ public final class ExtrasOptionPages {
                 .build();
     }
 
-    // Item frame, name tag and armour stand toggles; the frame sub-options gate on frames
+    // Entities the rendering.
     private static OptionGroup entityRendering() {
         OptionImpl<ExtrasConfig, Boolean> itemFrames = OPTIONS.toggle("render.item_frames",
                 (config, value) -> config.render.itemFrames = value,
@@ -288,7 +292,7 @@ public final class ExtrasOptionPages {
                 .build();
     }
 
-    // Adaptive render budgeting (GpuShift's design); everything gates on the master, and the particle slider reads Off at 100% since that hands particles back entirely
+    // Returns the render budget group.
     private static OptionGroup renderBudget() {
         OptionImpl<ExtrasConfig, Boolean> master = OPTIONS.toggle("budget.enabled",
                 (config, value) -> config.renderBudget.enabled = value,
@@ -343,7 +347,7 @@ public final class ExtrasOptionPages {
                 .build();
     }
 
-    // GPU Booster, the companion to the render budget: where the budget decides what not to draw, this makes what is drawn cheaper to hand over; everything gates on the master
+    // Returns the GPU booster group.
     private static OptionGroup gpuBooster() {
         OptionImpl<ExtrasConfig, Boolean> master = OPTIONS.toggle("booster.enabled",
                 (config, value) -> config.gpuBooster.enabled = value,
@@ -365,7 +369,7 @@ public final class ExtrasOptionPages {
                 .build();
     }
 
-    // Parallel server ticking (Async's design); the master needs a relaunch since it decides what a world is built with, the rest is live and gates on it
+    // Returns the parallel ticking group.
     private static OptionGroup parallelTicking() {
         OptionImpl<ExtrasConfig, Boolean> master = OPTIONS.toggle("parallel.enabled",
                 (config, value) -> config.async.enabled = value,
@@ -397,7 +401,7 @@ public final class ExtrasOptionPages {
                 .build();
     }
 
-    // Block entities drawn as terrain (Enhanced Block Entities' design); every switch reloads the renderer since the mesh has to pick the blocks up or drop them
+    // Returns the baked block entity group.
     private static OptionGroup bakedBlockEntities() {
         OptionImpl<ExtrasConfig, Boolean> master = OPTIONS.toggle("baked.enabled",
                 (config, value) -> config.bakedEntities.enabled = value,
@@ -421,7 +425,7 @@ public final class ExtrasOptionPages {
                 .build();
     }
 
-    // Wire limits and timeouts (Packet Fixer's set); all live, read per packet
+    // Returns the network group.
     private static OptionGroup network() {
         return OptionGroup.createBuilder()
                 .setId(OPTIONS.group("network"))
@@ -452,7 +456,7 @@ public final class ExtrasOptionPages {
                 .build();
     }
 
-    // Thread priorities and the render loop's yield (StutterFix's set); opt-in, every default is the game's own behaviour
+    // Returns the thread scheduling group.
     private static OptionGroup threadScheduling() {
         return OptionGroup.createBuilder()
                 .setId(OPTIONS.group("thread_scheduling"))
@@ -477,7 +481,7 @@ public final class ExtrasOptionPages {
                 .build();
     }
 
-    // Ray-cast occlusion of entities and block entities (tr7zw's / Meldexun's Entity Culling); the size caps and slack gate on the master
+    // Returns the occlusion culling group.
     private static OptionGroup occlusionCulling() {
         OptionImpl<ExtrasConfig, Boolean> master = OPTIONS.toggle("occlusion.enabled",
                 (config, value) -> config.occlusion.enabled = value,
@@ -506,7 +510,7 @@ public final class ExtrasOptionPages {
                 .build();
     }
 
-    // HUD framebuffer caching (Exordium / Gnetum family)
+    // Returns the HUD group.
     private static OptionGroup hud() {
         OptionImpl<ExtrasConfig, Boolean> master = OPTIONS.toggle("hud.cache",
                 (config, value) -> config.hud.cacheEnabled = value,
@@ -522,7 +526,7 @@ public final class ExtrasOptionPages {
                 .build();
     }
 
-    // Glyph batching (ImmediatelyFast), lightmap caching (BadOptimizations) and model matrices (Valkyrie)
+    // Returns the text and model group.
     private static OptionGroup textAndModels() {
         return OptionGroup.createBuilder()
                 .setId(OPTIONS.group("text_and_models"))
@@ -536,7 +540,7 @@ public final class ExtrasOptionPages {
                 .build();
     }
 
-    // Fancy-leaf face culling (More Culling / Cull Less Leaves); a change needs the chunk meshes rebuilt
+    // Returns the leaves group.
     private static OptionGroup leaves() {
         OptionImpl<ExtrasConfig, ExtrasConfig.LeafCulling> mode = OPTIONS.cycling("leaves.culling_mode",
                 ExtrasConfig.LeafCulling.class, ExtrasConfig.LeafCulling.values(),
@@ -554,7 +558,7 @@ public final class ExtrasOptionPages {
                 .build();
     }
 
-    // World-load and misc hitches (VanillaFix, Chibi, Universal Tweaks)
+    // Returns the loading group.
     private static OptionGroup loading() {
         return OptionGroup.createBuilder()
                 .setId(OPTIONS.group("loading"))
@@ -572,7 +576,7 @@ public final class ExtrasOptionPages {
                 .build();
     }
 
-    // Java's 1-10 scale with the three named points called out
+    // Priorities the label.
     private static TextComponent priorityLabel(int value) {
         if (value == Thread.MIN_PRIORITY) {
             return TextComponent.literal(value + " (lowest)");
@@ -586,7 +590,7 @@ public final class ExtrasOptionPages {
         return TextComponent.literal(Integer.toString(value));
     }
 
-    // FPS counter and coordinates HUD; layout options gate on the counter being shown
+    // Returns the overlay group.
     private static OptionGroup overlay() {
         OptionImpl<ExtrasConfig, Boolean> showFps = OPTIONS.toggle("overlay.fps",
                 (config, value) -> config.extra.showFps = value,
@@ -619,7 +623,7 @@ public final class ExtrasOptionPages {
                 .build();
     }
 
-    // Toast master plus per-category toggles it governs
+    // Returns the toast group.
     private static OptionGroup toasts() {
         OptionImpl<ExtrasConfig, Boolean> master = OPTIONS.toggle("toasts.all",
                 (config, value) -> config.extra.toasts = value,
@@ -641,7 +645,7 @@ public final class ExtrasOptionPages {
                 .build();
     }
 
-    // Miscellaneous switches with no natural home elsewhere
+    // Qualities the of life.
     private static OptionGroup qualityOfLife() {
         OptionImpl<ExtrasConfig, Boolean> steadyHud = OPTIONS.toggle("steady_debug_hud",
                 (config, value) -> config.extra.steadyDebugHud = value,
@@ -689,7 +693,7 @@ public final class ExtrasOptionPages {
         return builder.build();
     }
 
-    // Logical Zoom; the key itself is bound on the vanilla controls screen, and the strength reads as magnification since a share of the view width means little on its own
+    // Returns the zoom group.
     private static OptionGroup zoom() {
         OptionImpl<ExtrasConfig, Boolean> master = OPTIONS.toggle("zoom.enabled",
                 (config, value) -> config.zoom.enabled = value,
@@ -712,9 +716,7 @@ public final class ExtrasOptionPages {
                 .build();
     }
 
-    // Options that do not bind to the Extras config
-
-    // Vertical sync folding adaptive sync in with vanilla's on/off, shown on the General page beside the other window settings; values resolve at page build, since offering ADAPTIVE without driver tear control would silently do nothing
+    // Returns the vertical sync option.
     public static OptionImpl<ExtrasConfig, ExtrasConfig.VerticalSync> verticalSync() {
         ExtrasConfig.VerticalSync[] available = AdaptiveSync.isSupported()
                 ? ExtrasConfig.VerticalSync.values()
@@ -726,7 +728,7 @@ public final class ExtrasOptionPages {
                 OptionImpact.VARIES, null, null);
     }
 
-    // Vanilla's advanced tooltips, otherwise homeless but for F3+H; bound straight to the vanilla setting so the two cannot disagree
+    // Returns the advanced item tooltip option.
     private static OptionImpl<ExtrasConfig, Boolean> advancedItemTooltips() {
         return OPTIONS.toggle("advanced_item_tooltips",
                 (config, value) -> {
@@ -737,9 +739,7 @@ public final class ExtrasOptionPages {
                 null, null, null);
     }
 
-    // Per-class particle toggles
-
-    // One toggle per discovered particle class grouped by owning mod; everything is runtime-discovered (see ParticleClassRegistry), so a scan failure costs only its own group
+    // Adds one group per particle class list.
     private static void addParticleClassGroups(List<OptionGroup> groups, BooleanSupplier particlesOn) {
         try {
             ParticleClassRegistry registry = ParticleClassRegistry.getInstance();
@@ -765,7 +765,6 @@ public final class ExtrasOptionPages {
                         .setId(OPTIONS.group("particles." + modId))
                         .setName(TextComponent.literal("minecraft".equals(modId) ? "Minecraft" : modId));
 
-                // Vanilla particles drop the mod suffix since "(minecraft)" down the whole list says nothing; a modded id stays as the only marker of origin
                 boolean showModId = !"minecraft".equals(modId);
 
                 for (Map.Entry<String, String> classEntry : classes) {
@@ -792,9 +791,7 @@ public final class ExtrasOptionPages {
         }
     }
 
-    // Builders
-
-    // A texture-animation sub-switch: always asset-reloading, always gated on the master
+    // Returns the toggle of one animation.
     private static OptionImpl<ExtrasConfig, Boolean> animationToggle(
             String key, BooleanSupplier enabled,
             BiConsumer<ExtrasConfig, Boolean> setter, Function<ExtrasConfig, Boolean> getter) {

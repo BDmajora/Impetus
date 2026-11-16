@@ -30,11 +30,12 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
 
-// Fullscreen programs (begin/prepare/deferred/composite/final/shadowcomp) compiled once with their uniforms and cached by source name; a failure is cached as absent so it is never retried, and this cache owns the GL programs
+// Cache of the linked programs of a pack.
 public final class ProgramCache {
+    // Logger of this class.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
 
-    // A linked program with everything a pass needs from it
+    // Data of the compiled.
     public record Compiled(UmbraProgram program, ProgramUniforms uniforms, ShadowSamplerKinds shadowSamplerKinds,
                            boolean modern) {
     }
@@ -42,9 +43,10 @@ public final class ProgramCache {
     private final Map<String, Compiled> compiled = new HashMap<>();
     private final Map<String, String> defines;
     private final Function<TextureStage, Map<String, CustomTextureManager.Override>> overrides;
-    // Colour targets an earlier pass already wrote; mutated while the schedule is built, read at each compile
+    // Render targets flipped at least once.
     private final BitSet flippedAtLeastOnce;
 
+    // Creates a program cache from its defines.
     public ProgramCache(Map<String, String> defines,
                         Function<TextureStage, Map<String, CustomTextureManager.Override>> overrides,
                         BitSet flippedAtLeastOnce) {
@@ -53,7 +55,7 @@ public final class ProgramCache {
         this.flippedAtLeastOnce = flippedAtLeastOnce;
     }
 
-    // The compiled program, or null when it cannot be built; a throw is cached as null too, then rethrown for the caller to report
+    // Returns the value.
     public Compiled get(ProgramSource source) {
         String name = source.getName();
         if (this.compiled.containsKey(name)) {
@@ -68,7 +70,7 @@ public final class ProgramCache {
         return result;
     }
 
-    // The custom-texture stage a fullscreen program belongs to, from its name: beginN, prepareN, deferredN, shadowcompN, else composite (final included)
+    // Stages the of.
     static TextureStage stageOf(String name) {
         if (name.startsWith(ProgramArrayId.Begin.getBaseName())) {
             return TextureStage.BEGIN;
@@ -85,6 +87,7 @@ public final class ProgramCache {
         return TextureStage.COMPOSITE_AND_FINAL;
     }
 
+    // Compiles a program for a texture stage.
     private Compiled compile(ProgramSource source, TextureStage stage) {
         String name = source.getName();
         String vshRaw = source.getVertexSource().orElse(null);
@@ -93,28 +96,23 @@ public final class ProgramCache {
             LOGGER.warn("[Umbra] Program '{}' is missing a vertex or fragment stage; skipping", name);
             return null;
         }
-        // texture.<stage>.<sampler> redirects first, so later transforms and the DRAWBUFFERS parse see the final identifiers; then modern (1.17+) names onto fixed-function built-ins, drawn under the quad's ortho
         vshRaw = VanillaNameTransformer.transform(CustomTextureTransformer.transform(name, vshRaw, stage));
         fshRaw = VanillaNameTransformer.transform(CustomTextureTransformer.transform(name, fshRaw, stage));
         GlShader vertex = null;
         GlShader fragment = null;
         GlProgram program = null;
         try {
-            // Modern single-source packs (Complementary) take the compatibility normalizer, the GLSL-120 Chocapic family (LIGHT) the full 330-core rewrite; detected off the fragment source
             boolean modern = ModernPackTransformer.isModernSource(fshRaw);
-            // Scoped per pass: a pass in impetus.umbra.legacyPrograms compiles without IS_IRIS, and one map drives both the DRAWBUFFERS parse and the injected prologue
             Map<String, String> macros = ShaderMacros.forProgram(this.defines, name);
             int[] drawBuffers = DrawBuffers.sanitize(DrawBuffers.parseActive(fshRaw, macros), UmbraRenderTargets.MAX_COLOR_BUFFERS);
             String vsh;
             String fsh;
             if (modern) {
-                // Modern sources rely on the driver preprocessor for their #if trees, so the MC_*/IRIS_FEATURE_* environment must be present; gl_MultiTexCoord0 is fed from a real attribute rather than NVIDIA's aliasing
                 vsh = ModernPackTransformer.bindFullscreenTexCoord(ModernPackTransformer.transform(
                         ShaderSourceFixes.stabilize(name, ShaderMacros.injectDefines(vshRaw, macros))));
                 fsh = DrawBuffers.rewriteFragmentOutputs(ModernPackTransformer.transform(
                         ShaderSourceFixes.stabilize(name, ShaderMacros.injectDefines(fshRaw, macros))), drawBuffers);
             } else {
-                // The legacy branch needs the macro environment too, or `#if MC_VERSION < 10800` takes the pre-1.8 path (Pastel's `MC_RENDER_QUALITY * 0.0625` failed); injected before the transform so the defines follow its `#version 330 core`
                 vsh = FullscreenTransformer.transformVertexShader(
                         ShaderSourceFixes.foldUncompilableConditionals(ShaderMacros.injectDefines(vshRaw, macros)));
                 fsh = FullscreenTransformer.transformFragmentShader(
@@ -127,10 +125,8 @@ public final class ProgramCache {
                     .attach(fragment)
                     .bindAttributeLocation(FullscreenQuadRenderer.POSITION_SLOT, "a_Position")
                     .bindAttributeLocation(FullscreenQuadRenderer.TEXCOORD_SLOT, "a_TexCoord")
-                    // Modern (compatibility-profile) sources read the quad's texcoord through this, since gl_MultiTexCoord0 cannot be fed portably via generic attribute 8
                     .bindAttributeLocation(FullscreenQuadRenderer.TEXCOORD_SLOT, ModernPackTransformer.FULLSCREEN_TEXCOORD_ATTRIBUTE);
             if (!modern) {
-                // The 330-core rewrite writes an explicit out array whose indices are the dense draw-buffer slots, matching Umbra's packed attachments
                 builder.bindFragmentDataLocation(0, "iris_FragData");
             }
             program = builder.link();
@@ -141,7 +137,6 @@ public final class ProgramCache {
             return new Compiled(new UmbraProgram(program, drawBuffers), uniformsFor(name, program.getGlId()),
                     ShadowSamplerKinds.detect(program.getGlId()), modern);
         } catch (RuntimeException e) {
-            // A program that linked but could not be set up would otherwise leak until the context dies
             if (program != null) {
                 program.destroy();
             }
@@ -156,7 +151,7 @@ public final class ProgramCache {
         }
     }
 
-    // Registers every uniform the pipeline can supply against one program
+    // Returns the uniforms of a linked program.
     static ProgramUniforms uniformsFor(String name, int programId) {
         ProgramUniforms.Builder builder = ProgramUniforms.builder(name, programId);
         CommonUniforms.addCommonUniforms(builder);
@@ -165,7 +160,7 @@ public final class ProgramCache {
         return builder.buildUniforms();
     }
 
-    // Frees every compiled program once, however many passes used it
+    // Deletes every cached program.
     public void destroy() {
         for (Compiled entry : this.compiled.values()) {
             if (entry != null) {

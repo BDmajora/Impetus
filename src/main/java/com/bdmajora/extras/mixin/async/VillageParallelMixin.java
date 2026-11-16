@@ -9,9 +9,10 @@ import org.spongepowered.asm.mixin.Mixin;
 
 import java.util.UUID;
 
-// Villagers and golems write reputation and aggressor lists from their own ticks; the village's per-tick maintenance runs on the main thread before entities, so guarding the entity-side writers suffices
+// Mixin that changes Village.
 @Mixin(Village.class)
 public abstract class VillageParallelMixin {
+    // Handles locked add or renew aggressor.
     @WrapMethod(method = "addOrRenewAgressor")
     private void impetus$lockedAddOrRenewAggressor(EntityLivingBase entity, Operation<Void> original) {
         if (!ParallelProcessor.INSTALLED) {
@@ -23,6 +24,7 @@ public abstract class VillageParallelMixin {
         }
     }
 
+    // Handles locked modify reputation.
     @WrapMethod(method = "modifyPlayerReputation(Ljava/util/UUID;I)I")
     private int impetus$lockedModifyReputation(UUID player, int amount, Operation<Integer> original) {
         if (!ParallelProcessor.INSTALLED) {
@@ -33,6 +35,7 @@ public abstract class VillageParallelMixin {
         }
     }
 
+    // Handles locked set default reputation.
     @WrapMethod(method = "setDefaultPlayerReputation")
     private void impetus$lockedSetDefaultReputation(int reputation, Operation<Void> original) {
         if (!ParallelProcessor.INSTALLED) {

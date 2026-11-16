@@ -12,13 +12,17 @@ import org.joml.Matrix4f;
 
 import java.util.List;
 
-// Sign boards and posts; the text stays with the renderer, which keeps drawing it over the baked board
+// Baked model of signs.
 public final class SignBakedModel extends BakedEntityModel {
+    // Texture of signs.
     static final ResourceLocation TEXTURE = new ResourceLocation("minecraft", "entity/sign");
+    // Scale of the sign model.
     private static final float SCALE = 0.6666667F;
 
+    // Base model of signs.
     private final ModelSign model = new ModelSign();
 
+    // Returns the quads of the sign state.
     @Override
     protected List<BakedQuad> quadsFor(IBlockState state, BakedEntityContext context) {
         if (state.getBlock() instanceof BlockStandingSign) {
@@ -32,7 +36,7 @@ public final class SignBakedModel extends BakedEntityModel {
         return null;
     }
 
-    // TileEntitySignRenderer's standing branch: centre, spin by the sixteenth, then the flipped two-thirds scale
+    // Returns the quads of a standing sign.
     private List<BakedQuad> bakeStanding(int rotation) {
         Matrix4f matrix = new Matrix4f();
         matrix.translate(0.5F, 0.5F, 0.5F);
@@ -41,7 +45,7 @@ public final class SignBakedModel extends BakedEntityModel {
         return bake(matrix, true);
     }
 
-    // The wall branch: spin to the wall, then step back and down onto it
+    // Returns the quads of a wall sign.
     private List<BakedQuad> bakeWall(EnumFacing facing) {
         float degrees = switch (facing) {
             case NORTH -> 180.0F;
@@ -57,6 +61,7 @@ public final class SignBakedModel extends BakedEntityModel {
         return bake(matrix, false);
     }
 
+    // Returns the quads of the sign with or without its post.
     private List<BakedQuad> bake(Matrix4f matrix, boolean stick) {
         synchronized (this.model) {
             this.model.signStick.showModel = stick;
@@ -67,6 +72,7 @@ public final class SignBakedModel extends BakedEntityModel {
         }
     }
 
+    // Returns the sprite of the particles.
     @Override
     protected TextureAtlasSprite particleSprite() {
         return BakedEntities.sprite(TEXTURE);

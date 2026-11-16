@@ -8,73 +8,84 @@ import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.NibbleArray;
 import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 
-// Sky-light lane: vertical extrusion seeds full light down from the top of the world, then the same horizontal BFS as block light attenuates it through partial occluders
+// Light engine of sky light.
 public class SkyLightEngine extends BfsLightEngine {
+    // Processor of sky columns.
     private final SkyLightColumnProcessor columnProcessor;
 
+    // Creates a sky light engine from its world.
     public SkyLightEngine(World world) {
         super(true, world);
         this.columnProcessor = new SkyLightColumnProcessor(this);
     }
 
+    // Returns the emptiness map.
     @Override
     protected boolean[] getEmptinessMap(Chunk chunk) {
         return ((AsyncLitChunk) chunk).fulgor$getSkyEmptinessMap();
     }
 
+    // Stores the emptiness map.
     @Override
     protected void setEmptinessMap(Chunk chunk, boolean[] to) {
         ((AsyncLitChunk) chunk).fulgor$setSkyEmptinessMap(to);
     }
 
+    // Returns the sky light nibbles of a chunk.
     @Override
     protected SWMRNibbleArray[] getNibblesOnChunk(Chunk chunk) {
         return ((AsyncLitChunk) chunk).fulgor$getSkyNibbles();
     }
 
+    // Stores the nibbles.
     @Override
     protected void setNibbles(Chunk chunk, SWMRNibbleArray[] to) {
         ((AsyncLitChunk) chunk).fulgor$setSkyNibbles(to);
     }
 
+    // Returns the vanilla sky light array of a section.
     @Override
     protected NibbleArray vanillaLightArray(ExtendedBlockStorage section) {
         return section.getSkyLight();
     }
 
+    // Initializes the nibble.
     @Override
     protected void initNibble(int chunkX, int chunkY, int chunkZ, boolean extrude, boolean initRemovedNibbles) {
         this.columnProcessor.initNibble(chunkX, chunkY, chunkZ, extrude, initRemovedNibbles);
     }
 
+    // Stores the nibble null.
     @Override
     protected void setNibbleNull(int chunkX, int chunkY, int chunkZ) {
         this.columnProcessor.setNibbleNull(chunkX, chunkY, chunkZ);
     }
 
+    // Prepares edge checks for a chunk.
     @Override
     protected void prepareBatchedEdgeChecks(int chunkX, int chunkZ) {
         this.columnProcessor.prepareBatchedEdgeChecks(chunkX, chunkZ);
     }
 
-    // One column walk per changed column from its highest change, every position seeded into the same queues, one drain; the per-position path re-flooded overlapping regions once per block on a dense edit
+    // Queues the sky light changes of changed positions.
     @Override
     protected void processBlockPositionChanges(Chunk chunk, int chunkX, int chunkZ, IntOpenHashSet changedPositions) {
         this.columnProcessor.processBlockPositionChanges(chunkX, chunkZ, changedPositions);
     }
 
+    // Queues the light changes of one changed block.
     @Override
     protected void propagateBlockChanges(Chunk atChunk, int blockX, int blockY, int blockZ) {
         this.columnProcessor.propagateBlockChange(blockX, blockY, blockZ);
     }
 
+    // Queues a recheck of one block.
     @Override
     protected void checkBlock(int worldX, int worldY, int worldZ) {
         int currentLevel = getLightLevel(worldX, worldY, worldZ);
         int encodeOffset = this.coordinateOffset;
 
         if (currentLevel == 15) {
-            // A clobbered source must re-propagate; the sided flag is set since it is not known whether the block is conditionally transparent
             appendToIncreaseQueue(encodeCoords(worldX, worldZ, worldY, encodeOffset)
                     | encodeQueueLevel(15)
                     | (((long) ALL_DIRECTIONS_BITSET) << DIRECTION_SHIFT)
@@ -83,12 +94,12 @@ public class SkyLightEngine extends BfsLightEngine {
             setLightLevel(worldX, worldY, worldZ, 0);
         }
 
-        // Unconditional: the decrease both removes stale light and, through its brighter-neighbour branch, re-seeds the flood from adjacent sky; skipping it for sources left newly revealed cavities black
         appendToDecreaseQueue(encodeCoords(worldX, worldZ, worldY, encodeOffset)
                 | encodeQueueLevel(currentLevel)
                 | (((long) ALL_DIRECTIONS_BITSET) << DIRECTION_SHIFT));
     }
 
+    // Returns the sky light a block should have.
     @Override
     protected int calculateLightValue(int worldX, int worldY, int worldZ, int expect) {
         if (expect == 15) {
@@ -98,6 +109,7 @@ public class SkyLightEngine extends BfsLightEngine {
         return attenuateFromNeighbours(worldX, worldY, worldZ, expect, info, 0);
     }
 
+    // Lights a chunk from the sky down.
     @Override
     protected void lightChunk(Chunk chunk, boolean needsEdgeChecks) {
         this.columnProcessor.rewriteNibbleCache();
@@ -107,7 +119,6 @@ public class SkyLightEngine extends BfsLightEngine {
         int chunkZ = chunk.z;
         ExtendedBlockStorage[] sections = chunk.getBlockStorageArray();
 
-        // Empty sections at the top are full sky; their neighbours' edge columns are seeded so light spills sideways into them
         int highestNonEmptySection = MAX_SECTION;
         while (highestNonEmptySection >= MIN_SECTION && isEmptyOfBlocks(sections[highestNonEmptySection])) {
             this.columnProcessor.checkNullSection(chunkX, highestNonEmptySection, chunkZ, false);
@@ -167,6 +178,7 @@ public class SkyLightEngine extends BfsLightEngine {
         }
     }
 
+    // Checks the edges of a section range.
     @Override
     protected void checkChunkEdges(Chunk chunk, int fromSection, int toSection) {
         this.columnProcessor.resetNullPropagationChecks();

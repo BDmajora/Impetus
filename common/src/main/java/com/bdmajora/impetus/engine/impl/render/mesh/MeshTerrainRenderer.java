@@ -16,60 +16,74 @@ import java.util.function.LongSupplier;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// What a section manager drives when the mesh backend is on (Nvidium's world renderer): routes build results into the GPU stores, draws through the pipeline, and keeps the geometry inside its VRAM budget
+// Drives the mesh backend for a section manager.
 public class MeshTerrainRenderer {
+    // Logger of the backend.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/MeshBackend");
 
-    // GL_GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX, in KB
+    // Query of the free video memory in kilobytes.
     static final int GPU_MEMORY_AVAILABLE_NVX = 0x9049;
 
+    // Size of the upload staging ring.
     static final long UPLOAD_BUFFER_BYTES = 64L << 20;
+    // Size of the download staging ring.
     static final long DOWNLOAD_BUFFER_BYTES = 8L << 20;
 
-    // Automatic budgets leave a gigabyte for everything else and never start below two, like Nvidium
+    // Megabytes left free by an automatic budget.
     static final int AUTOMATIC_RESERVE_MB = 1024;
+    // Smallest automatic budget in megabytes.
     static final int AUTOMATIC_MINIMUM_MB = 2048;
-    // A dense arena is allocated whole up front, so an automatic budget is capped there; a far keep distance needs the manual setting
+    // Largest automatic budget of a dense arena in megabytes.
     static final int DENSE_AUTOMATIC_CAP_MB = 3072;
-    // Eviction starts this far below the budget, so a burst of uploads does not hit the arena's hard limit
+    // Megabytes below the budget where eviction starts.
     static final int EVICTION_HEADROOM_MB = 100;
-    // How often a sparse arena re-reads free VRAM, which other programs change under it
+    // Time between two reads of the free video memory.
     static final long BUDGET_REFRESH_NANOS = 60_000_000_000L;
 
-    // Chunks of radius assumed when nothing is ever evicted for distance
+    // Chunk radius assumed when nothing is evicted for distance.
     static final int EVERYTHING_RADIUS = 256;
+    // Smallest number of region slots.
     static final long MIN_REGIONS = 256L;
-    // Region ids travel as uint16 in the visible list
+    // Largest number of region slots.
     static final long MAX_REGIONS = 65535L;
 
-    // The live backend's settings, null when none; read on build workers to decide whether to pack, and by the far plane hook
+    // Settings of the live backend or null.
     private static volatile MeshTerrainConfig activeConfig;
 
+    // Settings of the renderer.
     private final MeshTerrainConfig config;
+    // Pipeline that draws the terrain.
     private final MeshRenderPipeline pipeline;
+    // Whether the arena is sparse.
     private final boolean sparse;
+    // Source of the time.
     private final LongSupplier clock;
 
+    // Geometry budget in bytes.
     private long budgetBytes;
+    // Time of the last budget read.
     private long lastBudgetRefresh;
 
-    // Set by the opaque draw and cleared once translucency closed the frame; a frame whose translucent pass never came is closed before the next one starts
+    // Whether the opaque draw ran and the frame was not closed.
     private boolean frameOpen;
 
+    // Section of the camera.
     private int cameraSectionX, cameraSectionY, cameraSectionZ;
 
+    // Creates a renderer with the programs of the backend.
     public MeshTerrainRenderer(MeshTerrainConfig config, int verticalRegions) {
         this(config, verticalRegions, null, System::nanoTime);
     }
 
-    // An Nvidium-ported shader pack's programs, or null for Nvidium's own; the renderer owns them from here on
+    // Creates a renderer with the programs of a shader pack or the default programs for null.
     public MeshTerrainRenderer(MeshTerrainConfig config, int verticalRegions, @Nullable MeshTerrainShading shading) {
         this(config, verticalRegions, shading, System::nanoTime);
     }
 
+    // Creates a renderer with a clock and rejects null parts.
     MeshTerrainRenderer(MeshTerrainConfig config, int verticalRegions, @Nullable MeshTerrainShading shading, LongSupplier clock) {
-        this.config = config;
-        this.clock = clock;
+        this.config = java.util.Objects.requireNonNull(config, "config");
+        this.clock = java.util.Objects.requireNonNull(clock, "clock");
         this.sparse = MeshShaderSupport.supportsSparseGeometry();
         this.budgetBytes = computeBudgetMB(config, this.sparse, 0L) << 20;
         this.lastBudgetRefresh = clock.getAsLong();
@@ -82,12 +96,12 @@ public class MeshTerrainRenderer {
                 this.sparse ? "sparse" : "dense", maxRegions, shading != null ? ", shader pack programs" : "");
     }
 
-    // Whether a mesh backend is live, so build workers pack their output for it
+    // Returns whether a mesh backend is live.
     public static boolean isActive() {
         return activeConfig != null;
     }
 
-    // Vanilla's far plane, pushed out to the keep distance when geometry is kept past the render distance, so the projection and fog reach it
+    // Returns the far plane extended to the keep distance.
     public static float extendFarPlane(float vanillaBlocks) {
         MeshTerrainConfig config = activeConfig;
 
@@ -99,21 +113,20 @@ public class MeshTerrainRenderer {
         return Math.max(vanillaBlocks, chunks * 16.0f);
     }
 
-    // The pipeline, for tests and the debug screen
+    // Returns the pipeline.
     public MeshRenderPipeline getPipeline() {
         return this.pipeline;
     }
 
-    // The geometry budget in bytes
+    // Returns the geometry budget in bytes.
     public long getBudgetBytes() {
         return this.budgetBytes;
     }
 
-    // Puts a finished build on the GPU, or drops the section when it built to nothing
+    // Uploads a finished build and evicts a region first when the table is full.
     public void upload(int sectionX, int sectionY, int sectionZ, SectionGeometry geometry) {
         MeshRegionStore regions = this.pipeline.getSections().getRegions();
 
-        // A full region table makes room before a new region needs an id
         if (geometry != null && !regions.hasRegionFor(sectionX, sectionY, sectionZ)
                 && regions.getRegionCount() >= this.pipeline.getMaxRegions() - 1) {
             evictOne();
@@ -122,20 +135,20 @@ public class MeshTerrainRenderer {
         this.pipeline.getSections().upload(sectionX, sectionY, sectionZ, geometry);
     }
 
-    // The CPU dropped a section; it stays on the GPU when the keep distance outreaches the render distance
+    // Removes a section unless geometry is kept past the render distance.
     public void remove(int sectionX, int sectionY, int sectionZ) {
         if (!this.config.keepsBeyondRenderDistance()) {
             this.pipeline.getSections().remove(sectionX, sectionY, sectionZ);
         }
     }
 
-    // The whole opaque frame; later opaque passes of the same frame have nothing left to draw
+    // Draws the opaque frame.
     public void renderOpaque(Viewport viewport, ChunkRenderMatrices matrices, MeshFog fog,
                              double cameraX, double cameraY, double cameraZ, int screenWidth, int screenHeight) {
         this.renderOpaque(viewport, matrices, fog, null, cameraX, cameraY, cameraZ, screenWidth, screenHeight);
     }
 
-    // The same for a pass whose state shader pack programs apply; the camera is the origin the model-view is relative to, and the eye is recovered from the matrix
+    // Draws the opaque frame with the state of a pass.
     public void renderOpaque(Viewport viewport, ChunkRenderMatrices matrices, MeshFog fog, @Nullable TerrainRenderPass pass,
                              double cameraX, double cameraY, double cameraZ, int screenWidth, int screenHeight) {
         if (this.frameOpen) {
@@ -154,30 +167,30 @@ public class MeshTerrainRenderer {
         refreshBudget();
     }
 
-    // Translucent terrain, then the frame's readbacks and uploads are retired
+    // Draws the translucent terrain and ends the frame.
     public void renderTranslucent() {
         this.renderTranslucent(null);
     }
 
-    // The same for a pass whose state shader pack programs apply
+    // Draws the translucent terrain with the state of a pass and ends the frame.
     public void renderTranslucent(@Nullable TerrainRenderPass pass) {
         this.pipeline.renderTranslucent(pass);
         this.pipeline.endFrame();
         this.frameOpen = false;
     }
 
-    // The shadow map's opaque terrain from the light's frustum; the shadow pass precedes the frame's terrain and its uploads retire with that frame
+    // Draws the opaque shadow terrain.
     public void renderShadow(Viewport viewport, ChunkRenderMatrices matrices, @Nullable TerrainRenderPass pass,
                              double cameraX, double cameraY, double cameraZ, int width, int height) {
         this.pipeline.renderShadow(viewport, matrices, MeshCamera.at(cameraX, cameraY, cameraZ), pass, width, height);
     }
 
-    // The shadow map's translucent terrain over the regions the opaque shadow draw chose
+    // Draws the translucent shadow terrain.
     public void renderShadowTranslucent(@Nullable TerrainRenderPass pass) {
         this.pipeline.renderShadowTranslucent(pass);
     }
 
-    // F3 lines
+    // Adds the debug lines.
     public void addDebugStrings(List<String> lines) {
         QuadArena arena = this.pipeline.getSections().getArena();
         MeshRegionStore regions = this.pipeline.getSections().getRegions();
@@ -188,13 +201,15 @@ public class MeshTerrainRenderer {
         this.pipeline.addDebugStrings(lines);
     }
 
-    // Frees everything and lets build workers stop packing
+    // Frees everything and stops the build workers from packing.
     public void delete() {
-        activeConfig = null;
+        if (activeConfig == this.config) {
+            activeConfig = null;
+        }
         this.pipeline.delete();
     }
 
-    // Evicts the least recently seen regions while the geometry sits within the headroom of its budget
+    // Evicts regions while the geometry is above the budget minus the headroom.
     private void enforceBudget() {
         long limit = this.budgetBytes - ((long) EVICTION_HEADROOM_MB << 20);
 
@@ -205,7 +220,7 @@ public class MeshTerrainRenderer {
         }
     }
 
-    // Drops one region: the least recently seen beyond the render distance, else the least recently seen anywhere, else the farthest; false when none is left
+    // Evicts one region and returns false when none is left.
     private boolean evictOne() {
         MeshRegionStore regions = this.pipeline.getSections().getRegions();
         int maxIndex = regions.getMaxRegionIndex();
@@ -230,7 +245,7 @@ public class MeshTerrainRenderer {
         return true;
     }
 
-    // The live region farthest from the camera, or -1 when there are none
+    // Returns the region farthest from the camera or minus one.
     private int farthestRegion(MeshRegionStore regions) {
         int best = -1;
         int bestDistance = -1;
@@ -250,7 +265,7 @@ public class MeshTerrainRenderer {
         return best;
     }
 
-    // A sparse arena only pays for what it commits, so its budget follows free VRAM as other programs come and go
+    // Reads the free video memory again for a sparse arena.
     private void refreshBudget() {
         long now = this.clock.getAsLong();
 
@@ -262,7 +277,7 @@ public class MeshTerrainRenderer {
         this.budgetBytes = computeBudgetMB(this.config, true, this.pipeline.getSections().getArena().getResidentBytes()) << 20;
     }
 
-    // Free VRAM plus what this arena already holds, minus a reserve; the manual setting when automatic memory is off or the driver cannot say
+    // Returns the geometry budget in megabytes.
     static long computeBudgetMB(MeshTerrainConfig config, boolean sparse, long residentBytes) {
         if (!config.automaticMemory() || !LWJGL.isExtensionSupported(GLExtension.NVX_gpu_memory_info)) {
             return config.maxGeometryMemoryMB();
@@ -274,11 +289,11 @@ public class MeshTerrainRenderer {
         return sparse ? budget : Math.min(budget, DENSE_AUTOMATIC_CAP_MB);
     }
 
-    // Enough region slots for the farthest distance geometry is kept at, with a quarter spare; region ids travel as uint16
+    // Returns the number of region slots for the keep distance.
     static int computeMaxRegions(MeshTerrainConfig config, int verticalRegions) {
-        int distance = config.keepsEverything() ? EVERYTHING_RADIUS
+        long distance = config.keepsEverything() ? EVERYTHING_RADIUS
                 : Math.max(config.renderDistance(), config.regionKeepDistance());
-        int perAxis = (2 * distance + 1 + 7) / 8 + 1;
+        long perAxis = (2 * distance + 1 + 7) / 8 + 1;
         long regions = (long) perAxis * perAxis * Math.max(1, verticalRegions) * 5 / 4;
 
         return (int) Math.clamp(regions, MIN_REGIONS, MAX_REGIONS);

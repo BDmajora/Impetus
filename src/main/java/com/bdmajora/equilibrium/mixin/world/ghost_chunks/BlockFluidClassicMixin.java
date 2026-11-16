@@ -11,9 +11,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.Random;
 
-// Forge's classic fluid looks up to four blocks sideways for somewhere to flow on every tick, loading whatever chunk lies that way (FoamFix's ghostbuster, fluids); vanilla liquids already refuse to tick unless the area is loaded, so the same guard is applied here. Forge class, but updateTick overrides Block's and is func_180650_b in production, so the selector must remap
+// Mixin that changes BlockFluidClassic.
 @Mixin(BlockFluidClassic.class)
 public abstract class BlockFluidClassicMixin {
+    // Runs at the start of updateTick and can cancel it.
     @Inject(method = "updateTick(Lnet/minecraft/world/World;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/block/state/IBlockState;Ljava/util/Random;)V", at = @At("HEAD"), cancellable = true)
     private void equilibrium$requireLoadedArea(World world, BlockPos pos, IBlockState state, Random rand, CallbackInfo ci) {
         if (!world.isAreaLoaded(pos, 4)) {

@@ -9,25 +9,28 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Lets an idle furnace skip its tick: unlit (furnaceBurnTime == 0), no progress to decay (cookTime == 0), and missing input or fuel means every vanilla branch is a no-op; the guard is re-evaluated each tick so a hopper dropping fuel in is seen next tick without a subscription system
+// Mixin that changes TileEntityFurnace.
 @Mixin(TileEntityFurnace.class)
 public abstract class TileEntityFurnaceMixin {
+    // Reference to the field furnace item stacks of the target.
     @Shadow
     private NonNullList<ItemStack> furnaceItemStacks;
 
+    // Reference to the field furnace burn time of the target.
     @Shadow
     private int furnaceBurnTime;
 
+    // Reference to the field cook time of the target.
     @Shadow
     private int cookTime;
 
+    // Runs at the start of update and can cancel it.
     @Inject(method = "update", at = @At("HEAD"), cancellable = true)
     private void equilibrium$sleepWhileIdle(CallbackInfo ci) {
         if (this.furnaceBurnTime != 0 || this.cookTime != 0) {
             return;
         }
 
-        // Slot 0 is the input, slot 1 the fuel.
         if (!this.furnaceItemStacks.get(0).isEmpty() && !this.furnaceItemStacks.get(1).isEmpty()) {
             return;
         }

@@ -11,37 +11,48 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
 
+// Flat button with a label and an action.
 public class FlatButtonWidget extends AbstractWidget implements Focusable {
+    // Bounds of the button.
     protected final Dim2i dim;
+    // Action run on a click.
     private final Runnable action;
 
+    // Colors of the button.
     private @NotNull Style style = Style.defaults();
 
+    // Selection highlight state of the button.
     private boolean selected;
+    // Input state of the button.
     private boolean enabled = true;
+    // Visibility state of the button.
     private boolean visible = true;
+    // Left alignment state of the label.
     private boolean leftAligned;
+    // Focus state of the button.
     private boolean focused;
 
+    // Text of the button.
     private TextComponent label;
 
+    // Creates a button and rejects a null bound or label or action.
     public FlatButtonWidget(Dim2i dim, TextComponent label, Runnable action) {
-        this.dim = dim;
-        this.label = label;
-        this.action = action;
+        this.dim = Objects.requireNonNull(dim, "dim");
+        this.label = Objects.requireNonNull(label, "label");
+        this.action = Objects.requireNonNull(action, "action");
     }
 
-    // Indent for left-aligned labels
+    // Returns the indent of a left aligned label.
     protected int getLeftAlignedTextOffset(DrawContext drawContext) {
         return 10;
     }
 
-    // Bounds test, only when enabled
+    // Returns whether the cursor is over the button.
     protected boolean isHovered(int mouseX, int mouseY) {
         return this.dim.containsCursor(mouseX, mouseY);
     }
 
-    // Background by state, then the label centred or left-aligned; focus looks hovered and adds an accent outline
+    // Draws the background and the label and an outline when focused.
     @Override
     public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
         if (!this.visible) {
@@ -73,24 +84,24 @@ public class FlatButtonWidget extends AbstractWidget implements Focusable {
         }
     }
 
-    // Replaces the colour set
+    // Stores the colors and rejects null.
     public void setStyle(@NotNull Style style) {
-        Objects.requireNonNull(style);
+        Objects.requireNonNull(style, "style");
 
         this.style = style;
     }
 
-    // Highlighted state, for the active tab
+    // Stores whether the button is selected.
     public void setSelected(boolean selected) {
         this.selected = selected;
     }
 
-    // Label alignment
+    // Stores whether the label starts at the left.
     public void setLeftAligned(boolean leftAligned) {
         this.leftAligned = leftAligned;
     }
 
-    // Runs the action on left click when enabled and hovered
+    // Runs the action on a left click inside an enabled and visible button.
     @Override
     public boolean mouseClicked(InteractionContext context, double mouseX, double mouseY, int button) {
         if (!this.enabled || !this.visible) {
@@ -106,7 +117,7 @@ public class FlatButtonWidget extends AbstractWidget implements Focusable {
         return false;
     }
 
-    // Enter, keypad Enter or Space presses the button while it has focus and is shown and enabled, as a click would need
+    // Runs the action on Enter or Space while the button holds focus.
     @Override
     public boolean keyTyped(InteractionContext context, char typedChar, int keyCode) {
         if (this.focused && this.canFocus() && Keys.isPress(typedChar, keyCode)) {
@@ -118,68 +129,72 @@ public class FlatButtonWidget extends AbstractWidget implements Focusable {
         return false;
     }
 
-    // Plays the click and runs the action
+    // Runs the action and plays the click sound.
     private void doAction(InteractionContext context) {
         this.action.run();
         context.playClickSound();
     }
 
-    // Greys out and ignores clicks
+    // Stores whether the button reacts to input.
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
     }
 
-    // Hidden buttons draw nothing and ignore input
+    // Stores whether the button draws and reacts.
     public void setVisible(boolean visible) {
         this.visible = visible;
     }
 
-    // Replaces the label
+    // Stores the label and rejects null.
     public void setLabel(TextComponent text) {
-        this.label = text;
+        this.label = Objects.requireNonNull(text, "text");
     }
 
-    // Current label
+    // Returns the label.
     public TextComponent getLabel() {
         return this.label;
     }
 
-    // Bounds test, only when visible
+    // Returns whether the cursor is over a visible button.
     @Override
     public boolean isMouseOver(double mouseX, double mouseY) {
-        return this.dim.containsCursor(mouseX, mouseY);
+        return this.visible && this.dim.containsCursor(mouseX, mouseY);
     }
 
-    // Tab skips a hidden or greyed-out button
+    // Returns whether the button is visible and enabled.
     @Override
     public boolean canFocus() {
         return this.enabled && this.visible;
     }
 
-    // Whether Enter and Space go here
+    // Returns whether the button holds focus.
     @Override
     public boolean isFocused() {
         return this.focused;
     }
 
-    // Set by the container when Tab or a click moves focus
+    // Stores whether the button holds focus.
     @Override
     public void setFocused(boolean focused) {
         this.focused = focused;
     }
 
-    // Bounds
+    // Returns the bounds of the button.
     @Override
     public Dim2i getDimensions() {
         return this.dim;
     }
 
+    // Colors of a button.
     public static class Style {
+        // Background colors by state.
         public int bgHovered, bgDefault, bgDisabled;
+        // Text colors by state.
         public int textDefault, textSelected, textDisabled;
+        // Color of the accent lines.
         public int accentColor;
 
-        // The standard flat colour set
+        // Creates the standard colors.
         public static Style defaults() {
             var style = new Style();
             style.bgHovered = DefaultColors.BACKGROUND_HOVERED;

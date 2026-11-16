@@ -8,9 +8,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// RenderItem reloads right after ModelManager, the first point the item locations and the new registry both exist
+// Mixin that changes RenderItem.
 @Mixin(RenderItem.class)
 public abstract class RenderItemPrebakeMixin {
+    // Runs at the start of onResourceManagerReload.
     @Inject(method = "onResourceManagerReload", at = @At("HEAD"))
     private void coarctatio$prebakeItems(IResourceManager resourceManager, CallbackInfo ci) {
         ItemModelPrebake.restart();

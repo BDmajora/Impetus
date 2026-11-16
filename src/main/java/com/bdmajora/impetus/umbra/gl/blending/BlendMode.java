@@ -3,15 +3,13 @@ package com.bdmajora.impetus.umbra.gl.blending;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL14;
 
-
 import java.util.Locale;
 
-// The blend factors a pack declares for one program via `blend.<program> = SRC DST` or the four-factor form; four because packs blend RGB normally while writing alpha ONE/ZERO so it carries data
+// Data of the blend mode.
 public record BlendMode(int srcRgb, int dstRgb, int srcAlpha, int dstAlpha) {
-    // Accepts OptiFine's two- and four-factor forms; throws on anything else so the caller logs and drops just this directive
+    // Parses a blend mode from pack text or returns null.
     public static BlendMode parse(String value) {
         String[] parts = value.trim().split("\\s+");
-        // Two factors mean the same pair applies to both colour and alpha, which is GL's own glBlendFunc default
         if (parts.length == 2) {
             int src = function(parts[0]);
             int dst = function(parts[1]);
@@ -25,7 +23,7 @@ public record BlendMode(int srcRgb, int dstRgb, int srcAlpha, int dstAlpha) {
         throw new IllegalArgumentException("expected two or four blend factors, got " + parts.length);
     }
 
-    // Factor name to GL enum, upper-cased through ROOT so a Turkish locale cannot break SRC_ALPHA matching
+    // Returns the GL enum of a blend factor name.
     private static int function(String name) {
         return switch (name.trim().toUpperCase(Locale.ROOT)) {
             case "ZERO" -> GL11.GL_ZERO;

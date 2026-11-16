@@ -10,12 +10,13 @@ import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.function.Function;
 
-// The sun, moon, stars, sky, vignette, underwaterOverlay and weather switches packs use to suppress vanilla features they draw themselves; everything defaults to enabled, including with no pack
+// Switches of vanilla effects that the pack turns off.
 public final class VanillaFeatureToggles {
+    // Prevents instantiation
     private VanillaFeatureToggles() {
     }
 
-    // Reads a directive from the active pack; true when unset or no pack
+    // Returns whether a pack switch is on or the default.
     private static boolean isEnabled(Function<ShaderProperties, Optional<Boolean>> directive) {
         ShaderPack pack = Umbra.getCurrentPack();
         if (pack == null || Umbra.getRenderingPipeline() == null) {
@@ -24,49 +25,48 @@ public final class VanillaFeatureToggles {
         return directive.apply(pack.getProperties()).orElse(Boolean.TRUE);
     }
 
-    // sun directive
+    // Returns whether render sun.
     public static boolean shouldRenderSun() {
         return isEnabled(ShaderProperties::getRenderSun);
     }
 
-    // moon directive
+    // Returns whether render moon.
     public static boolean shouldRenderMoon() {
         return isEnabled(ShaderProperties::getRenderMoon);
     }
 
-    // stars directive
+    // Returns whether render stars.
     public static boolean shouldRenderStars() {
         return isEnabled(ShaderProperties::getRenderStars);
     }
 
-    // sky directive
+    // Returns whether render sky.
     public static boolean shouldRenderSky() {
         return isEnabled(ShaderProperties::getRenderSky);
     }
 
-    // vignette directive
+    // Returns whether render vignette.
     public static boolean shouldRenderVignette() {
         return isEnabled(ShaderProperties::getRenderVignette);
     }
 
-    // underwaterOverlay directive
+    // Returns whether render underwater overlay.
     public static boolean shouldRenderUnderwaterOverlay() {
         return isEnabled(ShaderProperties::getRenderUnderwaterOverlay);
     }
 
-    // weather directive
+    // Returns whether render weather.
     public static boolean shouldRenderWeather() {
         return isEnabled(ShaderProperties::getRenderWeather);
     }
 
-    // The pack's `clouds = off | fast | fancy` mapped onto GameSettings' modes (0/1/2), or empty to leave the player's setting; resolved once at the source like Iris since renderCloudsCheck (render at all, cloud projection) and renderClouds (fast vs fancy) both read it and must agree
+    // Returns the cloud mode.
     public static OptionalInt getCloudMode() {
         ShaderPack pack = Umbra.getCurrentPack();
         if (pack == null || Umbra.getRenderingPipeline() == null) {
             return OptionalInt.empty();
         }
 
-        // getCloudMode() has already lowercased the value.
         String mode = pack.getProperties().getCloudMode().orElse("").trim();
         switch (mode) {
             case "":
@@ -78,7 +78,6 @@ public final class VanillaFeatureToggles {
             case "fancy":
                 return OptionalInt.of(2);
             default:
-                // Consulted every frame, so only complain about a given value once.
                 if (!mode.equals(warnedCloudMode)) {
                     warnedCloudMode = mode;
                     LOGGER.error("[Umbra] Unrecognized clouds setting: {}", mode);
@@ -87,6 +86,8 @@ public final class VanillaFeatureToggles {
         }
     }
 
+    // Logger of this class.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
+    // Cloud mode that was last warned about.
     private static String warnedCloudMode;
 }

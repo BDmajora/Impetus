@@ -10,17 +10,22 @@ import net.minecraft.world.chunk.Chunk;
 import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
 
-// Insertion-ordered queue of per-chunk light batches for one lane; the main thread (and Async's tick workers) enqueue, one worker dequeues
+// Queue of light updates by chunk.
 public final class LightQueue {
+    // Pending tasks by chunk in queue order.
     private final Long2ObjectLinkedOpenHashMap<ChunkTasks> tasksByChunk = new Long2ObjectLinkedOpenHashMap<>();
-    // A dequeued batch moves here under the same monitor, so nothing observes a gap between dequeue and completion
+    // Tasks being run by chunk.
     private final Long2ObjectOpenHashMap<ChunkTasks> inFlightTasks = new Long2ObjectOpenHashMap<>();
+    // Signal of available work.
     private final Semaphore workAvailable = new Semaphore(0);
-    // Priority lookups must be O(1) per dequeue, so keys are recorded on entry to each class and validated lazily when popped
+    // Chunks with block changes in order.
     private final LongArrayFIFOQueue blockChangeKeys = new LongArrayFIFOQueue();
+    // Chunks with initial lighting in order.
     private final LongArrayFIFOQueue initialLightKeys = new LongArrayFIFOQueue();
+    // Number of queued initial lightings.
     private int initialLightCount;
 
+    // Returns whether a task can change light values.
     private static boolean changesLightValues(ChunkTasks tasks) {
         if (tasks == null) {
             return false;
@@ -30,6 +35,7 @@ public final class LightQueue {
                 || (tasks.changedPositions != null && !tasks.changedPositions.isEmpty());
     }
 
+    // Returns the tasks of a chunk and creates them when missing.
     private ChunkTasks getOrCreate(long key) {
         ChunkTasks tasks = this.tasksByChunk.get(key);
         if (tasks == null) {
@@ -40,7 +46,11 @@ public final class LightQueue {
         return tasks;
     }
 
+    // Queues the block change.
     public synchronized void queueBlockChange(int x, int y, int z) {
+        if (y < 0 || y > 255) {
+            return;
+        }
         long key = ChunkPos.asLong(x >> 4, z >> 4);
         ChunkTasks tasks = this.getOrCreate(key);
         if (tasks.changedPositions == null) {
@@ -51,6 +61,7 @@ public final class LightQueue {
         this.workAvailable.release(1);
     }
 
+    // Queues the section change.
     public synchronized void queueSectionChange(int cx, int sectionY, int cz, boolean empty) {
         if (sectionY < 0 || sectionY > 15) {
             return;
@@ -63,6 +74,7 @@ public final class LightQueue {
         this.workAvailable.release(1);
     }
 
+    // Queues the chunk light.
     public synchronized void queueChunkLight(int cx, int cz, Chunk chunk, Boolean[] emptySections, long generation) {
         long key = ChunkPos.asLong(cx, cz);
         ChunkTasks tasks = this.getOrCreate(key);
@@ -78,13 +90,12 @@ public final class LightQueue {
         tasks.initialLightEmptySections = emptySections;
         tasks.initialLightGeneration = generation;
         tasks.relightAttempts = 0;
-        // A new propagation pass supersedes a queued edge-finalisation marker; the section set stays as ordinary edge maintenance
         tasks.initialLightEdgeGeneration = 0L;
         tasks.edgeCheckAttempts = 0;
         this.workAvailable.release(1);
     }
 
-    // The cheap load-time init (nibbles and emptiness map, no BFS) for a chunk restored with valid saved light
+    // Queues the chunk load init.
     public synchronized void queueChunkLoadInit(int cx, int cz, Chunk chunk, Boolean[] emptySections) {
         ChunkTasks tasks = this.getOrCreate(ChunkPos.asLong(cx, cz));
         tasks.loadInitChunk = chunk;
@@ -92,8 +103,9 @@ public final class LightQueue {
         this.workAvailable.release(1);
     }
 
-    // Re-queues a full relight after a BFS queue overflow; false when a newer generation already occupies the chunk
+    // Requeues the chunk light.
     public synchronized boolean requeueChunkLight(int cx, int cz, Chunk chunk, Boolean[] emptySections,
+                                                  // Generation of the queue when the task was made.
                                                   long generation, int previousAttempts) {
         long key = ChunkPos.asLong(cx, cz);
         ChunkTasks tasks = this.getOrCreate(key);
@@ -119,14 +131,16 @@ public final class LightQueue {
         return true;
     }
 
+    // Queues edge checks of every section of a chunk.
     public synchronized void queueEdgeCheckAllSections(int cx, int cz, boolean isSky) {
         ChunkTasks tasks = this.getOrCreate(ChunkPos.asLong(cx, cz));
         addAllEdgeSections(tasks, isSky);
         this.workAvailable.release(1);
     }
 
-    // The edge-reconciliation phase that gates publishing an initial-light generation; false when newer work already occupies the chunk
+    // Queues initial edge checks of every section of a chunk.
     public synchronized boolean queueInitialLightEdgeCheckAllSections(int cx, int cz, boolean isSky,
+                                                                      // Generation of the queue when the task was made.
                                                                       long generation, int attempts) {
         if (generation <= 0L || attempts < 0) {
             throw new IllegalArgumentException("Invalid initial-light edge generation/attempt");
@@ -147,6 +161,7 @@ public final class LightQueue {
         return true;
     }
 
+    // Adds every section to the edge checks of a task.
     private static void addAllEdgeSections(ChunkTasks tasks, boolean isSky) {
         if (isSky) {
             if (tasks.queuedEdgeChecksSky == null) {
@@ -165,12 +180,11 @@ public final class LightQueue {
         }
     }
 
-    // First batch carrying an initial light, ahead of edge-only batches
+    // Removes the first initial light task.
     public synchronized ChunkTasks removeFirstInitialLightTask() {
         while (!this.initialLightKeys.isEmpty()) {
             long key = this.initialLightKeys.dequeueLong();
             ChunkTasks task = this.tasksByChunk.get(key);
-            // A stale entry: the batch left the map through another path
             if (task == null || task.initialLightChunk == null) {
                 continue;
             }
@@ -181,6 +195,7 @@ public final class LightQueue {
         return null;
     }
 
+    // Removes the first task.
     public synchronized ChunkTasks removeFirstTask() {
         if (this.tasksByChunk.isEmpty()) {
             return null;
@@ -191,7 +206,7 @@ public final class LightQueue {
         return task;
     }
 
-    // First batch carrying block changes, so a player's placement beats chunk loading
+    // Removes the first block change task.
     public synchronized ChunkTasks removeFirstBlockChangeTask() {
         while (!this.blockChangeKeys.isEmpty()) {
             long key = this.blockChangeKeys.dequeueLong();
@@ -206,10 +221,12 @@ public final class LightQueue {
         return null;
     }
 
+    // Returns whether initial light task.
     public synchronized boolean hasInitialLightTask() {
         return this.initialLightCount > 0;
     }
 
+    // Removes the chunk.
     public void removeChunk(int cx, int cz) {
         ChunkTasks task;
         synchronized (this) {
@@ -223,7 +240,7 @@ public final class LightQueue {
         }
     }
 
-    // Always called from the worker's finally block
+    // Marks a task done and completes its future.
     void completeTask(ChunkTasks task) {
         synchronized (this) {
             if (this.inFlightTasks.get(task.chunkCoordinate) == task) {
@@ -233,41 +250,46 @@ public final class LightQueue {
         task.onComplete.set(null);
     }
 
+    // Handles the task removed.
     private void onTaskRemoved(ChunkTasks task) {
         if (task.initialLightChunk != null) {
             this.initialLightCount--;
         }
     }
 
+    // Handles the task dequeued.
     private void onTaskDequeued(ChunkTasks task) {
         onTaskRemoved(task);
         this.inFlightTasks.put(task.chunkCoordinate, task);
     }
 
+    // Returns whether pending work.
     public synchronized boolean hasPendingWork(int cx, int cz) {
         long key = ChunkPos.asLong(cx, cz);
         return this.tasksByChunk.containsKey(key) || this.inFlightTasks.containsKey(key);
     }
 
-    // Queued or in flight; unlike isEmpty this is the right question for a completion check
+    // Returns whether work.
     public synchronized boolean hasWork() {
         return !this.tasksByChunk.isEmpty() || !this.inFlightTasks.isEmpty();
     }
 
+    // Returns whether empty.
     public synchronized boolean isEmpty() {
         return this.tasksByChunk.isEmpty();
     }
 
+    // Returns the size.
     public synchronized int size() {
         return this.tasksByChunk.size();
     }
 
-    // Whether queued work could still change the chunk's light values; edge-only batches refine seams and do not count
+    // Returns whether pending light work.
     public synchronized boolean hasPendingLightWork(long key) {
         return changesLightValues(this.tasksByChunk.get(key)) || changesLightValues(this.inFlightTasks.get(key));
     }
 
-    // Completion of the current batch for a chunk, or null; callers re-check afterwards since a new batch may have arrived meanwhile
+    // Returns the pending work future.
     synchronized Future<Void> getPendingWorkFuture(long key) {
         ChunkTasks inFlight = this.inFlightTasks.get(key);
         if (inFlight != null) {
@@ -277,17 +299,18 @@ public final class LightQueue {
         return queued == null ? null : queued.onComplete;
     }
 
-    // Blocks until work arrives, then drains the excess permits so one wake processes everything
+    // Blocks until work is signalled.
     void waitForWork() throws InterruptedException {
         this.workAvailable.acquire();
         this.workAvailable.drainPermits();
     }
 
+    // Signals the worker.
     void wakeUp() {
         this.workAvailable.release(1);
     }
 
-    // On the client nothing acquires the permits, so they are dropped each drain rather than accumulating
+    // Clears the work signal.
     void clearWorkSignal() {
         this.workAvailable.drainPermits();
     }

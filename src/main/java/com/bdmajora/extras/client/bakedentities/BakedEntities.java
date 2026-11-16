@@ -23,41 +23,54 @@ import net.minecraftforge.fml.relauncher.Side;
 
 import java.util.Calendar;
 
-// Block entities drawn as terrain (after FoundationGames' Enhanced Block Entities and the Better Block Entities team's design): chests, ender chests, signs, beds and shulker boxes bake to block models from the very ModelRenderer geometry their renderers draw, and only an animating one goes back to its renderer
+// Block entities drawn as baked models.
 @Mod.EventBusSubscriber(Side.CLIENT)
 public final class BakedEntities {
-    // Live switches, applied whenever the Extras config loads or saves
+    // Whether chests are baked.
     public static volatile boolean chests;
+    // Whether ender chests are baked.
     public static volatile boolean enderChests;
+    // Whether signs are baked.
     public static volatile boolean signs;
+    // Whether beds are baked.
     public static volatile boolean beds;
+    // Whether shulker boxes are baked.
     public static volatile boolean shulkerBoxes;
 
-    // Same window TileEntityChestRenderer uses for the festive texture
+    // Whether the holiday texture applies.
     private static final boolean CHRISTMAS = isChristmas();
 
+    // Model of chests.
     private static final ChestBakedModel CHEST = new ChestBakedModel();
+    // Model of ender chests.
     private static final EnderChestBakedModel ENDER_CHEST = new EnderChestBakedModel();
+    // Model of signs.
     private static final SignBakedModel SIGN = new SignBakedModel();
+    // Model of beds.
     private static final BedBakedModel BED = new BedBakedModel();
+    // Model of shulker boxes.
     private static final ShulkerBoxBakedModel SHULKER_BOX = new ShulkerBoxBakedModel();
 
-    // The chest sheets, single and double, by type and season
+    // Texture of a chest.
     public enum ChestTexture {
         NORMAL("entity/chest/normal"), NORMAL_DOUBLE("entity/chest/normal_double"),
         TRAPPED("entity/chest/trapped"), TRAPPED_DOUBLE("entity/chest/trapped_double"),
         CHRISTMAS("entity/chest/christmas"), CHRISTMAS_DOUBLE("entity/chest/christmas_double");
 
+        // Location of the texture.
         public final ResourceLocation location;
 
+        // Creates a texture entry.
         ChestTexture(String path) {
             this.location = new ResourceLocation("minecraft", path);
         }
     }
 
+    // Prevents instantiation
     private BakedEntities() {
     }
 
+    // Applies the settings.
     public static void apply(ExtrasConfig.BakedEntitySettings settings) {
         boolean on = settings.enabled;
         chests = on && settings.chests;
@@ -67,11 +80,13 @@ public final class BakedEntities {
         shulkerBoxes = on && settings.shulkerBoxes;
     }
 
+    // Returns whether the date is a holiday.
     private static boolean isChristmas() {
         Calendar calendar = Calendar.getInstance();
         return calendar.get(Calendar.MONTH) + 1 == 12 && calendar.get(Calendar.DAY_OF_MONTH) >= 24 && calendar.get(Calendar.DAY_OF_MONTH) <= 26;
     }
 
+    // Returns the texture of the chest.
     public static ChestTexture chestTexture(BlockChest.Type type, boolean large) {
         if (CHRISTMAS) {
             return large ? ChestTexture.CHRISTMAS_DOUBLE : ChestTexture.CHRISTMAS;
@@ -82,7 +97,7 @@ public final class BakedEntities {
         return large ? ChestTexture.NORMAL_DOUBLE : ChestTexture.NORMAL;
     }
 
-    // Whether this block is one of ours and its switch is on; the render type and model hooks both key off this
+    // Returns whether the block is drawn as a baked model.
     public static boolean isBaked(Block block) {
         if (block instanceof BlockChest) {
             return chests;
@@ -102,7 +117,7 @@ public final class BakedEntities {
         return false;
     }
 
-    // The baked model for a state, or null when its block is not one of ours or is switched off
+    // Returns the model of the state or null.
     public static IBakedModel modelFor(IBlockState state) {
         Block block = state.getBlock();
         if (block instanceof BlockChest) {
@@ -123,12 +138,12 @@ public final class BakedEntities {
         return null;
     }
 
-    // Atlas sprite for an entity texture; the missing sprite comes back if the pack lacks it, which draws purple rather than crashing
+    // Returns the atlas sprite of the location.
     public static TextureAtlasSprite sprite(ResourceLocation location) {
         return Minecraft.getMinecraft().getTextureMapBlocks().getAtlasSprite(location.toString());
     }
 
-    // Puts every entity sheet the models draw from onto the block atlas; registered unconditionally since a toggle can flip without a restitch, and only there since other mods' atlases fire the same event
+    // Registers the sheets before stitching.
     @SubscribeEvent
     public static void onStitch(TextureStitchEvent.Pre event) {
         TextureMap map = event.getMap();
@@ -146,7 +161,7 @@ public final class BakedEntities {
         }
     }
 
-    // Every sheet goes on through EntitySheetSprite, since a plain sprite is rejected by vanilla's loader when the sheet is not square (sign.png is 64x32); a plain registration already made under the name, by a model or the texture scan, would end up on the missing sprite for the same reason, so it is replaced
+    // Registers one sheet.
     private static void registerSheet(TextureMap map, ResourceLocation location) {
         EntitySheetSprite sprite = new EntitySheetSprite(location, map.getMipmapLevels());
         if (!map.setTextureEntry(sprite)) {
@@ -154,17 +169,19 @@ public final class BakedEntities {
         }
     }
 
-    // Sprite coordinates move on every stitch and models rebake on reload, so cached geometry is dropped at both
+    // Clears the cached models.
     @SubscribeEvent
     public static void onStitched(TextureStitchEvent.Post event) {
         invalidate();
     }
 
+    // Clears the cached models.
     @SubscribeEvent
     public static void onModelBake(ModelBakeEvent event) {
         invalidate();
     }
 
+    // Clears the cached models.
     private static void invalidate() {
         CHEST.invalidate();
         ENDER_CHEST.invalidate();

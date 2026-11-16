@@ -2,17 +2,17 @@ package com.bdmajora.impetus.umbra.pipeline.shadow;
 
 import com.bdmajora.impetus.engine.impl.render.viewport.frustum.Frustum;
 
-// Accepts camera relative boxes that overlap a cube of a given half size around the camera
+// Frustum that keeps boxes inside a distance of the camera.
 public final class ShadowBoxCuller implements Frustum {
-    // Half the edge length of the cube in blocks
+    // Largest distance from the camera.
     private final float maxDistance;
 
-    // Creates the culler for a half size in blocks
+    // Creates a shadow box culler from its max distance.
     public ShadowBoxCuller(float maxDistance) {
         this.maxDistance = maxDistance;
     }
 
-    // Returns whether the box overlaps the cube on every axis and treats a NaN bound as overlapping
+    // Returns whether a box is within the distance.
     @Override
     public boolean testAab(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
         float distance = this.maxDistance;

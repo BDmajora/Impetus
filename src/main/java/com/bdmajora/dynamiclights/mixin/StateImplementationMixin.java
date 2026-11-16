@@ -13,10 +13,11 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// Folds dynamic light into the terrain lightmap coordinate the chunk builder asks each state for (LightDataCache#compute), on worker threads hence the engine's read/write lock; opaque cubes are skipped since brightening a solid interior breaks AO, and emitters are exempt
+// Mixin that changes StateImplementation.
 @SideOnly(Side.CLIENT)
 @Mixin(BlockStateContainer.StateImplementation.class)
 public abstract class StateImplementationMixin {
+    // Runs before every return of getPackedLightmapCoords and can cancel it.
     @Inject(method = "getPackedLightmapCoords", at = @At("RETURN"), cancellable = true)
     private void impetus$addDynamicLight(IBlockAccess source, BlockPos pos,
                                          CallbackInfoReturnable<Integer> cir) {
@@ -24,7 +25,6 @@ public abstract class StateImplementationMixin {
             return;
         }
 
-        // LightDataCache probes every state against an empty world to detect emissives; that is not a world position, so iterating sources for it is pure waste on the chunk-build hot path
         if (source == EmptyBlockAccess.INSTANCE) {
             return;
         }

@@ -8,9 +8,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// A listener that has to run before the model reload is kept aside and run from it, instead of in registration order
+// Mixin that changes SimpleReloadableResourceManager.
 @Mixin(SimpleReloadableResourceManager.class)
 public abstract class ReloadListenerDeferralMixin {
+    // Runs at the start of registerReloadListener and can cancel it.
     @Inject(method = "registerReloadListener", at = @At("HEAD"), cancellable = true)
     @SuppressWarnings("deprecation")
     private void coarctatio$deferListener(IResourceManagerReloadListener listener, CallbackInfo ci) {

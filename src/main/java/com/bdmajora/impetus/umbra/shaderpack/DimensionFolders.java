@@ -14,24 +14,30 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 
-// Which pack folder a dimension's programs come from, as Iris decides it: dimension.properties when the pack ships one (dimension.<folder> = <ids>, * for any other), else world0 for the overworld and any other dimension, world-1 for the Nether and world1 for the End; without the file, OptiFine's world<N> also serves dimension N, which is how 1.12.2 packs reach modded dimensions
+// Folders of pack programs by dimension.
 public final class DimensionFolders {
+    // Properties path.
     static final AbsolutePackPath PROPERTIES_PATH = AbsolutePackPath.fromAbsolutePath("/dimension.properties");
+    // Id that matches any dimension.
     private static final NamespacedId ANY = new NamespacedId("*", "*");
+    // Prefix of dimension keys.
     private static final String KEY_PREFIX = "dimension.";
+    // Logger of this class.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
 
-    // Folders holding at least one file, by name without slashes
+    // Folders that exist in the pack.
     private final Set<String> present;
     private final Map<NamespacedId, String> byName = new HashMap<>();
+    // Flag set when the pack declares its dimensions.
     private final boolean declared;
 
+    // Creates a dimension folders from its present and declared.
     private DimensionFolders(Set<String> present, boolean declared) {
         this.present = present;
         this.declared = declared;
     }
 
-    // Reads the mapping from the pack's files; the properties file is preprocessed with the same defines as shaders.properties, since packs gate folders on their own options
+    // Creates from.
     public static DimensionFolders from(Map<AbsolutePackPath, String> sources, Map<String, String> defines) {
         Set<String> present = new HashSet<>();
         for (AbsolutePackPath path : sources.keySet()) {
@@ -76,18 +82,19 @@ public final class DimensionFolders {
         return folders;
     }
 
+    // Defaults the to.
     private void defaultTo(String folder, NamespacedId id) {
         if (this.present.contains(folder)) {
             this.byName.putIfAbsent(id, folder);
         }
     }
 
-    // The folder the base program set reads ahead of the pack root, null for the root alone
+    // Returns the base folder or null.
     public String baseFolder() {
         return existing(this.byName.get(ANY));
     }
 
-    // The folder for this dimension, null meaning the base set; a mapped folder the pack does not have is logged and ignored like Iris does
+    // Folders the for.
     public String folderFor(int dimensionId, String dimensionName) {
         String mapped = this.byName.get(new NamespacedId(dimensionName));
         if (mapped != null) {
@@ -105,6 +112,7 @@ public final class DimensionFolders {
         return null;
     }
 
+    // Returns a folder when it exists or null.
     private String existing(String folder) {
         return folder != null && this.present.contains(folder) ? folder : null;
     }

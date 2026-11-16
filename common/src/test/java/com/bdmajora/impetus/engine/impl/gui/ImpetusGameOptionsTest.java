@@ -79,7 +79,7 @@ class ImpetusGameOptionsTest {
         assertNotNull(ImpetusGameOptions.MeshStatistics.SECTIONS.getLocalizedName());
         assertTrue(ImpetusGameOptions.MeshStatistics.QUADS.includes(ImpetusGameOptions.MeshStatistics.REGIONS));
         assertFalse(ImpetusGameOptions.MeshStatistics.FRUSTUM.includes(ImpetusGameOptions.MeshStatistics.REGIONS));
-        // Nvidium is opt-in: a fresh config draws with OpenGL
+        // Checks that a fresh config draws with OpenGL
         assertEquals(ImpetusGameOptions.GraphicsApi.OPENGL, new ImpetusGameOptions().graphicsApi);
         assertEquals("impetus.options.graphics_api.nvidium", ImpetusGameOptions.GraphicsApi.NVIDIUM.getLocalizedName().toString());
     }

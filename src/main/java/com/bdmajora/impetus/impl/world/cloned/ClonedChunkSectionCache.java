@@ -9,31 +9,37 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.TimeUnit;
 
+// Cache of cloned chunk sections kept in order of use with a size and age limit.
 public class ClonedChunkSectionCache {
-    // Max entries before oldest cloned section gets evicted
+    // Largest number of cached sections.
     private static final int MAX_CACHE_SIZE = 512;
-    // Entries older than this get swept on cleanup()
+    // Age in nanoseconds after which an unused section expires.
     private static final long MAX_CACHE_DURATION = TimeUnit.SECONDS.toNanos(5);
 
+    // World the sections come from.
     private final World world;
 
+    // Sections by packed position from least to most recently used.
     private final Long2ReferenceLinkedOpenHashMap<ClonedChunkSection> positionToEntry = new Long2ReferenceLinkedOpenHashMap<>();
 
-    private long time; // updated once per frame to be the elapsed time since application start
+    // Time of the last cleanup in nanoseconds.
+    private long time;
 
+    // Creates an empty cache for a world.
     public ClonedChunkSectionCache(World world) {
         this.world = world;
         this.time = getMonotonicTimeSource();
     }
 
-    // Evicts sections not touched within the timeout
+    // Removes the sections that were not used within the age limit.
     public synchronized void cleanup() {
         this.time = getMonotonicTimeSource();
-        this.positionToEntry.values()
-                .removeIf(entry -> this.time > (entry.getLastUsedTimestamp() + MAX_CACHE_DURATION));
+        long now = this.time;
+        // Compares by difference so a wrapping clock still ages entries
+        this.positionToEntry.values().removeIf(entry -> now - entry.getLastUsedTimestamp() > MAX_CACHE_DURATION);
     }
 
-    // Returns the cached copy or clones a fresh one, stamping it as just used
+    // Returns the cached section or clones it and evicts the least recently used past the size limit.
     @Nullable
     public synchronized ClonedChunkSection acquire(int x, int y, int z) {
         var pos = PositionUtil.packSection(x, y, z);
@@ -54,7 +60,7 @@ public class ClonedChunkSectionCache {
         return section;
     }
 
-    // Copies the live section; must run on the main thread
+    // Clones a section and rejects an unloaded chunk.
     @NotNull
     private ClonedChunkSection clone(int x, int y, int z) {
         Chunk chunk = this.world.getChunk(x, z);
@@ -66,14 +72,13 @@ public class ClonedChunkSectionCache {
         return new ClonedChunkSection(this.world, chunk, x, y, z);
     }
 
-    // Drops a copy after the section changed
+    // Forgets the section at a position.
     public synchronized void invalidate(int x, int y, int z) {
         this.positionToEntry.remove(PositionUtil.packSection(x, y, z));
     }
 
-    // Nanotime, since wall-clock jumps would evict wrongly
+    // Returns the monotonic time in nanoseconds.
     private static long getMonotonicTimeSource() {
-        // Should be monotonic in JDK 17 on sane platforms...
         return System.nanoTime();
     }
 }

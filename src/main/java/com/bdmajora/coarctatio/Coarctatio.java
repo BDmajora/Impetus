@@ -14,37 +14,37 @@ import org.apache.logging.log4j.Logger;
 import java.util.ArrayList;
 import java.util.List;
 
-// Backport of Hydrogen plus the FoamFix, LoliASM and FerriteCore parts solving the same problems on 1.12.2; not an FML entry point, it owns the logger and pool lifecycle while mixins do the work
+// Entry points of the memory features.
 public final class Coarctatio {
+    // Logger of the module.
     public static final Logger LOGGER = LogManager.getLogger("Coarctatio");
 
+    // Prevents instantiation
     private Coarctatio() {
     }
 
-    // Re-opens (not clears) the bake-scoped pools: survivors still reference the previous canonical arrays, and the new pool should converge on the new pack's geometry
+    // Opens the pools that live for one reload.
     public static void onResourceReloadStart() {
         ModelCaches.open();
         TransformCaches.open();
         ConditionCanonicalizer.open();
     }
 
-    // Closing releases the tracking sets, not the pooled contents; quads baked afterwards skip dedup (rare, and likely to be mutated later)
+    // Closes the pools that live for one reload.
     public static void onResourceReloadFinish() {
         ModelCaches.close();
         TransformCaches.close();
         ConditionCanonicalizer.close();
     }
 
-    // FoamFix's clClearCachesOnUnload equivalent: NBT keys and resource paths grow with play and never shrink, so reset them; model/state pools are resource-keyed and survive a world change
+    // Clears the pools that belong to a world.
     public static void onWorldLeave() {
-        int freed = StringPool.NBT_KEYS.size() + ResourceLocationCaches.PATHS.size();
-
         StringPool.NBT_KEYS.clear();
         ResourceLocationCaches.PATHS.open();
 
     }
 
-    // Shared by the log and the F3 overlay.
+    // Returns the statistics of every enabled feature as text lines.
     public static List<String> statistics() {
         List<String> lines = new ArrayList<>();
         lines.add("Coarctatio memory statistics");
@@ -69,7 +69,7 @@ public final class Coarctatio {
         return lines;
     }
 
-    // Counts read low on purpose (what Coarctatio kept, not what it stands in for); QUADS.size() survives the pool closing after bake
+    // Returns the line shown in the debug overlay.
     public static String debugOverlayLine() {
         return String.format("Coarctatio: ~%s saved (/coarctatio for detail)", MemoryReport.summary());
     }

@@ -2,40 +2,51 @@ package com.bdmajora.fulgor.collections;
 
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 
-// FIFO of encoded positions that never holds the same one twice (Phosphor's pooled segments plus Alfheim's dedup); the dedup set must be empty before a cycle's enqueues begin, and only isEmpty (volatile) is thread-safe
+import java.util.NoSuchElementException;
+import java.util.Objects;
+
+// First in first out queue of longs in pooled segments that can skip values it has seen.
 public final class DeduplicatedLongQueue {
+    // Number of values in one segment.
     private static final int SEGMENT_SIZE = 1 << 10;
 
-    // Entry count past which the dedup set is replaced rather than cleared, so a worldgen burst does not keep a multi-million-entry table alive all session
+    // Largest seen set size that is cleared and kept on a reset.
     private static final int RETAINED_SET_CAPACITY = 1 << 15;
 
+    // Pool the segments come from.
     private final Pool pool;
+    // Capacity of a new seen set.
     private final int initialSetCapacity;
 
-    // Kill switch, not a tuning knob (dedup is strictly a win) — lets a lighting bug be bisected without a rebuild
+    // Deduplication state of the queue.
     private final boolean deduplicate;
 
+    // Values queued since the last reset or null without deduplication.
     private LongOpenHashSet seen;
 
+    // Segment read next or null when empty.
     private Segment head;
+    // Segment written next or null when empty.
     private Segment tail;
 
-    // Read cursor into head
+    // Position of the next read in the head segment.
     private int headIndex;
 
+    // Number of queued values.
     private int size;
 
-    // Volatile so isEmpty() is safe to call from a thread that doesn't hold the engine's lock
+    // Empty state readable from other threads.
     private volatile boolean empty = true;
 
+    // Creates a queue on a pool and rejects a null pool.
     public DeduplicatedLongQueue(Pool pool, int initialCapacity, boolean deduplicate) {
-        this.pool = pool;
+        this.pool = Objects.requireNonNull(pool, "pool");
         this.initialSetCapacity = initialCapacity;
         this.deduplicate = deduplicate;
         this.seen = deduplicate ? new LongOpenHashSet(initialCapacity) : null;
     }
 
-    // Appends a value unless it is already pending; returns whether it was appended
+    // Appends a value and returns false when deduplication already saw it.
     public boolean enqueue(long value) {
         if (this.deduplicate && !this.seen.add(value)) {
             return false;
@@ -57,8 +68,12 @@ public final class DeduplicatedLongQueue {
         return true;
     }
 
-    // Removes and returns the oldest value; undefined if the queue is empty
+    // Removes and returns the oldest value and rejects an empty queue.
     public long dequeue() {
+        if (this.head == null) {
+            throw new NoSuchElementException("The queue is empty");
+        }
+
         long value = this.head.values[this.headIndex++];
 
         if (this.headIndex == this.head.writeIndex) {
@@ -80,17 +95,17 @@ public final class DeduplicatedLongQueue {
         return value;
     }
 
-    // Volatile read, safe to call off-thread
+    // Returns whether no value is queued.
     public boolean isEmpty() {
         return this.empty;
     }
 
-    // Element count; only meaningful under the lock
+    // Returns the number of queued values.
     public int size() {
         return this.size;
     }
 
-    // Forgets which values have been seen so a position can be scheduled again; call so the set is empty when the next cycle's enqueues start
+    // Forgets the seen values and replaces a large seen set.
     public void resetDeduplication() {
         if (!this.deduplicate) {
             return;
@@ -103,14 +118,17 @@ public final class DeduplicatedLongQueue {
         }
     }
 
-    // Segment store shared by every queue of one engine; darkening and brightening queues run in strict succession per level, so freed segments are reused immediately instead of 34 queues each holding a high-water mark
+    // Pool of free segments shared by queues of one thread.
     public static final class Pool {
-        // Ceiling on retained segments, not queue size (allocation past it just is not reclaimed); 1024 segments = 8 MiB, above any realistic high-water mark
+        // Largest number of free segments kept.
         private static final int MAX_CACHED_SEGMENTS = 1 << 10;
 
+        // First free segment or null.
         private Segment free;
+        // Number of free segments.
         private int freeCount;
 
+        // Returns a free segment or a new one.
         Segment acquire() {
             Segment segment = this.free;
 
@@ -127,6 +145,7 @@ public final class DeduplicatedLongQueue {
             return segment;
         }
 
+        // Keeps a segment for reuse unless the pool is full.
         void release(Segment segment) {
             if (this.freeCount >= MAX_CACHED_SEGMENTS) {
                 return;
@@ -140,9 +159,13 @@ public final class DeduplicatedLongQueue {
         }
     }
 
+    // Fixed block of queued values.
     private static final class Segment {
+        // Stored values.
         private final long[] values = new long[SEGMENT_SIZE];
+        // Position of the next write.
         private int writeIndex;
+        // Following segment or the next free segment.
         private Segment next;
     }
 }

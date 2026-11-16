@@ -3,55 +3,63 @@ package com.bdmajora.impetus.engine.impl.render.mesh.util;
 import it.unimi.dsi.fastutil.longs.LongBidirectionalIterator;
 import it.unimi.dsi.fastutil.longs.LongRBTreeSet;
 
-// First-fit free-list allocator with coalescing and in-place growth; (address, size) packs into one long kept in two sorted sets, FREE by size for first-fit and TAKEN by address so coalescing checks two neighbours
+// Best fit allocator of address ranges with merging of free space.
 public class SegmentedAllocator {
-    // Returned by alloc() when the request exceeds the limit; -1 rather than an exception because running out is normal and recoverable for the geometry arena
+    // Result of an allocation that does not fit.
     public static final long OUT_OF_SPACE = -1L;
 
-    // 34 address bits and 30 size bits: a single allocation caps at 2^30 units, the space at 2^34
+    // Bits of an address.
     private static final int ADDR_BITS = 34;
+    // Bits of a size.
     private static final int SIZE_BITS = 64 - ADDR_BITS;
+    // Mask of a size.
     private static final long SIZE_MASK = (1L << SIZE_BITS) - 1;
+    // Mask of an address.
     private static final long ADDR_MASK = (1L << ADDR_BITS) - 1;
 
+    // Free blocks ordered by size and address.
     private final LongRBTreeSet free = new LongRBTreeSet();
+    // Allocated blocks ordered by address.
     private final LongRBTreeSet taken = new LongRBTreeSet();
 
+    // Largest total size.
     private long sizeLimit = Long.MAX_VALUE;
+    // Highest address in use.
     private long totalSize;
 
-    // Whether the last alloc/free/expand moved the high-water mark, so a caller backed by a real allocation knows when to grow or shrink
+    // Resize state of the last call.
     private boolean resized;
 
-    // Caps growth
+    // Stores the largest total size and rejects a negative size.
     public void setLimit(long limit) {
+        if (limit < 0) {
+            throw new IllegalArgumentException("Negative limit " + limit);
+        }
         this.sizeLimit = limit;
     }
 
-    // The high-water mark, not the sum of live allocations
+    // Returns the highest address in use.
     public long getTotalSize() {
         return this.totalSize;
     }
 
-    // Whether the last alloc grew the backing store, so callers re-fetch addresses
+    // Returns whether the last call changed the total size.
     public boolean didResize() {
         return this.resized;
     }
 
-    // First-fit from the free list, growing when nothing fits
+    // Returns the address of a new block or the out of space marker and rejects a size out of range.
     public long alloc(int size) {
-        if (size <= 0) {
-            throw new IllegalArgumentException("Allocation size must be positive");
+        if (size <= 0 || size > SIZE_MASK) {
+            throw new IllegalArgumentException("Allocation size out of range " + size);
         }
 
-        // -1 because the iterator is exclusive and blocks of exactly this size must still be found
         LongBidirectionalIterator iterator = this.free.iterator(((long) size << ADDR_BITS) - 1);
 
         if (!iterator.hasNext()) {
-            // Nothing free is big enough, so grow past the high-water mark
             this.resized = true;
 
-            if (this.totalSize + size > this.sizeLimit) {
+            if (this.totalSize + size > Math.min(this.sizeLimit, ADDR_MASK + 1)) {
                 return OUT_OF_SPACE;
             }
 
@@ -70,7 +78,6 @@ public class SegmentedAllocator {
         if (slotSize == size) {
             this.taken.add((slotAddress << SIZE_BITS) | slotSize);
         } else {
-            // Split: the front becomes the allocation, the remainder goes back on the free list
             this.taken.add((slotAddress << SIZE_BITS) | size);
             this.free.add(((slotSize - size) << ADDR_BITS) | (slotAddress + size));
         }
@@ -79,11 +86,14 @@ public class SegmentedAllocator {
         return slotAddress;
     }
 
-    // Releases an allocation, merging with adjacent free space; returns the freed size so callers need not track allocation lengths
+    // Releases a block and returns its size and rejects an address that was not allocated.
     public int free(long address) {
         address &= ADDR_MASK;
 
         LongBidirectionalIterator iterator = this.taken.iterator(address << SIZE_BITS);
+        if (!iterator.hasNext()) {
+            throw new IllegalStateException("Freeing an address that was never allocated: " + address);
+        }
         long slot = iterator.nextLong();
 
         if (slot >>> SIZE_BITS != address) {
@@ -93,7 +103,6 @@ public class SegmentedAllocator {
         long size = slot & SIZE_MASK;
         iterator.remove();
 
-        // A previous allocation exists, so the gap before this one is either nothing or exactly one free block to absorb
         if (iterator.hasPrevious()) {
             long previous = iterator.previousLong();
             long previousEnd = (previous >>> SIZE_BITS) + (previous & SIZE_MASK);
@@ -104,10 +113,8 @@ public class SegmentedAllocator {
                 slot = (previousEnd << SIZE_BITS) | ((slot & SIZE_MASK) + gap);
             }
 
-            // Step the iterator back to where it was, so the hasNext() below looks at the right neighbour
             iterator.nextLong();
         } else if (!this.free.isEmpty()) {
-            // No previous allocation means this one starts the space, so any free block before it begins at address 0
             if (this.free.remove(address << ADDR_BITS)) {
                 slot = address + size;
             }
@@ -123,20 +130,21 @@ public class SegmentedAllocator {
                 slot = (slot & (ADDR_MASK << SIZE_BITS)) | ((slot & SIZE_MASK) + gap);
             }
         } else {
-            // Nothing after it: this was the tail, so the space shrinks instead of gaining a free block
             this.resized = true;
             this.totalSize -= slot & SIZE_MASK;
             return (int) size;
         }
 
         this.resized = false;
-        // Swap the fields round into FREE's (size, address) order
         this.free.add((slot >>> SIZE_BITS) | (slot << ADDR_BITS));
         return (int) size;
     }
 
-    // Grows an allocation in place so consecutive staging writes share one allocation; false when the following space is taken
+    // Grows a block in place and returns whether it fit and rejects an extra size out of range or an address that was never allocated.
     public boolean expand(long address, int extra) {
+        if (extra < 0 || extra > SIZE_MASK) {
+            throw new IllegalArgumentException("Extra size out of range " + extra);
+        }
         address &= ADDR_MASK;
 
         LongBidirectionalIterator iterator = this.taken.iterator(address << SIZE_BITS);
@@ -151,12 +159,15 @@ public class SegmentedAllocator {
             throw new IllegalStateException("Expanding an address that was never allocated: " + address);
         }
 
-        long grownSlot = (slot & (ADDR_MASK << SIZE_BITS)) | ((slot & SIZE_MASK) + extra);
         this.resized = false;
+        // Refuses a size that does not fit the size field
+        if ((slot & SIZE_MASK) + extra > SIZE_MASK) {
+            return false;
+        }
+        long grownSlot = (slot & (ADDR_MASK << SIZE_BITS)) | ((slot & SIZE_MASK) + extra);
 
         if (!iterator.hasNext()) {
-            // At the tail, so growing just moves the high-water mark
-            if (this.totalSize + extra > this.sizeLimit) {
+            if (this.totalSize + extra > Math.min(this.sizeLimit, ADDR_MASK + 1)) {
                 return false;
             }
 
@@ -176,7 +187,6 @@ public class SegmentedAllocator {
         }
 
         this.free.remove((gap << ADDR_BITS) | end);
-        // Two steps back, because reading `next` left the cursor past the entry being replaced
         iterator.previousLong();
         iterator.previousLong();
         iterator.remove();
@@ -189,7 +199,7 @@ public class SegmentedAllocator {
         return true;
     }
 
-    // Size of a live allocation
+    // Returns the size of an allocated block.
     public long getSize(long address) {
         address &= ADDR_MASK;
 

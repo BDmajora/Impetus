@@ -14,18 +14,18 @@ import java.util.Objects;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Creates the square depth and colour textures of the shadow map on a scratch texture unit
+// Depth and color textures of the shadow map.
 public final class ShadowTextures {
-    // Texture unit for raw setup work above every unit the pipeline tracks
+    // Texture unit used while creating textures.
     public static final int SETUP_UNIT = 31;
-    // Swizzle that copies the depth value into red and green and blue with alpha fixed at one
+    // Swizzle that spreads depth across the channels.
     private static final int[] DEPTH_SWIZZLE = {GL11.GL_RED, GL11.GL_RED, GL11.GL_RED, GL11.GL_ONE};
 
     // Prevents instantiation
     private ShadowTextures() {
     }
 
-    // Returns the resolution or rejects one that is not positive
+    // Returns a valid shadow resolution.
     public static int checkResolution(int resolution) {
         if (resolution <= 0) {
             throw new IllegalArgumentException("Shadow resolution must be positive: " + resolution);
@@ -33,7 +33,7 @@ public final class ShadowTextures {
         return resolution;
     }
 
-    // Creates a depth texture and applies the comparison and filtering the pack asks for
+    // Creates a shadow depth texture.
     public static DepthTexture createDepth(int resolution, boolean hardwareFiltering, boolean mipmap, boolean nearest,
                                            boolean separateHardwareSamplers) {
         checkResolution(resolution);
@@ -43,7 +43,6 @@ public final class ShadowTextures {
                     GL14.GL_DEPTH_COMPONENT24, GL11.GL_DEPTH_COMPONENT, GL11.GL_FLOAT);
             try {
                 LWJGL.glBindTexture(GL11.GL_TEXTURE_2D, texture.getTextureId());
-                // Comparison moves to separate sampler objects when the pack asks for them
                 if (hardwareFiltering && !separateHardwareSamplers) {
                     LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL14.GL_TEXTURE_COMPARE_MODE, GL30.GL_COMPARE_REF_TO_TEXTURE);
                 }
@@ -63,7 +62,7 @@ public final class ShadowTextures {
         }
     }
 
-    // Creates a colour texture in the given format with clamped edges and undefined contents
+    // Creates a shadow color texture.
     public static int createColor(int resolution, InternalTextureFormat format, boolean mipmap, boolean nearest) {
         checkResolution(resolution);
         Objects.requireNonNull(format, "format");
@@ -87,7 +86,7 @@ public final class ShadowTextures {
         return texture;
     }
 
-    // Returns the minifying filter for the mipmap and nearest flags
+    // Returns the minify filter of a target.
     public static int minFilter(boolean mipmap, boolean nearest) {
         if (mipmap) {
             return nearest ? GL11.GL_NEAREST_MIPMAP_NEAREST : GL11.GL_LINEAR_MIPMAP_LINEAR;
@@ -95,7 +94,7 @@ public final class ShadowTextures {
         return nearest ? GL11.GL_NEAREST : GL11.GL_LINEAR;
     }
 
-    // Returns the magnifying filter for the nearest flag
+    // Returns the magnify filter of a target.
     public static int magFilter(boolean nearest) {
         return nearest ? GL11.GL_NEAREST : GL11.GL_LINEAR;
     }

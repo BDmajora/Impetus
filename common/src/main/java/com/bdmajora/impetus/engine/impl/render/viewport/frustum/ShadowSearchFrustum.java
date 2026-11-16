@@ -1,20 +1,16 @@
 package com.bdmajora.impetus.engine.impl.render.viewport.frustum;
 
-/**
- * Optional capability of a shadow-pass {@link Frustum}: a directional light whose shadow casters may be found by a
- * receiver-driven occlusion search instead of a plain frustum scan.
- *
- * <p>A shadow frustum that implements this and reports {@link #supportsOcclusionSearch()} asserts that the shadow
- * map is only sampled for points visible to the player camera (direct shadowing, volumetric light and similar), so
- * any section that cannot lie on a light ray through a camera-visible section may be omitted from the shadow pass.
- * Frustums that do not implement this, or return {@code false}, receive the frustum-only scan.
- */
+// Frustum of a shadow pass that can drive a search from the visible sections.
 public interface ShadowSearchFrustum {
+    // Returns whether the shadow map is only used for points the camera sees.
     boolean supportsOcclusionSearch();
 
+    // Returns the x of the direction to the light.
     float shadowLightX();
 
+    // Returns the y of the direction to the light.
     float shadowLightY();
 
+    // Returns the z of the direction to the light.
     float shadowLightZ();
 }

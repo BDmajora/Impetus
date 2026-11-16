@@ -3,19 +3,20 @@ package com.bdmajora.impetus.umbra.pipeline.shadow;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 
-// Advanced shadow frustum that always accepts boxes in an inner zone and always rejects boxes past an outer bound
+// Shadow frustum that never culls near the camera.
 public final class SafeZoneCullingFrustum extends AdvancedShadowCullingFrustum {
-    // Outer distance box past which every box is rejected or null for no outer bound
+    // Distance culler.
     private final ShadowBoxCuller distanceCuller;
 
-    // Builds the frustum with an inner zone box and an outer distance box where either may be null
+    // Creates a safe zone culling frustum from its model view projection and shadow light vector from origin.
     public SafeZoneCullingFrustum(Matrix4fc modelViewProjection, Vector3f shadowLightVectorFromOrigin,
+                                  // Voxel and distance cullers.
                                   ShadowBoxCuller voxelCuller, ShadowBoxCuller distanceCuller) {
         super(modelViewProjection, shadowLightVectorFromOrigin, voxelCuller);
         this.distanceCuller = distanceCuller;
     }
 
-    // Rejects boxes past the outer bound and accepts boxes in the inner zone and tests the planes otherwise
+    // Returns whether a box survives culling.
     @Override
     public boolean testAab(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
         if (this.distanceCuller != null && !this.distanceCuller.testAab(minX, minY, minZ, maxX, maxY, maxZ)) {

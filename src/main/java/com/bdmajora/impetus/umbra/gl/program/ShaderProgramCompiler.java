@@ -19,22 +19,31 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
-// Compiles a ProgramSource into a linked UmbraProgram (defines, patches, OptiFine attribute slots, link) for every immediate-mode gbuffer program; render thread only, and callers fall back to vanilla on exceptions
+// Compiler that patches and links pack programs.
 public final class ShaderProgramCompiler {
+    // Name of the hand lightmap uniform.
     public static final String HAND_LIGHTMAP_UNIFORM = "impetus_HandLightmap";
 
+    // Prevents instantiation
     private ShaderProgramCompiler() {
     }
 
-    // The driver-visible source for one gbuffer/shadow program plus its dense draw-buffer routing; its own type produced by patchSource so the string patching is one reusable step
+    // Patched stage sources and draw buffers of a program.
     public static final class PatchedSource {
+        // Vertex stage source.
         public final String vertex;
+        // Fragment stage source.
         public final String fragment;
+        // Geometry stage source or null.
         public final String geometry;
+        // Tessellation control stage source or null.
         public final String tessControl;
+        // Tessellation evaluation stage source or null.
         public final String tessEval;
+        // Draw buffers of the fragment stage.
         public final int[] drawBuffers;
 
+        // Creates a patched source from its vertex and fragment and geometry and tess control and tess eval and draw buffers.
         PatchedSource(String vertex, String fragment, String geometry, String tessControl, String tessEval, int[] drawBuffers) {
             this.vertex = vertex;
             this.fragment = fragment;
@@ -45,9 +54,8 @@ public final class ShaderProgramCompiler {
         }
     }
 
-    // Applies defines and the name transforms without compiling, for inspection and caching
+    // Returns the patched stages of a program.
     public static PatchedSource patchSource(String name, ProgramSource source, Map<String, String> defines) {
-        // Iris's FADE_VARIABLE outside chunk terrain: everything that is not a fading section reads -1
         if (source.getVertexSource().map(vertex -> vertex.contains("mc_chunkFade")).orElse(false) && !defines.containsKey("mc_chunkFade")) {
             defines = new java.util.LinkedHashMap<>(defines);
             defines.put("mc_chunkFade", "(-1.0)");
@@ -56,7 +64,6 @@ public final class ShaderProgramCompiler {
         String vertexSource = source.getVertexSource().orElse(null);
         String fragmentSource = source.getFragmentSource().orElse(null);
         String geometrySource = source.getGeometrySource().orElse(null);
-        // Both tessellation stages or neither: a control stage alone is legal GL but useless, and an evaluation stage alone runs with default levels no pack expects
         String tessControlSource = source.getTessEvalSource().isPresent() ? source.getTessControlSource().orElse(null) : null;
         String tessEvalSource = tessControlSource != null ? source.getTessEvalSource().orElse(null) : null;
 
@@ -64,14 +71,12 @@ public final class ShaderProgramCompiler {
             throw new ProgramCreationException("Program '" + name + "' is missing a vertex or fragment stage");
         }
 
-        // Raw texture.gbuffers.<sampler> directives: redirect the identifier to its minted customtexN name wherever the declared sampler type matches the directive's target (Umbra TextureTransformer)
         vertexSource = CustomTextureTransformer.transform(name, vertexSource, TextureStage.GBUFFERS_AND_SHADOW);
         fragmentSource = CustomTextureTransformer.transform(name, fragmentSource, TextureStage.GBUFFERS_AND_SHADOW);
         geometrySource = CustomTextureTransformer.transform(name, geometrySource, TextureStage.GBUFFERS_AND_SHADOW);
         tessControlSource = CustomTextureTransformer.transform(name, tessControlSource, TextureStage.GBUFFERS_AND_SHADOW);
         tessEvalSource = CustomTextureTransformer.transform(name, tessEvalSource, TextureStage.GBUFFERS_AND_SHADOW);
 
-        // Modern single-source dual-stage packs (Complementary) need #version bumped to "330 compatibility" on the compat context like the fullscreen/terrain paths, or these phases fall back to vanilla (for gbuffers_clouds that is the "clouds move with the player" bug); GLSL-120 packs skip the bump but share the dense routing
         int[] drawBuffers = DrawBuffers.sanitize(
                 DrawBuffers.parseActive(fragmentSource, defines), UmbraRenderTargets.MAX_COLOR_BUFFERS);
         if (ModernPackTransformer.isModernSource(fragmentSource)) {
@@ -81,7 +86,6 @@ public final class ShaderProgramCompiler {
             tessControlSource = transformIfPresent(tessControlSource, ModernPackTransformer::transform);
             tessEvalSource = transformIfPresent(tessEvalSource, ModernPackTransformer::transform);
         }
-        // Modern (1.17+) attribute/matrix names -> fixed-function built-ins, before the hand bridge so a hand program written against vaUV2 still goes through impetus_HandLightmap
         vertexSource = VanillaNameTransformer.transform(vertexSource);
         fragmentSource = VanillaNameTransformer.transform(fragmentSource);
         geometrySource = transformIfPresent(geometrySource, VanillaNameTransformer::transform);
@@ -102,17 +106,17 @@ public final class ShaderProgramCompiler {
                 drawBuffers);
     }
 
-    // Applies one transform to an optional stage
+    // Transforms a stage that is present.
     private static String transformIfPresent(String stage, java.util.function.UnaryOperator<String> transform) {
         return stage == null ? null : transform.apply(stage);
     }
 
-    // Defines and source stabilisation for an optional stage
+    // Applies the final fixes of a stage.
     private static String finishStage(String name, String stage, Map<String, String> defines) {
         return stage == null ? null : ShaderSourceFixes.stabilize(name, applyDefines(stage, defines));
     }
 
-    // Patches, compiles, binds attributes and links; throws on any failure
+    // Compiles and links a program.
     public static UmbraProgram compile(String name, ProgramSource source, Map<String, String> defines) {
         PatchedSource patched = patchSource(name, source, defines);
         String processedVertex = patched.vertex;
@@ -149,7 +153,6 @@ public final class ShaderProgramCompiler {
             GlProgram program = builder.link();
             return new UmbraProgram(program, drawBuffers);
         } finally {
-            // The stage objects are no longer needed once the program is linked (or if linking failed).
             if (vertexShader != null) {
                 vertexShader.destroy();
             }
@@ -168,9 +171,8 @@ public final class ShaderProgramCompiler {
         }
     }
 
-    // Fixes mc_Entity, mc_midTexCoord and at_tangent to OptiFine's slots so the draw path matches
+    // Binds the attribute locations that OptiFine packs expect.
     private static void bindOptifineAttributes(ProgramBuilder builder, String vertexSource) {
-        // Only bind slots for attributes the vertex shader actually declares, matching OptiFine's setupProgram.
         if (MC_ENTITY_DECLARATION.matcher(vertexSource).find()) {
             builder.bindAttributeLocation(UmbraVertexAttributes.MC_ENTITY_SLOT, UmbraVertexAttributes.MC_ENTITY);
         }
@@ -182,28 +184,36 @@ public final class ShaderProgramCompiler {
         }
     }
 
-    // OptiFine's `attribute <type> <name>` scan, tolerant of both GLSL 120 `attribute` and 150 `in`; compiled once rather than per program, and find() replaces the old whole-source matches()
+    // Returns the pattern of an attribute declaration.
     private static Pattern attributeDeclaration(String attributeName) {
         return Pattern.compile("\\b(?:attribute|in)\\s+\\w+\\s+" + attributeName + "\\b");
     }
 
+    // Mc entity declaration.
     private static final Pattern MC_ENTITY_DECLARATION = attributeDeclaration(UmbraVertexAttributes.MC_ENTITY);
+    // Mc mid tex coord declaration.
     private static final Pattern MC_MID_TEX_COORD_DECLARATION = attributeDeclaration(UmbraVertexAttributes.MC_MID_TEX_COORD);
+    // At tangent declaration.
     private static final Pattern AT_TANGENT_DECLARATION = attributeDeclaration(UmbraVertexAttributes.AT_TANGENT);
 
-    // The unfed attribute declarations and what each becomes, in order; see neutralizeUnfedVanillaAttributes
+    // At tangent input.
     private static final Pattern AT_TANGENT_INPUT = Pattern.compile("(?m)^\\s*(?:attribute|in)\\s+vec4\\s+at_tangent\\s*;");
+    // Mid tex float input.
     private static final Pattern MID_TEX_FLOAT_INPUT = Pattern.compile("(?m)^\\s*(?:attribute|in)\\s+float\\s+mc_midTexCoord\\s*;");
+    // Mid tex vec2 input.
     private static final Pattern MID_TEX_VEC2_INPUT = Pattern.compile("(?m)^\\s*(?:attribute|in)\\s+vec2\\s+mc_midTexCoord\\s*;");
+    // Mid tex vec3 input.
     private static final Pattern MID_TEX_VEC3_INPUT = Pattern.compile("(?m)^\\s*(?:attribute|in)\\s+vec3\\s+mc_midTexCoord\\s*;");
+    // Mid tex vec4 input.
     private static final Pattern MID_TEX_VEC4_INPUT = Pattern.compile("(?m)^\\s*(?:attribute|in)\\s+vec4\\s+mc_midTexCoord\\s*;");
+    // At tangent fallback.
     private static final String AT_TANGENT_FALLBACK = "vec4 iris_tangentFallback() { "
             + "vec3 n = normalize(gl_Normal); "
             + "vec3 t = abs(n.y) < 0.99 ? cross(n, vec3(0.0, 1.0, 0.0)) : vec3(1.0, 0.0, 0.0); "
             + "return vec4(normalize(t), 1.0); }\n"
             + "#define at_tangent (iris_tangentFallback())";
 
-    // Immediate-mode programs never receive OptiFine's generic attributes (vanilla's draw path submits none), so at_tangent reads (0,0,0,1) and NaN-poisons the TBN, and mc_midTexCoord reads zero; both are rewritten to derive from what the fixed-function path does supply
+    // Replaces vanilla attributes that no buffer feeds with constants.
     private static String neutralizeUnfedVanillaAttributes(String source) {
         source = AT_TANGENT_INPUT.matcher(source).replaceAll(Matcher.quoteReplacement(AT_TANGENT_FALLBACK));
         source = MID_TEX_FLOAT_INPUT.matcher(source).replaceAll("#define mc_midTexCoord gl_MultiTexCoord0.x");
@@ -213,12 +223,12 @@ public final class ShaderProgramCompiler {
         return source;
     }
 
-    // gbuffers_hand and gbuffers_hand_water get the hand-specific depth handling
+    // Returns whether a program draws the first person hand.
     private static boolean isFirstPersonHandProgram(String name) {
         return "gbuffers_hand".equals(name) || "gbuffers_hand_water".equals(name);
     }
 
-    // Replaces gl_MultiTexCoord1 with a uniform the hand renderer feeds, since vanilla lights held items through GL lighting and the fixed-function coordinate arrives ~0 (black hand); the declaration goes right after #version and its CONTIGUOUS #extension lines, not after the last #extension in the file, which Photon's includes put thousands of lines down
+    // Adds the hand lightmap uniform to a stage.
     private static String injectHandLightmapBridge(String source) {
         List<String> lines = new ArrayList<>(Arrays.asList(source.split("\n", -1)));
         int insertIndex = -1;
@@ -246,7 +256,7 @@ public final class ShaderProgramCompiler {
                 "vec4(" + HAND_LIGHTMAP_UNIFORM + ", 0.0, 1.0)");
     }
 
-    // Injects the shared #define block after #version
+    // Applies the defines.
     private static String applyDefines(String source, Map<String, String> defines) {
         List<String> lines = new ArrayList<>(Arrays.asList(source.split("\n", -1)));
         List<String> processed = GlslPreprocessor.injectDefines(lines, defines);

@@ -14,6 +14,7 @@
     "world.ExtendedBlockStorageMixin",
     "world.WorldMixin",
     "async.block.BlockStateMixin",
+    "async.world.BlockStateContainerPaletteAccessor",
     "async.world.AnvilChunkLoaderMixin",
     "async.world.ChunkLightingMixin",
     "async.world.ChunkMixin",

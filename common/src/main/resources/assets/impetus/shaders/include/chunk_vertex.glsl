@@ -30,7 +30,7 @@ vec3 _get_draw_translation(uint pos) {
     return _get_relative_chunk_coord(pos) * vec3(16.0);
 }
 
-#ifdef USE_VERTEX_COMPRESSION
+#if defined(USE_VERTEX_COMPRESSION)
 in uvec4 a_PosId;
 in vec4 a_Color;
 in uvec2 a_TexCoord;
@@ -59,6 +59,29 @@ void _vert_init() {
     _material_params = (packed_draw_params) & 0xFu;
     _draw_id = (packed_draw_params >> 8) & 0xFFu;
     _vert_tex_light_coord = ivec2((uvec2((a_LightCoord >> 16) & 0xFFFFu) >> uvec2(0, 8)) & uvec2(0xFFu));
+}
+
+#elif defined(USE_PACKED_EXTENDED_VERTEX)
+// The 36 byte shader pack vertex, drawn by this shader when the pack has no program for a pass
+in uvec4 a_PackedA;
+in uvec4 a_PackedB;
+in uint a_PackedC;
+
+#if !defined(VERT_POS_SCALE) || !defined(VERT_POS_OFFSET) || !defined(VERT_TEX_SCALE)
+#error "VERT_POS_SCALE, VERT_POS_OFFSET and VERT_TEX_SCALE must be defined"
+#endif
+
+void _vert_init() {
+    _vert_position = vec3(uvec3(a_PackedA.x & 0xFFFFu, a_PackedA.x >> 16u, a_PackedA.y & 0xFFFFu)) * VERT_POS_SCALE + VERT_POS_OFFSET;
+    _vert_tex_diffuse_coord = vec2(uvec2(a_PackedA.w & 0xFFFFu, a_PackedA.w >> 16u)) * VERT_TEX_SCALE;
+    _vert_color = vec4((uvec4(a_PackedA.z) >> uvec4(0u, 8u, 16u, 24u)) & uvec4(0xFFu)) / 255.0;
+    // The pack vertex carries no AO correction, and zero adds none
+    _vert_rdh_factor = vec4(0.0);
+
+    _material_params = (a_PackedA.y >> 24u) & 0xFu;
+    _draw_id = (a_PackedA.y >> 16u) & 0xFFu;
+    // Block light rides on the normal word and sky light on the mid-block word
+    _vert_tex_light_coord = ivec2(uvec2(a_PackedB.y >> 24u, a_PackedC >> 24u));
 }
 
 #else

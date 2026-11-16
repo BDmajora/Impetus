@@ -12,6 +12,7 @@ import com.bdmajora.impetus.engine.impl.render.chunk.lists.ChunkRenderList;
 import com.bdmajora.impetus.engine.impl.render.chunk.lists.SortedRenderLists;
 import com.bdmajora.impetus.engine.impl.render.chunk.map.ChunkTracker;
 import com.bdmajora.impetus.engine.impl.render.chunk.map.ChunkTrackerHolder;
+import com.bdmajora.impetus.engine.impl.render.chunk.shader.TerrainDynamicLights;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 import com.bdmajora.impetus.engine.impl.render.viewport.CameraTransform;
 import com.bdmajora.impetus.engine.impl.render.viewport.Viewport;
@@ -68,6 +69,8 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
             this.renderSectionManager.destroy();
             this.renderSectionManager = null;
         }
+        // The moving-light buffer goes with the world; the next world's first draw makes a new one
+        TerrainDynamicLights.delete();
 
         this.world = null;
     }
@@ -211,6 +214,8 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
      */
     public void drawChunkLayer(LAYER renderLayer, double x, double y, double z) {
         ChunkRenderMatrices matrices = createChunkRenderMatrices();
+        // The draw origin is what u_RegionOffset is measured from, so the moving lights are uploaded relative to it
+        TerrainDynamicLights.prepare(x, y, z);
 
         Collection<TerrainRenderPass> passes = this.renderSectionManager.getRenderPassConfiguration().vanillaRenderStages().get(renderLayer);
 
@@ -261,6 +266,15 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
         MinecraftBuiltRenderSectionData.forEachGlobalSectionData(this.renderSectionManager.getSectionsWithGlobalEntities(),
                 data -> this.drawBlockEntityList(data.globalBlockEntities, renderContext));
         return this.renderedBlockEntities;
+    }
+
+    // Visible sections' culled block entities, then every global one, one at a time
+    @SuppressWarnings("unchecked")
+    public void forEachVisibleBlockEntity(Consumer<? super BLOCKENTITY> visitor) {
+        MinecraftBuiltRenderSectionData.forEachVisibleSectionData(this.renderSectionManager.getRenderLists(),
+                data -> ((List<BLOCKENTITY>) data.culledBlockEntities).forEach(visitor));
+        MinecraftBuiltRenderSectionData.forEachGlobalSectionData(this.renderSectionManager.getSectionsWithGlobalEntities(),
+                data -> ((List<BLOCKENTITY>) data.globalBlockEntities).forEach(visitor));
     }
 
     @SuppressWarnings("unchecked")

@@ -117,7 +117,26 @@ class UmbraPartsTest {
     @SuppressWarnings("deprecation")
     void theTerrainVertexCarriesTheOptiFineExtras() {
         assertSame(UmbraChunkVertexType.VERTEX_FORMAT, UmbraChunkVertexType.INSTANCE.getVertexFormat());
+        assertEquals(36, UmbraChunkVertexType.VERTEX_FORMAT.getStride());
+        assertEquals(1.0F / 2048.0F, UmbraChunkVertexType.INSTANCE.getPositionScale());
+        assertEquals(-8.0F, UmbraChunkVertexType.INSTANCE.getPositionOffset());
+        assertEquals(1.0F / 65536.0F, UmbraChunkVertexType.INSTANCE.getTextureScale());
+        // The default chunk shader decodes this layout when a pack lacks a program
+        assertTrue(UmbraChunkVertexType.INSTANCE.getDefines().containsKey(UmbraChunkVertexType.LAYOUT_DEFINE));
+        assertTrue(UmbraChunkVertexType.INSTANCE.getDefines().containsKey("VERT_POS_SCALE"));
         ChunkVertexEncoder.Vertex vertex = new ChunkVertexEncoder.Vertex();
+        vertex.x = 1.0F;
+        vertex.y = -0.5F;
+        // A hair under the block edge rounds onto it instead of truncating a step short
+        vertex.z = 15.999999F;
+        vertex.color = 0x80402010;
+        vertex.u = 0.25F;
+        vertex.v = 1.0F;
+        vertex.midTexU = 0.5F;
+        vertex.midTexV = 0.125F;
+        vertex.light = 0xF0 | (0xA0 << 16);
+        vertex.trueNormal = 0x00817F00;
+        vertex.tangent = 0x7F00FF81;
         vertex.blockId = 100_000;
         vertex.blockRenderType = -100_000;
         vertex.blockData = 3;
@@ -126,18 +145,36 @@ class UmbraPartsTest {
         vertex.midBlockZ = 0.25F;
         vertex.blockEmission = 300;
         Material material = mock(Material.class);
+        when(material.bits()).thenReturn(0x15);
         java.nio.ByteBuffer memory = java.nio.ByteBuffer.allocateDirect(UmbraChunkVertexType.STRIDE * 2);
         long base = MemoryUtil.memAddress(memory);
-        long next = UmbraChunkVertexType.INSTANCE.createEncoder().write(base, material, vertex, 2);
+        long next = UmbraChunkVertexType.INSTANCE.createEncoder().write(base, material, vertex, 0x1A2);
         assertEquals(base + UmbraChunkVertexType.STRIDE, next);
-        // Ids clamp to the short range and the mid-block offset and emission to their bytes
-        assertEquals(Short.MAX_VALUE, MemoryUtil.memGetShort(base + 44));
-        assertEquals(Short.MIN_VALUE, MemoryUtil.memGetShort(base + 46));
-        assertEquals(0x7F | (0x80 << 8) | (16 << 16) | (0xFF << 24), MemoryUtil.memGetInt(base + 52));
+        // Positions in 1/2048 steps from -8, the draw id, four material bits and the emission clamped to a light level
+        assertEquals((9 * 2048) | ((15 * 1024) << 16), MemoryUtil.memGetInt(base));
+        assertEquals((24 * 2048) | (0xA2 << 16) | (0x5 << 24) | (15 << 28), MemoryUtil.memGetInt(base + 4));
+        assertEquals(0x80402010, MemoryUtil.memGetInt(base + 8));
+        assertEquals(16384 | (65535 << 16), MemoryUtil.memGetInt(base + 12));
+        assertEquals(32768 | (8192 << 16), MemoryUtil.memGetInt(base + 16));
+        // Block light rides on the normal's spare byte, sky light on the mid-block's
+        assertEquals(0x00817F00 | (0xF0 << 24), MemoryUtil.memGetInt(base + 20));
+        assertEquals(0x7F00FF81, MemoryUtil.memGetInt(base + 24));
+        // Ids clamp to a short, the render type to a byte
+        assertEquals((Short.MAX_VALUE & 0xFFFF) | (0x80 << 16) | (3 << 24), MemoryUtil.memGetInt(base + 28));
+        assertEquals(0x7F | (0x80 << 8) | (16 << 16) | (0xA0 << 24), MemoryUtil.memGetInt(base + 32));
+        // Far geometry and negative values clamp rather than wrap
+        vertex.x = 30.0F;
+        vertex.y = -20.0F;
         vertex.midBlockX = 0.0F;
         vertex.blockEmission = -5;
+        vertex.blockData = 999;
+        vertex.blockId = -100_000;
         UmbraChunkVertexType.INSTANCE.createEncoder().write(next, material, vertex, 0);
-        assertEquals((0x80 << 8) | (16 << 16), MemoryUtil.memGetInt(next + 52));
+        assertEquals(0xFFFF, MemoryUtil.memGetInt(next) & 0xFFFF);
+        assertEquals(0, MemoryUtil.memGetInt(next) >>> 16);
+        assertEquals(0, MemoryUtil.memGetInt(next + 4) >>> 28);
+        assertEquals((Short.MIN_VALUE & 0xFFFF) | (0x80 << 16) | (0xFF << 24), MemoryUtil.memGetInt(next + 28));
+        assertEquals((0x80 << 8) | (16 << 16) | (0xA0 << 24), MemoryUtil.memGetInt(next + 32));
 
         // A flat quad's normal points out of it, and the tangent follows the U direction
         Vector3f normal = new Vector3f();

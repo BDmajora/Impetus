@@ -29,29 +29,44 @@ public final class ShadowTerrain {
     private final boolean packVoxelizes;
     // Sun path rotation.
     private final float sunPathRotation;
+    // Pack's entityShadowDistanceMul, scaling the cull distance for entities.
+    private final float entityDistanceMul;
     // Player position of the frame.
     private final Vector3d playerPosition = new Vector3d();
     // Player view projection of the frame.
     private final Matrix4f playerViewProjection = new Matrix4f();
     // Frustum of the shadow selection.
     private Frustum cullingFrustum;
+    // Frustum entities are culled against, the selection's own unless the pack scales it.
+    private Frustum entityFrustum;
     // Frame counter of the selection.
     private int frame;
 
-    // Creates a shadow terrain from its content and cull distance and voxel distance and pack voxelizes.
+    // Creates a shadow terrain from its content, distances, voxel switch, sun rotation and entity distance scale.
     public ShadowTerrain(ShadowContentSettings content, float cullDistance, float voxelDistance, boolean packVoxelizes,
-                         float sunPathRotation) {
+                         float sunPathRotation, float entityDistanceMul) {
         this.content = Objects.requireNonNull(content, "content");
         this.cullDistance = cullDistance;
         this.voxelDistance = voxelDistance;
         this.packVoxelizes = packVoxelizes;
         this.sunPathRotation = sunPathRotation;
+        this.entityDistanceMul = entityDistanceMul;
+    }
+
+    // Returns whether entities share the terrain frustum: Iris does for exactly one and for any negative value.
+    static boolean entitiesUseTerrainFrustum(float entityDistanceMul) {
+        // NaN fails the comparison and falls back to the terrain frustum too
+        return !(entityDistanceMul >= 0.0f) || entityDistanceMul == 1.0f;
     }
 
     // Selects the sections visible to the shadow camera.
     public void select(ImpetusWorldRenderer renderer, Minecraft mc, Vector3d camera, Matrix4fc viewProjection) {
+        int renderDistance = mc.gameSettings.renderDistanceChunks * 16;
         this.cullingFrustum = ShadowFrustums.create(this.content.getCulling(), this.cullDistance, this.voxelDistance,
-                this.packVoxelizes, mc.gameSettings.renderDistanceChunks * 16, this.sunPathRotation, viewProjection);
+                this.packVoxelizes, renderDistance, this.sunPathRotation, viewProjection);
+        this.entityFrustum = entitiesUseTerrainFrustum(this.entityDistanceMul) ? this.cullingFrustum
+                : ShadowFrustums.create(this.content.getCulling(), this.cullDistance * this.entityDistanceMul,
+                this.voxelDistance, this.packVoxelizes, renderDistance, this.sunPathRotation, viewProjection);
         renderer.setupShadowTerrain(
                 playerViewport(camera),
                 new Viewport(this.cullingFrustum, camera),
@@ -88,5 +103,10 @@ public final class ShadowTerrain {
     // Returns the shadow culling frustum.
     public Frustum cullingFrustum() {
         return this.cullingFrustum;
+    }
+
+    // Returns the frustum entities are culled against this frame.
+    public Frustum entityFrustum() {
+        return this.entityFrustum;
     }
 }

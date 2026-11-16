@@ -8,6 +8,7 @@
 #import <impetus:include/chunk_vertex.glsl>
 #import <impetus:include/chunk_matrices.glsl>
 #import <impetus:include/chunk_material.glsl>
+#import <impetus:include/dynamic_light.glsl>
 
 // The solid and cutout copies of this program must land on identical depths or their quads z-fight on some hardware
 invariant gl_Position;
@@ -40,7 +41,7 @@ uniform vec3 u_RegionOffset;
 #ifndef IMPETUS_NO_LIGHTMAP
 uniform sampler2D u_LightTex; // The light map texture sampler
 
-vec4 _sample_lightmap(sampler2D lightMap, ivec2 uv) {
+vec4 _sample_lightmap(sampler2D lightMap, vec2 uv) {
     return texture(lightMap, clamp(uv / 256.0, vec2(0.5 / 16.0), vec2(15.5 / 16.0)));
 }
 #endif
@@ -75,7 +76,10 @@ void main() {
 #ifdef IMPETUS_NO_LIGHTMAP
     v_Color = _vert_color;
 #else
-    vec4 lightColor = _sample_lightmap(u_LightTex, _vert_tex_light_coord);
+    // Moving lights raise the block light here rather than in the mesh, sixteen lightmap units per level
+    vec2 lightCoord = vec2(_vert_tex_light_coord);
+    lightCoord.x = max(lightCoord.x, impetus_dynamicLightLevel(position) * 16.0);
+    vec4 lightColor = _sample_lightmap(u_LightTex, lightCoord);
     v_Color = _vert_color * lightColor;
     v_RdhFactor.rgb *= lightColor.rgb;
 #endif

@@ -23,14 +23,17 @@ import com.bdmajora.impetus.engine.impl.render.terrain.SimpleWorldRenderer;
 import com.bdmajora.impetus.ImpetusVintage;
 import com.bdmajora.impetus.mixin.core.terrain.ActiveRenderInfoAccessor;
 import com.bdmajora.impetus.umbra.Umbra;
+import com.bdmajora.impetus.umbra.pipeline.shadow.ShadowCasterView;
 import com.bdmajora.impetus.umbra.terrain.UmbraMeshShading;
 import com.bdmajora.impetus.umbra.terrain.UmbraTerrainProgramOverride;
 import com.bdmajora.impetus.umbra.vertices.UmbraMeshVertex;
 
 import java.util.*;
+import java.util.function.Consumer;
 
 // World renderer of Impetus terrain.
-public class ImpetusWorldRenderer extends SimpleWorldRenderer<WorldClient, VintageRenderSectionManager, BlockRenderLayer, TileEntity, ImpetusWorldRenderer.TileEntityRenderContext>  {
+public class ImpetusWorldRenderer extends SimpleWorldRenderer<WorldClient, VintageRenderSectionManager, BlockRenderLayer, TileEntity, ImpetusWorldRenderer.TileEntityRenderContext>
+        implements ShadowCasterView {
     // Data of the tile entity render context.
     public record TileEntityRenderContext(Map<Integer, DestroyBlockProgress> damagedBlocks, float partialTicks) {}
 
@@ -221,6 +224,24 @@ public class ImpetusWorldRenderer extends SimpleWorldRenderer<WorldClient, Vinta
         AxisAlignedBB box = entity.getRenderBoundingBox();
 
         return this.isBoxVisible(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
+    }
+
+    // Returns whether the entity overlaps a section the shadow search kept, under the same switch as the main pass.
+    @Override
+    public boolean isShadowCasterVisible(Entity entity) {
+        if (!ImpetusVintage.options().performance.useEntityCulling) {
+            return true;
+        }
+
+        // Called inside the shadow pass, so the lookup reads the shadow search's sections
+        AxisAlignedBB box = entity.getRenderBoundingBox();
+        return this.isBoxVisible(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
+    }
+
+    // Visits the block entities of the sections the shadow search kept.
+    @Override
+    public void forEachShadowBlockEntity(Consumer<TileEntity> visitor) {
+        this.forEachVisibleBlockEntity(visitor);
     }
 
     // Returns the vertex type for the current pipeline.

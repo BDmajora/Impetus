@@ -6,6 +6,7 @@
 #define WRITABLE_TERRAIN
 #import <impetus:mesh/scene.glsl>
 #import <impetus:mesh/vertex_format.glsl>
+#import <impetus:include/dynamic_light.glsl>
 
 // Translucent quads, one thread each and 32 per meshlet, emitted in arena order; under SORT_QUADS each meshlet also swaps out-of-order neighbours in the arena, an odd-even transposition sort that converges over frames
 layout(local_size_x = 32) in;
@@ -44,7 +45,10 @@ vec3 emitVertex(uint quad, uint corner) {
 
     gl_MeshVerticesNV[slot].gl_Position = clip;
     OUT[slot].uv = decodeVertexUV(v);
-    OUT[slot].tint = decodeVertexColour(v) * textureLod(texLight, decodeLightUV(v), 0.0).rgb;
+    vec2 light = decodeLightUV(v);
+    // Moving lights raise the block light here rather than in the mesh, measured from the render origin
+    light.x = max(light.x, impetus_dynamicLightLevel(position + renderOffset.xyz) * (16.0 / 256.0));
+    OUT[slot].tint = decodeVertexColour(v) * textureLod(texLight, light, 0.0).rgb;
     OUT[slot].fogAmount = 1.0 - fade * (1.0 - computeFog(relative, clip.w));
 
     return relative;

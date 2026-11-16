@@ -122,8 +122,15 @@ public class BlockLightEngine extends BfsLightEngine {
         int offZ = chunk.z << 4;
         ExtendedBlockStorage[] sections = chunk.getBlockStorageArray();
 
+        // A fluidlogged chunk's fluids can glow without any glowing block in the palette
+        boolean fluidsMayEmit = this.fluidCapCache[chunk.x + 5 * chunk.z + this.chunkIndexOffset] != null;
+
         for (int sectionY = MIN_SECTION; sectionY <= MAX_SECTION; ++sectionY) {
             if (isEmptyOfBlocks(sections[sectionY])) {
+                continue;
+            }
+            // At most 256 palette entries instead of 4096 blocks, and most sections hold no light source at all
+            if (!fluidsMayEmit && !EmitterPalette.mayEmitLight(sections[sectionY])) {
                 continue;
             }
 

@@ -55,6 +55,8 @@ class DynamicLightsMixinTest {
     @BeforeEach
     void freshConfig() {
         client = Mc.client();
+        // Light lookups on the client thread are the ones that keep the CPU's moving light
+        when(client.isCallingFromMinecraftThread()).thenReturn(true);
         // Rebuild scheduling goes through the client's renderer, which must carry the invoker mixin's interface
         Mixins.set(client, "renderGlobal", mock(RenderGlobal.class, Mockito.withSettings()
                 .extraInterfaces(com.bdmajora.dynamiclights.mixin.RenderGlobalRebuildAccessor.class)));
@@ -96,6 +98,13 @@ class DynamicLightsMixinTest {
         assertEquals(8.0D, entity.impetus$getDynamicLightX());
         assertEquals(65.5D, entity.impetus$getDynamicLightY());
         assertEquals(8.0D, entity.impetus$getDynamicLightZ());
+        // Drawn between the last tick and this one, which is where the terrain shaders light from
+        entity.lastTickPosX = 6.0D;
+        entity.lastTickPosY = 62.0D;
+        entity.lastTickPosZ = 10.0D;
+        assertEquals(7.0D, entity.impetus$getDynamicLightX(0.5F));
+        assertEquals(64.5D, entity.impetus$getDynamicLightY(0.5F));
+        assertEquals(9.0D, entity.impetus$getDynamicLightZ(0.5F));
         assertSame(world, entity.impetus$getDynamicLightWorld());
 
         // A burning entity glows, a plain one does not, and the gates switch it off
@@ -391,6 +400,27 @@ class DynamicLightsMixinTest {
         Mixins.call(state, "impetus$addDynamicLight",
                 com.bdmajora.impetus.impl.util.EmptyBlockAccess.INSTANCE, BlockPos.ORIGIN, empty);
         assertEquals(0, empty.getReturnValue());
+        // A chunk mesh's slice leaves the light to the terrain shaders, unless the context cannot apply it there
+        Mockito.doReturn(false).when(self).isOpaqueCube();
+        com.bdmajora.impetus.impl.world.WorldSlice slice = mock(com.bdmajora.impetus.impl.world.WorldSlice.class);
+        var meshed = Mixins.<Integer>cir(0);
+        Mixins.call(state, "impetus$addDynamicLight", slice, BlockPos.ORIGIN, meshed);
+        assertEquals(0, meshed.getReturnValue());
+        com.bdmajora.impetus.engine.impl.render.chunk.shader.TerrainDynamicLights.setShaderApplied(false);
+        try {
+            var baked = Mixins.<Integer>cir(0);
+            Mixins.call(state, "impetus$addDynamicLight", slice, BlockPos.ORIGIN, baked);
+            assertEquals(12 << 4, baked.getReturnValue());
+        } finally {
+            com.bdmajora.impetus.engine.impl.render.chunk.shader.TerrainDynamicLights.setShaderApplied(true);
+        }
+        // Another thread is baking geometry against the live world, which the shaders light instead
+        when(client.isCallingFromMinecraftThread()).thenReturn(false);
+        var offThread = Mixins.<Integer>cir(0);
+        Mixins.call(state, "impetus$addDynamicLight", mock(net.minecraft.world.IBlockAccess.class), BlockPos.ORIGIN, offThread);
+        assertEquals(0, offThread.getReturnValue());
+        when(client.isCallingFromMinecraftThread()).thenReturn(true);
+        Mockito.doReturn(true).when(self).isOpaqueCube();
         DynamicLights.options().mode = DynamicLightsMode.OFF;
         var off = Mixins.<Integer>cir(0);
         Mixins.call(state, "impetus$addDynamicLight", mock(net.minecraft.world.IBlockAccess.class), BlockPos.ORIGIN, off);
@@ -425,6 +455,10 @@ class DynamicLightsMixinTest {
         DynamicLights.options().mode = DynamicLightsMode.OFF;
         Mixins.call(overlay, "impetus$addDynamicLightInfo", lines);
         assertTrue(lines.get(1).contains("Disabled"));
+
+        // The frame hook hands the terrain shaders this frame's lights before any terrain draws
+        com.bdmajora.dynamiclights.mixin.EntityRendererMixin frame = Mixins.instance(com.bdmajora.dynamiclights.mixin.EntityRendererMixin.class);
+        Mixins.call(frame, "impetus$publishTerrainLights", 0.5F, 0L, Mixins.ci());
 
         // The plugin applies everything; the mode switch is read at call time instead
         DynamicLightsMixinPlugin plugin = new DynamicLightsMixinPlugin();

@@ -169,6 +169,10 @@ class ProgramLayoutTest {
         // The per-object bucket holds only the material ids and colours
         uniforms.updatePerObject();
         verify(TestGl.gl(), times(1)).glUniform1i(14, 7);
+        // Ids and colours can all be written into the program by name, which shares the change test
+        assertTrue(uniforms.canUpdatePerObjectIn());
+        uniforms.updatePerObjectIn(PROGRAM);
+        verify(TestGl.gl(), never()).glProgramUniform1i(anyInt(), anyInt(), anyInt());
     }
 
     @Test

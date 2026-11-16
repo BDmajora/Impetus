@@ -4,7 +4,10 @@ import com.bdmajora.dynamiclights.DynamicLights;
 import com.bdmajora.dynamiclights.DynamicLightsMode;
 import com.bdmajora.dynamiclights.client.item.ItemLightSources;
 import com.bdmajora.dynamiclights.mixin.RenderGlobalRebuildAccessor;
+import com.bdmajora.impetus.engine.impl.render.chunk.shader.TerrainDynamicLights;
+import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderGlobal;
 import net.minecraft.entity.Entity;
@@ -14,15 +17,15 @@ import net.minecraft.entity.monster.EntityCreeper;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
-import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.world.World;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Set;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Predicate;
 
 // Tracks every moving light source and computes the light it adds.
@@ -34,17 +37,32 @@ public final class DynamicLightsEngine {
     private static final double MAX_RADIUS = 7.75;
     // Square of the fade distance.
     private static final double MAX_RADIUS_SQUARED = MAX_RADIUS * MAX_RADIUS;
+    // Widening on every reach test so rounding can add a section but never drop a lit one.
+    private static final double REACH_SLACK = 1.0E-6D;
+    // Radius the snapshot indexes lights by, the full fade distance so lookups stay exact.
+    static final double LOOKUP_RADIUS = MAX_RADIUS + REACH_SLACK;
+    // Blocks past a section's edge that its mesh reads light from, since smooth lighting samples one block out.
+    private static final int MESH_MARGIN = 1;
+    // Most sections a reach can cover: at most three per axis even with the mesh margin.
+    static final int MAX_REACHED_SECTIONS = 27;
 
     // Largest light level of an item.
     private static final int MAX_LUMINANCE = 14;
 
-    // Tracked sources.
+    // Tracked sources, only touched while holding their monitor.
     private final Set<DynamicLightSource> dynamicLightSources = new HashSet<>();
-    // Lock that guards the sources.
-    private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+    // Frozen lights every lookup reads without locking.
+    private volatile LightSnapshot snapshot = LightSnapshot.EMPTY;
+    // Set when the tracked sources changed after the snapshot was taken.
+    private volatile boolean snapshotStale;
 
     // Number of tracked sources.
     private volatile int sourceCount;
+
+    // Scratch list of the lights handed to the terrain shaders, x, y, z and luminance each.
+    private final double[] terrainLights = new double[TerrainDynamicLights.MAX_LIGHTS * TerrainDynamicLights.STRIDE];
+    // Squared camera distance of each light in the scratch list.
+    private final double[] terrainLightDistances = new double[TerrainDynamicLights.MAX_LIGHTS];
 
     // Time of the last full update.
     private long lastUpdate = System.currentTimeMillis();
@@ -74,18 +92,100 @@ public final class DynamicLightsEngine {
         this.lastUpdate = now;
         int updated = 0;
 
-        this.lock.readLock().lock();
-        try {
-            for (DynamicLightSource source : this.dynamicLightSources) {
-                if (source.impetus$updateDynamicLight(renderer)) {
-                    updated++;
-                }
+        // The snapshot's own array, so a source may add or remove itself mid-walk
+        for (DynamicLightSource source : this.snapshot().sources) {
+            if (source.impetus$updateDynamicLight(renderer)) {
+                updated++;
             }
-        } finally {
-            this.lock.readLock().unlock();
+        }
+
+        // Rebuilds were only queued above, so the meshes they produce read these positions
+        if (updated > 0) {
+            this.recapture();
         }
 
         this.lastUpdateCount = updated;
+    }
+
+    // Hands the terrain shaders the nearest lit sources, at their drawn positions, for this frame.
+    public void publishTerrainLights(float partialTicks) {
+        Entity viewer = Minecraft.getMinecraft().getRenderViewEntity();
+        if (!TerrainDynamicLights.isShaderApplied() || !DynamicLights.options().mode.isEnabled() || this.sourceCount == 0
+                || viewer == null) {
+            if (TerrainDynamicLights.lightCount() != 0) {
+                TerrainDynamicLights.setLights(this.terrainLights, 0);
+            }
+            return;
+        }
+
+        double cameraX = viewer.lastTickPosX + (viewer.posX - viewer.lastTickPosX) * partialTicks;
+        double cameraY = viewer.lastTickPosY + (viewer.posY - viewer.lastTickPosY) * partialTicks;
+        double cameraZ = viewer.lastTickPosZ + (viewer.posZ - viewer.lastTickPosZ) * partialTicks;
+        double[] lights = this.terrainLights;
+        double[] distances = this.terrainLightDistances;
+        int kept = 0;
+
+        for (DynamicLightSource source : this.snapshot().sources) {
+            int luminance = source.impetus$getLuminance();
+            if (luminance <= 0) {
+                continue;
+            }
+            double x = source.impetus$getDynamicLightX(partialTicks);
+            double y = source.impetus$getDynamicLightY(partialTicks);
+            double z = source.impetus$getDynamicLightZ(partialTicks);
+            double dx = x - cameraX;
+            double dy = y - cameraY;
+            double dz = z - cameraZ;
+            double distance = dx * dx + dy * dy + dz * dz;
+            // Not a number never ranks, so a broken position cannot take a slot
+            if (!(distance < Double.POSITIVE_INFINITY)) {
+                continue;
+            }
+            int slot = kept < TerrainDynamicLights.MAX_LIGHTS ? kept++ : -1;
+            if (slot < 0) {
+                // Full: the light replaces the farthest kept one when it is nearer
+                int farthest = 0;
+                for (int i = 1; i < kept; i++) {
+                    if (distances[i] > distances[farthest]) {
+                        farthest = i;
+                    }
+                }
+                if (distance >= distances[farthest]) {
+                    continue;
+                }
+                slot = farthest;
+            }
+            distances[slot] = distance;
+            int offset = slot * TerrainDynamicLights.STRIDE;
+            lights[offset] = x;
+            lights[offset + 1] = y;
+            lights[offset + 2] = z;
+            lights[offset + 3] = luminance;
+        }
+
+        TerrainDynamicLights.setLights(lights, kept);
+    }
+
+    // Retakes the snapshot from the tracked sources.
+    private void recapture() {
+        synchronized (this.dynamicLightSources) {
+            this.snapshot = LightSnapshot.capture(this.dynamicLightSources);
+            // Cleared after the write so a reader that sees it cleared also sees the new snapshot
+            this.snapshotStale = false;
+        }
+    }
+
+    // Returns the current snapshot, retaking it first when the tracked set changed.
+    private LightSnapshot snapshot() {
+        if (this.snapshotStale) {
+            synchronized (this.dynamicLightSources) {
+                if (this.snapshotStale) {
+                    this.snapshot = LightSnapshot.capture(this.dynamicLightSources);
+                    this.snapshotStale = false;
+                }
+            }
+        }
+        return this.snapshot;
     }
 
     // Returns the number of sources changed by the last update.
@@ -109,7 +209,8 @@ public final class DynamicLightsEngine {
             return lightmap;
         }
 
-        int atPosition = (int) this.getDynamicLightLevel(new BlockPos(entity.posX, entity.posY, entity.posZ));
+        int atPosition = (int) this.getDynamicLightLevel(MathHelper.floor(entity.posX), MathHelper.floor(entity.posY),
+                MathHelper.floor(entity.posZ));
         int ownLuminance = ((DynamicLightSource) entity).impetus$getLuminance();
 
         return this.getLightmapWithDynamicLight(Math.max(atPosition, ownLuminance), lightmap);
@@ -117,18 +218,15 @@ public final class DynamicLightsEngine {
 
     // Returns the light map value raised to the light level.
     public int getLightmapWithDynamicLight(double dynamicLightLevel, int lightmap) {
-        if (dynamicLightLevel <= 0) {
+        int level = (int) dynamicLightLevel;
+        int blockLight = (lightmap >> 4) & 0xF;
+        // Untouched unless the whole level is brighter, so a fraction never repacks the value
+        if (level <= blockLight) {
             return lightmap;
         }
 
-        int blockLight = (lightmap >> 4) & 0xF;
         int skyLight = (lightmap >> 20) & 0xF;
-
-        if (dynamicLightLevel > blockLight) {
-            blockLight = (int) dynamicLightLevel;
-        }
-
-        return (skyLight << 20) | (blockLight << 4);
+        return (skyLight << 20) | (Math.min(level, 15) << 4);
     }
 
     // Returns the strongest light level at the position.
@@ -141,32 +239,26 @@ public final class DynamicLightsEngine {
         if (this.sourceCount == 0) {
             return 0.0D;
         }
-
-        double result = 0.0D;
-
-        this.lock.readLock().lock();
-        try {
-            for (DynamicLightSource source : this.dynamicLightSources) {
-                result = maxDynamicLightLevel(x, y, z, source, result);
-            }
-        } finally {
-            this.lock.readLock().unlock();
-        }
-
-        return result < 0.0D ? 0.0D : Math.min(result, 15.0D);
+        return this.snapshot().levelAt(x, y, z);
     }
 
     // Returns the larger of the current level and the level the source adds.
     public static double maxDynamicLightLevel(int x, int y, int z, DynamicLightSource lightSource,
                                               double currentLightLevel) {
-        int luminance = lightSource.impetus$getLuminance();
+        return lightLevel(x, y, z, lightSource.impetus$getDynamicLightX(), lightSource.impetus$getDynamicLightY(),
+                lightSource.impetus$getDynamicLightZ(), lightSource.impetus$getLuminance(), currentLightLevel);
+    }
+
+    // Returns the larger of the current level and the level a light at the point adds to the block.
+    static double lightLevel(int x, int y, int z, double lightX, double lightY, double lightZ, int luminance,
+                             double currentLightLevel) {
         if (luminance <= 0) {
             return currentLightLevel;
         }
 
-        double dx = (x + 0.5D) - lightSource.impetus$getDynamicLightX();
-        double dy = (y + 0.5D) - lightSource.impetus$getDynamicLightY();
-        double dz = (z + 0.5D) - lightSource.impetus$getDynamicLightZ();
+        double dx = (x + 0.5D) - lightX;
+        double dy = (y + 0.5D) - lightY;
+        double dz = (z + 0.5D) - lightZ;
 
         double distanceSquared = dx * dx + dy * dy + dz * dz;
         if (distanceSquared > MAX_RADIUS_SQUARED) {
@@ -175,6 +267,12 @@ public final class DynamicLightsEngine {
 
         double lightLevel = (1.0D - Math.sqrt(distanceSquared) / MAX_RADIUS) * luminance;
         return lightLevel > currentLightLevel ? lightLevel : currentLightLevel;
+    }
+
+    // Returns the distance inside which the light raises a block by at least one whole level.
+    static double meshReach(int luminance) {
+        // (1 - d / R) * luminance >= 1 solved for d; the lightmap only takes whole levels
+        return MAX_RADIUS * (1.0D - 1.0D / luminance) + REACH_SLACK;
     }
 
     // Starts tracking a source of the client world.
@@ -187,13 +285,11 @@ public final class DynamicLightsEngine {
             return;
         }
 
-        this.lock.writeLock().lock();
-        try {
+        synchronized (this.dynamicLightSources) {
             if (this.dynamicLightSources.add(lightSource)) {
                 this.sourceCount = this.dynamicLightSources.size();
+                this.snapshotStale = true;
             }
-        } finally {
-            this.lock.writeLock().unlock();
         }
     }
 
@@ -204,76 +300,58 @@ public final class DynamicLightsEngine {
             return false;
         }
 
-        this.lock.readLock().lock();
-        try {
+        synchronized (this.dynamicLightSources) {
             return this.dynamicLightSources.contains(lightSource);
-        } finally {
-            this.lock.readLock().unlock();
         }
     }
 
     // Stops tracking the source and rebuilds its chunks.
     public void removeLightSource(DynamicLightSource lightSource) {
-        this.lock.writeLock().lock();
-        try {
-            if (this.dynamicLightSources.remove(lightSource)) {
+        boolean removed;
+        synchronized (this.dynamicLightSources) {
+            removed = this.dynamicLightSources.remove(lightSource);
+            if (removed) {
                 this.sourceCount = this.dynamicLightSources.size();
-                lightSource.impetus$scheduleTrackedChunksRebuild(Minecraft.getMinecraft().renderGlobal);
+                this.snapshotStale = true;
             }
-        } finally {
-            this.lock.writeLock().unlock();
+        }
+
+        // The stale flag makes the rebuild's first lookup retake the snapshot without this source
+        if (removed) {
+            lightSource.impetus$scheduleTrackedChunksRebuild(Minecraft.getMinecraft().renderGlobal);
         }
     }
 
     // Stops tracking every source and rebuilds their chunks.
     public void clearLightSources() {
-        this.lock.writeLock().lock();
-        try {
-            RenderGlobal renderer = Minecraft.getMinecraft().renderGlobal;
-
-            for (Iterator<DynamicLightSource> it = this.dynamicLightSources.iterator(); it.hasNext(); ) {
-                DynamicLightSource source = it.next();
-                it.remove();
-
-                if (source.impetus$getLuminance() > 0) {
-                    source.impetus$resetDynamicLight();
-                }
-                source.impetus$scheduleTrackedChunksRebuild(renderer);
-            }
-
-            this.sourceCount = 0;
-        } finally {
-            this.lock.writeLock().unlock();
-        }
+        this.removeLightSources(source -> true);
     }
 
     // Stops tracking the sources that match the filter.
     public void removeLightSources(Predicate<DynamicLightSource> filter) {
-        this.lock.writeLock().lock();
-        try {
-            RenderGlobal renderer = Minecraft.getMinecraft().renderGlobal;
-            boolean changed = false;
-
+        List<DynamicLightSource> removed = new ArrayList<>();
+        synchronized (this.dynamicLightSources) {
             for (Iterator<DynamicLightSource> it = this.dynamicLightSources.iterator(); it.hasNext(); ) {
                 DynamicLightSource source = it.next();
-                if (!filter.test(source)) {
-                    continue;
+                if (filter.test(source)) {
+                    it.remove();
+                    removed.add(source);
                 }
-
-                it.remove();
-                changed = true;
-
-                if (source.impetus$getLuminance() > 0) {
-                    source.impetus$resetDynamicLight();
-                }
-                source.impetus$scheduleTrackedChunksRebuild(renderer);
             }
 
-            if (changed) {
+            if (!removed.isEmpty()) {
                 this.sourceCount = this.dynamicLightSources.size();
+                this.snapshotStale = true;
             }
-        } finally {
-            this.lock.writeLock().unlock();
+        }
+
+        // Outside the monitor, so a source's rebuild hook can never wait on a reader retaking the snapshot
+        RenderGlobal renderer = removed.isEmpty() ? null : Minecraft.getMinecraft().renderGlobal;
+        for (DynamicLightSource source : removed) {
+            if (source.impetus$getLuminance() > 0) {
+                source.impetus$resetDynamicLight();
+            }
+            source.impetus$scheduleTrackedChunksRebuild(renderer);
         }
     }
 
@@ -346,59 +424,100 @@ public final class DynamicLightsEngine {
         return now >= lastUpdate && now < lastUpdate + mode.getDelay() ? -1L : now;
     }
 
-    // Visits the eight sections nearest to a point and tracks them.
-    public static void walkLitSections(RenderGlobal renderer, double x, double y, double z, LongOpenHashSet old, LongOpenHashSet lit) {
-        int blockX = MathHelper.floor(x);
-        int blockY = MathHelper.floor(y);
-        int blockZ = MathHelper.floor(z);
-        BlockPos.MutableBlockPos chunkPos = new BlockPos.MutableBlockPos(blockX >> 4, blockY >> 4, blockZ >> 4);
-        EnumFacing directionX = (blockX & 15) >= 8 ? EnumFacing.EAST : EnumFacing.WEST;
-        EnumFacing directionY = (blockY & 15) >= 8 ? EnumFacing.UP : EnumFacing.DOWN;
-        EnumFacing directionZ = (blockZ & 15) >= 8 ? EnumFacing.SOUTH : EnumFacing.NORTH;
+    // Queues the sections the light left or now reaches and returns the ones it reaches, null when dark.
+    public static LongOpenHashSet relightSections(RenderGlobal renderer, World world, LongOpenHashSet previous,
+                                                  double x, double y, double z, int luminance) {
+        // Meshes hold no moving light while the terrain shaders apply it, so there is nothing to rebuild or track
+        if (TerrainDynamicLights.isShaderApplied()) {
+            return null;
+        }
+        LongOpenHashSet reached = null;
+        if (luminance > 0) {
+            reached = new LongOpenHashSet(8);
+            collectLitSections(x, y, z, luminance, reached);
+        }
 
-        visitLitSection(renderer, chunkPos, old, lit);
-        for (int i = 0; i < 7; i++) {
-            switch (i & 3) {
-                case 0 -> chunkPos.move(directionX);
-                case 1 -> chunkPos.move(directionZ);
-                case 2 -> chunkPos.move(directionX.getOpposite());
-                default -> {
-                    chunkPos.move(directionZ.getOpposite());
-                    chunkPos.move(directionY);
+        // A light from a world that is no longer shown has nothing on screen to rebuild
+        if (renderer == null || Minecraft.getMinecraft().world != world) {
+            return reached;
+        }
+
+        if (reached != null) {
+            for (LongIterator it = reached.iterator(); it.hasNext(); ) {
+                scheduleChunkRebuild(renderer, it.nextLong());
+            }
+        }
+        if (previous != null) {
+            for (LongIterator it = previous.iterator(); it.hasNext(); ) {
+                long packed = it.nextLong();
+                if (reached == null || !reached.contains(packed)) {
+                    scheduleChunkRebuild(renderer, packed);
                 }
             }
-            visitLitSection(renderer, chunkPos, old, lit);
         }
+        return reached;
     }
 
-    // Marks the section for a rebuild and updates the tracked sets.
-    private static void visitLitSection(RenderGlobal renderer, BlockPos chunkPos, LongOpenHashSet old, LongOpenHashSet lit) {
-        if (renderer != null) {
-            scheduleChunkRebuild(renderer, chunkPos);
-        }
-        updateTrackedChunks(chunkPos, old, lit);
-    }
-
-    // Moves a section from the old set to the new set.
-    public static void updateTrackedChunks(BlockPos chunkPos, LongOpenHashSet old, LongOpenHashSet newPos) {
-        if (old == null && newPos == null) {
+    // Adds every section whose mesh can show at least one level of the light.
+    public static void collectLitSections(double x, double y, double z, int luminance, LongSet out) {
+        if (luminance <= 0) {
             return;
         }
 
-        long packed = packChunkPos(chunkPos);
-        if (old != null) {
-            old.remove(packed);
+        long[] reached = new long[MAX_REACHED_SECTIONS];
+        int count = reachedSections(x, y, z, meshReach(luminance), MESH_MARGIN, reached);
+        for (int i = 0; i < count; i++) {
+            out.add(reached[i]);
         }
-        if (newPos != null) {
-            newPos.add(packed);
+    }
+
+    // Writes the sections, each widened by margin blocks, holding a block centre within the radius, and returns how many.
+    static int reachedSections(double x, double y, double z, double radius, int margin, long[] out) {
+        double radiusSquared = radius * radius;
+        int minX = (MathHelper.ceil(x - 0.5D - radius) - margin) >> 4;
+        int maxX = (MathHelper.floor(x - 0.5D + radius) + margin) >> 4;
+        int minY = (MathHelper.ceil(y - 0.5D - radius) - margin) >> 4;
+        int maxY = (MathHelper.floor(y - 0.5D + radius) + margin) >> 4;
+        int minZ = (MathHelper.ceil(z - 0.5D - radius) - margin) >> 4;
+        int maxZ = (MathHelper.floor(z - 0.5D + radius) + margin) >> 4;
+        int blockX = MathHelper.floor(x);
+        int blockY = MathHelper.floor(y);
+        int blockZ = MathHelper.floor(z);
+        int count = 0;
+
+        // Box corners already cover the axis ranges, the sphere test drops the far corners
+        for (int sectionX = minX; sectionX <= maxX; sectionX++) {
+            double dx = nearestBlock(blockX, sectionX, margin) + 0.5D - x;
+            for (int sectionY = minY; sectionY <= maxY; sectionY++) {
+                double dy = nearestBlock(blockY, sectionY, margin) + 0.5D - y;
+                for (int sectionZ = minZ; sectionZ <= maxZ; sectionZ++) {
+                    double dz = nearestBlock(blockZ, sectionZ, margin) + 0.5D - z;
+                    if (dx * dx + dy * dy + dz * dz <= radiusSquared) {
+                        out[count++] = packSection(sectionX, sectionY, sectionZ);
+                    }
+                }
+            }
         }
+        return count;
+    }
+
+    // Returns the block of the widened section closest to the given block on one axis.
+    private static int nearestBlock(int block, int section, int margin) {
+        int min = (section << 4) - margin;
+        int max = (section << 4) + 15 + margin;
+        return block < min ? min : Math.min(block, max);
     }
 
     // Returns the section position packed into a long.
     public static long packChunkPos(BlockPos pos) {
-        return (((long) pos.getX() & 0x3FFFFFFL) << 38)
-                | (((long) pos.getY() & 0xFFFL) << 26)
-                | ((long) pos.getZ() & 0x3FFFFFFL);
+        return packSection(pos.getX(), pos.getY(), pos.getZ());
+    }
+
+    // Returns the section coordinates packed into a long.
+    public static long packSection(int x, int y, int z) {
+        return (((long) x & 0x3FFFFFFL) << 38)
+                | (((long) y & 0xFFFL) << 26)
+                | ((long) z & 0x3FFFFFFL);
     }
 
     // Returns the x part of a packed section.

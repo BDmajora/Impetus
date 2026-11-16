@@ -144,7 +144,9 @@ class UmbraMeshShadingTest {
         Mixins.set(Umbra.class, "nvidiumPortNote", "gbuffers_terrain: geometry or tessellation stage");
         assertEquals("gbuffers_terrain: geometry or tessellation stage", UmbraMeshShading.whyNot(pack(true, false, Map.of())));
 
-        // Asking for the shadow programs builds all four; each task variant compiles once and is shared
+        // Asking for the shadow programs builds all four, each carrying the engine's three blocks; task variants are shared
+        when(TestGl.gl().glGetProgrami(anyInt(), eq(UmbraMeshShading.ACTIVE_UNIFORM_BLOCKS)))
+                .thenReturn(UmbraMeshShading.ENGINE_UNIFORM_BLOCKS);
         assertTrue(shading.hasShadowPrograms());
         assertTrue(shading.hasShadowPrograms());
         assertFalse(shading.hasFailed());
@@ -225,7 +227,8 @@ class UmbraMeshShadingTest {
         verify(TestGl.gl(), never()).glCreateShader(MESH_SHADER);
 
         // A program declaring a uniform block of its own cannot share unified uniform memory
-        when(TestGl.gl().glGetProgrami(anyInt(), eq(UmbraMeshShading.ACTIVE_UNIFORM_BLOCKS))).thenReturn(3);
+        when(TestGl.gl().glGetProgrami(anyInt(), eq(UmbraMeshShading.ACTIVE_UNIFORM_BLOCKS)))
+                .thenReturn(UmbraMeshShading.ENGINE_UNIFORM_BLOCKS + 1);
         UmbraMeshShading withBlocks = new UmbraMeshShading(pack(true, true, Map.of()), CONFIG);
         assertFalse(withBlocks.bindOpaque(MeshDrawPhase.MAIN, SOLID, MATRICES));
         assertTrue(UmbraMeshShading.getFailureReason().contains("uniform blocks"));

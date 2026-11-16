@@ -15,6 +15,21 @@ public interface DynamicLightSource {
     // Returns the south position of the light.
     double impetus$getDynamicLightZ();
 
+    // Returns the east position of the light between the last tick and this one.
+    default double impetus$getDynamicLightX(float partialTicks) {
+        return impetus$getDynamicLightX();
+    }
+
+    // Returns the height of the light between the last tick and this one.
+    default double impetus$getDynamicLightY(float partialTicks) {
+        return impetus$getDynamicLightY();
+    }
+
+    // Returns the south position of the light between the last tick and this one.
+    default double impetus$getDynamicLightZ(float partialTicks) {
+        return impetus$getDynamicLightZ();
+    }
+
     // Returns the world of the light.
     World impetus$getDynamicLightWorld();
 

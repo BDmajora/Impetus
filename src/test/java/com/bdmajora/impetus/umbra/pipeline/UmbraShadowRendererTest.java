@@ -186,7 +186,7 @@ class UmbraShadowRendererTest {
     // Returns a renderer over two colour buffers with the given source and content and restorer
     private UmbraShadowRenderer renderer(ProgramSource shadow, ShadowContentSettings content, Runnable restorer) {
         return new UmbraShadowRenderer(256, 64.0f, -100.05f, 156.0f, 2.0f, null, 0.0f, shadow, null, null,
-                Map.of(), Map.of(), OFF, OFF, OFF, false, restorer, content, 0.0f, 64.0f, false,
+                Map.of(), Map.of(), OFF, OFF, OFF, false, restorer, content, 0.0f, 64.0f, 1.0f, false,
                 ShadowColorSettings.parse(new ConstDirectives(""), ShadowColorSettings.OPTIFINE_BUFFERS), new BitSet());
     }
 
@@ -238,19 +238,19 @@ class UmbraShadowRendererTest {
         ShadowContentSettings content = ShadowContentSettings.defaults();
         Runnable restorer = () -> { };
         assertThrows(NullPointerException.class, () -> new UmbraShadowRenderer(256, 64, -1, 1, 2, null, 0, null, null, null,
-                Map.of(), Map.of(), OFF, OFF, OFF, false, restorer, content, 0, 64, false, colors, new BitSet()));
+                Map.of(), Map.of(), OFF, OFF, OFF, false, restorer, content, 0, 64, 1, false, colors, new BitSet()));
         assertThrows(NullPointerException.class, () -> new UmbraShadowRenderer(256, 64, -1, 1, 2, null, 0, shadow, null, null,
-                null, Map.of(), OFF, OFF, OFF, false, restorer, content, 0, 64, false, colors, new BitSet()));
+                null, Map.of(), OFF, OFF, OFF, false, restorer, content, 0, 64, 1, false, colors, new BitSet()));
         assertThrows(NullPointerException.class, () -> new UmbraShadowRenderer(256, 64, -1, 1, 2, null, 0, shadow, null, null,
-                Map.of(), Map.of(), OFF, OFF, OFF, false, null, content, 0, 64, false, colors, new BitSet()));
+                Map.of(), Map.of(), OFF, OFF, OFF, false, null, content, 0, 64, 1, false, colors, new BitSet()));
         assertThrows(NullPointerException.class, () -> new UmbraShadowRenderer(256, 64, -1, 1, 2, null, 0, shadow, null, null,
-                Map.of(), Map.of(), OFF, OFF, OFF, false, restorer, null, 0, 64, false, colors, new BitSet()));
+                Map.of(), Map.of(), OFF, OFF, OFF, false, restorer, null, 0, 64, 1, false, colors, new BitSet()));
         for (int resolution : new int[]{0, -1, Integer.MIN_VALUE}) {
             assertThrows(IllegalArgumentException.class, () -> new UmbraShadowRenderer(resolution, 64, -1, 1, 2, null, 0, shadow,
-                    null, null, Map.of(), Map.of(), OFF, OFF, OFF, false, restorer, content, 0, 64, false, colors, new BitSet()));
+                    null, null, Map.of(), Map.of(), OFF, OFF, OFF, false, restorer, content, 0, 64, 1, false, colors, new BitSet()));
         }
         assertThrows(IllegalArgumentException.class, () -> new UmbraShadowRenderer(256, 64, -1, 1, 2, null, 0, shadow, null, null,
-                Map.of(), Map.of(), new boolean[1], OFF, OFF, false, restorer, content, 0, 64, false, colors, new BitSet()));
+                Map.of(), Map.of(), new boolean[1], OFF, OFF, false, restorer, content, 0, 64, 1, false, colors, new BitSet()));
         assertTrue(this.generated.isEmpty());
     }
 

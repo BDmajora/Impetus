@@ -952,6 +952,17 @@ class TerrainMeshingTest {
         assertTrue(manager.didShadowPassRunThisFrame());
         renderer.drawChunkLayer(BlockRenderLayer.SOLID, 8, 20, 8);
         assertTrue(renderer.isEntityVisible(far));
+        // Shadow casters ask the shadow search's own sections instead, under the main pass's switch
+        assertEquals(renderer.isBoxVisible(200, 1, 200, 201, 2, 201), renderer.isShadowCasterVisible(far));
+        assertEquals(renderer.isBoxVisible(2, 1, 2, 3, 2, 3), renderer.isShadowCasterVisible(near));
+        options.performance.useEntityCulling = false;
+        assertTrue(renderer.isShadowCasterVisible(far));
+        options.performance.useEntityCulling = true;
+        List<TileEntity> shadowBlockEntities = new ArrayList<>();
+        List<TileEntity> visibleBlockEntities = new ArrayList<>();
+        renderer.forEachShadowBlockEntity(shadowBlockEntities::add);
+        renderer.forEachVisibleBlockEntity(visibleBlockEntities::add);
+        assertEquals(visibleBlockEntities, shadowBlockEntities);
         Statics.set(UmbraShadowRenderer.class, "shadowPassActive", false);
 
         // A spectator inside the floor turns occlusion culling off, and a block change rebuilds its section

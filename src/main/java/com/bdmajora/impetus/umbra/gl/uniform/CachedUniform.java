@@ -23,11 +23,36 @@ abstract class CachedUniform<T> extends Uniform {
     public final void update() {
         T newValue = this.value.get();
 
-        if (!this.initialized || !this.cached.equals(newValue)) {
+        if (this.changed(newValue)) {
             this.upload(newValue);
-            this.store(this.cached, newValue);
-            this.initialized = true;
+            this.commit(newValue);
         }
+    }
+
+    // Uploads into a program that need not be bound, under the same change test and retry as update.
+    protected final void updateInProgram(int program) {
+        T newValue = this.value.get();
+
+        if (this.changed(newValue)) {
+            this.uploadIn(program, newValue);
+            this.commit(newValue);
+        }
+    }
+
+    // Returns whether the value differs from the last upload.
+    private boolean changed(T newValue) {
+        return !this.initialized || !this.cached.equals(newValue);
+    }
+
+    // Records a value that was uploaded.
+    private void commit(T newValue) {
+        this.store(this.cached, newValue);
+        this.initialized = true;
+    }
+
+    // Uploads a value into a program that need not be bound; only types that write per object override it.
+    protected void uploadIn(int program, T newValue) {
+        throw new UnsupportedOperationException(getClass().getSimpleName() + " has no program targeted upload");
     }
 
     // Copies a new value into the holder.

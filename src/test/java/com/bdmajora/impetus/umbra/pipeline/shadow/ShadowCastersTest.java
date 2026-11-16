@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.umbra.pipeline.shadow;
 
+import com.bdmajora.impetus.engine.impl.render.viewport.frustum.Frustum;
 import com.bdmajora.impetus.umbra.pipeline.ShadowContentSettings;
 import com.bdmajora.impetus.umbra.pipeline.rendering.PipelineGl;
 import com.bdmajora.impetus.umbra.shaderpack.ShaderProperties;
@@ -8,6 +9,7 @@ import com.bdmajora.testing.TestGl;
 import net.minecraft.block.Block;
 import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.client.multiplayer.WorldClient;
+import net.minecraft.client.renderer.culling.ICamera;
 import net.minecraft.client.renderer.entity.RenderManager;
 import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.client.renderer.tileentity.TileEntityRendererDispatcher;
@@ -15,6 +17,7 @@ import net.minecraft.client.renderer.tileentity.TileEntitySpecialRenderer;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.passive.EntityPig;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import org.joml.Matrix4f;
 import org.joml.Vector3d;
@@ -26,7 +29,10 @@ import org.lwjgl.opengl.GL11;
 
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -67,6 +73,24 @@ class ShadowCastersTest {
     private ShadowCasterPrograms programs;
     // Matrix and program and draw events in order
     private final List<String> events = new ArrayList<>();
+    // Block entities the shadow search kept, in visit order
+    private final List<TileEntity> keptBlockEntities = new ArrayList<>();
+    // Entities whose sections the shadow search dropped
+    private final Set<Entity> droppedEntities = new HashSet<>();
+    // Frustum entities are tested against
+    private Frustum entityFrustum = ShadowFrustums.NON_CULLING;
+    // Shadow search view over the two collections above
+    private final ShadowCasterView view = new ShadowCasterView() {
+        @Override
+        public boolean isShadowCasterVisible(Entity entity) {
+            return !droppedEntities.contains(entity);
+        }
+
+        @Override
+        public void forEachShadowBlockEntity(Consumer<TileEntity> visitor) {
+            keptBlockEntities.forEach(visitor);
+        }
+    };
     // Camera position of every pass
     private final Vector3d camera = new Vector3d(100.0, 64.0, 100.0);
     // Projection whose first and depth and translation entries read 2 and 4 and 0
@@ -97,6 +121,11 @@ class ShadowCastersTest {
         when(this.gl.client.getRenderManager()).thenReturn(this.renderManager);
         doAnswer(inv -> this.events.add("entity " + inv.getArgument(0) + " " + inv.getArgument(1) + " " + inv.getArgument(2)))
                 .when(this.renderManager).renderEntityStatic(any(Entity.class), anyFloat(), anyBoolean());
+        // Like Render.shouldRender, which hands the camera the entity's render box in world space
+        when(this.renderManager.shouldRender(any(Entity.class), any(ICamera.class), anyDouble(), anyDouble(), anyDouble()))
+                .thenAnswer(inv -> inv.<ICamera>getArgument(1)
+                        .isBoundingBoxInFrustum(inv.<Entity>getArgument(0).getRenderBoundingBox()));
+        when(this.player.getRenderBoundingBox()).thenReturn(new AxisAlignedBB(99.5, 64.0, 99.5, 100.5, 66.0, 100.5));
         this.originalDispatcher = TileEntityRendererDispatcher.instance;
         this.dispatcher = mock(TileEntityRendererDispatcher.class);
         TileEntityRendererDispatcher.instance = this.dispatcher;
@@ -131,11 +160,12 @@ class ShadowCastersTest {
         return ShadowContentSettings.from(ShaderProperties.parse(String.join("\n", lines)));
     }
 
-    // Adds a pig at a horizontal position
+    // Adds a pig at a horizontal position with a one block render box at height 64
     private EntityPig pig(String name, double x, double z) {
         EntityPig pig = mock(EntityPig.class, withSettings().name(name));
         pig.posX = x;
         pig.posZ = z;
+        when(pig.getRenderBoundingBox()).thenReturn(new AxisAlignedBB(x - 0.5, 64.0, z - 0.5, x + 0.5, 65.0, z + 0.5));
         this.world.loadedEntityList.add(pig);
         return pig;
     }
@@ -151,14 +181,19 @@ class ShadowCastersTest {
         if (renderer) {
             doReturn(mock(TileEntitySpecialRenderer.class)).when(this.dispatcher).getRenderer(tileEntity);
         }
-        this.world.loadedTileEntityList.add(tileEntity);
+        this.keptBlockEntities.add(tileEntity);
         return tileEntity;
     }
 
     // Draws once with the given content and the default distance
     private void render(ShadowContentSettings content) {
-        new ShadowCasters(this.programs, content, DISTANCE).render(this.gl.client, this.camera, this.projection,
-                this.modelView, PARTIAL);
+        render(new ShadowCasters(this.programs, content, DISTANCE));
+    }
+
+    // Draws once with the given casters, view and entity frustum
+    private void render(ShadowCasters casters) {
+        casters.render(this.gl.client, this.view, this.entityFrustum, this.camera, this.projection, this.modelView,
+                PARTIAL);
     }
 
     // Returns the event list of a pass whose draws are the given lines
@@ -308,8 +343,7 @@ class ShadowCastersTest {
     void aNegativeDistanceCullsEveryCaster() {
         pig("pig", 100.0, 100.0);
         blockEntity("lamp", 100, 100, 15, true);
-        new ShadowCasters(this.programs, ShadowContentSettings.defaults(), -100.0f)
-                .render(this.gl.client, this.camera, this.projection, this.modelView, PARTIAL);
+        render(new ShadowCasters(this.programs, ShadowContentSettings.defaults(), -100.0f));
         assertEquals(pass("bind entity", "bind block"), this.events);
     }
 
@@ -317,8 +351,7 @@ class ShadowCastersTest {
     @Test
     void theLargestDistanceKeepsFarCasters() {
         pig("pig", 1.0e30, -1.0e30);
-        new ShadowCasters(this.programs, content("shadowBlockEntities = false"), Float.MAX_VALUE)
-                .render(this.gl.client, this.camera, this.projection, this.modelView, PARTIAL);
+        render(new ShadowCasters(this.programs, content("shadowBlockEntities = false"), Float.MAX_VALUE));
         assertEquals(pass("bind entity", "entity pig 0.5 false"), this.events);
     }
 
@@ -326,12 +359,80 @@ class ShadowCastersTest {
     @Test
     void emptyListsAndRepeatedPassesStayBalanced() {
         ShadowCasters casters = new ShadowCasters(this.programs, ShadowContentSettings.defaults(), DISTANCE);
-        casters.render(this.gl.client, this.camera, this.projection, this.modelView, PARTIAL);
+        render(casters);
         List<String> first = new ArrayList<>(this.events);
         assertEquals(pass("bind entity", "bind block"), first);
         this.events.clear();
-        casters.render(this.gl.client, this.camera, this.projection, this.modelView, PARTIAL);
+        render(casters);
         assertEquals(first, this.events);
+    }
+
+    // Checks that the entity frustum culls in camera-relative space while the camera body still casts
+    @Test
+    void theEntityFrustumCullsAroundTheCamera() {
+        this.world.loadedEntityList.add(this.player);
+        pig("near", 105.0, 100.0);
+        pig("beside", 120.0, 100.0);
+        // Eight blocks each way of the camera, so the pig fifteen blocks out is outside
+        this.entityFrustum = new ShadowBoxCuller(8.0f);
+        render(content("shadowBlockEntities = false"));
+        assertEquals(pass("bind entity", "entity player 0.5 false", "entity near 0.5 false"), this.events);
+        this.events.clear();
+        // A frustum that refuses everything still lets the camera's own body and its mount through
+        this.entityFrustum = (minX, minY, minZ, maxX, maxY, maxZ) -> false;
+        EntityPig mount = pig("mount", 100.0, 100.0);
+        when(mount.isRidingOrBeingRiddenBy(this.player)).thenReturn(true);
+        render(content("shadowBlockEntities = false"));
+        assertEquals(pass("bind entity", "entity player 0.5 false", "entity mount 0.5 false"), this.events);
+    }
+
+    // Checks that entities in sections the shadow search dropped do not cast, and spectators never do
+    @Test
+    void droppedSectionsAndSpectatorsDoNotCast() {
+        this.world.loadedEntityList.add(this.player);
+        pig("kept", 101.0, 100.0);
+        this.droppedEntities.add(pig("dropped", 102.0, 100.0));
+        // The camera body ignores the section check
+        this.droppedEntities.add(this.player);
+        render(content("shadowBlockEntities = false"));
+        assertEquals(pass("bind entity", "entity player 0.5 false", "entity kept 0.5 false"), this.events);
+        this.events.clear();
+        EntityPlayerSP spectator = mock(EntityPlayerSP.class, withSettings().name("spectator"));
+        spectator.posX = 100.0;
+        spectator.posZ = 100.0;
+        when(spectator.isSpectator()).thenReturn(true);
+        this.world.loadedEntityList.add(spectator);
+        when(this.player.isSpectator()).thenReturn(true);
+        render(content("shadowBlockEntities = false"));
+        assertEquals(pass("bind entity", "entity kept 0.5 false"), this.events);
+    }
+
+    // Checks that block entities come only from the shadow search, never from the world's full list
+    @Test
+    void blockEntitiesComeFromTheShadowSearchOnly() {
+        TileEntity unlisted = mock(TileEntity.class, withSettings().name("unlisted"));
+        when(unlisted.getPos()).thenReturn(new BlockPos(100, 64, 100));
+        doReturn(mock(TileEntitySpecialRenderer.class)).when(this.dispatcher).getRenderer(unlisted);
+        Mixins.set(this.world, "loadedTileEntityList", new ArrayList<>(List.of(unlisted)));
+        blockEntity("kept", 101, 100, 0, true);
+        render(content("shadowEntities = false", "shadowPlayer = false"));
+        assertEquals(pass("bind block", "block kept 0.5 -1"), this.events);
+    }
+
+    // Checks the camera adapter: relative boxes, a null frustum keeping everything, and an ignored position
+    @Test
+    void theFrustumCameraTestsCameraRelativeBoxes() {
+        ShadowCasters.FrustumCamera frustumCamera = new ShadowCasters.FrustumCamera();
+        List<float[]> boxes = new ArrayList<>();
+        frustumCamera.set((minX, minY, minZ, maxX, maxY, maxZ) -> boxes.add(new float[] {minX, minY, minZ, maxX, maxY, maxZ}),
+                new Vector3d(1.0e7, 64.0, -1.0e7));
+        frustumCamera.setPosition(5.0, 5.0, 5.0);
+        assertTrue(frustumCamera.isBoundingBoxInFrustum(new AxisAlignedBB(1.0e7 + 1.0, 65.0, -1.0e7 - 2.0,
+                1.0e7 + 1.5, 66.0, -1.0e7 - 1.0)));
+        // Far from the origin the box keeps its fractions, since the camera is subtracted in double
+        assertArrayEquals(new float[] {1.0f, 1.0f, -2.0f, 1.5f, 2.0f, -1.0f}, boxes.get(0));
+        frustumCamera.set(null, new Vector3d());
+        assertTrue(frustumCamera.isBoundingBoxInFrustum(new AxisAlignedBB(1.0e6, 0, 0, 1.0e6 + 1, 1, 1)));
     }
 
     // Checks that null programs or content are rejected

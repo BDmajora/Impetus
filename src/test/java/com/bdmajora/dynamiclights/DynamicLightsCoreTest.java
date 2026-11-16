@@ -304,31 +304,27 @@ class DynamicLightsCoreTest {
     }
 
     @Test
-    void litSectionsAreWalkedAndPackedAroundASource() {
+    void litSectionsAreOnlyThoseTheLightReaches() {
         it.unimi.dsi.fastutil.longs.LongOpenHashSet lit = new it.unimi.dsi.fastutil.longs.LongOpenHashSet();
-        it.unimi.dsi.fastutil.longs.LongOpenHashSet old = new it.unimi.dsi.fastutil.longs.LongOpenHashSet();
-        // A source in the middle of a section still spills into the seven neighbouring ones
-        DynamicLightsEngine.walkLitSections(null, 20.0D, 70.0D, -3.0D, old, lit);
-        assertEquals(8, lit.size());
-        assertTrue(lit.contains(DynamicLightsEngine.packChunkPos(new BlockPos(1, 4, -1))));
-        // The other corner of a section walks the opposite neighbours
+        // A torch in the middle of a section lights nothing past its edges, so one section instead of eight
+        DynamicLightsEngine.collectLitSections(24.0D, 72.0D, -8.0D, 14, lit);
+        assertEquals(1, lit.size());
+        assertTrue(lit.contains(DynamicLightsEngine.packSection(1, 4, -1)));
+        // On a section corner the reach spills into all eight around it
         lit.clear();
-        DynamicLightsEngine.walkLitSections(null, 16.0D, 64.0D, 0.0D, null, lit);
+        DynamicLightsEngine.collectLitSections(16.0D, 64.0D, 0.0D, 14, lit);
         assertEquals(8, lit.size());
-        assertTrue(lit.contains(DynamicLightsEngine.packChunkPos(new BlockPos(0, 3, -1))));
+        assertTrue(lit.contains(DynamicLightsEngine.packSection(0, 3, -1)));
+        // A dark light reaches nothing
+        lit.clear();
+        DynamicLightsEngine.collectLitSections(16.0D, 64.0D, 0.0D, 0, lit);
+        assertTrue(lit.isEmpty());
 
         long packed = DynamicLightsEngine.packChunkPos(new BlockPos(-5, 9, 7));
+        assertEquals(DynamicLightsEngine.packSection(-5, 9, 7), packed);
         assertEquals(-5, DynamicLightsEngine.unpackX(packed));
         assertEquals(9, DynamicLightsEngine.unpackY(packed));
         assertEquals(7, DynamicLightsEngine.unpackZ(packed));
-        // Moving a position from one set to the other, and the no-op form
-        old.clear();
-        old.add(packed);
-        lit.clear();
-        DynamicLightsEngine.updateTrackedChunks(new BlockPos(-5, 9, 7), old, lit);
-        assertTrue(old.isEmpty());
-        assertTrue(lit.contains(packed));
-        DynamicLightsEngine.updateTrackedChunks(new BlockPos(0, 0, 0), null, null);
 
         // Rebuild scheduling needs a world, and goes through the accessor Impetus overwrites
         RenderGlobal renderer = mock(RenderGlobal.class,

@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.engine.impl.render.mesh;
 
+import com.bdmajora.impetus.engine.impl.render.chunk.shader.TerrainDynamicLights;
 import com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions;
 import com.bdmajora.impetus.engine.impl.compat.environment.OsKind;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions.MeshStatistics;
@@ -183,6 +184,9 @@ class MeshRenderPipelineTest {
         pipeline.renderShadowTranslucent(Passes.TRANSLUCENT);
         Mockito.verify(TestGl.gl(), Mockito.times(2)).glMultiDrawMeshTasksIndirectNV(0L, 1, 0);
         assertEquals(List.of("opaque SHADOW", "finish", "translucent SHADOW", "finish"), shading.calls);
+        // Unified uniform buffers only see address bindings, so the moving-light block gets one beside the scene
+        Mockito.verify(TestGl.gl(), Mockito.times(2)).glBufferAddressRangeNV(Mockito.anyInt(), Mockito.eq(TerrainDynamicLights.BINDING),
+                Mockito.anyLong(), Mockito.eq((long) TerrainDynamicLights.BYTES));
 
         shading.calls.clear();
         pipeline.renderFrame(Sections.viewport(8, 8, 8), MATRICES, FOG, camera, 800, 600, Passes.SOLID);

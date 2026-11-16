@@ -42,6 +42,10 @@ public final class Splice implements LauncherSessionListener {
         TARGETS.put("net.minecraft.item.ItemStack", com.bdmajora.equilibrium.common.advancements.PreviousStackSize.class);
         TARGETS.put("net.minecraft.world.chunk.storage.ExtendedBlockStorage",
                 com.bdmajora.equilibrium.mixin.worldgen.chunk_copy.ExtendedBlockStorageAccessor.class);
+        // A section's palette, which Fulgor's block light reads to skip sections that hold no light source
+        TARGETS.put("net.minecraft.world.chunk.BlockStateContainer",
+                com.bdmajora.fulgor.mixin.async.world.BlockStateContainerPaletteAccessor.class);
+        REAL_FIELDS.put("fulgor$getPalette", "palette");
 
         // The recycled Forge events; every refresh is a default method the real mixins override per event class
         DEFAULTS_KEPT.add(com.bdmajora.coarctatio.events.RecyclableEvent.class);

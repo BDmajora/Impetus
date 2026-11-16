@@ -71,6 +71,7 @@ public class FulgorMixinPlugin extends SimpleMixinPlugin {
             case "async.world.WorldEntitySpawnerMixin":
             case "async.world.AnvilChunkLoaderMixin":
             case "async.block.BlockStateMixin":
+            case "async.world.BlockStateContainerPaletteAccessor":
                 return async;
             case "world.ExtendedBlockStorageMixin":
                 return this.config.sendNonTrivialSectionLight;

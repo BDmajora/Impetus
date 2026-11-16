@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.umbra.terrain;
 
+import com.bdmajora.impetus.engine.impl.render.chunk.shader.TerrainDynamicLights;
 import com.bdmajora.impetus.engine.impl.gl.shader.ShaderBindingContext;
 import com.bdmajora.impetus.engine.impl.gl.shader.uniform.GlUniformFloat;
 import com.bdmajora.impetus.engine.impl.gl.shader.uniform.GlUniformFloat3v;
@@ -79,6 +80,8 @@ public class UmbraTerrainShaderInterface implements ChunkShaderInterface {
         this.uRegionOffset = context.bindUniformIfPresent("u_RegionOffset", GlUniformFloat3v::new);
         this.uChunkAges = context.bindUniformIfPresent("iris_ChunkAgesMs", GlUniformFloatArray::new);
         this.uChunkFadeInv = context.bindUniformIfPresent("iris_ChunkFadeInv", GlUniformFloat::new);
+        // The generated prologue declares the light block without a binding qualifier, raster and Nvidium port alike
+        context.bindUniformBlockIfPresent(TerrainDynamicLights.BLOCK_NAME, TerrainDynamicLights.BINDING);
 
         GlUniformInt block = firstPresent(context, "tex", "texture", "gtexture", "gcolor");
         if (block != null) {

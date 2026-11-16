@@ -45,6 +45,8 @@ public final class UmbraMeshShading implements MeshTerrainShading {
 
     // GL enum of the active uniform block count.
     static final int ACTIVE_UNIFORM_BLOCKS = 0x8A36;
+    // Blocks the engine itself gives a ported program: its two scene blocks and the moving-light block.
+    static final int ENGINE_UNIFORM_BLOCKS = 3;
 
     // Pattern of the thread count define of a ported mesh shader.
     private static final Pattern THREADS = Pattern.compile("#define\\s+UMBRA_MESH_THREADS\\s+(\\d+)");
@@ -291,7 +293,7 @@ public final class UmbraMeshShading implements MeshTerrainShading {
 
         // Deletes the linked program when its checks or uniform setup fail
         try {
-            if (LWJGL.glGetProgrami(program.handle(), ACTIVE_UNIFORM_BLOCKS) > 2) {
+            if (LWJGL.glGetProgrami(program.handle(), ACTIVE_UNIFORM_BLOCKS) > ENGINE_UNIFORM_BLOCKS) {
                 throw new UnsupportedProgramException(id.getSourceName() + " declares its own uniform blocks");
             }
 

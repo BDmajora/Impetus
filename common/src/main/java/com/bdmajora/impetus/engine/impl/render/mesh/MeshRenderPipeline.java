@@ -5,6 +5,7 @@ import com.bdmajora.impetus.engine.impl.gl.shader.ShaderConstants;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions.MeshStatistics;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions.MeshTranslucencySorting;
 import com.bdmajora.impetus.engine.impl.render.chunk.ChunkRenderMatrices;
+import com.bdmajora.impetus.engine.impl.render.chunk.shader.TerrainDynamicLights;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 import com.bdmajora.impetus.engine.impl.render.mesh.gl.BindlessBuffer;
 import com.bdmajora.impetus.engine.impl.render.mesh.region.MeshRegionStore;
@@ -75,6 +76,10 @@ public class MeshRenderPipeline {
     private final BindlessBuffer shadowScene;
     // Draw commands of the shadow pass.
     private final BindlessBuffer shadowCommands;
+    // Moving lights of the main pass, relative to its render origin.
+    private final BindlessBuffer sceneLights;
+    // Moving lights of the shadow pass.
+    private final BindlessBuffer shadowLights;
 
     // Rasterizer of the region boxes.
     private final RegionRasterizer regionRasterizer;
@@ -169,6 +174,8 @@ public class MeshRenderPipeline {
         this.statistics = new BindlessBuffer(STATISTICS_BYTES);
         this.shadowScene = new BindlessBuffer(SCENE_BYTES);
         this.shadowCommands = new BindlessBuffer(maxRegions * 8L);
+        this.sceneLights = new BindlessBuffer(TerrainDynamicLights.BYTES);
+        this.shadowLights = new BindlessBuffer(TerrainDynamicLights.BYTES);
 
         this.regionVisibility.clear();
         this.sectionVisibility.clear();
@@ -224,6 +231,7 @@ public class MeshRenderPipeline {
         }
 
         writeSceneUniform(this.sceneUniform, matrices, fog, camera, screenWidth, screenHeight, visibleCount);
+        writeLights(this.sceneLights, camera);
 
         this.sections.commit();
         int sortCount = queueSorts();
@@ -232,7 +240,7 @@ public class MeshRenderPipeline {
 
         boolean shaded = this.shading.bindOpaque(MeshDrawPhase.MAIN, pass, matrices);
 
-        bindScene(this.sceneUniform);
+        bindScene(this.sceneUniform, this.sceneLights);
         LWJGL.glEnable(GL11.GL_DEPTH_TEST);
 
         if (shaded && this.previousRegionCount != 0) {
@@ -286,7 +294,7 @@ public class MeshRenderPipeline {
     public void renderTranslucent(@Nullable TerrainRenderPass pass) {
         if (this.translucentRegionCount != 0) {
             boolean shaded = this.shading.bindTranslucent(MeshDrawPhase.MAIN, pass, this.frameMatrices);
-            bindScene(this.sceneUniform);
+            bindScene(this.sceneUniform, this.sceneLights);
             LWJGL.glEnable(GL11.GL_DEPTH_TEST);
             if (shaded) {
                 TerrainRasterizer.drawIndirect(this.translucentRegionCount, this.translucentCommands.getDeviceAddress());
@@ -320,10 +328,11 @@ public class MeshRenderPipeline {
         }
 
         writeSceneUniform(this.shadowScene, matrices, MeshFog.NONE, camera, width, height, count);
+        writeLights(this.shadowLights, camera);
         this.uploadStream.commit();
 
         boolean shaded = this.shading.bindOpaque(MeshDrawPhase.SHADOW, pass, matrices);
-        bindScene(this.shadowScene);
+        bindScene(this.shadowScene, this.shadowLights);
         LWJGL.glEnable(GL11.GL_DEPTH_TEST);
         if (shaded) {
             TerrainRasterizer.drawIndirect(count, this.shadowCommands.getDeviceAddress());
@@ -341,7 +350,7 @@ public class MeshRenderPipeline {
         }
 
         boolean shaded = this.shading.bindTranslucent(MeshDrawPhase.SHADOW, pass, this.shadowMatrices);
-        bindScene(this.shadowScene);
+        bindScene(this.shadowScene, this.shadowLights);
         LWJGL.glEnable(GL11.GL_DEPTH_TEST);
         if (shaded) {
             TerrainRasterizer.drawIndirect(this.shadowRegionCount, this.shadowCommands.getDeviceAddress());
@@ -395,6 +404,7 @@ public class MeshRenderPipeline {
                 this.sceneUniform::delete, this.regionVisibility::delete, this.sectionVisibility::delete,
                 this.terrainCommands::delete, this.translucentCommands::delete, this.sortingRegions::delete,
                 this.statistics::delete, this.shadowScene::delete, this.shadowCommands::delete,
+                this.sceneLights::delete, this.shadowLights::delete,
                 this.sections.getArena()::delete, this.sections.getRegions()::delete,
                 this.downloadStream::delete, this.uploadStream::delete));
 
@@ -501,13 +511,22 @@ public class MeshRenderPipeline {
         return count;
     }
 
-    // Binds a scene block by address.
-    private static void bindScene(BindlessBuffer scene) {
+    // Binds a scene block and its moving lights by address.
+    private static void bindScene(BindlessBuffer scene, BindlessBuffer lights) {
         LWJGL.glEnableClientState(NVUniformBufferUnifiedMemory.GL_UNIFORM_BUFFER_UNIFIED_NV);
         LWJGL.glEnableClientState(NVVertexBufferUnifiedMemory.GL_VERTEX_ATTRIB_ARRAY_UNIFIED_NV);
         LWJGL.glEnableClientState(NVVertexBufferUnifiedMemory.GL_ELEMENT_ARRAY_UNIFIED_NV);
         LWJGL.glEnableClientState(MeshShaderSupport.GL_DRAW_INDIRECT_UNIFIED_NV);
         LWJGL.glBufferAddressRangeNV(NVUniformBufferUnifiedMemory.GL_UNIFORM_BUFFER_ADDRESS_NV, 0, scene.getDeviceAddress(), SCENE_BYTES);
+        // With unified uniform buffers on, a binding point is only reached by address, so the light block gets one too
+        LWJGL.glBufferAddressRangeNV(NVUniformBufferUnifiedMemory.GL_UNIFORM_BUFFER_ADDRESS_NV, TerrainDynamicLights.BINDING,
+                lights.getDeviceAddress(), TerrainDynamicLights.BYTES);
+    }
+
+    // Writes the moving lights relative to the render origin, which every mesh program measures vertices from.
+    private void writeLights(BindlessBuffer target, MeshCamera camera) {
+        long ptr = this.uploadStream.upload(target, 0, TerrainDynamicLights.BYTES);
+        TerrainDynamicLights.write(ptr, camera.renderX(), camera.renderY(), camera.renderZ());
     }
 
     // Unbinds the scene block and the program.

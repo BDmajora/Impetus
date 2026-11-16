@@ -209,6 +209,43 @@ class PhaseControllerTest {
     }
 
     @Test
+    void perObjectUniformsWriteIntoTheProgramWithoutAskingWhatIsBound() {
+        PipelineGl.enterFrame(this.state);
+        GbufferPrograms.Entry entities = entry(ProgramId.Entities, 50);
+        when(TestGl.gl().supportsProgramUniforms()).thenReturn(true);
+        when(entities.getUniforms().canUpdatePerObjectIn()).thenReturn(true);
+        this.phases.select(ProgramId.Entities, 11);
+        Mockito.clearInvocations(TestGl.gl());
+        // A renderer left another program bound, and the write still lands in the entity program
+        this.gl.program = 7;
+        this.phases.refreshDynamicUniforms();
+        this.phases.refreshDynamicUniforms();
+        verify(entities.getUniforms(), times(2)).updatePerObjectIn(50);
+        verify(entities.getUniforms(), never()).updatePerObject();
+        verify(TestGl.gl(), never()).glGetInteger(GbufferFeedback.GL_CURRENT_PROGRAM);
+        // The context is asked once
+        verify(TestGl.gl(), times(1)).supportsProgramUniforms();
+
+        // A per-object uniform that cannot write by program falls back to the bound check
+        when(entities.getUniforms().canUpdatePerObjectIn()).thenReturn(false);
+        this.gl.program = 50;
+        this.phases.refreshDynamicUniforms();
+        verify(entities.getUniforms(), times(1)).updatePerObject();
+    }
+
+    @Test
+    void withoutProgramUniformsTheBoundCheckStays() {
+        PipelineGl.enterFrame(this.state);
+        GbufferPrograms.Entry entities = entry(ProgramId.Entities, 50);
+        when(entities.getUniforms().canUpdatePerObjectIn()).thenReturn(true);
+        this.phases.select(ProgramId.Entities, 11);
+        this.gl.program = 7;
+        this.phases.refreshDynamicUniforms();
+        verify(entities.getUniforms(), never()).updatePerObjectIn(Mockito.anyInt());
+        verify(entities.getUniforms(), never()).updatePerObject();
+    }
+
+    @Test
     void theEyesBracketRestoresWhatWasBoundAndAnUnmatchedEndChangesNothing() {
         PipelineGl.enterFrame(this.state);
         entry(ProgramId.EntitiesTrans, 52);

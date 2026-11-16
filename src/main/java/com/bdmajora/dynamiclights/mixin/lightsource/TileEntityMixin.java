@@ -127,13 +127,14 @@ public abstract class TileEntityMixin implements DynamicLightSource {
 
         this.impetus$lastLuminance = luminance;
 
-        if (this.impetus$trackedLitChunkPos == null) {
-            this.impetus$trackedLitChunkPos = new LongOpenHashSet();
-            DynamicLightsEngine.walkLitSections(null, this.pos.getX(), this.pos.getY(), this.pos.getZ(),
-                    null, this.impetus$trackedLitChunkPos);
+        // The reach shrinks with luminance, so the old sections are rebuilt along with the new ones
+        LongOpenHashSet reached = DynamicLightsEngine.relightSections(renderer, this.world,
+                this.impetus$trackedLitChunkPos, this.impetus$getDynamicLightX(), this.impetus$getDynamicLightY(),
+                this.impetus$getDynamicLightZ(), luminance);
+        // Kept when dark so the removal that follows still rebuilds what the light covered
+        if (reached != null) {
+            this.impetus$trackedLitChunkPos = reached;
         }
-
-        this.impetus$scheduleTrackedChunksRebuild(renderer);
         return true;
     }
 

@@ -80,14 +80,15 @@ public class UmbraShadowRenderer {
                                Map<String, String> shaderDefines, boolean[] hardwareFiltering,
                                boolean[] mipmapDepth, boolean[] nearestDepth, boolean separateHardwareSamplers,
                                Runnable shaderPackResourceRestorer, ShadowContentSettings content,
-                               float voxelDistance, float cullDistance, boolean packVoxelizes,
-                               ShadowColorSettings colorSettings, BitSet usedColorBuffers) {
+                               float voxelDistance, float cullDistance, float entityShadowDistanceMul,
+                               boolean packVoxelizes, ShadowColorSettings colorSettings, BitSet usedColorBuffers) {
         Objects.requireNonNull(shadowSource, "shadowSource");
         Objects.requireNonNull(samplerUnits, "samplerUnits");
         this.shaderPackResourceRestorer = Objects.requireNonNull(shaderPackResourceRestorer, "shaderPackResourceRestorer");
         this.content = Objects.requireNonNull(content, "content");
         this.camera = new ShadowCamera(shadowDistance, nearPlane, farPlane, intervalSize, shadowMapFov, sunPathRotation);
-        this.terrain = new ShadowTerrain(content, cullDistance, voxelDistance, packVoxelizes, sunPathRotation);
+        this.terrain = new ShadowTerrain(content, cullDistance, voxelDistance, packVoxelizes, sunPathRotation,
+                entityShadowDistanceMul);
         this.targets = new ShadowTargets(resolution, hardwareFiltering, mipmapDepth, nearestDepth,
                 separateHardwareSamplers, colorSettings, usedColorBuffers);
         ShadowCasterPrograms programs = null;
@@ -229,7 +230,8 @@ public class UmbraShadowRenderer {
             DhShadowLods.render(false, this.targets);
         }
 
-        this.casters.render(mc, cameraPosition, this.camera.projection(), this.camera.modelView(), state.getTickDelta());
+        this.casters.render(mc, worldRenderer, this.terrain.entityFrustum(), cameraPosition, this.camera.projection(),
+                this.camera.modelView(), state.getTickDelta());
 
         this.targets.copyDepthWithoutTranslucents();
         this.shaderPackResourceRestorer.run();

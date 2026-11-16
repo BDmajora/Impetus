@@ -1,14 +1,17 @@
 package com.bdmajora.impetus.umbra.pipeline.shadow;
 
+import com.bdmajora.impetus.engine.impl.render.viewport.frustum.Frustum;
 import com.bdmajora.impetus.umbra.pipeline.ShadowContentSettings;
 import com.bdmajora.impetus.umbra.pipeline.rendering.GlState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.culling.ICamera;
 import net.minecraft.client.renderer.entity.RenderManager;
 import net.minecraft.client.renderer.tileentity.TileEntityRendererDispatcher;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.joml.Matrix4f;
@@ -34,6 +37,8 @@ public final class ShadowCasters {
     private final ShadowContentSettings content;
     // Distance within which casters draw.
     private final double cullRange;
+    // Vanilla camera over the entity frustum, reused every pass.
+    private final FrustumCamera frustumCamera = new FrustumCamera();
     // Matrix buffer.
     private final FloatBuffer matrixBuffer = ByteBuffer.allocateDirect(16 * Float.BYTES)
             .order(ByteOrder.nativeOrder()).asFloatBuffer();
@@ -50,8 +55,9 @@ public final class ShadowCasters {
         return Math.abs(x - camera.x) > range || Math.abs(z - camera.z) > range;
     }
 
-    // Draws the casters of the frame.
-    public void render(Minecraft mc, Vector3d camera, Matrix4f projection, Matrix4f modelView, float partialTicks) {
+    // Draws the casters the shadow search and the entity frustum keep.
+    public void render(Minecraft mc, ShadowCasterView view, Frustum entityFrustum, Vector3d camera, Matrix4f projection,
+                       Matrix4f modelView, float partialTicks) {
         boolean players = this.content.shouldRenderPlayer();
         boolean others = this.content.shouldRenderEntities();
         boolean entities = (players || others) && this.programs.hasEntityProgram();
@@ -82,11 +88,13 @@ public final class ShadowCasters {
             GlState.resetVanillaVertexArrayState();
             if (entities) {
                 this.programs.bindEntity();
-                renderEntities(renderManager, world.loadedEntityList, camera, partialTicks, players, others);
+                this.frustumCamera.set(entityFrustum, camera);
+                renderEntities(renderManager, view, world.loadedEntityList, viewEntity, camera, partialTicks, players,
+                        others);
             }
             if (blockEntities) {
                 this.programs.bindBlockEntity();
-                renderBlockEntities(dispatcher, world, camera, partialTicks);
+                renderBlockEntities(dispatcher, view, world, camera, partialTicks);
             }
         } finally {
             LWJGL.glUseProgram(0);
@@ -101,35 +109,41 @@ public final class ShadowCasters {
     }
 
     // Draws the entities of the shadow pass.
-    private void renderEntities(RenderManager renderManager, List<Entity> entities, Vector3d camera,
-                                // Partial ticks and player switches.
-                                float partialTicks, boolean players, boolean others) {
+    private void renderEntities(RenderManager renderManager, ShadowCasterView view, List<Entity> entities,
+                                Entity viewEntity, Vector3d camera, float partialTicks, boolean players,
+                                boolean others) {
         for (Entity entity : entities) {
             if (entity.isDead || outsideRange(entity.posX, entity.posZ, camera, this.cullRange)) {
                 continue;
             }
-            if (entity instanceof EntityPlayer ? !players : !others) {
+            if (entity instanceof EntityPlayer player ? !players || player.isSpectator() : !others) {
+                continue;
+            }
+            // The camera's own body and what it rides always cast, as the main pass always draws them
+            boolean attached = entity == viewEntity || entity.isRidingOrBeingRiddenBy(viewEntity);
+            if (!attached && (!renderManager.shouldRender(entity, this.frustumCamera, camera.x, camera.y, camera.z)
+                    || !view.isShadowCasterVisible(entity))) {
                 continue;
             }
             renderManager.renderEntityStatic(entity, partialTicks, false);
         }
     }
 
-    // Draws the block entities of the shadow pass.
-    private void renderBlockEntities(TileEntityRendererDispatcher dispatcher, World world, Vector3d camera,
-                                     float partialTicks) {
+    // Draws the block entities of the sections the shadow search kept.
+    private void renderBlockEntities(TileEntityRendererDispatcher dispatcher, ShadowCasterView view, World world,
+                                     Vector3d camera, float partialTicks) {
         boolean lightOnly = this.content.shouldRenderLightBlockEntitiesOnly();
-        for (TileEntity tileEntity : world.loadedTileEntityList) {
+        view.forEachShadowBlockEntity(tileEntity -> {
             BlockPos pos = tileEntity.getPos();
             if (outsideRange(pos.getX(), pos.getZ(), camera, this.cullRange)
                     || dispatcher.getRenderer(tileEntity) == null) {
-                continue;
+                return;
             }
             if (lightOnly && tileEntity.getBlockType().getLightValue(world.getBlockState(pos), world, pos) <= 0) {
-                continue;
+                return;
             }
             dispatcher.render(tileEntity, partialTicks, -1);
-        }
+        });
     }
 
     // Loads a matrix into the fixed function stack.
@@ -137,5 +151,37 @@ public final class ShadowCasters {
         matrix.get(this.matrixBuffer);
         GlStateManager.loadIdentity();
         GlStateManager.multMatrix(this.matrixBuffer);
+    }
+
+    // Vanilla camera that answers Render.shouldRender from a camera-relative frustum.
+    static final class FrustumCamera implements ICamera {
+        // Frustum the boxes are tested against.
+        private Frustum frustum = ShadowFrustums.NON_CULLING;
+        // Camera position the frustum is relative to.
+        private double x;
+        private double y;
+        private double z;
+
+        // Points the camera at a frustum, falling back to keeping everything without one.
+        void set(Frustum frustum, Vector3d camera) {
+            this.frustum = frustum != null ? frustum : ShadowFrustums.NON_CULLING;
+            this.x = camera.x;
+            this.y = camera.y;
+            this.z = camera.z;
+        }
+
+        // Returns whether the world space box meets the frustum.
+        @Override
+        public boolean isBoundingBoxInFrustum(AxisAlignedBB box) {
+            // Subtracted in double first so far boxes keep their precision
+            return this.frustum.testAab((float) (box.minX - this.x), (float) (box.minY - this.y),
+                    (float) (box.minZ - this.z), (float) (box.maxX - this.x), (float) (box.maxY - this.y),
+                    (float) (box.maxZ - this.z));
+        }
+
+        // Ignored: the position is the shadow camera's, set once per pass.
+        @Override
+        public void setPosition(double x, double y, double z) {
+        }
     }
 }

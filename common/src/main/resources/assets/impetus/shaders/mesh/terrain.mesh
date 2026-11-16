@@ -4,18 +4,24 @@
 #extension GL_NV_gpu_shader5 : require
 #extension GL_KHR_shader_subgroup_basic : require
 #extension GL_KHR_shader_subgroup_arithmetic : require
+#extension GL_KHR_shader_subgroup_shuffle : require
 
 #import <impetus:mesh/scene.glsl>
 #import <impetus:mesh/vertex_format.glsl>
 #import <impetus:mesh/cull.glsl>
+#import <impetus:include/dynamic_light.glsl>
 
-// Quads to triangles, one thread per quad and sixteen per meshlet; triangles off screen or between pixel centres are dropped and a subgroup prefix sum places the survivors without atomics
-layout(local_size_x = 16) in;
+// Quads to triangles, two threads per quad and sixteen quads per meshlet, so a 32-lane warp is full; each thread transforms two corners and swaps them with its partner, triangles off screen or between pixel centres are dropped, and subgroup prefix sums place the survivors without atomics
+layout(local_size_x = 32) in;
 layout(triangles, max_vertices = 64, max_primitives = 32) out;
 
-// Fog is the only interpolant; the fragment shader re-fetches everything else by quad id
+// Quads per meshlet; terrain.task's MESH_WORKLOAD
+#define QUADS_PER_MESHLET 16u
+
+// Fog and the moving-light level are the only interpolants; the fragment shader re-fetches everything else by quad id
 layout(location = 1) out Interpolants {
     float fogAmount;
+    float dynamicLight;
 } OUT[];
 
 taskNV in Task {
@@ -41,6 +47,8 @@ void emit(uint slot, Vertex v, vec4 clip) {
     gl_MeshVerticesNV[slot].gl_Position = clip;
     // A section still fading in shows that much more of the fog colour
     OUT[slot].fogAmount = 1.0 - fade * (1.0 - computeFog(relativePosition(v) + subChunkOffset.xyz, clip.w));
+    // Measured from the render origin, which the light block is uploaded relative to
+    OUT[slot].dynamicLight = impetus_dynamicLightLevel(relativePosition(v) + renderOffset.xyz);
 }
 
 void main() {
@@ -48,22 +56,28 @@ void main() {
         gl_PrimitiveCountNV = 0;
     }
 
-    uint quad = resolveQuad(gl_GlobalInvocationID.x);
+    // Both threads of a quad resolve the same quad, so a pair always leaves or stays together
+    uint quad = resolveQuad(gl_WorkGroupID.x * QUADS_PER_MESHLET + (gl_LocalInvocationIndex >> 1));
 
     if (quad == uint(-1)) {
         return;
     }
 
-    // Vertices 0 and 2 are the diagonal both triangles share
-    Vertex v0 = terrainData[(quad << 2) + 0u];
-    Vertex v1 = terrainData[(quad << 2) + 1u];
-    Vertex v2 = terrainData[(quad << 2) + 2u];
-    Vertex v3 = terrainData[(quad << 2) + 3u];
+    // The even thread holds corners 0 and 1, the odd one corners 2 and 3
+    bool second = (gl_LocalInvocationIndex & 1u) != 0u;
+    uint corner = second ? 2u : 0u;
+    Vertex lead = terrainData[(quad << 2) + corner];
+    Vertex next = terrainData[(quad << 2) + corner + 1u];
 
-    vec4 p0 = MVP * vec4(relativePosition(v0), 1.0);
-    vec4 p1 = MVP * vec4(relativePosition(v1), 1.0);
-    vec4 p2 = MVP * vec4(relativePosition(v2), 1.0);
-    vec4 p3 = MVP * vec4(relativePosition(v3), 1.0);
+    vec4 leadClip = MVP * vec4(relativePosition(lead), 1.0);
+    vec4 nextClip = MVP * vec4(relativePosition(next), 1.0);
+    vec4 partnerLead = subgroupShuffleXor(leadClip, 1u);
+    vec4 partnerNext = subgroupShuffleXor(nextClip, 1u);
+
+    vec4 p0 = second ? partnerLead : leadClip;
+    vec4 p1 = second ? partnerNext : nextClip;
+    vec4 p2 = second ? leadClip : partnerLead;
+    vec4 p3 = second ? nextClip : partnerNext;
 
     bool drawT0 = umbra_triangleVisible(p0, p1, p2, screenSize);
     bool drawT1 = umbra_triangleVisible(p2, p3, p0, screenSize);
@@ -72,39 +86,29 @@ void main() {
         return;
     }
 
-    uint triangles = uint(drawT0) + uint(drawT1);
-    uint triIndex = subgroupExclusiveAdd(triangles);
-    uint vertBase = subgroupExclusiveAdd((drawT0 == drawT1) ? 4u : 3u);
-    uint totalTriangles = subgroupMax(triIndex + triangles);
+    // Each thread owns one triangle: the even one (0,1,2), the odd one (2,3,0), the order terrain.frag reads barycentrics in
+    bool owns = second ? drawT1 : drawT0;
+    uint triIndex = subgroupExclusiveAdd(uint(owns));
+    // Its lead corner always, its next corner only for its own triangle
+    uint vertSlot = subgroupExclusiveAdd(owns ? 2u : 1u);
+    uint partnerSlot = subgroupShuffleXor(vertSlot, 1u);
+    uint totalTriangles = subgroupAdd(uint(owns));
 
-    uint indexCursor = triIndex * 3u;
-    uint vertCursor = vertBase;
+    emit(vertSlot, lead, leadClip);
 
-    emit(vertCursor++, v0, p0);
-    emit(vertCursor++, v2, p2);
+    // The primitive id carries the quad to re-fetch, the mip bias and alpha cutoff selector of corner 0, and which triangle this is
+    uint material = (hasMipmapping(lead) ? 0u : 4u) | rawAlphaCutoff(lead);
+    // Shuffled by both threads, since reading a lane that skipped the shuffle is undefined
+    uint partnerMaterial = subgroupShuffleXor(material, 1u);
+    uint quadMaterial = second ? partnerMaterial : material;
+    int payload = int(quadMaterial | (quad << 4));
 
-    // The primitive id carries the quad to re-fetch, the mip bias, the alpha cutoff selector and which triangle this is
-    uint lodBias = hasMipmapping(v0) ? 0u : 1u;
-    int payload = int((lodBias << 2) | rawAlphaCutoff(v0) | (quad << 4));
-
-    if (drawT0) {
-        emit(vertCursor, v1, p1);
-        gl_PrimitiveIndicesNV[indexCursor++] = vertBase + 0u;
-        gl_PrimitiveIndicesNV[indexCursor++] = vertCursor;
-        gl_PrimitiveIndicesNV[indexCursor++] = vertBase + 1u;
-        vertCursor++;
-
-        gl_MeshPrimitivesNV[triIndex++].gl_PrimitiveID = payload | (0 << 3);
-    }
-
-    if (drawT1) {
-        emit(vertCursor, v3, p3);
-        gl_PrimitiveIndicesNV[indexCursor++] = vertBase + 1u;
-        gl_PrimitiveIndicesNV[indexCursor++] = vertCursor;
-        gl_PrimitiveIndicesNV[indexCursor++] = vertBase + 0u;
-        vertCursor++;
-
-        gl_MeshPrimitivesNV[triIndex++].gl_PrimitiveID = payload | (1 << 3);
+    if (owns) {
+        emit(vertSlot + 1u, next, nextClip);
+        gl_PrimitiveIndicesNV[triIndex * 3u + 0u] = vertSlot;
+        gl_PrimitiveIndicesNV[triIndex * 3u + 1u] = vertSlot + 1u;
+        gl_PrimitiveIndicesNV[triIndex * 3u + 2u] = partnerSlot;
+        gl_MeshPrimitivesNV[triIndex].gl_PrimitiveID = payload | (second ? (1 << 3) : 0);
     }
 
     if (subgroupElect()) {

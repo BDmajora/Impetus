@@ -18,8 +18,8 @@ import java.util.regex.Pattern;
 
 // Ports the vertex and fragment stages of a terrain program to an Nvidium mesh shader.
 public final class MeshShaderTranslator {
-    // Version of the port output.
-    public static final int PORT_FORMAT = 3;
+    // Version of the port output; 4 is the first whose bridged vertex stage applies the moving lights.
+    public static final int PORT_FORMAT = 4;
     // First line of every ported file.
     public static final String HEADER = "// Ported for Nvidium by Impetus, port format " + PORT_FORMAT;
 

@@ -134,6 +134,27 @@ class ShadowSettingsTest {
     }
 
     @Test
+    void theEntityShadowDistanceScaleReachesTheTerrainStage() {
+        ShaderPack scaled = PackSourcesTest.pack("/shadow.vsh", VERTEX,
+                "/shadow.fsh", "const float entityShadowDistanceMul = 0.25;\nvoid main() {}");
+        UmbraShadowRenderer renderer = create(scaled);
+        try {
+            assertEquals(0.25f, com.bdmajora.testing.Mixins.<Float>get(com.bdmajora.testing.Mixins.get(renderer, "terrain"),
+                    "entityDistanceMul"));
+        } finally {
+            renderer.destroy();
+        }
+        // Without the constant entities share the terrain frustum
+        UmbraShadowRenderer plain = create(PackSourcesTest.pack("/shadow.vsh", VERTEX, "/shadow.fsh", "void main() {}"));
+        try {
+            assertEquals(1.0f, com.bdmajora.testing.Mixins.<Float>get(com.bdmajora.testing.Mixins.get(plain, "terrain"),
+                    "entityDistanceMul"));
+        } finally {
+            plain.destroy();
+        }
+    }
+
+    @Test
     void aRendererThatFailsToBuildDisablesShadowsInsteadOfThePipeline() {
         // A driver offering no colour attachments refuses shadowcolor0
         this.gl.limits(48, 8, 0, 8);

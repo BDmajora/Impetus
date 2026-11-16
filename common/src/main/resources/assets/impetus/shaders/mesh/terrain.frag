@@ -12,6 +12,7 @@ layout(location = 0) out vec4 colour;
 
 layout(location = 1) in Interpolants {
     float fogAmount;
+    float dynamicLight;
 };
 
 layout(binding = 0) uniform sampler2D texDiffuse;
@@ -19,7 +20,10 @@ layout(binding = 1) uniform sampler2D texLight;
 
 // Vertex colour times lightmap per vertex, then interpolated, matching the raster path's shading
 vec3 shadeVertex(Vertex v) {
-    return decodeVertexColour(v) * texture(texLight, decodeLightUV(v)).rgb;
+    vec2 light = decodeLightUV(v);
+    // Moving lights raise the block light here, sixteen lightmap units per level, rather than in the mesh
+    light.x = max(light.x, dynamicLight * (16.0 / 256.0));
+    return decodeVertexColour(v) * texture(texLight, light).rgb;
 }
 
 void main() {

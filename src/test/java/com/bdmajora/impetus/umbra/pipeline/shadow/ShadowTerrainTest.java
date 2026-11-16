@@ -91,7 +91,7 @@ class ShadowTerrainTest {
     // Checks that select builds the filter and runs both searches with an increasing stamp
     @Test
     void selectBuildsTheFilterAndRunsBothSearches() {
-        ShadowTerrain terrain = new ShadowTerrain(content("shadow.culling = off"), 64, 0, false, 0);
+        ShadowTerrain terrain = new ShadowTerrain(content("shadow.culling = off"), 64, 0, false, 0, 1.0f);
         assertNull(terrain.cullingFrustum());
         Vector3d camera = new Vector3d(8.5, 70.0, -8.5);
         terrain.select(this.renderer, this.gl.client, camera, new Matrix4f());
@@ -114,7 +114,7 @@ class ShadowTerrainTest {
     // Checks that the spectator flag follows the player and a missing player counts as not spectating
     @Test
     void theSpectatorFlagFollowsThePlayer() {
-        ShadowTerrain terrain = new ShadowTerrain(ShadowContentSettings.defaults(), 64, 0, false, 0);
+        ShadowTerrain terrain = new ShadowTerrain(ShadowContentSettings.defaults(), 64, 0, false, 0, 1.0f);
         EntityPlayerSP player = mock(EntityPlayerSP.class);
         when(player.isSpectator()).thenReturn(true);
         this.gl.client.player = player;
@@ -129,7 +129,7 @@ class ShadowTerrainTest {
     // Checks that the stamp wraps from the largest int to the smallest
     @Test
     void theStampWrapsAtTheIntLimit() {
-        ShadowTerrain terrain = new ShadowTerrain(content("shadow.culling = off"), 64, 0, false, 0);
+        ShadowTerrain terrain = new ShadowTerrain(content("shadow.culling = off"), 64, 0, false, 0, 1.0f);
         Mixins.set(terrain, "frame", Integer.MAX_VALUE);
         terrain.select(this.renderer, this.gl.client, new Vector3d(), new Matrix4f());
         assertEquals(Integer.MIN_VALUE, lastFrame());
@@ -138,7 +138,7 @@ class ShadowTerrainTest {
     // Checks that the render distance in chunks decides between a distance box and no filter for a voxelizing pack
     @Test
     void theRenderDistanceDecidesTheVoxelFilter() {
-        ShadowTerrain terrain = new ShadowTerrain(ShadowContentSettings.defaults(), 100, 0, true, 0);
+        ShadowTerrain terrain = new ShadowTerrain(ShadowContentSettings.defaults(), 100, 0, true, 0, 1.0f);
         this.gl.settings.renderDistanceChunks = 8;
         terrain.select(this.renderer, this.gl.client, new Vector3d(), new Matrix4f());
         assertInstanceOf(ShadowBoxCuller.class, terrain.cullingFrustum());
@@ -148,7 +148,7 @@ class ShadowTerrainTest {
         this.gl.settings.renderDistanceChunks = 0;
         terrain.select(this.renderer, this.gl.client, new Vector3d(), new Matrix4f());
         assertSame(ShadowFrustums.NON_CULLING, terrain.cullingFrustum());
-        ShadowTerrain unset = new ShadowTerrain(ShadowContentSettings.defaults(), 0, 0, true, 0);
+        ShadowTerrain unset = new ShadowTerrain(ShadowContentSettings.defaults(), 0, 0, true, 0, 1.0f);
         this.gl.settings.renderDistanceChunks = 8;
         unset.select(this.renderer, this.gl.client, new Vector3d(), new Matrix4f());
         assertSame(ShadowFrustums.NON_CULLING, unset.cullingFrustum());
@@ -157,10 +157,10 @@ class ShadowTerrainTest {
     // Checks that reversed culling builds a safe zone frustum and the default mode an advanced one
     @Test
     void theCullingModeChoosesTheFrustum() {
-        ShadowTerrain reversed = new ShadowTerrain(content("shadow.culling = reversed"), 256, 32, true, 0);
+        ShadowTerrain reversed = new ShadowTerrain(content("shadow.culling = reversed"), 256, 32, true, 0, 1.0f);
         reversed.select(this.renderer, this.gl.client, new Vector3d(), new Matrix4f().perspective(1.5f, 1.0f, 0.05f, 256.0f));
         assertInstanceOf(SafeZoneCullingFrustum.class, reversed.cullingFrustum());
-        ShadowTerrain advanced = new ShadowTerrain(ShadowContentSettings.defaults(), 64, 0, false, 0);
+        ShadowTerrain advanced = new ShadowTerrain(ShadowContentSettings.defaults(), 64, 0, false, 0, 1.0f);
         advanced.select(this.renderer, this.gl.client, new Vector3d(), new Matrix4f().perspective(1.5f, 1.0f, 0.05f, 256.0f));
         assertInstanceOf(AdvancedShadowCullingFrustum.class, advanced.cullingFrustum());
     }
@@ -168,7 +168,7 @@ class ShadowTerrainTest {
     // Checks that the player view is the clip cube around the feet for identity matrices
     @Test
     void thePlayerViewIsTheCapturedClipCube() {
-        ShadowTerrain terrain = new ShadowTerrain(ShadowContentSettings.defaults(), 64, 0, false, 0);
+        ShadowTerrain terrain = new ShadowTerrain(ShadowContentSettings.defaults(), 64, 0, false, 0, 1.0f);
         Viewport view = terrain.playerViewport(new Vector3d(100.5, 64, 100.5));
         assertEquals(6, view.getChunkCoord().x());
         assertEquals(4, view.getChunkCoord().y());
@@ -185,7 +185,7 @@ class ShadowTerrainTest {
         UmbraRenderingPipeline pipeline = mock(UmbraRenderingPipeline.class);
         when(pipeline.shouldDisableFrustumCulling()).thenReturn(true);
         Mixins.set(Umbra.class, "renderingPipeline", pipeline);
-        Viewport view = new ShadowTerrain(ShadowContentSettings.defaults(), 64, 0, false, 0)
+        Viewport view = new ShadowTerrain(ShadowContentSettings.defaults(), 64, 0, false, 0, 1.0f)
                 .playerViewport(new Vector3d(0, 64, 0));
         assertSame(ShadowFrustums.NON_CULLING, view.getFrustum());
         assertTrue(view.isBoxVisible(-1.0e6, -1.0e6, -1.0e6, -1.0e6 + 1, -1.0e6 + 1, -1.0e6 + 1));
@@ -194,7 +194,7 @@ class ShadowTerrainTest {
     // Checks that a later player view does not change an earlier one
     @Test
     void consecutivePlayerViewsKeepTheirOwnPositionAndPlanes() {
-        ShadowTerrain terrain = new ShadowTerrain(ShadowContentSettings.defaults(), 64, 0, false, 0);
+        ShadowTerrain terrain = new ShadowTerrain(ShadowContentSettings.defaults(), 64, 0, false, 0, 1.0f);
         Viewport first = terrain.playerViewport(new Vector3d(100.5, 64, 100.5));
         CapturedRenderingState.INSTANCE.setGbufferProjection(new Matrix4f().scale(0.001f));
         Viewport second = terrain.playerViewport(new Vector3d(-100.5, 64, -100.5));
@@ -207,7 +207,7 @@ class ShadowTerrainTest {
     // Checks the layer order of the opaque and translucent draws at the camera position
     @Test
     void layersDrawInOrderAtTheCamera() {
-        ShadowTerrain terrain = new ShadowTerrain(ShadowContentSettings.defaults(), 64, 0, false, 0);
+        ShadowTerrain terrain = new ShadowTerrain(ShadowContentSettings.defaults(), 64, 0, false, 0, 1.0f);
         Vector3d camera = new Vector3d(1.5, 2.5, 3.5);
         terrain.drawOpaque(this.renderer, camera);
         terrain.drawTranslucent(this.renderer, camera);
@@ -219,9 +219,39 @@ class ShadowTerrainTest {
         Mockito.verifyNoMoreInteractions(this.renderer);
     }
 
+    // Checks that only a scaled entity distance builds its own frustum, as Iris does
+    @Test
+    void anEntityDistanceScaleBuildsItsOwnFrustum() {
+        assertTrue(ShadowTerrain.entitiesUseTerrainFrustum(1.0f));
+        assertTrue(ShadowTerrain.entitiesUseTerrainFrustum(-0.5f));
+        assertTrue(ShadowTerrain.entitiesUseTerrainFrustum(Float.NaN));
+        assertFalse(ShadowTerrain.entitiesUseTerrainFrustum(0.25f));
+        assertFalse(ShadowTerrain.entitiesUseTerrainFrustum(0.0f));
+        assertFalse(ShadowTerrain.entitiesUseTerrainFrustum(2.0f));
+
+        ShadowTerrain shared = new ShadowTerrain(ShadowContentSettings.defaults(), 100, 0, true, 0, 1.0f);
+        assertNull(shared.entityFrustum());
+        this.gl.settings.renderDistanceChunks = 8;
+        shared.select(this.renderer, this.gl.client, new Vector3d(), new Matrix4f());
+        assertSame(shared.cullingFrustum(), shared.entityFrustum());
+
+        // A voxelizing pack culls by box, so a quarter scale keeps a 25 block box for entities
+        ShadowTerrain scaled = new ShadowTerrain(ShadowContentSettings.defaults(), 100, 0, true, 0, 0.25f);
+        scaled.select(this.renderer, this.gl.client, new Vector3d(), new Matrix4f());
+        ShadowBoxCuller entities = assertInstanceOf(ShadowBoxCuller.class, scaled.entityFrustum());
+        assertNotSame(scaled.cullingFrustum(), entities);
+        assertTrue(entities.testAab(24.0f, 0.0f, 0.0f, 24.5f, 1.0f, 1.0f));
+        assertFalse(entities.testAab(26.0f, 0.0f, 0.0f, 27.0f, 1.0f, 1.0f));
+        assertTrue(scaled.cullingFrustum().testAab(26.0f, 0.0f, 0.0f, 27.0f, 1.0f, 1.0f));
+        // Culling off keeps everything for entities too
+        ShadowTerrain off = new ShadowTerrain(content("shadow.culling = off"), 100, 0, false, 0, 0.25f);
+        off.select(this.renderer, this.gl.client, new Vector3d(), new Matrix4f());
+        assertSame(ShadowFrustums.NON_CULLING, off.entityFrustum());
+    }
+
     // Checks that null content is rejected
     @Test
     void nullContentIsRejected() {
-        assertThrows(NullPointerException.class, () -> new ShadowTerrain(null, 64, 0, false, 0));
+        assertThrows(NullPointerException.class, () -> new ShadowTerrain(null, 64, 0, false, 0, 1.0f));
     }
 }

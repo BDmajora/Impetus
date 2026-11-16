@@ -157,11 +157,18 @@ class SimpleWorldRendererTest {
 
         renderer.drawChunkLayer("solid", 8, 8, 8);
         renderer.drawChunkLayer("solid", 8, 8, 8);
+        // Every layer binds the moving-light block for the programs it is about to draw
+        Mockito.verify(TestGl.gl(), Mockito.atLeast(2)).glBindBufferBase(Mockito.eq(0x8A11),
+                Mockito.eq(com.bdmajora.impetus.engine.impl.render.chunk.shader.TerrainDynamicLights.BINDING), Mockito.anyInt());
         renderer.drawChunkLayer("unknown", 9, 8, 8);
         Mockito.verify(TestGl.gl(), Mockito.atLeastOnce()).glMultiDrawElementsBaseVertex(Mockito.anyInt(), Mockito.anyLong(), Mockito.anyInt(), Mockito.anyLong(), Mockito.anyInt(), Mockito.anyLong());
         StringBuilder context = new StringBuilder();
         assertEquals(1, renderer.renderBlockEntities(context));
         assertEquals(List.of(1), renderer.drawn);
+        // The one-at-a-time walk sees the same block entities the list draw did
+        List<Object> visited = new ArrayList<>();
+        renderer.forEachVisibleBlockEntity(visited::add);
+        assertEquals(List.of(1), visited);
 
         renderer.scheduleRebuildForBlockArea(-1, 0, -1, 17, 5, 17, false);
         renderer.scheduleTerrainUpdate();

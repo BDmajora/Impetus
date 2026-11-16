@@ -1,6 +1,7 @@
 package com.bdmajora.impetus.umbra.pipeline.rendering;
 
 import com.bdmajora.impetus.umbra.gl.blending.ProgramAlphaTest;
+import com.bdmajora.impetus.umbra.gl.program.ProgramUniforms;
 import com.bdmajora.impetus.umbra.pipeline.GbufferPrograms;
 import com.bdmajora.impetus.umbra.pipeline.UmbraShadowRenderer;
 import com.bdmajora.impetus.umbra.shaderpack.loading.ProgramId;
@@ -13,6 +14,8 @@ import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 public final class PhaseController {
     // Lightmap coordinate of full brightness.
     private static final float FULL_BRIGHT_LIGHTMAP_COORD = 240.0f;
+    // Program uniform support not asked yet.
+    private static final int UNKNOWN_SUPPORT = -1;
 
     // Pipeline state shared by the passes.
     private final PipelineState state;
@@ -34,6 +37,8 @@ public final class PhaseController {
     private int beforeGlintStage;
     // Flag set during the glint phase.
     private boolean glintActive;
+    // Whether glProgramUniform is available: UNKNOWN_SUPPORT until the first refresh, then 1 or 0.
+    private int programUniformSupport = UNKNOWN_SUPPORT;
 
     // Creates a phase controller from its state.
     public PhaseController(PipelineState state) {
@@ -97,7 +102,9 @@ public final class PhaseController {
         entry.getProgram().bind();
         this.state.binder.bindPackResources();
         int[] drawBuffers = entry.drawBuffersReadOnly();
-        this.state.feedback.bindColorSamplers(this.state.feedback.prepare(drawBuffers, this.state.activeGbufferFlips));
+        // The program was just bound here, so feedback need not ask GL which one it is
+        this.state.feedback.bindColorSamplers(this.state.feedback.prepare(entry.getProgram().getProgram().getGlId(),
+                drawBuffers, this.state.activeGbufferFlips));
         entry.getUniforms().update();
         this.state.shadowSamplers.apply(entry.getShadowSamplerKinds(), true);
         this.state.gbuffers.drawBuffers(this.state.gbuffers.current, drawBuffers);
@@ -147,15 +154,31 @@ public final class PhaseController {
         }
     }
 
-    // Recomputes the uniforms that change each frame.
+    // Uploads the per-object uniforms of the phase's program, called around every entity, block entity and item.
     public void refreshDynamicUniforms() {
         if (!this.state.active || UmbraShadowRenderer.isShadowPass() || this.current == null) {
             return;
         }
         GbufferPrograms.Entry entry = this.state.gbufferPrograms.get(this.current);
-        if (entry != null && LWJGL.glGetInteger(GbufferFeedback.GL_CURRENT_PROGRAM) == entry.getProgram().getProgram().getGlId()) {
-            entry.getUniforms().updatePerObject();
+        if (entry == null) {
+            return;
         }
+        ProgramUniforms uniforms = entry.getUniforms();
+        int program = entry.getProgram().getProgram().getGlId();
+        // Written into the program by name, so whatever a renderer left bound is untouched and no query stalls
+        if (this.programUniforms() && uniforms.canUpdatePerObjectIn()) {
+            uniforms.updatePerObjectIn(program);
+        } else if (LWJGL.glGetInteger(GbufferFeedback.GL_CURRENT_PROGRAM) == program) {
+            uniforms.updatePerObject();
+        }
+    }
+
+    // Returns whether the context writes uniforms into unbound programs, asked once on the render thread.
+    private boolean programUniforms() {
+        if (this.programUniformSupport == UNKNOWN_SUPPORT) {
+            this.programUniformSupport = LWJGL.supportsProgramUniforms() ? 1 : 0;
+        }
+        return this.programUniformSupport == 1;
     }
 
     // Switches to the eyes phase and returns whether it did.

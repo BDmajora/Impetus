@@ -54,6 +54,9 @@ public class DefaultChunkShaderInterface implements ChunkShaderInterface {
             this.uniformTextures.put(ChunkShaderTextureSlot.LIGHT, context.bindUniform("u_LightTex", GlUniformInt::new));
         }
 
+        // GLSL 330 has no binding qualifier, so the block of moving lights is pointed at its binding here
+        context.bindUniformBlockIfPresent(TerrainDynamicLights.BLOCK_NAME, TerrainDynamicLights.BINDING);
+
         this.components = options.components().stream().map(c -> c.create(context, environment)).toList();
     }
 

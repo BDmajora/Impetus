@@ -25,6 +25,7 @@ import org.lwjgl.opengl.GL31C;
 import org.lwjgl.opengl.GL32C;
 import org.lwjgl.opengl.GL33C;
 import org.lwjgl.opengl.GL40C;
+import org.lwjgl.opengl.GL41C;
 import org.lwjgl.opengl.GL42C;
 import org.lwjgl.opengl.GL43C;
 import org.lwjgl.opengl.GL44C;
@@ -213,6 +214,25 @@ class LWJGLServiceTest {
         assertThrows(UnsupportedOperationException.class, () -> none.glBlendFuncSeparatei(0, 1, 2, 3, 4));
         none.glQueryCounter(1, 2);
         assertEquals(0L, none.glGetQueryObjectui64(1, 2));
+    }
+
+    @Test
+    void programUniformsNeedGl41OrSeparateShaderObjectsAndGoThroughGl41() {
+        LWJGLService service = LWJGLService.create();
+        caps = capabilities(false);
+        assertFalse(service.supportsProgramUniforms());
+        caps = with(capabilities(false), true, "OpenGL41");
+        assertTrue(service.supportsProgramUniforms());
+        caps = with(capabilities(false), true, "GL_ARB_separate_shader_objects");
+        assertTrue(service.supportsProgramUniforms());
+        try (MockedStatic<GL41C> gl41 = mockStatic(GL41C.class)) {
+            service.glProgramUniform1i(7, 2, 3);
+            gl41.verify(() -> GL41C.glProgramUniform1i(7, 2, 3));
+            service.glProgramUniform1f(7, 2, 3.5f);
+            gl41.verify(() -> GL41C.glProgramUniform1f(7, 2, 3.5f));
+            service.glProgramUniform4f(7, 2, 1f, 2f, 3f, 4f);
+            gl41.verify(() -> GL41C.glProgramUniform4f(7, 2, 1f, 2f, 3f, 4f));
+        }
     }
 
     @Test

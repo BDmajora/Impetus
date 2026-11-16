@@ -504,6 +504,27 @@ public record LWJGLService(
         GL20C.glUniform4i(location, v0, v1, v2, v3);
     }
 
+    // Returns whether uniforms can be written to a program that is not bound: GL 4.1 or ARB_separate_shader_objects.
+    public boolean supportsProgramUniforms() {
+        GLCapabilities caps = GL.getCapabilities();
+        return caps.OpenGL41 || caps.GL_ARB_separate_shader_objects;
+    }
+
+    // Calls the GL function glProgramUniform1i, which writes the program's uniform whatever is bound.
+    public void glProgramUniform1i(int program, int location, int v0) {
+        GL41C.glProgramUniform1i(program, location, v0);
+    }
+
+    // Calls the GL function glProgramUniform1f, which writes the program's uniform whatever is bound.
+    public void glProgramUniform1f(int program, int location, float v0) {
+        GL41C.glProgramUniform1f(program, location, v0);
+    }
+
+    // Calls the GL function glProgramUniform4f, which writes the program's uniform whatever is bound.
+    public void glProgramUniform4f(int program, int location, float v0, float v1, float v2, float v3) {
+        GL41C.glProgramUniform4f(program, location, v0, v1, v2, v3);
+    }
+
     // Calls the GL function glUniform3f.
     public void glUniform3f(int location, float v0, float v1, float v2) {
         GL20C.glUniform3f(location, v0, v1, v2);

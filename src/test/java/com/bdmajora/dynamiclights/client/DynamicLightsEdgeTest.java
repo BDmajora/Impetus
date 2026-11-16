@@ -49,22 +49,6 @@ class DynamicLightsEdgeTest {
     }
 
     @Test
-    void trackedSetsHandleNullsAndMoves() {
-        LongOpenHashSet old = new LongOpenHashSet();
-        LongOpenHashSet next = new LongOpenHashSet();
-        BlockPos pos = new BlockPos(3, 4, 5);
-        long packed = DynamicLightsEngine.packChunkPos(pos);
-        old.add(packed);
-        DynamicLightsEngine.updateTrackedChunks(pos, old, next);
-        assertTrue(old.isEmpty());
-        assertTrue(next.contains(packed));
-        DynamicLightsEngine.updateTrackedChunks(pos, null, null);
-        DynamicLightsEngine.updateTrackedChunks(pos, null, next);
-        DynamicLightsEngine.updateTrackedChunks(pos, next, null);
-        assertTrue(next.isEmpty());
-    }
-
-    @Test
     void lightmapsKeepSkyLightAndOnlyRaiseBlockLight() {
         DynamicLightsEngine engine = DynamicLightsEngine.get();
         int lightmap = (12 << 20) | (3 << 4);

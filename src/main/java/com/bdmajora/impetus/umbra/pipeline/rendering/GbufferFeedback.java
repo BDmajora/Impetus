@@ -34,10 +34,15 @@ public final class GbufferFeedback {
         this.sampledByProgram.defaultReturnValue(UNKNOWN);
     }
 
-    // Copies each written target the program samples and returns the flips with those targets flipped.
+    // Copies each written target the bound program samples and returns the flips with those targets flipped.
     public BitSet prepare(int[] drawBuffers, BitSet activeFlips) {
+        return prepare(LWJGL.glGetInteger(GL_CURRENT_PROGRAM), drawBuffers, activeFlips);
+    }
+
+    // Same as prepare for a program the caller just bound, without asking GL.
+    public BitSet prepare(int program, int[] drawBuffers, BitSet activeFlips) {
         BitSet flips = null;
-        int sampled = sampledGaux();
+        int sampled = sampledGaux(program);
         for (int index : drawBuffers) {
             if (SamplerLayout.gbufferColorUnit(index) < 0 || this.targets.get(index) == null
                     || (sampled & (1 << index)) == 0) {
@@ -52,9 +57,8 @@ public final class GbufferFeedback {
         return flips == null ? activeFlips : flips;
     }
 
-    // Returns the bits of the gaux targets the bound program samples and inspects each program once.
-    int sampledGaux() {
-        int program = LWJGL.glGetInteger(GL_CURRENT_PROGRAM);
+    // Returns the bits of the gaux targets a program samples, every bit for no program, and inspects each once.
+    int sampledGaux(int program) {
         if (program == 0) {
             return ~0;
         }

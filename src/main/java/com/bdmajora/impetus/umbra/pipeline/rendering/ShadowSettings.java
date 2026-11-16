@@ -94,6 +94,7 @@ public final class ShadowSettings {
         float voxelDistance = consts.getFloat("voxelDistance", 0.0f);
         float renderMul = consts.getFloat("shadowDistanceRenderMul", -1.0f);
         float cullDistance = renderMul >= 0.0f ? distance * renderMul : distance;
+        float entityMul = consts.getFloat("entityShadowDistanceMul", 1.0f);
         float voxelRadius = voxelDistance > 0.0f ? voxelDistance : distance;
         WorldRenderingSettings.setVoxelRenderDistanceChunks(Math.max(1, Math.round(voxelRadius / 16.0f)));
         samplers.parse(consts);
@@ -109,7 +110,7 @@ public final class ShadowSettings {
                     pack.getProgramSet().get(ProgramId.ShadowBlock).orElse(shadowSource.get()),
                     samplerUnits, defines, samplers.hardwareFiltering(), samplers.mipmap(), samplers.nearest(),
                     samplers.separateHardwareSamplers(), resourceRestorer, content, voxelDistance, cullDistance,
-                    packVoxelizes, ShadowColorSettings.parse(consts, colorBufferCount(pack)),
+                    entityMul, packVoxelizes, ShadowColorSettings.parse(consts, colorBufferCount(pack)),
                     usedColorBuffers(pack, sources));
         } catch (Exception e) {
             LOGGER.error("[Umbra] Failed to create the shadow renderer; shadows disabled", e);

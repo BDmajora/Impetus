@@ -1,5 +1,6 @@
 package com.bdmajora.impetus.umbra.terrain;
 
+import com.bdmajora.impetus.engine.impl.render.chunk.shader.TerrainDynamicLights;
 import com.bdmajora.impetus.umbra.gl.program.DrawBuffers;
 
 import java.util.regex.Matcher;
@@ -30,7 +31,8 @@ public final class ImpetusTerrainTransformer {
             "uniform mat4 u_ModelViewMatrix;",
             "uniform mat4 u_ProjectionMatrix;",
             "uniform vec3 u_RegionOffset;",
-            "",
+            "// Moving lights, which the terrain applies here instead of baking into the mesh",
+            TerrainDynamicLights.UNBOUND_DECLARATIONS,
             "uvec3 _iris_relChunk(uint pos) { return (uvec3(pos) >> uvec3(5u,0u,2u)) & uvec3(7u,3u,7u); }",
             "vec3 _iris_drawTranslation(uint pos) { return vec3(_iris_relChunk(pos)) * 16.0; }",
             "// GLSL-120 shadow2D returned vec4; 330's texture() on a shadow sampler returns float. Wrap so .x/.z work.",
@@ -85,9 +87,66 @@ public final class ImpetusTerrainTransformer {
             ""
     ) + "\n";
 
+    // Bridge inputs of the vertex prologue, which the Nvidium port turns into globals its fetch fills.
+    private static final String BRIDGE_INPUTS = String.join("\n",
+            "in vec3 a_PosId;",
+            "in vec4 a_Color;",
+            "in vec2 a_TexCoord;",
+            "in uint a_LightCoord;",
+            "in vec4 iris_Normal;",
+            "in vec4 iris_Tangent;",
+            "in vec2 iris_MidTexCoord;",
+            "in vec4 iris_BlockInfo;",
+            "in vec4 iris_MidBlock;",
+            "");
+
+    // Raster replacement of the bridge inputs: the 36 byte UmbraChunkVertexType words, unpacked into the same names.
+    private static final String PACKED_INPUTS = String.join("\n",
+            "in uvec4 a_PackedA;",
+            "in uvec4 a_PackedB;",
+            "in uint a_PackedC;",
+            "vec3 a_PosId;",
+            "vec4 a_Color;",
+            "vec2 a_TexCoord;",
+            "uint a_LightCoord;",
+            "vec4 iris_Normal;",
+            "vec4 iris_Tangent;",
+            "vec2 iris_MidTexCoord;",
+            "vec4 iris_BlockInfo;",
+            "vec4 iris_MidBlock;",
+            "// Byte i of a word, sign extended.",
+            "int _umbra_signedByte(uint word, int i) { return int(word << uint(24 - 8 * i)) >> 24; }",
+            "// Signed bytes as normalized floats, as GL converts a normalized BYTE attribute.",
+            "vec4 _umbra_snorm4x8(uint word) {",
+            "    return max(vec4(_umbra_signedByte(word, 0), _umbra_signedByte(word, 1), _umbra_signedByte(word, 2),",
+            "            _umbra_signedByte(word, 3)) / 127.0, -1.0);",
+            "}",
+            "// Fills the bridge inputs from the packed words; a_LightCoord is rebuilt in its original bit layout.",
+            "void _umbra_unpackVertex() {",
+            "    a_PosId = vec3(uvec3(a_PackedA.x & 0xFFFFu, a_PackedA.x >> 16u, a_PackedA.y & 0xFFFFu)) * (32.0 / 65536.0) - 8.0;",
+            "    a_Color = vec4((uvec4(a_PackedA.z) >> uvec4(0u, 8u, 16u, 24u)) & uvec4(0xFFu)) / 255.0;",
+            "    a_TexCoord = vec2(uvec2(a_PackedA.w & 0xFFFFu, a_PackedA.w >> 16u)) * (1.0 / 65536.0);",
+            "    iris_MidTexCoord = vec2(uvec2(a_PackedB.x & 0xFFFFu, a_PackedB.x >> 16u)) * (1.0 / 65536.0);",
+            "    a_LightCoord = ((a_PackedA.y >> 24u) & 0xFu) | (((a_PackedA.y >> 16u) & 0xFFu) << 8u)",
+            "            | ((a_PackedB.y >> 24u) << 16u) | ((a_PackedC >> 24u) << 24u);",
+            "    iris_Normal = vec4(_umbra_snorm4x8(a_PackedB.y).xyz, 0.0);",
+            "    iris_Tangent = _umbra_snorm4x8(a_PackedB.z);",
+            "    iris_BlockInfo = vec4(float(int(a_PackedB.w << 16u) >> 16), float(int(a_PackedB.w << 8u) >> 24),",
+            "            float(a_PackedB.w >> 24u), 1.0);",
+            "    iris_MidBlock = vec4(float(_umbra_signedByte(a_PackedC, 0)), float(_umbra_signedByte(a_PackedC, 1)),",
+            "            float(_umbra_signedByte(a_PackedC, 2)), float(a_PackedA.y >> 28u));",
+            "}",
+            "");
+
+    // Line the packed raster main gains first, before the bridge inputs are read.
+    private static final String UNPACK_CALL = "    _umbra_unpackVertex();\n";
+
+    // Opening of the generated vertex main.
+    private static final String MAIN_OPENING = "\nvoid main() {\n";
+
     // Returns the vertex main with the hoisted assignments.
     private static String vertexMain(String hoistedAssignments) {
-        return "\nvoid main() {\n"
+        return MAIN_OPENING
                 + "    uint lightData = a_LightCoord;\n"
                 + "    uint drawId = (lightData >> 8u) & 0xFFu;\n"
                 + "    vec3 pos = a_PosId + u_RegionOffset + _iris_drawTranslation(drawId);\n"
@@ -96,7 +155,8 @@ public final class ImpetusTerrainTransformer {
                 + "    iris_MultiTexCoord0 = vec4(a_TexCoord, 0.0, 1.0);\n"
                 + "    uint blockLight = (lightData >> 16u) & 0xFFu;\n"
                 + "    uint skyLight = (lightData >> 24u) & 0xFFu;\n"
-                + "    iris_MultiTexCoord1 = vec4(float(blockLight), float(skyLight), 0.0, 1.0);\n"
+                + "    // Moving lights raise the block light from the same origin the position is measured from\n"
+                + "    iris_MultiTexCoord1 = vec4(max(float(blockLight), impetus_dynamicLightLevel(pos) * 16.0), float(skyLight), 0.0, 1.0);\n"
                 + "    iris_MidTexFull = vec4(iris_MidTexCoord, 0.0, 1.0);\n"
                 + "    iris_EntityFull = iris_BlockInfo;\n"
                 + "    iris_AlphaCutoff = _UMBRA_ALPHA_CUTOFF[int((lightData >> 1u) & 3u)];\n"
@@ -208,6 +268,29 @@ public final class ImpetusTerrainTransformer {
                 + alphaDiscard(alphaTestSnippet)
                 + "}\n";
         return transformed;
+    }
+
+    // Rewrites a vertex stage for the raster terrain, reading the packed 36 byte vertex.
+    public static String transformRasterVertexShader(String source, boolean shadow) {
+        return packVertexInputs(transformVertexShader(source, shadow));
+    }
+
+    // Rewrites a modern vertex stage for the raster terrain, reading the packed 36 byte vertex.
+    public static String transformRasterVertexShaderModern(String source, boolean shadow) {
+        return packVertexInputs(transformVertexShaderModern(source, shadow));
+    }
+
+    // Swaps the bridge inputs of a transformed vertex stage for the packed words and unpacks them first in main.
+    static String packVertexInputs(String transformed) {
+        int inputs = transformed.indexOf(BRIDGE_INPUTS);
+        int main = transformed.lastIndexOf(MAIN_OPENING);
+        // Both are generated text, so a miss means the prologue or main changed without this
+        if (inputs < 0 || main < inputs) {
+            throw new IllegalStateException("transformed vertex stage lacks the generated bridge inputs or main");
+        }
+        int body = main + MAIN_OPENING.length();
+        return transformed.substring(0, inputs) + PACKED_INPUTS + transformed.substring(inputs + BRIDGE_INPUTS.length(), body)
+                + UNPACK_CALL + transformed.substring(body);
     }
 
     // Rewrites a modern vertex stage for terrain.

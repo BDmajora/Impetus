@@ -1,8 +1,11 @@
 package com.bdmajora.dynamiclights.mixin;
 
 import com.bdmajora.dynamiclights.DynamicLights;
+import com.bdmajora.impetus.engine.impl.render.chunk.shader.TerrainDynamicLights;
 import com.bdmajora.impetus.impl.util.EmptyBlockAccess;
+import com.bdmajora.impetus.impl.world.WorldSlice;
 import net.minecraft.block.state.BlockStateContainer;
+import net.minecraft.client.Minecraft;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.IBlockAccess;
@@ -25,7 +28,13 @@ public abstract class StateImplementationMixin {
             return;
         }
 
-        if (source == EmptyBlockAccess.INSTANCE) {
+        // Nothing lit skips the state queries below, which run for every block a mesh reads
+        if (source == EmptyBlockAccess.INSTANCE || DynamicLights.engine().getLightSourcesCount() == 0) {
+            return;
+        }
+        // Meshes leave moving lights to the terrain shaders: a chunk slice, or any thread but the client's, such as LittleTiles' render thread baking against the live world
+        if (TerrainDynamicLights.isShaderApplied()
+                && (source instanceof WorldSlice || !Minecraft.getMinecraft().isCallingFromMinecraftThread())) {
             return;
         }
 

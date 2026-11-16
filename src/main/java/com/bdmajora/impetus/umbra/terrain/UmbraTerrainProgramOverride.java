@@ -166,11 +166,11 @@ public final class UmbraTerrainProgramOverride {
         Map<String, String> macros = macros(pack, programId);
         boolean shadow = programId.getSourceName().startsWith("shadow");
         String vsh = modern
-                ? ImpetusTerrainTransformer.transformVertexShaderModern(
+                ? ImpetusTerrainTransformer.transformRasterVertexShaderModern(
                         ShaderSourceFixes.stabilize(programId.getSourceName(),
                                 com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.injectDefines(vshSource, macros)), shadow)
                 : ShaderSourceFixes.foldUncompilableConditionals(com.bdmajora.impetus.umbra.gl.shader.ShaderMacros.injectDefines(
-                                ImpetusTerrainTransformer.transformVertexShader(vshSource, shadow), macros));
+                                ImpetusTerrainTransformer.transformRasterVertexShader(vshSource, shadow), macros));
         return prepared(pack, programId, source, vsh, fshSource, modern, macros, false);
     }
 

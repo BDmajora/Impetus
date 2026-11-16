@@ -30,6 +30,7 @@ import org.joml.Vector4f;
 import org.joml.Vector4i;
 import org.junit.jupiter.api.Test;
 import org.lwjgl.opengl.GL20;
+import org.mockito.Mockito;
 
 import java.nio.FloatBuffer;
 import java.util.LinkedHashMap;
@@ -54,6 +55,58 @@ class GlObjectsTest {
         uniform.update();
         change.run();
         uniform.update();
+    }
+
+    @Test
+    void perObjectUniformTypesWriteIntoAProgramUnderTheSameChangeTest() {
+        int[] i = {4};
+        IntUniform intUniform = new IntUniform(2, () -> i[0]);
+        intUniform.updateIn(30);
+        intUniform.updateIn(30);
+        verify(TestGl.gl(), times(1)).glProgramUniform1i(30, 2, 4);
+        // The bound upload shares the cache, so an unchanged value is not sent again either way
+        intUniform.update();
+        verify(TestGl.gl(), never()).glUniform1i(anyInt(), anyInt());
+        i[0] = 5;
+        intUniform.update();
+        verify(TestGl.gl()).glUniform1i(2, 5);
+        intUniform.updateIn(30);
+        verify(TestGl.gl(), never()).glProgramUniform1i(30, 2, 5);
+
+        float[] f = {Float.NaN};
+        FloatUniform floatUniform = new FloatUniform(3, () -> f[0]);
+        // A NaN never equals itself, so it uploads each time as the bound form always did
+        floatUniform.updateIn(30);
+        floatUniform.updateIn(30);
+        verify(TestGl.gl(), times(2)).glProgramUniform1f(eq(30), eq(3), anyFloat());
+        f[0] = 1.5F;
+        floatUniform.updateIn(30);
+        floatUniform.update();
+        verify(TestGl.gl()).glProgramUniform1f(30, 3, 1.5F);
+        verify(TestGl.gl(), never()).glUniform1f(3, 1.5F);
+
+        Vector4f color = new Vector4f(1, 0, 0, 1);
+        Vector4Uniform vector = new Vector4Uniform(5, () -> color);
+        vector.updateIn(30);
+        vector.updateIn(30);
+        verify(TestGl.gl(), times(1)).glProgramUniform4f(30, 5, 1, 0, 0, 1);
+        color.set(0, 1, 0, 1);
+        vector.update();
+        verify(TestGl.gl()).glUniform4f(5, 0, 1, 0, 1);
+        // A failed targeted upload is not recorded, so the next call retries it
+        color.set(0, 0, 1, 1);
+        Mockito.doThrow(new IllegalStateException("lost")).doNothing().when(TestGl.gl())
+                .glProgramUniform4f(30, 5, 0, 0, 1, 1);
+        assertThrows(IllegalStateException.class, () -> vector.updateIn(30));
+        vector.updateIn(30);
+        verify(TestGl.gl(), times(2)).glProgramUniform4f(30, 5, 0, 0, 1, 1);
+
+        // A cached type without a targeted form refuses rather than writing to whatever is bound
+        Vector2f v2 = new Vector2f();
+        com.bdmajora.impetus.umbra.gl.uniform.Vector2Uniform plain = new com.bdmajora.impetus.umbra.gl.uniform.Vector2Uniform(6, () -> v2);
+        assertFalse(plain instanceof com.bdmajora.impetus.umbra.gl.uniform.ProgramTargetedUniform);
+        assertThrows(UnsupportedOperationException.class, () -> com.bdmajora.testing.Mixins.call(plain, "updateInProgram", 30));
+        verify(TestGl.gl(), never()).glUniform2f(eq(6), anyFloat(), anyFloat());
     }
 
     @Test

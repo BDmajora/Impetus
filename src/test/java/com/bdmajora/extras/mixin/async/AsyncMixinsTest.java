@@ -193,6 +193,14 @@ class AsyncMixinsTest {
         verify(block, never()).randomTick(any(), any(), any(), any());
         Mixins.call(server, "impetus$flushRandomTicks", Mixins.ci());
         verify(block, org.mockito.Mockito.times(2)).randomTick(any(), any(), any(), any());
+
+        // A sweep that threw before its flush leaves a batch behind, which the next sweep drops instead of replaying
+        Mixins.call(server, "impetus$collectRandomTick", block, server, pos, state, new Random(), deferred);
+        assertNotNull(Mixins.get(server, "impetus$randomTickBatch"));
+        Mixins.call(server, "impetus$discardStaleRandomTicks", Mixins.ci());
+        assertNull(Mixins.get(server, "impetus$randomTickBatch"));
+        Mixins.call(server, "impetus$flushRandomTicks", Mixins.ci());
+        verify(block, org.mockito.Mockito.times(2)).randomTick(any(), any(), any(), any());
     }
 
     @Test

@@ -1699,6 +1699,11 @@ class ControlTest {
         assertEquals(List.of(shown), rows(frame).stream().map(ControlElement::getOption).toList());
         verify(hidden, never()).getControl();
         assertEquals(1, probe.creations);
+        // Without a filter every option of the page gets a row
+        Option<Boolean> other = option("Other");
+        bound(other, 30);
+        OptionPageFrame unfiltered = new OptionPageFrame(DIM, false, page(shown, other), null);
+        assertEquals(List.of(shown, other), rows(unfiltered).stream().map(ControlElement::getOption).toList());
     }
 
     @Test

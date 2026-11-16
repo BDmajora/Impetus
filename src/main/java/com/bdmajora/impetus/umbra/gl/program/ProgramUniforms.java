@@ -13,6 +13,7 @@ import com.bdmajora.impetus.umbra.gl.uniform.FloatUniform;
 import com.bdmajora.impetus.umbra.gl.uniform.IntUniform;
 import com.bdmajora.impetus.umbra.gl.uniform.Matrix3Uniform;
 import com.bdmajora.impetus.umbra.gl.uniform.MatrixUniform;
+import com.bdmajora.impetus.umbra.gl.uniform.ProgramTargetedUniform;
 import com.bdmajora.impetus.umbra.gl.uniform.Uniform;
 import com.bdmajora.impetus.umbra.gl.uniform.UniformCollector;
 import com.bdmajora.impetus.umbra.gl.uniform.UniformUpdateFrequency;
@@ -59,6 +60,8 @@ public class ProgramUniforms {
     private final List<Uniform> perFrame;
     // Uniforms that upload for each object.
     private final List<Uniform> perObject;
+    // Set when every per-object uniform can write into the program without it being bound.
+    private final boolean perObjectTargeted;
     // World tick of the last tick upload.
     private long lastTick = -1L;
     // Frame of the last frame upload.
@@ -76,11 +79,28 @@ public class ProgramUniforms {
         this.perTick = perTick;
         this.perFrame = perFrame;
         this.perObject = perObject;
+        boolean targeted = true;
+        for (Uniform uniform : perObject) {
+            targeted &= uniform instanceof ProgramTargetedUniform;
+        }
+        this.perObjectTargeted = targeted;
     }
 
     // Uploads the per object uniforms.
     public void updatePerObject() {
         updateStage(this.perObject);
+    }
+
+    // Returns whether every per-object uniform can write into the program without it being bound.
+    public boolean canUpdatePerObjectIn() {
+        return this.perObjectTargeted;
+    }
+
+    // Uploads the per-object uniforms straight into the program, whatever a renderer left bound.
+    public void updatePerObjectIn(int program) {
+        for (int i = 0; i < this.perObject.size(); i++) {
+            ((ProgramTargetedUniform) this.perObject.get(i)).updateIn(program);
+        }
     }
 
     // Returns the world tick or zero without a world.

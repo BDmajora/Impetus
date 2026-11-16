@@ -46,6 +46,8 @@ public abstract class ShaderChunkRenderer implements ChunkRenderer {
         this.environment = new ChunkShaderEnvironment(Objects.requireNonNull(fogService, "fogService"));
         this.renderPassConfiguration = Objects.requireNonNull(renderPassConfiguration, "renderPassConfiguration");
         this.enableLegacyGLPatches = ShaderLoader.useLegacyGlsl();
+        // GLSL 1.20 cannot declare the light block, so there the meshes keep baking moving lights in
+        TerrainDynamicLights.setShaderApplied(!this.enableLegacyGLPatches);
         if (this.enableLegacyGLPatches) {
             LOGGER.warn("System does not support modern GLSL, will attempt to patch terrain shaders");
         }

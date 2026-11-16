@@ -187,6 +187,9 @@ class UmbraTerrainTest {
         ProgramBlendState blend = ProgramBlendState.empty();
         ProgramAlphaTest alpha = ProgramAlphaTest.empty();
         UmbraTerrainShaderInterface shader = new UmbraTerrainShaderInterface(context, new int[] {0, 2}, blend, alpha);
+        // The prologue's moving-light block has no binding qualifier, so the interface points it at its binding
+        verify(context).bindUniformBlockIfPresent(com.bdmajora.impetus.engine.impl.render.chunk.shader.TerrainDynamicLights.BLOCK_NAME,
+                com.bdmajora.impetus.engine.impl.render.chunk.shader.TerrainDynamicLights.BINDING);
         shader.setProjectionMatrix(new Matrix4f());
         shader.setModelViewMatrix(new Matrix4f());
         verify(TestGl.gl(), times(2)).glUniformMatrix4fv(eq(7), eq(false), any(FloatBuffer.class));
@@ -263,6 +266,52 @@ class UmbraTerrainTest {
         assertTrue(legacy.contains("vec2 extraAttribute = vec2(0.0);"), legacy);
         assertTrue(legacy.contains("timeScale = max(worldTime, 2);"), legacy);
         assertTrue(FullscreenTransformer.transformFragmentShader(LEGACY_FRAGMENT).contains("irisMain"));
+    }
+
+    @Test
+    void everyBridgedVertexStageRaisesBlockLightByTheMovingLights() {
+        String block = com.bdmajora.impetus.engine.impl.render.chunk.shader.TerrainDynamicLights.UNBOUND_DECLARATIONS;
+        String applied = "iris_MultiTexCoord1 = vec4(max(float(blockLight), impetus_dynamicLightLevel(pos) * 16.0), float(skyLight), 0.0, 1.0);";
+        for (String vertex : new String[] {ImpetusTerrainTransformer.transformVertexShader(LEGACY_VERTEX, false),
+                ImpetusTerrainTransformer.transformVertexShaderModern(MODERN_VERTEX, true),
+                ImpetusTerrainTransformer.transformRasterVertexShader(LEGACY_VERTEX, false)}) {
+            assertTrue(vertex.contains(block), vertex);
+            assertTrue(vertex.contains(applied), vertex);
+            // Declared once, ahead of the main that calls it
+            assertEquals(vertex.indexOf("float impetus_dynamicLightLevel("), vertex.lastIndexOf("float impetus_dynamicLightLevel("));
+            assertTrue(vertex.indexOf(block) < vertex.lastIndexOf("\nvoid main() {\n"));
+        }
+    }
+
+    @Test
+    void theRasterVertexReadsThePackedWordsAndTheNvidiumBridgeKeepsItsInputs() {
+        // The Nvidium porter still sees the nine bridge inputs it turns into fetched globals
+        String bridged = ImpetusTerrainTransformer.transformVertexShader(LEGACY_VERTEX, false);
+        assertTrue(bridged.contains("in vec3 a_PosId;\n"), bridged);
+        assertFalse(bridged.contains("a_PackedA"), bridged);
+        assertFalse(bridged.contains("_umbra_unpackVertex"), bridged);
+
+        // The raster stage declares the three packed words instead and unpacks them before main reads a bridge input
+        for (String raster : new String[] {ImpetusTerrainTransformer.transformRasterVertexShader(LEGACY_VERTEX, false),
+                ImpetusTerrainTransformer.transformRasterVertexShaderModern(MODERN_VERTEX, true)}) {
+            assertTrue(raster.contains("in uvec4 a_PackedA;\nin uvec4 a_PackedB;\nin uint a_PackedC;\nvec3 a_PosId;\n"), raster);
+            assertFalse(raster.contains("in vec3 a_PosId;"), raster);
+            assertFalse(raster.contains("in vec4 iris_MidBlock;"), raster);
+            int main = raster.lastIndexOf("\nvoid main() {\n");
+            assertTrue(raster.indexOf("    _umbra_unpackVertex();\n", main) > main, raster);
+            assertTrue(raster.indexOf("    _umbra_unpackVertex();\n", main) < raster.indexOf("uint lightData = a_LightCoord;", main), raster);
+            // The decode sits ahead of main, once
+            assertEquals(raster.indexOf("void _umbra_unpackVertex() {"), raster.lastIndexOf("void _umbra_unpackVertex() {"));
+            assertTrue(raster.indexOf("void _umbra_unpackVertex() {") < main);
+        }
+        // A pack's own main, renamed to irisMain, never receives the call
+        String packMain = ImpetusTerrainTransformer.transformRasterVertexShader("#version 120\nvoid main() {\n}\n", false);
+        assertFalse(packMain.contains("void irisMain() {\n    _umbra_unpackVertex();"), packMain);
+
+        // Text without the generated prologue or main is refused rather than half rewritten
+        assertThrows(IllegalStateException.class, () -> ImpetusTerrainTransformer.packVertexInputs("void main() {}"));
+        String noMain = bridged.substring(0, bridged.lastIndexOf("\nvoid main() {\n"));
+        assertThrows(IllegalStateException.class, () -> ImpetusTerrainTransformer.packVertexInputs(noMain));
     }
 
     @Test

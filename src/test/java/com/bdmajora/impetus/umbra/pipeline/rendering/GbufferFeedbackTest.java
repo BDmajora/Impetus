@@ -88,17 +88,32 @@ class GbufferFeedbackTest {
         GbufferFeedback feedback = new GbufferFeedback(this.targets);
         feedback.prepare(new int[]{4}, new BitSet());
         feedback.prepare(new int[]{4}, new BitSet());
-        assertEquals(1 << 4, feedback.sampledGaux());
+        assertEquals(1 << 4, feedback.sampledGaux(PROGRAM));
         // Four targets by up to two names each (colortex4 answers before gaux1 is asked), on the first prepare only
         verify(TestGl.gl(), times(7)).glGetUniformLocation(eq(PROGRAM), any(CharSequence.class));
         verifyCopies(2);
     }
 
     @Test
+    void aProgramTheCallerJustBoundIsNotAskedOfGl() {
+        samples("gaux3");
+        // GL reports another program, which the explicit one overrides
+        this.gl.program = 0;
+        GbufferFeedback feedback = new GbufferFeedback(this.targets);
+        BitSet flips = feedback.prepare(PROGRAM, new int[]{0, 6}, new BitSet());
+        assertTrue(flips.get(6));
+        verifyCopies(1);
+        verify(TestGl.gl(), never()).glGetInteger(GbufferFeedback.GL_CURRENT_PROGRAM);
+        // The bound-program form still asks
+        feedback.prepare(new int[]{0}, new BitSet());
+        verify(TestGl.gl()).glGetInteger(GbufferFeedback.GL_CURRENT_PROGRAM);
+    }
+
+    @Test
     void withNoProgramBoundEveryWrittenGauxTargetIsCopied() {
         this.gl.program = 0;
         GbufferFeedback feedback = new GbufferFeedback(this.targets);
-        assertEquals(~0, feedback.sampledGaux());
+        assertEquals(~0, feedback.sampledGaux(0));
         BitSet flips = feedback.prepare(new int[]{0, 2, 4, 7, 9}, new BitSet());
         // colortex0/2 are not gbuffer-sampled targets, colortex9 has none of the aux units
         verifyCopies(2);

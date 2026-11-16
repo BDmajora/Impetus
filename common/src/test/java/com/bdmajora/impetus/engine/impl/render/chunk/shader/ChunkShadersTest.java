@@ -73,6 +73,7 @@ class ChunkShadersTest {
     @SuppressWarnings("deprecation")
     void defaultInterfaceUploadsMatricesOffsetsTexturesAndAges() {
         ShaderBindingContext context = context();
+        Mockito.when(TestGl.gl().glGetUniformBlockIndex(Mockito.anyInt(), Mockito.eq(TerrainDynamicLights.BLOCK_NAME))).thenReturn(3);
         DefaultChunkShaderInterface shader = new DefaultChunkShaderInterface(context, new ChunkShaderOptions(List.of(ChunkFogMode.EXP2), Passes.CUTOUT), ENVIRONMENT);
         shader.setupState(Passes.CUTOUT);
         assertEquals(GlPrimitiveType.TRIANGLES, shader.getPrimitiveType());
@@ -86,6 +87,8 @@ class ChunkShadersTest {
         Mockito.verify(TestGl.gl()).glUniform1i(1, 2);
         shader.setSectionAges(50_000_000_000L, new long[]{0L, 49_999_000_000L});
         Mockito.verify(TestGl.gl()).glUniform1fv(Mockito.eq(1), Mockito.any(FloatBuffer.class));
+        // The moving-light block is pointed at its binding point, which GLSL 330 cannot name itself
+        Mockito.verify(TestGl.gl()).glUniformBlockBinding(1, 3, TerrainDynamicLights.BINDING);
         shader.restoreState();
 
         TerrainRenderPass unlit = TerrainRenderPass.builder().name("unlit").pipelineState(TerrainRenderPass.PipelineState.DEFAULT)

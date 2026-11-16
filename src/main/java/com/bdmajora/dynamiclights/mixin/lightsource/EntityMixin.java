@@ -37,6 +37,18 @@ public abstract class EntityMixin implements DynamicLightSource {
     @Shadow
     public double posZ;
 
+    // Reference to the field last tick pos x of the target.
+    @Shadow
+    public double lastTickPosX;
+
+    // Reference to the field last tick pos y of the target.
+    @Shadow
+    public double lastTickPosY;
+
+    // Reference to the field last tick pos z of the target.
+    @Shadow
+    public double lastTickPosZ;
+
     // Reference to the field is dead of the target.
     @Shadow
     public boolean isDead;
@@ -118,6 +130,24 @@ public abstract class EntityMixin implements DynamicLightSource {
         return this.posZ;
     }
 
+    // Returns the dynamic light x where the entity is drawn this frame.
+    @Override
+    public double impetus$getDynamicLightX(float partialTicks) {
+        return this.lastTickPosX + (this.posX - this.lastTickPosX) * partialTicks;
+    }
+
+    // Returns the dynamic light y where the entity's eyes are drawn this frame.
+    @Override
+    public double impetus$getDynamicLightY(float partialTicks) {
+        return this.lastTickPosY + (this.posY - this.lastTickPosY) * partialTicks + this.getEyeHeight();
+    }
+
+    // Returns the dynamic light z where the entity is drawn this frame.
+    @Override
+    public double impetus$getDynamicLightZ(float partialTicks) {
+        return this.lastTickPosZ + (this.posZ - this.lastTickPosZ) * partialTicks;
+    }
+
     // Returns the dynamic light world.
     @Override
     public World impetus$getDynamicLightWorld() {
@@ -183,15 +213,9 @@ public abstract class EntityMixin implements DynamicLightSource {
         this.impetus$prevZ = this.posZ;
         this.impetus$lastLuminance = luminance;
 
-        LongOpenHashSet newPos = null;
-        if (luminance > 0) {
-            newPos = new LongOpenHashSet();
-            DynamicLightsEngine.walkLitSections(renderer, this.posX, this.posY + this.getEyeHeight(), this.posZ,
-                    this.impetus$trackedLitChunkPos, newPos);
-        }
-
-        this.impetus$scheduleTrackedChunksRebuild(renderer);
-        this.impetus$trackedLitChunkPos = newPos;
+        // Only sections the light reaches now or reached before, rather than the eight around it
+        this.impetus$trackedLitChunkPos = DynamicLightsEngine.relightSections(renderer, this.world,
+                this.impetus$trackedLitChunkPos, this.posX, this.posY + this.getEyeHeight(), this.posZ, luminance);
         return true;
     }
 

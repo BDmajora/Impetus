@@ -1,0 +1,56 @@
+# Runs every six hours, on each published release, and by hand
+# Adds up Modrinth, CurseForge and GitHub release downloads and force-pushes the result as a single commit to the
+# badges branch, where the README's Shields.io endpoint badge reads downloads.json
+# Setup: repository variables MODRINTH_PROJECT and CURSEFORGE_PROJECT_ID, optional secret CURSEFORGE_API_KEY
+# (Settings > Secrets and variables > Actions); either variable left unset skips that site
+name: download-badge
+
+on:
+  schedule:
+    - cron: '23 */6 * * *'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: download-badge
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout the counting script
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - name: Count downloads
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODRINTH_PROJECT: ${{ vars.MODRINTH_PROJECT }}
+          CURSEFORGE_PROJECT_ID: ${{ vars.CURSEFORGE_PROJECT_ID }}
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+        run: bash .github/scripts/download-total.sh "$RUNNER_TEMP/badges"
+      - name: Publish to the badges branch
+        working-directory: ${{ runner.temp }}/badges
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Pushes made with GITHUB_TOKEN start no workflow runs, and the branch holds no workflows anyway,
+        # so ci.yaml's on: push never fires for it
+        run: |
+          remote="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git init -q -b badges
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add downloads.json downloads-detail.json
+          git commit -q -m 'Update download counts'
+          # Skips the push when no count moved since the last run
+          if git fetch -q --depth=1 "$remote" badges 2>/dev/null && git diff --quiet FETCH_HEAD HEAD; then
+            echo 'Counts unchanged'
+            exit 0
+          fi
+          git push -q --force "$remote" HEAD:badges

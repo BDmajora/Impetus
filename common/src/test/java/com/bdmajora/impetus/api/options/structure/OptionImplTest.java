@@ -45,7 +45,7 @@ class OptionImplTest {
         return OptionIdentifier.create(MOD, path, Integer.class);
     }
 
-    // The lang key an id infers, as the draw expects it: one key and no arguments
+    // Returns a key component.
     private static TextComponent key(String key) {
         return new TextComponent.Translatable(List.of(key), List.of());
     }
@@ -141,7 +141,7 @@ class OptionImplTest {
                 })
                 .setControl(o -> Mockito.mock(Control.class))
                 .build();
-        // Nothing pending reads nothing, which keeps the per-frame check free
+        // Checks nothing pending.
         assertFalse(option.hasChanged());
         assertEquals(0, reads.get());
         option.setValue("set");
@@ -210,7 +210,7 @@ class OptionImplTest {
                 .build();
         option.setValue(5);
         assertTrue(option.hasChanged());
-        // The binding never receives null, so null stands for nothing pending
+        // Checks null clears the pending value.
         option.setValue(null);
         assertFalse(option.hasChanged());
         assertEquals(3, option.getValue());
@@ -247,10 +247,10 @@ class OptionImplTest {
         assertEquals(1, gets.get());
         assertEquals(1, writes.get());
         assertEquals(3, data.get());
-        // Applied once, so applying again writes nothing
+        // Checks applying once.
         option.applyChanges();
         assertEquals(1, writes.get());
-        // An unchanged value that was set is still written, as Apply only asks options that changed
+        // Checks an unchanged set value is written.
         option.setValue(3);
         option.applyChanges();
         assertEquals(2, writes.get());
@@ -393,11 +393,11 @@ class OptionImplTest {
             IllegalStateException first = assertThrows(IllegalStateException.class, option::getControl);
             assertEquals("Control of option " + MOD + ":failing could not be made", first.getMessage());
             assertSame(failure, first.getCause());
-            // Every ask fails the same way, on a fresh exception so no caller's suppressed list reaches another
+            // Checks every ask fails the same way.
             IllegalStateException second = assertThrows(IllegalStateException.class, option::getControl);
             assertNotSame(first, second);
             assertSame(failure, second.getCause());
-            // The rest of the option still answers, so the page shows a placeholder row for it
+            // Checks the rest still answers.
             assertEquals(6, option.getValue());
             assertSame(storage, option.getStorage());
             assertTrue(option.isAvailable());
@@ -530,7 +530,7 @@ class OptionImplTest {
         OptionImpl<AtomicInteger, Integer> bound = unbound.setId(id("bound")).setBinding(AtomicInteger::set, AtomicInteger::get).build();
         assertEquals(key(MOD + ".options.bound.name"), bound.getName());
         assertEquals(key(MOD + ".options.bound.tooltip"), bound.getTooltip());
-        // A builder with neither id nor labels fails, then builds once it has an id
+        // Checks a builder without an id.
         OptionImpl.Builder<AtomicInteger, Integer> anonymous = builder(storage(0));
         assertThrows(NullPointerException.class, anonymous::build);
         assertEquals(key(MOD + ".options.late.name"), anonymous.setId(id("late")).build().getName());
@@ -560,9 +560,9 @@ class OptionImplTest {
         OptionImpl<AtomicInteger, Integer> second = builder.setFlags(OptionFlag.REQUIRES_GAME_RESTART).build();
         assertEquals(Set.of(OptionFlag.REQUIRES_RENDERER_RELOAD), Set.copyOf(first.getFlags()));
         assertEquals(Set.of(OptionFlag.REQUIRES_RENDERER_RELOAD, OptionFlag.REQUIRES_GAME_RESTART), Set.copyOf(second.getFlags()));
-        // The same collection on every call, so reading the flags allocates nothing
+        // Checks the shared flag set.
         assertSame(first.getFlags(), first.getFlags());
-        // No flags is an empty collection, never null
+        // Checks no flags.
         assertTrue(named(storage(0)).build().getFlags().isEmpty());
     }
 
@@ -579,7 +579,7 @@ class OptionImplTest {
                 }
             }
             Collection<OptionFlag> first = named(storage(0)).setFlags(reversed.toArray(OptionFlag[]::new)).build().getFlags();
-            // Given twice over and in another order, still the same flags
+            // Checks repeated and reordered flags.
             OptionFlag[] given = expected.toArray(OptionFlag[]::new);
             Collection<OptionFlag> second = named(storage(0)).setFlags(given).setFlags(given).build().getFlags();
             assertEquals(List.copyOf(expected), List.copyOf(first), expected::toString);
@@ -633,13 +633,13 @@ class OptionImplTest {
         assertSame(OptionImpact.class, builtType(OptionImpact.class));
         // Arrays are reference types even of primitives
         assertSame(int[].class, builtType(int[].class));
-        // No type says nothing, which matches any control
+        // Checks no type.
         assertSame(Object.class, builtType(null));
-        // Kept from the builder even without an id, where the id has no type to give
+        // Checks the type without an id.
         OptionImpl<AtomicInteger, Integer> unnamed = named(storage(0)).build();
         assertSame(OptionIdentifier.EMPTY, unnamed.getId());
         assertSame(Integer.class, unnamed.getValueType());
-        // The same class the built-in controls declare, so the check against them is one comparison
+        // Checks the control type.
         @SuppressWarnings("unchecked")
         Option<Boolean> tick = Mockito.mock(Option.class);
         assertSame(new TickBoxControl(tick).getValueType(), builtType(boolean.class));
@@ -647,7 +647,7 @@ class OptionImplTest {
 
     @Test
     void aVoidBuilderTypeIsUntypedLikeAnUntypedId() {
-        // As the interface answers for a void id, since no value is an instance of Void
+        // Checks a void id.
         assertSame(Object.class, builtType(void.class));
         assertSame(Object.class, builtType(Void.class));
     }

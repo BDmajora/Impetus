@@ -72,7 +72,7 @@ class WaylandProtocolTest {
         this.wayland.globals.put("kde_output_order_v1", 7);
         this.wayland.outputOrder = List.of("DP-2", "DP-1", "HDMI-A-1");
         assertEquals(List.of("DP-2", "DP-1", "HDMI-A-1"), outputNames());
-        // The registry is asked for on the private wrapper, the order bound at version 1 by its registry name and destroyed after its one answer
+        // Checks the registry and output order requests.
         assertEquals(List.of(
                 new Request("wl_display", 1, "wl_registry", 0, List.of(0L)),
                 new Request("wl_registry", 0, "kde_output_order_v1", 0, List.of(7, "kde_output_order_v1", 1, 0L)),
@@ -111,7 +111,7 @@ class WaylandProtocolTest {
         WaylandClient.LIBRARY.set(arena -> this.wayland.lookup("wl_proxy_destroy"));
         assertEquals(List.of(), outputNames());
         assertEquals(List.of(), this.wayland.requests);
-        // A missing interface description stops it after the queue and wrapper, which still get freed
+        // Checks a missing interface description.
         WaylandClient.LIBRARY.set(arena -> this.wayland.lookup("wl_registry_interface"));
         assertEquals(List.of(), outputNames());
         assertEquals(List.of(), this.wayland.requests);

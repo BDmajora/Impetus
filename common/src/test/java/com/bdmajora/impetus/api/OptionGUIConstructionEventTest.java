@@ -25,7 +25,7 @@ class OptionGUIConstructionEventTest {
         return Mockito.mock(OptionPage.class, name);
     }
 
-    // A list that fails on any call, so the event reading, sizing or copying it fails the test
+    // Returns a list that fails on any call.
     @SuppressWarnings("unchecked")
     private static List<OptionPage> untouchable() {
         return (List<OptionPage>) Proxy.newProxyInstance(List.class.getClassLoader(), new Class<?>[]{List.class}, (proxy, method, args) -> {
@@ -33,7 +33,7 @@ class OptionGUIConstructionEventTest {
         });
     }
 
-    // A list that only takes a one-argument add and records it, so a size, scan or indexed insert fails the test
+    // Returns a list that only records single adds.
     @SuppressWarnings("unchecked")
     private static List<OptionPage> addOnly(List<Object> added) {
         return (List<OptionPage>) Proxy.newProxyInstance(List.class.getClassLoader(), new Class<?>[]{List.class}, (proxy, method, args) -> {
@@ -45,7 +45,7 @@ class OptionGUIConstructionEventTest {
         });
     }
 
-    // Posts the event with listeners that only act on it, so other tests' posts pass through them untouched
+    // Posts the event with listeners that act on it only.
     @SafeVarargs
     private static boolean post(OptionGUIConstructionEvent event, EventHandlerRegistrar.Handler<OptionGUIConstructionEvent>... handlers) {
         List<EventHandlerRegistrar.Handler<OptionGUIConstructionEvent>> filtered = new ArrayList<>();
@@ -72,7 +72,7 @@ class OptionGUIConstructionEventTest {
         List<OptionPage> pages = new ArrayList<>(List.of(page("own")));
         OptionGUIConstructionEvent event = new OptionGUIConstructionEvent(pages);
         assertSame(pages, event.getPages());
-        // Repeated reads give the same reference, never a fresh copy
+        // Checks repeated reads.
         assertSame(event.getPages(), event.getPages());
     }
 
@@ -84,7 +84,7 @@ class OptionGUIConstructionEventTest {
 
     @Test
     void constructionAndReadsNeverTouchTheList() {
-        // O(1) whatever the list holds: the event never sizes, iterates or copies it
+        // Checks the list is never read.
         List<OptionPage> pages = untouchable();
         OptionGUIConstructionEvent event = new OptionGUIConstructionEvent(pages);
         assertSame(pages, event.getPages());
@@ -111,7 +111,7 @@ class OptionGUIConstructionEventTest {
 
     @Test
     void addPageIsOneAppendAndNothingElse() {
-        // A single add per page with no size, scan or duplicate check keeps addPage at the list's own add cost
+        // Checks single adds.
         OptionPage a = page("a"), b = page("b");
         List<Object> added = new ArrayList<>();
         OptionGUIConstructionEvent event = new OptionGUIConstructionEvent(addOnly(added));
@@ -210,7 +210,7 @@ class OptionGUIConstructionEventTest {
 
     @Test
     void aNullAddedThroughTheListItselfIsNotFiltered() {
-        // getPages hands out the caller's list, so only addPage can refuse a null
+        // Checks addPage refuses null.
         List<OptionPage> pages = new ArrayList<>();
         OptionGUIConstructionEvent event = new OptionGUIConstructionEvent(pages);
         post(event, seen -> seen.getPages().add(null));

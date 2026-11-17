@@ -53,7 +53,7 @@ class FulgorDeferredChunkTest {
         Statics.set(Fulgor.class, "fluidloggedApi", false);
     }
 
-    // A world whose chunk provider answers from a small map, and which records the light checks it is given
+    // Returns a world with a small chunk map.
     private static World world(IChunkProvider provider) {
         World world = Mc.mock(World.class, LightingEngineProvider.class);
         Mixins.set(world, "isRemote", false);
@@ -135,10 +135,10 @@ class FulgorDeferredChunkTest {
         IChunkProvider provider = mock(IChunkProvider.class);
         World world = world(provider);
         ChunkMixin chunk = chunk(world, 0, 0);
-        // Opaque only at y=69 in that column, so the height settles just above it
+        // Stubs the opacity of the column.
         Mixins.stub(chunk, "getBlockLightOpacity", invocation ->
                 (int) invocation.getArgument(1) == 69 ? 255 : 0);
-        // The column's height moves to just above the opaque block, and the sky column is rechecked
+        // Checks the height and recheck.
         Mixins.call(chunk, "relightBlock", 1, 70, 2);
         assertEquals(70, Mixins.<int[]>get(chunk, "heightMap")[2 << 4 | 1]);
         Mockito.verify(world, Mockito.atLeastOnce()).checkLightFor(Mockito.eq(EnumSkyBlock.SKY), any());
@@ -182,7 +182,7 @@ class FulgorDeferredChunkTest {
         Mixins.<ExtendedBlockStorage[]>get(mixin, "storageArrays")[4]
                 .set(1, 2, 3, Blocks.GLOWSTONE.getDefaultState());
 
-        // Every emitter in the chunk is handed to the engine, and the chunk is marked initialised
+        // Checks the chunk initialisation.
         LightingHooks.initChunkLighting(world, chunk);
         assertTrue(mixin.fulgor$isLightInitialized());
         Mockito.verify(world, Mockito.atLeastOnce()).checkLightFor(Mockito.eq(EnumSkyBlock.BLOCK), any());
@@ -230,7 +230,7 @@ class FulgorDeferredChunkTest {
         Mockito.doReturn(0).when(mixin).getHeightValue(Mockito.anyInt(), Mockito.anyInt());
         LightingHooks.initSkylightForSection(world, chunk, section);
         assertEquals(15, section.getSkyLight(0, 0, 0));
-        // Below the heightmap nothing is seeded, and a dimension without sky is skipped
+        // Checks the unseeded cases.
         ExtendedBlockStorage shaded = new ExtendedBlockStorage(64, true);
         Mockito.doReturn(200).when(mixin).getHeightValue(Mockito.anyInt(), Mockito.anyInt());
         LightingHooks.initSkylightForSection(world, chunk, shaded);

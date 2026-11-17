@@ -48,7 +48,7 @@ class ItemFacesTest {
     @BeforeAll
     static void atlas() {
         Mc.bootstrap();
-        // A slot spanning the whole sheet, so a baked texture coordinate is the model's over sixteen
+        // Sets a sprite over the whole sheet.
         sprite = Mc.uninitialized(TextureAtlasSprite.class);
         Mixins.set(sprite, "maxU", 1.0F);
         Mixins.set(sprite, "maxV", 1.0F);
@@ -66,7 +66,7 @@ class ItemFacesTest {
         ItemFaceCache.clear();
     }
 
-    // One element face as vanilla's FaceBakery bakes it, bounds in model pixels like a JSON model, the tint telling faces apart
+    // Returns one baked element face.
     private static BakedQuad face(EnumFacing facing, float x0, float y0, float z0, float x1, float y1, float z1, int tint) {
         return face(facing, new Vector3f(x0, y0, z0), new Vector3f(x1, y1, z1), tint, null);
     }
@@ -99,7 +99,7 @@ class ItemFacesTest {
         return general(List.of(quads));
     }
 
-    // The resolved general list of a model whose quads were all general, checking the six cull lists stayed empty
+    // Returns the resolved general list.
     private static List<BakedQuad> resolved(BakedQuad... quads) {
         List<List<BakedQuad>> lists = CoplanarFaces.resolve(general(quads));
         assertNotNull(lists);
@@ -127,7 +127,7 @@ class ItemFacesTest {
         return new float[]{Float.intBitsToFloat(data[at]), Float.intBitsToFloat(data[at + 1])};
     }
 
-    // Low and high coordinate on x, y and z in turn
+    // Returns the bounds on each axis.
     private static float[] bounds(BakedQuad quad) {
         float[] bounds = {Float.MAX_VALUE, -Float.MAX_VALUE, Float.MAX_VALUE, -Float.MAX_VALUE, Float.MAX_VALUE, -Float.MAX_VALUE};
         for (int vertex = 0; vertex < 4; vertex++) {
@@ -140,7 +140,7 @@ class ItemFacesTest {
         return bounds;
     }
 
-    // The side the winding faces, which is what culling and the rasterizer go by
+    // Returns the side the winding faces.
     private static EnumFacing facing(BakedQuad quad) {
         float[] a = position(quad, 0);
         float[] b = position(quad, 1);
@@ -157,14 +157,14 @@ class ItemFacesTest {
         }
     }
 
-    // Two pieces only rasterize to the same depths if their positions match bit for bit, in the same vertex order
+    // Checks two quads share positions.
     private static void assertSamePositions(BakedQuad expected, BakedQuad actual) {
         for (int vertex = 0; vertex < 4; vertex++) {
             assertArrayEquals(position(expected, vertex), position(actual, vertex));
         }
     }
 
-    // The vertex of the quad at the given position, ignoring one axis (or none for -1)
+    // Returns the vertex at a position.
     private static int vertexAt(BakedQuad quad, float[] at, int ignored) {
         for (int vertex = 0; vertex < 4; vertex++) {
             float[] here = position(quad, vertex);
@@ -192,13 +192,13 @@ class ItemFacesTest {
 
     @Test
     void aPanelLaidOnABodyCutsTheBodyOnItsEdgesAndDrawsOverIt() {
-        // Listed before the body, so only lying inside the body's face can put the panel on top
+        // Adds the panel before the body.
         BakedQuad panel = face(EnumFacing.NORTH, 4, 4, 0, 12, 12, 1, 1);
         BakedQuad body = face(EnumFacing.NORTH, 0, 0, 0, 16, 16, 16, 0);
         BakedQuad back = face(EnumFacing.SOUTH, 0, 0, 0, 16, 16, 16, 0);
         List<BakedQuad> quads = resolved(panel, body, back);
 
-        // The panel's slot gives its face up, the body's slot takes the whole stack, the back face is left as it was
+        // Checks the resolved quads.
         assertEquals(11, quads.size());
         assertSame(back, quads.get(10));
         BakedQuad top = quads.get(9);
@@ -206,7 +206,7 @@ class ItemFacesTest {
         List<BakedQuad> cells = quads.subList(0, 9);
         double area = 0.0D;
         int[] source = body.getVertexData();
-        // The body's mapping read off its corners, since Forge's FaceBakery pulls every UV a thousandth in from its corner
+        // Reads the body's UV mapping.
         float[] low = uv(body, vertexAt(body, new float[]{0.0F, 0.0F, 0.0F}, -1));
         float[] high = uv(body, vertexAt(body, new float[]{1.0F, 1.0F, 0.0F}, -1));
         for (BakedQuad cell : cells) {
@@ -217,7 +217,7 @@ class ItemFacesTest {
             area += (bounds[1] - bounds[0]) * (bounds[3] - bounds[2]);
             int[] data = cell.getVertexData();
             for (int vertex = 0; vertex < 4; vertex++) {
-                // Texture coordinates keep the body's own mapping: on a north face u follows x alone and v follows y alone
+                // Checks the cell UVs.
                 float[] at = position(cell, vertex);
                 assertEquals(low[0] + (high[0] - low[0]) * at[0], uv(cell, vertex)[0], 1.0E-6F);
                 assertEquals(low[1] + (high[1] - low[1]) * at[1], uv(cell, vertex)[1], 1.0E-6F);
@@ -241,7 +241,7 @@ class ItemFacesTest {
         int topRight = vertexAt(corner, new float[]{1.0F, 1.0F, 0.0F}, -1);
         assertArrayEquals(uv(body, vertexAt(body, new float[]{1.0F, 1.0F, 0.0F}, -1)), uv(corner, topRight));
 
-        // The cell under the panel is the panel's rectangle vertex for vertex, so both rasterize to the same depths and GL_LEQUAL keeps the panel
+        // Checks the cell under the panel.
         assertSamePositions(cellAt(cells, 0.25F, 0.25F), top);
         assertArrayEquals(bounds(panel), bounds(top));
         assertEquals(EnumFacing.NORTH, facing(top));
@@ -256,7 +256,7 @@ class ItemFacesTest {
 
     @Test
     void aBandTwoFacesShareGoesToWhicheverIsDrawnLast() {
-        // The shulker box layout: base rows 0 to 8, lid rows 4 to 16, sharing rows 4 to 8 on one plane
+        // Builds the shulker box layout.
         BakedQuad base = face(EnumFacing.WEST, 0, 0, 0, 16, 8, 16, 0);
         BakedQuad lid = face(EnumFacing.WEST, 0, 4, 0, 16, 16, 16, 1);
         List<BakedQuad> quads = resolved(base, lid);
@@ -268,7 +268,7 @@ class ItemFacesTest {
             assertEquals(EnumFacing.WEST, facing(quad));
         }
 
-        // Listed the other way round, the base wins the band
+        // Checks the reversed order.
         quads = resolved(lid, base);
         assertEquals(List.of(1, 1, 0, 0), tints(quads));
         assertSamePositions(quads.get(0), quads.get(3));
@@ -277,7 +277,7 @@ class ItemFacesTest {
     @Test
     void facesAHairApartMeetOnTheBodysPlaneWithTheFrontOneOnTop() {
         BakedQuad body = face(EnumFacing.NORTH, 0, 0, 0, 16, 16, 16, 0);
-        // Raised a hundredth of a pixel toward the viewer (north is -z) and listed first: on top all the same, and on the body's plane
+        // Checks a raised panel.
         BakedQuad raised = face(EnumFacing.NORTH, 4, 4, -0.01F, 12, 12, 1, 1);
         List<BakedQuad> quads = resolved(raised, body);
         assertEquals(10, quads.size());
@@ -287,7 +287,7 @@ class ItemFacesTest {
         }
         assertSamePositions(cellAt(quads, 0.25F, 0.25F), quads.get(9));
 
-        // Sunk a hundredth of a pixel into the body, it stays under the body's face though it lies inside it
+        // Checks a sunk panel.
         BakedQuad sunk = face(EnumFacing.NORTH, 4, 4, 0.01F, 12, 12, 1, 1);
         quads = resolved(body, sunk);
         assertEquals(List.of(1, 0, 0, 0, 0, 0, 0, 0, 0, 0), tints(quads));
@@ -299,12 +299,12 @@ class ItemFacesTest {
 
     @Test
     void edgesWithinFloatNoiseShareOneCut() {
-        // A ten-thousandth of a pixel off the four-pixel line another panel starts on, as a zero-angle element rotation can leave an edge
+        // Checks a noisy panel.
         BakedQuad noisy = face(EnumFacing.NORTH, 4.0001F, 4, 0, 12, 12, 1, 1);
         BakedQuad strip = face(EnumFacing.NORTH, 4, 13, 0, 12, 15, 1, 2);
         BakedQuad body = face(EnumFacing.NORTH, 0, 0, 0, 16, 16, 16, 0);
         List<BakedQuad> quads = resolved(noisy, strip, body);
-        // Three columns, not four: the two edges are one cut, so neither panel splits and the body gets 3 x 5 cells
+        // Checks the merged cut.
         assertEquals(17, quads.size());
         assertEquals(List.of(1, 2), tints(quads.subList(15, 17)));
         assertEquals(0.25F, bounds(quads.get(15))[0]);
@@ -424,7 +424,7 @@ class ItemFacesTest {
         List<BakedQuad> pair = new ArrayList<>(cube(0, 0, 0, 8, 8, 16));
         pair.addAll(cube(8, 8, 0, 16, 16, 16));
         assertNull(CoplanarFaces.resolve(general(pair)));
-        // A tenth of a pixel out is a plane of its own, which the depth buffer tells apart
+        // Checks a separate plane.
         assertNull(CoplanarFaces.resolve(general(face(EnumFacing.NORTH, 4, 4, -0.1F, 12, 12, 1, 1),
                 face(EnumFacing.NORTH, 0, 0, 0, 16, 16, 16, 0))));
     }
@@ -433,7 +433,7 @@ class ItemFacesTest {
     void aStackThatWouldShatterIsLeftAsItWas() {
         List<BakedQuad> quads = new ArrayList<>();
         quads.add(face(EnumFacing.NORTH, 0, 0, 0, 16, 16, 16, 0));
-        // Thirty specks down the diagonal put 62 cuts on each axis, 3721 cells under the body alone
+        // Adds thirty specks.
         for (int i = 0; i < 30; i++) {
             float at = 0.25F + i * 0.5F;
             quads.add(face(EnumFacing.NORTH, at, at, 0, at + 0.25F, at + 0.25F, 1, 1));
@@ -447,10 +447,10 @@ class ItemFacesTest {
         BakedQuad panel = face(EnumFacing.NORTH, 4, 4, 0, 12, 12, 1, 1);
         assertNotNull(CoplanarFaces.resolve(general(panel, body)));
 
-        // Each of these lies over the body's face like the panel, so taking part would cut the body
+        // Builds the panel data.
         int[] data = panel.getVertexData();
         List<BakedQuad> outsiders = new ArrayList<>();
-        // Another quad class, which may compute its data its own way
+        // Adds another quad class.
         outsiders.add(new BakedQuad(data.clone(), 1, EnumFacing.NORTH, sprite, true, DefaultVertexFormats.ITEM) {
         });
         // A rotated element
@@ -464,7 +464,7 @@ class ItemFacesTest {
         outsiders.add(new BakedQuad(bare, 1, EnumFacing.NORTH, sprite, true, DefaultVertexFormats.POSITION));
         // Vertex data of the wrong length
         outsiders.add(plain(Arrays.copyOf(data, 27)));
-        // Flat on two axes, a line
+        // Builds a line.
         int[] line = data.clone();
         for (int vertex = 0; vertex < 4; vertex++) {
             line[vertex * 7 + 1] = Float.floatToRawIntBits(0.5F);
@@ -506,12 +506,12 @@ class ItemFacesTest {
         // Colour leading
         assertEquals(-1, CoplanarFaces.uvOffset(new VertexFormat().addElement(DefaultVertexFormats.COLOR_4UB)
                 .addElement(DefaultVertexFormats.POSITION_3F).addElement(DefaultVertexFormats.TEX_2F)));
-        // Positions as two floats, or as shorts
+        // Checks the position formats.
         assertEquals(-1, CoplanarFaces.uvOffset(new VertexFormat().addElement(new VertexFormatElement(0,
                 VertexFormatElement.EnumType.FLOAT, VertexFormatElement.EnumUsage.POSITION, 2)).addElement(DefaultVertexFormats.TEX_2F)));
         assertEquals(-1, CoplanarFaces.uvOffset(new VertexFormat().addElement(new VertexFormatElement(0,
                 VertexFormatElement.EnumType.SHORT, VertexFormatElement.EnumUsage.POSITION, 3)).addElement(DefaultVertexFormats.TEX_2F)));
-        // Texture coordinates as shorts, as one float, or off a whole int
+        // Checks the texture formats.
         assertEquals(-1, CoplanarFaces.uvOffset(new VertexFormat().addElement(DefaultVertexFormats.POSITION_3F).addElement(new VertexFormatElement(0,
                 VertexFormatElement.EnumType.SHORT, VertexFormatElement.EnumUsage.UV, 2))));
         assertEquals(-1, CoplanarFaces.uvOffset(new VertexFormat().addElement(DefaultVertexFormats.POSITION_3F).addElement(new VertexFormatElement(0,
@@ -521,7 +521,7 @@ class ItemFacesTest {
         assertNotNull(Mixins.construct(CoplanarFaces.class));
     }
 
-    // A resource pack model the way Forge bakes one: the body's north face in the north cull list, an inset panel and the back in the general list
+    // Returns a panelled resource pack model.
     private static SimpleBakedModel panelled() {
         Map<EnumFacing, List<BakedQuad>> cull = new EnumMap<>(EnumFacing.class);
         for (EnumFacing side : EnumFacing.VALUES) {
@@ -533,7 +533,7 @@ class ItemFacesTest {
         return new SimpleBakedModel(general, cull, true, true, sprite, ItemCameraTransforms.DEFAULT, ItemOverrideList.NONE);
     }
 
-    // A lone cube, which has nothing to resolve
+    // Returns a lone cube.
     private static SimpleBakedModel plainCube() {
         Map<EnumFacing, List<BakedQuad>> cull = new EnumMap<>(EnumFacing.class);
         for (EnumFacing side : EnumFacing.VALUES) {
@@ -553,7 +553,7 @@ class ItemFacesTest {
         assertTrue(ItemFaceCache.quads(model, null, EnumFacing.NORTH, 0L).isEmpty());
         assertTrue(ItemFaceCache.quads(model, null, EnumFacing.UP, 0L).isEmpty());
 
-        // Later frames get the same lists, from the last model or from the cache once another model came between
+        // Checks the cached lists.
         assertSame(general, ItemFaceCache.quads(model, null, null, 0L));
         SimpleBakedModel other = panelled();
         assertNotSame(general, ItemFaceCache.quads(other, null, null, 0L));
@@ -577,7 +577,7 @@ class ItemFacesTest {
         assertSame(own, ItemFaceCache.quads(model, null, null, 0L));
         config.render.itemModelFlickerFix = true;
 
-        // A model class that may answer differently from call to call, and Forge's own wrapper, which can wrap one
+        // Checks dynamic and wrapper models.
         IBakedModel dynamic = mock(IBakedModel.class);
         when(dynamic.getQuads(any(), any(), anyLong())).thenReturn(own);
         assertSame(own, ItemFaceCache.quads(dynamic, null, null, 0L));
@@ -593,7 +593,7 @@ class ItemFacesTest {
 
     @Test
     void forgesWrapperAroundABakedJsonModelIsFixed() throws ClassNotFoundException {
-        // Every resource pack item model reaches the renderer in this anonymous wrapper, which hands a null state to its SimpleBakedModel
+        // Checks Forge's anonymous wrapper.
         IBakedModel wrapper = (IBakedModel) Mc.uninitialized(Class.forName("net.minecraftforge.client.model.ModelLoader$VanillaModelWrapper$1"));
         Mixins.set(wrapper, "parent", panelled());
         List<BakedQuad> general = ItemFaceCache.quads(wrapper, null, null, 0L);

@@ -94,13 +94,13 @@ class RecoveryPathsTest {
         // Without an edge generation there is nothing to restart
         assertFalse(coordinator.restartAfterEdgeOverflow(task, 0, 0, "Sky"));
         task.initialLightEdgeGeneration = 1L;
-        // Nothing is on record for the chunk, so a newer generation already replaced this pass and the overflow is dropped
+        // Checks a dropped overflow.
         assertTrue(coordinator.restartAfterEdgeOverflow(task, 0, 0, "Sky"));
-        // With the matching generation queued, the pass is put back with another attempt against it
+        // Checks the requeued pass.
         coordinator.queue(0, 0, chunk, BfsLightEngine.getEmptySectionsForChunk(chunk));
         assertTrue(coordinator.hasPending(ChunkPos.asLong(0, 0)));
         assertTrue(coordinator.restartAfterEdgeOverflow(task, 0, 0, "Sky"));
-        // The recovery above became generation two; the chunk it was made for is no longer the loaded one, so it is dropped
+        // Checks a stale generation.
         task.initialLightEdgeGeneration = 2L;
         chunks.put(ChunkPos.asLong(0, 0), fixture.chunk(0, 0));
         assertFalse(coordinator.restartAfterEdgeOverflow(task, 0, 0, "Sky"));

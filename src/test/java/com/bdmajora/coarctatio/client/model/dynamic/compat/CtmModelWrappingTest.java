@@ -83,7 +83,7 @@ class CtmModelWrappingTest {
         Map<Object, ?> listeners = Mixins.get(MinecraftForge.EVENT_BUS, "listeners");
         assertTrue(listeners.keySet().stream().noneMatch(CtmModelWrapping.class::isInstance));
 
-        // The bus names the registering mod, so one has to be active
+        // Activates the CTM mod.
         Mc.forge("ctm");
         LoadController controller = Mixins.get(Loader.instance(), "modController");
         when(controller.activeContainer()).thenReturn(mock(ModContainer.class));
@@ -99,25 +99,25 @@ class CtmModelWrappingTest {
         ModelResourceLocation location = new ModelResourceLocation("examplemod:pillar", "normal");
         IModel plain = model("examplemod:blocks/plain");
 
-        // A location that is not a variant, or a load that failed, is not CTM's business
+        // Checks the cases CTM skips.
         assertSame(baked, bake(wrapping, new ResourceLocation("examplemod:block/pillar"), plain, baked));
         assertSame(baked, bake(wrapping, location, null, baked));
-        // Nor is a model CTM already wrapped, or one drawn by its own renderer
+        // Checks wrapped and own renderer models.
         IBakedModel ctm = mock(AbstractCTMBakedModel.class);
         assertSame(ctm, bake(wrapping, location, plain, ctm));
         IBakedModel builtin = mock(IBakedModel.class);
         when(builtin.isBuiltInRenderer()).thenReturn(true);
         assertSame(builtin, bake(wrapping, location, plain, builtin));
 
-        // A model without connected textures stays as baked, and one with them is wrapped
+        // Checks the wrap decision.
         assertSame(baked, bake(wrapping, location, plain, baked));
         connected("examplemod:blocks/pillar_top");
         ModelResourceLocation top = new ModelResourceLocation("examplemod:pillar", "axis=y");
         assertSame(wrapped, bake(wrapping, top, model("examplemod:blocks/pillar_top"), baked));
-        // The answer is remembered per location, so the next bake wraps without walking the model again
+        // Checks the remembered answer.
         assertSame(wrapped, bake(wrapping, top, plain, baked));
 
-        // An unreadable texture has no metadata; a wrap that fails leaves the model as baked
+        // Checks an unreadable texture and a failed wrap.
         ResourceUtil.UNREADABLE.add(new ResourceLocation("examplemod", "textures/blocks/pillar_top.png"));
         assertSame(baked, bake(wrapping, new ModelResourceLocation("examplemod:pillar", "axis=z"), model("examplemod:blocks/pillar_top"), baked));
         TextureMetadataHandler.wrapped = null;
@@ -130,14 +130,14 @@ class CtmModelWrappingTest {
         TextureMetadataHandler.wrapped = wrapped;
         connected("examplemod:blocks/connected");
 
-        // A dependency is loaded through the registry; one that fails to load is skipped
+        // Checks the dependency loading.
         ResourceLocation parentLocation = new ResourceLocation("examplemod:block/connected_parent");
         ModelLoaderRegistryAccessor.coarctatio$cache().put(parentLocation, model("examplemod:blocks/connected"));
         IModel child = model("examplemod:blocks/plain");
         when(child.getDependencies()).thenReturn(List.of(new ResourceLocation("examplemod:block/absent"), parentLocation));
         assertSame(wrapped, bake(wrapping, new ModelResourceLocation("examplemod:child", "normal"), child, baked));
 
-        // Forge's vanilla wrapper does not report its parents' textures, so the parent chain is read directly
+        // Checks the parent chain textures.
         ModelBlock inner = ModelBlock.deserialize(new StringReader("{\"textures\":{\"side\":\"#all\"}}"));
         inner.parent = ModelBlock.deserialize(new StringReader("{\"textures\":{\"all\":\"examplemod:blocks/connected\",\"end\":\"#all\"}}"));
         Constructor<?> wrapper = Class.forName("net.minecraftforge.client.model.ModelLoader$VanillaModelWrapper")
@@ -148,7 +148,7 @@ class CtmModelWrappingTest {
         IModel vanilla = (IModel) wrapper.newInstance(Mc.mock(ModelLoader.class), column, inner, false, null);
         assertSame(wrapped, bake(wrapping, column, vanilla, baked));
 
-        // A multipart model reports nothing itself; its parts carry the textures
+        // Checks a multipart model.
         ModelLoaderRegistryAccessor.coarctatio$cache().put(new ResourceLocation("examplemod:block/fence_post"), model("examplemod:blocks/connected"));
         Multipart multipart = ModelBlockDefinition.parseFromReader(
                 new StringReader("{\"multipart\":[{\"apply\":{\"model\":\"examplemod:fence_post\"}}]}"),

@@ -5,25 +5,25 @@ import org.lwjgl.opengl.GL32;
 import org.lwjgl.opengl.GL40;
 import org.lwjgl.opengl.GL43;
 
-// Choices of the shader type setting.
+// Shader stages with the GL enum of each.
 public enum ShaderType {
-    // Value that selects vertex.
+    // Vertex stage.
     VERTEX(GL20.GL_VERTEX_SHADER),
-    // Value that selects geometry.
+    // Geometry stage.
     GEOMETRY(GL32.GL_GEOMETRY_SHADER),
-    // Value that selects tess control.
+    // Tessellation control stage.
     TESS_CONTROL(GL40.GL_TESS_CONTROL_SHADER),
-    // Value that selects tess evaluation.
+    // Tessellation evaluation stage.
     TESS_EVALUATION(GL40.GL_TESS_EVALUATION_SHADER),
-    // Value that selects fragment.
+    // Fragment stage.
     FRAGMENT(GL20.GL_FRAGMENT_SHADER),
-    // Value that selects compute.
+    // Compute stage.
     COMPUTE(GL43.GL_COMPUTE_SHADER);
 
     // GL enum of the stage.
     public final int id;
 
-    // Creates a shader type from its id.
+    // Creates a stage from its GL enum.
     ShaderType(int id) {
         this.id = id;
     }

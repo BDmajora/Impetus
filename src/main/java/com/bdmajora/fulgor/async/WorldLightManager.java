@@ -114,12 +114,12 @@ public final class WorldLightManager {
         this.initialLighting.removeChunk(cx, cz);
     }
 
-    // Returns whether updates.
+    // Returns whether either lane has work.
     public boolean hasUpdates() {
         return (this.skyQueue != null && this.skyQueue.hasWork()) || this.blockQueue.hasWork();
     }
 
-    // Returns whether chunk pending light.
+    // Returns whether either lane has work for a chunk.
     public boolean hasChunkPendingLight(int cx, int cz) {
         return (this.skyQueue != null && this.skyQueue.hasPendingWork(cx, cz)) || this.blockQueue.hasPendingWork(cx, cz);
     }
@@ -311,7 +311,7 @@ public final class WorldLightManager {
         return true;
     }
 
-    // Returns whether pending light work.
+    // Returns whether a chunk has initial or value light work pending.
     public boolean hasPendingLightWork(int cx, int cz) {
         long key = ChunkPos.asLong(cx, cz);
         if (this.initialLighting.hasPending(key)) {

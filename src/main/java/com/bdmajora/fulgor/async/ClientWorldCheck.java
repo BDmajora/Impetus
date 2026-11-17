@@ -12,7 +12,7 @@ public final class ClientWorldCheck {
     private ClientWorldCheck() {
     }
 
-    // Returns whether current client world.
+    // Returns whether a world is the one the client renders.
     public static boolean isCurrentClientWorld(World world) {
         return Minecraft.getMinecraft().world == world;
     }

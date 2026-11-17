@@ -55,7 +55,7 @@ class NetworkLimitsTest {
     @Test
     void littleTilesKeepsTheCompressedPacketCapLifted() {
         config.network.largePackets = false;
-        // LittleTiles already took the cap out of vanilla's decode, so the switch cannot bring it back
+        // Checks LittleTiles.
         Mc.forge("littletiles");
         assertEquals(Integer.MAX_VALUE, NetworkLimits.compressedPacketLimit());
         assertEquals(NetworkLimits.VANILLA_NBT, NetworkLimits.nbtLimit());

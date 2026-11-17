@@ -23,10 +23,10 @@ import java.util.stream.LongStream;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ProxyClassGeneratorTest {
-    // every proxy is a permanent class in the test JVM, so each one gets a name of its own
+    // Unique proxy name.
     private static final AtomicInteger SERIAL = new AtomicInteger();
 
-    // an uninstrumented copy of the generator, whose proxies JaCoCo skips too: its probes raise every max stack and would hide one too small
+    // Uninstrumented copy of the generator.
     private static final FreshClasses UNINSTRUMENTED = new FreshClasses(ProxyClassGenerator.class);
 
     // what SlotsImpl.edge answers for the arguments 1..127
@@ -180,7 +180,7 @@ class ProxyClassGeneratorTest {
             return array;
         }
 
-        // positional weights, so arguments loaded from the wrong slots give a different answer
+        // Positional weights.
         @Override
         public double mixed(long j, int i, double d, float f) {
             return j * 1000.0 + i * 100.0 + d * 10.0 + f;
@@ -273,7 +273,7 @@ class ProxyClassGeneratorTest {
         void put(T value);
     }
 
-    // covariant get and generic put, both reached through javac's bridges
+    // Covariant get and generic put.
     public static class Narrow implements Source, Sink<String> {
         String last;
 
@@ -343,7 +343,7 @@ class ProxyClassGeneratorTest {
         int apply(int x);
     }
 
-    // package-private, so only a proxy in this runtime package may name it
+    // Package private type.
     static class Local implements IntOp {
         @Override
         public int apply(int x) {
@@ -413,7 +413,7 @@ class ProxyClassGeneratorTest {
         return own(type.getDeclaredMethods()).stream().map(Method::getName).sorted().toList();
     }
 
-    // builds through the uninstrumented generator copy, throwing whatever its constructor threw
+    // Builds through the copy.
     private static Function<Object, Object> bare(Class<?> delegate, Class<?> primary) throws Throwable {
         Class<?> copy = UNINSTRUMENTED.load(ProxyClassGenerator.class);
         assertNotSame(ProxyClassGenerator.class, copy);
@@ -478,12 +478,12 @@ class ProxyClassGeneratorTest {
         proxy.nothing();
         proxy.nothing();
         assertEquals(2, impl.calls);
-        // a public method on no interface is still forwarded, reachable by reflection
+        // Checks a public method.
         assertEquals(5, proxy.getClass().getMethod("extra").invoke(proxy));
         // static methods and the ones Object declares are not
         assertThrows(NoSuchMethodException.class, () -> proxy.getClass().getMethod("ignored"));
         assertEquals(List.of("extra", "greet", "greet", "nothing", "widen"), ownMethodNames(proxy.getClass()));
-        // calls dispatch virtually, so a subclass instance answers with its overrides
+        // Checks virtual dispatch.
         Greeter sub = generator.generateWrapper(new Impl() {
             @Override
             public String greet(String name) {
@@ -530,7 +530,7 @@ class ProxyClassGeneratorTest {
         assertEquals(EDGE, callEdge(impl));
         assertEquals(EDGE, callEdge(new ProxyClassGenerator<>(SlotsImpl.class, fresh("Slots"), Slots.class).generateWrapper(impl)));
         assertEquals(EDGE, callEdge(bare(SlotsImpl.class, Slots.class).apply(impl)));
-        // an interface delegate takes invokeinterface, whose argument count operand is one byte
+        // Checks an interface delegate.
         assertEquals(EDGE, callEdge(new ProxyClassGenerator<>(Slots.class, fresh("SlotsItf"), Slots.class).generateWrapper(impl)));
         assertEquals(EDGE, callEdge(bare(Slots.class, Slots.class).apply(impl)));
     }
@@ -565,7 +565,7 @@ class ProxyClassGeneratorTest {
         Sink<String> sink = (Sink<String>) proxy;
         sink.put("x");
         assertEquals("x", narrow.last);
-        // the delegate's bridge still casts, so a raw put of the wrong type fails as it would on the delegate
+        // Checks the bridge cast.
         Sink rawSink = sink;
         assertThrows(ClassCastException.class, () -> rawSink.put(42));
         assertEquals("x", narrow.last);
@@ -623,7 +623,7 @@ class ProxyClassGeneratorTest {
 
     @Test
     void sealedInterfacesAreNeverListedByTheProxy() {
-        // the primary interface has to be listed, and a sealed one never permits the proxy
+        // Checks the primary interface.
         assertThrows(IllegalArgumentException.class, () -> new ProxyClassGenerator<>(Circle.class, fresh("Circle"), Shape.class));
         // one met on the way is skipped and the interfaces around it kept
         Branch branch = new ProxyClassGenerator<>(Tree.class, fresh("Tree"), Branch.class).generateWrapper(new Tree());
@@ -636,19 +636,19 @@ class ProxyClassGeneratorTest {
 
     @Test
     void typesThisPackageCannotAccess() throws Throwable {
-        // a package-private interface of the delegate is not implemented, but its methods are still forwarded
+        // Checks a package private interface.
         Elsewhere.Visible both = new ProxyClassGenerator<>(Elsewhere.Both.class, fresh("Both"), Elsewhere.Visible.class).generateWrapper(new Elsewhere.Both());
         assertEquals(1, both.visible());
         assertFalse(Elsewhere.hidden().isInstance(both));
         assertEquals(2, both.getClass().getMethod("hidden").invoke(both));
-        // calls name the delegate, so a default declared only by an inaccessible interface still links
+        // Checks an inaccessible default.
         Elsewhere.Exposed through = new ProxyClassGenerator<>(Elsewhere.Through.class, fresh("Through"), Elsewhere.Exposed.class).generateWrapper(new Elsewhere.Through());
         assertEquals(4, Elsewhere.callHidden(through));
         assertEquals(6, Elsewhere.callFallback(through));
         // an inaccessible delegate or primary interface fails up front rather than at the first call
         assertThrows(IllegalArgumentException.class, () -> raw(Elsewhere.secret(), fresh("Secret"), Elsewhere.Visible.class));
         assertThrows(IllegalArgumentException.class, () -> raw(Elsewhere.Both.class, fresh("HiddenPrimary"), Elsewhere.hidden()));
-        // package-private is enough within this runtime package, but not from the copy's
+        // Checks package access.
         assertEquals(2, new ProxyClassGenerator<>(Local.class, fresh("Local"), IntOp.class).generateWrapper(new Local()).apply(1));
         assertThrows(IllegalArgumentException.class, () -> bare(Local.class, IntOp.class));
     }
@@ -697,14 +697,14 @@ class ProxyClassGeneratorTest {
         for (String bad : new String[]{"", "1abc", "a.b", "a/b", "a;b", "a[b", "a b", "a-b", "<init>", "\uD800x", "x\uDC00"}) {
             assertThrows(IllegalArgumentException.class, () -> raw(Impl.class, bad, Greeter.class), bad);
         }
-        // a dollar sign, an underscore, non-Latin letters and a letter outside the BMP are all identifiers
+        // Checks unusual identifiers.
         for (String stem : new String[]{"$", "_", "a$b", "Prøxy", "Δ", "𝐀"}) {
             String name = fresh(stem);
             Greeter proxy = new ProxyClassGenerator<>(Impl.class, name, Greeter.class).generateWrapper(new Impl());
             assertEquals(ProxyClassGenerator.class.getPackageName() + "." + name, proxy.getClass().getName());
             assertEquals("hi y", proxy.greet("y"));
         }
-        // a class name is one constant pool string of at most 65535 bytes, counted in modified UTF-8
+        // Checks the name length.
         assertThrows(IllegalArgumentException.class, () -> raw(Impl.class, "L".repeat(70_000), Greeter.class));
         assertThrows(IllegalArgumentException.class, () -> raw(Impl.class, "ø".repeat(33_000), Greeter.class));
     }
@@ -714,7 +714,7 @@ class ProxyClassGeneratorTest {
         String name = fresh("Once");
         new ProxyClassGenerator<>(Impl.class, name, Greeter.class);
         assertInstanceOf(LinkageError.class, assertThrows(RuntimeException.class, () -> new ProxyClassGenerator<>(Impl.class, name, Greeter.class)).getCause());
-        // so does a class already loaded in the package, which keeps working
+        // Checks a loaded class.
         assertInstanceOf(LinkageError.class, assertThrows(RuntimeException.class, () -> new ProxyClassGenerator<>(Impl.class, "ProxyClassGenerator", Greeter.class)).getCause());
         assertEquals("hi z", new ProxyClassGenerator<>(Impl.class, fresh("After"), Greeter.class).generateWrapper(new Impl()).greet("z"));
     }
@@ -724,10 +724,10 @@ class ProxyClassGeneratorTest {
         Class<?> foreign = new FreshClasses(Plain.class).load(Plain.class);
         assertNotSame(Plain.class, foreign);
         assertTrue(Elsewhere.Visible.class.isAssignableFrom(foreign));
-        // the proxy names the delegate, which its own loader finds as the original class
+        // Checks the delegate loader.
         String name = fresh("Foreign");
         assertThrows(IllegalArgumentException.class, () -> raw(foreign, name, Elsewhere.Visible.class));
-        // refused before anything was defined, so the name is still free
+        // Checks the name is free.
         assertEquals(8, new ProxyClassGenerator<>(Plain.class, name, Elsewhere.Visible.class).generateWrapper(new Plain()).visible());
     }
 
@@ -743,7 +743,7 @@ class ProxyClassGeneratorTest {
         first.nothing();
         second.nothing();
         assertEquals(2, impl.calls);
-        // a proxy around null would only fail later, on whichever thread first called through it
+        // Checks a null delegate.
         assertEquals("delegate", assertThrows(NullPointerException.class, () -> generator.generateWrapper(null)).getMessage());
         ProxyClassGenerator<Object, Greeter> rawGenerator = (ProxyClassGenerator) generator;
         assertInstanceOf(ClassCastException.class, assertThrows(RuntimeException.class, () -> rawGenerator.generateWrapper("not an Impl")).getCause());

@@ -41,7 +41,7 @@ class CompatMixinsTest {
         Mixins.set(DynamicModels.class, "unbaked", null);
     }
 
-    // A provider whose loader refuses everything, so only what a test puts in it resolves
+    // Installs a provider that refuses everything.
     private static UnbakedModelProvider installUnbaked() throws Exception {
         ICustomModelLoader refusing = mock(ICustomModelLoader.class);
         when(refusing.accepts(any())).thenReturn(true);
@@ -84,7 +84,7 @@ class CompatMixinsTest {
         TconTextureExistence.clear();
         String key = "tconstruct:items/pickaxe/iron";
 
-        // The first probe runs; its answer is remembered as it returns
+        // Checks the first probe.
         CallbackInfoReturnable<Boolean> first = Mixins.cir();
         Mixins.call(TconTextureCreatorMixin.class, "coarctatio$answerFromCache", key, first);
         assertFalse(first.isCancelled());
@@ -148,7 +148,7 @@ class CompatMixinsTest {
         Map<Object, Object> stateModels = new HashMap<>();
         ResourceLocation block = new ResourceLocation("ucw:block/stone_1");
         IModel model = mock(IModel.class);
-        // A write lands in the provider, not in the loader's map
+        // Checks the write lands in the provider.
         assertNull(Mixins.call(view, "coarctatio$putDynamic", stateModels, block, model));
         assertTrue(stateModels.isEmpty());
         assertSame(model, Mixins.call(view, "coarctatio$getDynamic", stateModels, block));

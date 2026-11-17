@@ -20,10 +20,10 @@ import java.util.stream.LongStream;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ColorU8Test {
-    // every 32-bit pattern, as a long so the range does not overflow
+    // Every 32 bit pattern.
     private static final long ALL_BITS = 0xFFFF_FFFFL;
 
-    // floats outside, on and just inside the 0..1 contract
+    // Floats around 0 to 1.
     private static final float[] EDGE_FLOATS = {
             0f, -0f, 1f, 0.5f, Float.MIN_VALUE, -Float.MIN_VALUE, Float.MIN_NORMAL, -Float.MIN_NORMAL, Math.nextDown(1f),
             Math.nextUp(1f), 256 / 255f, 1.0039f, 1.5f, 2f, -0.1f, -1f, Float.MAX_VALUE, -Float.MAX_VALUE,
@@ -36,10 +36,10 @@ class ColorU8Test {
             0x800000FF, 0x7FFFFF00, 0xDEADBEEF, 0x12345678
     };
 
-    // one uninstrumented copy of ColorU8 and the sweeps: FreshClasses defines them without a code source, so JaCoCo's shared probe writes do not serialise the threads
+    // Uninstrumented copy of the class and sweeps.
     private static final FreshClasses UNINSTRUMENTED = new FreshClasses(ColorU8.class, Sweeps.class);
 
-    // runs one exhaustive sweep over from..to on the uninstrumented copy and returns its first failing bit pattern, or -1
+    // Runs one sweep on the copy.
     private static long sweep(String name, long from, long to) throws ReflectiveOperationException {
         Class<?> copy = UNINSTRUMENTED.load(ColorU8.class);
         assertNotSame(ColorU8.class, copy);
@@ -47,9 +47,9 @@ class ColorU8Test {
         return (long) UNINSTRUMENTED.load(Sweeps.class).getMethod(name, long.class, long.class).invoke(null, from, to);
     }
 
-    // the exhaustive checks; public so the fresh copy is reachable reflectively, and nothing here touches the outer class
+    // Exhaustive checks.
     public static final class Sweeps {
-        // reference model, worked in double: f * 255 is exact in double, so one cast is the float multiply; then truncate and clamp, NaN 0
+        // Expected float to byte.
         public static int modelByte(float value) {
             if (!(value > 0f)) {
                 return 0;
@@ -58,12 +58,12 @@ class ColorU8Test {
             return product >= 255d ? 255 : (int) Math.floor(product);
         }
 
-        // reference model: the low byte divided by 255, correctly rounded by IEEE division
+        // Expected byte to float.
         public static float modelFloat(int value) {
             return (value & 0xFF) / 255f;
         }
 
-        // first bit pattern in from..to that fails, scanning 65536-pattern blocks in parallel, or -1
+        // Returns the first failing pattern or -1.
         private static long first(long from, long to, LongPredicate fails) {
             return LongStream.rangeClosed(from >>> 16, to >>> 16).parallel()
                     .map(block -> {
@@ -87,7 +87,7 @@ class ColorU8Test {
             });
         }
 
-        // non-negative float bit patterns sort like their values, so no step may lower the byte
+        // Checks the order.
         public static long byteDrop(long from, long to) {
             return first(from, to, bits -> ColorU8.normalizedFloatToByte(Float.intBitsToFloat((int) bits))
                     < ColorU8.normalizedFloatToByte(Float.intBitsToFloat((int) bits - 1)));
@@ -120,7 +120,7 @@ class ColorU8Test {
     void interfaceHoldsOnlyItsFourConstantsAndTwoStaticConversions() {
         assertTrue(ColorU8.class.isInterface());
         assertTrue(Modifier.isPublic(ColorU8.class.getModifiers()));
-        // JaCoCo adds synthetic members to the loaded class; only the declared ones count
+        // Checks the declared members.
         List<Field> fields = Arrays.stream(ColorU8.class.getDeclaredFields()).filter(f -> !f.isSynthetic()).toList();
         assertEquals(List.of("COMPONENT_BITS", "COMPONENT_MASK", "COMPONENT_RANGE", "COMPONENT_RANGE_INVERSE"),
                 fields.stream().map(Field::getName).sorted().toList());
@@ -151,7 +151,7 @@ class ColorU8Test {
         assertEquals(0, ColorU8.normalizedFloatToByte(-0f));
         assertEquals(255, ColorU8.normalizedFloatToByte(1f));
         assertEquals(127, ColorU8.normalizedFloatToByte(0.5f));
-        // only 1.0 and above reach 255, as vanilla's (int) (f * 255); pinned so a switch to rounding is deliberate
+        // Checks the 255 boundary.
         assertEquals(254, ColorU8.normalizedFloatToByte(Math.nextDown(1f)));
         assertEquals(255, ColorU8.normalizedFloatToByte(Math.nextUp(1f)));
         assertEquals(0, ColorU8.normalizedFloatToByte(Float.MIN_VALUE));
@@ -166,7 +166,7 @@ class ColorU8Test {
 
     @Test
     void outOfRangeFloatsClampInsteadOfWrapping() {
-        // just past 1.0 wrapped to 0 (black / fully occluded), 1.5 to 126, -0.1 to 231
+        // Checks the old wrap.
         assertEquals(255, ColorU8.normalizedFloatToByte(256 / 255f));
         assertEquals(255, ColorU8.normalizedFloatToByte(1.5f));
         assertEquals(255, ColorU8.normalizedFloatToByte(2f));
@@ -188,7 +188,7 @@ class ColorU8Test {
         assertEquals(0, ColorU8.normalizedFloatToByte(Float.NaN));
         assertEquals(0, ColorU8.normalizedFloatToByte(Float.intBitsToFloat(0x7F800001)));
         assertEquals(0, ColorU8.normalizedFloatToByte(Float.intBitsToFloat(0xFFFFFFFF)));
-        // every NaN payload and sign, quiet or signalling
+        // Checks every NaN.
         assertEquals(-1, sweep("byteMismatch", 0x7F800001L, 0x7FFFFFFFL));
         assertEquals(-1, sweep("byteMismatch", 0xFF800001L, 0xFFFFFFFFL));
     }
@@ -238,7 +238,7 @@ class ColorU8Test {
 
     @Test
     void outOfRangeIntsKeepOnlyTheirLowByte() {
-        // 256 gave 1.0039 and -1 a negative float; ints keep their low byte like ColorABGR.pack
+        // Checks int input.
         assertEquals(0f, ColorU8.byteToNormalizedFloat(256));
         assertEquals(1f, ColorU8.byteToNormalizedFloat(-1));
         assertEquals(1f, ColorU8.byteToNormalizedFloat(0x1FF));
@@ -278,7 +278,7 @@ class ColorU8Test {
 
     @Test
     void quantisingAFloatTwiceChangesNothing() throws ReflectiveOperationException {
-        // float -> byte -> float lands on a value that converts back to the same byte, for every float
+        // Checks the round trip.
         long drift = sweep("quantiseDrift", 0, ALL_BITS);
         assertEquals(-1, drift, () -> "drifted at " + Float.intBitsToFloat((int) drift));
     }

@@ -4,6 +4,8 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -156,20 +158,32 @@ public final class GlslPreprocessor {
             return line;
         }
         String directive = stripComment(trimmed.substring(1)).trim();
-        if (directive.startsWith("ifdef ") || directive.startsWith("ifndef ")) {
-            boolean defined = defines.containsKey(directive.substring(directive.indexOf(' ') + 1).trim());
-            boolean taken = allActive(stack) && (directive.startsWith("ifdef ") == defined);
-            stack.push(new boolean[]{taken, taken});
-        } else if (directive.equals("else")) {
-            boolean[] frame = stack.poll();
-            boolean alreadyTaken = frame != null && frame[1];
-            stack.push(new boolean[]{!alreadyTaken && allActive(stack), true});
-        } else if (directive.equals("endif")) {
-            stack.poll();
-        } else if (directive.startsWith("define ") && allActive(stack)) {
-            PropertiesPreprocessor.recordDefine(directive, defines);
-        } else if (directive.startsWith("undef ") && allActive(stack)) {
-            defines.remove(directive.substring("undef ".length()).trim());
+        // Reads the directive keyword.
+        String keyword = PropertiesPreprocessor.directiveKeyword(directive);
+        String argument = directive.substring(keyword.length()).trim();
+        switch (keyword) {
+            case "ifdef", "ifndef" -> {
+                boolean taken = allActive(stack) && (keyword.equals("ifdef") == defines.containsKey(argument));
+                stack.push(new boolean[]{taken, taken});
+            }
+            case "else" -> {
+                boolean[] frame = stack.poll();
+                boolean alreadyTaken = frame != null && frame[1];
+                stack.push(new boolean[]{!alreadyTaken && allActive(stack), true});
+            }
+            case "endif" -> stack.poll();
+            case "define" -> {
+                if (allActive(stack) && !argument.isEmpty()) {
+                    PropertiesPreprocessor.recordDefine("define " + argument, defines);
+                }
+            }
+            case "undef" -> {
+                if (allActive(stack)) {
+                    defines.remove(argument);
+                }
+            }
+            default -> {
+            }
         }
         return line;
     }
@@ -238,7 +252,7 @@ public final class GlslPreprocessor {
         return rewriteIntegerSamplerLookups(name, hoistExtensionDirectives(source));
     }
 
-    // Moves extension lines to just after the version line.
+    // Moves extension lines that follow code up to just after the version line.
     public static String hoistExtensionDirectives(String source) {
         if (source == null || !source.contains("#extension")) {
             return source;
@@ -250,9 +264,10 @@ public final class GlslPreprocessor {
             return source;
         }
 
+        boolean[] skipped = skippedLines(lines);
         boolean misplaced = false;
         for (int i = firstRealToken; i < lines.length; i++) {
-            if (EXTENSION_PATTERN.matcher(lines[i]).matches()) {
+            if (!skipped[i] && EXTENSION_PATTERN.matcher(lines[i]).matches()) {
                 misplaced = true;
                 break;
             }
@@ -264,8 +279,10 @@ public final class GlslPreprocessor {
         List<String> directives = new ArrayList<>();
         List<String> kept = new ArrayList<>(lines.length);
         int versionLine = -1;
-        for (String line : lines) {
-            if (EXTENSION_PATTERN.matcher(line).matches()) {
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
+            // Moves an extension line that follows code and sits in a live branch.
+            if (i >= firstRealToken && !skipped[i] && EXTENSION_PATTERN.matcher(line).matches()) {
                 String directive = line.trim();
                 if (!directives.contains(directive)) {
                     directives.add(directive);
@@ -281,6 +298,124 @@ public final class GlslPreprocessor {
 
         kept.addAll(versionLine < 0 ? 0 : versionLine + 1, directives);
         return String.join("\n", kept);
+    }
+
+    // Returns for each line whether it sits in a branch the driver certainly skips.
+    static boolean[] skippedLines(String[] lines) {
+        boolean[] skipped = new boolean[lines.length];
+        Map<String, String> defines = new HashMap<>();
+        // Macros defined or undefined in a branch that may or may not be taken
+        Set<String> uncertain = new HashSet<>();
+        // Stack of branch states and whether an earlier branch of the chain was taken.
+        Deque<int[]> stack = new ArrayDeque<>();
+        boolean inBlockComment = false;
+        for (int i = 0; i < lines.length; i++) {
+            boolean commented = inBlockComment;
+            inBlockComment = advanceBlockComment(lines[i], inBlockComment);
+            int state = branchState(stack);
+            skipped[i] = state == 0;
+            String trimmed = lines[i].trim();
+            if (commented || !trimmed.startsWith("#")) {
+                continue;
+            }
+            String directive = stripComment(trimmed.substring(1)).trim();
+            String keyword = PropertiesPreprocessor.directiveKeyword(directive);
+            String argument = directive.substring(keyword.length()).trim();
+            switch (keyword) {
+                case "if" -> pushBranch(stack, 0, evaluate(argument, defines, uncertain));
+                case "ifdef", "ifndef" -> {
+                    int defined = isDefined(argument, defines, uncertain);
+                    pushBranch(stack, 0, keyword.equals("ifdef") || defined < 0 ? defined : 1 - defined);
+                }
+                case "elif" -> pushBranch(stack, earlierTaken(stack.poll()), evaluate(argument, defines, uncertain));
+                case "else" -> pushBranch(stack, earlierTaken(stack.poll()), 1);
+                case "endif" -> stack.poll();
+                case "define", "undef" -> {
+                    String name = macroName(argument);
+                    if (state == 0 || name.isEmpty()) {
+                        break;
+                    }
+                    if (state < 0) {
+                        uncertain.add(name);
+                    } else {
+                        uncertain.remove(name);
+                        if (keyword.equals("define")) {
+                            PropertiesPreprocessor.recordDefine("define " + argument, defines);
+                        } else {
+                            defines.remove(name);
+                        }
+                    }
+                }
+                default -> {
+                }
+            }
+        }
+        return skipped;
+    }
+
+    // Returns the macro name at the start of a define or undef argument
+    private static String macroName(String argument) {
+        Matcher name = IDENTIFIER.matcher(argument);
+        return name.lookingAt() ? name.group() : "";
+    }
+
+    // Returns 1 or 0 or -1 for a macro that is defined or absent or unknown.
+    private static int isDefined(String name, Map<String, String> defines, Set<String> uncertain) {
+        if (uncertain.contains(name) || (!defines.containsKey(name) && isDriverMacro(name))) {
+            return -1;
+        }
+        return defines.containsKey(name) ? 1 : 0;
+    }
+
+    // Returns whether the driver may define the macro itself.
+    private static boolean isDriverMacro(String name) {
+        return name.startsWith("GL_") || name.startsWith("__");
+    }
+
+    // Returns 1 or 0 or -1 for a condition that is true or false or unknown.
+    private static int evaluate(String expression, Map<String, String> defines, Set<String> uncertain) {
+        Matcher identifiers = IDENTIFIER.matcher(expression);
+        while (identifiers.find()) {
+            String name = identifiers.group();
+            if (uncertain.contains(name) || (!defines.containsKey(name) && isDriverMacro(name))) {
+                return -1;
+            }
+        }
+        Boolean value = PropertiesPreprocessor.tryEvaluateBooleanExpression(expression, defines).orElse(null);
+        return value == null ? -1 : (value ? 1 : 0);
+    }
+
+    // Pushes the next branch of a chain.
+    private static void pushBranch(Deque<int[]> stack, int earlier, int value) {
+        int state = earlier == 1 ? 0 : (earlier == 0 ? value : (value == 0 ? 0 : -1));
+        stack.push(new int[]{state, either(earlier, state)});
+    }
+
+    // Returns whether any branch before the next one of a chain was taken
+    private static int earlierTaken(int[] frame) {
+        return frame == null ? 0 : either(frame[0], frame[1]);
+    }
+
+    // Returns the tri-state or of two branch states
+    private static int either(int a, int b) {
+        if (a == 1 || b == 1) {
+            return 1;
+        }
+        return a == -1 || b == -1 ? -1 : 0;
+    }
+
+    // Returns 0 when an enclosing branch is skipped or -1 when one is unknown and 1 otherwise.
+    private static int branchState(Deque<int[]> stack) {
+        int state = 1;
+        for (int[] frame : stack) {
+            if (frame[0] == 0) {
+                return 0;
+            }
+            if (frame[0] == -1) {
+                state = -1;
+            }
+        }
+        return state;
     }
 
     private static final Map<String, String> LEGACY_TEXTURE_LOOKUPS;

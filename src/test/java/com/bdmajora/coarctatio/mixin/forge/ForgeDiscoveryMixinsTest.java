@@ -94,16 +94,16 @@ class ForgeDiscoveryMixinsTest {
         assertTrue(cir.isCancelled());
         assertEquals(new ResourceLocation("example", "thing"), cir.getReturnValue());
 
-        // A bare name takes the active mod's id, and minecraft when there is none
+        // Checks a bare name.
         CallbackInfoReturnable<ResourceLocation> bare = Mixins.cir();
         Mixins.call(GameDataMixin.class, "coarctatio$quietPrefixCheck", "thing", true, bare);
         assertEquals(new ResourceLocation("minecraft", "thing"), bare.getReturnValue());
 
-        // The namespace is lower-cased, as vanilla does
+        // Checks the namespace case.
         CallbackInfoReturnable<ResourceLocation> upper = Mixins.cir();
         Mixins.call(GameDataMixin.class, "coarctatio$quietPrefixCheck", "Example:Thing", false, upper);
         assertEquals("example", upper.getReturnValue().getNamespace());
-        // The path is lower-cased with it, which is what vanilla's own check does
+        // Checks the path case.
         assertEquals("thing", upper.getReturnValue().getPath());
     }
 
@@ -118,7 +118,7 @@ class ForgeDiscoveryMixinsTest {
         Map<String, byte[]> record = Mixins.get(discoverer, "coarctatio$record");
         assertNotNull(record);
 
-        // The entry name is caught on the way past, so the parser knows which class it is building
+        // Mocks the jar file.
         JarFile jarFile = mock(JarFile.class);
         ZipEntry entry = new ZipEntry("com/example/ExampleMod.class");
         InputStream classBytes = new ByteArrayInputStream(classFile());
@@ -126,19 +126,19 @@ class ForgeDiscoveryMixinsTest {
         assertSame(classBytes, Mixins.call(discoverer, "coarctatio$rememberEntry", jarFile, entry));
         assertEquals("com/example/ExampleMod.class", Mixins.get(discoverer, "coarctatio$entryName"));
 
-        // First pass: the class is parsed and its result recorded
+        // Parses the class.
         ASMModParser scanned = Mixins.call(discoverer, "coarctatio$parserFromCache", new ByteArrayInputStream(classFile()));
         assertNotNull(scanned);
         assertNotNull(ModScanCache.encode(scanned), "the scan result has to be encodable");
         assertTrue(record.containsKey("com/example/ExampleMod.class"));
 
-        // Second pass: the recorded result is rebuilt and the stream left unread
+        // Rebuilds the recorded result.
         InputStream untouched = new ByteArrayInputStream(classFile());
         ASMModParser served = Mixins.call(discoverer, "coarctatio$parserFromCache", untouched);
         assertNotNull(served);
         assertEquals(classFile().length, untouched.available());
 
-        // With no record, or no entry name, every class is parsed as before
+        // Checks the uncached path.
         Mixins.set(discoverer, "coarctatio$record", null);
         assertNotNull(Mixins.call(discoverer, "coarctatio$parserFromCache", new ByteArrayInputStream(classFile())));
         Mixins.set(discoverer, "coarctatio$record", new HashMap<String, byte[]>());
@@ -146,7 +146,7 @@ class ForgeDiscoveryMixinsTest {
         assertNotNull(Mixins.call(discoverer, "coarctatio$parserFromCache", new ByteArrayInputStream(classFile())));
     }
 
-    // A minimal class file the ASM the discoverer bundles can read, which this suite's own classes are too new for
+    // Returns a minimal class file.
     private static byte[] classFile() {
         return new net.bytebuddy.ByteBuddy(net.bytebuddy.ClassFileVersion.JAVA_V8)
                 .subclass(Object.class)

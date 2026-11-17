@@ -66,7 +66,7 @@ public abstract class ExplosionMixin {
     @Final
     private Map<EntityPlayer, Vec3d> playerKnockbackMap;
 
-    // Replaces the whole method doExplosionA.
+    // Vanilla doExplosionA reading blocks through a section cursor and each block once per ray
     @Overwrite
     public void doExplosionA() {
         Set<BlockPos> affected = new HashSet<>();
@@ -98,43 +98,34 @@ public abstract class ExplosionMixin {
                     int lastX = Integer.MIN_VALUE;
                     int lastY = Integer.MIN_VALUE;
                     int lastZ = Integer.MIN_VALUE;
-
+                    // Resistance of the block the ray is in.
+                    float lastResistance = 0.0F;
                     for (; energy > 0.0F; energy -= 0.22500001F) {
                         int blockX = MathHelper.floor(stepX);
                         int blockY = MathHelper.floor(stepY);
                         int blockZ = MathHelper.floor(stepZ);
-
                         if (blockX != lastX || blockY != lastY || blockZ != lastZ) {
                             lastX = blockX;
                             lastY = blockY;
                             lastZ = blockZ;
-
                             IBlockState state = cursor.getBlockState(blockX, blockY, blockZ);
-
-                            BlockPos pos = null;
-
+                            BlockPos pos = new BlockPos(blockX, blockY, blockZ);
+                            lastResistance = 0.0F;
                             if (state.getMaterial() != Material.AIR) {
-                                pos = new BlockPos(blockX, blockY, blockZ);
-
                                 float resistance = this.exploder != null
                                         ? this.exploder.getExplosionResistance((Explosion) (Object) this, this.world, pos, state)
                                         : state.getBlock().getExplosionResistance(this.world, pos, null, (Explosion) (Object) this);
-
-                                energy -= (resistance + 0.3F) * 0.3F;
+                                lastResistance = (resistance + 0.3F) * 0.3F;
                             }
-
-                            if (energy > 0.0F) {
-                                if (pos == null) {
-                                    pos = new BlockPos(blockX, blockY, blockZ);
-                                }
-
-                                if (this.exploder == null
-                                        || this.exploder.canExplosionDestroyBlock((Explosion) (Object) this, this.world, pos, state, energy)) {
-                                    affected.add(pos);
-                                }
+                            energy -= lastResistance;
+                            // Breaks the block on the first step inside it that still has energy.
+                            if (energy > 0.0F && (this.exploder == null
+                                    || this.exploder.canExplosionDestroyBlock((Explosion) (Object) this, this.world, pos, state, energy))) {
+                                affected.add(pos);
                             }
+                        } else {
+                            energy -= lastResistance;
                         }
-
                         stepX += dirX * 0.30000001192092896D;
                         stepY += dirY * 0.30000001192092896D;
                         stepZ += dirZ * 0.30000001192092896D;

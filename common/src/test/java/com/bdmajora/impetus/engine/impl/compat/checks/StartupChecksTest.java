@@ -252,7 +252,7 @@ class StartupChecksTest {
         AtomicInteger forwarded = new AtomicInteger();
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> forwarded.incrementAndGet());
         RuntimeException broken = new RuntimeException() {
-            // Throws instead of returning a message
+            // Throws instead of returning a message.
             @Override
             public String getMessage() {
                 throw new IllegalStateException("message unavailable");

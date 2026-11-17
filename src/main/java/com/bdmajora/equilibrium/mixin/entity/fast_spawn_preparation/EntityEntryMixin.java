@@ -50,7 +50,7 @@ public abstract class EntityEntryMixin {
         }
     }
 
-    // Handles private lookup.
+    // Returns a lookup with private access to the entity class or the default one.
     private static MethodHandles.Lookup privateLookup(Class<?> target) throws ReflectiveOperationException {
         try {
             return MethodHandles.privateLookupIn(target, MethodHandles.lookup());

@@ -41,13 +41,13 @@ class QuadPrimitiveTypeTest {
     @Test
     void sortedBuffersFollowTheSortState() {
         ByteBuffer buffer = indices(2, QuadPrimitiveType.TRIANGULATED);
-        // Nothing to sort by: vertex-buffer order
+        // Checks nothing to sort by.
         QuadPrimitiveType.TRIANGULATED.generateSortedIndexBuffer(buffer, 2, null, 0, 0, 0);
         assertEquals(0, buffer.getInt(0));
         QuadPrimitiveType.TRIANGULATED.generateSortedIndexBuffer(buffer, 2, SortState.NONE, 0, 0, 0);
         assertEquals(4, buffer.getInt(24));
 
-        // Two stacked quads get one order at build time, whatever the camera
+        // Checks stacked quads.
         SortState stacked = Quads.record(Quads.facingY(0, 0, 1, 0, 1), Quads.facingY(4, 0, 1, 0, 1)).getSortState();
         assertInstanceOf(SortState.Static.class, stacked);
         QuadPrimitiveType.TRIANGULATED.generateSortedIndexBuffer(buffer, 2, stacked, 0, 100, 0);
@@ -62,7 +62,7 @@ class QuadPrimitiveTypeTest {
         QuadPrimitiveType.TRIANGULATED.generateSortedIndexBuffer(buffer, 2, dynamic, 0.5f, -10f, 0.5f);
         assertEquals(0, buffer.getInt(0));
 
-        // A tree streams its order straight into the buffer, and must match the buffer it is given
+        // Checks the tree output.
         PartitionTree tree = (PartitionTree) Quads.record(Quads.straddling(0)).getSortState();
         QuadPrimitiveType.TRIANGULATED.generateSortedIndexBuffer(buffer, 2, tree, 0, 0, 0.5f);
         assertEquals(4, buffer.getInt(0));

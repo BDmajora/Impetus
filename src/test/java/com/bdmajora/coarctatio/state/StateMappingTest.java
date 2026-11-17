@@ -47,7 +47,7 @@ class StateMappingTest {
         Mixins.set(CoarctatioConfig.class, "instance", null);
     }
 
-    // Builds one packed state per vanilla state, the way BlockStateContainerMixin does during block registration
+    // Packs every vanilla state of a block.
     private static Map<Map<IProperty<?>, Comparable<?>>, CoarctatioBlockState> pack(Block block) {
         BlockStateContainer container = block.getBlockState();
         PropertyValueMapper mapper = PropertyValueMapper.create(container, block);
@@ -76,7 +76,7 @@ class StateMappingTest {
         List<IBlockState> states = new ArrayList<>(Blocks.OAK_FENCE.getBlockState().getValidStates());
         int first = mapper.register(states.get(0));
         assertSame(states.get(0), mapper.byValue(first));
-        // Two states never share an index, and a second registration of one is a corrupted layout
+        // Checks a second registration.
         int second = mapper.register(states.get(1));
         assertNotEquals(first, second);
         assertThrows(IllegalStateException.class, () -> mapper.register(states.get(0)));
@@ -98,10 +98,10 @@ class StateMappingTest {
         int north = mapper.withValue(packed, BlockFence.NORTH, Boolean.TRUE);
         assertNotEquals(packed, north);
         assertEquals(packed, mapper.withValue(north, BlockFence.NORTH, Boolean.FALSE));
-        // A property this block never declared, or a value it does not allow, is refused rather than guessed at
+        // Checks an undeclared property or value.
         assertEquals(-1, mapper.withValue(packed, BlockHorizontal.FACING, EnumFacing.NORTH));
         assertEquals(-1, mapper.withValue(packed, BlockFence.NORTH, "yes"));
-        // Nothing is registered at that index yet, so it reads as a hole
+        // Checks an empty index.
         assertNull(mapper.byValue(north));
     }
 
@@ -115,13 +115,13 @@ class StateMappingTest {
         assertNotNull(keys);
         assertEquals(properties.size(), keys.length);
         assertSame(keys, mapper.sharedKeys(properties));
-        // A map of a different shape cannot share the array, so the caller keeps Guava's own map
+        // Checks a map of a different shape.
         assertNull(mapper.sharedKeys(ImmutableMap.of()));
     }
 
     @Test
     void aBlockIsLeftOnVanillaStatesWhenItCannotBePacked() {
-        // No block at all, and a blacklisted implementation class
+        // Checks a missing and a blacklisted block.
         assertNull(PropertyValueMapper.create(Blocks.OAK_FENCE.getBlockState(), null));
         CoarctatioConfig.get().blockStateBlacklist = new String[] {"net.minecraft.block.BlockFence"};
         assertNull(PropertyValueMapper.create(Blocks.OAK_FENCE.getBlockState(), Blocks.OAK_FENCE));
@@ -130,13 +130,13 @@ class StateMappingTest {
         // A property with no values at all cannot be indexed
         assertNull(PropertyValueMapper.create(containerOf(propertyWithValues()), Blocks.STONE));
 
-        // More than thirty bits of properties, and a layout whose state array would be too large
+        // Checks too many properties.
         assertNull(PropertyValueMapper.create(containerOf(booleans(31)), Blocks.STONE));
         assertNull(PropertyValueMapper.create(containerOf(booleans(21)), Blocks.STONE));
         assertTrue(PropertyValueMapper.statistics().contains("left on vanilla states"));
     }
 
-    // A container that only has to answer getProperties, so a layout can be tried without building its states
+    // Returns a container that only answers getProperties.
     private static BlockStateContainer containerOf(List<IProperty<?>> properties) {
         BlockStateContainer container = mock(BlockStateContainer.class);
         when(container.getProperties()).thenReturn(properties);
@@ -160,14 +160,14 @@ class StateMappingTest {
 
     @Test
     void eachPropertyTypeGetsTheCheapestIndexingItCanUse() {
-        // Booleans index directly, enums by ordinal when every constant is allowed
+        // Checks booleans and enums.
         PropertyValueMapper booleans = PropertyValueMapper.create(Blocks.OAK_FENCE.getBlockState(), Blocks.OAK_FENCE);
         assertEquals(0, booleans.withValue(0, BlockFence.NORTH, Boolean.FALSE));
         PropertyValueMapper ordinals = PropertyValueMapper.create(Blocks.PISTON.getBlockState(), Blocks.PISTON);
         assertNotNull(ordinals);
         assertTrue(ordinals.withValue(0, net.minecraft.block.BlockDirectional.FACING, EnumFacing.UP) >= 0);
 
-        // A contiguous integer range is its own index; a filtered enum falls back to an explicit value map
+        // Checks integer ranges and filtered enums.
         PropertyValueMapper integers = PropertyValueMapper.create(Blocks.WATER.getBlockState(), Blocks.WATER);
         assertNotNull(integers);
         assertTrue(integers.withValue(0, net.minecraft.block.BlockLiquid.LEVEL, 7) > 0);
@@ -183,7 +183,7 @@ class StateMappingTest {
     void anIntegerRangeWithHolesIsNotUsedAsItsOwnIndex() throws Exception {
         Class<?> type = Class.forName("com.bdmajora.coarctatio.state.PropertyValueMapper$ContiguousIntegerEntry");
         IProperty<?> property = PropertyInteger.create("level", 0, 15);
-        // Values that are not integers, or that skip one, cannot be indexed by subtraction
+        // Checks values that cannot be indexed.
         assertNull(Mixins.call(type, "tryCreate", property, Arrays.asList("a", "b")));
         assertNull(Mixins.call(type, "tryCreate", property, Arrays.asList(1, 3)));
         assertNotNull(Mixins.call(type, "tryCreate", property, Arrays.asList(1, 2, 3)));
@@ -203,7 +203,7 @@ class StateMappingTest {
         // And back again is the registered instance it started from
         assertSame(state, north.withProperty(BlockFence.NORTH, Boolean.FALSE));
 
-        // The messages match vanilla's, since mods match on them
+        // Checks the messages match vanilla's.
         assertThrows(IllegalArgumentException.class,
                 () -> state.withProperty(BlockHorizontal.FACING, EnumFacing.NORTH));
         assertThrows(IllegalArgumentException.class,
@@ -231,7 +231,7 @@ class StateMappingTest {
         assertTrue(CompactPropertyMaps.compacted() > 0);
         assertTrue(CompactPropertyMaps.statistics().contains("compacted"));
 
-        // Without a shared key array there is nothing to share, so Guava's own map is kept
+        // Checks a map without shared keys.
         ImmutableMap<IProperty<?>, Comparable<?>> original =
                 ImmutableMap.copyOf(Blocks.OAK_FENCE.getDefaultState().getProperties());
         assertSame(original, CompactPropertyMaps.compact(null, original));

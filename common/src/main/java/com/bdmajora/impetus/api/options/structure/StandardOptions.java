@@ -16,8 +16,7 @@ public final class StandardOptions {
         return OptionIdentifier.intern(modId, path).cast();
     }
 
-    // Group ids
-    // FLUIDLOGGING shares its id with the page of the same name
+    // Group ids with FLUIDLOGGING shared by the page of the same name.
     public static final class Group {
         public static final OptionIdentifier<Void> RENDERING = id(MINECRAFT_MOD_ID, "rendering");
         public static final OptionIdentifier<Void> WINDOW = id(MINECRAFT_MOD_ID, "window");

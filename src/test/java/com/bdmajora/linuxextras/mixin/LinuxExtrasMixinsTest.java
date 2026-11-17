@@ -59,7 +59,7 @@ class LinuxExtrasMixinsTest {
             CallbackInfo link = Mixins.ci();
             Mixins.call(screen, "linuxextras$openWithXdg", URI.create("https://mcparks.us/audio?user=BDMajora"), link);
             assertTrue(link.isCancelled());
-            // xdg-open missing or switched off: AWT's own attempt still runs and logs
+            // Checks a missing or disabled xdg-open.
             CallbackInfo unopenedLink = Mixins.ci();
             Mixins.call(screen, "linuxextras$openWithXdg", URI.create("https://example.com"), unopenedLink);
             assertFalse(unopenedLink.isCancelled());

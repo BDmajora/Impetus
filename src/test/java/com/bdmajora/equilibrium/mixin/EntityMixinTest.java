@@ -127,7 +127,7 @@ class EntityMixinTest {
         }).when(chunk).getEntitiesWithinAABBForEntity(any(), any(), any(), any());
         List<Entity> found = world.getEntitiesInAABBexcluding(null, new AxisAlignedBB(1, 0, 1, 2, 5, 2), e -> true);
         assertEquals(List.of(zombie), found);
-        // Only the chunks the padded box touches are asked for, and unloaded ones contribute nothing
+        // Checks only the touched chunks are read.
         Mockito.verify(world).equilibrium$getLoadedChunk(-1, -1);
         Mockito.verify(world).equilibrium$getLoadedChunk(0, 0);
     }
@@ -144,7 +144,7 @@ class EntityMixinTest {
         assertNotNull(factory);
         assertInstanceOf(EntityItem.class, factory.apply(null));
 
-        // An abstract class, no class at all, or one without that constructor keeps Forge's factory
+        // Checks the factory fallbacks.
         Mixins.set(entry, "factory", null);
         Mixins.set(entry, "cls", net.minecraft.entity.EntityLivingBase.class);
         var abstractEntity = Mixins.ci();
@@ -175,7 +175,7 @@ class EntityMixinTest {
     }
 
     @Test
-    void entityFlagsAreCachedUntilTheDataManagerWrites() {
+    void entityFlagsAreCachedUntilTheDataManagerWrites() throws Exception {
         var entity = Mixins.instance(com.bdmajora.equilibrium.mixin.entity.flag_cache.EntityMixin.class);
         EntityDataManager manager = mock(EntityDataManager.class);
         DataParameter<Byte> flags = Mixins.get(com.bdmajora.equilibrium.mixin.entity.flag_cache.EntityMixin.class, "FLAGS");
@@ -214,6 +214,46 @@ class EntityMixinTest {
         var unbuilt = Mixins.<Boolean>cir();
         Mixins.call(entity, "equilibrium$readCachedFlag", 0, unbuilt);
         assertFalse(unbuilt.isCancelled());
+
+        // Checks both writes clear the cache.
+        String notify = "Lnet/minecraft/entity/Entity;notifyDataManagerChange(Lnet/minecraft/network/datasync/DataParameter;)V";
+        assertEquals(List.of("INVOKE " + notify, "RETURN"), injectionPoints(EntityDataManagerMixin.class, "equilibrium$invalidateOnSet"));
+        assertEquals(List.of("INVOKE " + notify, "RETURN"), injectionPoints(EntityDataManagerMixin.class, "equilibrium$invalidateOnSync"));
+    }
+
+    // Reads the At points of a handler from the class file.
+    private static List<String> injectionPoints(Class<?> mixin, String handler) throws java.io.IOException {
+        org.objectweb.asm.tree.ClassNode node = new org.objectweb.asm.tree.ClassNode();
+        try (var in = mixin.getResourceAsStream(mixin.getSimpleName() + ".class")) {
+            new org.objectweb.asm.ClassReader(in).accept(node, 0);
+        }
+        List<String> points = new ArrayList<>();
+        for (org.objectweb.asm.tree.MethodNode method : node.methods) {
+            if (!method.name.equals(handler)) {
+                continue;
+            }
+            List<org.objectweb.asm.tree.AnnotationNode> annotations = new ArrayList<>();
+            if (method.visibleAnnotations != null) {
+                annotations.addAll(method.visibleAnnotations);
+            }
+            if (method.invisibleAnnotations != null) {
+                annotations.addAll(method.invisibleAnnotations);
+            }
+            for (org.objectweb.asm.tree.AnnotationNode inject : annotations) {
+                for (int i = 0; inject.values != null && i < inject.values.size(); i += 2) {
+                    if (!"at".equals(inject.values.get(i))) {
+                        continue;
+                    }
+                    for (Object at : (List<?>) inject.values.get(i + 1)) {
+                        List<Object> values = ((org.objectweb.asm.tree.AnnotationNode) at).values;
+                        String value = (String) values.get(values.indexOf("value") + 1);
+                        int target = values.indexOf("target");
+                        points.add(target < 0 ? value : value + " " + values.get(target + 1));
+                    }
+                }
+            }
+        }
+        return points;
     }
 
     @Test
@@ -258,7 +298,7 @@ class EntityMixinTest {
         assertEquals(40, self.xpOrbAge);
         Mockito.verify(other).setDead();
 
-        // Off-ticks, dead orbs and the client are all skipped
+        // Checks the skipped ticks.
         self.ticksExisted = 21;
         Mixins.call(orb, "equilibrium$absorbNeighbours", Mixins.ci());
         assertEquals(8, (int) Mixins.get(orb, "xpValue"));
@@ -271,7 +311,7 @@ class EntityMixinTest {
         Mixins.call(orb, "equilibrium$absorbNeighbours", Mixins.ci());
         assertEquals(8, (int) Mixins.get(orb, "xpValue"));
 
-        // Picking up a merged orb skips the pacing cooldown, server-side only
+        // Checks the pickup cooldown.
         EntityPlayer player = mock(EntityPlayer.class);
         World playerWorld = mock(World.class);
         Mixins.set(playerWorld, "isRemote", false);
@@ -310,7 +350,7 @@ class EntityMixinTest {
         assertNotSame(vanilla, Mixins.call(living, "equilibrium$collideWithVanillaRadius", target, zombie, box, null, original));
         assertNotSame(vanilla, Mixins.call(world, "equilibrium$excludingWithVanillaRadius", target, zombie, box, null, original));
         assertEquals(2, originals[0]);
-        // A null entity, or one the query cannot size, still goes through vanilla
+        // Checks the vanilla fallbacks.
         assertSame(vanilla, Mixins.call(living, "equilibrium$collideWithVanillaRadius", target, null, box, null, original));
         assertSame(vanilla, Mixins.call(world, "equilibrium$excludingWithVanillaRadius", target,
                 Mc.uninitialized(EntityPlayerMP.class), box, null, original));

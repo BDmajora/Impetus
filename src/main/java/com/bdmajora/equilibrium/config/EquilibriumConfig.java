@@ -36,6 +36,9 @@ public class EquilibriumConfig {
     // File of the settings.
     private Path file;
 
+    // Master switch of every patch outside the switches by name.
+    private final Option master = new Option("enabled", true, false);
+
     // Creates the switches with their defaults and dependencies.
     private EquilibriumConfig() {
         for (EquilibriumOptions.Entry entry : EquilibriumOptions.entries().values()) {
@@ -120,7 +123,7 @@ public class EquilibriumConfig {
             String key = (String) entry.getKey();
             String value = (String) entry.getValue();
 
-            Option option = this.options.get(key);
+            Option option = "enabled".equals(key) ? this.master : this.options.get(key);
 
             if (option == null) {
                 Equilibrium.LOGGER.warn("No configuration key exists with name '{}', ignoring", key);
@@ -175,6 +178,10 @@ public class EquilibriumConfig {
 
     // Returns the switch that governs the mixin class.
     public Option getEffectiveOptionForMixin(String mixinClassName) {
+        if (!this.master.isEnabled()) {
+            return this.master;
+        }
+
         int lastSplit = 0;
         int nextSplit;
 
@@ -202,7 +209,17 @@ public class EquilibriumConfig {
     // Returns whether the switch and its parents are on.
     public boolean isOptionEnabled(String optionName) {
         Option option = this.options.get(optionName);
-        return option != null && option.isEnabledRecursive(this);
+        return this.master.isEnabled() && option != null && option.isEnabledRecursive(this);
+    }
+
+    // Returns whether the master switch is on.
+    public boolean isEnabled() {
+        return this.master.isEnabled();
+    }
+
+    // Stores the master switch value the player chose.
+    public void setEnabled(boolean enabled) {
+        this.master.setEnabled(enabled, true);
     }
 
     // Stores a value that the player chose.
@@ -295,17 +312,18 @@ public class EquilibriumConfig {
 
     // Writes the commented settings file.
     private void write(Writer writer) throws IOException {
-        writer.write("# Equilibrium — Impetus' general-purpose performance subsystem.\n");
+        writer.write("# Impetus game logic patches.\n");
         writer.write("#\n");
-        writer.write("# Every key here switches one group of patches on or off. A key governs its own\n");
-        writer.write("# patches and every key beneath it, so 'mixin.world=false' disables all of the\n");
-        writer.write("# world optimizations regardless of what the individual keys under it say.\n");
+        writer.write("# Every key below turns one group of patches on or off. A key covers its own\n");
+        writer.write("# patches and every key beneath it, so mixin.world=false turns off all of the\n");
+        writer.write("# world patches whatever the keys under it say.\n");
         writer.write("#\n");
         writer.write("# Changes take effect on the next launch. Deleting a line restores its default.\n");
-        writer.write("#\n");
-        writer.write("# If something in the game misbehaves and you suspect Equilibrium, the fastest way\n");
-        writer.write("# to find out is to set the top-level key of a category to false and work down.\n");
+        writer.write("# To find a patch that breaks something, set a category key to false and work down.\n");
         writer.write("\n");
+        writer.write("# Turns every patch on. Off keeps the keys below but runs none of them.\n");
+        writer.write("# Default: true\n");
+        writer.write("enabled=" + this.master.isEnabled() + "\n");
 
         String category = null;
 

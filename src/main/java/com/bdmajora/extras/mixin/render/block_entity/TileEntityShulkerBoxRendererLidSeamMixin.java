@@ -22,11 +22,11 @@ public abstract class TileEntityShulkerBoxRendererLidSeamMixin {
     @Final
     private ModelShulker model;
 
-    // Field shut base added to the target.
+    // Base of the closed box drawn as one piece with the lid.
     @Unique
     private ModelRenderer impetus$shutBase;
 
-    // Field shut lid added to the target.
+    // Lid of the closed box drawn as one piece with the base.
     @Unique
     private ModelRenderer impetus$shutLid;
 

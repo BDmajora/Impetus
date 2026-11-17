@@ -55,15 +55,15 @@ public abstract class WorldParallelTickMixin implements ParallelWorld {
     @Shadow
     public abstract Chunk getChunk(int chunkX, int chunkZ);
 
-    // Field parallel added to the target.
+    // Whether the world ticks entities in parallel.
     @Unique
     private boolean impetus$parallel;
 
-    // Field async batch added to the target.
+    // Entities collected this tick for the worker threads.
     @Unique
     private List<Entity> impetus$asyncBatch;
 
-    // Field sync batch added to the target.
+    // Entities collected this tick for the main thread.
     @Unique
     private List<Entity> impetus$syncBatch;
 
@@ -78,7 +78,7 @@ public abstract class WorldParallelTickMixin implements ParallelWorld {
         this.playerEntities = new CopyOnWriteArrayList<>(this.playerEntities);
     }
 
-    // Returns whether parallel.
+    // Returns whether the world ticks entities in parallel.
     @Override
     public boolean impetus$isParallel() {
         return this.impetus$parallel;
@@ -126,7 +126,7 @@ public abstract class WorldParallelTickMixin implements ParallelWorld {
         impetus$removeDead(async, sync);
     }
 
-    // Helper method remove dead added to the target.
+    // Removes entities that died during the batch.
     @Unique
     private void impetus$removeDead(List<Entity> async, List<Entity> sync) {
         Set<Entity> dead = null;

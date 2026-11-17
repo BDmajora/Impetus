@@ -32,7 +32,7 @@ import static org.mockito.Mockito.when;
 class ControlEdgeCasesTest {
     private enum Mode { A, B, C }
 
-    // A mock option named and holding a value that clicks and keys write back, available and unchanged
+    // Returns a mock option with a value.
     private static <T> Option<T> valued(String name, T initial) {
         @SuppressWarnings("unchecked")
         Option<T> option = Mockito.mock(Option.class);
@@ -55,15 +55,15 @@ class ControlEdgeCasesTest {
         }
     }
 
-    // A piece of text drawn, where it starts and how wide it is
+    // Text drawn with its place and width.
     private record Placed(String text, int x, int width) { }
 
-    // Fake fonts keeping every piece of text drawn with its place, and every fill as its four edges
+    // Fake fonts that record text and fills.
     private static class Placing extends FakeDrawContext {
         final List<Placed> texts = new ArrayList<>();
         final List<int[]> fills = new ArrayList<>();
 
-        // Where each piece of text starts down the screen, in the order drawn
+        // Returns the text tops in draw order.
         final List<Integer> tops = new ArrayList<>();
 
         @Override
@@ -80,7 +80,7 @@ class ControlEdgeCasesTest {
         }
     }
 
-    // The name a bare row over the same option draws, or null when it draws none
+    // Returns the name a bare row draws.
     @SuppressWarnings("unchecked")
     private static String nameOf(ControlElement<?> row) {
         FakeDrawContext draw = new FakeDrawContext();
@@ -88,7 +88,7 @@ class ControlEdgeCasesTest {
         return draw.strings.isEmpty() ? null : draw.strings.getFirst();
     }
 
-    // Long-texted rows: a cycler of long names, long read-only text, a slider with a long formatted value and a button with a long label
+    // Returns rows with long text.
     private static List<Function<Dim2i, ControlElement<?>>> longTexts(String name) {
         return List.of(
                 dim -> bound(new CyclingControl<>(valued(name, Mode.B), Mode.values(),
@@ -109,7 +109,7 @@ class ControlEdgeCasesTest {
         return control;
     }
 
-    // Makers of every built-in row and the placeholder, each over a fresh option
+    // Returns a maker for every built in row.
     private static List<Function<Dim2i, ControlElement<?>>> everyRow() {
         return List.of(
                 dim -> bound(new TickBoxControl(valued("Tick", true))).createElement(dim),
@@ -132,7 +132,7 @@ class ControlEdgeCasesTest {
                 FakeDrawContext idle = new FakeDrawContext();
                 row.render(idle, 5000, 5000, 0f);
                 assertEquals(List.of(), idle.calls, context);
-                // Held by a press, then focused, with the cursor on its corner
+                // Checks a pressed focused row.
                 row.mouseClicked(new FakeInteractionContext(), dim.x(), dim.y(), 0);
                 row.setFocused(true);
                 FakeDrawContext busy = new FakeDrawContext();
@@ -149,18 +149,18 @@ class ControlEdgeCasesTest {
         for (int kind = 0; kind < rows.size(); kind++) {
             ControlElement<?> row = rows.get(kind).apply(dim);
             Option<?> option = row.getOption();
-            // Unavailable at the first read of every frame and available at any later one, as a switch flipped partway through a frame would answer
+            // Option that turns available partway through a frame.
             AtomicInteger reads = new AtomicInteger();
             when(option.isAvailable()).thenAnswer(invocation -> reads.getAndIncrement() % 2 != 0);
             clearInvocations(option);
             for (int frame = 0; frame < 3; frame++) {
                 reads.set(0);
                 Recording draw = new Recording();
-                // The cursor over the middle of the slider's track, where an available slider shows its thumb
+                // Checks the slider thumb.
                 row.render(draw, 250, 9, 0f);
                 String context = "row " + kind + " frame " + frame + " " + draw.calls;
                 assertEquals(1, reads.get(), context);
-                // Nothing in the mod's accent, which only an available control uses
+                // Checks the accent is unused.
                 assertFalse(draw.drew(Integer.toHexString(DefaultColors.ELEMENT_ACTIVATED)), context);
                 // Every piece of text but the button's arrow is struck through like the name
                 for (TextComponent text : draw.drawn) {
@@ -189,7 +189,7 @@ class ControlEdgeCasesTest {
                         String drawnName = nameOf(row);
                         String context = "row " + kind + " name '" + name + "' width " + width + " focused " + focused + " " + draw.texts;
                         int from = 0;
-                        // Past the name and its 6 pixel gap, or anywhere in the row when there is no name
+                        // Checks the control area.
                         int limit = dim.x();
                         if (drawnName != null) {
                             assertEquals(new Placed(drawnName, dim.x() + 6, drawnName.length() * 6), draw.texts.getFirst(), context);
@@ -218,7 +218,7 @@ class ControlEdgeCasesTest {
                         ControlElement<?> row = rows.get(kind).apply(dim);
                         row.setFocused(focused);
                         Placing draw = new Placing();
-                        // The cursor in the row's middle, where a slider shows its track
+                        // Checks the track.
                         row.render(draw, dim.getCenterX(), dim.getCenterY(), 0f);
                         for (int[] fill : draw.fills) {
                             String context = "row " + kind + " " + dim + " focused " + focused + " fill " + java.util.Arrays.toString(fill);
@@ -231,7 +231,7 @@ class ControlEdgeCasesTest {
                             int top = draw.tops.get(i);
                             String context = "row " + kind + " " + dim + " " + draw.texts + " at " + draw.tops;
                             assertTrue(text.x() >= dim.x() && text.x() + text.width() <= dim.getLimitX(), context);
-                            // A whole line of text, nine high in the fake fonts, inside the row
+                            // Checks one line of text.
                             assertTrue(top >= dim.y() && top + draw.lineHeight() <= dim.getLimitY(), context);
                         }
                     }
@@ -275,7 +275,7 @@ class ControlEdgeCasesTest {
         }
         assertEquals(5, formats.get());
         assertEquals("6 UNITS", draw.strings.getLast());
-        // Shown beside the track it is formatted once more for its own place, then kept
+        // Checks the value is formatted once.
         slider.setFocused(true);
         Recording shown = new Recording();
         for (int frame = 0; frame < 4; frame++) {
@@ -303,7 +303,7 @@ class ControlEdgeCasesTest {
 
     // Swaps the placeholder's logger for a mock while the body runs and clears the toasts it raises
     private static void withLogger(Runnable body) {
-        // Reading it first runs the class initialiser, which would otherwise overwrite the swap
+        // Loads the class before the swap.
         Logger original = Statics.get(PlaceholderControlElement.class, "LOGGER");
         Statics.set(PlaceholderControlElement.class, "LOGGER", Mockito.mock(Logger.class));
         try {
@@ -323,7 +323,7 @@ class ControlEdgeCasesTest {
             FakeDrawContext draw = new FakeDrawContext();
             row.render(draw, 0, 0, 0f);
             assertEquals("described", draw.strings.getFirst());
-            // Through the page's own path, with the id and the name both failing as errors
+            // Checks failing id and name.
             Option<Boolean> broken = valued("Unused", false);
             when(broken.getControl()).thenThrow(new IllegalStateException("no control"));
             when(broken.getId()).thenThrow(new NoClassDefFoundError("missing/Id"));
@@ -332,7 +332,7 @@ class ControlEdgeCasesTest {
             assertInstanceOf(PlaceholderControlElement.class, placeholder);
             FakeDrawContext drawn = new FakeDrawContext();
             placeholder.render(drawn, 0, 0, 0f);
-            // Described by its class, cut to the 196 the 192 pixel label column leaves: 29 characters before the ellipsis
+            // Checks the class name cut.
             assertEquals(List.of(broken.getClass().getName().substring(0, 29) + "...", "impetus.options.control_failed"), drawn.strings);
             Option<Boolean> overflowing = valued("Unused", false);
             when(overflowing.getName()).thenThrow(new StackOverflowError());
@@ -343,7 +343,7 @@ class ControlEdgeCasesTest {
     @Test
     void aButtonLabelCutNeverSplitsACharacterAndSurvivesAFontSourceThatCutsBadly() {
         Option<Boolean> option = valued("Button", false);
-        // 54 wide leaves 36 for the label, 18 after the ellipsis: "Ab" and half the emoji
+        // Checks a 54 wide row.
         FakeDrawContext draw = new FakeDrawContext();
         bound(new ActionButtonControl(option, TextComponent.literal("Ab\uD83D\uDE00cdefgh"), () -> { })).createElement(new Dim2i(0, 0, 54, 18)).render(draw, 0, 0, 0f);
         assertEquals(List.of("Ab...", ">"), draw.strings);
@@ -363,7 +363,7 @@ class ControlEdgeCasesTest {
     @Test
     void tabPassesOverEveryRowWithNoAreaAsItDoesOverAnUnavailableOne() {
         List<Function<Dim2i, ControlElement<?>>> rows = everyRow();
-        // The focusable kinds: tick box, cycler, slider and button
+        // Returns the focusable kinds.
         for (int kind : new int[]{0, 1, 2, 4}) {
             assertTrue(rows.get(kind).apply(new Dim2i(0, 0, 1, 1)).canFocus(), "row " + kind);
             for (Dim2i dim : new Dim2i[]{new Dim2i(0, 0, 0, 18), new Dim2i(0, 0, -3, 18), new Dim2i(0, 0, 200, 0), new Dim2i(0, 0, 200, -1)}) {
@@ -433,7 +433,7 @@ class ControlEdgeCasesTest {
         refused(NullPointerException.class, "Option must not be null", () -> new SliderControl(null, 0, 10, 1, ControlValueFormatter.number()));
         refused(NullPointerException.class, "Option must not be null", () -> new CyclingControl<>(null, Mode.class));
         refused(NullPointerException.class, "Option must not be null", () -> new CyclingControl<>(null, Mode.values(), new TextComponent[3]));
-        // The option is checked before anything else, as ActionButtonControl checks it
+        // Checks the option first.
         refused(NullPointerException.class, "Option must not be null", () -> new SliderControl(null, 10, 0, 0, null));
         refused(NullPointerException.class, "Option must not be null", () -> new CyclingControl<>(null, (Mode[]) null, null));
     }
@@ -524,7 +524,7 @@ class ControlEdgeCasesTest {
             everyRow().get(1).apply(new Dim2i(0, 0, 300, 8)).render(unknown, 5000, 5000, 0f);
             assertEquals(List.of(), unknown.strings, "line height " + lineHeight);
         }
-        // A twenty pixel line raised four above the centre needs a row of 31, whose centre at 15 puts the line at 11 to 31
+        // Checks a tall line.
         for (int height : new int[]{30, 31}) {
             FakeDrawContext large = new FakeDrawContext() {
                 @Override
@@ -576,7 +576,7 @@ class ControlEdgeCasesTest {
                 row.setFocused(focused);
                 negative.strings.clear();
                 row.render(negative, 5000, 5000, 0f);
-                // Only the button's arrow, which is placed without being measured
+                // Checks only the arrow.
                 for (String text : negative.strings) {
                     assertEquals(">", text, "row " + kind + " " + negative.strings);
                 }
@@ -584,7 +584,7 @@ class ControlEdgeCasesTest {
         }
     }
 
-    // Fake fonts counting the text work rows do themselves, apart from what the fake's own drawString measures, with a version the test moves on
+    // Fake fonts that count row text work.
     private static class Working extends FakeDrawContext {
         int work;
         long version;
@@ -626,7 +626,7 @@ class ControlEdgeCasesTest {
             }
         }
 
-        // Not marked as an override so the fake also stands for a context written before versions existed
+        // Older context without versions.
         public long textVersion() {
             return this.version;
         }
@@ -661,7 +661,7 @@ class ControlEdgeCasesTest {
                 bound(new CyclingControl<>(valued("Cycle", Mode.A), Mode.values(), new TextComponent[]{translated, translated, translated})).createElement(new Dim2i(0, 0, 200, 18)),
                 bound(new SliderControl(valued("Slide", 5), 0, 10, 1, value -> translated)).createElement(new Dim2i(0, 0, 200, 18)),
                 bound(new ActionButtonControl(valued("Button", false), translated, () -> { })).createElement(new Dim2i(0, 0, 200, 18)));
-        // Right-aligned 6 in from the 200 edge at its new width, and the button's cut to the 34 its 52 pixel column leaves after the ellipsis, 18 in
+        // Checks the new width.
         List<String> placed = List.of("text(SECOND AND LONGER,92,", "text(SECOND AND LONGER,92,", "text(SECON...,134,");
         for (int i = 0; i < rows.size(); i++) {
             ControlElement<?> row = rows.get(i);
@@ -676,7 +676,7 @@ class ControlEdgeCasesTest {
         }
     }
 
-    // Fake fonts in which underlined text is a hundred pixels wider, as a style that changes widths would make it
+    // Fake fonts with wider underlined text.
     private static final class WideUnderline extends FakeDrawContext {
         @Override
         public int getStringWidth(TextComponent component) {
@@ -686,7 +686,7 @@ class ControlEdgeCasesTest {
 
     @Test
     void aButtonLabelCutThatItsUnderlineWidensPastTheRoomIsLeftOutRatherThanDrawnOverTheEdge() {
-        // The button's own label is underlined, so its cut is left out and only the arrow drawn
+        // Checks the underlined label.
         FakeDrawContext draw = new WideUnderline();
         bound(new ActionButtonControl(valued("Button", false), TextComponent.literal("Configure everything"), () -> { })).createElement(new Dim2i(0, 0, 200, 18)).render(draw, 0, 0, 0f);
         assertEquals(List.of("Button", ">"), draw.strings);
@@ -730,7 +730,7 @@ class ControlEdgeCasesTest {
                 }
             };
             row.render(new FakeDrawContext(), 5000, 5000, 0f);
-            // Eight high holds no line, so the name is not drawn and the whole row is free; eighteen holds "Name" from 16 to 40 and its gap
+            // Checks short rows.
             assertEquals(height == 8 ? 10 : 46, limit.get(), "height " + height);
         }
     }

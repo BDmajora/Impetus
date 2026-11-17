@@ -30,7 +30,7 @@ class DimensionFoldersTest {
         assertEquals("world0", folders.folderFor(0, "overworld"));
         assertEquals("world-1", folders.folderFor(-1, "the_nether"));
         assertEquals("world1", folders.folderFor(1, "the_end"));
-        // OptiFine's numbered folders reach modded dimensions; one without a folder takes the base set
+        // Checks the numbered dimension folders.
         assertEquals("world7", folders.folderFor(7, "twilight_forest"));
         assertNull(folders.folderFor(9, "aether"));
 
@@ -54,11 +54,11 @@ class DimensionFoldersTest {
                 Map.of("NETHER_FOLDER", ""));
         assertEquals("overworld", folders.baseFolder());
         assertEquals("nether", folders.folderFor(-1, "the_nether"));
-        // A mapped folder the pack does not have is ignored, and numbered folders only count without the file
+        // Checks a missing mapped folder.
         assertNull(folders.folderFor(1, "the_end"));
         assertNull(folders.folderFor(7, "twilight_forest"));
 
-        // Gated off, the Nether falls to the base set
+        // Checks a gated Nether folder.
         assertNull(DimensionFolders.from(files("/dimension.properties", "#ifdef NETHER_FOLDER\ndimension.nether = the_nether\n#endif\ndimension.overworld = *",
                 "/nether/final.fsh", "", "/overworld/final.fsh", ""), Map.of()).folderFor(-1, "the_nether"));
 
@@ -82,7 +82,7 @@ class DimensionFoldersTest {
         assertTrue(base.get(ProgramArrayId.Composite, 1).isPresent());
         assertFalse(pack.selectDimension(0, "overworld"));
 
-        // The Nether's folder is the whole program set: no root composite1, but its own final
+        // Checks the Nether program set.
         assertTrue(pack.selectDimension(-1, "the_nether"));
         ProgramSet nether = pack.getProgramSet();
         assertEquals("// nether composite", nether.get(ProgramArrayId.Composite, 0).orElseThrow().getVertexSource().orElseThrow());
@@ -90,7 +90,7 @@ class DimensionFoldersTest {
         assertTrue(nether.get(ProgramId.Final).isPresent());
         assertFalse(pack.selectDimension(-1, "the_nether"));
 
-        // Back home is the base set again, and the Nether's set is kept for the next visit; the End has no folder so it shares the base
+        // Checks the return to the overworld.
         assertTrue(pack.selectDimension(0, "overworld"));
         assertSame(base, pack.getProgramSet());
         assertFalse(pack.selectDimension(1, "the_end"));
@@ -111,7 +111,7 @@ class DimensionFoldersTest {
             assertFalse(Mixins.<Boolean>get(Umbra.class, "pipelineNeedsInit"));
             Umbra.onWorldChanged(0, "overworld");
             assertFalse(Mixins.<Boolean>get(Umbra.class, "pipelineNeedsInit"));
-            // Into the End, whose folder is its own program set
+            // Enters the End.
             Umbra.onWorldChanged(1, "the_end");
             assertTrue(Mixins.<Boolean>get(Umbra.class, "pipelineNeedsInit"));
             // Without a pack the dimension is still remembered for the next one loaded

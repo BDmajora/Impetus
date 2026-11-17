@@ -47,7 +47,7 @@ class WorldMixinsTest {
         NBTTagCompound strippedLevel = stripped.getCompoundTag("Level");
         assertTrue(strippedLevel.hasKey("Entities", 9));
         assertTrue(strippedLevel.hasKey("TileEntities", 9));
-        // The sections were copied into the chunk already, and everything else is dead weight
+        // Checks the stripped level.
         assertFalse(strippedLevel.hasKey("Sections"));
         assertFalse(strippedLevel.hasKey("LastUpdate"));
         assertNotNull(loader);
@@ -85,7 +85,7 @@ class WorldMixinsTest {
         ChunkMixin chunk = Mixins.concrete(ChunkMixin.class);
         ExtendedBlockStorage empty = new ExtendedBlockStorage(0, true);
         ExtendedBlockStorage litSky = new ExtendedBlockStorage(16, true);
-        // Full daylight throughout, which is exactly what the fallback would give back
+        // Fills a section with full daylight.
         java.util.Arrays.fill(litSky.getSkyLight().getData(), (byte) 0xFF);
         ExtendedBlockStorage patchySky = new ExtendedBlockStorage(32, true);
         patchySky.getSkyLight().set(0, 0, 0, 7);
@@ -98,11 +98,11 @@ class WorldMixinsTest {
         ExtendedBlockStorage[] sections = {empty, litSky, patchySky, litBlocks, occupied, noSky, null};
         Mixins.call(chunk, "coarctatio$dropEmptySections", sections, Mixins.ci());
 
-        // Dark and fully lit sections both reproduce from the fallback, so they go
+        // Checks the dropped sections.
         assertSame(Chunk.NULL_BLOCK_STORAGE, sections[0]);
         assertSame(Chunk.NULL_BLOCK_STORAGE, sections[1]);
         assertSame(Chunk.NULL_BLOCK_STORAGE, sections[5]);
-        // Half-lit skylight and any block light would be lost, and a section with blocks is not empty
+        // Checks the kept sections.
         assertSame(patchySky, sections[2]);
         assertSame(litBlocks, sections[3]);
         assertSame(occupied, sections[4]);
@@ -111,7 +111,7 @@ class WorldMixinsTest {
         // No array at all is nothing to do
         Mixins.call(chunk, "coarctatio$dropEmptySections", (ExtendedBlockStorage[]) null, Mixins.ci());
         assertNotNull(chunk);
-        // A missing nibble array contradicts nothing, so it counts as uniform
+        // Checks a missing array.
         assertTrue((boolean) Mixins.call(ChunkMixin.class, "coarctatio$isUniform", (NibbleArray) null, 0));
     }
 
@@ -124,7 +124,7 @@ class WorldMixinsTest {
 
         Map<String, Template> soft = Mixins.get(manager, "templates");
         assertNotSame(templates, soft);
-        // Still a working map; what changed is that world gen can move past a template and let it go
+        // Checks a template still works.
         Template template = new Template();
         soft.put("village/house", template);
         assertSame(template, soft.get("village/house"));

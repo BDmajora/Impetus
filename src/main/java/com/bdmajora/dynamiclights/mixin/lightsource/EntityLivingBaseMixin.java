@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.Unique;
 // Mixin that changes EntityLivingBase.
 @Mixin(EntityLivingBase.class)
 public abstract class EntityLivingBaseMixin extends Entity implements DynamicLightSource {
-    // Field living luminance added to the target.
+    // Light level the mob gives off now.
     @Unique
     private int impetus$livingLuminance;
 
@@ -22,7 +22,7 @@ public abstract class EntityLivingBaseMixin extends Entity implements DynamicLig
         super(world);
     }
 
-    // Handles dynamic light tick.
+    // Updates the mob's light from fire and glowing and held items and its handlers.
     @Override
     public void impetus$dynamicLightTick() {
         EntityLivingBase self = (EntityLivingBase) (Object) this;

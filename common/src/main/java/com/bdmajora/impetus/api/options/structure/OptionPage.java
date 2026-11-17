@@ -42,7 +42,7 @@ public final class OptionPage {
             return own;
         }
         int ownCount = own.size();
-        // Copies both sets of groups into one array sized for all of them; the event already refused any null a listener added
+        // Copies both sets of groups into one array.
         OptionGroup[] all = own.toArray(new OptionGroup[ownCount + extraCount]);
         for (int i = 0; i < extraCount; i++) {
             all[ownCount + i] = extra.get(i);

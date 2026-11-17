@@ -23,7 +23,7 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.*;
 
 class OptionPageTest {
-    // Ids stay interned and listeners stay on the static bus for the whole JVM, so this class keeps to its own mod id and one page id per case
+    // Mod id of this class's ids.
     private static final String MOD = "option_page_test";
     private static final TextComponent NAME = TextComponent.literal("Page");
 
@@ -43,7 +43,7 @@ class OptionPageTest {
         return OptionIdentifier.create(MOD, path);
     }
 
-    // One listener per call, each appending its groups in order whenever the given page is built
+    // Adds groups to a page by listener.
     private static void extras(OptionIdentifier<Void> pageId, OptionGroup... groups) {
         OptionPageConstructionEvent.BUS.addListener(e -> {
             if (e.getId() == pageId) {
@@ -58,7 +58,7 @@ class OptionPageTest {
         return assertThrows(NullPointerException.class, executable).getMessage();
     }
 
-    // Every mutator throws, whether or not the list is empty, and the list is left as it was
+    // Checks every mutator throws.
     private static <T> void assertUnmodifiable(List<T> list, T element) {
         List<T> before = new ArrayList<>(list);
         assertThrows(UnsupportedOperationException.class, () -> list.add(element));
@@ -73,7 +73,7 @@ class OptionPageTest {
         assertThrows(UnsupportedOperationException.class, list::clear);
         assertThrows(UnsupportedOperationException.class, () -> list.iterator().remove());
         assertEquals(before, list);
-        // A JDK unmodifiable list, so a reader's List.copyOf hands the same list back instead of copying it
+        // Checks the list is not copied.
         assertSame(list, List.copyOf(list));
     }
 
@@ -85,7 +85,7 @@ class OptionPageTest {
         OptionGroup second = group("mutate/second", b);
         OptionGroup intruder = group("mutate/intruder", option());
 
-        // An ArrayList, as the search results page passes
+        // Passes an ArrayList.
         List<OptionGroup> caller = new ArrayList<>(List.of(first, second));
         OptionPage page = new OptionPage(pageId("mutate/plain"), NAME, caller);
         caller.add(intruder);
@@ -96,7 +96,7 @@ class OptionPageTest {
         caller.clear();
         assertEquals(List.of(first, second), page.getGroups());
 
-        // An unmodifiable view still changes when its backing list does, so it is copied too
+        // Checks an unmodifiable view is copied.
         List<OptionGroup> backing = new ArrayList<>(List.of(first));
         OptionPage viewed = new OptionPage(pageId("mutate/view"), NAME, Collections.unmodifiableList(backing));
         backing.add(second);
@@ -121,7 +121,7 @@ class OptionPageTest {
         OptionGroup own = group("midbuild/own", option());
         OptionGroup intruder = group("midbuild/intruder", option());
 
-        // The page holds the list as it was passed, not as it is once the listeners are done
+        // Checks a list grown mid build.
         OptionIdentifier<Void> grown = pageId("midbuild/grown");
         List<OptionGroup> caller = new ArrayList<>(List.of(own));
         OptionPageConstructionEvent.BUS.addListener(e -> {
@@ -134,7 +134,7 @@ class OptionPageTest {
         assertSame(own.getOptions(), page.getOptions());
         assertEquals(List.of(own, intruder), caller);
 
-        // Emptied mid-build, the page still has its group
+        // Checks a list emptied mid build.
         OptionIdentifier<Void> emptied = pageId("midbuild/emptied");
         List<OptionGroup> cleared = new ArrayList<>(List.of(own));
         OptionPageConstructionEvent.BUS.addListener(e -> {
@@ -145,7 +145,7 @@ class OptionPageTest {
         assertEquals(List.of(own), new OptionPage(emptied, NAME, cleared).getGroups());
         assertTrue(cleared.isEmpty());
 
-        // A null slipped in mid-build is not seen either, as the list was checked before the post
+        // Checks a null added mid build.
         OptionIdentifier<Void> poisoned = pageId("midbuild/poisoned");
         List<OptionGroup> poisonedList = new ArrayList<>(List.of(own));
         OptionPageConstructionEvent.BUS.addListener(e -> {
@@ -161,7 +161,7 @@ class OptionPageTest {
         TextComponent name = TextComponent.literal("Doomed");
         OptionIdentifier<Void> noName = pageId("doomed/no_name");
         AtomicInteger posts = new AtomicInteger();
-        // Matched by the fresh name's identity, or by id for the case without a name
+        // Adds a listener matched by name.
         OptionPageConstructionEvent.BUS.addListener(e -> {
             if (e.getTranslationKey() == name || e.getId() == noName) {
                 posts.incrementAndGet();
@@ -176,7 +176,7 @@ class OptionPageTest {
         assertEquals("A null group was given to page option_page_test:doomed/null_group", npe(() -> new OptionPage(pageId("doomed/null_group"), name, Arrays.asList(real, null))));
         assertEquals(0, posts.get());
 
-        // The same name with good arguments does reach the listener, so the zero above means something
+        // Checks good arguments reach the listener.
         OptionPage fine = new OptionPage(pageId("doomed/fine"), name, groups);
         assertEquals(1, posts.get());
         assertEquals(groups, fine.getGroups());
@@ -186,14 +186,14 @@ class OptionPageTest {
     void nullGroupsAreRejectedWithThePageNamed() {
         OptionGroup real = group("null/real", option());
 
-        // From the caller's list, wherever it sits
+        // Checks a null in the caller's list.
         assertEquals("A null group was given to page option_page_test:null/first", npe(() -> new OptionPage(pageId("null/first"), NAME, Arrays.asList(null, real))));
         assertEquals("A null group was given to page option_page_test:null/last", npe(() -> new OptionPage(pageId("null/last"), NAME, Arrays.asList(real, null))));
         assertEquals("A null group was given to page option_page_test:null/only", npe(() -> new OptionPage(pageId("null/only"), NAME, Collections.singletonList(null))));
-        // Stream.toList gives a JDK unmodifiable list that does allow nulls, so it is not taken as is
+        // Checks a Stream.toList list.
         assertEquals("A null group was given to page option_page_test:null/stream", npe(() -> new OptionPage(pageId("null/stream"), NAME, Stream.of(real, null).toList())));
 
-        // From a listener that skips ConfigApi's own null check, alone or after a real group
+        // Checks a null from a listener.
         OptionIdentifier<Void> fromListener = pageId("null/listener");
         extras(fromListener, (OptionGroup) null);
         assertEquals("A listener added a null group to page option_page_test:null/listener", npe(() -> new OptionPage(fromListener, NAME, List.of(real))));
@@ -260,7 +260,7 @@ class OptionPageTest {
 
     @Test
     void listenersMayBuildPagesAndAddListenersMidBuild() {
-        // A listener for one page builds another, whose own listeners run inside the outer post
+        // Checks a nested page build.
         OptionIdentifier<Void> outer = pageId("nested/outer");
         OptionIdentifier<Void> inner = pageId("nested/inner");
         Option<?> innerOption = option();
@@ -286,7 +286,7 @@ class OptionPageTest {
         assertEquals(List.of(outerOwn, innerOwn, innerExtra), page.getGroups());
         assertEquals(List.of(outerOption, innerOption, innerExtraOption), page.getOptions());
 
-        // A listener added during a build first reaches the next page, as the bus reads its listeners once per post
+        // Checks a listener added mid build.
         OptionIdentifier<Void> late = pageId("nested/late");
         OptionGroup lateGroup = group("nested/late_group", option());
         AtomicBoolean added = new AtomicBoolean();
@@ -335,7 +335,7 @@ class OptionPageTest {
         assertUnmodifiable(page.getGroups(), group("extended/spare"));
         assertUnmodifiable(page.getOptions(), option());
 
-        // A page whose only groups come from listeners, the lone group's options reused as on any one-group page
+        // Checks a page of listener groups only.
         OptionIdentifier<Void> onlyExtras = pageId("extended/only");
         OptionGroup lone = group("extended/lone", option());
         extras(onlyExtras, lone);
@@ -371,7 +371,7 @@ class OptionPageTest {
         OptionPage page = new OptionPage(id, NAME, List.of(own1, own2));
         assertEquals(List.of(own1, own2, extraA, extraB, extraC), page.getGroups());
 
-        // Listeners run again for every page built, so a second page gets the same groups after its own
+        // Checks a second page.
         OptionPage again = new OptionPage(id, NAME, List.of(own2));
         assertEquals(List.of(own2, extraA, extraB, extraC), again.getGroups());
         assertEquals(List.of(own1, own2, extraA, extraB, extraC), page.getGroups());
@@ -390,7 +390,7 @@ class OptionPageTest {
         List<OptionGroup> own = List.of(group("flatten/leading_empty"), group("flatten/ab", a, b), group("flatten/middle_empty"), group("flatten/c", c), group("flatten/e", e), group("flatten/trailing_empty"));
         OptionPage page = new OptionPage(id, NAME, own);
         assertEquals(9, page.getGroups().size());
-        // An option in two groups is listed once per group, where each group puts it
+        // Checks an option in two groups.
         assertEquals(List.of(a, b, c, e, d, a), page.getOptions());
 
         // Without listener groups too
@@ -401,7 +401,7 @@ class OptionPageTest {
         OptionPage hollow = new OptionPage(pageId("flatten/hollow"), NAME, List.of(group("flatten/only_empty")));
         assertTrue(hollow.getOptions().isEmpty());
 
-        // Only the last group holding anything, after empty ones
+        // Checks the last group holding options.
         OptionPage tail = new OptionPage(pageId("flatten/tail"), NAME, List.of(group("flatten/tail_empty_a"), group("flatten/tail_empty_b"), group("flatten/tail_ce", c, e)));
         assertEquals(List.of(c, e), tail.getOptions());
     }
@@ -418,14 +418,14 @@ class OptionPageTest {
         assertEquals(List.of(twice, twice, twice), page.getGroups());
         assertEquals(List.of(a, b, a, b, a, b), page.getOptions());
 
-        // Twice from the caller alone, no listener for this page
+        // Checks a group given twice.
         OptionPage plain = new OptionPage(pageId("twice/plain"), NAME, List.of(twice, twice));
         assertEquals(List.of(a, b, a, b), plain.getOptions());
     }
 
     @Test
     void optionTotalsPastWhatAListCanHoldAreRefusedBeforeAnyCopy() {
-        // 2^16 options in one group, listed again and again, passes the int range cheaply: only the group list grows
+        // Builds a huge group.
         OptionGroup.Builder builder = OptionGroup.createBuilder().setId(OptionIdentifier.create(MOD, "huge/wide"));
         Option<?> one = option();
         for (int i = 0; i < 1 << 16; i++) {
@@ -433,15 +433,15 @@ class OptionPageTest {
         }
         OptionGroup wide = builder.build();
 
-        // Exactly 2^31, one past Integer.MAX_VALUE
+        // Checks exactly 2^31 options.
         IllegalArgumentException exact = assertThrows(IllegalArgumentException.class, () -> new OptionPage(pageId("huge/exact"), NAME, Collections.nCopies(1 << 15, wide)));
         assertEquals("Page option_page_test:huge/exact holds 2147483648 options, more than a list can", exact.getMessage());
 
-        // 2^32 + 2^16 wraps an int sum back to a small positive count, which a plain sign check would miss
+        // Checks a wrapped sum.
         IllegalArgumentException wrapped = assertThrows(IllegalArgumentException.class, () -> new OptionPage(pageId("huge/wrapped"), NAME, Collections.nCopies((1 << 16) + 1, wide)));
         assertEquals("Page option_page_test:huge/wrapped holds 4295032832 options, more than a list can", wrapped.getMessage());
 
-        // The own groups alone would fit; the listener's group tips them over
+        // Checks a listener group tips the count.
         OptionIdentifier<Void> tipped = pageId("huge/tipped");
         extras(tipped, wide);
         IllegalArgumentException tippedOver = assertThrows(IllegalArgumentException.class, () -> new OptionPage(tipped, NAME, Collections.nCopies((1 << 15) - 1, wide)));
@@ -453,7 +453,7 @@ class OptionPageTest {
         OptionGroup one = group("reuse/one", option(), option());
         OptionGroup two = group("reuse/two", option());
 
-        // List.of and List.copyOf results, as ConfigPageBuilder.build passes, are already what the page needs
+        // Checks frozen lists are kept.
         List<OptionGroup> frozen = List.of(one, two);
         assertSame(frozen, new OptionPage(pageId("reuse/frozen"), NAME, frozen).getGroups());
         List<OptionGroup> copied = List.copyOf(new ArrayList<>(frozen));
@@ -465,7 +465,7 @@ class OptionPageTest {
         OptionPage single = new OptionPage(pageId("reuse/single"), NAME, List.of(one));
         assertSame(one.getOptions(), single.getOptions());
 
-        // Listener groups need a fresh list, and the caller's frozen list is left alone
+        // Checks a fresh list for listener groups.
         OptionIdentifier<Void> extended = pageId("reuse/extended");
         OptionGroup extra = group("reuse/extra", option());
         extras(extended, extra);

@@ -68,13 +68,13 @@ class ImageUnitsTest {
     void unitsAreHandedOutAscendingAboveTheCustomImagesUntilTheHardwareRunsOut() {
         ImageUnits units = new ImageUnits();
         assertTrue(units.isEmpty());
-        // colortex3, 5 and 9 on units 2, 3, 4; colortex12 still fits on 5; colortex15 is out of units
+        // Checks the render target units.
         units.allocateRenderTargets(bits(3, 5, 9, 12, 15, 40), this.images, this.targets);
         // A target only a compute writes still has to exist
         assertNotNull(this.targets.get(3));
         assertNotNull(this.targets.get(12));
         assertNull(this.targets.get(15));
-        // Shadow colours continue after them at unit 6, which is the limit, so none fit
+        // Checks the shadow colours run out of units.
         units.allocateShadowColors(bits(0, 1, 2), this.images, this.shadow);
         Map<String, CustomTextureManager.Override> overrides = new LinkedHashMap<>();
         units.addOverrides(overrides);
@@ -92,7 +92,7 @@ class ImageUnitsTest {
         units.allocateShadowColors(bits(0, 1, 2), this.images, null);
         assertTrue(units.isEmpty());
         units.allocateRenderTargets(bits(4), this.images, this.targets);
-        // shadowcolor1 has no texture; the others follow colortex4's unit 2
+        // Checks the shadow colour units.
         units.allocateShadowColors(bits(0, 1, 2, 9), this.images, this.shadow);
         Map<String, CustomTextureManager.Override> overrides = new LinkedHashMap<>();
         units.addOverrides(overrides);
@@ -122,7 +122,7 @@ class ImageUnitsTest {
         shadowOnly.bind(new BitSet(), this.targets, this.shadow);
         verify(TestGl.gl()).glBindImageTexture(2, 502, 0, false, 0, GL15.GL_READ_WRITE, 0x8058);
         Mockito.clearInvocations(TestGl.gl());
-        // No shadow pass to read from, or nothing allocated, binds nothing
+        // Checks nothing binds without a shadow pass.
         shadowOnly.bind(new BitSet(), this.targets, null);
         new ImageUnits().bind(new BitSet(), this.targets, this.shadow);
         verify(TestGl.gl(), never()).glBindImageTexture(anyInt(), anyInt(), anyInt(), anyBoolean(), anyInt(), anyInt(), anyInt());

@@ -31,7 +31,7 @@ public final class FluidloggingInference {
                 : ImpetusVintage.options().quality.inferredFluidlogging;
     }
 
-    // Returns whether active.
+    // Returns whether fluidlogged rendering is inferred on this client.
     public static boolean isActive() {
         return mode != ImpetusGameOptions.FluidloggingGuess.OFF;
     }

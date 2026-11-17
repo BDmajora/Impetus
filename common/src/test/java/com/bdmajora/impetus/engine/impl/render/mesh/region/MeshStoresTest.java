@@ -42,7 +42,7 @@ public class MeshStoresTest {
         Statics.set(OsKind.class, "detected", OsKind.LINUX);
     }
 
-    // A mesh of quads quads, each a unit square at block (x, 0, 0) for x = 0..quads-1
+    // Returns a mesh of unit quads.
     public static BuiltSectionMeshParts mesh(int quads, ModelQuadFacing facing) {
         NativeBuffer vertices = new NativeBuffer(quads * 4 * MeshChunkVertex.STRIDE);
         long ptr = MemoryUtil.memAddress(vertices.getDirectBuffer());
@@ -67,7 +67,7 @@ public class MeshStoresTest {
         assertEquals(3, geometry.quadsPerFacing()[ModelQuadFacing.POS_Y.ordinal()]);
         assertEquals(0, geometry.baseQuad());
         assertEquals(0, geometry.minX());
-        // Three unit quads span blocks 0..3 on x, so the box is three blocks wide
+        // Checks the box.
         assertEquals(3, geometry.sizeX());
         assertEquals(0, geometry.sizeY());
         assertEquals(1, geometry.sizeZ());
@@ -95,7 +95,7 @@ public class MeshStoresTest {
         dense.delete();
         stream.delete();
 
-        // The support probe is cached, so it must be re-run on the sparse-friendly OS
+        // Reruns the support probe.
         Statics.set(OsKind.class, "detected", OsKind.WINDOWS);
         Statics.set(MeshShaderSupport.class, "supported", null);
         QuadArena sparse = new QuadArena(0, 16);
@@ -183,7 +183,7 @@ public class MeshStoresTest {
         int stamped = MemoryUtil.memGetInt(times);
         assertTrue(stamped >= before && stamped <= regions.currentTimeMs());
 
-        // New geometry for a placed section keeps its time, so a rebuild does not fade in again
+        // Checks the kept time.
         MemoryUtil.memPutInt(times + 8, 12345);
         regions.beginSectionUpdate(third);
         assertEquals(12345, MemoryUtil.memGetInt(times + 8));
@@ -208,7 +208,7 @@ public class MeshStoresTest {
         // A new section that does not fit is dropped while the existing one stays
         store.upload(1, 0, 0, SectionGeometry.from(mesh(50, ModelQuadFacing.POS_Y)));
         assertEquals(1, regions.getRegionCount());
-        // A rebuild that outgrows the arena drops its own section too, and with it the region
+        // Checks an outgrown arena.
         store.upload(0, 0, 0, SectionGeometry.from(mesh(50, ModelQuadFacing.POS_Y)));
         assertEquals(0, regions.getRegionCount());
         regions.delete();

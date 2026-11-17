@@ -57,7 +57,7 @@ class MaterialMapTest {
     void modernNamesTranslateToTheirLegacyBlocks() {
         assertEquals(List.of("mod:water"), translate("mod:water"));
         assertEquals(List.of("minecraft:water", "minecraft:flowing_water"), translate("water"));
-        // The pack's predicates carry over, the translation's own win a collision
+        // Checks predicate merging.
         assertEquals(List.of("minecraft:tallgrass{snowy=false, type=tall_grass}"), translate("grass:snowy=false:type=fern"));
         assertEquals(List.of("minecraft:lit_redstone_lamp{lit=true}"), translate("redstone_lamp:lit=true"));
         assertEquals(List.of("minecraft:lit_furnace{lit=true}"), translate("furnace:lit=true"));
@@ -103,7 +103,7 @@ class MaterialMapTest {
         Map<Integer, List<BlockEntry>> blocks = map.getBlockProperties();
         assertEquals(List.of(10, 11, 12), List.copyOf(blocks.keySet()));
         assertEquals(List.of("minecraft:gold_ore", "minecraft:redstone_ore", "minecraft:coal_ore", "minecraft:stone"), describe(blocks.get(10)));
-        // The enclosing namespace splits a typo, predicates never do, a trailing segment that is no namespace is a bad predicate, and tags are dropped
+        // Checks namespace and predicate splitting.
         assertEquals(List.of("mymod:a", "mymod:b", "mymod:c{facing=up}", "minecraft:stone{variant=granite}", "a:b"), describe(blocks.get(11)));
         assertEquals(List.of("x:minecraftlonger"), describe(blocks.get(12)));
         assertEquals(Map.of(new NamespacedId("minecraft:glass"), BlockRenderLayer.CUTOUT, new NamespacedId("mod:pane"), BlockRenderLayer.CUTOUT,

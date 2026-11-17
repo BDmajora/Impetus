@@ -57,7 +57,7 @@ class HeavyRewriteMixinTest {
 
     @Test
     void placeholderShadowsAreNeverReachedInProduction() {
-        // Each of these stands in for a private method of the target class, so running one is a programming error
+        // Checks the private stand-ins throw.
         var passengers = Mixins.instance(com.bdmajora.equilibrium.mixin.alloc.deep_passengers.EntityMixin.class);
         assertThrows(AssertionError.class,
                 () -> Mixins.call(passengers, "getRecursivePassengersByType", Entity.class, new java.util.HashSet<>()));
@@ -75,7 +75,7 @@ class HeavyRewriteMixinTest {
         TileEntityFurnaceMixin furnace = Mixins.instance(TileEntityFurnaceMixin.class);
         NonNullList<ItemStack> slots = NonNullList.withSize(4, ItemStack.EMPTY);
         Mixins.set(furnace, "furnaceItemStacks", slots);
-        // Nothing lit, nothing cooking and nothing to cook with: the tick is skipped
+        // Checks an idle furnace.
         var idle = Mixins.ci();
         Mixins.call(furnace, "equilibrium$sleepWhileIdle", idle);
         assertTrue(idle.isCancelled());
@@ -114,7 +114,7 @@ class HeavyRewriteMixinTest {
         World self = (World) (Object) world;
         Mixins.set(self, "isRemote", true);
         EntityZombie zombie = mock(EntityZombie.class);
-        // A passenger being dragged along is never governed, and a client world never is either
+        // Checks passengers and client worlds.
         var passenger = Mixins.ci();
         Mixins.call(world, "equilibrium$governFarEntities", zombie, false, passenger);
         assertFalse(passenger.isCancelled());
@@ -156,7 +156,7 @@ class HeavyRewriteMixinTest {
         Mockito.doReturn(Blocks.AIR.getDefaultState()).when(self).getBlockState(new BlockPos(0, 0, 0));
         assertFalse((boolean) Mixins.call(world, "getCollisionBoxes", null, around, false, boxes));
         assertTrue(boxes.isEmpty());
-        // An entity outside the border sees the world filled with stone, and the flag is flipped once
+        // Checks an entity outside the border.
         Entity entity = mock(Entity.class);
         when(entity.isOutsideBorder()).thenReturn(true);
         Mockito.doReturn(true).when(self).isInsideWorldBorder(entity);
@@ -166,7 +166,7 @@ class HeavyRewriteMixinTest {
         assertTrue((boolean) Mixins.call(world, "getCollisionBoxes", entity, around, false, boxes));
         Mockito.verify(entity, Mockito.atLeastOnce()).setOutsideBorder(false);
         boxes.clear();
-        // The early-out form stops at the first box, and refuses coordinates beyond the world limit
+        // Checks the early out form.
         Mockito.doReturn(new WorldBorder()).when(self).getWorldBorder();
         Mockito.doReturn(Blocks.STONE.getDefaultState()).when(self).getBlockState(new BlockPos(0, 0, 0));
         assertTrue((boolean) Mixins.call(world, "getCollisionBoxes", null, around, true, boxes));
@@ -219,11 +219,11 @@ class HeavyRewriteMixinTest {
         Mockito.verify(caught).attackEntityFrom(any(), Mockito.anyFloat());
         Mockito.verify(immune, Mockito.never()).attackEntityFrom(any(), Mockito.anyFloat());
         Mockito.verify(distant, Mockito.never()).attackEntityFrom(any(), Mockito.anyFloat());
-        // An entity exactly at the centre has no direction to be pushed in, so it is skipped
+        // Checks a centred entity.
         Mockito.verify(centred, Mockito.never()).attackEntityFrom(any(), Mockito.anyFloat());
         assertTrue(knockback.isEmpty());
 
-        // A player in range is remembered for the knockback it receives, and an exploder answers for the blocks
+        // Checks the knockback record.
         affected.clear();
         EntityPlayer player = mock(EntityPlayer.class);
         player.posX = 1.0D;
@@ -249,12 +249,76 @@ class HeavyRewriteMixinTest {
     }
 
     @Test
+    void explosionRaysLoseResistanceOnEveryStepLikeVanilla() {
+        ExplosionMixin explosion = Mixins.instance(ExplosionMixin.class);
+        World world = mock(World.class);
+        Mockito.doReturn(net.minecraft.world.WorldType.DEFAULT).when(world).getWorldType();
+        // Places a stone wall and wood.
+        when(world.getBlockState(any())).thenAnswer(invocation -> {
+            int x = ((BlockPos) invocation.getArgument(0)).getX();
+            return x == 2 ? Blocks.STONE.getDefaultState() : x == 3 ? Blocks.PLANKS.getDefaultState() : Blocks.AIR.getDefaultState();
+        });
+        when(world.getEntitiesWithinAABBExcludingEntity(any(), any())).thenReturn(List.of());
+        Mixins.set(explosion, "world", world);
+        Mixins.set(explosion, "size", 4.0F);
+        Mixins.set(explosion, "x", 0.5D);
+        Mixins.set(explosion, "y", 64.5D);
+        Mixins.set(explosion, "z", 0.5D);
+        List<BlockPos> affected = new ArrayList<>();
+        Mixins.set(explosion, "affectedBlockPositions", affected);
+        Mixins.set(explosion, "playerKnockbackMap", new HashMap<EntityPlayer, Vec3d>());
+        Mixins.set(world, "rand", new Random(11));
+        explosion.doExplosionA();
+
+        // Runs vanilla's loop.
+        Random random = new Random(11);
+        java.util.Set<BlockPos> expected = new java.util.HashSet<>();
+        for (int j = 0; j < 16; ++j) {
+            for (int k = 0; k < 16; ++k) {
+                for (int l = 0; l < 16; ++l) {
+                    if (j != 0 && j != 15 && k != 0 && k != 15 && l != 0 && l != 15) {
+                        continue;
+                    }
+                    double d0 = j / 15.0F * 2.0F - 1.0F;
+                    double d1 = k / 15.0F * 2.0F - 1.0F;
+                    double d2 = l / 15.0F * 2.0F - 1.0F;
+                    double d3 = Math.sqrt(d0 * d0 + d1 * d1 + d2 * d2);
+                    d0 /= d3;
+                    d1 /= d3;
+                    d2 /= d3;
+                    float f = 4.0F * (0.7F + random.nextFloat() * 0.6F);
+                    double d4 = 0.5D;
+                    double d6 = 64.5D;
+                    double d8 = 0.5D;
+                    for (; f > 0.0F; f -= 0.22500001F) {
+                        BlockPos pos = new BlockPos(d4, d6, d8);
+                        net.minecraft.block.state.IBlockState state = world.getBlockState(pos);
+                        if (state.getMaterial() != net.minecraft.block.material.Material.AIR) {
+                            float resistance = state.getBlock().getExplosionResistance(world, pos, null, (net.minecraft.world.Explosion) (Object) explosion);
+                            f -= (resistance + 0.3F) * 0.3F;
+                        }
+                        if (f > 0.0F) {
+                            expected.add(pos);
+                        }
+                        d4 += d0 * 0.30000001192092896D;
+                        d6 += d1 * 0.30000001192092896D;
+                        d8 += d2 * 0.30000001192092896D;
+                    }
+                }
+            }
+        }
+        assertEquals(expected, new java.util.HashSet<>(affected));
+        // Checks the stone holds.
+        assertFalse(affected.contains(new BlockPos(4, 64, 0)));
+    }
+
+    @Test
     void exposureRaysShareOneCursor() {
         var world = Mixins.instance(com.bdmajora.equilibrium.mixin.world.explosions.entity_raycast.WorldMixin.class);
         World self = (World) (Object) world;
         Mockito.doReturn(net.minecraft.world.WorldType.DEFAULT).when(self).getWorldType();
         Mockito.doReturn(Blocks.AIR.getDefaultState()).when(self).getBlockState(any());
-        // Nothing in the way, so every sample ray reaches the centre
+        // Checks every ray reaches.
         assertEquals(1.0F, world.getBlockDensity(new Vec3d(0.5, 5.5, 0.5), new AxisAlignedBB(0, 5, 0, 1, 6, 1)));
         // A solid wall between the samples and the centre blocks them all
         Mockito.doReturn(Blocks.STONE.getDefaultState()).when(self).getBlockState(any());

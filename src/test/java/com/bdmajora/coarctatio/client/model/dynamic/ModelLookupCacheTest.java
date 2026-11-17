@@ -51,7 +51,7 @@ class ModelLookupCacheTest {
         }, true);
         assertNull(remembers.get("minecraft:missing"));
         assertNull(remembers.get("minecraft:missing"));
-        // The item mesher answers null for an unregistered meta, so that is an answer worth keeping
+        // Checks a null answer is kept.
         assertEquals(1, loads.get());
 
         AtomicInteger retries = new AtomicInteger();
@@ -73,14 +73,14 @@ class ModelLookupCacheTest {
             return model;
         }, false);
 
-        // Keys are the per-item location objects, which are unique per registration, so they are held by reference
+        // Fills the identity keyed cache.
         Object[] keys = new Object[1001];
         for (int i = 0; i < keys.length; i++) {
             keys[i] = new Object();
             cache.get(keys[i]);
         }
         assertEquals(1001, loads.get());
-        // The most recent thousand are still there; the first one had to go
+        // Checks the eviction.
         cache.get(keys[1000]);
         assertEquals(1001, loads.get());
         cache.get(keys[0]);

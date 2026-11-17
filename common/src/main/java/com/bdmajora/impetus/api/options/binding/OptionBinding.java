@@ -6,6 +6,5 @@ public interface OptionBinding<S, T> {
     void setValue(S storage, T value);
 
     // Reads the value from the storage object without writing to it and may return null
-    // Returns the stored value of the option.
     T getValue(S storage);
 }

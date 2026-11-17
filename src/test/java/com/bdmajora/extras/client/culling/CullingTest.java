@@ -31,7 +31,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyFloat;
@@ -55,7 +54,7 @@ class CullingTest {
         Mixins.set(Extras.class, "config", config);
         client = Mc.client();
         world = mock(WorldClient.class);
-        // Every chunk has a stone plane where x & 15 == 5, the whole height; the camera stands at x 0.5 between two planes
+        // Places the stone planes.
         ExtendedBlockStorage section = new ExtendedBlockStorage(0, true);
         for (int y = 0; y < 16; y++) {
             for (int z = 0; z < 16; z++) {
@@ -71,7 +70,7 @@ class CullingTest {
         when(world.getChunkProvider()).thenReturn(provider);
         Mixins.set(world, "loadedEntityList", new ArrayList<Entity>());
         Mixins.set(world, "loadedTileEntityList", new ArrayList<TileEntity>());
-        // A thread object that is never started, so the hooks do not spin one up
+        // Sets an unstarted thread.
         Mixins.set(OcclusionCullingThread.class, "instance", Mixins.construct(OcclusionCullingThread.class));
     }
 
@@ -84,19 +83,43 @@ class CullingTest {
     @Test
     void theCellCacheAnswersEachCellOnce() {
         CellVisibilityCache cache = new CellVisibilityCache(2);
-        AtomicInteger asked = new AtomicInteger();
-        assertTrue(cache.isVisible(0, 0, 0, () -> asked.incrementAndGet() > 0));
-        assertTrue(cache.isVisible(0, 0, 0, () -> asked.incrementAndGet() > 0));
-        assertFalse(cache.isVisible(1, 1, 1, () -> asked.incrementAndGet() < 0));
-        assertFalse(cache.isVisible(1, 1, 1, () -> asked.incrementAndGet() < 0));
-        assertEquals(2, asked.get());
-        // Outside the cached cube every question is asked
-        cache.isVisible(5, 0, 0, () -> asked.incrementAndGet() > 0);
-        cache.isVisible(-5, 0, 0, () -> asked.incrementAndGet() > 0);
-        assertEquals(4, asked.get());
+        assertEquals(CellVisibilityCache.UNKNOWN, cache.get(0, 0, 0));
+        cache.put(0, 0, 0, true);
+        cache.put(1, 1, 1, false);
+        assertEquals(CellVisibilityCache.VISIBLE, cache.get(0, 0, 0));
+        assertEquals(CellVisibilityCache.BLOCKED, cache.get(1, 1, 1));
+        // Checks the cube bounds.
+        cache.put(-2, -2, -2, true);
+        assertEquals(CellVisibilityCache.VISIBLE, cache.get(-2, -2, -2));
+        cache.put(2, 0, 0, true);
+        cache.put(-3, 0, 0, true);
+        assertEquals(CellVisibilityCache.UNKNOWN, cache.get(2, 0, 0));
+        assertEquals(CellVisibilityCache.UNKNOWN, cache.get(-3, 0, 0));
+        assertEquals(CellVisibilityCache.UNKNOWN, cache.get(0, 5, 0));
+        assertEquals(CellVisibilityCache.UNKNOWN, cache.get(0, 0, -5));
+        // Checks a new pass.
         cache.clear();
-        cache.isVisible(0, 0, 0, () -> asked.incrementAndGet() > 0);
-        assertEquals(5, asked.get());
+        assertEquals(CellVisibilityCache.UNKNOWN, cache.get(0, 0, 0));
+        assertEquals(CellVisibilityCache.UNKNOWN, cache.get(1, 1, 1));
+        cache.put(1, 1, 1, true);
+        assertEquals(CellVisibilityCache.VISIBLE, cache.get(1, 1, 1));
+        // Across the stamp wrap a cell from long ago never reads as current
+        cache.put(0, 0, 0, true);
+        for (int pass = 0; pass < 127; pass++) {
+            cache.clear();
+            assertEquals(CellVisibilityCache.UNKNOWN, cache.get(0, 0, 0), "pass " + pass);
+        }
+        cache.put(0, 1, 0, false);
+        for (int pass = 0; pass < 300; pass++) {
+            cache.clear();
+            assertEquals(CellVisibilityCache.UNKNOWN, cache.get(0, 0, 0), "pass " + pass);
+            assertEquals(CellVisibilityCache.UNKNOWN, cache.get(0, 1, 0), "pass " + pass);
+            cache.put(1, 0, 1, pass % 2 == 0);
+            assertEquals(pass % 2 == 0 ? CellVisibilityCache.VISIBLE : CellVisibilityCache.BLOCKED, cache.get(1, 0, 1));
+        }
+        assertThrows(IllegalArgumentException.class, () -> new CellVisibilityCache(-1));
+        assertThrows(IllegalArgumentException.class, () -> new CellVisibilityCache(601));
+        assertEquals(CellVisibilityCache.UNKNOWN, new CellVisibilityCache(0).get(0, 0, 0));
     }
 
     @Test
@@ -109,7 +132,7 @@ class CullingTest {
         assertFalse(raycaster.isClear(0.5, 64.5, 0.5, 10.5, 58.5, -3.5, 1.0));
         // The block the target is in never hides it
         assertTrue(raycaster.isClear(0.5, 64.5, 0.5, 5.5, 64.5, 0.5, 1.0));
-        // A degenerate ray, a ray along one axis, and one outside the world's height
+        // Checks the edge case rays.
         assertTrue(raycaster.isClear(0.5, 64.5, 0.5, 0.5, 64.5, 0.5, 0.0));
         assertTrue(raycaster.isClear(0.5, 64.5, 0.5, 0.5, 80.5, 0.5, 0.0));
         assertTrue(raycaster.isClear(0.5, 300.5, 0.5, 3.5, 300.5, 0.5, 0.0));
@@ -174,7 +197,7 @@ class CullingTest {
         // Standing inside the box counts as seeing it
         EntityPig around = pig(10, 64, 0.5);
         when(around.getEntityBoundingBox()).thenReturn(new AxisAlignedBB(-1, 60, -1, 12, 70, 2));
-        // One behind the wall seen from above, and one below, reach the up and down faces
+        // Checks the up and down faces.
         EntityPig overhead = pig(10, 60, 0.5);
         EntityPig underfoot = pig(10, 68, 0.5);
         EntityPig aside = pig(10, 64, 6.5);
@@ -210,7 +233,7 @@ class CullingTest {
         assertTrue(OcclusionCullingThread.lastEntitiesCulled >= 2);
         assertEquals(1, OcclusionCullingThread.lastBlockEntitiesCulled);
 
-        // A second pass on the same world keeps its raycaster; with both kinds off nothing is walked
+        // Checks a second pass.
         config.occlusion.entities = false;
         config.occlusion.blockEntities = false;
         Mixins.call(thread, "pass", world, view, config.occlusion);
@@ -250,13 +273,13 @@ class CullingTest {
         Mixins.call(dispatcher, "impetus$skipOccluded", blockEntity, 0.0F, -1, tile);
         assertTrue(tile.isCancelled());
 
-        // A stale verdict is not trusted, and the shadow pass draws everything
+        // Checks a stale verdict.
         entity.impetus$setOccluded(true, System.nanoTime() - 5_000_000_000L);
         assertFalse(OcclusionCulling.shouldSkipEntity((Entity) (Object) entity));
         Mixins.set(UmbraShadowRenderer.class, "shadowPassActive", true);
         assertFalse(OcclusionCulling.shouldSkipBlockEntity((TileEntity) (Object) blockEntity));
         Mixins.set(UmbraShadowRenderer.class, "shadowPassActive", false);
-        // Switched off, nothing is skipped
+        // Checks the switch off.
         config.occlusion.entities = false;
         config.occlusion.blockEntities = false;
         CallbackInfoReturnable<Boolean> off = Mixins.cir();

@@ -59,7 +59,7 @@ class ItemModelPrebakeTest {
         when(model.bake(any(), any(), any())).thenReturn(mock(IBakedModel.class));
         unbaked.putObject(diamond, model);
 
-        // Nothing to bake before the first dynamic reload, or with the prebake switched off
+        // Checks nothing to prebake.
         prebake(true);
         ItemModelPrebake.restart();
         assertNull(running());
@@ -67,7 +67,7 @@ class ItemModelPrebakeTest {
         prebake(false);
         ItemModelPrebake.restart();
         assertNull(running());
-        // In a world a reload is a pack change, and baking everything would compete with the game
+        // Checks no prebake in a world.
         prebake(true);
         Mixins.set(client, "world", Mc.uninitialized(WorldClient.class));
         ItemModelPrebake.restart();
@@ -86,7 +86,7 @@ class ItemModelPrebakeTest {
         ItemModelPrebake thread = running();
         assertNotNull(thread);
         thread.join();
-        // Pinned, so the next lookup is answered without baking again
+        // Checks the pinned model.
         assertEquals(1, baked.permanentCount());
         assertNotNull(baked.getObject(diamond));
 

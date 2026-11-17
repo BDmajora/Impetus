@@ -5,7 +5,7 @@ import java.io.InputStream;
 import java.util.Arrays;
 import java.util.List;
 
-// Defines its own copy of the given classes and their nested classes and delegates the rest, so each instance sees them unloaded with fresh statics
+// Loader with its own class copies.
 public final class FreshClasses extends ClassLoader {
     private final List<String> roots;
 
@@ -14,7 +14,7 @@ public final class FreshClasses extends ClassLoader {
         this.roots = Arrays.stream(roots).map(Class::getName).toList();
     }
 
-    // This loader's copy of the class, not yet initialised
+    // Returns this loader's copy.
     public Class<?> load(Class<?> type) throws ClassNotFoundException {
         return Class.forName(type.getName(), false, this);
     }

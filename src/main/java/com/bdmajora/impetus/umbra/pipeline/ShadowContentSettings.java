@@ -6,34 +6,34 @@ import java.util.Objects;
 
 // Settings of the shadow content group.
 public final class ShadowContentSettings {
-    // Choices of the culling setting.
+    // Culling of the shadow pass.
     public enum Culling {
-        // Value that selects on.
+        // Keeps only casters that can shade what the camera sees.
         ON,
-        // Value that selects off.
+        // Every loaded section is a caster.
         OFF,
-        // Value that selects reversed.
+        // Keeps everything in voxel distance plus casters for the view beyond it.
         REVERSED
     }
 
-    // Choice of the terrain option.
+    // Whether opaque terrain draws into the shadow map.
     private final boolean terrain;
-    // Choice of the translucent option.
+    // Whether translucent terrain draws into the shadow map.
     private final boolean translucent;
-    // Choice of the entities option.
+    // Whether entities other than players draw into the shadow map.
     private final boolean entities;
-    // Choice of the block entities option.
+    // Whether block entities draw into the shadow map.
     private final boolean blockEntities;
-    // Choice of the light block entities option.
+    // Whether light emitting block entities draw into the shadow map.
     private final boolean lightBlockEntities;
-    // Choice of the player option.
+    // Whether the player draws into the shadow map.
     private final boolean player;
-    // Choice of the culling option.
+    // Section culling mode of the shadow pass.
     private final Culling culling;
 
     // Creates a shadow content settings from its terrain and translucent and entities and block entities.
     private ShadowContentSettings(boolean terrain, boolean translucent, boolean entities, boolean blockEntities,
-                                  // Choice of the light block entities option.
+                                  // Light emitter switch and player switch and culling mode.
                                   boolean lightBlockEntities, boolean player, Culling culling) {
         this.terrain = terrain;
         this.translucent = translucent;
@@ -49,7 +49,7 @@ public final class ShadowContentSettings {
         return new ShadowContentSettings(true, true, true, true, false, true, Culling.ON);
     }
 
-    // Creates from.
+    // Reads the shadow content directives of shaders.properties.
     public static ShadowContentSettings from(ShaderProperties properties) {
         Objects.requireNonNull(properties, "properties");
         return new ShadowContentSettings(
@@ -74,37 +74,37 @@ public final class ShadowContentSettings {
         };
     }
 
-    // Returns whether render terrain.
+    // Returns whether opaque terrain casts shadows.
     public boolean shouldRenderTerrain() {
         return this.terrain;
     }
 
-    // Returns whether render translucent.
+    // Returns whether translucent terrain casts shadows.
     public boolean shouldRenderTranslucent() {
         return this.translucent;
     }
 
-    // Returns whether render entities.
+    // Returns whether entities other than players cast shadows.
     public boolean shouldRenderEntities() {
         return this.entities;
     }
 
-    // Returns whether render any block entities.
+    // Returns whether any block entity casts shadows.
     public boolean shouldRenderAnyBlockEntities() {
         return this.blockEntities || this.lightBlockEntities;
     }
 
-    // Returns whether render block entities.
+    // Returns whether every block entity casts shadows.
     public boolean shouldRenderBlockEntities() {
         return this.blockEntities;
     }
 
-    // Returns whether render light block entities only.
+    // Returns whether only light emitting block entities cast shadows.
     public boolean shouldRenderLightBlockEntitiesOnly() {
         return !this.blockEntities && this.lightBlockEntities;
     }
 
-    // Returns whether render player.
+    // Returns whether the player casts a shadow.
     public boolean shouldRenderPlayer() {
         return this.player;
     }

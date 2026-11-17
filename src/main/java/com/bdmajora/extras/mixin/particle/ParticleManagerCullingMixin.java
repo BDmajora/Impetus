@@ -1,8 +1,7 @@
 package com.bdmajora.extras.mixin.particle;
 
 import com.bdmajora.extras.client.particle.ParticleTicker;
-import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
-import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import com.llamalad7.mixinextras.injector.WrapWithCondition;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleManager;
 import net.minecraft.client.renderer.BufferBuilder;
@@ -18,7 +17,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 // Mixin that changes ParticleManager.
 @Mixin(ParticleManager.class)
 public abstract class ParticleManagerCullingMixin {
-    // Field frustum added to the target.
+    // Camera frustum of this frame's particle draw.
     @Unique
     private Frustum impetus$frustum;
 
@@ -37,20 +36,16 @@ public abstract class ParticleManagerCullingMixin {
         this.impetus$frustum = frustum;
     }
 
-    // Wraps the call of Particle.renderParticle in renderParticles.
-    @WrapOperation(method = "renderParticles", at = @At(value = "INVOKE",
+    // Draws a particle only when it is on screen.
+    @WrapWithCondition(method = "renderParticles", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/client/particle/Particle;renderParticle(Lnet/minecraft/client/renderer/BufferBuilder;Lnet/minecraft/entity/Entity;FFFFFF)V"))
-    private void impetus$cullParticle(Particle particle, BufferBuilder buffer, Entity entity, float partialTicks,
-                                      // Camera rotation terms.
-                                      float rotationX, float rotationZ, float rotationYZ, float rotationXY, float rotationXZ,
-                                      Operation<Void> original) {
+    private boolean impetus$cullParticle(Particle particle, BufferBuilder buffer, Entity entity, float partialTicks,
+                                         float rotationX, float rotationZ, float rotationYZ, float rotationXY, float rotationXZ) {
         Frustum frustum = this.impetus$frustum;
-        if (frustum != null && !ParticleTicker.isModded(particle)) {
-            AxisAlignedBB box = particle.getBoundingBox();
-            if (!frustum.isBoxInFrustum(box.minX - 1.0D, box.minY - 1.0D, box.minZ - 1.0D, box.maxX + 1.0D, box.maxY + 1.0D, box.maxZ + 1.0D)) {
-                return;
-            }
+        if (frustum == null || ParticleTicker.isModded(particle)) {
+            return true;
         }
-        original.call(particle, buffer, entity, partialTicks, rotationX, rotationZ, rotationYZ, rotationXY, rotationXZ);
+        AxisAlignedBB box = particle.getBoundingBox();
+        return frustum.isBoxInFrustum(box.minX - 1.0D, box.minY - 1.0D, box.minZ - 1.0D, box.maxX + 1.0D, box.maxY + 1.0D, box.maxZ + 1.0D);
     }
 }

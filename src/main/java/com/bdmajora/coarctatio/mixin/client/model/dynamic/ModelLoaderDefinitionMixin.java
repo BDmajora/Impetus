@@ -33,7 +33,7 @@ public abstract class ModelLoaderDefinitionMixin implements DefinitionLoader {
         cir.setReturnValue(this.coarctatio$definition(location));
     }
 
-    // Handles definition.
+    // Returns a blockstate definition and loads it on first use.
     @Override
     public ModelBlockDefinition coarctatio$definition(ResourceLocation location) {
         ResourceLocation plain = new ResourceLocation(location.getNamespace(), location.getPath());

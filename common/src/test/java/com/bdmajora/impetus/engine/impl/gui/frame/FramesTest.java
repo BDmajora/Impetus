@@ -150,7 +150,7 @@ class FramesTest {
         lastTime.setAccessible(true);
         lastTime.setLong(frame, 1L);
         List<TextComponent> lines = new ArrayList<>();
-        // The same row's impact changes between frames, and each frame shows the current one
+        // Checks impact changes.
         for (OptionImpact impact : List.of(OptionImpact.HIGH, OptionImpact.LOW, OptionImpact.VARIES, OptionImpact.MEDIUM, OptionImpact.HIGH)) {
             Mockito.when(option.getImpact()).thenReturn(impact);
             for (int frameNo = 0; frameNo < 2; frameNo++) {
@@ -163,7 +163,7 @@ class FramesTest {
                 lines.add(line);
             }
         }
-        // Every frame of one impact draws the very same line, and the impacts never share one
+        // Checks the shared line.
         assertSame(lines.get(0), lines.get(1));
         assertSame(lines.get(0), lines.get(8));
         assertSame(lines.get(0), lines.get(9));
@@ -220,7 +220,7 @@ class FramesTest {
         assertTrue(none.mouseClicked(ctx, 5, 5, 0));
         assertFalse(none.mouseScrolled(ctx, 5, 5, 0, 1));
         assertFalse(none.mouseDragged(ctx, 5, 5, 0, 0, 0));
-        // The button that took the click is handed the release, wherever the cursor ends up
+        // Checks the release.
         assertTrue(none.mouseReleased(ctx, 5, 5, 0));
         assertFalse(none.mouseReleased(ctx, 5, 5, 0));
     }
@@ -232,7 +232,7 @@ class FramesTest {
     @Test
     void aTabStepIntoAScrollingFrameScrollsTheLeastThatShowsTheFocusedControl() {
         AtomicReference<Integer> vertical = new AtomicReference<>(0);
-        // A 400 tall frame seen through a 100 tall view; the third button is taller than the view and the hidden one is never focused
+        // Builds a scrolling frame.
         FlatButtonWidget top = button(new Dim2i(0, 0, 80, 20));
         FlatButtonWidget middle = button(new Dim2i(0, 150, 80, 20));
         FlatButtonWidget tall = button(new Dim2i(0, 200, 80, 150));
@@ -243,7 +243,7 @@ class FramesTest {
                 .addChild(d -> top).addChild(d -> middle).addChild(d -> tall).addChild(d -> hidden).addChild(d -> bottom).build();
         ScrollableFrame frame = ScrollableFrame.createBuilder().setDimension(new Dim2i(0, 0, 100, 100)).setFrame(content).setVerticalScrollBarOffset(vertical).build();
 
-        // Already in view; brought up from below by its bottom edge; the tall one by its top edge; the last one by the bottom, at the end of the range
+        // Checks scrolling forwards.
         List<FlatButtonWidget> order = List.of(top, middle, tall, bottom);
         int[] offsets = {0, 70, 200, 300};
         for (int i = 0; i < order.size(); i++) {
@@ -253,7 +253,7 @@ class FramesTest {
         }
         assertFalse(frame.moveFocus(true));
         assertEquals(300, vertical.get());
-        // Backwards each comes down by its top edge, and one already in view leaves the scroll alone
+        // Checks scrolling backwards.
         assertTrue(frame.moveFocus(false));
         assertEquals(300, vertical.get());
         int[] back = {200, 150, 0};
@@ -262,7 +262,7 @@ class FramesTest {
             assertSame(order.get(2 - i), frame.getFocusedControl());
             assertEquals(back[i], vertical.get());
         }
-        // Off the start nothing is focused, the next step comes back in at the top, and the frame draws the content shifted by the offset it scrolled to
+        // Checks the start.
         assertFalse(frame.moveFocus(false));
         assertNull(frame.getFocusedControl());
         assertTrue(frame.moveFocus(true));
@@ -272,7 +272,7 @@ class FramesTest {
         frame.render(draw, 500, 500, 0f);
         assertTrue(draw.drew("translate(0.0,-70.0,0.0)"));
 
-        // Sideways the same, on the horizontal bar
+        // Checks sideways.
         AtomicReference<Integer> horizontal = new AtomicReference<>(0);
         FlatButtonWidget left = button(new Dim2i(0, 0, 40, 20));
         FlatButtonWidget right = button(new Dim2i(300, 0, 40, 20));
@@ -285,7 +285,7 @@ class FramesTest {
         assertTrue(sideways.moveFocus(false));
         assertEquals(0, horizontal.get());
 
-        // A frame that fits has nothing to scroll, and one with nothing focusable is passed through
+        // Checks frames with nothing to scroll.
         FlatButtonWidget only = button(new Dim2i(0, 0, 40, 20));
         ScrollableFrame still = new ScrollableFrame(new Dim2i(0, 0, 100, 100), BasicFrame.createBuilder().setDimension(new Dim2i(0, 0, 50, 50)).addChild(d -> only).build(), false, new AtomicReference<>(0), new AtomicReference<>(0));
         assertTrue(still.moveFocus(true));

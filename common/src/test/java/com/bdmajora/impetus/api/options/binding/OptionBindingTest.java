@@ -27,14 +27,14 @@ class OptionBindingTest {
         for (TypeVariable<?> parameter : parameters) {
             assertArrayEquals(new Type[]{Object.class}, parameter.getBounds(), parameter::toString);
         }
-        // Erasures are what compiled mods link against; a new abstract method breaks every implementor, and a default or static one is new API
+        // Checks the method erasures.
         Set<String> methods = Arrays.stream(type.getDeclaredMethods())
                 .filter(m -> !m.isSynthetic())
                 .peek(m -> assertTrue(Modifier.isPublic(m.getModifiers()) && Modifier.isAbstract(m.getModifiers()) && !m.isDefault(), m::toString))
                 .map(m -> m.getReturnType().getName() + " " + m.getName() + Arrays.toString(m.getParameterTypes()))
                 .collect(Collectors.toSet());
         assertEquals(Set.of("void setValue[class java.lang.Object, class java.lang.Object]", "java.lang.Object getValue[class java.lang.Object]"), methods);
-        // Generic signatures, so the compiler ties the storage to S and the value to T
+        // Checks the generic signatures.
         Method set = type.getMethod("setValue", Object.class, Object.class);
         assertArrayEquals(new Type[]{parameters[0], parameters[1]}, set.getGenericParameterTypes());
         Method get = type.getMethod("getValue", Object.class);

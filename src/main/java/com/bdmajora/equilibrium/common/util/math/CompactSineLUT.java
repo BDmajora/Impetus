@@ -1,6 +1,5 @@
 package com.bdmajora.equilibrium.common.util.math;
 
-import net.minecraft.util.math.MathHelper;
 
 // Sine table that stores one quarter of the values.
 public class CompactSineLUT {

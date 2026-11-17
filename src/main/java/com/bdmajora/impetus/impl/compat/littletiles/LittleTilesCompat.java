@@ -28,7 +28,7 @@ import java.util.concurrent.TimeUnit;
 public final class LittleTilesCompat {
     // Mod id of LittleTiles.
     public static final String MODID = "littletiles";
-    // Is loaded.
+    // Whether LittleTiles is installed.
     public static final boolean IS_LOADED = Loader.isModLoaded(MODID);
 
     // Remesh delay nanos.

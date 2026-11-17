@@ -265,7 +265,7 @@ public final class SectionLattice {
         return idx >= 0 && this.latticeSection[idx] != null ? idx : -1;
     }
 
-    // Moves or allocates the window so it covers the search radius around the camera.
+    // Moves or allocates the window to cover the search radius around the camera.
     public void ensureWindowCovers(Vector3ic cameraSectionPos, float searchDistance) {
         java.util.Objects.requireNonNull(cameraSectionPos, "cameraSectionPos");
         if (!(searchDistance >= 0.0f)) {

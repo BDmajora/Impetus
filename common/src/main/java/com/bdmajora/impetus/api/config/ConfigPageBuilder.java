@@ -37,7 +37,7 @@ public final class ConfigPageBuilder {
         return this;
     }
 
-    // Creates the OptionPage and reuses the last copy of the groups unless a group was added since
+    // Creates the OptionPage and reuses the last copy of the groups when nothing was added.
     public OptionPage build() {
         List<OptionGroup> groups = this.built;
         if (groups == null) {

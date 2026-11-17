@@ -118,7 +118,7 @@ class FrameworkTest {
 
     @Test
     void keysMatchEitherTheCharacterOrVanillasKeyCode() {
-        // LWJGL2 numbering, which lwjglx keeps, rather than GLFW's
+        // Key numbers.
         assertEquals(List.of(15, 28, 57, 156, 203, 205), List.of(Keys.TAB, Keys.RETURN, Keys.SPACE, Keys.NUMPAD_ENTER, Keys.LEFT, Keys.RIGHT));
         assertTrue(Keys.isTab('\t', 0));
         assertTrue(Keys.isTab('\0', Keys.TAB));
@@ -138,7 +138,7 @@ class FrameworkTest {
         assertFalse(Keys.isPress('\0', 257));
     }
 
-    // A focusable control that logs focus changes and the keys it is offered, claims clicks inside its bounds and, while focused, the characters in claims
+    // Focusable control that logs events.
     private static final class Leaf implements Focusable {
         final String name;
         final List<String> log;
@@ -206,7 +206,7 @@ class FrameworkTest {
         assertSame(c, inner.getFocusedChild());
         assertSame(c, root.getFocusedControl());
         assertSame(c, inner.getFocusedControl());
-        // Containers never make two at once, but should it happen the first in order is the one found
+        // Checks two focused children.
         a.focused = true;
         assertSame(a, root.getFocusedChild());
         assertSame(a, root.getFocusedControl());
@@ -242,7 +242,7 @@ class FrameworkTest {
         }
         assertEquals(List.of("d", "e", "c", "a"), backward);
         assertNull(root.getFocusedControl());
-        // Each step unfocused the control it left, so the log pairs up and never shows two at once
+        // Checks each step.
         assertEquals(List.of("a+", "a-", "c+", "c-", "e+", "e-", "d+", "d-", "d+", "d-", "e+", "e-", "c+", "c-", "a+", "a-"), log);
 
         // A control that can no longer take focus while it has it is still left normally
@@ -269,7 +269,7 @@ class FrameworkTest {
         assertTrue(root.keyTyped(ctx, 'x', 0));
         assertEquals(List.of("last x"), log);
         log.clear();
-        // One it refuses goes round the rest in order, the focused one not asked twice
+        // Checks a refusal.
         assertFalse(root.keyTyped(ctx, 'y', 0));
         assertEquals(List.of("last y", "first y", "deep y"), log);
 
@@ -282,7 +282,7 @@ class FrameworkTest {
         log.clear();
         assertFalse(root.keyTyped(ctx, 'w', 0));
         assertEquals(List.of("deep w", "first w", "last w"), log);
-        // With nothing focused the key goes round every child in order, as before focus existed
+        // Checks no focus.
         deep.focused = false;
         log.clear();
         assertFalse(root.keyTyped(ctx, 'v', 0));
@@ -314,7 +314,7 @@ class FrameworkTest {
         a.claims = "\t";
         assertTrue(root.dispatchKeyTyped(ctx, '\t', Keys.TAB));
         assertSame(a, root.getFocusedControl());
-        // A claimed key is just claimed, and one nobody takes is left to the screen
+        // Checks claimed keys.
         a.claims = "\tk";
         assertTrue(root.dispatchKeyTyped(ctx, 'k', 37));
         assertFalse(root.dispatchKeyTyped(ctx, 'j', 36));
@@ -343,12 +343,12 @@ class FrameworkTest {
         assertSame(b, root.getFocusedControl());
         assertSame(inner, root.getCapturedChild());
         assertFalse(a.focused);
-        // A control that cannot take focus still takes the click, and the focus is gone
+        // Checks an unfocusable click.
         assertTrue(root.mouseClicked(ctx, 45, 5, 0));
         assertNull(root.getFocusedControl());
         assertTrue(root.mouseClicked(ctx, 5, 5, 0));
         assertSame(a, root.getFocusedControl());
-        // So does a click on something that is not focusable at all, or on nothing
+        // Checks other clicks.
         assertTrue(root.mouseClicked(ctx, 65, 5, 0));
         assertNull(root.getFocusedControl());
         assertTrue(root.mouseClicked(ctx, 5, 5, 1));
@@ -383,7 +383,7 @@ class FrameworkTest {
         assertFalse(minimal.keyTyped(new FakeInteractionContext(), ' ', Keys.SPACE));
     }
 
-    // A container over fixed children that recovers every failing child by recording it, as a frame would by swapping in a placeholder
+    // Container that records failing children.
     private static InteractableContainer recovering(List<Interactable> recovered, Interactable... children) {
         return new InteractableContainer() {
             private Interactable captured;
@@ -437,7 +437,7 @@ class FrameworkTest {
         container.setCapturedChild(broken);
         assertSame(failure, assertThrows(IllegalStateException.class, () -> container.mouseDragged(ctx, 1, 1, 0, 0, 0)));
         assertSame(failure, assertThrows(IllegalStateException.class, () -> container.mouseReleased(ctx, 1, 1, 0)));
-        // A plain child, not a focusable one, fails the same way
+        // Checks a plain child.
         Interactable plain = Mockito.mock(Interactable.class, invocation -> {
             throw failure;
         });
@@ -452,7 +452,7 @@ class FrameworkTest {
         Interactable after = Mockito.mock(Interactable.class);
         InteractableContainer container = recovering(recovered, broken, after);
         FakeInteractionContext ctx = new FakeInteractionContext();
-        // Events stop at the child that failed, so the one after never sees them
+        // Checks events stop.
         assertTrue(container.mouseClicked(ctx, 1, 1, 0));
         assertNull(container.getCapturedChild());
         assertTrue(container.mouseScrolled(ctx, 1, 1, 0, 1));
@@ -460,12 +460,12 @@ class FrameworkTest {
         assertTrue(container.mouseReleased(ctx, 1, 1, 0));
         assertTrue(container.keyTyped(ctx, 'a', 30));
         Mockito.verifyNoInteractions(after);
-        // Questions answer no, so the search goes on to the next child
+        // Checks questions.
         assertFalse(container.isMouseOver(1, 1));
         Mockito.verify(after).isMouseOver(1, 1);
         assertNull(container.getFocusedChild());
         container.clearFocus();
-        // Every failure went to the container, the broken child each time, the click's own focus clearing included
+        // Checks every failure.
         assertEquals(10, recovered.size());
         assertTrue(recovered.stream().allMatch(child -> child == broken));
     }
@@ -482,7 +482,7 @@ class FrameworkTest {
         assertTrue(container.mouseReleased(ctx, 50, 50, 0));
         assertNull(container.getCapturedChild());
         assertEquals(List.of(broken, broken), recovered);
-        // A focused child that throws on a key takes the key, so a Tab it broke on never moves the focus
+        // Checks a throwing key.
         List<String> log = new ArrayList<>();
         Leaf next = new Leaf("next", log, 20);
         Focusable typed = Mockito.mock(Focusable.class);
@@ -505,10 +505,10 @@ class FrameworkTest {
         assertTrue(container.moveFocus(true));
         assertTrue(next.focused);
         assertSame(next, container.getFocusedChild());
-        // Backwards from the leaf, the broken child fails again and the step runs off the end
+        // Checks backwards.
         assertFalse(container.moveFocus(false));
         assertFalse(next.focused);
-        // Asked whether it held focus and whether it could take it, on each of the two steps, and once in between
+        // Checks the questions asked.
         assertEquals(5, recovered.size());
         assertTrue(recovered.stream().allMatch(child -> child == broken));
     }
@@ -526,7 +526,7 @@ class FrameworkTest {
         assertTrue(container.moveFocus(true));
         assertTrue(next.focused);
         assertEquals(List.of(stuck), recovered);
-        // Clearing the focus asks it again, and the leaf still lets go
+        // Checks clearing focus.
         container.clearFocus();
         assertFalse(next.focused);
         assertEquals(List.of(stuck, stuck), recovered);
@@ -560,7 +560,7 @@ class FrameworkTest {
         assertEquals(List.of("pop", "pop", "unscissor"), draw.calls);
         assertEquals(1, draw.matrixDepth());
         assertEquals(1, draw.scissorDepth());
-        // Nothing is popped below the given depths, or when already at or under them
+        // Checks the depths.
         draw.unwindTo(1, 1);
         draw.unwindTo(5, 5);
         assertEquals(List.of("pop", "pop", "unscissor"), draw.calls);

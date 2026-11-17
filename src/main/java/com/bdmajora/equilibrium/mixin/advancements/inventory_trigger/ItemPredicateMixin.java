@@ -21,7 +21,7 @@ public abstract class ItemPredicateMixin implements SizeCheckedPredicate {
     @Shadow
     public abstract boolean test(ItemStack stack);
 
-    // Handles matches crossing.
+    // Returns whether a count change crossed into the predicate's range.
     @Override
     public boolean equilibrium$matchesCrossing(ItemStack stack) {
         Float min = ((MinMaxBoundsAccessor) this.count).equilibrium$min();

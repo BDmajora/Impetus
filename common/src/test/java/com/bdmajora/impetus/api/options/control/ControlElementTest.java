@@ -34,7 +34,7 @@ class ControlElementTest {
     private static final String MOD = "control_element_test";
     private static final int ACCENT = 0xFF123456;
 
-    // A mock option with a name, available and unchanged
+    // Returns a mock option with a name.
     private static Option<Boolean> option(String name) {
         @SuppressWarnings("unchecked")
         Option<Boolean> option = Mockito.mock(Option.class);
@@ -43,7 +43,7 @@ class ControlElementTest {
         return option;
     }
 
-    // A row whose control column the test picks, so no control is needed
+    // Row with a chosen control column.
     private static class Row extends ControlElement<Boolean> {
         int column;
         int measures;
@@ -60,13 +60,13 @@ class ControlElementTest {
         }
     }
 
-    // Fake fonts counting the name work the row does itself, apart from what the fake's own drawString measures, and keeping every component drawn
+    // Fake fonts that count name work.
     private static class Counting extends FakeDrawContext {
         final List<TextComponent> drawn = new ArrayList<>();
         int extracts;
         int measures;
         int cuts;
-        // Makes the next cut throw, as a font source failing partway through a fit would
+        // Makes the next cut throw.
         boolean failCut;
         private boolean drawing;
 
@@ -156,7 +156,7 @@ class ControlElementTest {
         Dim2i dim = new Dim2i(0, 0, 200, 18);
         assertEquals("Option must not be null", assertThrows(NullPointerException.class, () -> new ControlElement<Boolean>(null, dim)).getMessage());
         assertEquals("Dimensions must not be null", assertThrows(NullPointerException.class, () -> new ControlElement<>(option("Name"), null)).getMessage());
-        // The option is checked first, and subclasses get the same checks
+        // Checks the option first.
         assertEquals("Option must not be null", assertThrows(NullPointerException.class, () -> new Row(null, null, 30)).getMessage());
     }
 
@@ -187,7 +187,7 @@ class ControlElementTest {
 
     @Test
     void aCutNeverSplitsACharacterOutsideTheBasicPlaneInTwo() {
-        // A 78 row less the 30 column and 12 of gaps leaves 36, 18 after the ellipsis, three chars: "Ab" and half the emoji
+        // Checks a 78 wide row.
         assertEquals(List.of("Ab..."), drawn(new Row(option("Ab\uD83D\uDE00cdefgh"), new Dim2i(0, 0, 78, 18), 30)));
         // One more char of room keeps the whole emoji
         assertEquals(List.of("Ab\uD83D\uDE00..."), drawn(new Row(option("Ab\uD83D\uDE00cdefgh"), new Dim2i(0, 0, 84, 18), 30)));
@@ -271,7 +271,7 @@ class ControlElementTest {
         draw.reset();
         row.render(draw, 0, 0, 0f);
         assertEquals(0, draw.work());
-        // Unavailable hides the change, whatever the option says
+        // Checks the hidden change.
         available.set(false);
         draw.reset();
         row.render(draw, 0, 0, 0f);
@@ -293,7 +293,7 @@ class ControlElementTest {
     void aRenamedOptionIsFittedAgainButAnEqualNameMadeAfreshIsNot() {
         Option<Boolean> option = option("Name");
         AtomicReference<String> name = new AtomicReference<>("Name");
-        // A fresh but equal component every frame, as a getter that builds its name would give
+        // Checks equal fresh names.
         when(option.getName()).thenAnswer(invocation -> TextComponent.literal(name.get()));
         Row row = new Row(option, new Dim2i(0, 0, 200, 18), 30);
         Counting draw = new Counting();
@@ -307,7 +307,7 @@ class ControlElementTest {
         row.render(draw, 0, 0, 0f);
         assertEquals(List.of("Renamed"), draw.strings);
         assertTrue(draw.extracts > 0);
-        // A name that goes away draws nothing, and one that comes back is fitted again
+        // Checks a name that comes and goes.
         when(option.getName()).thenReturn(null);
         draw.reset();
         row.render(draw, 0, 0, 0f);
@@ -326,7 +326,7 @@ class ControlElementTest {
         Row row = new Row(option(LONG), new Dim2i(0, 0, 100, 18), 30);
         Counting narrow = new Counting();
         row.render(narrow, 0, 0, 0f);
-        // 58 of room less the 18 pixel ellipsis leaves 40, six characters
+        // Checks six characters.
         assertEquals(List.of("A very..."), narrow.strings);
         // Characters half as wide fit 16 into the 49 left beside a 9 pixel ellipsis
         Counting wide = new Counting() {
@@ -368,7 +368,7 @@ class ControlElementTest {
         draw.failCut = false;
         draw.reset();
         row.render(draw, 0, 0, 0f);
-        // 58 less the 30 pixel "... *" leaves 28, four characters
+        // Checks four characters.
         assertEquals(List.of("A ve... *"), draw.strings);
         // The state that drew before is fitted again rather than mixed up with the failed one
         changed.set(false);
@@ -407,7 +407,7 @@ class ControlElementTest {
         Row row = new Row(option("Name"), new Dim2i(-30, 7, 200, 19), 30);
         FakeDrawContext idle = new FakeDrawContext();
         row.render(idle, 500, 500, 0f);
-        // A 19 high row at 7 centres on 16, so text 8 high starts at 12
+        // Checks the text top.
         assertEquals(List.of("fill(-30,7,170,26,90000000)", "text(Name,-24,12,ffffffff,false)"), idle.calls);
         // The top left corner is inside and turns the background to the hover colour
         FakeDrawContext hovered = new FakeDrawContext();
@@ -457,7 +457,7 @@ class ControlElementTest {
         row.render(draw, 500, 500, 0f);
         assertEquals(java.util.Collections.singletonList(null), draw.mods);
         assertTrue(draw.drew("fill(0,0,200,1,ff123456)"));
-        // The default context asks the theme, which answers an unowned row with the standard accent
+        // Checks the default accent.
         FakeDrawContext themed = new FakeDrawContext();
         row.render(themed, 500, 500, 0f);
         assertTrue(themed.drew("fill(0,0,200,1," + Integer.toHexString(DefaultColors.getModAccentColor(null)) + ")"));
@@ -472,7 +472,7 @@ class ControlElementTest {
         assertTrue(row.canFocus());
         row.setFocused(true);
         available.set(false);
-        // Tab passes over it from now on, but the outline still shows where the keys go until focus moves
+        // Checks the outline after refusal.
         assertFalse(row.canFocus());
         Counting draw = new Counting();
         row.render(draw, 500, 500, 0f);
@@ -642,7 +642,7 @@ class ControlElementTest {
         Row row = new Row(option(huge), new Dim2i(0, 0, 200, 18), 30);
         Counting draw = new Counting();
         row.render(draw, 0, 0, 0f);
-        // 158 of room less the ellipsis leaves 140, 23 characters
+        // Checks 23 characters.
         assertEquals(List.of("x".repeat(23) + "..."), draw.strings);
         draw.reset();
         row.render(draw, 0, 0, 0f);
@@ -671,7 +671,7 @@ class ControlElementTest {
         assertEquals(List.of("options.render_distance[16]"), draw.strings);
     }
 
-    // Fonts of uneven widths, one to seven pixels a character and four for each half of a pair, cutting as a real font does, by whole characters it can fit
+    // Fonts of uneven widths.
     private static final class Uneven extends FakeDrawContext {
         static int width(char c) {
             return Character.isSurrogate(c) ? 4 : 1 + c % 7;
@@ -703,7 +703,7 @@ class ControlElementTest {
     void namesOfUnevenWidthsAlwaysFitTheirRoomKeepTheirWholeCharactersAndAreWholeWhenTheyFit() {
         Random random = new Random(0x5EED);
         char[] alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789     .-_%".toCharArray();
-        // Rounds that drew nothing, the whole name and a cut one, so the run is known to reach every outcome
+        // Checks every outcome is reached.
         int[] outcomes = new int[3];
         for (int round = 0; round < 3000; round++) {
             StringBuilder name = new StringBuilder();
@@ -726,7 +726,7 @@ class ControlElementTest {
             String whole = changed ? name + " *" : name.toString();
             String context = "name '" + name + "' width " + width + " column " + column + " changed " + changed;
             if (draw.strings.isEmpty()) {
-                // Nothing is drawn only when not even the suffix fits, or there is nothing to draw
+                // Checks when nothing is drawn.
                 assertTrue(whole.isEmpty() || draw.getStringWidth(changed ? "... *" : "...") > room || width <= 0, context);
                 outcomes[0]++;
                 continue;
@@ -751,7 +751,7 @@ class ControlElementTest {
         }
     }
 
-    // Fake fonts translating one key from text the test changes, with a version the test moves on when it does, as a language reload would
+    // Fake fonts with a changeable translation.
     private static final class Reloading extends FakeDrawContext {
         static final String KEY = "control_element_test.name";
         String translation = "Before";
@@ -767,7 +767,7 @@ class ControlElementTest {
             return super.extractString(component);
         }
 
-        // Not marked as an override so the fake also stands for a context written before versions existed
+        // Older context without versions.
         public long textVersion() {
             return this.version;
         }
@@ -786,7 +786,7 @@ class ControlElementTest {
         row.render(draw, 0, 0, 0f);
         assertEquals(extracts, draw.extracts);
         assertEquals(1, row.measures);
-        // The reload moves the version on, so the name is translated and the column measured again
+        // Checks the reload.
         draw.translation = "After the reload";
         draw.version = 7;
         draw.strings.clear();
@@ -796,12 +796,12 @@ class ControlElementTest {
         draw.strings.clear();
         row.render(draw, 0, 0, 0f);
         assertEquals(2, row.measures);
-        // The version is what tells the row, so text changed without it is not looked for
+        // Checks text without a version change.
         draw.translation = "Unseen";
         draw.strings.clear();
         row.render(draw, 0, 0, 0f);
         assertEquals(List.of("After the reload"), draw.strings);
-        // Another font source is fitted in its own right but keeps the column, as before
+        // Checks another font source.
         Reloading other = new Reloading();
         other.translation = "Other";
         row.render(other, 0, 0, 0f);
@@ -827,7 +827,7 @@ class ControlElementTest {
     @Test
     void aRowReportsTheHoverItDrewThisFrameWithFocusCountingAsHoverAndARowWithNoAreaNeverHovered() {
         Hovering row = new Hovering(option("Name"), new Dim2i(10, 20, 200, 18));
-        // Inside at the top left corner, outside at the bottom right edges, then focused with the cursor away and back
+        // Checks the hover edges.
         int[][] cursors = {{10, 20}, {209, 37}, {210, 30}, {100, 38}, {5000, 5000}};
         for (int[] at : cursors) {
             row.render(new FakeDrawContext(), at[0], at[1], 0f);
@@ -861,7 +861,7 @@ class ControlElementTest {
                 assertTrue(themed.drew("fill(0,0,200,1," + before + ")"), themed.calls::toString);
             }
             verify(option, times(1)).getId();
-            // A theme registered while the screen is open shows on the next frame, and is then kept
+            // Checks a late theme.
             int generation = ConfigThemeRegistry.generation();
             ConfigThemeRegistry.register(new ConfigTheme(MOD, 0xFF00FF00));
             assertNotEquals(generation, ConfigThemeRegistry.generation());
@@ -871,7 +871,7 @@ class ControlElementTest {
                 assertTrue(themed.drew("fill(0,0,200,1,ff00ff00)"), themed.calls::toString);
             }
             verify(option, times(2)).getId();
-            // Another font source asks for itself, and so does each row
+            // Checks each source asks for itself.
             Accented accented = new Accented();
             row.render(accented, 5000, 5000, 0f);
             row.render(accented, 5000, 5000, 0f);

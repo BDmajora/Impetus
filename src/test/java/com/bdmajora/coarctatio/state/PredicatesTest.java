@@ -63,10 +63,10 @@ class PredicatesTest {
         SingleMatchOne north = new SingleMatchOne(BlockFence.NORTH, Boolean.TRUE);
         assertTrue(north.apply(fence(true, false)));
         assertFalse(north.apply(fence(false, false)));
-        // A null state never matches, which is what the model pipeline expects of a missing state
+        // Checks a null state.
         assertFalse(north.apply(null));
 
-        // Two leaves built from the same property and value are interchangeable, which is what makes them poolable
+        // Checks two equal leaves.
         SingleMatchOne same = new SingleMatchOne(BlockFence.NORTH, Boolean.TRUE);
         assertEquals(north, same);
         assertEquals(north, north);
@@ -120,14 +120,14 @@ class PredicatesTest {
         assertTrue(any.apply(fence(true, false)));
         assertFalse(any.apply(fence(false, false)));
 
-        // An empty AND holds and an empty OR does not, the way the loop falls out
+        // Checks empty AND and OR.
         assertTrue(CompositePredicate.all(java.util.Collections.emptyList()).apply(fence(false, false)));
         assertFalse(CompositePredicate.any(java.util.Collections.emptyList()).apply(fence(false, false)));
 
         assertEquals(all, CompositePredicate.all(children));
         assertEquals(all, all);
         assertEquals(all.hashCode(), CompositePredicate.all(children).hashCode());
-        // The AND/OR flag is part of the identity, so the two never share a pool entry
+        // Checks AND and OR differ.
         assertNotEquals(all, any);
         assertNotEquals(all, "not a predicate");
     }
@@ -248,13 +248,13 @@ class PredicatesTest {
         assertInstanceOf(AllMatchAnyObject.class, ConditionCanonicalizer.all(Arrays.asList(
                 new SingleMatchAny(BlockFence.NORTH, new Object[] {Boolean.TRUE}),
                 new SingleMatchAny(BlockFence.EAST, new Object[] {Boolean.TRUE}))));
-        // Nothing fits, so the children are kept in an array-backed composite
+        // Checks the array backed composite.
         assertInstanceOf(CompositePredicate.class, ConditionCanonicalizer.all(Arrays.asList(
                 single, new NegatedPredicate(single))));
         assertInstanceOf(CompositePredicate.class, ConditionCanonicalizer.any(Arrays.asList(
                 single, new SingleMatchOne(BlockFence.EAST, Boolean.TRUE))));
 
-        // Conditions are resolved in the order given, since a mod's ICondition may care
+        // Checks the resolution order.
         BlockStateContainer container = Blocks.OAK_FENCE.getBlockState();
         ICondition first = states -> single;
         ICondition second = states -> new SingleMatchOne(BlockFence.EAST, Boolean.TRUE);
@@ -269,7 +269,7 @@ class PredicatesTest {
 
     @Test
     void anUnknownPropertyTypeStillCompares() {
-        // Properties are compared by equals, so two blocks declaring the same property share one predicate
+        // Checks property equality.
         IProperty<?> north = Blocks.OAK_FENCE.getBlockState().getProperty("north");
         IProperty<?> spruceNorth = Blocks.SPRUCE_FENCE.getBlockState().getProperty("north");
         assertSame(north, spruceNorth);

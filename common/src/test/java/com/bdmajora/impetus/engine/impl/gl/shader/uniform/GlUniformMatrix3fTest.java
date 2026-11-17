@@ -98,7 +98,7 @@ class GlUniformMatrix3fTest {
         }
     }
 
-    // Matrix uniform that records every matrix it receives instead of calling GL
+    // Matrix uniform that records matrices.
     private static final class Recording extends GlUniformMatrix3f {
         // Matrices in the order the upload received them
         private final List<Matrix3f> values = new ArrayList<>();
@@ -651,7 +651,7 @@ class GlUniformMatrix3fTest {
     void matrixFailurePassesThroughAndRestoresTheStack() {
         IllegalStateException failure = new IllegalStateException("broken matrix");
         Matrix3f broken = new Matrix3f() {
-            // Throws instead of writing the elements
+            // Throws instead of writing.
             @Override
             public FloatBuffer get(FloatBuffer buffer) {
                 throw failure;

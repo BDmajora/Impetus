@@ -6,7 +6,7 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-// Auto-registered through META-INF/services so every test starts from a clean GL mock; a module adds its own window stubs through onReset
+// Resets the GL mock per test.
 public final class GlResetExtension implements BeforeEachCallback {
     private static final List<Runnable> RESETS = new CopyOnWriteArrayList<>();
 

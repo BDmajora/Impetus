@@ -28,7 +28,7 @@ public class IntUniform extends Uniform implements ProgramTargetedUniform {
         }
     }
 
-    // Uploads the value into the program when it changed, whatever is bound.
+    // Uploads the value into the program when it changed.
     @Override
     public void updateIn(int program) {
         int newValue = this.value.getAsInt();

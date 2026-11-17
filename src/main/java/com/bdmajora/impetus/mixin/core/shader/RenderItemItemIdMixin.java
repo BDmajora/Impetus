@@ -17,7 +17,7 @@ import com.bdmajora.impetus.umbra.uniforms.CapturedRenderingState;
 // Mixin that changes RenderItem.
 @Mixin(RenderItem.class)
 public class RenderItemItemIdMixin {
-    // Field item id stack added to the target.
+    // Item ids of nested item draws.
     @Unique
     private final IntArrayList impetus$itemIdStack = new IntArrayList();
 

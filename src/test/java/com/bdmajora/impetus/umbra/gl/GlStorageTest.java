@@ -175,17 +175,17 @@ class GlStorageTest {
         int fixed = holder.getBufferId(0);
         int relative = holder.getBufferId(1);
         assertTrue(fixed > 0 && relative > 0);
-        // An index past the driver's bindings, an empty size and one past the per-buffer limit are all refused
+        // Checks the refused buffer requests.
         assertEquals(-1, holder.getBufferId(20));
         assertEquals(-1, holder.getBufferId(4));
         assertEquals(-1, holder.getBufferId(5));
         verify(TestGl.gl()).glBufferStorage(SSBO, 1024L, 0);
         verify(TestGl.gl()).glBufferStorage(SSBO, 16L * 50 * 25, 0);
         verify(TestGl.gl(), atLeast(1)).glClearBufferData(eq(SSBO), anyInt(), anyInt(), anyInt(), isNull());
-        // A failed index still binds, to buffer 0
+        // Checks a failed index binds buffer 0.
         verify(TestGl.gl()).glBindBufferBase(SSBO, 20, 0);
 
-        // Same size is a no-op; a new size rebuilds only the screen-relative buffers
+        // Checks the resize rules.
         holder.onResize(100, 50);
         holder.onResize(200, 100);
         assertEquals(fixed, holder.getBufferId(0));
@@ -206,7 +206,7 @@ class GlStorageTest {
 
     @Test
     void storageBuffersFallBackOnOlderDrivers() {
-        // No limits reported: eight bindings and a 512 MiB cap; no buffer storage or server clear, so the zero fill is staged in chunks
+        // Checks the defaults without limits.
         when(TestGl.gl().isOpenGLVersionSupported(anyInt(), anyInt())).thenReturn(false);
         when(TestGl.gl().isExtensionSupported(any(GLExtension.class))).thenReturn(false);
         ShaderStorageBufferHolder holder = new ShaderStorageBufferHolder(definitions("bufferObject.0", String.valueOf(5 * 1024 * 1024)), 1, 1);
@@ -218,7 +218,7 @@ class GlStorageTest {
 
     @Test
     void storageBuffersRespectFreeVideoMemoryAndAllocationErrors() {
-        // NVIDIA reports 1 KiB free, so a 2 KiB buffer is refused
+        // Checks the NVIDIA free memory limit.
         when(TestGl.gl().glGetInteger(0x9049)).thenReturn(1);
         when(TestGl.gl().glGetInteger(0x90DE)).thenReturn(-1);
         ShaderStorageBufferHolder refused = new ShaderStorageBufferHolder(definitions("bufferObject.0", "2048"), 1, 1);

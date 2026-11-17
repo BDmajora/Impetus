@@ -203,7 +203,7 @@ class ShaderPackTest {
                 "shadowMapResolution", "1024", "shadowHardwareFiltering", "false");
         ShaderPack pack = ShaderPackLoader.loadFromDirectory(writePack(), changed);
 
-        // Options are discovered pack-wide; an unreferenced define is not an option
+        // Checks the discovered options.
         OptionSet options = pack.getShaderPackOptions().getOptionSet();
         assertEquals(Set.of("BLOOM", "SUN_GLOW", "shadowHardwareFiltering"), options.getBooleanOptions().keySet());
         assertEquals(Set.of("SHADOW_QUALITY", "SUN_ANGLE", "WATER_WAVES", "shadowMapResolution", "H_VALUE"), options.getStringOptions().keySet());
@@ -214,7 +214,7 @@ class ShaderPackTest {
         assertTrue(edited.contains("const int shadowMapResolution = 1024;"), edited);
         assertTrue(edited.contains("const bool shadowHardwareFiltering = false;"), edited);
 
-        // The option values feed the properties macros, not the GLSL environment
+        // Checks the option values reach the properties macros.
         Map<String, String> defines = pack.getShaderDefines();
         assertEquals("1", defines.get("SUN_GLOW"));
         assertFalse(defines.containsKey("BLOOM"));
@@ -227,7 +227,7 @@ class ShaderPackTest {
         assertFalse(environment.containsKey("MC_OLD_LIGHTING"));
         assertTrue(environment.containsKey("COLOR_SPACE_SRGB"));
 
-        // LOW is the profile these values match, and it switches composite1 off
+        // Checks the LOW profile.
         assertEquals(java.util.Optional.of(false), pack.getProperties().getProgramEnabled("composite1"));
         assertTrue(pack.hasFeature(FeatureFlags.SSBO));
         assertTrue(pack.hasFeature(FeatureFlags.CUSTOM_IMAGES));
@@ -261,7 +261,7 @@ class ShaderPackTest {
         assertTrue(fragment.contains("float util;") && fragment.contains("float common;"), fragment);
         assertTrue(fragment.contains("skipped unresolved #include \"missing.glsl\""), fragment);
         assertTrue(fragment.contains("#include nothing"), fragment);
-        // A missing program walks its fallback chain, a direct lookup does not
+        // Checks the fallback chain.
         assertSame(terrain, programs.get(ProgramId.TerrainSolid).orElseThrow());
         assertEquals("gbuffers_basic", programs.get(ProgramId.Clouds).orElseThrow().getName());
         assertTrue(programs.getDirect(ProgramId.Clouds).isEmpty());
@@ -317,7 +317,7 @@ class ShaderPackTest {
         assertEquals("TextureFilteringData{blur=true, clamp=true}", noise.getFilteringData().toString());
 
         Map<String, CustomTextureData> composite = pack.getCustomTextureDataMap().get(TextureStage.COMPOSITE_AND_FINAL);
-        // A malformed .mcmeta is ignored rather than failing the texture, a missing file drops its sampler
+        // Checks a malformed mcmeta and a missing file.
         assertFalse(((CustomTextureData.PngData) composite.get("colortex5")).getFilteringData().shouldBlur());
         assertFalse(composite.containsKey("colortex6"));
 
@@ -357,7 +357,7 @@ class ShaderPackTest {
         ShaderPack pack = ShaderPackLoader.loadFromZip(zipPack("pack.zip", true));
         assertTrue(pack.getProgramSet().get(ProgramId.Terrain).isPresent());
         assertNotNull(pack.getCustomNoiseTexture());
-        // With the defaults, BASE is the profile that matches, and it disables nothing
+        // Checks the BASE profile.
         assertEquals(java.util.Optional.empty(), pack.getProperties().getProgramEnabled("composite1"));
         assertEquals("yes", pack.getProperties().getRaw().get("bloom.gated"));
         assertFalse(pack.getSources().containsKey(path("/voxy.json")));
@@ -391,7 +391,7 @@ class ShaderPackTest {
     void brokenProfilesAreIgnoredRatherThanFailingThePack() {
         ShaderPack pack = new ShaderPack(Map.of(ShaderPack.PROPERTIES_PATH, "profile.A = profile.B\nprofile.B = profile.A\n"));
         assertEquals(java.util.Optional.empty(), pack.getProperties().getProgramEnabled("composite"));
-        // No profile matches values nobody set, so nothing is disabled either
+        // Checks no profile matches.
         ShaderPack unmatched = new ShaderPack(Map.of(ShaderPack.PROPERTIES_PATH, "profile.A = FOO=1\n",
                 path("/a.fsh"), "#define FOO 2 // [1 2]"));
         assertEquals(java.util.Optional.empty(), unmatched.getProperties().getProgramEnabled("composite"));

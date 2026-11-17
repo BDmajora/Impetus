@@ -35,7 +35,7 @@ public abstract class AttachCapabilitiesEventMixin<T> extends GenericEvent<T> im
     @Final
     private Map<ResourceLocation, ICapabilityProvider> caps;
 
-    // Field phase added to the target.
+    // Priority phase the reused event is in.
     @Unique
     private EventPriority coarctatio$phase;
 
@@ -46,19 +46,19 @@ public abstract class AttachCapabilitiesEventMixin<T> extends GenericEvent<T> im
         return this.coarctatio$phase;
     }
 
-    // Handles set phase.
+    // Advances the phase and refuses to go back.
     @Override
     public void setPhase(@Nonnull EventPriority value) {
         this.coarctatio$phase = RecyclableEvent.advancePhase(this.coarctatio$phase, value);
     }
 
-    // Handles reset phase.
+    // Clears the phase before the event is posted again.
     @Override
     public void coarctatio$resetPhase() {
         this.coarctatio$phase = null;
     }
 
-    // Handles refresh object.
+    // Points the reused event at a new object and clears the capabilities of the last one.
     @Override
     @SuppressWarnings("unchecked")
     public void coarctatio$refreshObject(Object object) {

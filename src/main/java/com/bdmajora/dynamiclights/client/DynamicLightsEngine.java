@@ -39,17 +39,17 @@ public final class DynamicLightsEngine {
     private static final double MAX_RADIUS_SQUARED = MAX_RADIUS * MAX_RADIUS;
     // Widening on every reach test so rounding can add a section but never drop a lit one.
     private static final double REACH_SLACK = 1.0E-6D;
-    // Radius the snapshot indexes lights by, the full fade distance so lookups stay exact.
+    // Radius the snapshot indexes lights by.
     static final double LOOKUP_RADIUS = MAX_RADIUS + REACH_SLACK;
-    // Blocks past a section's edge that its mesh reads light from, since smooth lighting samples one block out.
+    // Blocks past a section edge that its mesh reads light from.
     private static final int MESH_MARGIN = 1;
-    // Most sections a reach can cover: at most three per axis even with the mesh margin.
+    // Most sections one reach can cover.
     static final int MAX_REACHED_SECTIONS = 27;
 
     // Largest light level of an item.
     private static final int MAX_LUMINANCE = 14;
 
-    // Tracked sources, only touched while holding their monitor.
+    // Tracked light sources guarded by this engine's monitor.
     private final Set<DynamicLightSource> dynamicLightSources = new HashSet<>();
     // Frozen lights every lookup reads without locking.
     private volatile LightSnapshot snapshot = LightSnapshot.EMPTY;
@@ -59,7 +59,7 @@ public final class DynamicLightsEngine {
     // Number of tracked sources.
     private volatile int sourceCount;
 
-    // Scratch list of the lights handed to the terrain shaders, x, y, z and luminance each.
+    // Scratch array of the lights sent to the terrain shaders as x y z and luminance.
     private final double[] terrainLights = new double[TerrainDynamicLights.MAX_LIGHTS * TerrainDynamicLights.STRIDE];
     // Squared camera distance of each light in the scratch list.
     private final double[] terrainLightDistances = new double[TerrainDynamicLights.MAX_LIGHTS];
@@ -92,14 +92,14 @@ public final class DynamicLightsEngine {
         this.lastUpdate = now;
         int updated = 0;
 
-        // The snapshot's own array, so a source may add or remove itself mid-walk
+        // Walks the snapshot's own source array.
         for (DynamicLightSource source : this.snapshot().sources) {
             if (source.impetus$updateDynamicLight(renderer)) {
                 updated++;
             }
         }
 
-        // Rebuilds were only queued above, so the meshes they produce read these positions
+        // Retakes the snapshot after any source updated.
         if (updated > 0) {
             this.recapture();
         }
@@ -107,7 +107,7 @@ public final class DynamicLightsEngine {
         this.lastUpdateCount = updated;
     }
 
-    // Hands the terrain shaders the nearest lit sources, at their drawn positions, for this frame.
+    // Sends the nearest lit sources at their drawn positions to the terrain shaders.
     public void publishTerrainLights(float partialTicks) {
         Entity viewer = Minecraft.getMinecraft().getRenderViewEntity();
         if (!TerrainDynamicLights.isShaderApplied() || !DynamicLights.options().mode.isEnabled() || this.sourceCount == 0
@@ -137,13 +137,13 @@ public final class DynamicLightsEngine {
             double dy = y - cameraY;
             double dz = z - cameraZ;
             double distance = dx * dx + dy * dy + dz * dz;
-            // Not a number never ranks, so a broken position cannot take a slot
+            // Skips a light whose distance is not a number.
             if (!(distance < Double.POSITIVE_INFINITY)) {
                 continue;
             }
             int slot = kept < TerrainDynamicLights.MAX_LIGHTS ? kept++ : -1;
             if (slot < 0) {
-                // Full: the light replaces the farthest kept one when it is nearer
+                // Replaces the farthest kept light when this one is nearer.
                 int farthest = 0;
                 for (int i = 1; i < kept; i++) {
                     if (distances[i] > distances[farthest]) {
@@ -170,12 +170,12 @@ public final class DynamicLightsEngine {
     private void recapture() {
         synchronized (this.dynamicLightSources) {
             this.snapshot = LightSnapshot.capture(this.dynamicLightSources);
-            // Cleared after the write so a reader that sees it cleared also sees the new snapshot
+            // Clears the stale flag after the new snapshot is written.
             this.snapshotStale = false;
         }
     }
 
-    // Returns the current snapshot, retaking it first when the tracked set changed.
+    // Returns the current snapshot and retakes it when the tracked set changed.
     private LightSnapshot snapshot() {
         if (this.snapshotStale) {
             synchronized (this.dynamicLightSources) {
@@ -220,7 +220,7 @@ public final class DynamicLightsEngine {
     public int getLightmapWithDynamicLight(double dynamicLightLevel, int lightmap) {
         int level = (int) dynamicLightLevel;
         int blockLight = (lightmap >> 4) & 0xF;
-        // Untouched unless the whole level is brighter, so a fraction never repacks the value
+        // Leaves the lightmap untouched unless the whole level is brighter.
         if (level <= blockLight) {
             return lightmap;
         }
@@ -271,7 +271,7 @@ public final class DynamicLightsEngine {
 
     // Returns the distance inside which the light raises a block by at least one whole level.
     static double meshReach(int luminance) {
-        // (1 - d / R) * luminance >= 1 solved for d; the lightmap only takes whole levels
+        // Returns the distance at which the light fades below one level.
         return MAX_RADIUS * (1.0D - 1.0D / luminance) + REACH_SLACK;
     }
 
@@ -345,7 +345,7 @@ public final class DynamicLightsEngine {
             }
         }
 
-        // Outside the monitor, so a source's rebuild hook can never wait on a reader retaking the snapshot
+        // Reads the renderer outside the monitor.
         RenderGlobal renderer = removed.isEmpty() ? null : Minecraft.getMinecraft().renderGlobal;
         for (DynamicLightSource source : removed) {
             if (source.impetus$getLuminance() > 0) {
@@ -424,10 +424,10 @@ public final class DynamicLightsEngine {
         return now >= lastUpdate && now < lastUpdate + mode.getDelay() ? -1L : now;
     }
 
-    // Queues the sections the light left or now reaches and returns the ones it reaches, null when dark.
+    // Queues the sections the light left or now reaches and returns the reached ones or null when dark.
     public static LongOpenHashSet relightSections(RenderGlobal renderer, World world, LongOpenHashSet previous,
                                                   double x, double y, double z, int luminance) {
-        // Meshes hold no moving light while the terrain shaders apply it, so there is nothing to rebuild or track
+        // Returns null while the terrain shaders apply moving lights.
         if (TerrainDynamicLights.isShaderApplied()) {
             return null;
         }
@@ -471,7 +471,7 @@ public final class DynamicLightsEngine {
         }
     }
 
-    // Writes the sections, each widened by margin blocks, holding a block centre within the radius, and returns how many.
+    // Writes the sections whose box widened by margin holds a block centre within the radius and returns their count.
     static int reachedSections(double x, double y, double z, double radius, int margin, long[] out) {
         double radiusSquared = radius * radius;
         int minX = (MathHelper.ceil(x - 0.5D - radius) - margin) >> 4;
@@ -485,7 +485,7 @@ public final class DynamicLightsEngine {
         int blockZ = MathHelper.floor(z);
         int count = 0;
 
-        // Box corners already cover the axis ranges, the sphere test drops the far corners
+        // Walks every section in the box and drops those outside the sphere.
         for (int sectionX = minX; sectionX <= maxX; sectionX++) {
             double dx = nearestBlock(blockX, sectionX, margin) + 0.5D - x;
             for (int sectionY = minY; sectionY <= maxY; sectionY++) {

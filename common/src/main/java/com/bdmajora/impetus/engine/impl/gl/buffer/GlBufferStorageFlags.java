@@ -13,7 +13,7 @@ public enum GlBufferStorageFlags implements EnumBit {
     MAP_READ(GL30.GL_MAP_READ_BIT),
     // Flag that allows the buffer to be mapped for writing
     MAP_WRITE(GL30.GL_MAP_WRITE_BIT),
-    // Flag that asks GL to keep the storage in client memory
+    // Keeps the storage in client memory.
     CLIENT_STORAGE(GL44.GL_CLIENT_STORAGE_BIT),
     // Flag that allows coherent mappings of the buffer
     COHERENT(GL44.GL_MAP_COHERENT_BIT);

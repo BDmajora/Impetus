@@ -25,7 +25,7 @@ import java.util.Map;
 // Mixin that changes TextureMap.
 @Mixin(TextureMap.class)
 public abstract class TextureMapPrefetchMixin {
-    // Field load texture added to the target.
+    // Selector of TextureMap.loadTexture.
     @Unique
     private static final String LOAD_TEXTURE = "loadTexture(Lnet/minecraft/client/renderer/texture/Stitcher;Lnet/minecraft/client/resources/IResourceManager;"
             + "Lnet/minecraft/util/ResourceLocation;Lnet/minecraft/client/renderer/texture/TextureAtlasSprite;"

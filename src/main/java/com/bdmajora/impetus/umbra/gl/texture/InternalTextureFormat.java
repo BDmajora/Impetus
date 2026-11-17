@@ -10,134 +10,134 @@ import org.lwjgl.opengl.GL41;
 import java.util.Locale;
 import java.util.Optional;
 
-// Choices of the internal texture format setting.
+// Texture formats a pack can name with the format and type that allocate each.
 public enum InternalTextureFormat {
-    // Value that selects rgba.
+    // Four 8 bit unsigned normalized channels.
     RGBA(GL11.GL_RGBA8, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, false),
 
-    // Value that selects r8.
+    // One 8-bit unsigned normalized channel.
     R8(GL30.GL_R8, GL11.GL_RED, GL11.GL_UNSIGNED_BYTE, false),
-    // Value that selects rg8.
+    // Two 8-bit unsigned normalized channels.
     RG8(GL30.GL_RG8, GL30.GL_RG, GL11.GL_UNSIGNED_BYTE, false),
-    // Value that selects rgb8.
+    // Three 8-bit unsigned normalized channels.
     RGB8(GL11.GL_RGB8, GL11.GL_RGB, GL11.GL_UNSIGNED_BYTE, false),
-    // Value that selects rgba8.
+    // Four 8-bit unsigned normalized channels.
     RGBA8(GL11.GL_RGBA8, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, false),
 
-    // Value that selects r8 snorm.
+    // One 8-bit signed normalized channel.
     R8_SNORM(GL31.GL_R8_SNORM, GL11.GL_RED, GL11.GL_BYTE, false),
-    // Value that selects rg8 snorm.
+    // Two 8-bit signed normalized channels.
     RG8_SNORM(GL31.GL_RG8_SNORM, GL30.GL_RG, GL11.GL_BYTE, false),
-    // Value that selects rgb8 snorm.
+    // Three 8-bit signed normalized channels.
     RGB8_SNORM(GL31.GL_RGB8_SNORM, GL11.GL_RGB, GL11.GL_BYTE, false),
-    // Value that selects rgba8 snorm.
+    // Four 8-bit signed normalized channels.
     RGBA8_SNORM(GL31.GL_RGBA8_SNORM, GL11.GL_RGBA, GL11.GL_BYTE, false),
 
-    // Value that selects r16.
+    // One 16-bit unsigned normalized channel.
     R16(GL30.GL_R16, GL11.GL_RED, GL11.GL_UNSIGNED_SHORT, false),
-    // Value that selects rg16.
+    // Two 16-bit unsigned normalized channels.
     RG16(GL30.GL_RG16, GL30.GL_RG, GL11.GL_UNSIGNED_SHORT, false),
-    // Value that selects rgb16.
+    // Three 16-bit unsigned normalized channels.
     RGB16(GL11.GL_RGB16, GL11.GL_RGB, GL11.GL_UNSIGNED_SHORT, false),
-    // Value that selects rgba16.
+    // Four 16-bit unsigned normalized channels.
     RGBA16(GL11.GL_RGBA16, GL11.GL_RGBA, GL11.GL_UNSIGNED_SHORT, false),
 
-    // Value that selects r16 snorm.
+    // One 16-bit signed normalized channel.
     R16_SNORM(GL31.GL_R16_SNORM, GL11.GL_RED, GL11.GL_SHORT, false),
-    // Value that selects rg16 snorm.
+    // Two 16-bit signed normalized channels.
     RG16_SNORM(GL31.GL_RG16_SNORM, GL30.GL_RG, GL11.GL_SHORT, false),
-    // Value that selects rgb16 snorm.
+    // Three 16-bit signed normalized channels.
     RGB16_SNORM(GL31.GL_RGB16_SNORM, GL11.GL_RGB, GL11.GL_SHORT, false),
-    // Value that selects rgba16 snorm.
+    // Four 16-bit signed normalized channels.
     RGBA16_SNORM(GL31.GL_RGBA16_SNORM, GL11.GL_RGBA, GL11.GL_SHORT, false),
 
-    // Value that selects r16 f.
+    // One 16-bit floating point channel.
     R16F(GL30.GL_R16F, GL11.GL_RED, GL11.GL_FLOAT, false),
-    // Value that selects rg16 f.
+    // Two 16-bit floating point channels.
     RG16F(GL30.GL_RG16F, GL30.GL_RG, GL11.GL_FLOAT, false),
-    // Value that selects rgb16 f.
+    // Three 16-bit floating point channels.
     RGB16F(GL30.GL_RGB16F, GL11.GL_RGB, GL11.GL_FLOAT, false),
-    // Value that selects rgba16 f.
+    // Four 16-bit floating point channels.
     RGBA16F(GL30.GL_RGBA16F, GL11.GL_RGBA, GL11.GL_FLOAT, false),
 
-    // Value that selects r32 f.
+    // One 32-bit floating point channel.
     R32F(GL30.GL_R32F, GL11.GL_RED, GL11.GL_FLOAT, false),
-    // Value that selects rg32 f.
+    // Two 32-bit floating point channels.
     RG32F(GL30.GL_RG32F, GL30.GL_RG, GL11.GL_FLOAT, false),
-    // Value that selects rgb32 f.
+    // Three 32-bit floating point channels.
     RGB32F(GL30.GL_RGB32F, GL11.GL_RGB, GL11.GL_FLOAT, false),
-    // Value that selects rgba32 f.
+    // Four 32-bit floating point channels.
     RGBA32F(GL30.GL_RGBA32F, GL11.GL_RGBA, GL11.GL_FLOAT, false),
 
-    // Value that selects r8 i.
+    // One 8-bit signed integer channel.
     R8I(GL30.GL_R8I, GL30.GL_RED_INTEGER, GL11.GL_BYTE, true),
-    // Value that selects rg8 i.
+    // Two 8-bit signed integer channels.
     RG8I(GL30.GL_RG8I, GL30.GL_RG_INTEGER, GL11.GL_BYTE, true),
-    // Value that selects rgb8 i.
+    // Three 8-bit signed integer channels.
     RGB8I(GL30.GL_RGB8I, GL30.GL_RGB_INTEGER, GL11.GL_BYTE, true),
-    // Value that selects rgba8 i.
+    // Four 8-bit signed integer channels.
     RGBA8I(GL30.GL_RGBA8I, GL30.GL_RGBA_INTEGER, GL11.GL_BYTE, true),
-    // Value that selects r8 ui.
+    // One 8-bit unsigned integer channel.
     R8UI(GL30.GL_R8UI, GL30.GL_RED_INTEGER, GL11.GL_UNSIGNED_BYTE, true),
-    // Value that selects rg8 ui.
+    // Two 8-bit unsigned integer channels.
     RG8UI(GL30.GL_RG8UI, GL30.GL_RG_INTEGER, GL11.GL_UNSIGNED_BYTE, true),
-    // Value that selects rgb8 ui.
+    // Three 8-bit unsigned integer channels.
     RGB8UI(GL30.GL_RGB8UI, GL30.GL_RGB_INTEGER, GL11.GL_UNSIGNED_BYTE, true),
-    // Value that selects rgba8 ui.
+    // Four 8-bit unsigned integer channels.
     RGBA8UI(GL30.GL_RGBA8UI, GL30.GL_RGBA_INTEGER, GL11.GL_UNSIGNED_BYTE, true),
 
-    // Value that selects r16 i.
+    // One 16-bit signed integer channel.
     R16I(GL30.GL_R16I, GL30.GL_RED_INTEGER, GL11.GL_SHORT, true),
-    // Value that selects rg16 i.
+    // Two 16-bit signed integer channels.
     RG16I(GL30.GL_RG16I, GL30.GL_RG_INTEGER, GL11.GL_SHORT, true),
-    // Value that selects rgb16 i.
+    // Three 16-bit signed integer channels.
     RGB16I(GL30.GL_RGB16I, GL30.GL_RGB_INTEGER, GL11.GL_SHORT, true),
-    // Value that selects rgba16 i.
+    // Four 16-bit signed integer channels.
     RGBA16I(GL30.GL_RGBA16I, GL30.GL_RGBA_INTEGER, GL11.GL_SHORT, true),
-    // Value that selects r16 ui.
+    // One 16-bit unsigned integer channel.
     R16UI(GL30.GL_R16UI, GL30.GL_RED_INTEGER, GL11.GL_UNSIGNED_SHORT, true),
-    // Value that selects rg16 ui.
+    // Two 16-bit unsigned integer channels.
     RG16UI(GL30.GL_RG16UI, GL30.GL_RG_INTEGER, GL11.GL_UNSIGNED_SHORT, true),
-    // Value that selects rgb16 ui.
+    // Three 16-bit unsigned integer channels.
     RGB16UI(GL30.GL_RGB16UI, GL30.GL_RGB_INTEGER, GL11.GL_UNSIGNED_SHORT, true),
-    // Value that selects rgba16 ui.
+    // Four 16-bit unsigned integer channels.
     RGBA16UI(GL30.GL_RGBA16UI, GL30.GL_RGBA_INTEGER, GL11.GL_UNSIGNED_SHORT, true),
 
-    // Value that selects r32 i.
+    // One 32-bit signed integer channel.
     R32I(GL30.GL_R32I, GL30.GL_RED_INTEGER, GL11.GL_INT, true),
-    // Value that selects rg32 i.
+    // Two 32-bit signed integer channels.
     RG32I(GL30.GL_RG32I, GL30.GL_RG_INTEGER, GL11.GL_INT, true),
-    // Value that selects rgb32 i.
+    // Three 32-bit signed integer channels.
     RGB32I(GL30.GL_RGB32I, GL30.GL_RGB_INTEGER, GL11.GL_INT, true),
-    // Value that selects rgba32 i.
+    // Four 32-bit signed integer channels.
     RGBA32I(GL30.GL_RGBA32I, GL30.GL_RGBA_INTEGER, GL11.GL_INT, true),
-    // Value that selects r32 ui.
+    // One 32-bit unsigned integer channel.
     R32UI(GL30.GL_R32UI, GL30.GL_RED_INTEGER, GL11.GL_UNSIGNED_INT, true),
-    // Value that selects rg32 ui.
+    // Two 32-bit unsigned integer channels.
     RG32UI(GL30.GL_RG32UI, GL30.GL_RG_INTEGER, GL11.GL_UNSIGNED_INT, true),
-    // Value that selects rgb32 ui.
+    // Three 32-bit unsigned integer channels.
     RGB32UI(GL30.GL_RGB32UI, GL30.GL_RGB_INTEGER, GL11.GL_UNSIGNED_INT, true),
-    // Value that selects rgba32 ui.
+    // Four 32-bit unsigned integer channels.
     RGBA32UI(GL30.GL_RGBA32UI, GL30.GL_RGBA_INTEGER, GL11.GL_UNSIGNED_INT, true),
 
-    // Value that selects rgb5 a1.
+    // Three 5-bit colour channels and 1-bit alpha.
     RGB5_A1(GL11.GL_RGB5_A1, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, false),
-    // Value that selects rgb10 a2.
+    // Three 10-bit colour channels and 2-bit alpha.
     RGB10_A2(GL11.GL_RGB10_A2, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, false),
-    // Value that selects r11 f g11 f b10 f.
+    // Packed unsigned floats with 11 bits for red and green and 10 for blue.
     R11F_G11F_B10F(GL30.GL_R11F_G11F_B10F, GL11.GL_RGB, GL11.GL_FLOAT, false),
-    // Value that selects rgb9 e5.
+    // Three 9-bit mantissas sharing a 5-bit exponent.
     RGB9_E5(GL30.GL_RGB9_E5, GL11.GL_RGB, GL11.GL_FLOAT, false),
 
-    // Value that selects rgba2.
+    // Four 2-bit unsigned normalized channels.
     RGBA2(GL11.GL_RGBA2, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, false),
-    // Value that selects rgba4.
+    // Four 4-bit unsigned normalized channels.
     RGBA4(GL11.GL_RGBA4, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, false),
-    // Value that selects r3 g3 b2.
+    // 3-bit red and green with 2-bit blue.
     R3_G3_B2(GL11.GL_R3_G3_B2, GL11.GL_RGB, GL11.GL_UNSIGNED_BYTE, false),
-    // Value that selects rgb565.
+    // 5 bit red and 6 bit green and 5 bit blue.
     RGB565(GL41.GL_RGB565, GL11.GL_RGB, GL11.GL_UNSIGNED_BYTE, false),
-    // Value that selects rgb10 a2 ui.
+    // Three 10-bit and one 2-bit unsigned integer channels.
     RGB10_A2UI(GL33.GL_RGB10_A2UI, GL30.GL_RGBA_INTEGER, GL12.GL_UNSIGNED_INT_2_10_10_10_REV, true);
 
     // GL internal format.
@@ -146,10 +146,10 @@ public enum InternalTextureFormat {
     private final int pixelFormat;
     // GL pixel type.
     private final int pixelType;
-    // Flag set for integer formats.
+    // Whether shaders read the format as integers.
     private final boolean integer;
 
-    // Creates an internal texture format from its internal format and pixel format and pixel type and integer.
+    // Creates a format from its GL formats and integer flag.
     InternalTextureFormat(int internalFormat, int pixelFormat, int pixelType, boolean integer) {
         this.internalFormat = internalFormat;
         this.pixelFormat = pixelFormat;
@@ -172,12 +172,12 @@ public enum InternalTextureFormat {
         return this.pixelType;
     }
 
-    // Returns whether integer.
+    // Returns whether shaders read the format as integers.
     public boolean isInteger() {
         return this.integer;
     }
 
-    // Creates from the string.
+    // Returns the format a pack directive names ignoring case or empty.
     public static Optional<InternalTextureFormat> fromString(String name) {
         try {
             return Optional.of(InternalTextureFormat.valueOf(name.toUpperCase(Locale.ROOT)));

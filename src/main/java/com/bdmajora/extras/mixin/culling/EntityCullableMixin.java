@@ -12,20 +12,20 @@ public abstract class EntityCullableMixin implements Cullable {
     // Frame stamp of the occlusion result.
     private volatile long impetus$occlusionStamp;
 
-    // Returns whether occluded.
+    // Returns whether the last occlusion test hid the entity.
     @Override
     public boolean impetus$isOccluded() {
         return this.impetus$occluded;
     }
 
-    // Handles set occluded.
+    // Records an occlusion test result and when it was taken.
     @Override
     public void impetus$setOccluded(boolean occluded, long stampNanos) {
         this.impetus$occlusionStamp = stampNanos;
         this.impetus$occluded = occluded;
     }
 
-    // Handles occlusion stamp.
+    // Returns when the last occlusion test ran.
     @Override
     public long impetus$occlusionStamp() {
         return this.impetus$occlusionStamp;

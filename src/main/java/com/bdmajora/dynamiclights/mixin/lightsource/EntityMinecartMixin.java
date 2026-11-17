@@ -21,7 +21,7 @@ public abstract class EntityMinecartMixin extends Entity implements DynamicLight
     @Shadow
     public abstract IBlockState getDisplayTile();
 
-    // Field minecart luminance added to the target.
+    // Light level the minecart gives off now.
     @Unique
     private int impetus$minecartLuminance;
 
@@ -40,7 +40,7 @@ public abstract class EntityMinecartMixin extends Entity implements DynamicLight
         this.impetus$tickDynamicLight(this.isDead);
     }
 
-    // Handles dynamic light tick.
+    // Updates the minecart's light from fire and its displayed block capped at 14.
     @Override
     @SuppressWarnings("deprecation")
     public void impetus$dynamicLightTick() {

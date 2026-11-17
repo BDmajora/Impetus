@@ -41,7 +41,7 @@ class FrameCopiesTest {
         this.gl.close();
     }
 
-    // colortex2 keeps its contents, colortex4 is 64x32 like a bloom buffer, colortex0..5 exist
+    // Returns the target directives.
     private TargetDirectives directives() {
         this.targets.setColorSize(4, 64, 32, new boolean[]{false, false});
         for (int i = 0; i < 6; i++) {
@@ -64,16 +64,16 @@ class FrameCopiesTest {
         TargetDirectives directives = directives();
         Mockito.clearInvocations(TestGl.gl());
         copies.build(this.targets, directives, new BufferFlipper(), 8);
-        // fog {0}, white {1, 5}, black at render size {2, 3}, black at 64x32 {4}: four groups, both sides, for each of the two clear sets
+        // Checks the clear groups.
         verify(TestGl.gl(), times(16)).glGenFramebuffers();
         Mockito.clearInvocations(TestGl.gl());
         copies.clear(true, 320, 240);
         verifyClears(8);
-        // glClear ignores the viewport, so it is set once, after the clears, to the render size
+        // Checks the viewport after the clears.
         verify(TestGl.gl(), times(1)).glViewport(anyInt(), anyInt(), anyInt(), anyInt());
         verify(TestGl.gl()).glViewport(0, 0, 320, 240);
         Mockito.clearInvocations(TestGl.gl());
-        // Every frame colortex2 keeps its contents, but black {3} still has a group
+        // Checks the per frame clears.
         copies.clear(false, 320, 240);
         verifyClears(8);
     }
@@ -84,7 +84,7 @@ class FrameCopiesTest {
         TargetDirectives directives = directives();
         Mockito.clearInvocations(TestGl.gl());
         copies.build(this.targets, directives, new BufferFlipper(), 1);
-        // Six targets on their own, both sides, for the full clear; colortex2 drops out of the per-frame one
+        // Checks the full clear.
         Mockito.clearInvocations(TestGl.gl());
         copies.clear(true, 320, 240);
         verifyClears(12);
@@ -128,11 +128,11 @@ class FrameCopiesTest {
         copies.build(this.targets, directives, flipper, 8);
         Mockito.clearInvocations(TestGl.gl());
         copies.swap(this.targets);
-        // colortex1 clears every frame and colortex9 does not exist, so only colortex2 swaps
+        // Checks the swapped targets.
         verify(TestGl.gl(), times(1)).glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, 0, 0, 320, 240);
         verify(TestGl.gl()).glBindTexture(GL11.GL_TEXTURE_2D, this.targets.get(2).getMainTexture());
         assertEquals(0, this.gl.activeUnit);
-        // After the window shrinks the copy follows the new size; the size baked at build was an invalid region
+        // Checks the copy after a resize.
         this.targets.resize(160, 120);
         Mockito.clearInvocations(TestGl.gl());
         copies.swap(this.targets);

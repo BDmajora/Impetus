@@ -33,14 +33,14 @@ import static com.bdmajora.impetus.api.config.theme.ConfigThemeRegistry.register
 import static org.junit.jupiter.api.Assertions.*;
 
 class ConfigThemeRegistryTest {
-    // Every BMP character Character.isWhitespace accepts, which is exactly what is stripped from either end of an id
+    // Every whitespace character.
     private static final String WHITESPACE = whitespace();
-    // The registry's own starting table, put back around every test
+    // Starting table of the registry.
     private static final Object[] EMPTY = Statics.get(ConfigThemeRegistry.class, "EMPTY");
-    // A handle rather than Statics, since the every-code-point test swaps the table two million times
+    // Handle to the table field.
     private static final VarHandle TABLE = tableHandle();
 
-    // The registry is static and the suite shares one JVM, so every test starts empty and leaves nothing behind
+    // Resets the registry around each test.
     @BeforeEach
     void startEmpty() {
         setSlots(EMPTY);
@@ -76,7 +76,7 @@ class ConfigThemeRegistryTest {
     @Test
     void idsThatOnlyResembleARegisteredOneMiss() {
         register(new ConfigTheme("mymod", 0xFF123456));
-        // Prefixes, suffixes, inner changes, characters Java does not strip, a decomposed accent and a Cyrillic look-alike are all other mods
+        // Checks lookalike ids.
         for (String id : List.of("mymo", "mymodd", "ymod", "my mod", "my_mod", "my-mod", "mym0d", "mymod\u0000", "\u0000mymod",
                 "mymod ", "mymod​", "﻿mymod", "mymod\u0085", "mymoḋ", "mуmod")) {
             assertEquals(OptionalInt.empty(), getAccentColor(id), id);
@@ -90,7 +90,7 @@ class ConfigThemeRegistryTest {
         getAccentColor("mymod");
         assertThrows(NullPointerException.class, () -> register(null));
         assertEquals(start, ConfigThemeRegistry.generation());
-        // A new mod, the same theme again and a replacement each count, since any of them may change an answer
+        // Checks the count.
         register(new ConfigTheme("mymod", 0xFF123456));
         register(new ConfigTheme("mymod", 0xFF123456));
         register(new ConfigTheme("MyMod", 0xFF654321));
@@ -112,7 +112,7 @@ class ConfigThemeRegistryTest {
 
     @Test
     void nullAndBlankIdsAnswerEmptyWithoutThrowing() {
-        // Registered first, so an empty answer cannot just mean an empty table
+        // Registers first.
         register(new ConfigTheme("mymod", 0xFF123456));
         assertSame(OptionalInt.empty(), getAccentColor(null));
         assertSame(OptionalInt.empty(), getAccentColor(""));
@@ -129,7 +129,7 @@ class ConfigThemeRegistryTest {
 
     @Test
     void spaceLikeCharactersJavaDoesNotStripAreRealIds() {
-        // No-break spaces, the zero-width space, the byte order mark, NEL and NUL are not Character.isWhitespace, so each one alone names a mod
+        // Checks characters that are kept.
         char[] ids = {' ', ' ', ' ', '​', '﻿', '\u0085', '\u0000'};
         for (int i = 0; i < ids.length; i++) {
             String id = String.valueOf(ids[i]);
@@ -159,7 +159,7 @@ class ConfigThemeRegistryTest {
         register(theme);
         register(theme);
         assertEquals(Map.of("mymod", OptionalInt.of(0xFF123456)), entries());
-        // An equal theme still takes the pair, and its own id string becomes the key
+        // Checks an equal theme.
         ConfigTheme equal = new ConfigTheme("MyMod", 0x123456);
         assertEquals(theme, equal);
         assertNotSame(theme.modId(), equal.modId());
@@ -188,7 +188,7 @@ class ConfigThemeRegistryTest {
             Object[] slots = slots();
             int pairs = slots.length / 2;
             int mods = count;
-            // Four pairs per mod at least, and half that many would be too few
+            // Checks the table size.
             assertTrue(pairs >= 4 * mods, () -> pairs + " pairs for " + mods);
             assertTrue(pairs / 2 < 4 * mods, () -> pairs + " pairs for " + mods);
             assertEquals(count, entries().size());
@@ -215,14 +215,14 @@ class ConfigThemeRegistryTest {
         assertArrayEquals(copy, before);
         assertEquals(OptionalInt.of(colour(1)), find(before, "first"));
         assertEquals(OptionalInt.of(colour(3)), find(slots(), "first"));
-        // The shared starting table is never written, so putting it back really empties the registry
+        // Checks the starting table.
         assertArrayEquals(new Object[2], EMPTY);
     }
 
     @Test
     void aHitHandsBackTheStoredOptionalAndAMissTheSharedEmptyOne() {
         register(new ConfigTheme("mymod", 0xFF123456));
-        // Nothing is allocated per lookup, so every spelling returns the very object register() built
+        // Checks nothing is allocated.
         OptionalInt stored = (OptionalInt) slots()[indexOf("mymod") + 1];
         assertSame(stored, getAccentColor("mymod"));
         assertSame(stored, getAccentColor(" MyMod "));
@@ -263,7 +263,7 @@ class ConfigThemeRegistryTest {
                 " MyMod　", "mymod", "\u001Cmymod\u001F")) {
             assertEquals(OptionalInt.of(0xFF123456), getAccentColor(id), id);
         }
-        // Every character Java counts as whitespace pads a lookup on either end, alone or in a run
+        // Checks whitespace padding.
         for (char c : WHITESPACE.toCharArray()) {
             String pad = String.valueOf(c);
             assertEquals(OptionalInt.of(0xFF123456), getAccentColor(pad + "MyMod"), () -> hex(c));
@@ -292,7 +292,7 @@ class ConfigThemeRegistryTest {
     void canonicalQueriesHitWhetherOrNotTheyAreTheStoredString() {
         ConfigTheme theme = new ConfigTheme("mymod", 0xFF123456);
         register(theme);
-        // The stored key itself, an interned literal, and equal copies built at run time
+        // Checks the key spellings.
         assertEquals(OptionalInt.of(0xFF123456), getAccentColor(theme.modId()));
         assertEquals(OptionalInt.of(0xFF123456), getAccentColor("mymod"));
         assertEquals(OptionalInt.of(0xFF123456), getAccentColor(new String("mymod")));
@@ -302,14 +302,14 @@ class ConfigThemeRegistryTest {
 
     @Test
     void theExactSpellingIsTriedBeforeTheIdIsNormalised() {
-        // register() never stores a key that is not canonical, so this one is planted to show the fast path asks for the id as given
+        // Plants a non canonical key.
         Object[] planted = new Object[8];
         int at = home("Planted", planted.length);
         planted[at] = "Planted";
         planted[at + 1] = OptionalInt.of(0xFF123456);
         setSlots(planted);
         assertEquals(OptionalInt.of(0xFF123456), getAccentColor("Planted"));
-        // Every other spelling normalises to "planted", which nothing holds
+        // Checks other spellings.
         assertEquals(OptionalInt.empty(), getAccentColor("planted"));
         assertEquals(OptionalInt.empty(), getAccentColor("PLANTED"));
         assertEquals(OptionalInt.empty(), getAccentColor(" Planted "));
@@ -317,7 +317,7 @@ class ConfigThemeRegistryTest {
 
     @Test
     void probesWrapPastTheEndOfTheTable() {
-        // Three ids whose home is the last pair of a sixteen-slot table, the size two mods get
+        // Checks a wrapped run.
         List<String> last = new ArrayList<>();
         for (int i = 0; last.size() < 3; i++) {
             if (home("wrap" + i, 16) == 14) {
@@ -332,21 +332,21 @@ class ConfigThemeRegistryTest {
         assertEquals(last.get(1), slots()[0]);
         assertEquals(OptionalInt.of(colour(1)), getAccentColor(last.get(0)));
         assertEquals(OptionalInt.of(colour(2)), getAccentColor(last.get(1)));
-        // The copy walks the old pairs in index order, so on a replacement the wrapped id is placed first and the other one wraps instead
+        // Checks the copy order.
         register(new ConfigTheme(last.get(0), colour(3)));
         assertEquals(16, slots().length);
         assertEquals(last.get(1), slots()[14]);
         assertEquals(last.get(0), slots()[0]);
         assertEquals(OptionalInt.of(colour(3)), getAccentColor(last.get(0)));
         assertEquals(OptionalInt.of(colour(2)), getAccentColor(last.get(1)));
-        // A miss with the same home walks both, wraps, and stops at the next free pair
+        // Checks a miss.
         assertEquals(OptionalInt.empty(), getAccentColor(last.get(2)));
         assertWellFormed(slots());
     }
 
     @Test
     void nonAsciiIdsMatchThroughTheirCaseMappings() {
-        // A capital sigma at the end of a word lower-cases to the final form, while a small sigma there is another letter
+        // Checks sigma.
         register(new ConfigTheme("ΟΔΟΣ", 0xFF000001));
         assertEquals(OptionalInt.of(0xFF000001), getAccentColor("οδος"));
         assertEquals(OptionalInt.of(0xFF000001), getAccentColor(" ΟΔΟΣ "));
@@ -356,27 +356,27 @@ class ConfigThemeRegistryTest {
         register(new ConfigTheme("key", 0xFF000002));
         assertEquals(OptionalInt.of(0xFF000002), getAccentColor("KEY"));
         assertEquals(OptionalInt.of(0xFF000002), getAccentColor("Key"));
-        // A dotted capital I keeps its dot as a combining mark, so the plain id does not match
+        // Checks dotted I.
         register(new ConfigTheme("İD", 0xFF000003));
         assertEquals(OptionalInt.of(0xFF000003), getAccentColor("i̇d"));
         assertEquals(OptionalInt.of(0xFF000003), getAccentColor("İd"));
         assertEquals(OptionalInt.empty(), getAccentColor("ID"));
         assertEquals(OptionalInt.empty(), getAccentColor("id"));
-        // The title-case and upper-case DZ digraphs both lower-case to the same letter, which is not the two letters d and z-caron
+        // Checks DZ digraphs.
         register(new ConfigTheme("ǅ", 0xFF000004));
         assertEquals(OptionalInt.of(0xFF000004), getAccentColor("Ǆ"));
         assertEquals(OptionalInt.of(0xFF000004), getAccentColor("ǆ"));
         assertEquals(OptionalInt.empty(), getAccentColor("dž"));
-        // A Deseret capital is a surrogate pair, lower-cased as one code point
+        // Checks a Deseret capital.
         register(new ConfigTheme("𐐀", 0xFF000005));
         assertEquals(OptionalInt.of(0xFF000005), getAccentColor("𐐨"));
         assertEquals(OptionalInt.of(0xFF000005), getAccentColor(" 𐐀 "));
-        // The capital sharp s lower-cases to the one-letter sharp s, not to ss
+        // Checks the capital sharp s.
         register(new ConfigTheme("ẞ", 0xFF000006));
         assertEquals(OptionalInt.of(0xFF000006), getAccentColor("ß"));
         assertEquals(OptionalInt.empty(), getAccentColor("ss"));
         assertEquals(OptionalInt.empty(), getAccentColor("SS"));
-        // An id that is already lower-case still matches by its capitals, but there is no Unicode normalisation
+        // Checks no normalisation.
         register(new ConfigTheme("möd", 0xFF000007));
         assertEquals(OptionalInt.of(0xFF000007), getAccentColor("möd"));
         assertEquals(OptionalInt.of(0xFF000007), getAccentColor("MÖD"));
@@ -396,7 +396,7 @@ class ConfigThemeRegistryTest {
         Locale previous = Locale.getDefault();
         try {
             register(new ConfigTheme("IMPETUS", 0xFF000001));
-            // Turkish and Azeri lower-case I to a dotless one, and Lithuanian adds dots before accents; ROOT does neither
+            // Checks the locale.
             for (String tag : List.of("tr-TR", "az-AZ", "lt-LT")) {
                 Locale.setDefault(Locale.forLanguageTag(tag));
                 assertEquals(OptionalInt.of(0xFF000001), getAccentColor("IMPETUS"), tag);
@@ -415,7 +415,7 @@ class ConfigThemeRegistryTest {
 
     @Test
     void idsThatShareOneHashAreStillToldApart() {
-        // "az" and "b[" hash alike, so every string built from those two blocks has the same hash code
+        // Checks colliding hashes.
         assertEquals("az".hashCode(), "b[".hashCode());
         List<String> ids = new ArrayList<>();
         for (int bits = 0; bits < 1 << 7; bits++) {
@@ -428,7 +428,7 @@ class ConfigThemeRegistryTest {
         for (String id : ids) {
             assertEquals(ids.get(0).hashCode(), id.hashCode());
         }
-        // Half are registered, 64 keys with one home and so one unbroken run, linear probing's O(m) worst case
+        // Checks the worst case.
         for (int i = 0; i < ids.size(); i += 2) {
             register(new ConfigTheme(ids.get(i).toUpperCase(Locale.ROOT), colour(i)));
         }
@@ -446,7 +446,7 @@ class ConfigThemeRegistryTest {
 
     @Test
     void aQueryThatHashesLikeAnotherModStillFindsOnlyItsOwn() {
-        // "aZ" is not canonical but hashes like "`y", so the exact-spelling lookup lands on "`y" first
+        // Checks a lookalike hash.
         assertEquals("aZ".hashCode(), "`y".hashCode());
         register(new ConfigTheme("`y", 0xFF000001));
         assertEquals(OptionalInt.empty(), getAccentColor("aZ"));
@@ -508,7 +508,7 @@ class ConfigThemeRegistryTest {
                 }
                 ConfigTheme theme = new ConfigTheme(raw, colour(cp));
                 register(theme);
-                // The key is what the old strip().toLowerCase(ROOT) produced, and every spelling reaches it
+                // Checks the key.
                 int at = indexOf(key);
                 assertTrue(at >= 0, () -> "U+" + Integer.toHexString(point));
                 assertSame(theme.modId(), slots()[at], () -> "U+" + Integer.toHexString(point));
@@ -522,7 +522,7 @@ class ConfigThemeRegistryTest {
 
     @Test
     void randomRegistrationsAndLookupsBehaveLikeAMapKeyedByStripThenLowerCase() {
-        // Both ASCII cases, padding Java strips and padding it keeps, and the non-ASCII mappings that change length or depend on context
+        // Checks the spellings.
         String pool = "aAzZ09_- \t\n\u000B\f\r\u001F 　 \u0085​ÉéßẞİıǅKΣσΟ";
         Random random = new Random(0x7EA1L);
         Map<String, OptionalInt> model = new HashMap<>();
@@ -533,7 +533,7 @@ class ConfigThemeRegistryTest {
             }
             String raw = built.toString();
             String key = reference(raw);
-            // One call in four registers, since each registration copies the table
+            // Registers on one call in four.
             if (random.nextInt(4) == 0) {
                 if (key == null) {
                     assertThrows(IllegalArgumentException.class, () -> new ConfigTheme(raw, 0), raw);
@@ -545,7 +545,7 @@ class ConfigThemeRegistryTest {
             }
             assertEquals(key == null ? OptionalInt.empty() : model.getOrDefault(key, OptionalInt.empty()), getAccentColor(raw), raw);
         }
-        // The table holds exactly the model's pairs, laid out correctly
+        // Checks the table.
         assertEquals(model, entries());
         assertWellFormed(slots());
     }
@@ -572,7 +572,7 @@ class ConfigThemeRegistryTest {
                     return null;
                 }));
             }
-            // Readers race the writers, and whatever they see must be the colour that id was registered with
+            // Checks racing readers.
             List<Future<?>> reads = new ArrayList<>();
             for (int r = 0; r < 2; r++) {
                 long seed = r;
@@ -617,7 +617,7 @@ class ConfigThemeRegistryTest {
     void racingReplacementsOfOneModNeverLetItVanish() throws Exception {
         int writers = 4;
         int rounds = 5_000;
-        // Each writer spells the id its own way, and every colour packs the writer and round that wrote it
+        // Checks racing writers.
         String[] spellings = {"Shared", " SHARED", "shared\t", "sHaReD"};
         register(new ConfigTheme("shared", colour(0)));
         ExecutorService pool = Executors.newFixedThreadPool(writers + 1);
@@ -635,7 +635,7 @@ class ConfigThemeRegistryTest {
                     return null;
                 }));
             }
-            // Every published table holds the mod, so a reader never finds it missing or sees a colour nobody wrote
+            // Checks every published table.
             Future<?> read = pool.submit(() -> {
                 start.await();
                 while (writing.get()) {
@@ -660,7 +660,7 @@ class ConfigThemeRegistryTest {
         } finally {
             pool.shutdownNow();
         }
-        // One pair in the smallest table, holding the last round of whichever writer finished last
+        // Checks the final pair.
         assertEquals(Set.of("shared"), entries().keySet());
         assertEquals(8, slots().length);
         int last = getAccentColor("shared").orElseThrow();
@@ -672,26 +672,26 @@ class ConfigThemeRegistryTest {
     void publicShapeStaysTheApiOtherModsCompileAgainst() throws ReflectiveOperationException {
         Class<ConfigThemeRegistry> type = ConfigThemeRegistry.class;
         assertTrue(Modifier.isPublic(type.getModifiers()) && Modifier.isFinal(type.getModifiers()));
-        // A changed return type changes the method descriptor, which breaks every mod compiled against the old one
+        // Checks the return types.
         Method registerMethod = type.getMethod("register", ConfigTheme.class);
         assertEquals(void.class, registerMethod.getReturnType());
         assertTrue(Modifier.isStatic(registerMethod.getModifiers()));
         Method lookupMethod = type.getMethod("getAccentColor", String.class);
         assertEquals(OptionalInt.class, lookupMethod.getReturnType());
         assertTrue(Modifier.isStatic(lookupMethod.getModifiers()));
-        // Added for rows that cache an accent; an added method leaves mods compiled against the older shape linking as before
+        // Checks the added method.
         Method generationMethod = type.getMethod("generation");
         assertEquals(int.class, generationMethod.getReturnType());
         assertTrue(Modifier.isStatic(generationMethod.getModifiers()));
         assertEquals(Set.of("register", "getAccentColor", "generation"), Arrays.stream(type.getDeclaredMethods())
                 .filter(method -> Modifier.isPublic(method.getModifiers())).map(Method::getName).collect(Collectors.toSet()));
         assertEquals(0, type.getFields().length);
-        // The table is swapped rather than mutated, so it is volatile instead of final, and private so only register() swaps it
+        // Checks the table field.
         int table = type.getDeclaredField("table").getModifiers();
         assertTrue(Modifier.isPrivate(table) && Modifier.isStatic(table) && Modifier.isVolatile(table));
         assertFalse(Modifier.isFinal(table));
         assertEquals(Object[].class, type.getDeclaredField("table").getType());
-        // The count is read without the lock, so it is volatile too, and private so only register() advances it
+        // Checks the count field.
         int generation = type.getDeclaredField("generation").getModifiers();
         assertTrue(Modifier.isPrivate(generation) && Modifier.isStatic(generation) && Modifier.isVolatile(generation));
         assertEquals(int.class, type.getDeclaredField("generation").getType());
@@ -699,7 +699,7 @@ class ConfigThemeRegistryTest {
             int modifiers = type.getDeclaredField(constant).getModifiers();
             assertTrue(Modifier.isPrivate(modifiers) && Modifier.isStatic(modifiers) && Modifier.isFinal(modifiers), constant);
         }
-        // One private no-argument constructor, so nothing outside can make an instance
+        // Checks the private constructor.
         Constructor<?>[] constructors = type.getDeclaredConstructors();
         assertEquals(1, constructors.length);
         assertEquals(0, constructors[0].getParameterCount());
@@ -708,7 +708,7 @@ class ConfigThemeRegistryTest {
         assertInstanceOf(type, constructors[0].newInstance());
     }
 
-    // Checks what every published table must hold: power-of-two pairs at most a quarter full, whole pairs, canonical keys, and no free pair between a key and its home
+    // Checks a published table.
     private static void assertWellFormed(Object[] slots) {
         assertEquals(0, slots.length % 2);
         int pairs = slots.length / 2;
@@ -731,7 +731,7 @@ class ConfigThemeRegistryTest {
         assertTrue(4 * stored <= pairs, () -> stored + " full of " + pairs);
     }
 
-    // Decodes the published table, failing if any id is stored twice
+    // Decodes the published table.
     private static Map<String, OptionalInt> entries() {
         Object[] slots = slots();
         Map<String, OptionalInt> found = new HashMap<>();
@@ -744,7 +744,7 @@ class ConfigThemeRegistryTest {
         return found;
     }
 
-    // Index of the pair holding the id, found by a plain scan rather than the registry's own probing
+    // Returns the pair index of an id.
     private static int indexOf(String id) {
         Object[] slots = slots();
         for (int i = 0; i < slots.length; i += 2) {
@@ -780,7 +780,7 @@ class ConfigThemeRegistryTest {
         }
     }
 
-    // The canonicalisation canonicalModId replaced, with null standing for a blank id
+    // Old canonical form of an id.
     private static String reference(String id) {
         return id.isBlank() ? null : id.strip().toLowerCase(Locale.ROOT);
     }
@@ -789,7 +789,7 @@ class ConfigThemeRegistryTest {
         return 0xFF000000 | index;
     }
 
-    // Derived from the id alone, so any thread can tell which colour an id must have
+    // Returns the colour of an id.
     private static int colourOf(String id) {
         return 0xFF000000 | (id.hashCode() & 0xFFFFFF);
     }
@@ -808,7 +808,7 @@ class ConfigThemeRegistryTest {
         return found.toString();
     }
 
-    // Waits for a task and rethrows what failed inside it, so a broken assertion in a thread reads like any other
+    // Waits for a task and rethrows its failure.
     private static void join(Future<?> task) throws Exception {
         try {
             task.get(60, TimeUnit.SECONDS);

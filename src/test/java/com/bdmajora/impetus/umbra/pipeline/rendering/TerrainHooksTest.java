@@ -85,7 +85,7 @@ class TerrainHooksTest {
         verify(this.feedback).prepare(new int[]{0, 4}, this.state.activeGbufferFlips);
         verify(blend).apply(new int[]{0, 4});
         verify(alpha).apply();
-        // Opaque: blend off on every attachment the draw writes
+        // Checks the opaque blend state.
         verify(TestGl.gl(), times(2)).glDisablei(Mockito.eq(GL11.GL_BLEND), anyInt());
         // The override is undone by the next phase switch
         this.phases.select(null, 0);
@@ -123,7 +123,7 @@ class TerrainHooksTest {
         UmbraFramebuffer opaque = this.terrain.createDhFramebuffer(new int[]{4}, false);
         UmbraFramebuffer translucent = this.terrain.createDhFramebuffer(new int[]{4}, true);
         try {
-            // The deferred pass flipped colortex4, so the post-deferred LOD pass writes its other side
+            // Checks the LOD pass side.
             assertEquals(this.state.targets.get(4).getMainTexture(), opaque.getColorAttachment(4));
             assertEquals(this.state.targets.get(4).getAltTexture(), translucent.getColorAttachment(4));
         } finally {

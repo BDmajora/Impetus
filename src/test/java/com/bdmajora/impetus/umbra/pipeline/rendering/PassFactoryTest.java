@@ -82,7 +82,7 @@ class PassFactoryTest {
         FullscreenPass pass = factory.composite(composite(pack, 0), flipper, List.of());
         assertNotNull(pass);
         assertArrayEquals(new int[]{0, 3}, pass.drawBuffers);
-        // Sampled before the flip: colortex1 on its alt side; colortex0/3 did not exist until this pass wrote them, so it samples nothing there
+        // Checks the sampled sides.
         assertEquals(this.targets.get(1).getAltTexture(), pass.colorSamplers[1]);
         assertEquals(0, pass.colorSamplers[0]);
         assertEquals(0, pass.colorSamplers[5]);
@@ -108,7 +108,7 @@ class PassFactoryTest {
         BufferFlipper flipper = new BufferFlipper();
         FullscreenPass pass = factory(pack, null).composite(composite(pack, 0), flipper, List.of());
         assertNotNull(pass);
-        // colortex0 is written AND explicitly flipped, so it flips twice; colortex3 is held; colortex5 flips unwritten; colortex99 is no target
+        // Checks the flips.
         assertFalse(flipper.isFlipped(0));
         assertFalse(flipper.isFlipped(3));
         assertTrue(flipper.isFlipped(5));
@@ -124,7 +124,7 @@ class PassFactoryTest {
         BufferFlipper flipper = new BufferFlipper();
         when(TestGl.gl().glGetProgrami(anyInt(), eq(GL_LINK_STATUS))).thenReturn(0);
         assertNull(factory.composite(composite(pack, 0), flipper, List.of()));
-        // The failure is cached, so asking again neither recompiles nor throws
+        // Checks the cached failure.
         assertNull(factory.composite(composite(pack, 0), flipper, List.of()));
         when(TestGl.gl().glGetProgrami(anyInt(), eq(GL_LINK_STATUS))).thenReturn(1);
         // An incomplete colour framebuffer fails after the program built
@@ -149,7 +149,7 @@ class PassFactoryTest {
         // Final never flips
         assertTrue(flipper.isFlipped(0));
         ShaderPack broken = PackSourcesTest.pack("/final.vsh", VERTEX, "/final.fsh", "void main() {}");
-        // Each case gets its own cache, since the programs are cached by name
+        // Uses a fresh cache per case.
         ShaderPack vertexOnly = PackSourcesTest.pack("/final.vsh", VERTEX, "/final.csh", "void main() {}");
         ProgramCache empty = new ProgramCache(Map.of(), stage -> Map.of(), new BitSet());
         assertNull(factory(vertexOnly, null, empty).finalPass(vertexOnly.getProgramSet().get(ProgramId.Final).orElseThrow(), flipper));
@@ -174,7 +174,7 @@ class PassFactoryTest {
         assertNotNull(pass);
         assertArrayEquals(new int[]{0}, pass.drawBuffers);
         assertNotNull(pass.framebuffer);
-        // Its place in the chain: the images and samplers hit the sides the rest of the frame uses
+        // Checks the pass's place in the chain.
         assertTrue(pass.flipsBefore.get(2));
         flipper.flip(2);
         assertTrue(pass.flipsBefore.get(2));
@@ -207,7 +207,7 @@ class PassFactoryTest {
             assertArrayEquals(new int[]{0, 0}, factory.viewportSize("p", new int[]{0, 1}));
             assertArrayEquals(new int[]{64, 32}, factory.viewportSize("p", new int[]{0, 4, 5}));
             assertArrayEquals(new int[]{160, 120}, factory.viewportSize("p", new int[]{5, 4}));
-            // Two buffers of one size agree; a height-only difference is still a mismatch
+            // Checks the size comparison.
             sized.setColorSize(6, 64, 32, new boolean[]{false, false});
             sized.setColorSize(7, 64, 16, new boolean[]{false, false});
             assertArrayEquals(new int[]{64, 32}, factory.viewportSize("p", new int[]{4, 6, 7}));

@@ -44,7 +44,7 @@ public final class QuadTree<T> extends Rect2i
             int childWidth = rect.width() / 2;
             int childHeight = rect.height() / 2;
 
-            // tall rect: split top/bottom into 2 instead of 4
+            // Splits a tall rect into top and bottom halves.
             if (rect.width() == rect.height() / 2)
             {
                 child0 = new QuadTree<>(new Rect2i(rect.x(), rect.y(), rect.width(), childHeight), minSize, depth);
@@ -52,7 +52,7 @@ public final class QuadTree<T> extends Rect2i
                 child2 = null;
                 child3 = new QuadTree<>(new Rect2i(rect.x(), rect.y() + childHeight, rect.width(), childHeight), minSize, depth);
             }
-            // wide rect: split left/right into 2 instead of 4
+            // Splits a wide rect into left and right halves.
             else if (rect.height() == rect.width() / 2)
             {
                 child0 = new QuadTree<>(new Rect2i(rect.x(), rect.y(), childWidth, rect.height()), minSize, depth);

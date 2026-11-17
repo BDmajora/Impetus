@@ -34,7 +34,7 @@ class RasterizersTest {
         Mockito.verify(TestGl.gl(), Mockito.times(2)).glDrawMeshTasksNV(0, 3);
         Mockito.verify(TestGl.gl()).glMultiDrawMeshTasksIndirectNV(0L, 3, 0);
         Mockito.verify(TestGl.gl()).glMultiDrawMeshTasksIndirectNV(0L, 2, 0);
-        // Eight bytes per command, bound by address before each multi-draw
+        // Checks the commands.
         Mockito.verify(TestGl.gl()).glBufferAddressRangeNV(Mockito.anyInt(), Mockito.eq(0), Mockito.eq(0x8000L), Mockito.eq(16L));
         Mockito.verify(TestGl.gl()).glDispatchCompute(5, 1, 1);
         Mockito.verify(TestGl.gl(), Mockito.times(5)).glDeleteProgram(Mockito.anyInt());

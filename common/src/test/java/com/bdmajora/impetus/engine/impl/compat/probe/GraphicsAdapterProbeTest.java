@@ -212,7 +212,7 @@ class GraphicsAdapterProbeTest {
         return false;
     }
 
-    // Returns the nanoseconds since the start
+    // Returns the elapsed nanoseconds.
     private static long since(long start) {
         return System.nanoTime() - start;
     }
@@ -362,7 +362,7 @@ class GraphicsAdapterProbeTest {
         }
     }
 
-    // Verifies the machine adapters carry driver module versions instead of kernel driver names
+    // Checks the module versions.
     @Test
     void machineAdaptersCarryModuleVersionsInsteadOfDriverNames() throws IOException {
         assumeTrue(Files.isDirectory(DRM));

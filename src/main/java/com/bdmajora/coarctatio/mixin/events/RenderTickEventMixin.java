@@ -16,7 +16,7 @@ public abstract class RenderTickEventMixin implements RecyclableEvent {
     @Mutable
     public float renderTickTime;
 
-    // Handles refresh render time.
+    // Points the reused event at a new render time.
     @Override
     public void coarctatio$refreshRenderTime(float renderTickTime) {
         this.renderTickTime = renderTickTime;

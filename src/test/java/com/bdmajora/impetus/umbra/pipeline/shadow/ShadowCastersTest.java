@@ -73,7 +73,7 @@ class ShadowCastersTest {
     private ShadowCasterPrograms programs;
     // Matrix and program and draw events in order
     private final List<String> events = new ArrayList<>();
-    // Block entities the shadow search kept, in visit order
+    // Block entities the shadow search kept.
     private final List<TileEntity> keptBlockEntities = new ArrayList<>();
     // Entities whose sections the shadow search dropped
     private final Set<Entity> droppedEntities = new HashSet<>();
@@ -121,7 +121,7 @@ class ShadowCastersTest {
         when(this.gl.client.getRenderManager()).thenReturn(this.renderManager);
         doAnswer(inv -> this.events.add("entity " + inv.getArgument(0) + " " + inv.getArgument(1) + " " + inv.getArgument(2)))
                 .when(this.renderManager).renderEntityStatic(any(Entity.class), anyFloat(), anyBoolean());
-        // Like Render.shouldRender, which hands the camera the entity's render box in world space
+        // Stubs shouldRender like vanilla.
         when(this.renderManager.shouldRender(any(Entity.class), any(ICamera.class), anyDouble(), anyDouble(), anyDouble()))
                 .thenAnswer(inv -> inv.<ICamera>getArgument(1)
                         .isBoundingBoxInFrustum(inv.<Entity>getArgument(0).getRenderBoundingBox()));
@@ -190,7 +190,7 @@ class ShadowCastersTest {
         render(new ShadowCasters(this.programs, content, DISTANCE));
     }
 
-    // Draws once with the given casters, view and entity frustum
+    // Draws once with the given casters.
     private void render(ShadowCasters casters) {
         casters.render(this.gl.client, this.view, this.entityFrustum, this.camera, this.projection, this.modelView,
                 PARTIAL);
@@ -373,7 +373,7 @@ class ShadowCastersTest {
         this.world.loadedEntityList.add(this.player);
         pig("near", 105.0, 100.0);
         pig("beside", 120.0, 100.0);
-        // Eight blocks each way of the camera, so the pig fifteen blocks out is outside
+        // Builds an eight block entity frustum.
         this.entityFrustum = new ShadowBoxCuller(8.0f);
         render(content("shadowBlockEntities = false"));
         assertEquals(pass("bind entity", "entity player 0.5 false", "entity near 0.5 false"), this.events);
@@ -386,7 +386,7 @@ class ShadowCastersTest {
         assertEquals(pass("bind entity", "entity player 0.5 false", "entity mount 0.5 false"), this.events);
     }
 
-    // Checks that entities in sections the shadow search dropped do not cast, and spectators never do
+    // Checks dropped sections and spectators cast nothing.
     @Test
     void droppedSectionsAndSpectatorsDoNotCast() {
         this.world.loadedEntityList.add(this.player);
@@ -407,7 +407,7 @@ class ShadowCastersTest {
         assertEquals(pass("bind entity", "entity kept 0.5 false"), this.events);
     }
 
-    // Checks that block entities come only from the shadow search, never from the world's full list
+    // Checks block entities come from the shadow search.
     @Test
     void blockEntitiesComeFromTheShadowSearchOnly() {
         TileEntity unlisted = mock(TileEntity.class, withSettings().name("unlisted"));
@@ -419,7 +419,7 @@ class ShadowCastersTest {
         assertEquals(pass("bind block", "block kept 0.5 -1"), this.events);
     }
 
-    // Checks the camera adapter: relative boxes, a null frustum keeping everything, and an ignored position
+    // Checks the camera adapter.
     @Test
     void theFrustumCameraTestsCameraRelativeBoxes() {
         ShadowCasters.FrustumCamera frustumCamera = new ShadowCasters.FrustumCamera();
@@ -429,7 +429,7 @@ class ShadowCastersTest {
         frustumCamera.setPosition(5.0, 5.0, 5.0);
         assertTrue(frustumCamera.isBoundingBoxInFrustum(new AxisAlignedBB(1.0e7 + 1.0, 65.0, -1.0e7 - 2.0,
                 1.0e7 + 1.5, 66.0, -1.0e7 - 1.0)));
-        // Far from the origin the box keeps its fractions, since the camera is subtracted in double
+        // Checks the box keeps its fractions far from the origin.
         assertArrayEquals(new float[] {1.0f, 1.0f, -2.0f, 1.5f, 2.0f, -1.0f}, boxes.get(0));
         frustumCamera.set(null, new Vector3d());
         assertTrue(frustumCamera.isBoundingBoxInFrustum(new AxisAlignedBB(1.0e6, 0, 0, 1.0e6 + 1, 1, 1)));

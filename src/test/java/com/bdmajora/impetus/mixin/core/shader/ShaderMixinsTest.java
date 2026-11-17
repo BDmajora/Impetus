@@ -138,7 +138,7 @@ class ShaderMixinsTest {
         return ci.isCancelled();
     }
 
-    // Same for a CallbackInfoReturnable handler, handing back what it set
+    // Calls a CallbackInfoReturnable handler and returns its info.
     private static <R> CallbackInfoReturnable<R> returned(Object mixin, String handler, Object... leading) {
         CallbackInfoReturnable<R> cir = Mixins.cir();
         Object[] args = java.util.Arrays.copyOf(leading, leading.length + 1);
@@ -257,14 +257,14 @@ class ShaderMixinsTest {
         assertFalse(cancels(render, "impetus$clearEntityColor"));
 
         withPipeline();
-        // Nothing to tint, or a hurt flash this pass does not own
+        // Checks an entity with nothing to tint.
         assertEquals(Boolean.FALSE, returned(render, "impetus$captureEntityColor", entity, 0.5F, true).getReturnValue());
         entity.hurtTime = 5;
         assertEquals(Boolean.FALSE, returned(render, "impetus$captureEntityColor", entity, 0.5F, false).getReturnValue());
         // The hurt flash is OptiFine's translucent red
         assertEquals(Boolean.TRUE, returned(render, "impetus$captureEntityColor", entity, 0.5F, true).getReturnValue());
         assertEquals(new Vector4f(1.0F, 0.0F, 0.0F, 0.3F), state.getEntityColor());
-        // A creeper's charge carries its own colour, with the multiplier's alpha as the blend
+        // Checks a charged creeper's colour.
         entity.hurtTime = 0;
         entity.deathTime = 0;
         multiplier[0] = 0x80FF8000;
@@ -273,7 +273,7 @@ class ShaderMixinsTest {
         assertTrue(cancels(render, "impetus$clearEntityColor"));
         assertEquals(0.0F, state.getEntityColor().w);
 
-        // A render that threw before unsetBrightness leaves the tint stranded, which doRender's return clears
+        // Checks a stranded tint is cleared.
         cancels(render, "impetus$clearStrandedEntityColor", entity, 0.0, 0.0, 0.0, 0.0F, 0.5F);
         state.setEntityColor(1.0F, 0.0F, 0.0F, 0.3F);
         cancels(render, "impetus$clearStrandedEntityColor", entity, 0.0, 0.0, 0.0, 0.0F, 0.5F);
@@ -288,7 +288,7 @@ class ShaderMixinsTest {
         Object vignette = Mixins.instance(VanillaVignetteToggleMixin.class);
         Object render = Mixins.instance(RenderMixin.class);
         GameSettingsCloudsMixin clouds = Mixins.instance(GameSettingsCloudsMixin.class);
-        // No pack: everything vanilla draws stays
+        // Checks nothing changes without a pack.
         assertFalse(cancels(entityRenderer, "impetus$suppressWeather", 0.5F));
         assertFalse(cancels(overlay, "impetus$suppressUnderwaterOverlay", 0.5F));
         assertFalse(cancels(vignette, "impetus$suppressVignette", 1.0F, null));
@@ -302,7 +302,7 @@ class ShaderMixinsTest {
         assertTrue(cancels(overlay, "impetus$suppressUnderwaterOverlay", 0.5F));
         assertTrue(cancels(vignette, "impetus$suppressVignette", 1.0F, null));
         assertEquals(1, returned(clouds, "impetus$overrideCloudMode").getReturnValue());
-        // Vanilla's short-render-distance gate is kept, so a pack cannot force clouds on there
+        // Checks the short render distance gate.
         clouds.renderDistanceChunks = 3;
         assertFalse(returned(clouds, "impetus$overrideCloudMode").isCancelled());
         // Shader shadows replace vanilla's blob shadows only when the pack says so
@@ -330,7 +330,7 @@ class ShaderMixinsTest {
         Statics.set(UmbraShadowRenderer.class, "shadowPassActive", true);
         assertTrue(cancels(beacon, "impetus$noBeamInShadowPass", render));
         Statics.set(UmbraShadowRenderer.class, "shadowPassActive", false);
-        // beacon.beam.depth: depth writes on for the beam, then whatever vanilla had put back
+        // Checks the beacon beam depth hooks.
         cancels(beacon, "impetus$beaconBeamDepthOn", render);
         verify(TestGl.gl(), never()).glGetBoolean(anyInt());
         when(pipeline.shouldWriteBeaconBeamToDepthBuffer()).thenReturn(true);
@@ -346,10 +346,10 @@ class ShaderMixinsTest {
         assertNotNull(Mixins.instance(NameplateShadowPassMixin.class));
         Object[] plate = {null, "Queue", 0.0F, 2.0F, 0.0F, 0, 45.0F, 10.0F, false, false};
         assertFalse(cancels(NameplateShadowPassMixin.class, "impetus$noNameplateInShadowPass", plate));
-        // The pass flag alone, with no pack running, leaves the label be
+        // Checks the label outside a pack.
         Statics.set(UmbraShadowRenderer.class, "shadowPassActive", true);
         assertFalse(cancels(NameplateShadowPassMixin.class, "impetus$noNameplateInShadowPass", plate));
-        // Inside a pack's shadow pass the label would turn with the camera, so it is dropped there
+        // Checks the label inside a pack's shadow pass.
         withPipeline();
         assertTrue(cancels(NameplateShadowPassMixin.class, "impetus$noNameplateInShadowPass", plate));
         // The main pass still draws every label
@@ -360,7 +360,7 @@ class ShaderMixinsTest {
     @Test
     void theArmKeepsBlendingOutsideTheHandStages() {
         RenderPlayerArmBlendMixin arm = Mixins.instance(RenderPlayerArmBlendMixin.class);
-        // GlStateManager only reaches GL on a change, so blending starts off here
+        // Starts with blending off.
         GlStateManager.disableBlend();
         CapturedRenderingState.INSTANCE.setRenderStage(16);
         Mixins.call(arm, "impetus$keepArmUnblended");
@@ -394,7 +394,7 @@ class ShaderMixinsTest {
         withPipeline();
         cancels(sky, "impetus$drawHorizon", 0.5F, 0);
         verify(pipeline).drawSkyHorizon();
-        // sunPathRotation turns the live sky, and a zero rotation leaves it alone
+        // Checks the sun path rotation.
         cancels(sky, "impetus$preCelestialRotate", 0.5F, 0);
         gl11.verify(() -> GL11.glRotatef(anyFloat(), anyFloat(), anyFloat(), anyFloat()), never());
         CelestialUniforms.setSunPathRotation(30.0F);
@@ -414,7 +414,7 @@ class ShaderMixinsTest {
         verify(pipeline, times(2)).setPhase(ProgramId.Clouds);
         verify(pipeline, times(2)).setPhase(null);
 
-        // Celestial bodies a pack turns off draw with a transparent texture; stars skip their draw altogether
+        // Checks hidden celestial bodies.
         TextureManager textures = client.getTextureManager();
         when(textures.getDynamicTextureLocation(eq("impetus_transparent"), any(DynamicTexture.class)))
                 .thenReturn(new ResourceLocation("dynamic/impetus_transparent_1"));
@@ -456,7 +456,7 @@ class ShaderMixinsTest {
         returned(terrain, "impetus$applyBackFaceCulling", layer);
         returned(terrain, "impetus$restoreBackFaceCulling", layer);
         gl11.verify(() -> GL11.glDisable(GL11.GL_CULL_FACE), never());
-        // backFace.cutout = true: culling off for that layer's draw and back on after
+        // Checks the per layer back face culling.
         when(pipeline.shouldCullBackFaces(BlockRenderLayer.CUTOUT.ordinal())).thenReturn(false);
         returned(terrain, "impetus$applyBackFaceCulling", layer);
         assertTrue((boolean) Mixins.get(terrain, "impetus$restoreCull"));
@@ -472,13 +472,13 @@ class ShaderMixinsTest {
     void theTranslucentLayerDrawsDistantHorizonsDeferredLods() {
         RenderGlobalMixin terrain = Mixins.instance(RenderGlobalMixin.class);
         try (MockedStatic<DhCompat> dh = Mockito.mockStatic(DhCompat.class)) {
-            // Nothing while DH is not rendering, and never for another layer
+            // Checks the deferred LOD hook outside DH.
             returned(terrain, "impetus$renderDeferredLods", BlockRenderLayer.TRANSLUCENT, 0.5, 0, null);
             dh.when(DhCompat::hasRenderingEnabled).thenReturn(true);
             returned(terrain, "impetus$renderDeferredLods", BlockRenderLayer.SOLID, 0.5, 0, null);
             dh.verify(DhCompat::renderDeferredLods, never());
             verify(TestGl.gl(), never()).glUseProgram(0);
-            // The translucent layer draws DH's deferred LODs, then releases what DH left bound
+            // Checks the deferred LOD draw.
             returned(terrain, "impetus$renderDeferredLods", BlockRenderLayer.TRANSLUCENT, 0.5, 0, null);
             dh.verify(DhCompat::renderDeferredLods);
             verify(TestGl.gl()).glUseProgram(0);
@@ -505,7 +505,7 @@ class ShaderMixinsTest {
         verify(pipeline).setPhase(ProgramId.Line);
         cancels(outline, "impetus$endBlockOutline", player, target, 0, 0.5F);
         verify(pipeline).setPhase(null);
-        // Without gbuffers_line the draw is held until after the composite, and the replay itself draws as vanilla
+        // Checks the held line draw.
         when(pipeline.hasDirectGbufferProgram(ProgramId.Line)).thenReturn(false);
         assertTrue(cancels(outline, "impetus$beginBlockOutline", player, target, 0, 0.5F));
         assertTrue((boolean) Statics.get(DeferredBlockOutline.class, "pending"));
@@ -534,7 +534,7 @@ class ShaderMixinsTest {
         client.renderGlobal = mock(RenderGlobal.class);
         settings.viewBobbing = true;
 
-        // No pack: nothing is driven, and the particle and hand redirects behave exactly as vanilla
+        // Checks nothing is driven without a pack.
         cancels(renderer, "impetus$onEnableLightmap");
         cancels(renderer, "impetus$beginShaderFrame", 0.5F, 0L);
         cancels(renderer, "impetus$captureRenderingState", 2, 0.5F, 0L);
@@ -566,7 +566,7 @@ class ShaderMixinsTest {
         verify(pipeline).setLightmapEnabled(true);
         verify(pipeline).setLightmapEnabled(false);
         assertEquals(Double.NEGATIVE_INFINITY, (double) Mixins.call(renderer, "impetus$cloudDrawSlot", 128.0));
-        // The frustum anchor captures matrices and fog colour, then renders the shadow map
+        // Checks the frustum anchor.
         Mixins.set(renderer, "fogColorRed", 0.25F);
         Mixins.set(renderer, "fogColorGreen", 0.5F);
         Mixins.set(renderer, "fogColorBlue", 0.75F);
@@ -586,8 +586,7 @@ class ShaderMixinsTest {
         verify(pipeline).setPhase(ProgramId.DamagedBlock);
         verify(pipeline).setPhase(ProgramId.Particles);
         verify(pipeline, times(2)).setPhase(null);
-        // rain.depth turns depth writes back on for the weather
-        // GlStateManager only reaches GL on a change, so the mask starts off here
+        // Starts with the depth mask off.
         GlStateManager.depthMask(false);
         cancels(renderer, "impetus$phaseWeather", 2, 0.5F, 0L);
         gl11.verify(() -> GL11.glDepthMask(true), never());
@@ -595,7 +594,7 @@ class ShaderMixinsTest {
         cancels(renderer, "impetus$phaseWeather", 2, 0.5F, 0L);
         gl11.verify(() -> GL11.glDepthMask(true));
 
-        // At the translucent anchor: the solid hand draws first, then particles when the pack orders them before the deferred chain
+        // Checks the translucent anchor.
         when(pipeline.beginHandRendering()).thenReturn(true);
         when(pipeline.getParticleOrdering()).thenReturn("before");
         cancels(renderer, "impetus$beginTranslucents", 2, 0.5F, 0L);
@@ -605,18 +604,27 @@ class ShaderMixinsTest {
         verify(client.getTextureManager()).bindTexture(TextureMap.LOCATION_BLOCKS_TEXTURE);
         verify(particles, times(2)).renderParticles(viewer, 0.5F);
         verify(pipeline).beginTranslucents();
-        // ...so vanilla's own particle draw is skipped once
+        // Checks vanilla's particle draw is skipped.
+        Mixins.call(renderer, "impetus$orderParticles", particles, viewer, 0.5F);
         Mixins.call(renderer, "impetus$orderParticles", particles, viewer, 0.5F);
         verify(particles, times(2)).renderParticles(viewer, 0.5F);
+        // A debug view draws no particles at the anchor either
+        Mixins.set(renderer, "debugView", true);
+        cancels(renderer, "impetus$beginTranslucents", 2, 0.5F, 0L);
+        verify(particles, times(2)).renderParticles(viewer, 0.5F);
+        Mixins.set(renderer, "debugView", false);
+        // Any other ordering leaves the draw where vanilla has it
+        when(pipeline.getParticleOrdering()).thenReturn("mixed");
         Mixins.call(renderer, "impetus$orderParticles", particles, viewer, 0.5F);
         verify(particles, times(3)).renderParticles(viewer, 0.5F);
+        when(pipeline.getParticleOrdering()).thenReturn("before");
 
-        // At the hand anchor: the translucent hand, then the composite chain
+        // Checks the hand anchor.
         when(pipeline.beginHandTranslucentRendering()).thenReturn(true);
         cancels(renderer, "impetus$compositeBeforeHand", 2, 0.5F, 0L);
         verify(hand, times(2)).renderItemInFirstPerson(0.5F);
         verify(pipeline).finishWorldRendering();
-        // vanilla's post-composite hand draws only the overlays, since the hand is already in the gbuffer
+        // Checks the post composite hand draw.
         Mixins.call(renderer, "impetus$skipPostCompositeShaderHand", renderer, 0.5F, 2);
         verify(hand).renderOverlays(0.5F);
         assertEquals(1, vanillaHand.size());
@@ -650,7 +658,7 @@ class ShaderMixinsTest {
         when(pipeline.beginHandTranslucentRendering()).thenReturn(true);
         when(pipeline.getParticleOrdering()).thenReturn("after");
 
-        // The hand switched off, then a debug view, draw no shader hand
+        // Checks the hand switched off and a debug view.
         cancels(renderer, "impetus$beginTranslucents", 0, 0.5F, 0L);
         verify(pipeline, never()).beginHandRendering();
         Mixins.set(renderer, "renderHand", true);
@@ -661,7 +669,7 @@ class ShaderMixinsTest {
         verify(hand, never()).renderOverlays(anyFloat());
         Mixins.set(renderer, "debugView", false);
 
-        // Asleep, in third person, or with the GUI hidden the hand stays away, anaglyph shifting each eye's projection
+        // Checks the cases that hide the hand.
         when(viewer.isPlayerSleeping()).thenReturn(true);
         settings.anaglyph = true;
         cancels(renderer, "impetus$beginTranslucents", 0, 0.5F, 0L);
@@ -678,7 +686,7 @@ class ShaderMixinsTest {
         verify(hand, never()).renderItemInFirstPerson(anyFloat());
         verify(hand, never()).renderOverlays(anyFloat());
         gl11.verify(() -> GL11.glTranslatef(0.07F, 0.0F, 0.0F), Mockito.atLeastOnce());
-        // A view entity that is not alive in the world, and particles ordered before with no view entity at all
+        // Checks a missing view entity.
         when(client.getRenderViewEntity()).thenReturn(null);
         when(pipeline.getParticleOrdering()).thenReturn("before");
         cancels(renderer, "impetus$beginTranslucents", 0, 0.5F, 0L);

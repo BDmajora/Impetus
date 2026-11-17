@@ -56,11 +56,11 @@ public abstract class BlockLeavesCullMixin {
         }
     }
 
-    // Field cursor added to the target.
+    // Position cursor of each meshing thread.
     @Unique
     private static final ThreadLocal<BlockPos.MutableBlockPos> impetus$CURSOR = ThreadLocal.withInitial(BlockPos.MutableBlockPos::new);
 
-    // Handles hides.
+    // Returns whether a neighbour is another leaf or an opaque cube.
     private static boolean impetus$hides(IBlockState state) {
         return state.getBlock() instanceof BlockLeaves || state.isOpaqueCube();
     }

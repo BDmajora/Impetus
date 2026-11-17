@@ -16,7 +16,7 @@ public class CoarctatioMixinPlugin extends SimpleMixinPlugin {
     private record Guarded(Predicate<CoarctatioConfig> enabled, String feature, List<String> mixins, List<String> targets) {
     }
 
-    // Value guarded.
+    // Mixin groups that are only listed when their switch is on and none of their targets loaded before mixins could apply.
     private static final List<Guarded> GUARDED = List.of(
             new Guarded(config -> config.recycleEvents, "event recycling",
                     List.of("events.TickEventMixin", "events.PlayerTickEventMixin", "events.WorldTickEventMixin",
@@ -38,13 +38,13 @@ public class CoarctatioMixinPlugin extends SimpleMixinPlugin {
     // Loaded config.
     private CoarctatioConfig config;
 
-    // Handles on load.
+    // Reads the config once.
     @Override
     public void onLoad(String mixinPackage) {
         this.config = CoarctatioConfig.get();
     }
 
-    // Returns whether apply mixin.
+    // Maps the mixin's simple name to its switch and refuses anything unlisted.
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
         String name = mixinClassName.startsWith(PACKAGE)

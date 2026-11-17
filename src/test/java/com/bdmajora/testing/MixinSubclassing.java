@@ -21,43 +21,38 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
 
-// Re-parents a mixin class onto the class it targets, so an instance of the mixin is an instance of that class and
-// the (Target) (Object) this cast mixins use to reach their own target works in a plain JUnit run. The targets and
-// their ancestors are given a no-argument constructor where they lack one, so the mixin's own constructor still runs
+// Re-parents mixin classes onto their targets for tests.
 final class MixinSubclassing implements ClassFileTransformer {
-    // Classes that get a generated no-argument constructor, collected from the mixins before anything loads
+    // Classes that get a generated no argument constructor.
     private final Set<String> needConstructor = new HashSet<>();
 
-    // Classes whose only no-argument constructor is private, which a re-parented mixin could not call
+    // Classes whose only no argument constructor is private.
     private final Set<String> widenConstructor = new HashSet<>();
 
-    // Extra constructor descriptors a target must carry, because a mixin's own constructor calls them on super
+    // Extra constructor descriptors a target must carry.
     private final Map<String, Set<String>> extraConstructors = new HashMap<>();
 
-    // Every mixin target, whose static finals are opened up so a test can swap the cached state they hold
+    // Every mixin target.
     private final Set<String> targets = new HashSet<>();
 
-    // Static @Accessor and @Invoker methods of mixin interfaces, which only exist once Mixin has generated them;
-    // calls to them are rewritten to reach the target's own field or method instead
+    // Static accessor and invoker methods of mixin interfaces.
     private final Map<String, Static> statics = new HashMap<>();
 
-    // One generated static accessor: the target it belongs to, the member it reaches and whether it is a field
+    // One generated static accessor.
     private record Static(String target, String member, boolean field) {}
 
-    // The members those accessors reach, which have to be opened up because the call now comes from elsewhere
+    // Members the accessors reach.
     private final Map<String, Set<String>> openMembers = new HashMap<>();
 
-    // Private nested game classes a mixin reaches by handle, which it may only do in the game because its code lands in their outer class
+    // Private nested game classes a mixin reaches by handle.
     private static final Set<String> PUBLISHED = Set.of(
             "net/minecraftforge/client/model/ModelLoader$WeightedRandomModel",
             "net/minecraftforge/client/model/ModelLoader$MultipartModel");
 
-    // LWJGL classes whose static initialiser loads the native library a plain JUnit run lacks; emptied, so a test
-    // can mock their statics without the class failing to initialise
+    // LWJGL classes whose static initialiser is emptied.
     private static final Set<String> NATIVE_INITIALISERS = Set.of("org/lwjgl/opengl/Display");
 
-    // Mod classes whose static final state tests swap with Statics.set; left final, the JIT folds the value into
-    // whatever compiled first and a later swap goes unseen, which failed tests depending on run order
+    // Mod classes whose static finals tests swap.
     private static final Set<String> SWAPPED_STATICS = Set.of(
             "com/bdmajora/impetus/ImpetusVintage",
             "com/bdmajora/fulgor/lighting/DynamicLightsBridge",
@@ -75,7 +70,7 @@ final class MixinSubclassing implements ClassFileTransformer {
         }
     }
 
-    // Plain mod classes that call a static accessor; prepare() loads them up front, since one first loaded while Mockito retransforms a class whose fields name it is handed to no transformer and keeps the placeholder call
+    // Mod classes that call a static accessor.
     private final Set<String> accessorCallers = new HashSet<>();
 
     private void findAccessorCallers(Path root) {
@@ -112,7 +107,7 @@ final class MixinSubclassing implements ClassFileTransformer {
         }
     }
 
-    // The directories holding compiled mod classes, taken from the class path
+    // Returns the directories holding compiled mod classes.
     private static Set<Path> classRoots() {
         Set<Path> roots = new HashSet<>();
         for (String entry : System.getProperty("java.class.path", "").split(java.io.File.pathSeparator)) {
@@ -124,7 +119,7 @@ final class MixinSubclassing implements ClassFileTransformer {
         return roots;
     }
 
-    // Every single-target mixin's target, plus the ancestors of those targets, that has no no-argument constructor
+    // Collects the targets and ancestors without a no argument constructor.
     private void scan(Path root) {
         try (Stream<Path> files = Files.walk(root)) {
             files.filter(path -> path.toString().endsWith(".class") && path.toString().contains("mixin"))
@@ -154,8 +149,7 @@ final class MixinSubclassing implements ClassFileTransformer {
         }
     }
 
-    // Walks up from a target adding every class that lacks a no-argument constructor, since each generated one calls
-    // its superclass's
+    // Walks up from a target adding classes without a no argument constructor.
     private void requireConstructor(String internalName) {
         String name = internalName;
         while (name != null && !"java/lang/Object".equals(name) && !needConstructor.contains(name)) {
@@ -177,7 +171,7 @@ final class MixinSubclassing implements ClassFileTransformer {
         }
     }
 
-    // Records a mixin interface's static accessors, so calls to them can be pointed at the real member
+    // Records a mixin interface's static accessors.
     private void collectStatics(ClassReader reader) {
         String target = target(reader);
         if (target == null) {
@@ -241,7 +235,7 @@ final class MixinSubclassing implements ClassFileTransformer {
         }
     }
 
-    // ACC_PRIVATE, another access level, or -1 when the class declares no no-argument constructor at all
+    // Returns the access of the no argument constructor or -1.
     private static int noArgConstructor(ClassReader reader) {
         int[] found = {-1};
         reader.accept(new ClassVisitor(Opcodes.ASM9) {
@@ -256,13 +250,12 @@ final class MixinSubclassing implements ClassFileTransformer {
         return found[0];
     }
 
-    // Loads every class that needs a generated constructor while the transformer is the only thing running, so a
-    // test that touches one of them first cannot get the untransformed version
+    // Loads every class that needs a generated constructor.
     void prepare() {
         Set<String> all = new HashSet<>(needConstructor);
         all.addAll(widenConstructor);
         all.addAll(extraConstructors.keySet());
-        // Mockito retransforming the outer class would otherwise load these from inside a transformer, unpublished
+        // Adds the published classes.
         all.addAll(PUBLISHED);
         all.addAll(accessorCallers);
         for (String name : all) {
@@ -325,7 +318,7 @@ final class MixinSubclassing implements ClassFileTransformer {
             if (targetClass.isInterface() || Modifier.isFinal(targetClass.getModifiers())) {
                 return null;
             }
-            // Only the mixin convention is handled: the declared superclass must be one the target already has
+            // Loads the declared superclass.
             Class<?> declared = Class.forName(reader.getSuperName().replace('/', '.'), false, loader);
             if (!declared.isAssignableFrom(targetClass)) {
                 return null;
@@ -339,8 +332,7 @@ final class MixinSubclassing implements ClassFileTransformer {
         }
     }
 
-    // Rewrites a plain mod class's calls to generated static accessors; mixin classes get the same treatment as
-    // part of being re-parented
+    // Rewrites calls to generated static accessors.
     private byte[] pointStaticsAtTheirMembers(byte[] bytes) {
         if (statics.isEmpty()) {
             return null;
@@ -364,13 +356,13 @@ final class MixinSubclassing implements ClassFileTransformer {
         return writer.toByteArray();
     }
 
-    // The rewritten class, or the given bytes when there was nothing to point
+    // Returns the rewritten class or the given bytes.
     private byte[] pointedOr(byte[] bytes) {
         byte[] pointed = pointStaticsAtTheirMembers(bytes);
         return pointed == null ? bytes : pointed;
     }
 
-    // Turns a call to a generated static accessor into the field read, field write or call it stands for
+    // Turns an accessor call into the field read or write or call it stands for.
     private boolean rewriteStatic(MethodVisitor visitor, int opcode, String owner, String name, String descriptor) {
         Static accessor = opcode == Opcodes.INVOKESTATIC ? statics.get(owner + "." + name + descriptor) : null;
         if (accessor == null) {
@@ -388,13 +380,12 @@ final class MixinSubclassing implements ClassFileTransformer {
         return true;
     }
 
-    // Drops final from the static fields of a mixin target, so a test can replace the state they cache without the
-    // JIT folding the old value into its callers
+    // Drops final from the static fields of a mixin target.
     private static byte[] openStatics(byte[] bytes, Set<String> members) {
         ClassReader reader = new ClassReader(bytes);
         ClassWriter writer = new ClassWriter(reader, 0);
         reader.accept(new ClassVisitor(Opcodes.ASM9, writer) {
-            // A final game class cannot be re-parented onto, so mixins on ItemStack and its like would be untestable
+            // Drops final from the class.
             @Override
             public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
                 super.visit(version, unfinalClass(access), name, signature, superName, interfaces);
@@ -415,22 +406,23 @@ final class MixinSubclassing implements ClassFileTransformer {
         return writer.toByteArray();
     }
 
+    // Returns the access made public.
     private static int publish(int access) {
         return access & ~(Opcodes.ACC_PRIVATE | Opcodes.ACC_PROTECTED) | Opcodes.ACC_PUBLIC;
     }
 
-    // Only a static field that holds a reference is opened: a primitive or String constant is inlined by javac anyway
-    // A class's own ACC_FINAL, which stops a mixin being re-parented onto a final game class such as ItemStack
+    // Returns the class access without final.
     private static int unfinalClass(int access) {
         return access & ~Opcodes.ACC_FINAL;
     }
 
+    // Returns the access of a static final field without final.
     private static int unfinal(int access) {
         boolean isStaticFinal = (access & Opcodes.ACC_STATIC) != 0 && (access & Opcodes.ACC_FINAL) != 0;
         return isStaticFinal ? access & ~Opcodes.ACC_FINAL : access;
     }
 
-    // Makes a nested class public in its own InnerClasses entry too, which is where its reflected modifiers come from
+    // Makes a nested class public in its InnerClasses entry.
     private static byte[] publishClass(byte[] bytes) {
         ClassReader reader = new ClassReader(bytes);
         ClassWriter writer = new ClassWriter(reader, 0);
@@ -470,7 +462,7 @@ final class MixinSubclassing implements ClassFileTransformer {
         return writer.toByteArray();
     }
 
-    // Opens up a private no-argument constructor, since a mixin re-parented onto this class has to call it
+    // Opens a private no argument constructor.
     private static byte[] widenConstructor(byte[] bytes) {
         ClassReader reader = new ClassReader(bytes);
         ClassWriter writer = new ClassWriter(reader, 0);
@@ -485,8 +477,7 @@ final class MixinSubclassing implements ClassFileTransformer {
         return writer.toByteArray();
     }
 
-    // Adds public <init>() calling the superclass's, plus any extra shapes a mixin's own constructor calls, so a
-    // mixin re-parented onto this class can still be constructed
+    // Adds public constructors calling the superclass.
     private static byte[] addConstructor(byte[] bytes, boolean noArgs, Set<String> extra, boolean openStatics) {
         ClassReader reader = new ClassReader(bytes);
         ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
@@ -497,7 +488,7 @@ final class MixinSubclassing implements ClassFileTransformer {
                 return super.visitField(openStatics ? unfinal(access) : access, name, descriptor, signature, value);
             }
 
-            // A final game class cannot be re-parented onto, so mixins on ItemStack and its like would be untestable
+            // Drops final from the class.
             @Override
             public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
                 names[0] = name;
@@ -538,7 +529,7 @@ final class MixinSubclassing implements ClassFileTransformer {
         return writer.toByteArray();
     }
 
-    // The single class named by @Mixin(...), or null for a multi-target or string-target mixin
+    // Returns the single class named by Mixin or null.
     private static String target(ClassReader reader) {
         String[] found = new String[2];
         reader.accept(new ClassVisitor(Opcodes.ASM9) {
@@ -569,10 +560,10 @@ final class MixinSubclassing implements ClassFileTransformer {
         return found[1] == null ? found[0] : null;
     }
 
-    // One @Shadow method that carries a placeholder body, and the static bridge that replaces calls to it
+    // One shadow method placeholder and its bridge.
     private record Placeholder(String bridge, boolean isStatic) {}
 
-    // The placeholder bodies of this class, keyed by method name and descriptor
+    // Returns the placeholder bodies of the class.
     private static Map<String, Placeholder> placeholders(byte[] bytes) {
         Map<String, Placeholder> found = new HashMap<>();
         new ClassReader(bytes).accept(new ClassVisitor(Opcodes.ASM9) {
@@ -617,7 +608,7 @@ final class MixinSubclassing implements ClassFileTransformer {
             super.visit(version, access, name, null, to, interfaces);
         }
 
-        // The class signature goes with the old superclass, so member signatures naming its type variables go too
+        // Drops the old superclass's signatures.
         @Override
         public net.bytebuddy.jar.asm.FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
             return super.visitField(access, name, descriptor, generic ? null : signature, value);
@@ -625,12 +616,12 @@ final class MixinSubclassing implements ClassFileTransformer {
 
         @Override
         public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
-            // A mixin declares its constructor private because nothing may call it; a test subclass has to
+            // Opens a private mixin constructor.
             boolean hidden = "<init>".equals(name) && (access & Opcodes.ACC_PRIVATE) != 0;
             int opened = hidden ? access & ~Opcodes.ACC_PRIVATE | Opcodes.ACC_PROTECTED : access;
             MethodVisitor visitor = super.visitMethod(opened, name, descriptor, generic ? null : signature, exceptions);
             return visitor == null ? null : new MethodVisitor(Opcodes.ASM9, visitor) {
-                // Objects of the old superclass's type built here, whose constructor calls are not the super call
+                // Objects of the old superclass's type built here.
                 private int pendingNew;
 
                 @Override
@@ -651,7 +642,7 @@ final class MixinSubclassing implements ClassFileTransformer {
                         super.visitMethodInsn(opcode, called, method, desc, isInterface);
                         return;
                     }
-                    // The placeholder bodies cannot run, so calls to them are answered from the stub table instead
+                    // Redirects placeholder calls to the stub table.
                     Placeholder placeholder = called.equals(owner) ? placeholders.get(method + desc) : null;
                     if (placeholder != null) {
                         super.visitMethodInsn(Opcodes.INVOKESTATIC, owner, placeholder.bridge(),
@@ -664,7 +655,7 @@ final class MixinSubclassing implements ClassFileTransformer {
             };
         }
 
-        // One static bridge per placeholder, taking the instance first so a call site needs no stack shuffling
+        // Adds one static bridge per placeholder.
         @Override
         public void visitEnd() {
             for (Map.Entry<String, Placeholder> entry : placeholders.entrySet()) {

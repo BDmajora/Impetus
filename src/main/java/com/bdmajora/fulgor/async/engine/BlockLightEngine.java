@@ -98,14 +98,15 @@ public class BlockLightEngine extends BfsLightEngine {
     // Returns the block light a block should have.
     @Override
     protected int calculateLightValue(int worldX, int worldY, int worldZ, int expect) {
-        int info = lightInfoAt(getBlockState(worldX, worldY, worldZ), worldX, worldY, worldZ);
+        IBlockState state = getBlockState(worldX, worldY, worldZ);
+        int info = lightInfoAt(state, worldX, worldY, worldZ);
         int level = LightInfo.emission(info);
 
         if (level >= 14 || level > expect) {
             return level;
         }
 
-        return attenuateFromNeighbours(worldX, worldY, worldZ, expect, info, level);
+        return attenuateFromNeighbours(worldX, worldY, worldZ, expect, state, info, level);
     }
 
     // Queues the light changes of one changed block.
@@ -129,7 +130,7 @@ public class BlockLightEngine extends BfsLightEngine {
             if (isEmptyOfBlocks(sections[sectionY])) {
                 continue;
             }
-            // At most 256 palette entries instead of 4096 blocks, and most sections hold no light source at all
+            // Skips a section whose palette holds no light source.
             if (!fluidsMayEmit && !EmitterPalette.mayEmitLight(sections[sectionY])) {
                 continue;
             }

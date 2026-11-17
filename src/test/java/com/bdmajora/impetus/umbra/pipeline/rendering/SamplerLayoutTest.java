@@ -56,7 +56,7 @@ class SamplerLayoutTest {
             assertEquals(row[1], fullscreen.get(row[0]), "fullscreen " + row[0]);
             assertEquals(row[2], gbuffer.get(row[0]), "gbuffer " + row[0]);
         }
-        // iris_overlay is gbuffer-only; no fullscreen program declares it
+        // Checks iris_overlay.
         assertEquals(11, gbuffer.get("iris_overlay"));
         assertNull(fullscreen.get("iris_overlay"));
         for (int i = 2; i < 8; i++) {
@@ -93,7 +93,7 @@ class SamplerLayoutTest {
         assertSame(SamplerLayout.byStage(), SamplerLayout.byStage());
         assertTrue(SamplerLayout.isGbufferLayout(SamplerLayout.gbuffer()));
         assertFalse(SamplerLayout.isGbufferLayout(SamplerLayout.fullscreen()));
-        // A copy still answers, and a table without the marker is not the gbuffer one
+        // Checks the gbuffer layout marker.
         assertTrue(SamplerLayout.isGbufferLayout(new HashMap<>(SamplerLayout.gbuffer())));
         assertFalse(SamplerLayout.isGbufferLayout(Map.of()));
         assertThrows(UnsupportedOperationException.class, () -> SamplerLayout.fullscreen().put("x", 1));

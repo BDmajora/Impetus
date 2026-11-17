@@ -24,10 +24,10 @@ import java.util.stream.LongStream;
 import static org.junit.jupiter.api.Assertions.*;
 
 class NormI8Test {
-    // every 32-bit pattern, as a long so the range does not overflow
+    // Every 32 bit pattern.
     private static final long ALL_BITS = 0xFFFF_FFFFL;
 
-    // floats outside, on and just inside the -1..1 contract, and on the rounding boundaries
+    // Floats around -1 to 1.
     private static final float[] EDGE_FLOATS = {
             0f, -0f, 1f, -1f, 0.5f, -0.5f, Math.nextDown(0.5f), Math.nextUp(0.5f), Math.nextDown(1f), Math.nextUp(-1f),
             Math.nextUp(1f), Math.nextDown(-1f), Float.MIN_VALUE, -Float.MIN_VALUE, Float.MIN_NORMAL, 0.0039f, 0.004f, -0.004f,
@@ -36,16 +36,16 @@ class NormI8Test {
             Float.intBitsToFloat(0xFFFFFFFF), Float.intBitsToFloat(0x7F800001)
     };
 
-    // ints on every sign and byte boundary, with garbage around each byte
+    // Ints on the boundaries.
     private static final int[] EDGE_INTS = {
             0, 1, -1, 0x7F, 0x80, 0x81, 0xFF, 0x100, 0x7F7F7F7F, 0x80808080, 0x81818181, 0xFFFFFF7F, 0x7FFFFFFF, 0x80000000,
             0x00FFFFFF, 0xFF000000, 0xDEADBEEF, 0x12345678, 0xC040817F
     };
 
-    // one uninstrumented copy of NormI8 and the sweeps: FreshClasses defines them without a code source, so JaCoCo's shared probe writes do not serialise the threads
+    // Uninstrumented copy of the class and sweeps.
     private static final FreshClasses UNINSTRUMENTED = new FreshClasses(NormI8.class, Sweeps.class);
 
-    // runs one exhaustive sweep over from..to on the uninstrumented copy and returns its first failing bit pattern, or -1
+    // Runs one sweep on the copy.
     private static long sweep(String name, long from, long to) throws ReflectiveOperationException {
         Class<?> copy = UNINSTRUMENTED.load(NormI8.class);
         assertNotSame(NormI8.class, copy);
@@ -57,9 +57,9 @@ class NormI8Test {
         return Float.floatToRawIntBits(f);
     }
 
-    // the exhaustive checks; public so the fresh copy is reachable reflectively, and nothing here touches the outer class
+    // Exhaustive checks.
     public static final class Sweeps {
-        // reference encoder: |f| * 127 is exact in double, so round half away from zero then clamp; in -1..1 the only ties are +-0.5, where that agrees with ties-to-even
+        // Expected encoder.
         public static int modelByte(float value) {
             if (value != value) {
                 return 0;
@@ -68,13 +68,13 @@ class NormI8Test {
             return (value < 0 ? -magnitude : magnitude) & 0xFF;
         }
 
-        // reference decoder: the signed byte over 127, correctly rounded by IEEE division, with -128 read as -1
+        // Expected decoder.
         public static float modelFloat(int component) {
             byte b = (byte) component;
             return b == Byte.MIN_VALUE ? -1f : b / 127f;
         }
 
-        // first bit pattern in from..to that fails, scanning 65536-pattern blocks in parallel, or -1
+        // Returns the first failing pattern or -1.
         private static long first(long from, long to, LongPredicate fails) {
             return LongStream.rangeClosed(from >>> 16, to >>> 16).parallel()
                     .map(block -> {
@@ -108,7 +108,7 @@ class NormI8Test {
             });
         }
 
-        // non-negative float bit patterns sort like their values, so no step may lower the byte
+        // Checks the order.
         public static long byteDrop(long from, long to) {
             return first(from, to, bits -> (byte) NormI8.pack(Float.intBitsToFloat((int) bits), 0, 0)
                     < (byte) NormI8.pack(Float.intBitsToFloat((int) bits - 1), 0, 0));
@@ -123,7 +123,7 @@ class NormI8Test {
             });
         }
 
-        // each unpack reads only its byte, like the model
+        // Checks each unpack.
         public static long unpackMismatch(long from, long to) {
             return first(from, to, bits -> {
                 int n = (int) bits;
@@ -144,7 +144,7 @@ class NormI8Test {
         assertEquals(0, constructors[0].getParameterCount());
         constructors[0].setAccessible(true);
         assertNotNull(constructors[0].newInstance());
-        // JaCoCo adds synthetic members to the loaded class; only the declared ones count
+        // Checks the declared members.
         List<Method> methods = Arrays.stream(NormI8.class.getDeclaredMethods()).filter(m -> !m.isSynthetic()).toList();
         assertEquals(List.of("pack", "pack", "pack", "unpackW", "unpackX", "unpackY", "unpackZ"),
                 methods.stream().filter(m -> Modifier.isPublic(m.getModifiers())).map(Method::getName).sorted().toList());
@@ -244,7 +244,7 @@ class NormI8Test {
 
     @Test
     void componentsRoundToTheNearestStepInsteadOfTruncating() {
-        // truncation dropped a just-under-one component to 126, so a float-noisy axis quad lost its facing
+        // Checks rounding near one.
         assertEquals(0x7F, NormI8.pack(Math.nextDown(1f), 0, 0));
         assertEquals(0x81, NormI8.pack(Math.nextUp(-1f), 0, 0));
         assertEquals(1f, NormI8.unpackY(NormI8.pack(0, Math.nextDown(1f), 1e-4f)));
@@ -256,13 +256,13 @@ class NormI8Test {
         assertEquals(0, NormI8.pack(-0.0039f, 0, 0));
         assertEquals(126, NormI8.pack(0.996f, 0, 0));
         assertEquals(127, NormI8.pack(0.9962f, 0, 0));
-        // +-0.5 are the only ties in range, 63.5 going to 64 either way
+        // Checks the ties.
         assertEquals(64, NormI8.pack(0.5f, 0, 0));
         assertEquals(0xC0, NormI8.pack(-0.5f, 0, 0));
         assertEquals(63, NormI8.pack(Math.nextDown(0.5f), 0, 0));
         assertEquals(64, NormI8.pack(Math.nextUp(0.5f), 0, 0));
         assertEquals(0xC1, NormI8.pack(-Math.nextDown(0.5f), 0, 0));
-        // unit diagonals: 1/sqrt(2) * 127 is 89.8, which truncation took to 89
+        // Checks the diagonals.
         assertEquals(90, NormI8.pack(0.70710677f, 0, 0));
         assertEquals(73 * 0x010101, NormI8.pack(0.57735026f, 0.57735026f, 0.57735026f));
         for (float f : EDGE_FLOATS) {
@@ -302,7 +302,7 @@ class NormI8Test {
         assertEquals(0, NormI8.pack(Float.NaN, Float.NaN, Float.NaN, Float.NaN));
         assertEquals(0, NormI8.pack(Float.intBitsToFloat(0x7F800001), Float.intBitsToFloat(0xFFFFFFFF),
                 Float.intBitsToFloat(0x7FC00001), Float.intBitsToFloat(0xFF800001)));
-        // every NaN payload and sign, quiet or signalling
+        // Checks every NaN.
         assertEquals(-1, sweep("packMismatch", 0x7F800001L, 0x7FFFFFFFL));
         assertEquals(-1, sweep("packMismatch", 0xFF800001L, 0xFFFFFFFFL));
     }
@@ -323,7 +323,7 @@ class NormI8Test {
 
     @Test
     void minus128ReadsAsMinusOneAndRepacksAsMinus127() {
-        // -128 / 127 was -1.0079, outside the -1..1 every caller assumes; GL clamps it to -1
+        // Checks -128.
         assertEquals(-1f, NormI8.unpackX(0x80));
         assertEquals(-1f, NormI8.unpackY(0x8000));
         assertEquals(-1f, NormI8.unpackZ(0x800000));

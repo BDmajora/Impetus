@@ -23,7 +23,7 @@ class CoarctatioPropertyMapTest {
         assertEquals("true", map.get("north"));
         assertEquals("false", map.get(new String("east")));
         assertNull(map.get("south"));
-        // ImmutableMap forbids null keys, so a null lookup is a miss rather than a scan
+        // Returns null for a null key.
         assertNull(map.get(null));
         assertTrue(map.containsKey("north"));
         assertFalse(map.containsKey("south"));
@@ -32,7 +32,7 @@ class CoarctatioPropertyMapTest {
         assertFalse(map.containsValue("maybe"));
         assertFalse(map.containsValue(null));
         assertTrue(new CoarctatioPropertyMap<>(new Object[0], new Object[0]).isEmpty());
-        // Both arrays are exactly sized, so Guava has no reason to copy it
+        // Reports the map as not a partial view.
         assertFalse(map.isPartialView());
     }
 
@@ -42,7 +42,7 @@ class CoarctatioPropertyMapTest {
         ImmutableSet<Map.Entry<String, String>> entries = map.createEntrySet();
         assertEquals(2, entries.size());
         assertTrue(entries.contains(Maps.immutableEntry("north", "true")));
-        // Guava caches it, so iterating twice costs one entry set
+        // Returns the same entry set twice.
         assertEquals(entries, map.entrySet());
         assertEquals(2, map.keySet().size());
         assertEquals(2, map.values().size());
@@ -61,7 +61,7 @@ class CoarctatioPropertyMapTest {
         assertEquals(map, new CoarctatioPropertyMap<>(KEYS, new Object[] {"true", "false"}));
         assertNotEquals(map, "not a map");
 
-        // A different size, a different value and a missing key are all unequal
+        // Rejects maps of another size or value or key.
         assertNotEquals(map, new HashMap<>());
         Map<String, String> other = new LinkedHashMap<>(equivalent);
         other.put("east", "true");

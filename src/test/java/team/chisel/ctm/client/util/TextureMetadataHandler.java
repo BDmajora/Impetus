@@ -6,11 +6,11 @@ import net.minecraft.client.renderer.block.model.IBakedModel;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.client.model.IModel;
 
-// Test stand-in for CTM's metadata handler, holding just the members Coarctatio reaches by reflection
+// Test stand-in for CTM's metadata handler.
 public class TextureMetadataHandler {
     public static final TextureMetadataHandler INSTANCE = new TextureMetadataHandler();
 
-    // What wrap answers with; null makes it fail, the way a broken CTM wrap would
+    // Model wrap returns or null to fail.
     public static IBakedModel wrapped;
 
     private final Object2BooleanMap<ResourceLocation> wrappedModels = new Object2BooleanOpenHashMap<>();

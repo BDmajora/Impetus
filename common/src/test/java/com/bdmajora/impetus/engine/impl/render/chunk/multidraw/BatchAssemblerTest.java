@@ -71,7 +71,7 @@ class BatchAssemblerTest {
         return upload.getResult();
     }
 
-    // Four vertices in each facing, contiguous in facing order as the build buffers lay them out
+    // Four vertices per facing.
     private static Map<ModelQuadFacing, VertexRange> quads(ModelQuadFacing... facings) {
         Map<ModelQuadFacing, VertexRange> ranges = new EnumMap<>(ModelQuadFacing.class);
         int start = 0;
@@ -118,13 +118,13 @@ class BatchAssemblerTest {
         assertArrayEquals(new int[]{second, 18, 0}, command(all, 1));
         all.delete();
 
-        // Far below, west and north every section sees the same faces, one run of them; a section with none of them draws nothing
+        // Checks one run.
         MultiDrawBatch below = BatchAssembler.fillRegion(region, storage, sections, new CameraTransform(-1000, -1000, -1000), Passes.SOLID, true);
         assertEquals(1, below.size());
         assertArrayEquals(new int[]{second + 4, 12, 0}, command(below, 0));
         below.delete();
 
-        // Far east, below and south the shared mask splits into four runs; runs that meet are drawn as one command
+        // Checks four runs.
         MultiDrawBatch split = BatchAssembler.fillRegion(region, storage, sections, new CameraTransform(1000, -1000, 1000), Passes.SOLID, true);
         assertEquals(2, split.size());
         assertArrayEquals(new int[]{first, 12, 0}, command(split, 0));
@@ -147,7 +147,7 @@ class BatchAssemblerTest {
         long secondRow = storage.getDataPointer(SECOND);
         int secondIndices = com.bdmajora.impetus.engine.impl.render.chunk.data.SectionRenderDataUnsafe.Strategy.FULL.getIndexOffset(secondRow, 0);
         int firstIndices = com.bdmajora.impetus.engine.impl.render.chunk.data.SectionRenderDataUnsafe.Strategy.FULL.getIndexOffset(storage.getDataPointer(FIRST), 0);
-        // Culling is never applied to a sorted pass, whatever the caller asks
+        // Checks sorted passes.
         MultiDrawBatch batch = BatchAssembler.fillRegion(region, storage, list(FIRST, SECOND), new CameraTransform(-1000, -1000, -1000), Passes.TRANSLUCENT, true);
         assertEquals(3, batch.size());
         assertArrayEquals(new int[]{second, 6, secondIndices}, command(batch, 0));
@@ -175,7 +175,7 @@ class BatchAssemblerTest {
         assertEquals(2, culled.getBatch().size());
         byte[] order = sections.getSectionsWithGeometry();
         assertTrue(culled.isValidFor(order, 2, 8, 8, 8));
-        // The culling masks hold until the camera crosses a face plane, two blocks inside the section
+        // Checks the culling masks.
         assertTrue(culled.isValidFor(order, 2, 13, 8, 8));
         assertFalse(culled.isValidFor(order, 2, 14, 8, 8));
         assertFalse(culled.isValidFor(order, 2, 8, -3, 8));
@@ -187,19 +187,19 @@ class BatchAssemblerTest {
         CachedBatch unculled = BatchAssembler.createCachedBatch(region, storage, sections, camera, Passes.SOLID, false, commands, provider);
         assertTrue(unculled.isValidFor(order, 2, Integer.MIN_VALUE, 0, Integer.MAX_VALUE - 1));
         unculled.delete();
-        // Nothing to draw: no batch and no tessellation
+        // Checks nothing to draw.
         CachedBatch nothing = BatchAssembler.createCachedBatch(region, storage, list(), camera, Passes.SOLID, true, commands, provider);
         assertNull(nothing.getBatch());
         assertNull(nothing.getTessellation());
         nothing.delete();
-        // Everything culled from below: an empty batch is uploaded but needs no tessellation
+        // Checks everything culled.
         CachedBatch hidden = BatchAssembler.createCachedBatch(region, storage, sections, new CameraTransform(8, -100, 8), Passes.SOLID, true, commands, provider);
         assertTrue(hidden.getBatch().isEmpty());
         assertNull(hidden.getTessellation());
         hidden.delete();
         assertEquals(2, tessellations.get());
 
-        // With the option on and a capable device, commands live in their own indirect buffer
+        // Checks the indirect buffer.
         ImpetusRuntimeOptions.multiDrawIndirect = true;
         CachedBatch indirect = BatchAssembler.createCachedBatch(region, storage, sections, camera, Passes.SOLID, true, commands, provider);
         assertInstanceOf(IndirectMultiDrawBatch.class, indirect.getBatch());
@@ -208,7 +208,7 @@ class BatchAssemblerTest {
 
     @Test
     void facesAndTheirValidityIntervalsFollowTheCamera() {
-        // From inside a section every face is visible, with the unassigned facing always on
+        // Checks inside a section.
         assertEquals(ModelQuadFacing.ALL, BatchAssembler.getVisibleFaces(8, 8, 8, 0, 0, 0));
         int fromEast = BatchAssembler.getVisibleFaces(100, 8, 8, 0, 0, 0);
         assertEquals(0, fromEast & (1 << ModelQuadFacing.NEG_X.ordinal()));

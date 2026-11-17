@@ -1,6 +1,6 @@
 package net.irisshaders.iris.api.v0;
 
-// Test stand-in for the shader API contract ShaderModBridge probes reflectively; the real one lives in the root project
+// Stand in for the shader API.
 public final class IrisApi {
     private static final IrisApi INSTANCE = new IrisApi();
     public static boolean shadersInUse;

@@ -19,7 +19,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ModScanCacheTest {
-    // Static, because the cache file's path is resolved once when the class initialises
+    // Cache directory.
     @TempDir
     static Path dir;
 
@@ -32,7 +32,7 @@ class ModScanCacheTest {
     void forgetWhatOtherTestsCached() throws Exception {
         Mixins.set(ModScanCache.class, "loaded", null);
         Mixins.<Map<String, Map<String, byte[]>>>get(ModScanCache.class, "current").clear();
-        // The cache file's path is fixed for the class, so each test starts from nothing on disk
+        // Clears the cache file.
         if (Files.isDirectory(cacheFile())) {
             try (java.util.stream.Stream<Path> children = Files.list(cacheFile())) {
                 for (Path child : children.toList()) {
@@ -43,7 +43,7 @@ class ModScanCacheTest {
         Files.deleteIfExists(cacheFile());
     }
 
-    // Same as the fresh-launch reset, minus the file, for a test that wants to re-read what it just wrote
+    // Forgets the loaded records.
     private static void forgetLoadedRecords() {
         Mixins.set(ModScanCache.class, "loaded", null);
         Mixins.<Map<String, Map<String, byte[]>>>get(ModScanCache.class, "current").clear();
@@ -59,7 +59,7 @@ class ModScanCacheTest {
         String key = ModScanCache.keyFor(jar);
         assertTrue(key.startsWith(jar.getAbsolutePath() + '|'));
         assertEquals(key, ModScanCache.keyFor(jar));
-        // Touching the jar changes the key, so last launch's scan is not reused
+        // Touches the jar.
         assertTrue(jar.setLastModified(jar.lastModified() + 10_000L));
         assertNotEquals(key, ModScanCache.keyFor(jar));
     }
@@ -125,7 +125,7 @@ class ModScanCacheTest {
     void anUnwritableTargetIsOnlyLogged() throws Exception {
         Map<String, Map<String, byte[]>> snapshot = new HashMap<>();
         snapshot.put("jar|1|2", java.util.Collections.singletonMap("a", new byte[] {1}));
-        // A directory where the cache file belongs makes the move fail, which must not take the launch down
+        // Checks a failed move.
         Files.createDirectories(cacheFile());
         Mixins.call(ModScanCache.class, "write", snapshot);
         Files.deleteIfExists(cacheFile().resolveSibling("mod-scan.bin.tmp"));

@@ -75,7 +75,7 @@ class EngineTailsTest {
         AsyncWorld fixture = neighbourhood();
         Chunk chunk = fixture.chunks.get(AsyncWorld.key(0, 0));
         SkyLightEngine engine = new SkyLightEngine(fixture.world);
-        // A ceiling over the column, so the sections below it hold real skylight data
+        // Places a ceiling over the column.
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
                 fixture.setBlock(new BlockPos(x, 100, z), Blocks.STONE.getDefaultState());
@@ -132,7 +132,7 @@ class EngineTailsTest {
                 Blocks.STONE.getDefaultState(), world, BlockPos.ORIGIN, chunk));
     }
 
-    // A minimal engine cache, so the base hook the real engines all override can still be exercised
+    // Minimal engine cache.
     private static final class BareCache extends LightEngineCache {
         BareCache(World world) {
             super(world);
@@ -193,7 +193,7 @@ class EngineTailsTest {
         AsyncWorld fixture = neighbourhood();
         Chunk chunk = fixture.chunks.get(AsyncWorld.key(0, 0));
         SkyLightEngine engine = new SkyLightEngine(fixture.world);
-        // A ceiling so the sections under it are dim and the ones over it are open sky
+        // Places a ceiling.
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
                 fixture.setBlock(new BlockPos(x, 100, z), Blocks.STONE.getDefaultState());
@@ -210,7 +210,7 @@ class EngineTailsTest {
         } finally {
             engine.destroyCaches();
         }
-        // Both sides of every edge already agreed, so the pass leaves the column as it found it
+        // Checks the column is unchanged.
         assertEquals(15, fixture.skyLight(new BlockPos(8, 101, 8)));
         // Under the ceiling only what creeps in from the open chunks around is left
         assertEquals(7, fixture.skyLight(new BlockPos(8, 99, 8)));

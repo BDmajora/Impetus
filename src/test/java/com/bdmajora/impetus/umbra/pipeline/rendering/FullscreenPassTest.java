@@ -32,10 +32,10 @@ class FullscreenPassTest {
     void scaleShrinksTheRectangleWithFractionalOffsetsAndNeverGoesNegative() {
         pass(new int[2], new float[]{0.5f, 0.25f, 0.5f}).applyViewport(320, 240);
         verify(TestGl.gl()).glViewport(80, 120, 160, 120);
-        // Truncated, not rounded, as Umbra does it
+        // Checks the truncated viewport.
         pass(new int[]{101, 51}, new float[]{0.5f, 0.0f, 0.0f}).applyViewport(320, 240);
         verify(TestGl.gl()).glViewport(0, 0, 50, 25);
-        // A negative scale became a negative glViewport, which GL rejects and so kept the last pass's viewport
+        // Checks a negative scale.
         pass(new int[2], new float[]{-1.0f, 0.0f, 0.0f}).applyViewport(320, 240);
         verify(TestGl.gl()).glViewport(0, 0, 0, 0);
     }

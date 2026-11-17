@@ -2,13 +2,13 @@ package com.bdmajora.fulgor.async;
 
 // Contract of the async lit chunk.
 public interface AsyncLitChunk {
-    // Returns whether light ready.
+    // Returns whether the chunk's light is final.
     boolean fulgor$isLightReady();
 
     // Stores the light ready.
     void fulgor$setLightReady(boolean ready);
 
-    // Returns whether light usable.
+    // Returns whether the engine may read and write the chunk's light.
     boolean fulgor$isLightUsable();
 
     // Stores the light usable.
@@ -17,7 +17,7 @@ public interface AsyncLitChunk {
     // Stores the saved light valid.
     void fulgor$setSavedLightValid(boolean valid);
 
-    // Returns whether saved light valid.
+    // Returns whether the saved light was loaded and can be trusted.
     boolean fulgor$hasSavedLightValid();
 
     // Synchronizes the light to vanilla.

@@ -88,7 +88,7 @@ public final class ImageUnits {
         }
     }
 
-    // Returns whether empty.
+    // Returns whether no image unit was assigned.
     public boolean isEmpty() {
         return this.renderTargetCount == 0 && this.shadowColorCount == 0;
     }

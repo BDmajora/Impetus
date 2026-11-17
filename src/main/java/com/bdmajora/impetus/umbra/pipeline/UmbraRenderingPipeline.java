@@ -231,7 +231,7 @@ public class UmbraRenderingPipeline {
         return this.view.switches().rainDepth;
     }
 
-    // Returns whether beacon beams write depth.
+    // Returns whether the pack wants beacon beams written to the depth buffer.
     public boolean shouldWriteBeaconBeamToDepthBuffer() {
         return this.view.switches().beaconBeamDepth;
     }

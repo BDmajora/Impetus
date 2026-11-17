@@ -3,6 +3,7 @@ package com.bdmajora.fulgor.async.engine;
 import com.bdmajora.fulgor.async.AsyncLitChunk;
 import com.bdmajora.fulgor.async.SWMRNibbleArray;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.world.World;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.NibbleArray;
@@ -105,8 +106,9 @@ public class SkyLightEngine extends BfsLightEngine {
         if (expect == 15) {
             return expect;
         }
-        int info = lightInfoAt(getBlockState(worldX, worldY, worldZ), worldX, worldY, worldZ);
-        return attenuateFromNeighbours(worldX, worldY, worldZ, expect, info, 0);
+        IBlockState state = getBlockState(worldX, worldY, worldZ);
+        int info = lightInfoAt(state, worldX, worldY, worldZ);
+        return attenuateFromNeighbours(worldX, worldY, worldZ, expect, state, info, 0);
     }
 
     // Lights a chunk from the sky down.

@@ -37,7 +37,7 @@ public abstract class BlockEventMixin extends Event implements RecyclableEvent {
     @Mutable
     private IBlockState state;
 
-    // Field phase added to the target.
+    // Priority phase the reused event is in.
     @Unique
     private EventPriority coarctatio$phase;
 
@@ -48,19 +48,19 @@ public abstract class BlockEventMixin extends Event implements RecyclableEvent {
         return this.coarctatio$phase;
     }
 
-    // Handles set phase.
+    // Advances the phase and refuses to go back.
     @Override
     public void setPhase(@Nonnull EventPriority value) {
         this.coarctatio$phase = RecyclableEvent.advancePhase(this.coarctatio$phase, value);
     }
 
-    // Handles reset phase.
+    // Clears the phase before the event is posted again.
     @Override
     public void coarctatio$resetPhase() {
         this.coarctatio$phase = null;
     }
 
-    // Handles refresh block.
+    // Points the reused event at a new block.
     @Override
     public void coarctatio$refreshBlock(World world, BlockPos pos, IBlockState state) {
         this.world = world;

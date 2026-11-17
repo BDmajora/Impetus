@@ -9,12 +9,12 @@ import static org.junit.jupiter.api.Assertions.*;
 class MeshCameraTest {
     @Test
     void theEyeIsWhereTheModelViewPutsTheViewOrigin() {
-        // Vanilla's eye-height translation: the view origin sits 1.62 above the render entity's feet
+        // Eye height offset.
         ChunkRenderMatrices matrices = new ChunkRenderMatrices(new Matrix4f(), new Matrix4f().translate(0f, -1.62f, 0f));
         MeshCamera camera = MeshCamera.of(matrices, 8.0, 63.5, -0.5);
         assertEquals(63.5, camera.renderY());
         assertEquals(65.12, camera.eyeY(), 1.0e-4);
-        // The feet sit in section 3, the eye in section 4, which is the one culling has to use
+        // Checks the eye section.
         assertEquals(4, camera.sectionY());
         assertEquals(0, camera.sectionX());
         assertEquals(-1, camera.sectionZ());

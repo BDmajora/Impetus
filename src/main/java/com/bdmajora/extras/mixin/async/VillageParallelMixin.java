@@ -12,7 +12,7 @@ import java.util.UUID;
 // Mixin that changes Village.
 @Mixin(Village.class)
 public abstract class VillageParallelMixin {
-    // Handles locked add or renew aggressor.
+    // Records an aggressor under the village lock.
     @WrapMethod(method = "addOrRenewAgressor")
     private void impetus$lockedAddOrRenewAggressor(EntityLivingBase entity, Operation<Void> original) {
         if (!ParallelProcessor.INSTALLED) {
@@ -24,7 +24,7 @@ public abstract class VillageParallelMixin {
         }
     }
 
-    // Handles locked modify reputation.
+    // Changes a player's reputation under the village lock.
     @WrapMethod(method = "modifyPlayerReputation(Ljava/util/UUID;I)I")
     private int impetus$lockedModifyReputation(UUID player, int amount, Operation<Integer> original) {
         if (!ParallelProcessor.INSTALLED) {
@@ -35,7 +35,7 @@ public abstract class VillageParallelMixin {
         }
     }
 
-    // Handles locked set default reputation.
+    // Sets the default reputation under the village lock.
     @WrapMethod(method = "setDefaultPlayerReputation")
     private void impetus$lockedSetDefaultReputation(int reputation, Operation<Void> original) {
         if (!ParallelProcessor.INSTALLED) {

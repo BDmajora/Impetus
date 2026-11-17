@@ -63,7 +63,7 @@ class UploadStreamTest {
         stream.upload(target, 0, 32);
         stream.upload(target, 32, 32);
         Mockito.verify(TestGl.gl(), Mockito.atLeastOnce()).glFinish();
-        // With the fence never signalling the ring cannot be reclaimed, so the next upload gives up after its retries
+        // Checks the ring gives up.
         fencesSignal(false);
         stream.endFrame();
         assertThrows(IllegalStateException.class, () -> stream.upload(target, 64, 32));

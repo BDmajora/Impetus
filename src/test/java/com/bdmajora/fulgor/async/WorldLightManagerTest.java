@@ -40,7 +40,7 @@ class WorldLightManagerTest {
         Statics.set(Fulgor.class, "fluidloggedApi", false);
     }
 
-    // A client-side manager, whose lanes run from the tick rather than their own threads
+    // Returns a client side neighbourhood.
     private static AsyncWorld neighbourhood() {
         AsyncWorld fixture = new AsyncWorld(true);
         for (int x = -1; x <= 1; x++) {
@@ -51,7 +51,7 @@ class WorldLightManagerTest {
         return fixture;
     }
 
-    // Completing a batch queues the edge checks that follow it, so the client tick is run until the lanes are idle
+    // Runs the client tick until the lanes are idle.
     private static void drain(WorldLightManager manager) {
         for (int i = 0; i < 20 && manager.hasUpdates(); i++) {
             manager.processClientUpdates();
@@ -110,7 +110,7 @@ class WorldLightManagerTest {
         // A section that emptied is queued to both lanes as well
         manager.queueSectionChange(0, 4, 0, true);
         drain(manager);
-        // As is a chunk restored with saved light, which only needs its nibbles set up
+        // Queues a chunk restored with saved light.
         manager.queueChunkLoadInit(0, 0, chunk, BfsLightEngine.getEmptySectionsForChunk(chunk));
         drain(manager);
         assertFalse(manager.hasUpdates());
@@ -146,7 +146,7 @@ class WorldLightManagerTest {
         manager.queueChunkLoadInit(0, 0, chunk, BfsLightEngine.getEmptySectionsForChunk(chunk));
         drain(manager);
         assertEquals(15, fixture.blockLight(source));
-        // Nothing wrote skylight, since that lane does not exist here
+        // Checks no sky light was written.
         assertEquals(15, fixture.skyLight(new BlockPos(4, 200, 4)));
     }
 

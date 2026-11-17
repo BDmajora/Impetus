@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.injection.ModifyVariable;
 // Mixin that changes Biome.
 @Mixin(Biome.class)
 public class BiomeMixin {
-    // Field uniform temperature added to the target.
+    // Temperature every biome's sky colour is taken at when sky colours are uniform.
     @Unique
     private static final float IMPETUS$UNIFORM_TEMPERATURE = 0.8F;
 

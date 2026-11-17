@@ -92,7 +92,7 @@ class RenderMixinsTest {
         ItemFrameLodState.active = false;
     }
 
-    // Whether the handler cancelled, called with its leading arguments and a fresh callback
+    // Returns whether the handler cancelled.
     private static boolean cancels(Object mixin, String handler, Object... leading) {
         CallbackInfo ci = Mixins.ci();
         Object[] args = java.util.Arrays.copyOf(leading, leading.length + 1);
@@ -111,18 +111,18 @@ class RenderMixinsTest {
             String cache = "impetus$shut" + part;
             ModelRenderer vanillaPart = mock(ModelRenderer.class);
             Mc.Recorded<Void> vanilla = Mc.operation();
-            // A lid on the move uncovers the band, so vanilla's own part is drawn
+            // Checks a moving lid.
             Mixins.set(box, "progress", 0.5F);
             Mixins.call(renderer, handler, vanillaPart, 0.0625F, vanilla, box, 1.0F);
             assertEquals(1, vanilla.count(), part);
-            // Shut, the cut copy is drawn in its place
+            // Checks a shut box.
             Mixins.set(box, "progress", 0.0F);
             ModelRenderer shut = mock(ModelRenderer.class);
             Mixins.set(renderer, cache, shut);
             Mixins.call(renderer, handler, vanillaPart, 0.0625F, vanilla, box, 1.0F);
             verify(shut).render(0.0625F);
             assertEquals(1, vanilla.count(), part);
-            // Built from the renderer's model on the first shut box; a part with nothing to cut is kept and drawn as it is
+            // Checks the cut copy is built once.
             Mixins.set(renderer, cache, null);
             Mixins.call(renderer, handler, vanillaPart, 0.0625F, vanilla, box, 1.0F);
             verify(vanillaPart).render(0.0625F);
@@ -170,7 +170,7 @@ class RenderMixinsTest {
         Mixins.call(items, "impetus$modelCount", ItemStack.EMPTY, single);
         assertEquals(1, single.getReturnValue());
 
-        // The block entity budget hook defers to the controller, which is idle here
+        // Checks the idle budget hook.
         TileEntityRendererDispatcherBudgetMixin budget = Mixins.instance(TileEntityRendererDispatcherBudgetMixin.class);
         assertFalse(cancels(budget, "impetus$budgetBlockEntity", new TileEntityBeacon(), 0F, -1));
         // As does the shadow hook
@@ -226,7 +226,7 @@ class RenderMixinsTest {
 
     @Test
     void armorStandsAndPlayerNamesFollowTheirSwitches() throws ClassNotFoundException {
-        // The renderer's static brightness texture is uploaded as the class initialises, so GL is stood in for that
+        // Stubs GL for the renderer's texture.
         Mc.textures();
         try (MockedStatic<GL11> gl = Mockito.mockStatic(GL11.class)) {
             Class.forName("net.minecraft.client.renderer.entity.RenderLivingBase");
@@ -283,7 +283,7 @@ class RenderMixinsTest {
         // Past the top nothing is drawn
         Mixins.call(renderer, "impetus$limitBeamSegment", 0D, 0D, 0D, 0D, 1D, 0D, 400, 1024, new float[3], segment);
         assertEquals(1, segment.count());
-        // Without the limit, or outside a render, the segment is drawn as asked
+        // Checks the unlimited segment.
         config.render.limitBeaconBeamHeight = false;
         Mixins.call(renderer, "impetus$limitBeamSegment", 0D, 0D, 0D, 0D, 1D, 0D, 0, 1024, new float[3], segment);
         assertEquals(1024, segment.last()[7]);
@@ -316,7 +316,7 @@ class RenderMixinsTest {
         Mixins.call(sunMoon, "impetus$drawSun", tessellator, draw);
         Mixins.call(sunMoon, "impetus$drawMoon", tessellator, draw);
         assertEquals(2, draw.count());
-        // A hidden sun or moon still empties the tessellator, so the next draw starts clean
+        // Checks a hidden sun empties the tessellator.
         config.detail.sun = false;
         config.detail.moon = false;
         Mixins.call(sunMoon, "impetus$drawSun", tessellator, draw);
@@ -331,23 +331,26 @@ class RenderMixinsTest {
         EntityRendererFogFalloffMixin falloff = Mixins.instance(EntityRendererFogFalloffMixin.class);
         Mixins.set(falloff, "farPlaneDistance", 256.0F);
         config.render.fogStart = 50;
-        assertEquals(64.0F, (float) Mixins.<Float>call(falloff, "impetus$fogStart", 128.0F));
+        assertEquals(64.0F, (float) Mixins.<Float>call(falloff, "impetus$fogStart", 128.0F, 0));
         assertEquals(128.0F, (float) Mixins.<Float>call(falloff, "impetus$fogEnd", 128.0F));
         config.render.fogDistance = 8;
-        assertEquals(64.0F, (float) Mixins.<Float>call(falloff, "impetus$fogStart", 128.0F));
+        assertEquals(64.0F, (float) Mixins.<Float>call(falloff, "impetus$fogStart", 128.0F, 0));
         assertEquals(144.0F, (float) Mixins.<Float>call(falloff, "impetus$fogEnd", 128.0F));
+        // Checks the sky pass fog start.
+        assertEquals(0.0F, (float) Mixins.<Float>call(falloff, "impetus$fogStart", 0.0F, -1));
+        assertEquals(144.0F, (float) Mixins.<Float>call(falloff, "impetus$fogEnd", 256.0F));
         // Blindness or being underwater keeps vanilla's fog
         Entity swimmer = mock(Entity.class);
         when(swimmer.isInsideOfMaterial(net.minecraft.block.material.Material.WATER)).thenReturn(true);
         when(client.getRenderViewEntity()).thenReturn(swimmer);
-        assertEquals(128.0F, (float) Mixins.<Float>call(falloff, "impetus$fogStart", 128.0F));
+        assertEquals(128.0F, (float) Mixins.<Float>call(falloff, "impetus$fogStart", 128.0F, 0));
         assertEquals(128.0F, (float) Mixins.<Float>call(falloff, "impetus$fogEnd", 128.0F));
         when(client.getRenderViewEntity()).thenReturn(null);
 
         EntityRendererFogMixin fog = Mixins.instance(EntityRendererFogMixin.class);
         Mixins.call(fog, "impetus$disableFog", 0, 0F, Mixins.ci());
         config.render.fog = false;
-        assertEquals(128.0F, (float) Mixins.<Float>call(falloff, "impetus$fogStart", 128.0F));
+        assertEquals(128.0F, (float) Mixins.<Float>call(falloff, "impetus$fogStart", 128.0F, 0));
         assertEquals(128.0F, (float) Mixins.<Float>call(falloff, "impetus$fogEnd", 128.0F));
         try (MockedStatic<GL11> gl = Mockito.mockStatic(GL11.class)) {
             net.minecraft.client.renderer.GlStateManager.enableFog();

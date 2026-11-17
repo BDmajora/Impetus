@@ -4,18 +4,18 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
 import java.util.Collection;
 
-// Lights frozen at one update and indexed by the sections they can reach, read by every thread without locking.
+// Lights frozen at one update and indexed by the sections they reach.
 final class LightSnapshot {
     // Snapshot with no lights.
     static final LightSnapshot EMPTY = new LightSnapshot(new DynamicLightSource[0], new double[0], 0,
             new Long2ObjectOpenHashMap<>());
 
-    // Doubles stored per light: x, y, z and luminance.
+    // Doubles stored per light as x y z and luminance.
     private static final int STRIDE = 4;
 
-    // Every tracked source, lit or not, so updates can walk them without the engine's monitor.
+    // Every tracked source lit or not.
     final DynamicLightSource[] sources;
-    // Captured position and luminance of each lit source, STRIDE doubles per light.
+    // Position and luminance of each lit source.
     private final double[] lights;
     // Number of lit sources in lights.
     private final int count;
@@ -45,7 +45,7 @@ final class LightSnapshot {
 
         for (DynamicLightSource source : sources) {
             int luminance = source.impetus$getLuminance();
-            // A dark source adds nothing, matching maxDynamicLightLevel
+            // Skips a dark source.
             if (luminance <= 0) {
                 continue;
             }
@@ -59,7 +59,7 @@ final class LightSnapshot {
             lights[offset + 2] = z;
             lights[offset + 3] = luminance;
 
-            // Full fade radius, so a lookup returns exactly the level the unindexed scan did
+            // Indexes the light by every section within the full fade radius.
             int sectionCount = DynamicLightsEngine.reachedSections(x, y, z, DynamicLightsEngine.LOOKUP_RADIUS, 0, reached);
             for (int i = 0; i < sectionCount; i++) {
                 int[] offsets = sections.get(reached[i]);
@@ -70,7 +70,7 @@ final class LightSnapshot {
         return new LightSnapshot(sources, lights, count, sections);
     }
 
-    // Returns the array with the value added at the end, or a new one-element array for null.
+    // Returns the array with the value appended or a one element array for null.
     private static int[] append(int[] offsets, int value) {
         if (offsets == null) {
             return new int[] {value};
@@ -81,7 +81,7 @@ final class LightSnapshot {
         return grown;
     }
 
-    // Returns the strongest light level at the block, capped at fifteen.
+    // Returns the strongest light level at the block capped at fifteen.
     double levelAt(int x, int y, int z) {
         if (this.count == 0) {
             return 0.0D;

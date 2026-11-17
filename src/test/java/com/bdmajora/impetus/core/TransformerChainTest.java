@@ -20,7 +20,7 @@ class TransformerChainTest {
     private final IClassTransformer late = (name, transformedName, bytes) -> bytes;
     private List<IClassTransformer> previous;
 
-    // Stands in for Cleanroom's TransformerFields, which the dev runtime's Cleanroom does not ship
+    // Stand-in for Cleanroom's TransformerFields.
     static final class Mirror {
         static List<IClassTransformer> transformers;
     }
@@ -42,7 +42,7 @@ class TransformerChainTest {
     void theChainBecomesCopyOnWriteInTheSameOrderAndOnlyOnce() {
         TransformerChain.makeConcurrent();
         List<IClassTransformer> chain = TransformerHolder.transformers;
-        // Exactly the JDK class, from the bootstrap loader: anything the game's loader defines would load through the very walk it serves
+        // Checks the chain is the JDK class.
         assertSame(CopyOnWriteArrayList.class, chain.getClass());
         assertNull(chain.getClass().getClassLoader());
         assertEquals(List.of(this.first, this.second), chain);
@@ -75,7 +75,7 @@ class TransformerChainTest {
     @Test
     void foundationsOwnUnregisterStillPrunesTheChain() {
         TransformerChain.makeConcurrent();
-        // TransformerDelegate.unRegisterTransformer streams the chain and removes from it as it goes, then re-sorts
+        // Removes the first transformer the way Cleanroom does.
         TransformerHolder.transformers.stream().filter(transformer -> transformer == this.first).forEach(TransformerHolder.transformers::remove);
         TransformerHolder.transformers.sort((a, b) -> 0);
         assertEquals(List.of(this.second), TransformerHolder.transformers);

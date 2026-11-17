@@ -98,7 +98,7 @@ class UmbraMeshShadingTest {
         return AbsolutePackPath.fromAbsolutePath(path);
     }
 
-    // A pack with terrain, water and, when asked, a shadow program, its Nvidium port added when asked, then the extra files on top
+    // Returns the sources of a test pack.
     private static Map<AbsolutePackPath, String> sources(boolean shadow, boolean ported, Map<String, String> extra) {
         Map<AbsolutePackPath, String> sources = new HashMap<>();
         sources.put(ShaderPack.PROPERTIES_PATH, "");
@@ -118,7 +118,7 @@ class UmbraMeshShadingTest {
         return new ShaderPack(sources(shadow, ported, extra));
     }
 
-    // The real uniforms read the client; what matters here is which program binds for which phase
+    // Stubs the uniforms.
     private static void quietUniforms(UmbraMeshShading shading) {
         for (String field : new String[]{"opaque", "translucent", "shadowOpaque", "shadowTranslucent"}) {
             Object program = Mixins.get(shading, field);
@@ -138,13 +138,13 @@ class UmbraMeshShadingTest {
         assertTrue(UmbraMeshShading.canRun(pack));
         assertFalse(UmbraMeshShading.canRun(null));
         assertFalse(UmbraMeshShading.canRun(pack(true, false, Map.of())));
-        // The debug screen's reason: none for a port that runs, the port's own note or a default for one that cannot
+        // Checks the debug reason.
         assertEquals("", UmbraMeshShading.whyNot(pack));
         assertEquals("the pack's terrain program has no Nvidium port", UmbraMeshShading.whyNot(null));
         Mixins.set(Umbra.class, "nvidiumPortNote", "gbuffers_terrain: geometry or tessellation stage");
         assertEquals("gbuffers_terrain: geometry or tessellation stage", UmbraMeshShading.whyNot(pack(true, false, Map.of())));
 
-        // Asking for the shadow programs builds all four, each carrying the engine's three blocks; task variants are shared
+        // Checks the four shadow programs.
         when(TestGl.gl().glGetProgrami(anyInt(), eq(UmbraMeshShading.ACTIVE_UNIFORM_BLOCKS)))
                 .thenReturn(UmbraMeshShading.ENGINE_UNIFORM_BLOCKS);
         assertTrue(shading.hasShadowPrograms());
@@ -170,7 +170,7 @@ class UmbraMeshShadingTest {
         assertTrue(shading.bindTranslucent(MeshDrawPhase.SHADOW, TRANSLUCENT, MATRICES));
         assertTrue(shading.bindTranslucent(MeshDrawPhase.MAIN, TRANSLUCENT, MATRICES));
         verify(TestGl.gl(), times(2)).glUniform1i(41, 2);
-        // No pass means no state to apply, so nothing is bound
+        // Checks nothing binds without a pass.
         assertFalse(shading.bindOpaque(MeshDrawPhase.MAIN, null, MATRICES));
         shading.finish();
 
@@ -197,7 +197,7 @@ class UmbraMeshShadingTest {
 
     @Test
     void aProgramThePortLeftOutSendsThePackBackToOpenGl() {
-        // gbuffers_water had a geometry stage at port time, so only its OpenGL stages exist
+        // Checks a water program with a geometry stage.
         Map<AbsolutePackPath, String> sources = sources(true, true, Map.of());
         sources.remove(path("/gbuffers_water.mesh"));
         sources.remove(path("/gbuffers_water.mesh.fsh"));

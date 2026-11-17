@@ -96,7 +96,7 @@ public class ProgramUniforms {
         return this.perObjectTargeted;
     }
 
-    // Uploads the per-object uniforms straight into the program, whatever a renderer left bound.
+    // Uploads the per object uniforms straight into the program.
     public void updatePerObjectIn(int program) {
         for (int i = 0; i < this.perObject.size(); i++) {
             ((ProgramTargetedUniform) this.perObject.get(i)).updateIn(program);

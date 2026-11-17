@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 // Mixin that changes Entity.
 @Mixin(Entity.class)
 public abstract class EntityParallelMixin implements PortalAccessor {
-    // Field next id added to the target.
+    // Atomic entity id counter.
     @Unique
     private static final AtomicInteger impetus$nextId = new AtomicInteger();
 
@@ -41,13 +41,13 @@ public abstract class EntityParallelMixin implements PortalAccessor {
         this.entityId = impetus$nextId.getAndIncrement();
     }
 
-    // Returns whether in portal.
+    // Returns whether the entity stands in a portal.
     @Override
     public boolean impetus$isInPortal() {
         return this.inPortal;
     }
 
-    // Handles locked add passenger.
+    // Adds a passenger under the entity's lock.
     @WrapMethod(method = "addPassenger")
     private void impetus$lockedAddPassenger(Entity passenger, Operation<Void> original) {
         if (!ParallelProcessor.INSTALLED) {
@@ -59,7 +59,7 @@ public abstract class EntityParallelMixin implements PortalAccessor {
         }
     }
 
-    // Handles locked remove passenger.
+    // Removes a passenger under the entity's lock.
     @WrapMethod(method = "removePassenger")
     private void impetus$lockedRemovePassenger(Entity passenger, Operation<Void> original) {
         if (!ParallelProcessor.INSTALLED) {

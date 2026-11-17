@@ -27,7 +27,7 @@ class OptionGroupConstructionEventTest {
         return OptionIdentifier.create(MOD, path);
     }
 
-    // A distinct option that answers only identity, so the event asking it anything fails the test
+    // Returns an option that only answers identity.
     private static Option<?> option(String label) {
         return (Option<?>) Proxy.newProxyInstance(Option.class.getClassLoader(), new Class<?>[]{Option.class}, (proxy, method, args) -> switch (method.getName()) {
             case "equals" -> proxy == args[0];
@@ -37,7 +37,7 @@ class OptionGroupConstructionEventTest {
         });
     }
 
-    // A list that fails on any call, so the event reading, sizing or copying it fails the test
+    // Returns a list that fails on any call.
     @SuppressWarnings("unchecked")
     private static List<Option<?>> untouchable() {
         return (List<Option<?>>) Proxy.newProxyInstance(List.class.getClassLoader(), new Class<?>[]{List.class}, (proxy, method, args) -> {
@@ -45,7 +45,7 @@ class OptionGroupConstructionEventTest {
         });
     }
 
-    // Posts the event with a listener that only acts on its group, so other tests' posts pass through it untouched
+    // Posts the event with a listener for its group only.
     private static boolean post(OptionGroupConstructionEvent event, EventHandlerRegistrar.Handler<OptionGroupConstructionEvent> handler) {
         OptionIdentifier<Void> id = event.getId();
         EventHandlerRegistrar.Handler<OptionGroupConstructionEvent> filtered = seen -> {
@@ -68,7 +68,7 @@ class OptionGroupConstructionEventTest {
         OptionGroupConstructionEvent event = new OptionGroupConstructionEvent(id, options);
         assertSame(id, event.getId());
         assertSame(options, event.getOptions());
-        // Repeated reads give the same references, never a fresh copy
+        // Checks repeated reads.
         assertSame(event.getId(), event.getId());
         assertSame(event.getOptions(), event.getOptions());
     }
@@ -93,7 +93,7 @@ class OptionGroupConstructionEventTest {
 
     @Test
     void constructionAndReadsNeverTouchTheList() {
-        // O(1) whatever the list holds: the event never sizes, iterates or copies it
+        // Checks the list is never read.
         List<Option<?>> options = untouchable();
         OptionGroupConstructionEvent event = new OptionGroupConstructionEvent(id("untouched"), options);
         assertSame(options, event.getOptions());
@@ -150,7 +150,7 @@ class OptionGroupConstructionEventTest {
 
     @Test
     void aListenerMayAddNullAndTheEventDoesNotFilterIt() {
-        // Null additions are OptionGroup.build's to report, the event passes the list through untouched
+        // Checks null additions pass through.
         List<Option<?>> options = new ArrayList<>();
         OptionGroupConstructionEvent event = new OptionGroupConstructionEvent(id("null_add"), options);
         post(event, seen -> seen.getOptions().add(null));

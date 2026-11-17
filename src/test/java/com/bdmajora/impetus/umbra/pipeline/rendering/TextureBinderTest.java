@@ -106,7 +106,7 @@ class TextureBinderTest {
             assertEquals(0, this.gl.samplers[units[i]], "sampler on " + units[i]);
         }
         assertEquals(depth0(), PipelineGl.cachedTexture(6));
-        // Once DH has rendered, its LOD depth replaces the stand-in; a texture it has not made yet keeps it
+        // Checks the LOD depth.
         DhCompat compat = mock(DhCompat.class);
         when(compat.getDepthTex()).thenReturn(501);
         when(compat.getDepthTexNoTranslucent()).thenReturn(0);

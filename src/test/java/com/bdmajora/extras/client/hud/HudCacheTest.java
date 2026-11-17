@@ -91,7 +91,7 @@ class HudCacheTest {
         // Switching off frees the cache
         verify(cache).deleteFramebuffer();
         assertNull(Mixins.get(HudCache.class, "framebuffer"));
-        // Without framebuffers, or without a player, it draws directly as well
+        // Checks the direct draw.
         config.hud.cacheEnabled = true;
         OpenGlHelper.framebufferSupported = false;
         HudCache.render(mock(EntityRenderer.class), gui, 0.5F);
@@ -116,14 +116,14 @@ class HudCacheTest {
              MockedStatic<GL13> gl13 = Mockito.mockStatic(GL13.class);
              MockedStatic<GL14> gl14 = Mockito.mockStatic(GL14.class)) {
             HudCache.render(renderer, gui, 0.5F);
-            // The overlay went into the cache with the hooks armed, and only for the length of the draw
+            // Checks the capture hooks.
             assertEquals(List.of(true), capturing);
             assertFalse(HudCache.capturing);
             verify(cache).framebufferClear();
             verify(cache).bindFramebuffer(false);
             verify(main).bindFramebuffer(false);
             verify(renderer).setupOverlayRendering();
-            // The vignette and crosshair are drawn live, then the cache is laid over them
+            // Checks the live vignette and crosshair.
             verify((GuiIngameInvoker) gui).impetus$renderVignette(anyFloat(), any());
             verify((GuiIngameForgeInvoker) gui).impetus$renderCrosshairs(0.5F);
             verify(cache).bindFramebufferTexture();
@@ -135,13 +135,13 @@ class HudCacheTest {
             assertEquals(1, capturing.size());
             verify(cache, times(2)).bindFramebufferTexture();
 
-            // A window resize recaptures at once, at the new size
+            // Checks a resize recapture.
             client.displayWidth = 1280;
             HudCache.render(renderer, gui, 0.5F);
             assertEquals(2, capturing.size());
             verify(cache).createBindFramebuffer(1280, 480);
 
-            // Fast graphics skip the vignette, and a vanilla GuiIngame has no Forge crosshair hook
+            // Checks fast graphics.
             client.displayWidth = 854;
             client.gameSettings.fancyGraphics = false;
             GuiIngame vanilla = Mc.mock(GuiIngame.class, GuiIngameInvoker.class);
@@ -193,7 +193,7 @@ class HudCacheTest {
         Class<?> hooks = GlStateManagerCaptureMixin.class;
         try (MockedStatic<GL11> gl11 = Mockito.mockStatic(GL11.class);
              MockedStatic<GL14> gl14 = Mockito.mockStatic(GL14.class)) {
-            // Not capturing, everything passes through
+            // Checks the pass through.
             assertFalse(cancels(hooks, "impetus$captureBlendFunc", GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA));
             assertFalse(cancels(hooks, "impetus$captureBlendFuncSeparate", GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ZERO));
             cancels(hooks, "impetus$noteBlendOn");
@@ -201,11 +201,11 @@ class HudCacheTest {
             assertFalse(cancels(hooks, "impetus$opaqueWhenUnblended", 1.0F, 1.0F, 1.0F, 0.5F));
 
             HudCache.capturing = true;
-            // Colour factors are kept, alpha always accumulates
+            // Checks the blend capture.
             assertTrue(cancels(hooks, "impetus$captureBlendFunc", GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA));
             assertTrue(cancels(hooks, "impetus$captureBlendFuncSeparate", GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ZERO));
             assertFalse(cancels(hooks, "impetus$captureBlendFuncSeparate", GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA));
-            // A translucent colour with blending off lands opaque, as it would have on screen
+            // Checks blending off.
             cancels(hooks, "impetus$noteBlendOff");
             assertTrue(cancels(hooks, "impetus$opaqueWhenUnblended", 1.0F, 1.0F, 1.0F, 0.5F));
             assertFalse(cancels(hooks, "impetus$opaqueWhenUnblended", 1.0F, 1.0F, 1.0F, 1.0F));

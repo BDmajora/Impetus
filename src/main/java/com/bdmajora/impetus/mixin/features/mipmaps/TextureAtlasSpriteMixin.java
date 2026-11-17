@@ -50,7 +50,7 @@ public abstract class TextureAtlasSpriteMixin implements SpriteExtension, Sprite
         return iconName.startsWith("block", iconName.indexOf(':') + 1);
     }
 
-    // Handles process transparent images.
+    // Grades a frame's transparency and fills its clear pixels with the average colour.
     private SpriteTransparencyLevel impetus$processTransparentImages(SpriteTransparencyLevel prevLevel, int[] nativeImage, boolean shouldRewriteColors) {
         float r = 0.0f;
         float g = 0.0f;

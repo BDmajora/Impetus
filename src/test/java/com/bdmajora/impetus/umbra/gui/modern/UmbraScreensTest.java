@@ -237,6 +237,190 @@ class UmbraScreensTest {
     }
 
     @Test
+    void theConfigKeepsTheLastPackWhileShadersAreOff() throws IOException {
+        UmbraConfig config = new UmbraConfig(home);
+        config.load();
+        assertEquals(UmbraConfig.NO_PACK, config.getLastShaderPackName());
+        // Checks the switch with no pack picked.
+        assertFalse(config.setShadersEnabled(true));
+        assertFalse(config.setShadersEnabled(false));
+        config.rememberShaderPackName(null);
+        config.rememberShaderPackName("  ");
+        config.rememberShaderPackName(UmbraConfig.NO_PACK);
+        assertEquals(UmbraConfig.NO_PACK, config.getLastShaderPackName());
+
+        // Checks the pack is kept across off and on.
+        config.setShaderPackName(" Demo ");
+        assertEquals("Demo", config.getLastShaderPackName());
+        assertTrue(config.setShadersEnabled(false));
+        assertFalse(config.isShaderPackEnabled());
+        assertEquals(UmbraConfig.NO_PACK, config.getShaderPackName());
+        assertEquals("Demo", config.getLastShaderPackName());
+        config.setShaderPackName(UmbraConfig.NO_PACK);
+        assertEquals("Demo", config.getLastShaderPackName());
+
+        // Both lines survive a restart
+        config.save();
+        Properties written = new Properties();
+        try (var reader = Files.newBufferedReader(home.resolve("optionsshaders.txt"))) {
+            written.load(reader);
+        }
+        assertEquals(UmbraConfig.NO_PACK, written.getProperty("shaderPack"));
+        assertEquals("Demo", written.getProperty("lastShaderPack"));
+        UmbraConfig reread = new UmbraConfig(home);
+        reread.load();
+        assertFalse(reread.isShaderPackEnabled());
+        assertEquals("Demo", reread.getLastShaderPackName());
+        assertTrue(reread.setShadersEnabled(true));
+        assertEquals("Demo", reread.getShaderPackName());
+        assertFalse(reread.setShadersEnabled(true));
+
+        // Checks the last pack line.
+        Files.writeString(home.resolve("optionsshaders.txt"), "shaderPack=Bare\nlastShaderPack=Demo\n");
+        UmbraConfig active = new UmbraConfig(home);
+        active.load();
+        assertEquals("Bare", active.getLastShaderPackName());
+        Files.writeString(home.resolve("optionsshaders.txt"), "shaderPack=(internal)\n");
+        UmbraConfig older = new UmbraConfig(home);
+        older.load();
+        assertEquals(UmbraConfig.NO_PACK, older.getLastShaderPackName());
+        assertFalse(older.setShadersEnabled(true));
+
+        // Installed means a folder or zip of that name is in shaderpacks
+        assertTrue(config.isPackInstalled("Demo"));
+        assertTrue(config.isPackInstalled(" Bare "));
+        assertFalse(config.isPackInstalled("Gone"));
+        assertFalse(config.isPackInstalled(UmbraConfig.NO_PACK));
+        assertFalse(config.isPackInstalled(null));
+    }
+
+    @Test
+    void togglingShadersKeepsThePackAcrossOffAndBackOn() throws IOException {
+        // Checks the toggle without a config.
+        assertEquals(Umbra.ToggleResult.NO_PACK, Umbra.toggleShaders());
+        assertEquals(Umbra.ToggleResult.NO_PACK, Umbra.storeShadersEnabled(false));
+        assertFalse(Umbra.selectShaderpack("Demo", true));
+        assertFalse(Umbra.areShadersEnabled());
+        assertFalse(Umbra.canEnableShaders());
+        assertEquals(UmbraConfig.NO_PACK, Umbra.getLastPackName());
+
+        Umbra.initialize(home);
+        assertEquals(Umbra.ToggleResult.NO_PACK, Umbra.toggleShaders());
+        assertFalse(Umbra.canEnableShaders());
+
+        // Checks off keeps the pack across a restart.
+        Umbra.setShaderpackAndReload("Demo");
+        assertTrue(Umbra.areShadersEnabled());
+        assertEquals(Umbra.ToggleResult.DISABLED, Umbra.toggleShaders());
+        assertNull(Umbra.getCurrentPack());
+        assertEquals(UmbraConfig.NO_PACK, Umbra.getSelectedPackName());
+        assertEquals("Demo", Umbra.getLastPackName());
+        assertTrue(Umbra.canEnableShaders());
+        Umbra.initialize(home);
+        assertEquals("Demo", Umbra.getLastPackName());
+        assertEquals(Umbra.ToggleResult.ENABLED, Umbra.toggleShaders());
+        assertEquals("Demo", Umbra.getSelectedPackName());
+        assertNotNull(Umbra.getCurrentPack());
+
+        // Asking for the state already in place reloads nothing
+        Object loaded = Umbra.getCurrentPack();
+        assertEquals(Umbra.ToggleResult.ENABLED, Umbra.setShadersEnabled(true));
+        assertSame(loaded, Umbra.getCurrentPack());
+        assertEquals(Umbra.ToggleResult.DISABLED, Umbra.setShadersEnabled(false));
+        assertEquals(Umbra.ToggleResult.DISABLED, Umbra.setShadersEnabled(false));
+
+        // A remembered pack that was deleted stays off
+        assertFalse(Umbra.selectShaderpack("Gone", false));
+        assertEquals("Gone", Umbra.getLastPackName());
+        assertFalse(Umbra.canEnableShaders());
+        assertEquals(Umbra.ToggleResult.MISSING, Umbra.toggleShaders());
+        assertFalse(Umbra.areShadersEnabled());
+
+        // Checks a pack that will not load.
+        Files.writeString(home.resolve("shaderpacks/Broken.zip"), "not a zip");
+        assertFalse(Umbra.selectShaderpack("Broken.zip", false));
+        assertEquals(Umbra.ToggleResult.FAILED, Umbra.toggleShaders());
+        assertFalse(Umbra.areShadersEnabled());
+        assertNull(Umbra.getCurrentPack());
+        assertEquals("Broken.zip", Umbra.getLastPackName());
+        assertTrue(Files.readString(home.resolve("optionsshaders.txt")).contains("shaderPack=(internal)"));
+
+        // Checks storing without loading.
+        assertFalse(Umbra.selectShaderpack("Bare", false));
+        assertEquals(Umbra.ToggleResult.ENABLED, Umbra.storeShadersEnabled(true));
+        assertTrue(Umbra.areShadersEnabled());
+        assertNull(Umbra.getCurrentPack());
+        assertEquals(Umbra.ToggleResult.DISABLED, Umbra.storeShadersEnabled(false));
+        assertEquals(Umbra.ToggleResult.DISABLED, Umbra.storeShadersEnabled(false));
+    }
+
+    @Test
+    void theShadersSwitchOnTheVideoPageKeepsThePackAcrossOff() throws IOException {
+        OptionPage page = UmbraOptionPages.shaderPacks(mock(GuiScreen.class));
+        @SuppressWarnings("unchecked")
+        Option<Boolean> shaders = (Option<Boolean>) page.getOptions().get(0);
+        // Applying it reloads the pack and the chunks through the video screen's pipeline flag
+        assertEquals(List.of(com.bdmajora.impetus.api.options.structure.OptionFlag.REQUIRES_SHADER_PIPELINE_RELOAD), List.copyOf(shaders.getFlags()));
+        // Greyed out without a config and until a pack was picked once
+        assertFalse(shaders.isAvailable());
+        assertFalse(shaders.getValue());
+        Umbra.initialize(home);
+        assertFalse(shaders.isAvailable());
+        Umbra.setShaderpackAndReload("Demo");
+        assertTrue(shaders.isAvailable());
+        assertTrue(shaders.getValue());
+
+        // Checks off stays available.
+        shaders.setValue(false);
+        shaders.applyChanges();
+        assertFalse(Umbra.areShadersEnabled());
+        assertFalse(shaders.getValue());
+        assertTrue(shaders.isAvailable());
+        assertTrue(Files.readString(home.resolve("optionsshaders.txt")).contains("lastShaderPack=Demo"));
+        shaders.setValue(true);
+        shaders.applyChanges();
+        assertEquals("Demo", Umbra.getSelectedPackName());
+        assertTrue(shaders.getValue());
+    }
+
+    @Test
+    void thePickerStartsFromTheKeptPackWhenShadersAreOff() throws IOException {
+        Umbra.initialize(home);
+        RenderGlobal renderGlobal = mock(RenderGlobal.class);
+        client.renderGlobal = renderGlobal;
+        Umbra.setShaderpackAndReload("Demo");
+        Umbra.toggleShaders();
+        ShaderPackSelectScreen screen = new ShaderPackSelectScreen(mock(GuiScreen.class));
+        screen.setWorldAndResolution(client, 480, 300);
+        assertTrue(has(screen, "Shaders: §cDisabled"));
+        assertTrue(has(screen, "§7Demo §8(off)"));
+
+        // The switch row alone brings the kept pack back
+        click(screen, "Shaders: §cDisabled", 0);
+        assertTrue(has(screen, "§eDemo"));
+        click(screen, "Apply", 0);
+        assertEquals("Demo", Umbra.getSelectedPackName());
+        verify(renderGlobal).loadRenderers();
+
+        // Another pick switched off on the way is what comes back next time
+        click(screen, "Bare", 0);
+        click(screen, "Shaders: §aEnabled", 0);
+        assertTrue(has(screen, "§7Bare §8(off)"));
+        click(screen, "Apply", 0);
+        assertEquals(UmbraConfig.NO_PACK, Umbra.getSelectedPackName());
+        assertEquals("Bare", Umbra.getLastPackName());
+        verify(renderGlobal, times(2)).loadRenderers();
+
+        // Changing only the kept pack saves it without rebuilding the chunks
+        click(screen, "Demo", 0);
+        click(screen, "Shaders: §aEnabled", 0);
+        click(screen, "Apply", 0);
+        assertEquals("Demo", Umbra.getLastPackName());
+        assertTrue(Files.readString(home.resolve("optionsshaders.txt")).contains("lastShaderPack=Demo"));
+        verify(renderGlobal, times(2)).loadRenderers();
+    }
+
+    @Test
     void underNvidiumThePackLoadsFromAPortMadeAndRefreshedOnItsOwn() throws IOException {
         UmbraConfig config = new UmbraConfig(home.resolve("other"));
         assertEquals("Pack", UmbraConfig.portName("Pack.Zip"));
@@ -245,12 +429,12 @@ class UmbraScreensTest {
 
         options.graphicsApi = ImpetusGameOptions.GraphicsApi.NVIDIUM;
         Statics.set(MeshShaderSupport.class, "supported", true);
-        // Without a config, or without a pack, there is nothing to reload
+        // Checks the reload without a config or pack.
         assertFalse(Umbra.reloadIfTerrainBackendChanged());
         Umbra.initialize(home);
         assertFalse(Umbra.reloadIfTerrainBackendChanged());
 
-        // Selecting a pack writes its port and loads that, with the pack's own options
+        // Checks selecting a pack writes its port.
         Files.writeString(home.resolve("shaderpacks/Demo.txt"), "QUALITY=3\n");
         Umbra.setShaderpackAndReload("Demo");
         Path port = home.resolve("nvidium_shaderpacks/Demo");
@@ -260,25 +444,25 @@ class UmbraScreensTest {
         assertTrue(UmbraMeshShading.canRun(Umbra.getCurrentPack()));
         assertEquals("", Umbra.getNvidiumPortNote());
         assertEquals("3", Umbra.getCurrentPack().getShaderPackOptions().getOptionValues().getStringValue("QUALITY").orElseThrow());
-        // Option changes go to the pack's file, which both copies share
+        // Checks option changes go to the pack's file.
         Umbra.queueShaderPackOptions(Map.of("QUALITY", "1"));
         assertTrue(Files.readString(home.resolve("shaderpacks/Demo.txt")).contains("QUALITY=1"));
         assertFalse(Files.exists(home.resolve("nvidium_shaderpacks/Demo.txt")));
         assertFalse(Umbra.reloadIfTerrainBackendChanged());
 
-        // Loading again reuses the port as it is; a change to the pack makes a fresh one
+        // Checks the port reuse.
         Files.writeString(port.resolve("marker.txt"), "x");
         Umbra.loadCurrentShaderpack();
         assertTrue(Files.exists(port.resolve("marker.txt")));
         Files.writeString(home.resolve("shaderpacks/Demo/shaders/gbuffers_terrain.gsh"), "#version 150\nvoid main() {}");
         Umbra.loadCurrentShaderpack();
         assertFalse(Files.exists(port.resolve("marker.txt")));
-        // That pack's terrain cannot be carried, so it stays on OpenGL and says why
+        // Checks a pack whose terrain cannot be ported.
         assertEquals("gbuffers_terrain: geometry or tessellation stage", Umbra.getNvidiumPortNote());
         assertFalse(UmbraMeshShading.canRun(Umbra.getCurrentPack()));
         assertEquals("gbuffers_terrain: geometry or tessellation stage", UmbraMeshShading.whyNot(Umbra.getCurrentPack()));
 
-        // A folder in the way that no port made is left alone, and the pack loads as itself
+        // Checks a foreign folder in the way.
         Files.writeString(Files.createDirectories(home.resolve("nvidium_shaderpacks/Bare")).resolve("mine.txt"), "keep");
         Umbra.setShaderpackAndReload("Bare");
         assertNotNull(Umbra.getCurrentPack());
@@ -288,7 +472,7 @@ class UmbraScreensTest {
         Umbra.setShaderpackAndReload("Gone");
         assertNull(Umbra.getCurrentPack());
 
-        // Back on OpenGL the original loads again, once
+        // Checks the original loads back on OpenGL.
         Umbra.setShaderpackAndReload("Demo");
         options.graphicsApi = ImpetusGameOptions.GraphicsApi.OPENGL;
         assertTrue(Umbra.reloadIfTerrainBackendChanged());
@@ -298,7 +482,7 @@ class UmbraScreensTest {
 
     @Test
     void umbraLoadsReloadsAndPersistsThePacksOptions() throws IOException {
-        // No selection yet: nothing loads
+        // Checks nothing loads without a selection.
         Umbra.initialize(home);
         assertNotNull(Umbra.getConfig());
         assertNotNull(Umbra.logger());
@@ -306,7 +490,7 @@ class UmbraScreensTest {
         assertNull(Umbra.getCurrentPack());
         assertEquals(List.of("Bare", "Demo"), Umbra.listAvailablePacks());
 
-        // Selecting a pack persists it and parses it, starting on the dimension already being played; option changes are written to the pack's own .txt
+        // Checks selecting a pack.
         Umbra.onWorldChanged(-1, "the_nether");
         Umbra.setShaderpackAndReload("Demo");
         Umbra.onWorldChanged(0, null);
@@ -329,7 +513,7 @@ class UmbraScreensTest {
         Umbra.initialize(home);
         assertNotNull(Umbra.getCurrentPack());
 
-        // A pack that is gone, or that cannot be read, leaves shaders off
+        // Checks a missing or unreadable pack.
         Umbra.setShaderpackAndReload("Gone");
         assertNull(Umbra.getCurrentPack());
         Files.writeString(home.resolve("shaderpacks/Broken.zip"), "not a zip");
@@ -340,7 +524,7 @@ class UmbraScreensTest {
         Umbra.setShaderpackAndReload("Bare");
         assertNotNull(Umbra.getCurrentPack());
 
-        // The render thread tears pipelines down once a pack goes away, and leaves them for the next frame while one is active
+        // Checks the pipeline teardown.
         UmbraRenderingPipeline rendering = mock(UmbraRenderingPipeline.class);
         UmbraPipeline compiled = mock(UmbraPipeline.class);
         Mixins.set(Umbra.class, "renderingPipeline", rendering);
@@ -355,7 +539,7 @@ class UmbraScreensTest {
         verify(compiled).destroy();
         assertNull(Umbra.getPipeline());
 
-        // Without a config there is no selection to change, and an unreadable config leaves shaders off
+        // Checks a missing and an unreadable config.
         Mixins.set(Umbra.class, "config", null);
         Umbra.setShaderpackAndReload("Demo");
         assertTrue(Umbra.listAvailablePacks().isEmpty());
@@ -369,10 +553,10 @@ class UmbraScreensTest {
     void theVideoOptionsPageOpensThePickerAndReportsThePack() throws Exception {
         GuiScreen parent = mock(GuiScreen.class);
         OptionPage page = UmbraOptionPages.shaderPacks(parent);
-        assertEquals(3, OptionPages.exercise(List.of(page)));
+        assertEquals(4, OptionPages.exercise(List.of(page)));
         // Picking a colour space applies it and saves when there is a config
         @SuppressWarnings("unchecked")
-        Option<ColorSpaceConverter.ColorSpace> colorSpace = (Option<ColorSpaceConverter.ColorSpace>) page.getOptions().get(1);
+        Option<ColorSpaceConverter.ColorSpace> colorSpace = (Option<ColorSpaceConverter.ColorSpace>) page.getOptions().get(2);
         colorSpace.setValue(ColorSpaceConverter.ColorSpace.REC2020);
         colorSpace.applyChanges();
         assertEquals(ColorSpaceConverter.ColorSpace.REC2020, ColorSpaceConverter.getColorSpace());
@@ -381,14 +565,14 @@ class UmbraScreensTest {
         colorSpace.applyChanges();
         assertTrue(Files.readString(home.resolve("optionsshaders.txt")).contains("ADOBE_RGB"));
         // The shadow distance row reports the loaded pack's own value
-        Option<?> shadowDistance = page.getOptions().get(2);
+        Option<?> shadowDistance = page.getOptions().get(3);
         assertEquals("Default", shadowDistance.getValue());
         Umbra.setShaderpackAndReload("Bare");
         assertEquals("Default", shadowDistance.getValue());
         Umbra.setShaderpackAndReload("Demo");
         Object label = shadowDistance.getValue();
         assertEquals("128 blocks", label);
-        // Made once per loaded pack, so every frame reads the same string and the row compares it by identity
+        // Checks the label is made once per pack.
         assertSame(label, shadowDistance.getValue());
         // Another pack and then the first again each get their own label
         Umbra.setShaderpackAndReload("Bare");
@@ -396,7 +580,7 @@ class UmbraScreensTest {
         Umbra.setShaderpackAndReload("Demo");
         assertEquals("128 blocks", shadowDistance.getValue());
         assertSame(shadowDistance.getValue(), shadowDistance.getValue());
-        Runnable open = Mixins.get(page.getOptions().get(0).getControl(), "action");
+        Runnable open = Mixins.get(page.getOptions().get(1).getControl(), "action");
         open.run();
         verify(client).displayGuiScreen(any(ShaderPackSelectScreen.class));
         assertEquals("sRGB", Mixins.call(Statics.get(UmbraOptionPages.class, "STATE"), "colorSpace"));
@@ -421,7 +605,7 @@ class UmbraScreensTest {
         click(screen, "Next >", 0);
         assertTrue(has(screen, "Extra7"));
         click(screen, "< Prev", 0);
-        // Choosing a pack only stages it; Apply loads it and rebuilds the chunk renderers
+        // Checks a pick only stages the pack.
         click(screen, "Demo", 0);
         assertTrue(has(screen, "Shaders: §aEnabled"));
         assertTrue(has(screen, "§eDemo"));
@@ -442,7 +626,7 @@ class UmbraScreensTest {
         verify(client).displayGuiScreen(parent);
         click(screen, "Cancel", 0);
         verify(client, times(2)).displayGuiScreen(parent);
-        // A click on nothing, a draw out of and in a world, and the folder button with no config to open
+        // Checks clicks and draws and the folder button.
         screen.mouseClicked(0, 0, 0);
         screen.drawScreen(0, 0, 0.0F);
         client.world = mock(WorldClient.class);
@@ -492,7 +676,7 @@ class UmbraScreensTest {
         client.renderGlobal = renderGlobal;
         ShaderPackConfigScreen screen = new ShaderPackConfigScreen(parent);
         screen.setWorldAndResolution(client, 480, 300);
-        // The pack's own layout and lang: a profile tile, labelled options, a sub-screen link and a tile for an undeclared name
+        // Checks the pack's layout and lang.
         assertTrue(has(screen, "Preset"));
         assertTrue(has(screen, "§aQuality"));
         assertTrue(has(screen, "Leuchten"));
@@ -501,7 +685,7 @@ class UmbraScreensTest {
         assertEquals("[2]", Mixins.get(widget(screen, "§aQuality"), "value"));
         assertEquals("Glühend", Mixins.get(widget(screen, "Leuchten"), "value"));
         assertFalse((boolean) Mixins.get(widget(screen, "Apply"), "enabled"));
-        // Options cycle both ways through their values and booleans flip; nothing applies until asked
+        // Checks the options cycle.
         click(screen, "§aQuality", 0);
         assertEquals("[Ultra]", Mixins.get(widget(screen, "§aQuality"), "value"));
         click(screen, "§aQuality", 0);
@@ -528,7 +712,7 @@ class UmbraScreensTest {
         screen.drawScreen(0, 0, 0.0F);
         click(screen, "< Back", 0);
         assertTrue(has(screen, "Preset"));
-        // Apply queues the changes and rebuilds the chunk renderers; Reset All drops them
+        // Checks Apply and Reset All.
         click(screen, "Apply", 0);
         assertTrue(pending.isEmpty());
         assertEquals("3", Umbra.getCurrentPack().getShaderPackOptions().getOptionValues().getStringValue("QUALITY").orElseThrow());
@@ -549,7 +733,7 @@ class UmbraScreensTest {
         client.world = mock(WorldClient.class);
         screen.drawScreen(0, 0, 0.0F);
 
-        // A pack with no layout gets one generated from its options, profiles first
+        // Checks a pack without a layout.
         Umbra.setShaderpackAndReload("Bare");
         ShaderPackConfigScreen generated = new ShaderPackConfigScreen(parent);
         generated.setWorldAndResolution(client, 480, 300);

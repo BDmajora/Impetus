@@ -85,7 +85,7 @@ public final class ShaderStorageBufferHolder {
             }
             long w = Math.max(1, (long) Math.ceil(width * (double) this.scaleX));
             long h = Math.max(1, (long) Math.ceil(height * (double) this.scaleY));
-            // Saturates a size that overflows so the limit check rejects it
+            // Saturates a size that overflows.
             try {
                 return Math.multiplyExact(Math.multiplyExact(this.size, w), h);
             } catch (ArithmeticException e) {

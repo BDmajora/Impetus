@@ -18,19 +18,19 @@ public final class GameWindow {
         return window == null ? 0L : window.handle();
     }
 
-    // Returns whether minimized.
+    // Returns whether the window is minimized or hidden.
     public static boolean isMinimized() {
         Window window = SDL.window();
         return window != null && (window.minimized() || window.hidden());
     }
 
-    // Returns whether focused.
+    // Returns whether the window has input focus.
     public static boolean isFocused() {
         Window window = SDL.window();
         return window != null && window.focused();
     }
 
-    // Returns whether context current.
+    // Returns whether the game window's GL context is current on this thread.
     public static boolean isContextCurrent() {
         long window = handle();
         return window != 0L && SDLVideo.SDL_GL_GetCurrentWindow() == window;
@@ -49,7 +49,7 @@ public final class GameWindow {
         return isContextCurrent() && SDLVideo.SDL_GL_SetSwapInterval(interval);
     }
 
-    // Returns whether adaptive sync.
+    // Returns whether the driver accepts adaptive vsync without changing the current interval.
     public static boolean supportsAdaptiveSync() {
         if (!isContextCurrent()) {
             return false;
@@ -72,7 +72,7 @@ public final class GameWindow {
         return display == null ? new DisplayMode[0] : display.modes().toArray(DisplayMode[]::new);
     }
 
-    // Returns whether fullscreen.
+    // Returns whether the window is exclusive or borderless fullscreen.
     public static boolean isFullscreen() {
         Window window = SDL.window();
         return window != null && window.fullscreen();
@@ -103,7 +103,7 @@ public final class GameWindow {
         return display == null ? null : display.desktopMode();
     }
 
-    // Returns whether borderless.
+    // Returns whether the window is borderless fullscreen rather than exclusive.
     public static boolean isBorderless() {
         Window window = SDL.window();
         return window != null && window.fullscreen()

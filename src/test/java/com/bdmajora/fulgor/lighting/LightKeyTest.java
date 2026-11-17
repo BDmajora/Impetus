@@ -38,7 +38,7 @@ class LightKeyTest {
             long neighbour = key + LightKey.NEIGHBOR_SHIFTS[facing.ordinal()];
             assertEquals(pos.offset(facing), LightKey.decode(cursor, neighbour).toImmutable());
         }
-        // Stepping below the world carries out of the y field, which is what the engine tests for
+        // Checks the step below the world.
         long bottom = LightKey.encode(new BlockPos(0, 0, 0)) + LightKey.NEIGHBOR_SHIFTS[EnumFacing.DOWN.ordinal()];
         assertTrue((bottom & LightKey.Y_CHECK) != 0);
         long top = LightKey.encode(new BlockPos(0, 255, 0)) + LightKey.NEIGHBOR_SHIFTS[EnumFacing.UP.ordinal()];
@@ -55,7 +55,7 @@ class LightKeyTest {
         assertEquals(inside & LightKey.M_CHUNK, alsoInside & LightKey.M_CHUNK);
         assertNotEquals(inside & LightKey.M_CHUNK, elsewhere & LightKey.M_CHUNK);
         assertEquals(15, LightKey.MAX_LIGHT);
-        // The light field sits above the position, so a level never disturbs the coordinates
+        // Checks the light field.
         long withLight = inside | (7L << LightKey.S_L);
         assertEquals(inside, withLight & LightKey.M_POS);
         assertEquals(7L, (withLight >> LightKey.S_L) & LightKey.M_L);

@@ -28,14 +28,14 @@ class ItemBakeMixinsTest {
     void theEdgeBitmapsAreOneFlatArrayRatherThanFourBitSets() {
         ItemLayerFaceDataMixin faces = Mixins.concrete(ItemLayerFaceDataMixin.class);
         Mixins.set(faces, "vMax", 16);
-        // The constructor's EnumMap.put is skipped, since nothing reads the BitSets any more
+        // Checks the BitSet put is skipped.
         assertNull(Mixins.call(faces, "coarctatio$skipBitSets", new EnumMap<EnumFacing, Object>(EnumFacing.class),
                 EnumFacing.UP, new Object()));
         Mixins.call(faces, "coarctatio$allocate", 16, 16, Mixins.ci());
 
         faces.set(EnumFacing.WEST, 3, 4);
         assertTrue(faces.get(EnumFacing.WEST, 3, 4));
-        // Each face has its own words, so the same pixel on another face is untouched
+        // Checks each face has its own words.
         assertFalse(faces.get(EnumFacing.EAST, 3, 4));
         assertFalse(faces.get(EnumFacing.WEST, 4, 4));
         for (EnumFacing facing : new EnumFacing[] {EnumFacing.WEST, EnumFacing.EAST, EnumFacing.UP, EnumFacing.DOWN}) {
@@ -44,6 +44,16 @@ class ItemBakeMixinsTest {
         }
         // The model only ever produces those four
         assertThrows(IllegalArgumentException.class, () -> faces.set(EnumFacing.NORTH, 0, 0));
+
+        // Checks a frame taller than wide.
+        ItemLayerFaceDataMixin tall = Mixins.concrete(ItemLayerFaceDataMixin.class);
+        Mixins.set(tall, "vMax", 32);
+        Mixins.call(tall, "coarctatio$allocate", 16, 32, Mixins.ci());
+        tall.set(EnumFacing.DOWN, 15, 31);
+        assertTrue(tall.get(EnumFacing.DOWN, 15, 31));
+        tall.set(EnumFacing.UP, 15, 31);
+        assertFalse(tall.get(EnumFacing.DOWN, 0, 0));
+        assertFalse(tall.get(EnumFacing.WEST, 15, 31));
     }
 
     @Test
@@ -61,7 +71,7 @@ class ItemBakeMixinsTest {
         BakedQuad quad = cir.getReturnValue();
         assertEquals(28, quad.getVertexData().length);
         assertEquals(EnumFacing.SOUTH, quad.getFace());
-        // Position, opaque white, uv per vertex
+        // Checks the position and colour and uv.
         assertEquals(0f, Float.intBitsToFloat(quad.getVertexData()[0]));
         assertEquals(-1, quad.getVertexData()[3]);
         assertEquals(1f, Float.intBitsToFloat(quad.getVertexData()[7 + 1]));
@@ -100,10 +110,10 @@ class ItemBakeMixinsTest {
         VertexFormat format = DefaultVertexFormats.POSITION_TEX;
         float[] to = new float[4];
         Mixins.call(LightUtilUnpackMixin.class, "coarctatio$positionW", new int[28], to, format, 0, 0, Mixins.ci());
-        // The builder path carried 1 here, and consumers transforming by the full matrix depend on it
+        // Checks the fourth component.
         assertEquals(1.0f, to[3]);
 
-        // A shorter destination, or an element that is not a three-component position, is left alone
+        // Checks a short destination.
         float[] shorter = new float[3];
         Mixins.call(LightUtilUnpackMixin.class, "coarctatio$positionW", new int[28], shorter, format, 0, 0, Mixins.ci());
         assertEquals(0f, shorter[2]);
@@ -127,5 +137,27 @@ class ItemBakeMixinsTest {
         Mixins.set(transformation, "matrix", shifted);
         Mixins.call(transformation, "coarctatio$cacheIdentity", Mixins.ci());
         assertFalse(transformation.isIdentity());
+
+        // Checks signed zero and NaN.
+        Matrix4f signed = new Matrix4f();
+        signed.setIdentity();
+        signed.m03 = -0.0F;
+        Mixins.set(transformation, "matrix", signed);
+        Mixins.call(transformation, "coarctatio$cacheIdentity", Mixins.ci());
+        assertTrue(transformation.isIdentity());
+        signed.m11 = Float.NaN;
+        Mixins.call(transformation, "coarctatio$cacheIdentity", Mixins.ci());
+        assertFalse(transformation.isIdentity());
+        for (int element = 0; element < 16; element++) {
+            Matrix4f off = new Matrix4f();
+            off.setIdentity();
+            off.setElement(element / 4, element % 4, off.getElement(element / 4, element % 4) + 0.5F);
+            Mixins.set(transformation, "matrix", off);
+            Mixins.call(transformation, "coarctatio$cacheIdentity", Mixins.ci());
+            assertFalse(transformation.isIdentity(), "element " + element);
+        }
+        // Checks the mixin holds no static state.
+        assertTrue(java.util.Arrays.stream(TRSRTransformationIdentityMixin.class.getDeclaredFields())
+                .noneMatch(field -> !field.isSynthetic() && java.lang.reflect.Modifier.isStatic(field.getModifiers())));
     }
 }

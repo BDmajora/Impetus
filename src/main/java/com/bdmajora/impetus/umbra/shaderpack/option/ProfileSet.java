@@ -63,7 +63,7 @@ public class ProfileSet {
     // Parses every profile of a tree and parses each included profile once.
     public static ProfileSet fromTree(Map<String, List<String>> tree, OptionSet optionSet) {
         LinkedHashMap<String, Profile> profiles = new LinkedHashMap<>();
-        // Profiles already parsed so a shared include is parsed once
+        // Profiles already parsed.
         Map<String, Profile> parsed = new HashMap<>();
 
         for (String name : tree.keySet()) {

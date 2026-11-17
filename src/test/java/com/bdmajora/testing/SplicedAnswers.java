@@ -1,9 +1,8 @@
 package com.bdmajora.testing;
 
-// Answers for spliced interface methods that are not plain accessors, so a test can drive both sides of the
-// decisions production code makes through them
+// Answers for spliced interface methods that are not plain accessors.
 public final class SplicedAnswers {
-    // Whether Block reports a position-aware luminance or opacity, which is what Fulgor's cached path turns on
+    // Whether Block reports a position aware light value.
     public static boolean positionAwareLightValue;
     public static boolean positionAwareOpacity;
 

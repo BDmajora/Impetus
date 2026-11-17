@@ -53,7 +53,7 @@ class RenderListsTest {
         return Sections.section(regions, x, y, z);
     }
 
-    // One search over the sections, collected with the given cap on initial builds
+    // Runs one search.
     private VisibleChunkCollector collect(int initialBuildCap, RenderSection... sections) {
         Viewport viewport = Sections.viewport(8, 8, 8);
         SectionLattice lattice = Sections.lattice(viewport, sections);
@@ -69,7 +69,7 @@ class RenderListsTest {
         MinecraftBuiltRenderSectionData<String, Integer> mc = new MinecraftBuiltRenderSectionData<>();
         mc.animatedSprites.add("flame");
         mc.culledBlockEntities.add(7);
-        // Built data is always baked before it reaches a section, which turns the sprite set into the list the ticker reads
+        // Checks the baked data.
         mc.bake();
         sprites.setInfo(mc);
         ChunkRenderList list = new ChunkRenderList(geometry.getRegion());
@@ -107,7 +107,7 @@ class RenderListsTest {
         counting.tickVisibleRenders();
         assertEquals(List.of("flame"), active);
         assertEquals("A: 1", counting.getDebugString());
-        // An unchanged region is served from the cache; a change to it is picked up
+        // Checks the cache.
         counting.onRenderListUpdated(List.of(list));
         assertEquals("A: 1", counting.getDebugString());
         geometry.getRegion().removeSection(sprites);
@@ -144,7 +144,7 @@ class RenderListsTest {
         building.setPendingUpdate(ChunkUpdateType.SORT);
         building.setBuildCancellationToken(IN_FLIGHT);
         otherRegion.getRegion().createStorage(Passes.TRANSLUCENT, Passes.CONFIG);
-        // The walk only travels through loaded sections, so the row has no gaps
+        // Checks the row.
         RenderSection[] all = {rebuild, near, building, section(3, 0, 0), mid, farther, section(6, 0, 0), section(7, 0, 0), section(8, 0, 0), otherRegion};
 
         VisibleChunkCollector capped = collect(1, all);
@@ -153,7 +153,7 @@ class RenderListsTest {
         assertThrows(IllegalStateException.class, capped::finishRebuildLists);
         ChunkRebuildLists rebuilds = capped.getRebuildLists();
         assertFalse(rebuilds.isEmpty());
-        // Only initial builds are capped; the rest of them wait for the next search
+        // Checks the cap.
         assertTrue(rebuilds.hasAdditionalUpdates());
         assertEquals(List.of(rebuild), List.copyOf(rebuilds.byUpdateType().get(ChunkUpdateType.REBUILD)));
         assertEquals(List.of(near), List.copyOf(rebuilds.byUpdateType().get(ChunkUpdateType.INITIAL_BUILD)));
@@ -161,7 +161,7 @@ class RenderListsTest {
         assertEquals(Map.of(ChunkUpdateType.INITIAL_BUILD, 3), rebuilds.queueOverflowCounts());
         assertEquals(0, rebuilds.getUpdateCount(ChunkUpdateType.SORT));
 
-        // A looser cap sorts the whole candidate list instead of selecting from it
+        // Checks a looser cap.
         VisibleChunkCollector loose = collect(2, all);
         loose.finishRebuildLists();
         assertEquals(List.of(near, mid), List.copyOf(loose.getRebuildLists().byUpdateType().get(ChunkUpdateType.INITIAL_BUILD)));
@@ -170,7 +170,7 @@ class RenderListsTest {
         assertFalse(unlimited.getRebuildLists().hasAdditionalUpdates());
         assertEquals(4, unlimited.getRebuildLists().byUpdateType().get(ChunkUpdateType.INITIAL_BUILD).size());
 
-        // One list per region, in the order the walk reached them
+        // Checks the region lists.
         SortedRenderLists lists = capped.createRenderLists();
         assertEquals(2, lists.getNumRegions());
         assertEquals(2, capped.getSortedRenderLists().size());

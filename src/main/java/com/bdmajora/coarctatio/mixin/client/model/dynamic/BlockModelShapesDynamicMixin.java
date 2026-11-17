@@ -74,7 +74,7 @@ public abstract class BlockModelShapesDynamicMixin implements LocationAwareBlock
         return model;
     }
 
-    // Handles lookup.
+    // Returns the baked model of a state and bakes it on demand.
     private IBakedModel coarctatio$lookup(IBlockState state) {
         if (state == null) {
             return this.modelManager.getMissingModel();
@@ -83,7 +83,7 @@ public abstract class BlockModelShapesDynamicMixin implements LocationAwareBlock
         return model != null ? model : this.modelManager.getMissingModel();
     }
 
-    // Handles location for state.
+    // Returns the model location of a state through the block's state mapper.
     @Override
     public ModelResourceLocation coarctatio$locationForState(IBlockState state) {
         if (this.coarctatio$locations == null) {

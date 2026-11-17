@@ -3,7 +3,7 @@ package com.bdmajora.extras.client.budget;
 // Limits that the render budget currently applies.
 public final class RenderBudget {
     // Budget that limits nothing.
-    public static final RenderBudget NEUTRAL = new RenderBudget(1.0, Integer.MAX_VALUE, Integer.MAX_VALUE, false, false, 16.7, 0.0, 0.0, false, BottleneckDetector.State.UNKNOWN);
+    public static final RenderBudget NEUTRAL = new RenderBudget(1.0, Integer.MAX_VALUE, Integer.MAX_VALUE, false, 16.7, 0.0, 0.0, false, BottleneckDetector.State.UNKNOWN);
 
     // Share of cosmetic particles that stay.
     public final double particleScale;
@@ -13,8 +13,6 @@ public final class RenderBudget {
     public final int blockEntityCullDistance;
     // Whether distant item frames may be skipped.
     public final boolean itemFramesLimited;
-    // Whether limits apply right now.
-    public final boolean armed;
     // Target frame time.
     public final double targetFrameMillis;
     // Smoothed frame time.
@@ -28,13 +26,12 @@ public final class RenderBudget {
 
     // Creates a budget.
     RenderBudget(double particleScale, int entityCullDistance, int blockEntityCullDistance, boolean itemFramesLimited,
-                 boolean armed, double targetFrameMillis, double emaFrameMillis, double framePressure, boolean adaptiveActive,
+                 double targetFrameMillis, double emaFrameMillis, double framePressure, boolean adaptiveActive,
                  BottleneckDetector.State bottleneck) {
         this.particleScale = particleScale;
         this.entityCullDistance = entityCullDistance;
         this.blockEntityCullDistance = blockEntityCullDistance;
         this.itemFramesLimited = itemFramesLimited;
-        this.armed = armed;
         this.targetFrameMillis = targetFrameMillis;
         this.emaFrameMillis = emaFrameMillis;
         this.framePressure = framePressure;

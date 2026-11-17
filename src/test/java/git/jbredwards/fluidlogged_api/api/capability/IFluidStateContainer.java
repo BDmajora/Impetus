@@ -2,11 +2,11 @@ package git.jbredwards.fluidlogged_api.api.capability;
 
 import git.jbredwards.fluidlogged_api.api.util.FluidState;
 
-// Test stand-in for the per-section fluid table Fulgor reads through the capability; positions pack as x | z << 4 | y << 8
+// Test stand-in for the per section fluid table.
 public interface IFluidStateContainer {
     FluidState getFluidState(int x, int y, int z, FluidState fallback);
 
-    // Every stored position and its fluid; none unless a test says otherwise
+    // Visits every stored position.
     default void forEach(ContainerAction action) {}
 
     default int deserializeX(char pos) {

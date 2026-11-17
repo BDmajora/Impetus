@@ -31,19 +31,19 @@ import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 // Settings of the shadow group.
 public final class ShadowSettings {
-    // Choice of the logger option.
+    // Logger of Umbra.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
-    // Choice of the shadowres option.
+    // Shadow resolution define of a pack source.
     private static final Pattern SHADOWRES = Pattern.compile("(?m)^\\s*#define\\s+SHADOWRES\\s+(\\d+)");
-    // Choice of the shadowhpl option.
+    // Shadow half plane define.
     private static final Pattern SHADOWHPL = Pattern.compile("(?m)^\\s*#define\\s+SHADOWHPL\\s+([0-9.]+)");
-    // Choice of the shadowfov option.
+    // Shadow field of view define.
     private static final Pattern SHADOWFOV = Pattern.compile("(?m)^\\s*#define\\s+SHADOWFOV\\s+([0-9.]+)");
-    // Choice of the scanned option.
+    // Programs searched for the shadow defines in OptiFine's order.
     private static final ProgramId[] SCANNED = {ProgramId.Shadow, ProgramId.Terrain, ProgramId.Water, ProgramId.Final};
-    // Choice of the default resolution option.
+    // Shadow map resolution without a pack setting.
     public static final int DEFAULT_RESOLUTION = 1024;
-    // Choice of the default distance option.
+    // Shadow distance without a pack setting.
     public static final float DEFAULT_DISTANCE = 160.0f;
 
     // Prevents instantiation

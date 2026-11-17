@@ -4,14 +4,14 @@ import com.bdmajora.extras.Extras;
 
 // Batcher that holds network flushes until the end of a tick.
 public final class FlushBatch {
-    // Constant in tick.
+    // Whether this thread is inside a server tick whose flushes are held back.
     private static final ThreadLocal<Boolean> IN_TICK = ThreadLocal.withInitial(() -> Boolean.FALSE);
 
     // Prevents instantiation
     private FlushBatch() {
     }
 
-    // Returns whether defer.
+    // Returns whether a packet sent now should wait for the end of the tick to be flushed.
     public static boolean shouldDefer() {
         return IN_TICK.get() && Extras.options().network.flushConsolidation;
     }

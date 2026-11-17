@@ -33,7 +33,7 @@ public abstract class StitcherDropMixin implements DroppingStitcher {
     @Shadow
     private int currentHeight;
 
-    // Handles retain sprites.
+    // Drops sprites no model references and resets the stitch attempt.
     @Override
     public void coarctatio$retainSprites(Set<String> referencedNames) {
         this.coarctatio$resetAttempt();
@@ -49,7 +49,7 @@ public abstract class StitcherDropMixin implements DroppingStitcher {
         Coarctatio.LOGGER.warn("Dropped {} unreferenced sprites from the atlas", dropped);
     }
 
-    // Handles drop largest sprite.
+    // Drops the largest sprite and returns whether one was left to drop.
     @Override
     public boolean coarctatio$dropLargestSprite() {
         this.coarctatio$resetAttempt();
@@ -67,7 +67,7 @@ public abstract class StitcherDropMixin implements DroppingStitcher {
         return true;
     }
 
-    // Handles reset attempt.
+    // Clears the slots of a failed stitch.
     private void coarctatio$resetAttempt() {
         this.stitchSlots.clear();
         this.currentWidth = 0;

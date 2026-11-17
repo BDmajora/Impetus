@@ -46,7 +46,7 @@ class RenderListManagerTest {
         device.makeInactive();
     }
 
-    // Uploaded translucent geometry with a tree sort, so the section counts towards the pass and sorting statistics
+    // Returns uploaded translucent geometry.
     private void giveGeometry(RenderSection section) {
         var commands = device.createCommandList();
         var resources = section.getRegion().createResources(commands);
@@ -72,13 +72,13 @@ class RenderListManagerTest {
         assertThrows(IllegalStateException.class, () -> graph.attachRenderSection(a));
         assertTrue(manager.isNeedsUpdate());
         assertFalse(manager.isSectionVisible(0, 0, 0));
-        // Nothing is installed before the first search places the window, so there is nothing to re-search for
+        // Checks nothing before the first search.
         AtomicInteger changes = new AtomicInteger();
         graph.updateSectionMetadata(0, 0, 1, PackedSectionMetadata.withVisibilityData(bare.getPackedMetadata(), VisibilityEncoding.EVERYTHING), changes::incrementAndGet);
         assertEquals(0, changes.get());
 
         manager.startGraphUpdate(CAMERA, 1, regions.getRegionIdsLength(), 1000f, true, 8);
-        // Once installed, a change to the section's visibility asks for another search, and a repeat does not
+        // Checks a visibility change.
         graph.updateSectionMetadata(0, 0, 1, PackedSectionMetadata.withVisibilityData(bare.getPackedMetadata(), VisibilityEncoding.EVERYTHING), changes::incrementAndGet);
         graph.updateSectionMetadata(0, 0, 1, PackedSectionMetadata.withVisibilityData(bare.getPackedMetadata(), VisibilityEncoding.EVERYTHING), changes::incrementAndGet);
         graph.updateSectionMetadata(9, 9, 9, 0L, changes::incrementAndGet);

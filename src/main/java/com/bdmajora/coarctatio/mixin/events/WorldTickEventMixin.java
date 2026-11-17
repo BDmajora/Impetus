@@ -17,7 +17,7 @@ public abstract class WorldTickEventMixin implements RecyclableEvent {
     @Mutable
     public World world;
 
-    // Handles refresh world.
+    // Points the reused event at a new world.
     @Override
     public void coarctatio$refreshWorld(World world) {
         this.world = world;

@@ -50,11 +50,11 @@ class LaunchCleanupTest {
         ClassLoaderCleaner.run();
         Map<String, byte[]> weakened = Mixins.get(loader, "resourceCache");
         assertNotSame(cache, weakened);
-        // Coremods and crash reports still read it, so the entries are kept, just weakly
+        // Checks the weak entries.
         assertArrayEquals(new byte[1024], weakened.get("com.example.Mod"));
         assertTrue(MemoryReport.totalBytes() > before);
 
-        // Latched: a second call from another load phase does nothing
+        // Checks the latch.
         ClassLoaderCleaner.run();
         assertSame(weakened, Mixins.get(loader, "resourceCache"));
 
@@ -88,11 +88,11 @@ class LaunchCleanupTest {
         RemapperCompactor.run();
         Map<String, Map<String, String>> compacted = Mixins.get(FMLDeobfuscatingRemapper.INSTANCE, "fieldNameMaps");
         assertInstanceOf(RemapperCompactor.CompactMap.class, compacted);
-        // Two classes with the same merged map end up sharing one copy, and the empty one is not stored at all
+        // Checks the shared copies.
         assertSame(compacted.get("com/example/A"), compacted.get("com/example/B"));
         assertFalse(compacted.containsKey("com/example/Empty"));
 
-        // Latched, and a second run over an already compact map changes nothing
+        // Checks a second run.
         Mixins.set(RemapperCompactor.class, "done", false);
         RemapperCompactor.run();
         assertSame(compacted, Mixins.get(FMLDeobfuscatingRemapper.INSTANCE, "fieldNameMaps"));
@@ -122,14 +122,14 @@ class LaunchCleanupTest {
         assertNull(map.put("com/example/A", first));
         assertNull(map.put("com/example/B", new HashMap<>(first)));
         assertSame(map.get("com/example/A"), map.get("com/example/B"));
-        // The stored copy is immutable, since it is shared between classes
+        // Checks the stored copy is immutable.
         assertInstanceOf(ImmutableMap.class, map.get("com/example/A"));
         // An already immutable map is stored as it is
         ImmutableMap<String, String> immutable = ImmutableMap.of("field_2", "other");
         map.put("com/example/C", immutable);
         assertSame(immutable, map.get("com/example/C"));
 
-        // Nothing to map means nothing stored, and it removes whatever was there
+        // Checks an empty map.
         map.put("com/example/A", new HashMap<>());
         assertFalse(map.containsKey("com/example/A"));
         map.put("com/example/D", null);

@@ -96,7 +96,7 @@ public final class ModernPackTransformer {
         return declarations.length() == 0 ? source : injectAfterPreamble(source, declarations.toString());
     }
 
-    // Identifiers the of.
+    // Returns the variable name of a declaration line.
     private static String identifierOf(String declaration) {
         String trimmed = declaration.trim();
         int end = trimmed.lastIndexOf(';');

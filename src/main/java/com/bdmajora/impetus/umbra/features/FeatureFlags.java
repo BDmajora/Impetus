@@ -10,51 +10,51 @@ import java.util.function.BooleanSupplier;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Choices of the feature flags setting.
+// Iris feature names a pack can require with the hardware each needs.
 public enum FeatureFlags {
-    // Value that selects separate hardware samplers.
+    // Hardware compared shadow samplers beside the plain shadow textures.
     SEPARATE_HARDWARE_SAMPLERS(Hardware.ANY),
-    // Value that selects higher shadowcolor.
+    // shadowcolor2 to shadowcolor7 on top of OptiFine's two.
     HIGHER_SHADOWCOLOR(Hardware.ANY),
-    // Value that selects custom images.
+    // Image directives read and written with image load and store.
     CUSTOM_IMAGES(Hardware.IMAGE_LOAD_STORE),
-    // Value that selects per buffer blending.
+    // A blend mode per draw buffer.
     PER_BUFFER_BLENDING(Hardware.BUFFER_BLENDING),
-    // Value that selects compute shaders.
+    // Compute programs in the composite and deferred chains.
     COMPUTE_SHADERS(Hardware.COMPUTE),
-    // Value that selects tessellation shaders.
+    // Tessellation control and evaluation stages on gbuffer programs.
     TESSELLATION_SHADERS(Hardware.TESSELLATION),
-    // Value that selects entity translucent.
+    // A gbuffers_entities_translucent program for translucent entities.
     ENTITY_TRANSLUCENT(Hardware.ANY),
-    // Value that selects reversed culling.
+    // Culls the shadow pass from the far side.
     REVERSED_CULLING(Hardware.ANY),
-    // Value that selects block emission attribute.
+    // Block light emission in at_midBlock.w.
     BLOCK_EMISSION_ATTRIBUTE(Hardware.ANY),
-    // Value that selects can disable weather.
+    // Lets a pack stop vanilla rain and snow.
     CAN_DISABLE_WEATHER(Hardware.ANY),
-    // Value that selects ssbo.
+    // bufferObject.<index> shader storage buffers.
     SSBO(Hardware.SSBO),
-    // Value that selects fade variable.
+    // The mc_chunkFade value for chunks fading in.
     FADE_VARIABLE(Hardware.ANY),
-    // Value that selects texture filtering.
+    // Filtering and clamping set per custom texture.
     TEXTURE_FILTERING(Hardware.ANY),
-    // Value that selects unknown.
+    // A name this version does not know.
     UNKNOWN(Hardware.NEVER);
 
-    // Hardware check of the feature.
+    // Hardware the feature needs.
     private final Hardware hardware;
 
-    // Creates a feature flags from its hardware.
+    // Creates a feature from the hardware it needs.
     FeatureFlags(Hardware hardware) {
         this.hardware = hardware;
     }
 
-    // Returns whether usable.
+    // Returns whether this GPU and driver can run the feature.
     public boolean isUsable() {
         return this.hardware.isSupported();
     }
 
-    // Bies the name.
+    // Returns the feature a pack token names or UNKNOWN.
     public static FeatureFlags byName(String name) {
         String token = name.trim().toUpperCase(Locale.ROOT);
         if (token.equals("TESSELATION_SHADERS")) {
@@ -124,33 +124,33 @@ public enum FeatureFlags {
         }
     }
 
-    // Choices of the hardware setting.
+    // GL capabilities a feature can depend on.
     enum Hardware {
-        // Value that selects any.
+        // Every GPU this mod runs on.
         ANY(() -> true),
-        // Value that selects never.
+        // Never supported.
         NEVER(() -> false),
-        // Value that selects image load store.
+        // GL 4.2 image load and store.
         IMAGE_LOAD_STORE(() -> LWJGL.isOpenGLVersionSupported(4, 2)),
-        // Value that selects buffer blending.
+        // Per draw buffer blend state.
         BUFFER_BLENDING(() -> LWJGL.supportsBufferBlending()),
-        // Value that selects compute.
+        // GL 4.3 compute shaders.
         COMPUTE(() -> LWJGL.isOpenGLVersionSupported(4, 3)),
-        // Value that selects tessellation.
+        // GL 4.0 tessellation stages.
         TESSELLATION(() -> LWJGL.isOpenGLVersionSupported(4, 0)),
-        // Value that selects ssbo.
+        // Shader storage buffers.
         SSBO(() -> LWJGL.isOpenGLVersionSupported(4, 3)
                 || LWJGL.isExtensionSupported(com.bdmajora.impetus.lwjgl.GLExtension.ARB_shader_storage_buffer_object));
 
-        // Test of whether the hardware supports the feature.
+        // Query of the current context.
         private final BooleanSupplier check;
 
-        // Creates a hardware from its check.
+        // Creates a capability from its context query.
         Hardware(BooleanSupplier check) {
             this.check = check;
         }
 
-        // Returns whether supported.
+        // Returns whether the context has the capability and true before a context exists.
         boolean isSupported() {
             try {
                 return this.check.getAsBoolean();

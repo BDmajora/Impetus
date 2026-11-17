@@ -19,15 +19,15 @@ import java.util.Optional;
 // Mixin that changes BlockStateContainer.
 @Mixin(BlockStateContainer.class)
 public abstract class BlockStateContainerMixin implements MappedStateOwner {
-    // Field state mapper added to the target.
+    // Packed property mapper of the container's block or null.
     @Unique
     private PropertyValueMapper coarctatio$stateMapper;
 
-    // Field state mapper resolved added to the target.
+    // Whether the mapper was resolved yet.
     @Unique
     private boolean coarctatio$stateMapperResolved;
 
-    // Handles mapper.
+    // Returns the container's mapper and creates it on first use.
     @Override
     public PropertyValueMapper coarctatio$mapper(Block block) {
         if (!this.coarctatio$stateMapperResolved) {

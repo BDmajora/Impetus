@@ -70,7 +70,7 @@ public final class ProgramCache {
         return result;
     }
 
-    // Stages the of.
+    // Returns the texture stage a program name belongs to.
     static TextureStage stageOf(String name) {
         if (name.startsWith(ProgramArrayId.Begin.getBaseName())) {
             return TextureStage.BEGIN;

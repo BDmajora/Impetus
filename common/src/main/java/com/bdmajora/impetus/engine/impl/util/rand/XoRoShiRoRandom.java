@@ -2,7 +2,7 @@ package com.bdmajora.impetus.engine.impl.util.rand;
 
 import java.util.Random;
 
-// Minimal XoRoShiRo128** from DSI Utilities (http://xoshiro.di.unimi.it/) to avoid importing Apache Commons
+// Minimal XoRoShiRo128** random from DSI Utilities.
 public class XoRoShiRoRandom extends Random {
     private static final long serialVersionUID = 1L;
 
@@ -72,7 +72,7 @@ public class XoRoShiRoRandom extends Random {
 
         final long nMinus1 = n - 1;
 
-        // Shortcut for powers of two--high bits
+        // Masks the bits for a power of two bound.
         if ((n & nMinus1) == 0) {
             return (t >>> Long.numberOfLeadingZeros(nMinus1)) & nMinus1;
         }
@@ -88,13 +88,13 @@ public class XoRoShiRoRandom extends Random {
 
     }
 
-    // 53 random bits scaled to [0, 1)
+    // Returns 53 random bits scaled to [0 1).
     @Override
     public double nextDouble() {
         return Double.longBitsToDouble(0x3FFL << 52 | this.nextLong() >>> 12) - 1.0;
     }
 
-    // 24 random bits scaled to [0, 1)
+    // Returns 24 random bits scaled to [0 1).
     @Override
     public float nextFloat() {
         return (this.nextLong() >>> 40) * 0x1.0p-24f;
@@ -120,10 +120,10 @@ public class XoRoShiRoRandom extends Random {
         }
     }
 
-    // Expands the seed through SplitMix so the two state words are independent
+    // Expands the seed through SplitMix.
     @Override
     public void setSeed(final long seed) {
-        // Restore the saved initial state when the seed is unchanged, since setting and mixing the seed is expensive
+        // Restores the saved initial state when the seed is unchanged.
         if (this.hasSavedState && this.seed == seed) {
             this.s0 = this.p0;
             this.s1 = this.p1;

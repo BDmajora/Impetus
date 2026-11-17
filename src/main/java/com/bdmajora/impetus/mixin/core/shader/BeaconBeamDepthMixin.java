@@ -20,10 +20,10 @@ public class BeaconBeamDepthMixin {
     // GL enum of the depth write mask.
     private static final int GL_DEPTH_WRITEMASK = 0x0B72;
 
-    // Field saved depth mask added to the target.
+    // Depth mask before the beam forced it on.
     @Unique
     private boolean impetus$savedDepthMask;
-    // Field depth mask overridden added to the target.
+    // Whether this draw forced the depth mask.
     @Unique
     private boolean impetus$depthMaskOverridden;
 
@@ -63,7 +63,7 @@ public class BeaconBeamDepthMixin {
         }
     }
 
-    // Handles wants beam depth.
+    // Returns whether the pack wants beacon beams in the depth buffer.
     private static boolean impetus$wantsBeamDepth() {
         UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
         return pipeline != null && pipeline.shouldWriteBeaconBeamToDepthBuffer();

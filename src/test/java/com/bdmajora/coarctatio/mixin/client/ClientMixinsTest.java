@@ -43,12 +43,12 @@ class ClientMixinsTest {
 
     @Test
     void theCreativeSearchIndexIsBuiltOnTheFirstSearch() {
-        // Mockito cannot instrument SearchTree, so the mixin gets a generated subclass whose shadow is a no-op
+        // Builds a concrete search tree.
         @SuppressWarnings("unchecked")
         SearchTreeMixin<String> tree = Mixins.concrete(SearchTreeMixin.class);
-        // A re-parented mixin's field initialisers do not apply, so the starting state is set here
+        // Sets the starting state.
         Mixins.set(tree, "coarctatio$stale", true);
-        // Startup and every reload ask for a rebuild; while nothing has searched, they are swallowed
+        // Checks the swallowed rebuilds.
         var eager = Mixins.ci();
         Mixins.call(tree, "coarctatio$deferRecalculate", eager);
         assertTrue(eager.isCancelled());
@@ -57,7 +57,7 @@ class ClientMixinsTest {
         Mixins.call(tree, "coarctatio$buildOnDemand", "stone", Mixins.cir(List.of()));
         assertFalse(Mixins.<Boolean>get(tree, "coarctatio$stale"));
 
-        // Once built, a rebuild goes through as usual
+        // Checks a rebuild after the first build.
         var built = Mixins.ci();
         Mixins.call(tree, "coarctatio$deferRecalculate", built);
         assertFalse(built.isCancelled());
@@ -76,7 +76,7 @@ class ClientMixinsTest {
         Mixins.call(registry, "coarctatio$compactSoundMap", cir);
         assertTrue(cir.isCancelled());
         assertInstanceOf(Object2ObjectOpenHashMap.class, cir.getReturnValue());
-        // clearMap reads the field back, so the two must be the same instance
+        // Checks the same instance.
         assertSame(cir.getReturnValue(), Mixins.get(registry, "soundRegistry"));
 
         SoundHandlerMixin handler = Mixins.instance(SoundHandlerMixin.class);
@@ -95,7 +95,7 @@ class ClientMixinsTest {
         assertSame(quad, ModelCaches.QUADS.deduplicate(new int[] {1, 2, 3}));
 
         Mixins.call(manager, "coarctatio$closePools", resources, Mixins.ci());
-        // Closed, so the next pack's geometry does not keep this one's alive
+        // Checks the pool is closed.
         assertSame(quad, ModelCaches.QUADS.deduplicate(quad));
     }
 }

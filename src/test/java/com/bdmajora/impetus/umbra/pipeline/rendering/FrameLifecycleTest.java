@@ -111,7 +111,7 @@ class FrameLifecycleTest {
         assertSame(this.state.schedule.preTranslucentFlips, this.state.activeGbufferFlips);
         verify(this.copies).clear(true, 320, 240);
         verify(this.runner).runFamily(this.state.schedule.begin, this.gl.client);
-        // setup (3 groups) runs once, on the first frame only
+        // Checks setup runs once.
         verify(TestGl.gl(), times(1)).glDispatchCompute(3, 1, 1);
         assertEquals(0.25f, CapturedRenderingState.INSTANCE.getTickDelta());
         this.frame.finish();
@@ -136,7 +136,7 @@ class FrameLifecycleTest {
         this.frame.begin(0.0f);
         assertEquals(400, this.state.targets.getWidth());
         assertFalse(unitsDuringUpload.isEmpty());
-        // The targets bind raw while reallocating; on a cached unit that desynced GlStateManager until frame end
+        // Checks the units during the upload.
         for (int unit : unitsDuringUpload) {
             assertEquals(SamplerLayout.MIPMAP_SCRATCH_UNIT, unit);
         }
@@ -201,7 +201,7 @@ class FrameLifecycleTest {
         InOrder before = Mockito.inOrder(shadow, this.runner);
         before.verify(this.runner).runFamily(this.state.schedule.prepare, this.gl.client);
         before.verify(shadow).render();
-        // No shadow pass: only prepare
+        // Removes the shadow renderer.
         Mixins.set(this.state, "shadowRenderer", null);
         Mockito.clearInvocations(this.runner);
         this.frame.renderShadowMap();
@@ -221,7 +221,7 @@ class FrameLifecycleTest {
         assertSame(this.state.schedule.translucentGbuffer, this.state.gbuffers.current);
         assertSame(this.state.schedule.translucentFlips, this.state.activeGbufferFlips);
         assertTrue(this.state.isPostDeferred());
-        // OptiFine's beginWater() state: blending and depth writes on
+        // Checks the water state.
         this.gl.gl11.verify(() -> GL11.glDepthMask(true), Mockito.atLeastOnce());
         this.frame.beginHand();
         verify(this.runner).copyDepth(this.state.targets.getDepthTextureNoHand());

@@ -59,12 +59,12 @@ public class NvidiumShading implements MeshTerrainShading {
         return true;
     }
 
-    // Does nothing because only the program was bound.
+    // Does nothing.
     @Override
     public void finish() {
     }
 
-    // Returns false because there is no shadow program.
+    // Returns false.
     @Override
     public boolean hasShadowPrograms() {
         return false;

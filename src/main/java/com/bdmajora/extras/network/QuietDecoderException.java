@@ -9,7 +9,7 @@ public final class QuietDecoderException extends DecoderException {
         super(message);
     }
 
-    // Handles the fill in stack trace.
+    // Skips the stack trace.
     @Override
     public synchronized Throwable fillInStackTrace() {
         return this;

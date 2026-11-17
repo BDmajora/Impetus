@@ -4,14 +4,14 @@ import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.List;
 
-// Reads and edits a bus's private listener array, since the bus has no way to unsubscribe
+// Reads and edits bus listeners.
 public final class BusListeners {
     private static final Field HANDLERS = field("handlers");
     private static final Field WRITE_LOCK = field("writeLock");
 
     private BusListeners() {}
 
-    // The bus's listeners in order, as a copy
+    // Returns the bus listeners.
     @SuppressWarnings("unchecked")
     public static <E extends ImpetusEvent> List<EventHandlerRegistrar.Handler<E>> of(EventHandlerRegistrar<E> bus) {
         try {
@@ -21,7 +21,7 @@ public final class BusListeners {
         }
     }
 
-    // Takes the first occurrence of the listener off the bus under the bus's own write lock, and returns whether it was there
+    // Removes a listener from the bus.
     public static <E extends ImpetusEvent> boolean remove(EventHandlerRegistrar<E> bus, EventHandlerRegistrar.Handler<E> handler) {
         try {
             synchronized (WRITE_LOCK.get(bus)) {

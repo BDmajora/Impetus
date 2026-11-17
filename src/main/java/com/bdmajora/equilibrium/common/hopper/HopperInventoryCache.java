@@ -18,6 +18,9 @@ public final class HopperInventoryCache {
     // State of the block when the inventory was found.
     private IBlockState state;
 
+    // Packed position the state was read at.
+    private long position;
+
     // Block entity that holds the inventory.
     private TileEntity tileEntity;
 
@@ -58,7 +61,8 @@ public final class HopperInventoryCache {
             return tileEntity instanceof IInventory ? (IInventory) tileEntity : null;
         }
 
-        if (this.state == state) {
+        long position = pos.toLong();
+        if (this.state == state && this.position == position) {
             if (this.tileEntity == null) {
                 return null;
             }
@@ -69,6 +73,7 @@ public final class HopperInventoryCache {
         }
 
         this.state = state;
+        this.position = position;
         this.tileEntity = null;
         this.inventory = null;
 

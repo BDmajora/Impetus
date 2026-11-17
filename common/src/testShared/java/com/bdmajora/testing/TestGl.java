@@ -14,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-// The unit-test GL: one Mockito mock of LWJGLService any test may stub or verify, whose unstubbed calls answer like a permissive driver
+// Unit test GL mock.
 public final class TestGl {
     private static final int GL_COMPILE_STATUS = 35713;
     private static final int GL_LINK_STATUS = 35714;
@@ -49,7 +49,7 @@ public final class TestGl {
 
     private static final Map<Integer, Long> MAPPINGS = new ConcurrentHashMap<>();
 
-    // Stubs the DSA, bindless and sparse entry points the mesh backend needs; persistent maps get real memory
+    // Stubs the mesh entry points.
     public static void meshCapable() {
         Mockito.doAnswer(inv -> NAMES.incrementAndGet()).when(SERVICE).glCreateBuffers();
         Mockito.doNothing().when(SERVICE).glNamedBufferStorage(Mockito.anyInt(), Mockito.anyLong(), Mockito.anyInt());
@@ -85,7 +85,7 @@ public final class TestGl {
             case "isExtensionSupported":
             case "supportsBufferBlending": return true;
             case "glFenceSync": return SYNCS.incrementAndGet();
-            // Fences answer as signalled with the one result value GlFence expects, so staging rings reclaim without per-test stubbing
+            // Stubs the fences.
             case "glGetSynci": {
                 java.nio.IntBuffer count = (java.nio.IntBuffer) args[2];
                 if (count != null) {

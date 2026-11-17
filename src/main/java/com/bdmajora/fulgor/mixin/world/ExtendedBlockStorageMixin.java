@@ -7,6 +7,9 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 // Mixin that changes ExtendedBlockStorage.
 @Mixin(ExtendedBlockStorage.class)
@@ -23,9 +26,21 @@ public abstract class ExtendedBlockStorageMixin implements SectionLightInfo {
     @Shadow
     private NibbleArray skyLight;
 
-    // Field light ref count added to the target.
+    // Whether the light is uniform (0) or not (1) or unknown (-1).
     @Unique
-    private int fulgor$lightRefCount = -1;
+    private volatile int fulgor$lightRefCount = -1;
+
+    // Forgets the cached answer when the block light array is handed out.
+    @Inject(method = "getBlockLight()Lnet/minecraft/world/chunk/NibbleArray;", at = @At("HEAD"))
+    private void fulgor$forgetOnBlockLightAccess(CallbackInfoReturnable<NibbleArray> cir) {
+        this.fulgor$lightRefCount = -1;
+    }
+
+    // Forgets the cached answer when the sky light array is handed out.
+    @Inject(method = "getSkyLight()Lnet/minecraft/world/chunk/NibbleArray;", at = @At("HEAD"))
+    private void fulgor$forgetOnSkyLightAccess(CallbackInfoReturnable<NibbleArray> cir) {
+        this.fulgor$lightRefCount = -1;
+    }
 
     // Replaces the whole method setSkyLight.
     @Overwrite
@@ -62,21 +77,28 @@ public abstract class ExtendedBlockStorageMixin implements SectionLightInfo {
             return false;
         }
 
-        if (this.fulgor$lightRefCount == -1) {
-            this.fulgor$lightRefCount = fulgor$isUniform(this.skyLight, (byte) 0xFF)
-                    && fulgor$isUniform(this.blockLight, (byte) 0x00) ? 0 : 1;
+        int cached = this.fulgor$lightRefCount;
+        if (cached == -1) {
+            cached = fulgor$isUniform(this.skyLight, (byte) 0xFF) && fulgor$isUniform(this.blockLight, (byte) 0x00) ? 0 : 1;
+            this.fulgor$lightRefCount = cached;
         }
 
-        return this.fulgor$lightRefCount == 0;
+        return cached == 0;
     }
 
-    // Returns whether no blocks.
+    // Returns whether the section holds no blocks.
     @Override
     public boolean fulgor$hasNoBlocks() {
         return this.blockRefCount == 0;
     }
 
-    // Helper method is uniform added to the target.
+    // Drops the cached answer after a light engine finished writing the arrays from another thread.
+    @Override
+    public void fulgor$markLightChanged() {
+        this.fulgor$lightRefCount = -1;
+    }
+
+    // Returns whether every byte of a light array has one value and true for a missing array.
     @Unique
     private static boolean fulgor$isUniform(NibbleArray array, byte value) {
         if (array == null) {

@@ -23,8 +23,10 @@ public final class UmbraConfig {
     // Properties file.
     private final Path propertiesFile;
 
-    // Shader pack name.
+    // Shader pack name or NO_PACK while shaders are off.
     private String shaderPackName = NO_PACK;
+    // Pack used last.
+    private String lastShaderPackName = NO_PACK;
 
     // Creates an umbra config from its game directory.
     public UmbraConfig(Path gameDirectory) {
@@ -53,12 +55,53 @@ public final class UmbraConfig {
         return this.shaderPackName;
     }
 
-    // Stores the shader pack name.
+    // Stores the shader pack name and remembers a real pack as the last one.
     public void setShaderPackName(String name) {
-        this.shaderPackName = (name == null || name.trim().isEmpty()) ? NO_PACK : name.trim();
+        this.shaderPackName = normalize(name);
+        rememberShaderPackName(this.shaderPackName);
     }
 
-    // Returns whether shader pack enabled.
+    // Returns the pack that switching shaders back on would load.
+    public String getLastShaderPackName() {
+        return this.lastShaderPackName;
+    }
+
+    // Remembers a pack for the next switch on and ignores NO_PACK and blank names.
+    public void rememberShaderPackName(String name) {
+        String pack = normalize(name);
+        if (!NO_PACK.equals(pack)) {
+            this.lastShaderPackName = pack;
+        }
+    }
+
+    // Turns shaders off or back on with the last pack and returns whether the selection changed.
+    public boolean setShadersEnabled(boolean enabled) {
+        if (enabled == isShaderPackEnabled()) {
+            return false;
+        }
+        if (!enabled) {
+            this.shaderPackName = NO_PACK;
+            return true;
+        }
+        if (NO_PACK.equals(this.lastShaderPackName)) {
+            return false;
+        }
+        this.shaderPackName = this.lastShaderPackName;
+        return true;
+    }
+
+    // Returns whether a pack folder or zip of that name is in the shaderpacks directory.
+    public boolean isPackInstalled(String name) {
+        String pack = normalize(name);
+        return !NO_PACK.equals(pack) && Files.exists(this.shaderpacksDirectory.resolve(pack));
+    }
+
+    // Trims a pack name and turns null and blank into NO_PACK.
+    private static String normalize(String name) {
+        return (name == null || name.trim().isEmpty()) ? NO_PACK : name.trim();
+    }
+
+    // Returns whether a shader pack is selected and switched on.
     public boolean isShaderPackEnabled() {
         return !NO_PACK.equals(this.shaderPackName);
     }
@@ -78,6 +121,10 @@ public final class UmbraConfig {
             properties.load(reader);
         }
         setShaderPackName(properties.getProperty("shaderPack", NO_PACK));
+        // Writes the last pack while shaders are off.
+        if (!isShaderPackEnabled()) {
+            rememberShaderPackName(properties.getProperty("lastShaderPack"));
+        }
         com.bdmajora.impetus.umbra.pipeline.ColorSpaceConverter.setColorSpace(
                 com.bdmajora.impetus.umbra.pipeline.ColorSpaceConverter.ColorSpace.byName(
                         properties.getProperty("colorSpace", "SRGB")));
@@ -88,6 +135,9 @@ public final class UmbraConfig {
         Files.createDirectories(this.propertiesFile.getParent());
         Properties properties = new Properties();
         properties.setProperty("shaderPack", this.shaderPackName);
+        if (!NO_PACK.equals(this.lastShaderPackName)) {
+            properties.setProperty("lastShaderPack", this.lastShaderPackName);
+        }
         properties.setProperty("colorSpace",
                 com.bdmajora.impetus.umbra.pipeline.ColorSpaceConverter.getColorSpace().name());
         try (var writer = Files.newBufferedWriter(this.propertiesFile, StandardCharsets.UTF_8)) {

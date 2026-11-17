@@ -50,7 +50,7 @@ class PipelineViewTest {
         PipelineGl.enterFrame(this.state);
         assertTrue(this.view.isActive());
         assertTrue(this.view.isCameraPassActive());
-        // No deferred chain: one gbuffer for the frame, never "post-deferred"
+        // Checks the frame without a deferred chain.
         assertFalse(this.view.isPostDeferred());
         Statics.set(UmbraShadowRenderer.class, "shadowPassActive", true);
         assertFalse(this.view.isCameraPassActive());

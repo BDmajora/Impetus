@@ -57,7 +57,7 @@ class GlUniformFloat4vTest {
     // Shared GL mock that the reset extension clears before each test
     private final LWJGLService gl = TestGl.gl();
 
-    // Vector uniform that records every array it receives instead of calling GL
+    // Vector uniform that records arrays.
     private static final class Recording extends GlUniformFloat4v {
         // Arrays in the order the upload received them
         private final List<float[]> values = new ArrayList<>();

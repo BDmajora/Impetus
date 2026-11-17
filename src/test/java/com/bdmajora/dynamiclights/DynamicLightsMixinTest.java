@@ -57,14 +57,14 @@ class DynamicLightsMixinTest {
         client = Mc.client();
         // Light lookups on the client thread are the ones that keep the CPU's moving light
         when(client.isCallingFromMinecraftThread()).thenReturn(true);
-        // Rebuild scheduling goes through the client's renderer, which must carry the invoker mixin's interface
+        // Mocks the renderer with the invoker interface.
         Mixins.set(client, "renderGlobal", mock(RenderGlobal.class, Mockito.withSettings()
                 .extraInterfaces(com.bdmajora.dynamiclights.mixin.RenderGlobalRebuildAccessor.class)));
         Mixins.set(DynamicLights.class, "config", new DynamicLightsConfig());
         DynamicLights.engine().clearLightSources();
     }
 
-    // A WorldClient, since Minecraft.world is typed as one and the mixins compare against it
+    // Returns a client world.
     private static WorldClient clientWorld() {
         WorldClient world = mock(WorldClient.class);
         Mixins.set(world, "isRemote", true);
@@ -73,8 +73,7 @@ class DynamicLightsMixinTest {
 
     @Test
     void theSubclassSourcesAreConstructibleWithTheirWorld() {
-        // Each subclass mixin declares a constructor taking the world, which its target's own constructor stands in for
-        // Entity's constructor asks the world which dimension it is
+        // Creates each subclass mixin with the world.
         WorldClient world = clientWorld();
         net.minecraft.world.WorldProvider provider = mock(net.minecraft.world.WorldProvider.class);
         Mixins.set(world, "provider", provider);
@@ -98,7 +97,7 @@ class DynamicLightsMixinTest {
         assertEquals(8.0D, entity.impetus$getDynamicLightX());
         assertEquals(65.5D, entity.impetus$getDynamicLightY());
         assertEquals(8.0D, entity.impetus$getDynamicLightZ());
-        // Drawn between the last tick and this one, which is where the terrain shaders light from
+        // Places the entity between its last tick and this one.
         entity.lastTickPosX = 6.0D;
         entity.lastTickPosY = 62.0D;
         entity.lastTickPosZ = 10.0D;
@@ -107,7 +106,7 @@ class DynamicLightsMixinTest {
         assertEquals(9.0D, entity.impetus$getDynamicLightZ(0.5F));
         assertSame(world, entity.impetus$getDynamicLightWorld());
 
-        // A burning entity glows, a plain one does not, and the gates switch it off
+        // Checks the burning glow and its gates.
         Mockito.doReturn(true).when(self).isBurning();
         entity.impetus$dynamicLightTick();
         assertEquals(14, entity.impetus$getLuminance());
@@ -120,7 +119,7 @@ class DynamicLightsMixinTest {
         assertEquals(0, entity.impetus$getLuminance());
         DynamicLights.options().entitiesLightSource = true;
 
-        // The tick hook only runs client-side, and tracks the source once it is lit
+        // Ticks client side and tracks the lit source.
         Mixins.call(entity, "impetus$onTick", Mixins.ci());
         assertTrue(DynamicLights.engine().containsLightSource(entity));
         entity.isDead = true;
@@ -201,7 +200,7 @@ class DynamicLightsMixinTest {
         Mockito.doReturn(List.of()).when(playerSelf).getArmorInventoryList();
         Mockito.doReturn(false).when(playerSelf).isGlowing();
         Mockito.doReturn(false).when(playerSelf).isBurning();
-        // The first tick in a world always reports nothing, so a dimension change cannot leave light behind
+        // Reports nothing on the first tick in a world.
         player.impetus$dynamicLightTick();
         assertEquals(0, player.impetus$getLuminance());
         player.impetus$dynamicLightTick();
@@ -226,7 +225,7 @@ class DynamicLightsMixinTest {
         EntityMinecartMixin minecart = Mixins.instance(EntityMinecartMixin.class);
         net.minecraft.entity.item.EntityMinecart minecartSelf = (net.minecraft.entity.item.EntityMinecart) (Object) minecart;
         Mixins.set(minecartSelf, "world", world);
-        // The shared DynamicLightSource half lives in the Entity mixin, which this one inherits from at runtime
+        // Stubs the world of the source half.
         Mockito.doReturn(world).when((DynamicLightSource) minecart).impetus$getDynamicLightWorld();
         Mockito.doReturn(false).when(minecartSelf).isBurning();
         Mockito.doReturn(null).when(minecartSelf).getDisplayTile();
@@ -310,7 +309,7 @@ class DynamicLightsMixinTest {
         assertTrue(tile.impetus$updateDynamicLight(renderer));
         tile.impetus$scheduleTrackedChunksRebuild(renderer);
 
-        // Invalidating one stops the tracking, and an invalid or server-side one never ticks
+        // Invalidates the tile and checks it stops tracking.
         Mixins.call(tile, "impetus$onInvalidated", Mixins.ci());
         assertFalse(DynamicLights.engine().containsLightSource(tile));
         Mixins.set(tile, "tileEntityInvalid", true);
@@ -390,7 +389,7 @@ class DynamicLightsMixinTest {
         var lit = Mixins.<Integer>cir(0);
         Mixins.call(state, "impetus$addDynamicLight", mock(net.minecraft.world.IBlockAccess.class), BlockPos.ORIGIN, lit);
         assertEquals(12 << 4, lit.getReturnValue());
-        // An opaque, unlit block is left alone, as is the empty access the chunk builder probes with
+        // Leaves an opaque unlit block and the empty access alone.
         Mockito.doReturn(true).when(self).isOpaqueCube();
         Mockito.doReturn(0).when(self).getLightValue(any(), any());
         var opaque = Mixins.<Integer>cir(0);
@@ -400,7 +399,7 @@ class DynamicLightsMixinTest {
         Mixins.call(state, "impetus$addDynamicLight",
                 com.bdmajora.impetus.impl.util.EmptyBlockAccess.INSTANCE, BlockPos.ORIGIN, empty);
         assertEquals(0, empty.getReturnValue());
-        // A chunk mesh's slice leaves the light to the terrain shaders, unless the context cannot apply it there
+        // Checks the chunk slice light path.
         Mockito.doReturn(false).when(self).isOpaqueCube();
         com.bdmajora.impetus.impl.world.WorldSlice slice = mock(com.bdmajora.impetus.impl.world.WorldSlice.class);
         var meshed = Mixins.<Integer>cir(0);
@@ -414,7 +413,7 @@ class DynamicLightsMixinTest {
         } finally {
             com.bdmajora.impetus.engine.impl.render.chunk.shader.TerrainDynamicLights.setShaderApplied(true);
         }
-        // Another thread is baking geometry against the live world, which the shaders light instead
+        // Checks a bake on another thread.
         when(client.isCallingFromMinecraftThread()).thenReturn(false);
         var offThread = Mixins.<Integer>cir(0);
         Mixins.call(state, "impetus$addDynamicLight", mock(net.minecraft.world.IBlockAccess.class), BlockPos.ORIGIN, offThread);
@@ -427,7 +426,7 @@ class DynamicLightsMixinTest {
         assertEquals(0, off.getReturnValue());
         DynamicLights.options().mode = DynamicLightsMode.REALTIME;
 
-        // The held item lights the hand, and so does anything else nearby
+        // Checks the hand light.
         ItemRendererMixin renderer = Mixins.instance(ItemRendererMixin.class);
         Mixins.set(renderer, "itemStackMainHand", new ItemStack(Blocks.GLOWSTONE));
         Mixins.set(renderer, "itemStackOffHand", ItemStack.EMPTY);
@@ -443,7 +442,7 @@ class DynamicLightsMixinTest {
         assertEquals(1, (int) Mixins.call(renderer, "impetus$handLightFloor", 1));
         DynamicLights.options().mode = DynamicLightsMode.REALTIME;
 
-        // The F3 overlay line, which says so when the feature is switched off
+        // Checks the F3 overlay line.
         GuiOverlayDebugMixin overlay = Mixins.instance(GuiOverlayDebugMixin.class);
         List<String> lines = new ArrayList<>();
         assertSame(lines, Mixins.call(overlay, "impetus$addDynamicLightInfo", lines));
@@ -460,7 +459,7 @@ class DynamicLightsMixinTest {
         com.bdmajora.dynamiclights.mixin.EntityRendererMixin frame = Mixins.instance(com.bdmajora.dynamiclights.mixin.EntityRendererMixin.class);
         Mixins.call(frame, "impetus$publishTerrainLights", 0.5F, 0L, Mixins.ci());
 
-        // The plugin applies everything; the mode switch is read at call time instead
+        // Checks the plugin applies everything.
         DynamicLightsMixinPlugin plugin = new DynamicLightsMixinPlugin();
         assertTrue(plugin.shouldApplyMixin("net.minecraft.entity.Entity",
                 "com.bdmajora.dynamiclights.mixin.lightsource.EntityMixin"));

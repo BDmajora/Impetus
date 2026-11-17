@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ConfigPageBuilderTest {
-    // Ids stay interned for the whole JVM, so this class keeps to its own mod id
+    // Mod id of this class's ids.
     private static final String MOD = "config_page_builder_test";
     private static final TextComponent NAME = TextComponent.literal("Page");
 
@@ -38,16 +38,16 @@ class ConfigPageBuilderTest {
     void shapeIsTwoPublicMethodsOverAPackagePrivateConstructor() {
         Class<ConfigPageBuilder> type = ConfigPageBuilder.class;
         assertTrue(Modifier.isPublic(type.getModifiers()) && Modifier.isFinal(type.getModifiers()));
-        // toGenericString carries any throws clause, so this also pins that neither method declares a checked exception
+        // Checks no checked exceptions.
         Set<String> published = Arrays.stream(type.getDeclaredMethods()).filter(method -> Modifier.isPublic(method.getModifiers())).map(Method::toGenericString).collect(Collectors.toSet());
         assertEquals(Set.of(
                 "public com.bdmajora.impetus.api.config.ConfigPageBuilder com.bdmajora.impetus.api.config.ConfigPageBuilder.addGroup(com.bdmajora.impetus.api.options.structure.OptionGroup)",
                 "public com.bdmajora.impetus.api.options.structure.OptionPage com.bdmajora.impetus.api.config.ConfigPageBuilder.build()"), published);
-        // Only ConfigBuilders makes one, so its id and name checks cannot be skipped from another package
+        // Checks the constructor access.
         Constructor<?>[] constructors = type.getDeclaredConstructors();
         assertEquals(1, constructors.length);
         assertEquals("com.bdmajora.impetus.api.config.ConfigPageBuilder(com.bdmajora.impetus.api.options.OptionIdentifier<java.lang.Void>,com.bdmajora.impetus.engine.impl.gui.framework.TextComponent)", constructors[0].toGenericString());
-        // Every field is private per-builder state, so two builders never share groups
+        // Checks the fields.
         for (Field field : type.getDeclaredFields()) {
             if (!field.isSynthetic()) {
                 assertTrue(Modifier.isPrivate(field.getModifiers()) && !Modifier.isStatic(field.getModifiers()), field.getName());
@@ -73,24 +73,24 @@ class ConfigPageBuilderTest {
         assertSame(name, page.getName());
         assertEquals(List.of(), page.getGroups());
         assertEquals(List.of(), page.getOptions());
-        // The empty list is shared from the first build on, before any group was ever added
+        // Checks the shared empty list.
         assertSame(page.getGroups(), builder.build().getGroups());
     }
 
     @Test
     void groupsAndTheirOptionsKeepTheirAddOrderAtEverySize() {
-        // 1 and 2 groups copy into List.of's two-slot form, 3 into its array form, 11 and 1000 past ArrayList's first growths
+        // Checks the list sizes.
         for (int size : new int[] {1, 2, 3, 10, 11, 1000}) {
             ConfigPageBuilder builder = builder("order_" + size);
             List<OptionGroup> groups = new ArrayList<>();
             List<Option<?>> options = new ArrayList<>();
             for (int i = 0; i < size; i++) {
-                // Zero, one or two options per group, so empty groups sit between full ones
+                // Checks mixed group sizes.
                 Option<?>[] own = new Option<?>[i % 3];
                 for (int o = 0; o < own.length; o++) {
                     own[o] = Mockito.mock(Option.class);
                 }
-                // Every group shares one id, which the duplicate check must not mistake for the same group
+                // Checks a shared id.
                 OptionGroup group = group("order", own);
                 assertSame(builder, builder.addGroup(group));
                 groups.add(group);
@@ -110,7 +110,7 @@ class ConfigPageBuilderTest {
         npe("Group must not be null", () -> builder.addGroup(null));
         OptionPage after = builder.build();
         assertEquals(List.of(kept), after.getGroups());
-        // Nothing was added, so the next page reuses the last one's copy
+        // Checks the copy is reused.
         assertSame(before.getGroups(), after.getGroups());
         // and the builder still takes groups afterwards
         OptionGroup later = group("null_later");
@@ -124,12 +124,12 @@ class ConfigPageBuilderTest {
         ConfigPageBuilder builder = builder("duplicate").addGroup(first).addGroup(second);
         iae("Group 'config_page_builder_test:duplicate_first' is already on page 'config_page_builder_test:duplicate'", () -> builder.addGroup(first));
         iae("Group 'config_page_builder_test:duplicate_second' is already on page 'config_page_builder_test:duplicate'", () -> builder.addGroup(second));
-        // Still refused after a build, since every later page from this builder holds the group too
+        // Checks a refusal after a build.
         OptionPage page = builder.build();
         iae("Group 'config_page_builder_test:duplicate_first' is already on page 'config_page_builder_test:duplicate'", () -> builder.addGroup(first));
         OptionPage again = builder.build();
         assertEquals(List.of(first, second), again.getGroups());
-        // A refused add leaves the copy valid, so nothing is copied again
+        // Checks a refused add.
         assertSame(page.getGroups(), again.getGroups());
         // A group built without an id is named by DEFAULT_ID in the message
         OptionGroup unnamed = OptionGroup.createBuilder().build();
@@ -140,7 +140,7 @@ class ConfigPageBuilderTest {
 
     @Test
     void distinctGroupsMayShareAnIdAndOneGroupMaySitOnSeveralPages() {
-        // Groups built without an id all take DEFAULT_ID, so the duplicate check goes by instance and never by id
+        // Checks groups without an id.
         OptionGroup unnamedA = OptionGroup.createBuilder().build();
         OptionGroup unnamedB = OptionGroup.createBuilder().build();
         OptionGroup sharedA = group("shared_id");
@@ -149,7 +149,7 @@ class ConfigPageBuilderTest {
         assertSame(sharedA.getId(), sharedB.getId());
         OptionPage page = builder("shared_page").addGroup(unnamedA).addGroup(unnamedB).addGroup(sharedA).addGroup(sharedB).build();
         assertEquals(List.of(unnamedA, unnamedB, sharedA, sharedB), page.getGroups());
-        // A group belongs to no builder, so another page takes it as well
+        // Checks a shared group.
         assertEquals(List.of(sharedA, unnamedA), builder("shared_other").addGroup(sharedA).addGroup(unnamedA).build().getGroups());
         // Two builders for one page id each check only their own groups
         assertEquals(List.of(sharedA), builder("shared_page").addGroup(sharedA).build().getGroups());
@@ -203,7 +203,7 @@ class ConfigPageBuilderTest {
             assertSame(fullA.getGroups(), fullB.getGroups());
             assertNotSame(emptyA.getGroups(), fullA.getGroups());
             assertEquals(List.of(group), fullB.getGroups());
-            // The cache skips only the copy; other mods still hear about every page
+            // Checks other mods still hear.
             assertEquals(4, fired.get());
         });
     }
@@ -222,11 +222,11 @@ class ConfigPageBuilderTest {
             ConfigPageBuilder builder = new ConfigPageBuilder(id, NAME).addGroup(own);
             OptionPage first = builder.build();
             OptionPage second = builder.build();
-            // The supplier runs once per build, its group lands after the builder's, and the first page's extra never reaches the second
+            // Checks the supplier.
             assertEquals(2, supplied.size());
             assertEquals(List.of(own, supplied.get(0)), first.getGroups());
             assertEquals(List.of(own, supplied.get(1)), second.getGroups());
-            // The builder's own groups are all it checks, so an extra may still be added by hand
+            // Checks a hand added extra.
             OptionGroup adopted = supplied.get(0);
             OptionPage third = builder.addGroup(adopted).build();
             assertEquals(List.of(own, adopted, supplied.get(2)), third.getGroups());
@@ -248,7 +248,7 @@ class ConfigPageBuilderTest {
                 builder.addGroup(late);
             }
         }, () -> {
-            // The page took its copy before the event fired, so the add neither shows up on it nor disturbs it
+            // Checks an add during the event.
             OptionPage during = builder.build();
             assertTrue(added.get());
             assertEquals(List.of(first), during.getGroups());
@@ -271,7 +271,7 @@ class ConfigPageBuilderTest {
             OptionGroup group = group("failing_group");
             ConfigPageBuilder builder = new ConfigPageBuilder(id, NAME).addGroup(group);
             assertSame(failure, assertThrowsExactly(IllegalStateException.class, builder::build));
-            // The copy made before the failure is still right, and later adds still invalidate it
+            // Checks the copy after a failure.
             assertEquals(List.of(group), builder.build().getGroups());
             OptionGroup more = group("failing_more");
             assertEquals(List.of(group, more), builder.addGroup(more).build().getGroups());
@@ -291,7 +291,7 @@ class ConfigPageBuilderTest {
         return builder.build();
     }
 
-    // Runs the body with the handler on the page construction bus, and takes it off again however the body ends
+    // Runs the body with a page handler.
     private static void listening(EventHandlerRegistrar.Handler<OptionPageConstructionEvent> handler, Executable body) throws Throwable {
         OptionPageConstructionEvent.BUS.addListener(handler);
         try {

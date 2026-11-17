@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class OptionIdentifierTest {
-    // Ids are interned JVM-wide, so every pair this class makes lives under its own mod ids
+    // Mod id of this class's ids.
     private static final String MOD = "option_identifier_test";
 
     @Test
@@ -71,16 +71,16 @@ class OptionIdentifierTest {
         assertSame(made, OptionIdentifier.create("intern_mod", "new"));
         assertSame(made, OptionIdentifier.create("intern_mod", "new", void.class));
         assertSame(made, OptionIdentifier.intern("intern_mod", "new"));
-        // ...and still refuses a typed create, as one made by create would
+        // Checks a typed create is refused.
         assertThrows(IllegalArgumentException.class, () -> OptionIdentifier.create("intern_mod", "new", Integer.class));
         assertSame(void.class, made.getType());
-        // A typed pair is answered as it is, where an untyped create refuses it
+        // Checks a typed pair.
         OptionIdentifier<Integer> typed = OptionIdentifier.create("intern_mod", "typed", Integer.class);
         assertSame(typed, OptionIdentifier.intern("intern_mod", "typed"));
         assertSame(Integer.class, typed.getType());
         assertThrows(IllegalArgumentException.class, () -> OptionIdentifier.create("intern_mod", "typed"));
         assertSame(typed, OptionIdentifier.intern("intern_mod", "typed"));
-        // The empty sentinel is a pair like any other, so it is never duplicated
+        // Checks the empty sentinel.
         assertSame(OptionIdentifier.EMPTY, OptionIdentifier.intern("", ""));
         assertSame(Void.class, OptionIdentifier.EMPTY.getType());
         // Case and the mod id both tell pairs apart
@@ -90,7 +90,7 @@ class OptionIdentifierTest {
 
     @Test
     void theHashIsObjectsHashOfModAndPath() {
-        // The value Objects.hash always gave, so hashed collections built before keep their order and buckets
+        // Checks the hash values.
         String[][] pairs = {
                 {"mod", "path"}, {"", ""}, {"a", ""}, {"", "a"}, {"ab", "c"}, {"a", "bc"},
                 {"hash_mod", "Aa"}, {"hash_mod", "BB"}, {"ü", "∂/x"}, {"😀", "\u0000"}};
@@ -102,7 +102,7 @@ class OptionIdentifierTest {
         // Equal pairs hash alike whatever their types
         OptionIdentifier<Integer> typed = OptionIdentifier.create("hash_mod", "typed", Integer.class);
         assertEquals(Objects.hash("hash_mod", "typed"), typed.hashCode());
-        // Ids work as hash keys: each pair finds its own entry
+        // Checks ids as hash keys.
         Map<OptionIdentifier<?>, String> map = new HashMap<>();
         for (String[] pair : pairs) {
             map.put(OptionIdentifier.intern(pair[0], pair[1]), pair[0] + ":" + pair[1]);
@@ -119,13 +119,13 @@ class OptionIdentifierTest {
         int[] sink = {0};
         long allocated = allocatedBy(() -> sink[0] += id.hashCode());
         assertEquals(id.hashCode() * 120_000, sink[0]);
-        // A varargs array per call would be at least 2.4 MB here; the slack covers the measuring calls themselves
+        // Checks the allocation.
         assertTrue(allocated < 16_384, allocated + " bytes allocated");
     }
 
     @Test
     void pairsAreInternedByContentNotByStringIdentity() {
-        // Strings built at runtime are other instances than the literals, and still find the same id
+        // Checks runtime built strings.
         OptionIdentifier<Void> literal = OptionIdentifier.create(MOD, "content");
         String mod = new String(MOD.toCharArray());
         String path = new StringBuilder("con").append("tent").toString();
@@ -142,7 +142,7 @@ class OptionIdentifierTest {
     @Test
     void everyPartOfThePairTellsIdsApart() {
         OptionIdentifier<?> ab = OptionIdentifier.intern(MOD + "_a", "b");
-        // Swapped parts, a different case in either part, a trailing space or a prefix are all other pairs
+        // Checks the other pairs.
         List<OptionIdentifier<?>> others = List.of(
                 OptionIdentifier.intern("b", MOD + "_a"),
                 OptionIdentifier.intern(MOD + "_A", "b"),
@@ -164,7 +164,7 @@ class OptionIdentifierTest {
 
     @Test
     void pairsThatPrintAlikeStayApart() {
-        // A colon in either part makes toString ambiguous, but the pair is what identifies the id
+        // Checks colons in the parts.
         OptionIdentifier<?> left = OptionIdentifier.intern(MOD + ":x", "y");
         OptionIdentifier<?> right = OptionIdentifier.intern(MOD, "x:y");
         assertEquals(left.toString(), right.toString());
@@ -179,7 +179,7 @@ class OptionIdentifierTest {
 
     @Test
     void pairsWithCollidingHashesStayApart() {
-        // "Aa" and "BB" share String.hashCode, so these pairs share a hash as well
+        // Checks colliding hashes.
         OptionIdentifier<?> aa = OptionIdentifier.intern(MOD, "collide_Aa");
         OptionIdentifier<?> bb = OptionIdentifier.intern(MOD, "collide_BB");
         assertEquals(aa.hashCode(), bb.hashCode());
@@ -231,7 +231,7 @@ class OptionIdentifierTest {
         assertTrue(OptionIdentifier.isPresent(noMod));
         assertEquals(MOD + ":", noPath.toString());
         assertEquals(":" + MOD, noMod.toString());
-        // The sentinel is the ("", "") pair typed Void, so only that exact type gets it back from create
+        // Checks the sentinel type.
         OptionIdentifier<Void> empty = OptionIdentifier.EMPTY;
         assertEquals("", empty.getModId());
         assertEquals("", empty.getPath());
@@ -247,7 +247,7 @@ class OptionIdentifierTest {
 
     @Test
     void createHandsBackExactlyTheTypeItWasAskedFor() {
-        // Every kind of class: primitive, wrapper, void, array, enum, interface, abstract, nested and generic raw
+        // Checks every kind of class.
         Class<?>[] types = {int.class, Integer.class, boolean.class, Boolean.class, void.class, Void.class, Object.class,
                 String.class, int[].class, Integer[].class, int[][].class, RetentionPolicy.class, CharSequence.class,
                 Number.class, Map.Entry.class, List.class};
@@ -262,7 +262,7 @@ class OptionIdentifierTest {
 
     @Test
     void anyOtherTypeIsRefusedEvenWhenItHoldsTheSameValues() {
-        // A primitive and its wrapper, void and Void, a supertype or subtype, an array and its component type: all refused both ways
+        // Checks the refused type clashes.
         Class<?>[][] clashes = {{int.class, Integer.class}, {void.class, Void.class}, {Object.class, String.class},
                 {Number.class, Integer.class}, {CharSequence.class, String.class}, {int[].class, int.class},
                 {int[].class, Integer[].class}, {Object[].class, String[].class}, {int[].class, int[][].class}};
@@ -273,7 +273,7 @@ class OptionIdentifierTest {
                 String path = "clash/" + made.getName() + "/" + asked.getName();
                 OptionIdentifier<?> id = OptionIdentifier.create(MOD, path, made);
                 clash(MOD + ":" + path, asked, made, () -> OptionIdentifier.create(MOD, path, asked));
-                // The refused call changed nothing: the pair keeps its type and its instance
+                // Checks a refused call changes nothing.
                 assertSame(made, id.getType());
                 assertSame(id, OptionIdentifier.create(MOD, path, made));
                 assertSame(id, OptionIdentifier.intern(MOD, path));
@@ -300,18 +300,18 @@ class OptionIdentifierTest {
         npe("Path must not be null", () -> OptionIdentifier.create(MOD + "_null", null, Integer.class));
         npe("Path must not be null", () -> OptionIdentifier.intern(MOD + "_null", null));
         npe("Type must not be null", () -> OptionIdentifier.create(MOD + "_null", "null_type", null));
-        // The type is checked first, so a call that is wrong in every part names the type
+        // Checks the type is checked first.
         npe("Type must not be null", () -> OptionIdentifier.create(null, null, null));
         npe("Mod id must not be null", () -> OptionIdentifier.create(null, null));
         npe("Mod id must not be null", () -> OptionIdentifier.intern(null, null));
-        // Not even the mod got an entry, so the refused calls made nothing at all
+        // Checks nothing was made.
         assertFalse(mods().containsKey(MOD + "_null"));
         assertFalse(mods().containsKey(null));
-        // The pairs were not poisoned: they are made with the type of the first call that names them fully
+        // Checks the pairs were not poisoned.
         OptionIdentifier<Integer> typed = OptionIdentifier.create(MOD + "_null", "null_type", Integer.class);
         assertSame(Integer.class, typed.getType());
         assertSame(void.class, OptionIdentifier.intern(MOD + "_null", "null_path").getType());
-        // A null type is refused on a pair that exists as well, and does not change it
+        // Checks a null type on an existing pair.
         npe("Type must not be null", () -> OptionIdentifier.create(MOD + "_null", "null_type", null));
         assertSame(typed, OptionIdentifier.create(MOD + "_null", "null_type", Integer.class));
     }
@@ -335,7 +335,7 @@ class OptionIdentifierTest {
     void castRetypesWithoutCheckingOrCopying() {
         OptionIdentifier<Integer> typed = OptionIdentifier.create(MOD, "cast", Integer.class);
         OptionIdentifier<String> wrong = typed.cast();
-        // Only the static type changed; the id still reports the type it was made with
+        // Checks the reported type.
         assertSame(typed, wrong);
         assertSame(Integer.class, ((OptionIdentifier<?>) wrong).getType());
         assertSame(typed, wrong.<Integer>cast());
@@ -351,7 +351,7 @@ class OptionIdentifierTest {
         assertEquals(a.hashCode(), b.hashCode());
         assertFalse(a.equals(other) || other.equals(a));
         assertFalse(a.equals(null));
-        // Not its text, not a lookalike object, not the sentinel
+        // Checks the unequal objects.
         assertFalse(a.equals(a.toString()));
         assertFalse(a.equals(new Object()));
         assertFalse(a.equals(OptionIdentifier.EMPTY));
@@ -405,7 +405,7 @@ class OptionIdentifierTest {
         OptionIdentifier<Integer> typed = OptionIdentifier.create(mod, typedPath, Integer.class);
         OptionIdentifier<Void> untyped = OptionIdentifier.create(mod, untypedPath);
         int[] hits = {0};
-        // A throwaway id per call, as interning by a probe instance needs, would be at least 24 bytes each: 2.9 MB per lookup kind here
+        // Checks the lookups allocate nothing.
         long typedBytes = allocatedBy(() -> hits[0] += OptionIdentifier.create(mod, typedPath, Integer.class) == typed ? 1 : 0);
         long untypedBytes = allocatedBy(() -> hits[0] += OptionIdentifier.create(mod, untypedPath) == untyped ? 1 : 0);
         long internBytes = allocatedBy(() -> hits[0] += OptionIdentifier.intern(mod, typedPath) == typed ? 1 : 0);
@@ -428,7 +428,7 @@ class OptionIdentifierTest {
             for (int t = 0; t < threads; t++) {
                 int thread = t;
                 results.add(pool.submit(() -> {
-                    // Each thread builds its own strings, so only content can join them
+                    // Builds the strings per thread.
                     String mod = new String((MOD + "_race").toCharArray());
                     OptionIdentifier<?>[] got = new OptionIdentifier<?>[pairs];
                     start.await();
@@ -494,7 +494,7 @@ class OptionIdentifierTest {
                 assertTrue(winner.getType() == Integer.class || winner.getType() == String.class, winner.getType().getName());
                 for (int t = 0; t < threads; t++) {
                     Object got = all.get(t)[p];
-                    // A thread asking for the winning type got the winner, every other thread was refused
+                    // Checks the race result.
                     if (types[t % types.length] == winner.getType()) {
                         assertSame(winner, got, "p" + p);
                     } else {
@@ -509,7 +509,7 @@ class OptionIdentifierTest {
 
     @Test
     void aFreshClassStartsWithOnlyTheSentinelInterned() throws Exception {
-        // The table is declared before EMPTY, so the sentinel interns itself while the class initialises
+        // Checks the sentinel interns itself.
         FreshClasses fresh = new FreshClasses(OptionIdentifier.class);
         Class<?> ids = fresh.initialise(OptionIdentifier.class);
         assertNotSame(OptionIdentifier.class, ids);
@@ -518,7 +518,7 @@ class OptionIdentifierTest {
         assertEquals(Set.of(""), table.keySet());
         assertEquals(Map.of("", empty), Map.copyOf(table.get("")));
         assertSame(empty, ids.getMethod("intern", String.class, String.class).invoke(null, "", ""));
-        // The fresh class's ids never meet this one's, even for the same pair
+        // Checks fresh classes stay apart.
         Object own = ids.getMethod("create", String.class, String.class).invoke(null, MOD, "fresh");
         assertNotSame(OptionIdentifier.create(MOD, "fresh"), own);
         assertNotEquals(OptionIdentifier.create(MOD, "fresh"), own);
@@ -527,7 +527,7 @@ class OptionIdentifierTest {
         assertInstanceOf(IllegalArgumentException.class, refused.getCause());
     }
 
-    // Refused as a clash naming the id, the type asked for and the type the pair has
+    // Checks a clash refusal.
     private static void clash(String id, Class<?> asked, Class<?> existing, Executable call) {
         String message = assertThrowsExactly(IllegalArgumentException.class, call).getMessage();
         assertEquals("OptionIdentifier '" + id + "' created with differing class type " + asked + " from existing instance " + existing, message);
@@ -542,12 +542,12 @@ class OptionIdentifierTest {
         return Statics.get(OptionIdentifier.class, "IDENTIFIERS");
     }
 
-    // Every id interned so far in this JVM; tests here run on one thread
+    // Returns the number of interned ids.
     private static int interned() {
         return mods().values().stream().mapToInt(Map::size).sum();
     }
 
-    // Bytes the current thread allocates over 100k runs of the call after 20k warm-up runs, so the JIT has compiled it first
+    // Returns the bytes a call allocates after warm up.
     private static long allocatedBy(Runnable call) {
         ThreadMXBean bean = ManagementFactory.getThreadMXBean();
         assumeTrue(bean instanceof com.sun.management.ThreadMXBean);
@@ -564,7 +564,7 @@ class OptionIdentifierTest {
         return threads.getCurrentThreadAllocatedBytes() - before;
     }
 
-    // Waits for a task and rethrows what failed inside it, so a broken assertion in a thread reads like any other
+    // Waits for a task and rethrows its failure.
     private static <T> T join(Future<T> task) throws Exception {
         try {
             return task.get(60, TimeUnit.SECONDS);

@@ -40,7 +40,7 @@ class OcclusionTest {
         device.makeInactive();
     }
 
-    // Records every reported section by position, split by whether it passed the visibility tests
+    // Records the reported sections.
     private static final class Seen implements OcclusionCuller.Visitor {
         final List<String> visible = new ArrayList<>();
         final List<String> hidden = new ArrayList<>();
@@ -96,7 +96,7 @@ class OcclusionTest {
         assertFalse(GraphDirectionSet.contains(fromWest, GraphDirection.DOWN));
         int fromEast = VisibilityEncoding.getConnections(encoding, GraphDirectionSet.of(GraphDirection.EAST));
         assertFalse(GraphDirectionSet.contains(fromEast, GraphDirection.WEST));
-        // The flood fill works on a copy, so the opacity is still there to box afterwards
+        // Checks the opacity copy.
         int[] walls = walled.computeOccluderBoxes();
         assertNotNull(walls);
         assertTrue(walls.length > 1);
@@ -123,7 +123,7 @@ class OcclusionTest {
         assertSame(origin, lattice.getRenderSection(0, 0, 0));
         assertNull(lattice.getRenderSection(0, 1, 0));
         assertThrows(IllegalStateException.class, () -> lattice.attach(origin));
-        // Nothing is installed before the first window, so no metadata change can affect a search yet
+        // Checks nothing before the first window.
         assertFalse(lattice.updateSectionMetadata(0, 0, 0, VisibilityEncoding.NULL));
 
         lattice.ensureWindowCovers(new Vector3i(0, 0, 0), 32f);
@@ -173,23 +173,23 @@ class OcclusionTest {
         lattice.ensureWindowCovers(new Vector3i(0, 0, 0), 32f);
         // A small move stays inside the window
         lattice.ensureWindowCovers(new Vector3i(2, 0, 0), 32f);
-        // Moving east slides the window along x, bringing in the sections that entered it
+        // Checks moving east.
         lattice.ensureWindowCovers(new Vector3i(4, 0, 0), 32f);
         Seen east = search(lattice, at(4, 0, 0), 32f, true, true, 1);
         assertEquals(List.of("2,0,0", "3,0,0", "4,0,0", "5,0,0", "6,0,0"), east.visible.stream().sorted().toList());
-        // Sections past the distance are still reported, so the walk can stop at them
+        // Checks far sections.
         assertEquals(List.of("1,0,0", "7,0,0"), east.hidden.stream().sorted().toList());
         // Moving along z slides plane by plane
         lattice.ensureWindowCovers(new Vector3i(4, 0, 5), 32f);
         assertEquals(5, search(lattice, at(4, 0, 0), 32f, true, true, 2).visible.size());
-        // Back west and north at once: the window now ends at x=4
+        // Checks moving back.
         lattice.ensureWindowCovers(new Vector3i(-2, 0, 0), 32f);
         assertEquals(List.of("0,0,0", "1,0,0", "2,0,0", "3,0,0", "4,0,0"), search(lattice, at(2, 0, 0), 32f, true, true, 3).visible.stream().sorted().toList());
         // A jump with no overlap rebuilds from scratch
         lattice.ensureWindowCovers(new Vector3i(500, 0, 500), 32f);
         lattice.ensureWindowCovers(new Vector3i(4, 0, 0), 32f);
         assertEquals(5, search(lattice, at(4, 0, 0), 32f, true, true, 4).visible.size());
-        // A longer distance needs a larger window, which is reallocated and refilled
+        // Checks a longer distance.
         lattice.ensureWindowCovers(new Vector3i(4, 0, 0), 200f);
         assertEquals(13, search(lattice, at(4, 0, 0), 200f, true, true, 5).visible.size());
     }
@@ -201,7 +201,7 @@ class OcclusionTest {
             lattice.attach(section(x, 0, 0));
         }
         lattice.ensureWindowCovers(new Vector3i(-2, 0, 0), 32f);
-        // Two sections west of the loaded row: the scan seeds what lies within the distance on the camera's plane
+        // Checks the seed scan.
         Seen seen = search(lattice, at(-2, 0, 0), 32f, true, true, 1);
         assertEquals(List.of("0,0,0"), seen.visible);
         assertEquals(List.of("1,0,0"), seen.hidden);
@@ -239,7 +239,7 @@ class OcclusionTest {
         // Cells reached along several paths widen their aperture rather than being queued twice
         assertEquals(25, search(lattice, at(0, 0, 0), 64f, true, true, 1).visible.size());
         assertEquals(25, search(lattice, at(0, 0, 0), 64f, true, false, 2).visible.size());
-        // The camera section is always drawn; everything else fails a frustum that sees nothing
+        // Checks the camera section.
         Seen blind = new Seen();
         lattice.findVisible(blind, new Viewport(Sections.NOTHING, new Vector3d(8, 8, 8)), 64f, regions.getRegionIdsLength(), true, true, 3);
         assertEquals(List.of("0,0,0"), blind.visible);
@@ -263,12 +263,12 @@ class OcclusionTest {
         SectionLattice.VisibilitySnapshot lit = lattice.findShadowVisible(sun, at(0, 0, 0), 64f, regions.getRegionIdsLength(), new Vector3f(0, 1, 0), 1);
         assertEquals(6, sun.visible.size());
         assertTrue(lit.isSectionVisible(0, 2, 0, 1));
-        // A slanted light still only steps toward the light; a shadow frustum that sees nothing drops every root
+        // Checks a slanted light.
         assertFalse(lattice.findShadowVisible(new Seen(), at(0, 0, 0), 64f, regions.getRegionIdsLength(), new Vector3f(0.6f, 0.8f, 0), 2).isSectionVisible(5, 5, 5, 2));
         Seen blind = new Seen();
         lattice.findShadowVisible(blind, new Viewport(Sections.NOTHING, new Vector3d(8, 8, 8)), 64f, regions.getRegionIdsLength(), new Vector3f(0, 1, 0), 3);
         assertTrue(blind.visible.isEmpty());
-        // Without a light vector it is the plain frustum scan, on its own visit state
+        // Checks no light vector.
         Seen scan = new Seen();
         lattice.findShadowVisible(scan, at(0, 0, 0), 64f, regions.getRegionIdsLength(), null, 4);
         assertEquals(6, scan.visible.size());
@@ -291,7 +291,7 @@ class OcclusionTest {
             }
         }
         int[] boxes = slab.computeOccluderBoxes();
-        // The camera stands in open air, with a row of solid sections ahead of it
+        // Places the camera.
         lattice.attach(section(0, 0, 0));
         lattice.attach(section(0, 0, 1));
         for (int z = 2; z <= 8; z++) {
@@ -304,7 +304,7 @@ class OcclusionTest {
             lattice.attach(section);
         }
         lattice.ensureWindowCovers(new Vector3i(0, 0, 0), 160f);
-        // Looking down +z from just in front of the row, so each solid section hides the ones behind it
+        // Looks down +z.
         Matrix4f vp = new Matrix4f().perspective((float) Math.toRadians(70), 16f / 9f, 0.05f, 400f)
                 .lookAt(new Vector3f(0, 0, 0), new Vector3f(0, 0, 1), new Vector3f(0, 1, 0));
         Viewport viewport = new Viewport(Sections.EVERYTHING, new Vector3d(8, 8, 8), vp);
@@ -328,7 +328,7 @@ class OcclusionTest {
         first.setPendingUpdate(ChunkUpdateType.REBUILD);
         lattice.updateSectionMetadata(0, 0, 2, first.getPackedMetadata());
         lattice.findVisible(new Seen(), viewport, 160f, regions.getRegionIdsLength(), true, true, 2);
-        // No view matrix, no raster
+        // Checks no view matrix.
         assertFalse(search(lattice, Sections.viewport(8, 8, 8), 160f, true, true, 3).visible.isEmpty());
     }
 }

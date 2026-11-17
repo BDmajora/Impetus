@@ -21,7 +21,7 @@ public class GlBufferArena {
     // Usage hint of every backing buffer
     private static final GlBufferUsage BUFFER_USAGE = GlBufferUsage.STATIC_DRAW;
 
-    // Size in bytes from which growth adds half the current size instead of doubling it
+    // Size in bytes from which growth adds half the current size.
     private static final int LARGE_ARENA_THRESHOLD_BYTES = 4 * 1024 * 1024;
 
     // Divisor of the growth step of a large arena
@@ -401,7 +401,7 @@ public class GlBufferArena {
         return total;
     }
 
-    // Compacts or grows the arena so the given number of elements fits in one free segment and rejects a negative count or a deleted arena
+    // Compacts or grows the arena until the elements fit in one free segment.
     public void ensureCapacity(CommandList commandList, int elementCount) {
         Objects.requireNonNull(commandList, "Command list must not be null");
 
@@ -413,7 +413,7 @@ public class GlBufferArena {
         this.reserve(commandList, elementCount);
     }
 
-    // Compacts the arena when the live and requested elements fill at most half of it and grows it otherwise
+    // Compacts the arena when it is at most half full and grows it otherwise.
     void reserve(CommandList commandList, long elementCount) {
         long required = this.used + elementCount;
 

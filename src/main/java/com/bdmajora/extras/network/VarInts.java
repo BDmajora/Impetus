@@ -4,7 +4,7 @@ import io.netty.buffer.ByteBuf;
 
 // Readers and writers of variable length integers.
 public final class VarInts {
-    // Constant size by leading zeros.
+    // Encoded VarInt size for each count of leading zero bits.
     private static final int[] SIZE_BY_LEADING_ZEROS = new int[33];
 
     static {
@@ -18,7 +18,7 @@ public final class VarInts {
     private VarInts() {
     }
 
-    // Handles the size.
+    // Returns the encoded size of a VarInt in bytes.
     public static int size(int value) {
         return SIZE_BY_LEADING_ZEROS[Integer.numberOfLeadingZeros(value)];
     }

@@ -78,7 +78,7 @@ class BoosterTest {
         return (MockedStatic<T>) gl.get(type);
     }
 
-    // A quad with position, texture, colour, normal and padding, every kind the fixed-function path binds
+    // Returns a quad of every attribute kind.
     private static BufferBuilder quad() {
         BufferBuilder builder = new BufferBuilder(256);
         builder.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_TEX_COLOR_NORMAL);
@@ -89,7 +89,7 @@ class BoosterTest {
         return builder;
     }
 
-    // The test classpath's GL32 is Cleanroom's merge, carrying both LWJGL3's long glFenceSync and the bridge's GLSync one, which javac cannot tell apart; the long form is the one StreamingUploader links against
+    // Calls glFenceSync reflectively.
     private static long fenceSync(int condition, int flags) throws Throwable {
         return (long) MethodHandles.publicLookup()
                 .findStatic(GL32.class, "glFenceSync", MethodType.methodType(long.class, int.class, int.class))
@@ -156,8 +156,7 @@ class BoosterTest {
         ByteBuffer mapped = ByteBuffer.allocateDirect(4 * REGION_SIZE);
         gl(GL30.class).when(() -> GL30.glMapBufferRange(anyInt(), anyLong(), anyLong(), anyInt(), any())).thenReturn(mapped);
         long fence = 0x1234L;
-        // An answer, not thenReturn: reflection may resolve either glFenceSync for the recorded call (which one depends on what mocked GL32 earlier in the JVM), and thenReturn
-        // checks the value against that method's return type; stubs match on name and parameters, so the long call gets the fence either way
+        // Stubs glFenceSync with an answer.
         gl(GL32.class).when(() -> fenceSync(anyInt(), anyInt())).thenAnswer(invocation -> fence);
         assertTrue(StreamingUploader.draw(quad()));
         assertTrue((boolean) Mixins.<Boolean>get(StreamingUploader.class, "persistent"));
@@ -170,7 +169,7 @@ class BoosterTest {
         long[] fences = Mixins.get(StreamingUploader.class, "fences");
         assertEquals(fence, fences[0]);
 
-        // A next region the GPU still reads sends this draw down vanilla's path, changing nothing
+        // Checks a busy next region.
         fences[2] = 0x2222L;
         gl(GL32.class).when(() -> GL32.glClientWaitSync(anyLong(), anyInt(), anyLong())).thenReturn(GL32.GL_TIMEOUT_EXPIRED);
         Mixins.set(StreamingUploader.class, "cursor", REGION_SIZE);
@@ -208,7 +207,7 @@ class BoosterTest {
         gl(GL15.class).when(GL15::glGenBuffers).thenReturn(7);
         gl(GL30.class).when(GL30::glGenVertexArrays).thenReturn(11, 12);
 
-        // The layout's data starts on a whole vertex, and the draw starts at that vertex
+        // Checks the vertex aligned start.
         Mixins.set(StreamingUploader.class, "buffer", -1);
         assertTrue(StreamingUploader.draw(quad()));
         Mixins.set(StreamingUploader.class, "cursor", 5);
@@ -228,7 +227,7 @@ class BoosterTest {
         assertTrue(StreamingUploader.draw(plain));
         gl(GL30.class).verify(() -> GL30.glBindVertexArray(12), Mockito.times(2));
 
-        // A full cache, or no VAOs at all, keeps the per-draw pointers
+        // Checks a full cache.
         java.util.Map<Object, Integer> cache = Mixins.get(StreamingUploader.class, "VERTEX_ARRAYS");
         for (int i = cache.size(); i < StreamingUploader.MAX_CACHED_FORMATS; i++) {
             cache.put(new Object(), 99);
@@ -252,7 +251,7 @@ class BoosterTest {
         gl(GL30.class).when(() -> GL30.glMapBufferRange(anyInt(), anyLong(), anyLong(), anyInt(), any())).thenReturn(mapped);
         gl(GL30.class).when(GL30::glGenVertexArrays).thenReturn(11);
         assertTrue(StreamingUploader.draw(quad()));
-        // The second region starts off a whole vertex, so the draw is pushed up to the next one
+        // Checks the pushed draw.
         Mixins.set(StreamingUploader.class, "region", 1);
         Mixins.set(StreamingUploader.class, "cursor", 0);
         assertTrue(StreamingUploader.draw(quad()));
@@ -313,7 +312,7 @@ class BoosterTest {
             sum += value;
             squares += value * value;
         }
-        // A standard normal: mean near zero, variance near one
+        // Checks the normal distribution.
         assertEquals(0.0, sum / n, 0.02);
         assertEquals(1.0, squares / n, 0.02);
         float f = random.nextFloat();

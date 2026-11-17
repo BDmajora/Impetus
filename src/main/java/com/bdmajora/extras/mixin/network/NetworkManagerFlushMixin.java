@@ -53,6 +53,10 @@ public abstract class NetworkManagerFlushMixin implements FlushBatch.Deferrable 
             this.channel.config().setAutoRead(false);
         }
         final boolean defer = listeners == null && FlushBatch.shouldDefer();
+        // Marks the connection for a flush at the end of the tick.
+        if (defer) {
+            this.impetus$flushPending = true;
+        }
         if (this.channel.eventLoop().inEventLoop()) {
             this.impetus$write(packet, listeners, packetState, switchState, defer);
         } else {
@@ -60,7 +64,7 @@ public abstract class NetworkManagerFlushMixin implements FlushBatch.Deferrable 
         }
     }
 
-    // Handles write.
+    // Writes a packet on the event loop and holds the flush when the tick batches.
     private void impetus$write(Packet<?> packet, GenericFutureListener<? extends Future<? super Void>>[] listeners,
                                // Connection state and switch and defer flags.
                                EnumConnectionState packetState, boolean switchState, boolean defer) {
@@ -69,7 +73,6 @@ public abstract class NetworkManagerFlushMixin implements FlushBatch.Deferrable 
         }
         ChannelFuture future;
         if (defer) {
-            this.impetus$flushPending = true;
             future = this.channel.write(packet);
         } else {
             future = this.channel.writeAndFlush(packet);
@@ -80,7 +83,7 @@ public abstract class NetworkManagerFlushMixin implements FlushBatch.Deferrable 
         future.addListener(ChannelFutureListener.FIRE_EXCEPTION_ON_FAILURE);
     }
 
-    // Handles flush deferred.
+    // Flushes what this tick wrote.
     @Override
     public void impetus$flushDeferred() {
         if (this.impetus$flushPending) {

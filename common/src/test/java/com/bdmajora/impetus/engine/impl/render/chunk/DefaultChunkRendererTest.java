@@ -42,7 +42,7 @@ class DefaultChunkRendererTest {
         commands = device.createCommandList();
         regions = new RenderRegionManager(commands, ChunkBuildBuffersTest.CONFIG);
         Mockito.when(TestGl.gl().glGetUniformLocation(Mockito.anyInt(), Mockito.any())).thenReturn(1);
-        // These tests count client-array multi-draws; another test applying the default config would switch them to indirect
+        // Fixes the multi draw mode.
         ImpetusRuntimeOptions.multiDrawIndirect = false;
     }
 
@@ -52,7 +52,7 @@ class DefaultChunkRendererTest {
         device.makeInactive();
     }
 
-    // A section with real geometry in the given pass, so the region has storage and a slice mask
+    // Returns a section with geometry.
     private RenderSection built(int x, int z, TerrainRenderPass pass, boolean indexed) {
         RenderSection section = Sections.section(regions, x, 0, z);
         var resources = section.getRegion().createResources(commands);
@@ -68,7 +68,7 @@ class DefaultChunkRendererTest {
         return section;
     }
 
-    // Searched from above the world, which seeds every loaded section on the top layer whether or not they touch
+    // Searches from above the world.
     private SortedRenderLists lists(RenderSection... sections) {
         return Sections.renderLists(regions, Sections.viewport(8, 24, 8), sections);
     }
@@ -82,7 +82,7 @@ class DefaultChunkRendererTest {
             super(device, ChunkBuildBuffersTest.CONFIG, new TestFogService());
         }
 
-        // The base default is culling on; the flag only turns it off
+        // Checks the culling default.
         @Override
         protected boolean useBlockFaceCulling() {
             return cull && super.useBlockFaceCulling();
@@ -112,7 +112,7 @@ class DefaultChunkRendererTest {
         // The second frame reuses the program and the region tessellations
         renderer.render(matrices, commands, lists(near, far), Passes.SOLID, camera, camera);
         Mockito.verify(TestGl.gl(), Mockito.times(1)).glLinkProgram(Mockito.anyInt());
-        // Looking from below, the top faces are culled and nothing draws
+        // Checks looking from below.
         CameraTransform below = new CameraTransform(8.5, -100, 8.5);
         renderer.render(matrices, commands, lists(near), Passes.SOLID, below, below);
         Mockito.verify(TestGl.gl(), Mockito.times(4)).glMultiDrawElementsBaseVertex(Mockito.anyInt(), Mockito.anyLong(), Mockito.anyInt(), Mockito.anyLong(), Mockito.anyInt(), Mockito.anyLong());

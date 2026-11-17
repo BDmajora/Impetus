@@ -42,7 +42,7 @@ public abstract class EntityMixin implements FlagCache {
         cir.setReturnValue((this.equilibrium$flags & 1 << flag) != 0);
     }
 
-    // Handles invalidate flags.
+    // Drops the cached flags after a data watcher write.
     @Override
     public void equilibrium$invalidateFlags() {
         this.equilibrium$flagsValid = false;

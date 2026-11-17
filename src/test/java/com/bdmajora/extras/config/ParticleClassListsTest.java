@@ -9,8 +9,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.Map;
-import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -59,10 +57,7 @@ class ParticleClassListsTest {
         config.get(ParticleClassLists.CATEGORY, "discoveredClasses", new String[0]).set(new String[] {"x.Y|Why", "z.W", "", "|bad"});
         ParticleClassLists.load(config);
         assertArrayEquals(new String[] {"a.B", "c.D"}, registry.getDisabledClassesArray());
-        Map<String, String> discovered = registry.getDiscoveredClasses();
-        assertEquals("Why", discovered.get("x.Y"));
-        assertEquals("W", discovered.get("z.W"));
-        assertEquals(Set.of("x.Y", "z.W", "|bad"), discovered.keySet());
+        assertArrayEquals(new String[] {"x.Y|Why", "z.W|W", "|bad||bad"}, registry.getDiscoveredClassesArray());
     }
 
     // Checks that save writes both sorted lists and that a reload restores them

@@ -1,6 +1,6 @@
 package com.bdmajora.impetus.engine.impl.asm.elsewhere;
 
-// Proxy fixtures in another package, holding types a proxy in the generator's package cannot access
+// Proxy fixtures in another package.
 public final class Elsewhere {
     private Elsewhere() {
     }
@@ -9,7 +9,7 @@ public final class Elsewhere {
         int visible();
     }
 
-    // package-private, so a proxy in another package may neither implement it nor name it in a call
+    // Package private interface.
     interface Hidden {
         int hidden();
 
@@ -18,7 +18,7 @@ public final class Elsewhere {
         }
     }
 
-    // public, but its methods all come from the package-private interface
+    // Public class with hidden methods.
     public interface Exposed extends Hidden {
     }
 
@@ -34,7 +34,7 @@ public final class Elsewhere {
         }
     }
 
-    // keeps Hidden's default, so the only declaration of fallback sits in an inaccessible interface
+    // Keeps the hidden default.
     public static class Through implements Exposed {
         @Override
         public int hidden() {
@@ -57,7 +57,7 @@ public final class Elsewhere {
         return Hidden.class;
     }
 
-    // calls through the public interface, the way code in this package would
+    // Calls through the public interface.
     public static int callHidden(Exposed exposed) {
         return exposed.hidden();
     }

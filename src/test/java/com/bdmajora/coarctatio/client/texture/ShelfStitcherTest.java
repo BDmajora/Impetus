@@ -13,7 +13,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ShelfStitcherTest {
-    // A sprite with nothing but a name and a size, which is all the packer looks at
+    // Returns a sprite holder of a name and size.
     private static Stitcher.Holder holder(String name, int width, int height) {
         TextureAtlasSprite sprite = Mc.uninitialized(TextureAtlasSprite.class);
         Mixins.set(sprite, "iconName", name);
@@ -56,7 +56,7 @@ class ShelfStitcherTest {
 
     @Test
     void theGapOverAShortSpriteIsRefilledByLaterOnes() {
-        // A big sprite opens a row, a smaller one beside it leaves a gap over itself, and the small ones land in it
+        // Builds the holders.
         Stitcher.Holder[] holders = {
                 holder("big", 64, 64),
                 holder("medium", 32, 32),
@@ -65,7 +65,7 @@ class ShelfStitcherTest {
         };
         ShelfStitcher.Result result = ShelfStitcher.stitch(holders, 512, 512);
         assertEquals(4, result.placements.size());
-        // Everything fits in the one row the big sprite opened, the small ones in the space above the medium one
+        // Checks the packed height.
         assertEquals(64, result.height);
         for (ShelfStitcher.Placement placement : result.placements) {
             assertTrue(placement.y + placement.holder.getHeight() <= 64);

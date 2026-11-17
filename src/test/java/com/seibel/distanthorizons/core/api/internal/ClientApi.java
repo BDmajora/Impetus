@@ -1,6 +1,6 @@
 package com.seibel.distanthorizons.core.api.internal;
 
-// Stands in for Distant Horizons' internal ClientApi, whose render entry points the shadow pass reaches by handle
+// Stand-in for Distant Horizons' ClientApi.
 public final class ClientApi {
     public static final ClientApi INSTANCE = new ClientApi();
     public static int lods;

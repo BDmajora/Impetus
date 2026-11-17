@@ -92,7 +92,7 @@ class PassScheduleTest {
         // composite then final
         assertEquals(List.of("composite", "final"), schedule.composite.stream().map(pass -> pass.name).toList());
         assertNull(schedule.blitSource);
-        // begin flipped 8 before the gbuffer was baked; deferred flipped 0 and 4 before the translucent one
+        // Checks the pre translucent flips.
         assertEquals(bits(8), schedule.preTranslucentFlips);
         assertEquals(bits(0, 4, 8), schedule.translucentFlips);
         assertNotSame(schedule.gbuffer, schedule.translucentGbuffer);
@@ -141,7 +141,7 @@ class PassScheduleTest {
 
     @Test
     void aFailedDrawStillRunsItsComputesAndAFailedFinalFallsBackToTheBlit() {
-        // Links run shadowcomp's compute, deferred's compute, then deferred's draw, which fails
+        // Stubs the link results.
         when(TestGl.gl().glGetProgrami(anyInt(), eq(35714))).thenReturn(1, 1, 0);
         PassSchedule schedule = build("/deferred.vsh", VERTEX, "/deferred.fsh", fragment("0"),
                 "/deferred.csh", COMPUTE,
@@ -161,9 +161,9 @@ class PassScheduleTest {
         assertNotNull(schedule.shadowComposite.get(0).framebuffer);
         Mockito.clearInvocations(TestGl.gl());
         schedule.destroy();
-        // shadowcomp FBO (it used to leak), blit source, gbuffer and translucent gbuffer
+        // Checks the deleted framebuffers.
         Mockito.verify(TestGl.gl(), Mockito.times(4)).glDeleteFramebuffers(anyInt());
-        // The compute, not the draw programs, which the cache owns
+        // Checks the deleted compute program.
         Mockito.verify(TestGl.gl(), Mockito.times(1)).glDeleteProgram(anyInt());
         for (List<FullscreenPass> family : schedule.families()) {
             assertTrue(family.isEmpty());

@@ -9,7 +9,7 @@ import org.spongepowered.asm.mixin.Mixin;
 // Mixin that changes Minecraft.
 @Mixin(Minecraft.class)
 public class FullscreenToggleMixin {
-    // Handles toggle fullscreen.
+    // Toggles fullscreen through Impetus' window modes.
     @WrapMethod(method = "toggleFullscreen")
     private void impetus$toggleFullscreen(Operation<Void> original) {
         WindowModes.toggle((Minecraft) (Object) this, original::call);

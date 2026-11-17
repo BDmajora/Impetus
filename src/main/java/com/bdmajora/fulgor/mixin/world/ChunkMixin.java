@@ -26,7 +26,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 // Mixin that changes Chunk.
 @Mixin(Chunk.class)
 public abstract class ChunkMixin implements ChunkLightingData, LightingEngineProvider {
-    // Field fulgor horizontals added to the target.
+    // The four horizontal facings.
     @Unique
     private static final EnumFacing[] FULGOR_HORIZONTALS = EnumFacing.Plane.HORIZONTAL.facings();
 
@@ -92,15 +92,15 @@ public abstract class ChunkMixin implements ChunkLightingData, LightingEnginePro
     @Shadow
     protected abstract void setSkylightUpdated();
 
-    // Field lighting engine added to the target.
+    // The world's deferred light engine.
     @Unique
     private LightingEngine fulgor$lightingEngine;
 
-    // Field neighbor light checks added to the target.
+    // Pending light checks along each chunk boundary by light type and side.
     @Unique
     private short[] fulgor$neighborLightChecks;
 
-    // Field light initialized added to the target.
+    // Whether the chunk's light was computed once.
     @Unique
     private boolean fulgor$lightInitialized;
 
@@ -198,7 +198,7 @@ public abstract class ChunkMixin implements ChunkLightingData, LightingEnginePro
         }
     }
 
-    // Helper method recheck gaps for column added to the target.
+    // Rechecks the sky light gaps of one column against its neighbours and returns whether it had any.
     @Unique
     private boolean fulgor$recheckGapsForColumn(WorldChunkSlice slice, int x, int z) {
         int index = x + z * 16;
@@ -225,7 +225,7 @@ public abstract class ChunkMixin implements ChunkLightingData, LightingEnginePro
         return true;
     }
 
-    // Helper method lowest neighbor height added to the target.
+    // Returns the lowest height map value of the loaded horizontal neighbours.
     @Unique
     private int fulgor$lowestNeighborHeight(WorldChunkSlice slice, int x, int z) {
         int lowest = Integer.MAX_VALUE;
@@ -241,7 +241,7 @@ public abstract class ChunkMixin implements ChunkLightingData, LightingEnginePro
         return lowest;
     }
 
-    // Helper method check skylight neighbor height added to the target.
+    // Rechecks the sky light between a column's height and a neighbour's.
     @Unique
     private void fulgor$checkSkylightNeighborHeight(WorldChunkSlice slice, int x, int z, int maxValue) {
         Chunk chunk = slice.getChunkFromWorldCoords(x, z);
@@ -259,7 +259,7 @@ public abstract class ChunkMixin implements ChunkLightingData, LightingEnginePro
         }
     }
 
-    // Helper method update skylight neighbor height added to the target.
+    // Queues sky light checks for every height in a range of a column.
     @Unique
     private void fulgor$updateSkylightNeighborHeight(WorldChunkSlice slice, int x, int z, int startY, int endY) {
         if (endY <= startY || !slice.isLoaded(x, z, 16)) {
@@ -293,7 +293,7 @@ public abstract class ChunkMixin implements ChunkLightingData, LightingEnginePro
         }
     }
 
-    // Returns whether light initialized.
+    // Returns whether the chunk's light was computed once.
     @Override
     public boolean fulgor$isLightInitialized() {
         return this.fulgor$lightInitialized;

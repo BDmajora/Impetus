@@ -25,15 +25,15 @@ import javax.annotation.Nullable;
 // Mixin that changes TileEntityHopper.
 @Mixin(TileEntityHopper.class)
 public abstract class TileEntityHopperMixin extends TileEntity implements IHopper, HopperCacheHolder {
-    // Field destination added to the target.
+    // Remembered inventory the hopper pushes into.
     @Unique
     private HopperInventoryCache equilibrium$destination;
 
-    // Field source added to the target.
+    // Remembered inventory the hopper pulls from.
     @Unique
     private HopperInventoryCache equilibrium$source;
 
-    // Handles source cache.
+    // Returns the source cache and creates it on first use.
     @Override
     public HopperInventoryCache equilibrium$sourceCache() {
         if (this.equilibrium$source == null) {
@@ -43,7 +43,7 @@ public abstract class TileEntityHopperMixin extends TileEntity implements IHoppe
         return this.equilibrium$source;
     }
 
-    // Handles destination cache.
+    // Returns the destination cache and creates it on first use.
     @Override
     public HopperInventoryCache equilibrium$destinationCache() {
         if (this.equilibrium$destination == null) {
@@ -80,7 +80,7 @@ public abstract class TileEntityHopperMixin extends TileEntity implements IHoppe
         return equilibrium$resolveUncached(hopper.getWorld(), x, y, z);
     }
 
-    // Helper method resolve uncached added to the target.
+    // Vanilla getInventoryAtPosition for hoppers that cannot cache.
     @Unique
     @Nullable
     private static IInventory equilibrium$resolveUncached(World world, double x, double y, double z) {

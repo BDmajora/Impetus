@@ -7,9 +7,9 @@ import com.bdmajora.impetus.api.options.structure.OptionFlag;
 import com.bdmajora.impetus.api.options.structure.OptionImpact;
 import com.bdmajora.impetus.api.options.structure.OptionImpl;
 import com.bdmajora.impetus.api.options.structure.OptionPage;
+import com.bdmajora.impetus.api.options.structure.StandardOptions;
 import com.bdmajora.impetus.api.options.structure.OptionStorage;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions;
-import com.bdmajora.impetus.engine.impl.gui.options.CommonOptionPages;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusVideoOptionsController;
 import com.bdmajora.impetus.engine.impl.gui.framework.InteractionContext;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
@@ -17,7 +17,9 @@ import com.bdmajora.impetus.engine.impl.gui.framework.TextFormattingStyle;
 import com.bdmajora.impetus.engine.impl.gui.widgets.SearchBarWidget;
 import com.bdmajora.impetus.engine.impl.notification.ImpetusNotifications;
 import com.bdmajora.impetus.impl.compat.fluidlogged.FluidloggedCompat;
+import com.bdmajora.impetus.impl.gui.overlay.AutosaveIndicator;
 import com.bdmajora.impetus.impl.gui.overlay.ImpetusToastRenderer;
+import com.bdmajora.impetus.impl.world.WorldSaveTracker;
 import com.bdmajora.impetus.umbra.Umbra;
 import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
@@ -89,7 +91,7 @@ class ImpetusGuiTest {
     @TempDir
     static Path home;
 
-    // The option pages capture the client and the Impetus options when they first load, so one of each serves every test here
+    // Client shared by every test.
     private static Minecraft client;
     private static GameSettings settings;
     private static ImpetusGameOptions options;
@@ -149,13 +151,13 @@ class ImpetusGuiTest {
         keyboard = Mockito.mockStatic(Keyboard.class);
         Statics.set(FullscreenResolutions.class, "modes", null);
         display.when(GameWindow::fullscreenModes).thenReturn(new DisplayMode[0]);
-        // The client, font and texture manager are shared by every test here
+        // Clears the shared mocks.
         Mockito.clearInvocations(client, client.fontRenderer, client.getTextureManager());
     }
 
     @AfterEach
     void releaseNatives() {
-        // Null-safe: a mock that failed to open in setup must not keep the ones before it registered for every later suite
+        // Closes every static mock that opened.
         for (MockedStatic<?> mock : java.util.Arrays.asList(keyboard, mouse, display, gl13, gl11)) {
             if (mock != null && !mock.isClosed()) {
                 mock.close();
@@ -186,23 +188,19 @@ class ImpetusGuiTest {
         Statics.set(FluidloggedCompat.class, "IS_LOADED", true);
         try {
             display.when(GameWindow::fullscreenModes).thenReturn(modes());
-            var graphicsApi = CommonOptionPages.graphicsApi(ImpetusGameOptionPages.getSodiumOpts().getData());
-            OptionPage general = ImpetusGameOptionPages.general(graphicsApi);
+            OptionPage general = ImpetusGameOptionPages.general();
             OptionPage quality = ImpetusGameOptionPages.quality();
-            OptionPage fluidlogging = ImpetusGameOptionPages.fluidlogging();
-            // The General page carries the screen's Graphics API option itself, so the Nvidium page sees the same pending value
-            assertSame(graphicsApi, general.getOptions().get(10));
-            // The fluidlogging guess has a page of its own rather than sitting among Quality's fluid options
-            assertEquals("impetus:fluidlogging", fluidlogging.getId().toString());
-            assertEquals(1, fluidlogging.getOptions().size());
+            // The idle frame rate choice sits with the other window settings
+            assertEquals(StandardOptions.Option.INACTIVITY_FPS_LIMIT.toString(), general.getOptions().get(8).getId().toString());
+            // Checks the fluidlogging guess has no row and defaults to Touching.
+            assertEquals(ImpetusGameOptions.FluidloggingGuess.TOUCHING, new ImpetusGameOptions().quality.inferredFluidlogging);
             assertEquals(28, OptionPages.exercise(List.of(general, quality)));
-            assertEquals(1, OptionPages.exercise(List.of(fluidlogging)));
             // Whichever client was current when the pages first loaded is the one they stay bound to
             ImpetusGameOptions sodium = ImpetusGameOptionPages.getSodiumOpts().getData();
             GameSettings vanilla = ImpetusGameOptionPages.getVanillaOpts().getData();
             assertNotNull(new ImpetusGameOptionPages());
 
-            // 1.12 has one distance for both, so simulation distance moves render distance
+            // Checks simulation distance moves render distance.
             set(general, 1, 12);
             assertEquals(12, vanilla.renderDistanceChunks);
             set(general, 2, 30);
@@ -210,12 +208,12 @@ class ImpetusGuiTest {
             set(general, 3, 2);
             assertEquals(2, vanilla.guiScale);
             verify(client, Mockito.atLeastOnce()).resize(854, 480);
-            // Exclusive goes through vanilla's toggle, and a window that refuses leaves the option off
+            // Checks exclusive fullscreen.
             when(client.isFullScreen()).thenReturn(false);
             set(general, 4, ImpetusGameOptions.FullscreenMode.EXCLUSIVE);
             verify(client).toggleFullscreen();
             assertEquals(ImpetusGameOptions.FullscreenMode.OFF, sodium.fullscreenMode);
-            // Borderless from exclusive leaves exclusive first, then asks SDL for desktop fullscreen
+            // Checks borderless from exclusive.
             var borderless = new java.util.concurrent.atomic.AtomicBoolean();
             display.when(GameWindow::isBorderless).thenAnswer(inv -> borderless.get());
             display.when(() -> GameWindow.setBorderless(true)).thenAnswer(inv -> {
@@ -229,16 +227,17 @@ class ImpetusGuiTest {
             assertEquals(ImpetusGameOptions.FullscreenMode.BORDERLESS, sodium.fullscreenMode);
             set(general, 5, 1);
             assertEquals(1, sodium.fullscreenResolution);
-            // VSync is the Extras cycler, which keeps vanilla's flag in step
+            // Checks the vsync cycler.
             set(general, 6, com.bdmajora.extras.ExtrasConfig.VerticalSync.ON);
             display.verify(() -> GameWindow.setVsync(true));
             assertTrue(net.minecraft.client.Minecraft.getMinecraft().gameSettings.enableVsync);
 
-            // Improved transparency needs per-face translucency sorting
-            sodium.performance.useTranslucentFaceSorting = false;
+            // Improved transparency is the switch of per-face translucency sorting
+            set(quality, 0, false);
+            assertFalse(sodium.performance.useTranslucentFaceSorting);
             set(quality, 0, true);
             assertTrue(sodium.performance.useTranslucentFaceSorting);
-            // See-through leaves reach every leaf block, which caches the setting
+            // Checks see-through leaves.
             set(quality, 4, false);
             assertFalse((boolean) Mixins.get(Blocks.LEAVES, "leavesFancy"));
             set(quality, 4, true);
@@ -253,8 +252,26 @@ class ImpetusGuiTest {
     }
 
     @Test
+    void thePerformanceDetailsAndInterfacePagesBindEveryOption() {
+        OptionPage performance = ImpetusGameOptionPages.performance();
+        OptionPage details = com.bdmajora.extras.gui.ExtrasOptionPages.detailsPage();
+        OptionPage interfacePage = ImpetusGameOptionPages.interfacePage();
+        assertEquals("impetus:performance", performance.getId().toString());
+        assertEquals("impetus:details", details.getId().toString());
+        assertEquals("impetus:interface", interfacePage.getId().toString());
+        // Checks the engine switches.
+        assertEquals(3, performance.getGroups().size());
+        assertEquals(6, performance.getGroups().get(2).getOptions().size());
+        assertEquals(14, OptionPages.exercise(List.of(performance)));
+        assertEquals(22, OptionPages.exercise(List.of(details)));
+        assertEquals(16, OptionPages.exercise(List.of(interfacePage)));
+        // The Impetus warning switches join the Extras notification group
+        assertEquals(3, interfacePage.getGroups().get(2).getOptions().size());
+    }
+
+    @Test
     void theFrameRateSliderReadsEveryLimitTheGameDoesNotApplyAsUnlimited() {
-        OptionPage general = ImpetusGameOptionPages.general(CommonOptionPages.graphicsApi(ImpetusGameOptionPages.getSodiumOpts().getData()));
+        OptionPage general = ImpetusGameOptionPages.general();
         @SuppressWarnings("unchecked")
         Option<Integer> fps = (Option<Integer>) general.getOptions().stream()
                 .filter(option -> option.getId().toString().equals(com.bdmajora.impetus.api.options.structure.StandardOptions.Option.MAX_FRAMERATE.toString()))
@@ -262,12 +279,12 @@ class ImpetusGuiTest {
         GameSettings vanilla = ImpetusGameOptionPages.getVanillaOpts().getData();
         int saved = vanilla.limitFramerate;
         try {
-            // Vanilla limits only below 260 and sync skips zero or less, so all of these sit at the unlimited end
+            // Checks the limits that read as unlimited.
             for (int unlimited : new int[]{0, -1, 261, 300, Integer.MAX_VALUE, Integer.MIN_VALUE}) {
                 vanilla.limitFramerate = unlimited;
                 assertEquals(260, fps.getValue());
                 assertFalse(fps.hasChanged());
-                // Untouched, the stored value is left as it was
+                // Leaves an untouched value as it was.
                 fps.applyChanges();
                 assertEquals(unlimited, vanilla.limitFramerate);
                 // Moving to the unlimited end is no change either
@@ -294,7 +311,7 @@ class ImpetusGuiTest {
     @Test
     void fullscreenResolutionsAreTheMonitorsDistinctModes() throws Exception {
         display.when(GameWindow::fullscreenModes).thenReturn(modes());
-        // Current, then the two distinct fullscreen sizes, largest first; SDL exposes only fullscreen modes
+        // Checks the current and two fullscreen sizes.
         assertEquals(3, FullscreenResolutions.count());
         assertEquals("1920x1080", FullscreenResolutions.label(1));
         assertEquals("1280x720", FullscreenResolutions.label(2));
@@ -315,7 +332,7 @@ class ImpetusGuiTest {
         FullscreenResolutions.apply(1);
         assertNotNull(Mixins.construct(FullscreenResolutions.class));
 
-        // A monitor SDL cannot list (headless, or no window yet) offers only the current resolution
+        // Checks a monitor SDL cannot list.
         Statics.set(FullscreenResolutions.class, "modes", null);
         display.when(GameWindow::fullscreenModes).thenThrow(new IllegalStateException("no monitor"));
         assertEquals(1, FullscreenResolutions.count());
@@ -337,7 +354,7 @@ class ImpetusGuiTest {
         built.add(module.slider("level", 0, 4, 1, ControlValueFormatter.number(), (h, v) -> h.level = v, h -> h.level, OptionImpact.HIGH, null, null));
         built.add(module.cycling("mode", Mode.class, Mode.values(), (h, v) -> h.mode = v, h -> h.mode, () -> false));
         built.add(module.cycling("mode2", Mode.class, Mode.values(), (h, v) -> h.mode = v, h -> h.mode, OptionImpact.MEDIUM, OptionFlag.REQUIRES_ASSET_RELOAD, null));
-        built.forEach(OptionPages::exercise);
+        built.forEach(OptionPages::exerciseFixture);
         assertEquals(OptionIdentifier.create("impetus", "test.flag", boolean.class), built.get(0).getId());
         assertEquals(EnumSet.of(OptionFlag.REQUIRES_RENDERER_RELOAD), built.get(0).getFlags());
         assertFalse(built.get(3).isAvailable());
@@ -369,7 +386,7 @@ class ImpetusGuiTest {
 
     @Test
     void vanillaSettingsAreReadAndWrittenThroughTheirOwnMethods() {
-        // Vanilla's real setOptionValue and getOptionOrdinalValue; only the options.txt write is stubbed out
+        // Spies vanilla's settings with the file write stubbed.
         GameSettings real = Mc.spy(GameSettings.class);
         Mockito.doNothing().when(real).saveOptions();
         VanillaBooleanOptionBinding bobbing = new VanillaBooleanOptionBinding(GameSettings.Options.VIEW_BOBBING);
@@ -377,7 +394,7 @@ class ImpetusGuiTest {
         bobbing.setValue(real, true);
         assertTrue(real.viewBobbing);
         assertSame(Boolean.TRUE, bobbing.getValue(real));
-        // Vanilla flips an on/off option whatever int it is given, so writing the stored value must not reach it, which also spares the options.txt rewrite
+        // Checks the stored on and off value is not written back.
         bobbing.setValue(real, true);
         assertTrue(real.viewBobbing);
         verify(real, times(1)).setOptionValue(GameSettings.Options.VIEW_BOBBING, 1);
@@ -413,7 +430,7 @@ class ImpetusGuiTest {
     void toastsStackInTheCornerTrimmedToFit() {
         FontRenderer font = client.fontRenderer;
         ScaledResolution resolution = new ScaledResolution(client);
-        // Nothing queued, or toasts turned off, draws nothing
+        // Checks nothing is drawn without toasts.
         ImpetusToastRenderer.render(client, resolution);
         ImpetusNotifications.info("Shaders", "compiled");
         options.notifications.showToasts = false;
@@ -424,9 +441,40 @@ class ImpetusGuiTest {
         ImpetusNotifications.warn("A title far too long to fit inside the two hundred and fifty pixel toast at all", "line");
         ImpetusNotifications.error("Failed", "one", "two");
         ImpetusToastRenderer.render(client, resolution);
-        // Titles and lines of the three toasts, the long title cut with an ellipsis
+        // Checks the toast titles and lines.
         verify(font, times(7)).drawString(anyString(), anyFloat(), anyFloat(), anyInt(), eq(true));
         verify(font).drawString(Mockito.endsWith("..."), anyFloat(), anyFloat(), anyInt(), eq(true));
+    }
+
+    @Test
+    void theAutosaveLineFadesInAtTheBottomRightOnlyWhenTheOptionIsOn() {
+        FontRenderer font = client.fontRenderer;
+        ScaledResolution resolution = new ScaledResolution(client);
+        AutosaveIndicator.tick(false);
+        try {
+            // Checks the hidden indicator draws nothing.
+            AutosaveIndicator.render(client, resolution, 1F);
+            verify(font, never()).drawString(anyString(), anyFloat(), anyFloat(), anyInt(), anyBoolean());
+
+            WorldSaveTracker.duringSave(() -> {});
+            for (int i = 0; i < 5; i++) {
+                AutosaveIndicator.tick(true);
+            }
+            options.notifications.autosaveIndicator = false;
+            AutosaveIndicator.render(client, resolution, 1F);
+            verify(font, never()).drawString(anyString(), anyFloat(), anyFloat(), anyInt(), anyBoolean());
+            options.notifications.autosaveIndicator = true;
+
+            AutosaveIndicator.render(client, resolution, 1F);
+            int alpha = Mixins.<Integer>call(AutosaveIndicator.class, "alpha", 1F);
+            float x = resolution.getScaledWidth() - font.getStringWidth("impetus.autosave_indicator.saving") - 10;
+            float y = resolution.getScaledHeight() - 15;
+            // An unloaded locale answers the key itself
+            verify(font).drawString(eq("impetus.autosave_indicator.saving"), eq(x), eq(y), eq(0xFFFFFF | alpha << 24), eq(true));
+        } finally {
+            options.notifications.autosaveIndicator = true;
+            AutosaveIndicator.tick(false);
+        }
     }
 
     @Test
@@ -435,7 +483,7 @@ class ImpetusGuiTest {
         VintageDrawContext draw = new VintageDrawContext();
         when(font.drawString(anyString(), anyFloat(), anyFloat(), anyInt(), anyBoolean())).thenReturn(42);
         assertEquals(42, draw.drawString(TextComponent.literal("hi"), 1, 2, 0xFFFFFFFF, true));
-        // Translations fall back through their keys to the first, and nest their components
+        // Checks translation fallbacks and nesting.
         TextComponent nested = TextComponent.translatable(List.of("missing.key", "other.key"), TextComponent.literal("inner"), 5);
         assertEquals("missing.key", draw.extractString(nested));
         TextComponent styled = TextComponent.literal("warn").withStyle(TextFormattingStyle.RED,
@@ -443,7 +491,7 @@ class ImpetusGuiTest {
         assertEquals("warn", draw.extractString(styled));
         assertEquals(24, draw.getStringWidth(styled));
         assertEquals("text", draw.extractString(new TextComponent.Styled(TextComponent.literal("text"), EnumSet.noneOf(TextFormattingStyle.class))));
-        // Wrapping works on the formatted text, reset code and all
+        // Checks wrapping of the formatted text.
         assertEquals(List.of(TextComponent.literal("wrapped\u00a7r")), draw.split(TextComponent.literal("wrapped"), 40));
         assertEquals("clip", draw.substrByWidth("clip", 10));
         assertEquals(9, draw.lineHeight());
@@ -470,7 +518,7 @@ class ImpetusGuiTest {
         verify(client.getTextureManager(), times(2)).bindTexture(new ResourceLocation("impetus:textures/gui/impetus.png"));
     }
 
-    // A draw sent to GL: its mode, the vertices it read and the colour set before it
+    // A GL draw with its mode and vertices and colour.
     private record GlDraw(int mode, List<Float> vertices, List<Float> color) { }
 
     @Test
@@ -487,7 +535,7 @@ class ImpetusGuiTest {
             return null;
         });
         gl11.when(() -> GL11.glVertexPointer(anyInt(), anyInt(), anyInt(), any(ByteBuffer.class))).thenAnswer(invocation -> pointer[0] = invocation.getArgument(3));
-        // Reads the three floats of each vertex from where the pointer was set, in the buffer's own byte order
+        // Reads the three floats of each drawn vertex.
         gl11.when(() -> GL11.glDrawArrays(anyInt(), anyInt(), anyInt())).thenAnswer(invocation -> {
             ByteBuffer source = pointer[0].duplicate().order(pointer[0].order());
             int count = invocation.getArgument(2);
@@ -509,7 +557,7 @@ class ImpetusGuiTest {
                 assertEquals(1, draws.size(), context);
                 GlDraw batched = draws.getFirst();
                 draws.clear();
-                // The default's four edges, each its own fill
+                // Checks the four edges of the default border.
                 GlStateManager.resetColor();
                 draw.fill(box[0], box[1], box[2], box[1] + 1, argb);
                 draw.fill(box[0], box[3] - 1, box[2], box[3], argb);
@@ -530,7 +578,7 @@ class ImpetusGuiTest {
         }
     }
 
-    // Every string the context handed the font to draw since the font's calls were last cleared
+    // Returns every string drawn since the font's calls were cleared.
     private static List<String> drawnStrings(FontRenderer font) {
         ArgumentCaptor<String> drawn = ArgumentCaptor.forClass(String.class);
         verify(font, Mockito.atLeast(0)).drawString(drawn.capture(), anyFloat(), anyFloat(), anyInt(), anyBoolean());
@@ -566,7 +614,7 @@ class ImpetusGuiTest {
         VintageDrawContext draw = new VintageDrawContext();
         TextComponent white = TextComponent.literal("Text").withStyle(TextFormattingStyle.WHITE);
         TextComponent grey = TextComponent.literal("Text").withStyle(TextFormattingStyle.GRAY, TextFormattingStyle.STRIKETHROUGH);
-        // A row's value is drawn white, greyed while its option is unavailable, then white again, and a plain copy of it elsewhere
+        // Checks the white and grey row text.
         for (TextComponent text : List.of(white, grey, white, TextComponent.literal("Text"), grey)) {
             draw.drawString(text, 0, 0, 0xFFFFFFFF, false);
         }
@@ -610,7 +658,7 @@ class ImpetusGuiTest {
             }
             // Until the translations reload the text made earlier stands
             assertEquals("Plain", draw.extractString(text));
-            // A reload picks the fallback key again, which now finds the singular
+            // Checks a reload picks the fallback key again.
             Mixins.set(translations, "lastUpdateTimeInMilliseconds", stamp + 1000);
             assertEquals("Singular", draw.extractString(text));
             assertEquals(48, draw.getStringWidth(text));
@@ -638,7 +686,7 @@ class ImpetusGuiTest {
 
     @Test
     void aCountAtOneTakesItsSingularOnlyWhenTheLanguageHasOne() {
-        // The client's locale picks the key and the translation map fills it in, which the game keeps in step on every reload
+        // Reads the client's translation map.
         Map<String, String> client = Mixins.get(Statics.get(net.minecraft.client.resources.I18n.class, "i18nLocale"), "properties");
         Map<String, String> server = Mixins.get(Statics.get(net.minecraft.util.text.translation.I18n.class, "localizedName"), "languageList");
         String key = "impetus.test.count";
@@ -655,7 +703,7 @@ class ImpetusGuiTest {
             assertEquals("0 blocks", draw.extractString(count.format(0)));
             assertEquals("2 blocks", draw.extractString(count.format(2)));
             assertEquals("Off", draw.extractString(ControlValueFormatter.translateQuantityOrDisabled(key, key + ".off").format(0)));
-            // A language with only the plain form uses it at one as well, rather than showing the singular key
+            // Checks a language with only the plain form.
             client.remove(key + ".one");
             server.remove(key + ".one");
             assertEquals("1 blocks", new VintageDrawContext().extractString(count.format(1)));
@@ -712,7 +760,7 @@ class ImpetusGuiTest {
         draw.popMatrix();
         assertEquals(0, draw.matrixDepth());
         gl11.verify(GL11::glPopMatrix, times(3));
-        // A box nested in another is clipped to it, and ending it puts the outer box back without turning clipping off
+        // Checks nested scissor boxes.
         draw.enableScissor(10, 20, 29, 39);
         gl11.verify(() -> GL11.glScissor(20, 400, 40, 40));
         draw.enableScissor(0, 30, 49, 49);
@@ -729,7 +777,7 @@ class ImpetusGuiTest {
         draw.disableScissor();
         gl11.verify(() -> GL11.glDisable(GL11.GL_SCISSOR_TEST));
         assertEquals(0, draw.scissorDepth());
-        // Deeper than the first stack holds and back out, then an extra disable stays at zero
+        // Checks a deep scissor stack.
         for (int i = 0; i < 10; i++) {
             draw.enableScissor(0, 0, 300 - i, 200);
         }
@@ -768,11 +816,11 @@ class ImpetusGuiTest {
         Mixins.set(FMLClientHandler.instance(), "resourcePackMap", packs);
 
         VintageDrawContext draw = new VintageDrawContext();
-        // A registered mod shows its own name; Impetus's subsystems are capitalised without the default locale
+        // Checks the friendly mod names.
         assertEquals(TextComponent.literal("Packed Mod"), draw.getFriendlyModName("packed"));
         assertEquals(TextComponent.literal("Impetus"), draw.getFriendlyModName("impetus"));
         assertEquals(TextComponent.literal(""), draw.getFriendlyModName(""));
-        // Bundled icons first, then the mod's pack image or logo file, and "none" is remembered too
+        // Checks the mod logo lookup.
         assertEquals("impetus:textures/gui/fulgor.png", draw.getModLogoPath("fulgor"));
         assertEquals("minecraft:dynamic/modlogo_1", draw.getModLogoPath("packed"));
         assertEquals("minecraft:dynamic/modlogo_1", draw.getModLogoPath("bundled"));
@@ -812,7 +860,7 @@ class ImpetusGuiTest {
         Statics.set(ScreenBlurBackdrop.class, "texture", -1);
         Statics.set(ScreenBlurBackdrop.class, "textureWidth", 0);
         Statics.set(ScreenBlurBackdrop.class, "textureHeight", 0);
-        // The first frame at a size allocates the copy, later ones only refresh it
+        // Checks the blur copy allocation.
         ScreenBlurBackdrop.draw(427, 240);
         ScreenBlurBackdrop.draw(427, 240);
         gl11.verify(() -> GL11.glCopyTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGB, 0, 0, 854, 480, 0));
@@ -826,12 +874,12 @@ class ImpetusGuiTest {
         GuiScreen parent = mock(GuiScreen.class);
         ImpetusVideoOptionsScreen screen = new ImpetusVideoOptionsScreen(parent);
         screen.setWorldAndResolution(client, 427, 240);
-        // Out of a world vanilla's dirt shows behind; in one, the blurred frame
+        // Draws outside and inside a world.
         screen.drawScreen(10, 10, 0.0F);
         client.world = mock(WorldClient.class);
         screen.drawScreen(10, 10, 0.0F);
 
-        // Clicks, drags and releases reach the frame, and a drag only counts after a press
+        // Checks clicks and drags and releases.
         screen.mouseClicked(100, 60, 0);
         screen.mouseClickMove(104, 66, 0, 5L);
         screen.mouseReleased(104, 66, 0);
@@ -847,7 +895,7 @@ class ImpetusGuiTest {
         screen.initGui();
 
         ImpetusVideoOptionsController controller = Mixins.get(screen, "controller");
-        // Tab nobody takes moves the focus to the first control, the search bar, with Shift read through the vintage context
+        // Checks Tab focuses the search bar.
         screen.keyTyped('\t', Keyboard.KEY_TAB);
         assertInstanceOf(SearchBarWidget.class, controller.getFrame().getFocusedControl());
         Mixins.<Runnable>get(controller, "onClose").run();
@@ -879,13 +927,13 @@ class ImpetusGuiTest {
         client.world = mock(WorldClient.class);
         when(client.getTextureMapBlocks()).thenReturn(mock(TextureMap.class));
         try (MockedStatic<Umbra> umbra = Mockito.mockStatic(Umbra.class)) {
-            // A pipeline change re-parses the pack, which picks the Nvidium port or the original itself, then rebuilds the renderers around it
+            // Checks a pipeline change.
             Statics.callInstance(controller, "applyFlagSideEffects", EnumSet.of(OptionFlag.REQUIRES_SHADER_PIPELINE_RELOAD));
             umbra.verify(Umbra::loadCurrentShaderpack);
             umbra.verify(Umbra::reloadIfTerrainBackendChanged, never());
             verify(renderGlobal).loadRenderers();
 
-            // With a renderer reload as well, the pack still loads once and the renderers rebuild once
+            // Checks a pipeline change with a renderer reload.
             Statics.callInstance(controller, "applyFlagSideEffects", EnumSet.of(OptionFlag.REQUIRES_SHADER_PIPELINE_RELOAD, OptionFlag.REQUIRES_RENDERER_RELOAD));
             umbra.verify(Umbra::loadCurrentShaderpack, times(2));
             umbra.verify(Umbra::reloadIfTerrainBackendChanged, never());
@@ -910,7 +958,7 @@ class ImpetusGuiTest {
             verify(renderGlobal, times(4)).loadRenderers();
             verify(client, never()).refreshResources();
 
-            // Out of a world the pack still reloads, so the next world starts on it, and there are no renderers to rebuild
+            // Checks a pipeline change outside a world.
             client.world = null;
             Statics.callInstance(controller, "applyFlagSideEffects", EnumSet.of(OptionFlag.REQUIRES_SHADER_PIPELINE_RELOAD));
             umbra.verify(Umbra::loadCurrentShaderpack, times(4));

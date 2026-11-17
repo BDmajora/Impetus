@@ -70,7 +70,7 @@ class FulgorWorldMixinTest {
     void thePluginGatesEveryMixinOnItsSwitch() {
         FulgorMixinPlugin plugin = new FulgorMixinPlugin();
         plugin.onLoad("com.bdmajora.fulgor.mixin");
-        // The async engine is the default, so the deferred engine's mixins stay out
+        // Checks the deferred engine mixins stay out.
         assertTrue(plugin.shouldApplyMixin("", "com.bdmajora.fulgor.mixin.async.world.WorldMixin"));
         assertFalse(plugin.shouldApplyMixin("", "com.bdmajora.fulgor.mixin.world.WorldMixin"));
         assertFalse(plugin.shouldApplyMixin("", "com.bdmajora.fulgor.mixin.world.AnvilChunkLoaderMixin"));
@@ -91,7 +91,7 @@ class FulgorWorldMixinTest {
         assertTrue(deferred.shouldApplyMixin("", "com.bdmajora.fulgor.mixin.world.AnvilChunkLoaderMixin"));
         assertFalse(deferred.shouldApplyMixin("", "com.bdmajora.fulgor.mixin.async.world.ChunkMixin"));
 
-        // Switched off entirely, nothing applies at all
+        // Checks nothing applies when disabled.
         FulgorConfig.get().enabled = false;
         FulgorMixinPlugin off = new FulgorMixinPlugin();
         off.onLoad("com.bdmajora.fulgor.mixin");
@@ -130,7 +130,7 @@ class FulgorWorldMixinTest {
         // Full skylight and no block light is what an untouched section looks like
         assertTrue(section.isEmpty());
         assertTrue(section.fulgor$hasNoBlocks());
-        // Carving light into it makes it worth sending, though it still holds no blocks
+        // Checks a carved section is sent.
         section.setBlockLight(1, 2, 3, 7);
         assertFalse(section.isEmpty());
         assertTrue(section.fulgor$hasNoBlocks());
@@ -142,6 +142,22 @@ class FulgorWorldMixinTest {
         assertFalse(section.isEmpty());
         section.setSkyLight(new NibbleArray());
         assertFalse(section.isEmpty());
+        // Light written straight into the arrays is seen once a writer says so or once the array is handed out
+        section.setSkyLight(sky);
+        section.setBlockLight(new NibbleArray());
+        java.util.Arrays.fill(sky.getData(), (byte) 0xFF);
+        assertTrue(section.isEmpty());
+        sky.getData()[5] = 0;
+        assertTrue(section.isEmpty());
+        section.fulgor$markLightChanged();
+        assertFalse(section.isEmpty());
+        sky.getData()[5] = (byte) 0xFF;
+        Mixins.call(section, "fulgor$forgetOnSkyLightAccess", Mixins.cir());
+        assertTrue(section.isEmpty());
+        ((NibbleArray) Mixins.get(section, "blockLight")).getData()[0] = 1;
+        Mixins.call(section, "fulgor$forgetOnBlockLightAccess", Mixins.cir());
+        assertFalse(section.isEmpty());
+        com.bdmajora.fulgor.FulgorRenderBridge.markLightChanged(new net.minecraft.world.chunk.storage.ExtendedBlockStorage(0, true));
         // A section with blocks is never empty
         Mixins.set(section, "blockRefCount", 3);
         assertFalse(section.isEmpty());
@@ -159,7 +175,7 @@ class FulgorWorldMixinTest {
         Mixins.call(provider, "fulgor$flushBeforeUnload", Mixins.cir());
         Mockito.verify(engine, Mockito.times(2)).processLightUpdates();
 
-        // The chunk loader flushes too, and carries Fulgor's two pieces of lighting state through NBT
+        // Checks the chunk loader flush and NBT.
         World world = Mc.mock(World.class, LightingEngineProvider.class);
         when(((LightingEngineProvider) world).fulgor$getLightingEngine()).thenReturn(engine);
         AnvilChunkLoaderMixin loader = Mixins.instance(AnvilChunkLoaderMixin.class);
@@ -263,8 +279,18 @@ class FulgorWorldMixinTest {
         var lit = Mixins.<Integer>cir();
         Mixins.call(world, "fulgor$faceAwareNeighborLight", EnumSkyBlock.BLOCK, pos, lit);
         assertEquals(11, lit.getReturnValue());
+        // A full block answers with its own light and never asks a neighbour
+        Mockito.doReturn(Blocks.STONE.getDefaultState()).when(world).getBlockState(any());
+        Mockito.doReturn(3).when(world).getLightFor(EnumSkyBlock.BLOCK, pos);
+        Mockito.clearInvocations(world);
+        var plain = Mixins.<Integer>cir();
+        Mixins.call(world, "fulgor$faceAwareNeighborLight", EnumSkyBlock.BLOCK, pos, plain);
+        assertEquals(3, plain.getReturnValue());
+        Mockito.verify(world, Mockito.times(1)).getLightFor(any(), any());
+        Mockito.doReturn(Blocks.STONE_SLAB.getDefaultState()).when(world).getBlockState(any());
+        Mockito.doReturn(0).when(world).getLightFor(EnumSkyBlock.BLOCK, pos);
 
-        // Outside the world, in an unloaded chunk, or in a dimension without sky, the answer is fixed
+        // Checks the fixed answers.
         var unloaded = Mixins.<Integer>cir();
         Mockito.doReturn(false).when(world).isBlockLoaded(any());
         Mixins.call(world, "fulgor$faceAwareNeighborLight", EnumSkyBlock.BLOCK, pos, unloaded);

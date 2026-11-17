@@ -12,7 +12,6 @@ import com.bdmajora.extras.client.particle.ParticleTicker;
 import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
 import com.bdmajora.testing.ShadowStubs;
-import net.minecraft.client.particle.IParticleFactory;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleFlame;
 import net.minecraft.client.renderer.culling.Frustum;
@@ -22,9 +21,6 @@ import net.minecraft.util.EnumParticleTypes;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
-import net.minecraftforge.fml.common.LoadController;
-import net.minecraftforge.fml.common.Loader;
-import net.minecraftforge.fml.common.ModContainer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,12 +42,13 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class ParticleMixinsTest {
     private ExtrasConfig config;
 
-    // A particle class from outside net.minecraft, which the culling leaves alone
+    // Particle class outside net.minecraft.
     static class ModParticle extends ParticleFlame {
         ModParticle() {
             super(null, 0, 0, 0, 0, 0, 0);
@@ -68,7 +65,7 @@ class ParticleMixinsTest {
         config = new ExtrasConfig();
         Mixins.set(Extras.class, "config", config);
         ParticleClassRegistry.getInstance().loadDisabledClasses(new String[0]);
-        // The shipped defaults turn these on; each test switches on what it exercises
+        // Turns the shipped defaults off.
         ParticleTicker.collisionCache = false;
         ParticleTicker.lightCache = false;
         ParticleTicker.cullOffscreen = false;
@@ -85,14 +82,21 @@ class ParticleMixinsTest {
 
     @Test
     void theSwitchesStopTheirParticlesAtTheSource() {
+        // Checks the rain splash switch.
         EntityRendererRainSplashMixin renderer = Mixins.instance(EntityRendererRainSplashMixin.class);
-        CallbackInfo rain = Mixins.ci();
-        Mixins.call(renderer, "impetus$addRainParticles", rain);
-        assertFalse(rain.isCancelled());
+        net.minecraft.client.multiplayer.WorldClient client = Mc.uninitialized(net.minecraft.client.multiplayer.WorldClient.class);
+        int[] noArgs = new int[0];
+        Boolean spawned = Mixins.call(renderer, "impetus$skipRainSplash", client, EnumParticleTypes.WATER_DROP, 1.0D, 2.0D, 3.0D, 0.0D, 0.0D, 0.0D, noArgs);
+        assertTrue(spawned);
         config.particle.rainSplash = false;
-        CallbackInfo off = Mixins.ci();
-        Mixins.call(renderer, "impetus$addRainParticles", off);
-        assertTrue(off.isCancelled());
+        spawned = Mixins.call(renderer, "impetus$skipRainSplash", client, EnumParticleTypes.SMOKE_NORMAL, 1.0D, 2.0D, 3.0D, 0.0D, 0.0D, 0.0D, noArgs);
+        assertFalse(spawned);
+        config.particle.rainSplash = true;
+        config.particle.all = false;
+        spawned = Mixins.call(renderer, "impetus$skipRainSplash", client, EnumParticleTypes.WATER_DROP, 1.0D, 2.0D, 3.0D, 0.0D, 0.0D, 0.0D, noArgs);
+        assertFalse(spawned);
+        config.particle.all = true;
+        config.particle.rainSplash = false;
 
         ParticleManagerMixin manager = Mixins.instance(ParticleManagerMixin.class);
         CallbackInfo destroy = Mixins.ci();
@@ -125,23 +129,6 @@ class ParticleMixinsTest {
     @Test
     void everyParticleIsRecordedThenFilteredByMasterClassAndBudget() {
         ParticleManagerMixin manager = Mixins.instance(ParticleManagerMixin.class);
-        // Registration names the mod that was active, when there is one
-        IParticleFactory factory = mock(IParticleFactory.class);
-        LoadController controller = mock(LoadController.class);
-        ModContainer mod = mock(ModContainer.class);
-        when(mod.getModId()).thenReturn("examplemod");
-        when(controller.activeContainer()).thenReturn(mod);
-        Object previous = Mixins.get(Loader.instance(), "modController");
-        Mixins.set(Loader.instance(), "modController", controller);
-        try {
-            Mixins.call(manager, "impetus$captureFactoryMod", 0, factory, Mixins.ci());
-            Mixins.call(manager, "impetus$captureFactoryMod", 1, null, Mixins.ci());
-            when(controller.activeContainer()).thenReturn(null);
-            Mixins.call(manager, "impetus$captureFactoryMod", 2, factory, Mixins.ci());
-        } finally {
-            Mixins.set(Loader.instance(), "modController", previous);
-        }
-
         Particle flame = Mc.uninitialized(ParticleFlame.class);
         CallbackInfo nothing = Mixins.ci();
         Mixins.call(manager, "impetus$filterEffect", null, nothing);
@@ -149,14 +136,14 @@ class ParticleMixinsTest {
         CallbackInfo allowed = Mixins.ci();
         Mixins.call(manager, "impetus$filterEffect", flame, allowed);
         assertFalse(allowed.isCancelled());
-        assertTrue(ParticleClassRegistry.getInstance().getDiscoveredClasses().containsKey(ParticleFlame.class.getName()));
+        assertTrue(java.util.Arrays.asList(ParticleClassRegistry.getInstance().getDiscoveredClassesArray()).contains(ParticleFlame.class.getName() + "|ParticleFlame"));
 
         // A class the user switched off
-        ParticleClassRegistry.getInstance().setClassEnabled(ParticleFlame.class.getName(), false);
+        ParticleClassRegistry.getInstance().loadDisabledClasses(new String[] {ParticleFlame.class.getName()});
         CallbackInfo disabled = Mixins.ci();
         Mixins.call(manager, "impetus$filterEffect", flame, disabled);
         assertTrue(disabled.isCancelled());
-        ParticleClassRegistry.getInstance().setClassEnabled(ParticleFlame.class.getName(), true);
+        ParticleClassRegistry.getInstance().loadDisabledClasses(new String[0]);
         // One the budget refuses
         config.renderBudget.enabled = true;
         config.renderBudget.particleBudget = 0;
@@ -169,7 +156,7 @@ class ParticleMixinsTest {
             refused = budgeted.isCancelled();
         }
         assertTrue(refused);
-        // And everything, with the master off
+        // Checks the master switch off.
         config.particle.all = false;
         CallbackInfo master = Mixins.ci();
         Mixins.call(manager, "impetus$filterEffect", flame, master);
@@ -184,7 +171,7 @@ class ParticleMixinsTest {
         AxisAlignedBB inside = new AxisAlignedBB(0.2, 0.2, 0.2, 0.4, 0.4, 0.4);
         AxisAlignedBB across = new AxisAlignedBB(0.8, 0.2, 0.2, 1.2, 0.4, 0.4);
 
-        // Off, every sweep is vanilla's
+        // Checks the switch off.
         Mc.Recorded<List<AxisAlignedBB>> empty = Mc.operation(List.of());
         Mixins.call(particle, "impetus$cachedCollisions", world, null, inside, empty);
         assertEquals(1, empty.count());
@@ -193,12 +180,12 @@ class ParticleMixinsTest {
         // A sweep crossing cells cannot use the cached answer
         Mixins.call(particle, "impetus$cachedCollisions", world, null, across, empty);
         assertEquals(2, empty.count());
-        // Inside one cell, the cell is asked once and an empty one answers every later sweep
+        // Checks the cached empty cell.
         for (int i = 0; i < 5; i++) {
             assertTrue(Mixins.<List<AxisAlignedBB>>call(particle, "impetus$cachedCollisions", world, null, inside, empty).isEmpty());
         }
         assertEquals(3, empty.count());
-        // Every so often it is asked again, since the world can change
+        // Checks the periodic recheck.
         for (int i = 0; i < 10; i++) {
             Mixins.call(particle, "impetus$cachedCollisions", world, null, inside, empty);
         }
@@ -222,7 +209,7 @@ class ParticleMixinsTest {
         when(world.getCombinedLight(any(), Mockito.anyInt())).thenReturn(0x00F000A0);
         Mixins.set(particle, "world", world);
 
-        // Nothing sampled yet, so vanilla samples
+        // Checks nothing sampled yet.
         ParticleTicker.lightCache = true;
         CallbackInfoReturnable<Integer> unsampled = Mixins.cir();
         Mixins.call(particle, "impetus$useCachedLight", 0.0F, unsampled);
@@ -238,7 +225,7 @@ class ParticleMixinsTest {
         Mixins.call(particle, "impetus$useCachedLight", 0.0F, plain);
         assertEquals(0x00F000A0, plain.getReturnValue());
 
-        // A sample from an earlier tick, or with the cache off, is not trusted
+        // Checks a stale sample.
         ParticleTicker.beginTick();
         CallbackInfoReturnable<Integer> stale = Mixins.cir();
         Mixins.call(particle, "impetus$useCachedLight", 0.0F, stale);
@@ -263,7 +250,7 @@ class ParticleMixinsTest {
     void offscreenVanillaParticlesAreNotDrawn() {
         ParticleManagerCullingMixin manager = Mixins.instance(ParticleManagerCullingMixin.class);
         Entity viewer = mock(Entity.class);
-        // Off, there is no frustum to test against
+        // Checks the switch off.
         Mixins.call(manager, "impetus$buildFrustum", viewer, 0.5F, Mixins.ci());
         assertNull(Mixins.get(manager, "impetus$frustum"));
         ParticleTicker.cullOffscreen = true;
@@ -276,20 +263,23 @@ class ParticleMixinsTest {
         Mixins.set(manager, "impetus$frustum", frustum);
         Particle vanilla = Mc.uninitialized(ParticleFlame.class);
         Mixins.set(vanilla, "boundingBox", new AxisAlignedBB(0, 0, 0, 0.1, 0.1, 0.1));
-        Mc.Recorded<Void> draw = Mc.operation();
-        Mixins.call(manager, "impetus$cullParticle", vanilla, null, viewer, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, draw);
-        assertEquals(0, draw.count());
+        Boolean drawn = Mixins.call(manager, "impetus$cullParticle", vanilla, null, viewer, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F);
+        assertFalse(drawn);
+        // The test box is the particle's own box grown by a block on every side
+        verify(frustum).isBoxInFrustum(-1.0D, -1.0D, -1.0D, 1.1D, 1.1D, 1.1D);
         when(frustum.isBoxInFrustum(anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble())).thenReturn(true);
-        Mixins.call(manager, "impetus$cullParticle", vanilla, null, viewer, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, draw);
-        assertEquals(1, draw.count());
-        // Modded particles are drawn regardless, since their boxes cannot be trusted
-        Mixins.set(manager, "impetus$frustum", mock(Frustum.class));
-        Mixins.call(manager, "impetus$cullParticle", Mc.uninitialized(ModParticle.class), null, viewer, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, draw);
-        assertEquals(2, draw.count());
+        drawn = Mixins.call(manager, "impetus$cullParticle", vanilla, null, viewer, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F);
+        assertTrue(drawn);
+        // Checks modded particles are drawn.
+        Frustum untouched = mock(Frustum.class);
+        Mixins.set(manager, "impetus$frustum", untouched);
+        drawn = Mixins.call(manager, "impetus$cullParticle", Mc.uninitialized(ModParticle.class), null, viewer, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F);
+        assertTrue(drawn);
+        verifyNoInteractions(untouched);
         // And so is everything once culling is off
         Mixins.set(manager, "impetus$frustum", null);
-        Mixins.call(manager, "impetus$cullParticle", vanilla, null, viewer, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, draw);
-        assertEquals(3, draw.count());
+        drawn = Mixins.call(manager, "impetus$cullParticle", vanilla, null, viewer, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F);
+        assertTrue(drawn);
     }
 
     @Test
@@ -313,7 +303,7 @@ class ParticleMixinsTest {
             Mixins.set(particle, "isExpired", true);
             layer.add(particle);
         }
-        // Small layers, or the pool switched off, keep vanilla's loop
+        // Checks the serial loop.
         CallbackInfo serial = Mixins.ci();
         Mixins.call(manager, "impetus$tickLayerParallel", layer, serial);
         assertFalse(serial.isCancelled());

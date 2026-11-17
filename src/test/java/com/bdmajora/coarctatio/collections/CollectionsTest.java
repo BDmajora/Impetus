@@ -56,7 +56,7 @@ class CollectionsTest {
         // A destination that is too small is replaced by one of the caller's own component type
         String[] small = list.toArray(new String[1]);
         assertArrayEquals(new String[] {"a", "b", "c", "b"}, small);
-        // An exactly sized one is filled as is, a longer one is null-terminated after the last element
+        // Checks toArray sizing.
         String[] exact = new String[4];
         assertSame(exact, list.toArray(exact));
         String[] roomy = list.toArray(new String[6]);
@@ -90,7 +90,7 @@ class CollectionsTest {
         assertEquals(Arrays.asList("b", "c"), sub);
         assertThrows(UnsupportedOperationException.class, () -> sub.set(0, "z"));
 
-        // Equality and hashing follow the List contract, so any implementation compares equal
+        // Checks equality and hashing.
         assertEquals(list, list);
         assertEquals(list, new LinkedList<>(Arrays.asList("a", "b", "c", "b")));
         assertEquals(new ArrayList<>(Arrays.asList("a", "b", "c", "b")).hashCode(), list.hashCode());
@@ -124,7 +124,7 @@ class CollectionsTest {
         assertFalse(map.isEmpty());
         assertTrue(new ArrayBackedLinkedMap<>(new LinkedHashMap<String, Integer>()).isEmpty());
         assertTrue(map.containsKey("two"));
-        // A null key is looked up like any other, and a miss is indistinguishable from a stored null
+        // Checks a null key.
         assertTrue(map.containsKey(null));
         assertFalse(map.containsKey("three"));
         assertEquals(2, map.get("two"));

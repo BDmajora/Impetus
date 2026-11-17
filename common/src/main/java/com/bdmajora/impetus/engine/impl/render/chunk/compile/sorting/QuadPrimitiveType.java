@@ -5,7 +5,6 @@ import com.bdmajora.impetus.engine.impl.render.chunk.sorting.PartitionTree;
 import com.bdmajora.impetus.engine.impl.render.chunk.sorting.SortState;
 import com.bdmajora.impetus.engine.impl.render.chunk.sorting.TranslucentSorter;
 import org.jetbrains.annotations.Nullable;
-import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 import java.nio.ByteBuffer;
 import org.lwjgl.system.MemoryUtil;

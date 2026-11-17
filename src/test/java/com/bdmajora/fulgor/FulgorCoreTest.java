@@ -65,8 +65,11 @@ class FulgorCoreTest {
         String written = Files.readString(file);
         assertTrue(written.contains("parallelLightThreads=6"));
         assertTrue(written.contains("asyncLightUpdates=true"));
+        assertTrue(written.startsWith("# Impetus lighting engine."));
+        assertTrue(written.contains("# Threads for parallel light updates. 0 uses a third of the CPU cores.\n# Default: 0\nparallelLightThreads=6\n"));
+        assertTrue(written.contains("# Default: false\nasyncSendChunksWithoutLight=false\n"));
 
-        // Values out of range, unparseable or unrecognised fall back to the defaults
+        // Checks invalid values fall back.
         Files.writeString(file, String.join("\n",
                 "enabled=maybe",
                 "maxScheduledUpdates=3",
@@ -161,7 +164,7 @@ class FulgorCoreTest {
         when(((AsyncLitWorld) async).fulgor$getLightManager()).thenReturn(manager);
         Fulgor.processClientLightUpdates(async);
         Mockito.verify(manager).processClientUpdates();
-        // A world with no manager yet, and a world neither engine owns, are both no-ops
+        // Checks worlds without a manager.
         when(((AsyncLitWorld) async).fulgor$getLightManager()).thenReturn(null);
         Fulgor.processClientLightUpdates(async);
         Fulgor.processClientLightUpdates(mock(World.class));

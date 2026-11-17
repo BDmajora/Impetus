@@ -141,7 +141,7 @@ class SkyHorizonTest {
             throw new StackOverflowError();
         }).when(this.buffer).begin(Mockito.anyInt(), Mockito.any());
         assertThrows(StackOverflowError.class, horizon::draw);
-        // The guard is released even then, so the next frame tries again
+        // Checks the guard is released.
         doAnswer(inv -> null).when(this.buffer).begin(Mockito.anyInt(), Mockito.any());
         horizon.draw();
         verify(this.buffer, times(3)).begin(Mockito.anyInt(), Mockito.any());

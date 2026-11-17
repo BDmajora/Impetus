@@ -96,13 +96,13 @@ class ComputeBuilderTest {
                 TextureStage.PREPARE).get(0);
         assertEquals(1.0f, Mixins.<Float>get(screen, "renderScaleX"));
         assertEquals(1.0f, Mixins.<Float>get(screen, "renderScaleY"));
-        // deferred_a reads its counts from bufferObject.1 at byte 16, so no screen fallback is invented
+        // Checks an indirect dispatch.
         ComputePass indirect = builder.build(computes("deferred", null, "#version 430\nlayout(local_size_x = 8) in;\nvoid main() {}"),
                 TextureStage.DEFERRED).get(0);
         assertEquals(33, (int) Mixins.<Integer>get(indirect, "indirectBuffer"));
         assertEquals(16L, (long) Mixins.<Long>get(indirect, "indirectOffset"));
         assertTrue(Float.isNaN(Mixins.<Float>get(indirect, "renderScaleX")));
-        // deferred_b names a bufferObject the pack never declared: reported, and it dispatches directly
+        // Checks an undeclared buffer object.
         ComputePass undeclared = builder.build(computes("deferred", null, null, "#version 430\nlayout(local_size_x = 8) in;\nvoid main() {}"),
                 TextureStage.DEFERRED).get(0);
         assertEquals(-1, (int) Mixins.<Integer>get(undeclared, "indirectBuffer"));
@@ -120,7 +120,7 @@ class ComputeBuilderTest {
         // Umbra never second-guesses a declared dispatch elsewhere (Photon's deferred4_a reduction is 1x1x1 on purpose)
         ComputePass declared = builder.build(computes("deferred4", shortDispatch), TextureStage.DEFERRED).get(0);
         assertArrayEquals(new int[]{1, 1}, field(declared, "groups"));
-        // A shadowcomp with no declaration covers the volume; one that already covers it keeps its own
+        // Checks the shadowcomp volume.
         ComputePass undeclared = builder.build(computes("shadowcomp", "#version 430\nlayout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;\nvoid main() {}"),
                 TextureStage.SHADOWCOMP).get(0);
         assertArrayEquals(new int[]{4, 4}, field(undeclared, "groups"));
@@ -128,7 +128,7 @@ class ComputeBuilderTest {
         ComputePass covering = builder.build(computes("shadowcomp", "#version 430\nlayout(local_size_x = 8, local_size_y = 8) in;\nconst ivec3 workGroups = ivec3(4, 4, 16);\nvoid main() {}"),
                 TextureStage.SHADOWCOMP).get(0);
         assertArrayEquals(new int[]{4, 4}, field(covering, "groups"));
-        // Without a local size there is nothing to divide the volume by, so the stage's own rule applies
+        // Checks a stage without a local size.
         ComputePass noLocal = builder.build(computes("shadowcomp", "#version 430\nvoid main() {}"), TextureStage.SHADOWCOMP).get(0);
         assertEquals(1.0f, Mixins.<Float>get(noLocal, "renderScaleX"));
     }

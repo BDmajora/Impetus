@@ -98,13 +98,13 @@ public final class LightingEngine {
         }
     }
 
-    // Processes the sky and block light queues.
+    // Runs the queued sky and block light updates.
     public void processLightUpdates() {
         processLightUpdatesForType(EnumSkyBlock.SKY);
         processLightUpdatesForType(EnumSkyBlock.BLOCK);
     }
 
-    // Processes the queue of one light type from the main thread.
+    // Runs the queued updates of one light type on the main thread.
     public void processLightUpdatesForType(EnumSkyBlock lightType) {
         if (this.world.isRemote && !isCallingFromMainThread()) {
             return;
@@ -156,7 +156,7 @@ public final class LightingEngine {
         this.lock.lock();
     }
 
-    // Runs a queue in parallel when it spans enough chunks and inline otherwise and rejects reentry.
+    // Runs a queue in parallel when it spans enough chunks and inline otherwise.
     private void processLightUpdatesForTypeInner(EnumSkyBlock lightType, DeduplicatedLongQueue queue) {
         if (this.updating) {
             throw new IllegalStateException("Already processing light updates");

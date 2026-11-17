@@ -134,7 +134,7 @@ class PhaseControllerTest {
         verify(entities.getAlphaTest()).apply();
         // The fixed-function vertex arrays are handed back on every switch
         verify(TestGl.gl(), Mockito.atLeastOnce()).glDisableVertexAttribArray(15);
-        // A phase with no program draws fixed-function into colortex0, and the previous alpha override is undone first
+        // Checks a phase without a program.
         this.phases.select(ProgramId.Particles, 19);
         verify(entities.getAlphaTest()).restore();
         assertEquals(0, this.gl.program);
@@ -216,7 +216,7 @@ class PhaseControllerTest {
         when(entities.getUniforms().canUpdatePerObjectIn()).thenReturn(true);
         this.phases.select(ProgramId.Entities, 11);
         Mockito.clearInvocations(TestGl.gl());
-        // A renderer left another program bound, and the write still lands in the entity program
+        // Checks the write with another program bound.
         this.gl.program = 7;
         this.phases.refreshDynamicUniforms();
         this.phases.refreshDynamicUniforms();

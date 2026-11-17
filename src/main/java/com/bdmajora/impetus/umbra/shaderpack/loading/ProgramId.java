@@ -5,7 +5,7 @@ import org.lwjgl.opengl.GL11;
 
 import java.util.Locale;
 
-// Choices of the program id setting.
+// Gbuffer and shadow programs with their fallbacks.
 public enum ProgramId {
     // Program of untextured geometry.
     Basic("gbuffers_basic"),
@@ -15,9 +15,9 @@ public enum ProgramId {
     Textured("gbuffers_textured", Basic),
     // Program of textured and lit geometry.
     TexturedLit("gbuffers_textured_lit", Textured),
-    // Skies the basic.
+    // The untextured sky.
     SkyBasic("gbuffers_skybasic", Basic),
-    // Skies the textured.
+    // The textured sky.
     SkyTextured("gbuffers_skytextured", Textured),
     // Program of clouds.
     Clouds("gbuffers_clouds", Textured),
@@ -136,7 +136,7 @@ public enum ProgramId {
         return this.defaultBlendMode;
     }
 
-    // Bies the source name.
+    // Returns the program whose source file has this name or null.
     public static ProgramId bySourceName(String name) {
         String lower = name.toLowerCase(Locale.ROOT);
         for (ProgramId id : VALUES) {

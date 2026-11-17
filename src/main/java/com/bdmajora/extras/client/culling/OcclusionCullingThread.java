@@ -265,9 +265,17 @@ public final class OcclusionCullingThread extends Thread {
         return false;
     }
 
-    // Returns whether the cell is visible.
+    // Returns whether the cell is visible and casts its ray once per pass.
     private boolean cellVisible(int x, int y, int z, double slack) {
-        return this.cache.isVisible(x - this.camBlockX, y - this.camBlockY, z - this.camBlockZ,
-                () -> this.raycaster.isClear(this.camX, this.camY, this.camZ, x, y, z, slack));
+        int dx = x - this.camBlockX;
+        int dy = y - this.camBlockY;
+        int dz = z - this.camBlockZ;
+        int known = this.cache.get(dx, dy, dz);
+        if (known != CellVisibilityCache.UNKNOWN) {
+            return known == CellVisibilityCache.VISIBLE;
+        }
+        boolean visible = this.raycaster.isClear(this.camX, this.camY, this.camZ, x, y, z, slack);
+        this.cache.put(dx, dy, dz, visible);
+        return visible;
     }
 }

@@ -14,7 +14,7 @@ public final class AbsolutePackPath {
         this.path = path;
     }
 
-    // Creates from the absolute path.
+    // Returns the path for an absolute pack path with dot parts resolved.
     public static AbsolutePackPath fromAbsolutePath(String path) {
         if (!path.startsWith("/")) {
             throw new IllegalArgumentException("Not an absolute path: " + path);

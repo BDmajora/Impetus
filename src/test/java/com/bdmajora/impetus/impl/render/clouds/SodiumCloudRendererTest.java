@@ -66,13 +66,13 @@ class SodiumCloudRendererTest {
         Statics.set(OpenGlHelper.class, "openGL14", openGl14);
     }
 
-    // Drops the parsed texture so the next call reads it again
+    // Drops the parsed texture.
     private static void forget() {
         Mixins.set(SodiumCloudRenderer.class, "cachedTextureReloadCount", -1);
         Mixins.set(SodiumCloudRenderer.class, "cachedCells", null);
     }
 
-    // A 4x4 cloud map with an L of three cloud cells in its middle; gaps are stored with alpha 1, as vanilla's are
+    // Returns a 4x4 cloud map with an L of three cells.
     private static byte[] clouds() throws IOException {
         BufferedImage image = new BufferedImage(4, 4, BufferedImage.TYPE_INT_ARGB);
         for (int z = 0; z < 4; z++) {
@@ -115,16 +115,16 @@ class SodiumCloudRendererTest {
         try (MockedStatic<GL11> gl11 = Mockito.mockStatic(GL11.class);
              MockedStatic<GL13> gl13 = Mockito.mockStatic(GL13.class);
              MockedStatic<GL14> gl14 = Mockito.mockStatic(GL14.class)) {
-            // The camera sits in the cloud cell at (1, 1): 18 / 12 = 1.5 across and 12 / 12 + 0.33 down
+            // Places the camera in the cloud cell at 1 1.
             float cell = SodiumCloudRenderer.CELL_SIZE;
-            // Fast clouds, seen from below and then above, in both eyes of anaglyph and the ordinary pass
+            // Draws fast clouds.
             assertTrue(SodiumCloudRenderer.render(client, world, textures, 0, 0.5F, 2, 18, 100, 12, false, 3, 128F, cell));
             assertTrue(SodiumCloudRenderer.render(client, world, textures, 0, 0.5F, 0, 18, 200, 12, false, 3, 128F, cell));
-            // Fancy clouds from below, from above and from inside the layer, where the nearby cells turn inside out
+            // Draws fancy clouds.
             assertTrue(SodiumCloudRenderer.render(client, world, textures, 0, 0.5F, 2, 18, 100, 12, true, 3, 128F, cell));
             assertTrue(SodiumCloudRenderer.render(client, world, textures, 0, 0.5F, 1, 18, 200, 12, true, 3, 128F, cell));
             assertTrue(SodiumCloudRenderer.render(client, world, textures, 0, 0.5F, 2, 18, 130, 12, true, 3, 128F, cell));
-            // A radius of zero still draws the cell around the camera, and a far-out camera wraps back into the texture
+            // Checks a zero radius and a far camera.
             assertTrue(SodiumCloudRenderer.render(client, world, textures, 40000, 0.5F, 2, 5_000_000, 130, -5_000_000, true, 0, 128F, cell * 2));
             verify(textures, Mockito.times(6)).bindTexture(CLOUDS);
             gl11.verify(() -> GL11.glDrawArrays(eq(GL11.GL_QUADS), eq(0), anyInt()), Mockito.atLeast(5));

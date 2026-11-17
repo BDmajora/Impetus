@@ -75,7 +75,7 @@ class WorldMixinTest {
         assertSame(chunk, world.equilibrium$getLoadedChunk(1, 2));
         chunk.unloadQueued = true;
         assertSame(chunk, world.equilibrium$getLoadedChunk(1, 2));
-        // The second read is answered from the cache, which also cancels the pending unload
+        // Checks the cached read.
         assertFalse(chunk.unloadQueued);
         Mockito.verify(provider, Mockito.times(1)).getLoadedChunk(1, 2);
         assertNull(world.equilibrium$getLoadedChunk(5, 5));
@@ -88,7 +88,7 @@ class WorldMixinTest {
         assertSame(chunk, world.equilibrium$getChunkCached(1, 2));
         assertSame(chunk, world.equilibrium$getChunkCached(1, 2));
         Mockito.verify(provider, Mockito.never()).provideChunk(1, 2);
-        // The client's shared empty chunk claims the wrong coordinates, so it is never cached
+        // Checks the shared empty chunk.
         Chunk empty = mock(Chunk.class);
         Mixins.set(empty, "x", 0);
         Mixins.set(empty, "z", 0);
@@ -126,7 +126,7 @@ class WorldMixinTest {
         assertNull(world.equilibrium$getExistingTileEntity(pos));
         when(chunk.getTileEntity(pos, Chunk.EnumCreateEntityType.CHECK)).thenReturn(null);
         assertNull(world.equilibrium$getExistingTileEntity(pos));
-        // Outside the build height, or in an unloaded chunk, there is nothing to read
+        // Checks out of range and unloaded reads.
         Mockito.doReturn(true).when((World) (Object) world).isOutsideBuildHeight(pos);
         assertNull(world.equilibrium$getExistingTileEntity(pos));
         Mockito.doReturn(false).when((World) (Object) world).isOutsideBuildHeight(pos);
@@ -188,7 +188,7 @@ class WorldMixinTest {
         Mixins.call(server, "equilibrium$removeOnIdleTicks", Mixins.ci());
         self.playerEntities.add(mock(EntityPlayer.class));
         Mixins.call(server, "equilibrium$removeOnIdleTicks", Mixins.ci());
-        // Only the idle tick reached the remover, which the server implements itself
+        // Checks the idle tick remover.
         Mockito.verify((UnloadedEntityRemover) self, Mockito.times(1)).equilibrium$removeUnloaded();
     }
 
@@ -226,7 +226,7 @@ class WorldMixinTest {
         when(world.isOutsideBuildHeight(pos)).thenReturn(true);
         assertSame(Blocks.AIR.getDefaultState(),
                 Mixins.call(farmland, "equilibrium$readLoadedOnly", world, pos, read));
-        // The fluidlogged replacement is guarded the same way, and a non-world access answers from itself
+        // Checks the fluidlogged replacement.
         assertSame(Blocks.WATER.getDefaultState(),
                 Mixins.call(farmland, "equilibrium$readLoadedOnlyFluidlogged", mock(net.minecraft.world.IBlockAccess.class), pos, read));
         assertSame(Blocks.AIR.getDefaultState(),
@@ -292,6 +292,15 @@ class WorldMixinTest {
         assertEquals(new BlockPos(2, 2, 3), pos.east());
         assertEquals(new BlockPos(3, 2, 3), pos.east(2));
         assertSame(self, pos.east(0));
+        // Checks a mutable zero offset.
+        BlockPos copy = new BlockPos(1, 2, 3);
+        org.mockito.Mockito.doReturn(copy).when(self).toImmutable();
+        assertSame(copy, pos.up(0));
+        assertSame(copy, pos.down(0));
+        assertSame(copy, pos.north(0));
+        assertSame(copy, pos.south(0));
+        assertSame(copy, pos.west(0));
+        assertSame(copy, pos.east(0));
     }
 
     @Test

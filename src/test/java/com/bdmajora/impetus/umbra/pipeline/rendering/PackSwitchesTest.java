@@ -98,7 +98,7 @@ class PackSwitchesTest {
         assertTrue(Statics.<Boolean>get(WorldRenderingSettings.class, "voxelizeLightBlocks"));
         assertNotNull(Statics.get(WorldRenderingSettings.class, "blockStateIds"));
         PackSwitches.resetWorldSettings();
-        // oldLighting goes back to TRUE: false left vanilla terrain without face shading after shaders were turned off
+        // Checks oldLighting is restored.
         assertTrue(WorldRenderingSettings.isOldLighting());
         assertFalse(WorldRenderingSettings.shouldDisableDirectionalShading());
         assertEquals(0, WorldRenderingSettings.getVoxelRenderDistanceChunks());

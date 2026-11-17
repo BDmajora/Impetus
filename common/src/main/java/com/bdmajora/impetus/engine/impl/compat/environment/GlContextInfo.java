@@ -2,7 +2,7 @@ package com.bdmajora.impetus.engine.impl.compat.environment;
 
 import com.bdmajora.impetus.lwjgl.LWJGLServiceProvider;
 
-// Immutable snapshot of the vendor, renderer and version strings of a GL context
+// Vendor and renderer and version strings of a GL context.
 public record GlContextInfo(String vendor, String renderer, String version) {
     // GL enum value of the vendor string query
     private static final int GL_VENDOR = 0x1F00;

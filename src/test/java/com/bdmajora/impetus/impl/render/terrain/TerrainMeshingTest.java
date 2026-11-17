@@ -160,7 +160,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-// A world of mocked chunks holding real block storage, meshed through the Impetus section manager, world slice and block renderer
+// Meshes a mocked world through the Impetus section manager.
 @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class TerrainMeshingTest {
@@ -175,9 +175,9 @@ class TerrainMeshingTest {
     private static final BlockPos SLAB = new BlockPos(9, 1, 1);
     private static final CancellationToken RUNNING = token(false);
 
-    // A block drawing nothing yet giving off more light than vanilla's range, the case voxelizeLightBlocks attributes; made once the registries are up
+    // Invisible block that emits light.
     private static Block EMITTING;
-    // Declares a tile entity but cannot make one, as a broken mod block would
+    // Block that declares a tile entity but cannot make one.
     private static Block BROKEN_CONTAINER;
     // Holds a fluid but asks for it not to be drawn
     private static Block HIDING;
@@ -238,11 +238,11 @@ class TerrainMeshingTest {
         Class.forName(ImpetusVintage.class.getName());
         previousOptions = Statics.get(ImpetusVintage.class, "CONFIG");
         options = ImpetusGameOptions.defaults();
-        // Builds run on the calling thread and the graph is walked synchronously, so a frame finishes before it returns
+        // Builds on the calling thread.
         options.performance.chunkBuilderThreads = -1;
         options.performance.asyncOcclusionMode = AsyncOcclusionMode.NONE;
         options.performance.alwaysDeferChunkUpdates = false;
-        // TestGl reports every extension, so this stays on OpenGL or mesh terrain would be tried (and fall back) under every raster test
+        // Keeps the OpenGL renderer.
         assertEquals(ImpetusGameOptions.GraphicsApi.OPENGL, options.graphicsApi);
         Statics.set(ImpetusVintage.class, "CONFIG", options);
         FulgorConfig fulgor = Mc.uninitialized(FulgorConfig.class);
@@ -253,7 +253,7 @@ class TerrainMeshingTest {
         device = Devices.active();
         when(TestGl.gl().glGetUniformLocation(anyInt(), any())).thenReturn(1);
         TestFogService.cutoff = 1_000_000f;
-        // These tests assert on client-array multi-draws; another test applying the default config would otherwise switch them to indirect
+        // Uses client array multi draws.
         com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions.multiDrawIndirect = false;
     }
 
@@ -283,7 +283,7 @@ class TerrainMeshingTest {
         };
     }
 
-    // Position, colour, UV and lightmap at 7 ints a vertex, with the first element given
+    // Returns a block vertex format with the given first element.
     private static VertexFormat format(VertexFormatElement first) {
         VertexFormatMixin format = Mixins.instance(VertexFormatMixin.class);
         doReturn(7).when(format).getIntegerSize();
@@ -298,7 +298,7 @@ class TerrainMeshingTest {
         return vertexFormat;
     }
 
-    // Vanilla's corners for each face of a unit cube, wound counter-clockwise from outside
+    // Returns vanilla's corners for a face of a unit cube.
     private static float[][] corners(EnumFacing face) {
         return switch (face) {
             case DOWN -> new float[][] {{0, 0, 1}, {0, 0, 0}, {1, 0, 0}, {1, 0, 1}};
@@ -339,7 +339,7 @@ class TerrainMeshingTest {
         return sprite;
     }
 
-    // One flat quad along the top of a block, written the way vanilla's fluid and special renderers fill a buffer
+    // Writes one flat quad on top of a block.
     private static void writeQuad(BufferBuilder buffer, BlockPos pos, float u) {
         double x = pos.getX();
         double y = pos.getY() + 0.875;
@@ -350,12 +350,12 @@ class TerrainMeshingTest {
         buffer.pos(x + 1, y, z).color(255, 255, 255, 255).tex(u + 0.1, 0.5).lightmap(240, 240).endVertex();
     }
 
-    // The client, a world of 3x3 chunks around the origin and the models, colours and sprites the mesher asks for
+    // Client and world and models of the meshing tests.
     private static final class Terrain {
         final Minecraft client = Mc.client();
         final WorldClient world = Mc.mock(WorldClient.class, ChunkTrackerHolder.class);
         final WorldProvider dimension = mock(WorldProvider.class);
-        // The client's own radius, so a column is only ready once every neighbour is loaded
+        // Tracker of loaded columns.
         final ChunkTracker tracker = new ChunkTracker();
         final Map<Long, Chunk> chunks = new HashMap<>();
         final Map<Long, Map<BlockPos, TileEntity>> tiles = new HashMap<>();
@@ -367,7 +367,7 @@ class TerrainMeshingTest {
         final TextureAtlasSprite animated = sprite(true, SpriteTransparencyLevel.TRANSPARENT);
         final Map<IRegistryDelegate<Block>, IBlockColor> colors = new HashMap<>();
         final List<Runnable> scheduled = new ArrayList<>();
-        // What vanilla's dispatcher was asked to draw where; the mesher's position is mutable, so it is copied at the call
+        // Blocks vanilla's dispatcher was asked to draw.
         final Map<BlockPos, IBlockState> vanilla = new HashMap<>();
         final GameSettings settings = Mc.uninitialized(GameSettings.class);
         final TileEntityRendererDispatcher blockEntities = mock(TileEntityRendererDispatcher.class);
@@ -409,7 +409,7 @@ class TerrainMeshingTest {
             BlockColors blockColors = Mc.mock(BlockColors.class, BlockColorsAccessor.class);
             when(((BlockColorsAccessor) blockColors).getBlockColorMap()).thenReturn(colors);
             when(client.getBlockColors()).thenReturn(blockColors);
-            // Grass tints through the slice's own biome blend, which is what the block access hands a colour provider
+            // Tints grass through the slice's biome blend.
             colors.put(Blocks.GRASS.delegate, (state, access, pos, index) -> ((ImpetusBlockAccess) access).getBlockTint(pos, tint));
             when(client.getTextureMapBlocks()).thenReturn(atlas);
             when(((TextureMapExtension) atlas).impetus$findFromUV(anyFloat(), anyFloat())).thenAnswer(invocation ->
@@ -425,7 +425,7 @@ class TerrainMeshingTest {
             for (EnumFacing face : EnumFacing.VALUES) {
                 faces.put(face, List.of(quad(format, face, still, -1, true)));
             }
-            // Two quads on the top face with different shading, so the analyzer compares them
+            // Two shaded quads on the top face.
             faces.put(EnumFacing.UP, List.of(quad(format, EnumFacing.UP, still, -1, true), quad(format, EnumFacing.UP, animated, -1, false)));
             general = List.of(quad(format, EnumFacing.UP, animated, 0, true));
             broken = List.of(quad(format(DefaultVertexFormats.COLOR_4UB), EnumFacing.UP, still, -1, true));
@@ -438,7 +438,7 @@ class TerrainMeshingTest {
                 }
                 return side == null ? general : faces.get(side);
             });
-            // Chests draw nothing into their layer, lava blows up with a crash report, anything else is one quad; a model goes through the call the dispatcher hook wraps, as in vanilla's renderBlock
+            // Stubs the dispatcher per block.
             BlockRendererDispatcherMixin hook = Mixins.instance(BlockRendererDispatcherMixin.class);
             BlockModelRenderer modelRenderer = mock(BlockModelRenderer.class);
             when(dispatcher.renderBlock(any(), any(), any(), any())).thenAnswer(invocation -> {
@@ -519,7 +519,7 @@ class TerrainMeshingTest {
             tiles.get(ChunkPos.asLong(pos.getX() >> 4, pos.getZ() >> 4)).put(pos, entity);
         }
 
-        // A stone floor under a row of every kind of block the mesher treats differently, sky lit above and torch lit beside
+        // Builds the test row of blocks.
         Terrain build() {
             for (int x = 0; x < 16; x++) {
                 for (int z = 0; z < 16; z++) {
@@ -543,7 +543,7 @@ class TerrainMeshingTest {
             set(SLAB, Blocks.STONE_SLAB.getDefaultState());
             // A tile entity above the section is not the section's to copy
             tile(new BlockPos(4, 40, 4), mock(TileEntity.class));
-            // The next column over has a floor of its own, so it builds too
+            // Adds a floor to the next column.
             set(new BlockPos(16, 0, 8), Blocks.STONE.getDefaultState());
             return this;
         }
@@ -570,7 +570,7 @@ class TerrainMeshingTest {
     @Test
     @Order(1)
     void fluidloggedWaterIsCopiedGuessedAndMeshed() throws Exception {
-        // First in the class: IS_LOADED is a static final, and code compiled while it read false would keep reading false
+        // Builds the terrain first.
         Terrain terrain = new Terrain().build();
         IBlockState water = Blocks.WATER.getDefaultState();
         IBlockState fence = Blocks.OAK_FENCE.getDefaultState();
@@ -583,7 +583,7 @@ class TerrainMeshingTest {
         BlockPos rim = new BlockPos(8, 1, 3);
         terrain.set(rim, fence);
         terrain.set(rim.north(), water);
-        // A still pool sent as flowing levels, as MCParks does, and a stream pouring past
+        // Places a pool and a stream.
         BlockPos pooled = new BlockPos(4, 1, 9);
         IBlockState levelThree = water.withProperty(BlockLiquid.LEVEL, 3);
         terrain.set(pooled, fence);
@@ -592,7 +592,7 @@ class TerrainMeshingTest {
         BlockPos poured = new BlockPos(4, 1, 12);
         terrain.set(poured, fence);
         terrain.set(poured.west(), water.withProperty(BlockLiquid.LEVEL, 8));
-        // Farmland covers its footprint up to the water line, so water there could only flicker against its faces
+        // Places farmland by the water.
         BlockPos plot = new BlockPos(7, 1, 14);
         terrain.set(plot, Blocks.FARMLAND.getDefaultState());
         terrain.set(plot.west(), water);
@@ -623,7 +623,7 @@ class TerrainMeshingTest {
         };
         IFluidStateCapability.next[0] = y -> container;
         options.quality.inferredFluidlogging = ImpetusGameOptions.FluidloggingGuess.TOUCHING;
-        // Initialised before the flag is swapped, or its own initialiser would put it back
+        // Initialises the compat class.
         new FluidloggedCompat();
         assertSame(FluidState.EMPTY, FluidloggedCompat.getEmptyFluidState());
         Statics.set(FluidloggedCompat.class, "IS_LOADED", true);
@@ -634,16 +634,16 @@ class TerrainMeshingTest {
             assertTrue(FluidloggingInference.isActive());
             assertFalse(cache.acquire(0, 0, 0).getFluidData().isEmpty());
             assertTrue(cache.acquire(0, -1, 0).getFluidData().isEmpty());
-            // Server data is copied, a fence under or between water sources is guessed full, stone and lava are not
+            // Checks the copied and guessed fluids.
             assertSame(water, slice.getFluidState(served.getX(), served.getY(), served.getZ()).getState());
             assertSame(water, slice.getFluidState(submerged.getX(), submerged.getY(), submerged.getZ()).getState());
             assertSame(water, slice.getFluidState(banked.getX(), banked.getY(), banked.getZ()).getState());
-            // Touching needs one source beside it and nothing above, a pool rim at the surface
+            // Checks the Touching rule.
             assertSame(water, slice.getFluidState(rim.getX(), rim.getY(), rim.getZ()).getState());
-            // Flowing water beside counts and the fullest sets the level; falling water beside does not
+            // Checks flowing water beside a block.
             assertSame(levelThree, slice.getFluidState(pooled.getX(), pooled.getY(), pooled.getZ()).getState());
             assertTrue(slice.getFluidState(poured.getX(), poured.getY(), poured.getZ()).isEmpty());
-            // Shape alone decides: a torch has nothing in the way, farmland leaves no room
+            // Checks the shape rule.
             assertSame(water, slice.getFluidState(TORCH.getX(), TORCH.getY(), TORCH.getZ()).getState());
             assertTrue(slice.getFluidState(plot.getX(), plot.getY(), plot.getZ()).isEmpty());
             assertTrue(slice.getFluidState(buried.getX(), buried.getY(), buried.getZ()).isEmpty());
@@ -651,7 +651,7 @@ class TerrainMeshingTest {
             assertTrue(slice.getFluidState(submerged.getX(), 40, submerged.getZ()).isEmpty());
             assertSame(FluidState.EMPTY, slice.getFluidState(100, 1, 1));
 
-            // The mesher draws each contained fluid through vanilla's fluid renderer, unless the block hides it
+            // Checks the contained fluids are drawn.
             VintageChunkBuildContext context = new VintageChunkBuildContext(terrain.world, passes());
             ChunkBuildOutput output = mesh(terrain, context);
             assertSame(water, terrain.vanilla.get(submerged));
@@ -685,9 +685,9 @@ class TerrainMeshingTest {
             assertTrue(said.contains(" west " + water.withProperty(BlockLiquid.LEVEL, 8) + ": " + water.withProperty(BlockLiquid.LEVEL, 8) + " (falling, ignored)"));
             assertTrue(said.contains(" fluids beside 0, option needs 1 or fluid above"));
             assertTrue(said.contains(" guessed into the slice: none"));
-            // The block under the crosshair when no coordinates are given, and the usage when there is none
+            // Checks the probe without coordinates.
             said.clear();
-            // Aimed at the floor under the rim fence, the probe steps out of the hit face onto the fence
+            // Checks the probe aimed at the floor.
             terrain.client.objectMouseOver = new RayTraceResult(new Vec3d(8.5, 1.0, 3.5), EnumFacing.UP, rim.down());
             probe.execute(null, sender, new String[0]);
             assertEquals("Fluidlogged probe at 8 1 3: " + fence, said.get(0));
@@ -700,7 +700,7 @@ class TerrainMeshingTest {
             probe.execute(null, sender, new String[0]);
             assertEquals(List.of(probe.getUsage(sender)), said);
 
-            // Singleplayer's own server sends real data, so the guess turns off there; so does the option
+            // Checks the guess turns off in singleplayer.
             when(terrain.client.isIntegratedServerRunning()).thenReturn(true);
             FluidloggingInference.refresh();
             assertFalse(FluidloggingInference.isActive());
@@ -719,7 +719,7 @@ class TerrainMeshingTest {
     @Test
     @Order(2)
     void littleTilesBakedQuadsJoinTheSectionMesh() {
-        // Early for the same reason as the Fluidlogged test: IS_LOADED is a static final the mesher reads
+        // Builds the terrain first.
         Terrain terrain = new Terrain();
         BlockPos pos = new BlockPos(5, 1, 5);
         terrain.set(pos, Blocks.CHEST.getDefaultState());
@@ -728,7 +728,7 @@ class TerrainMeshingTest {
         LittleTilesRenderManagerMixin manager = Mixins.instance(LittleTilesRenderManagerMixin.class);
         tiles.render = (TileEntityRenderManager) (Object) manager;
         terrain.tile(pos, tiles);
-        // One quad across the top of the block, section-relative as LittleTiles bakes it, on the animated half of the atlas
+        // Bakes one quad across the top of the block.
         float[][] corners = corners(EnumFacing.UP);
         ByteBuffer baked = ByteBuffer.allocateDirect(112).order(ByteOrder.nativeOrder());
         for (float[] corner : corners) {
@@ -756,7 +756,7 @@ class TerrainMeshingTest {
         try {
             VintageChunkBuildContext context = new VintageChunkBuildContext(terrain.world, passes());
             ChunkBuildOutput output = mesh(terrain, context);
-            // The chest draws nothing of its own, so all the geometry is the baked quad
+            // Checks the chest geometry is the baked quad.
             assertTrue(data(output).hasBlockGeometry);
             assertTrue(data(output).animatedSprites.contains(terrain.animated));
             assertEquals(1, tiles.quadCacheUpdates.size());
@@ -776,12 +776,12 @@ class TerrainMeshingTest {
         MinecraftBuiltRenderSectionData<TextureAtlasSprite, TileEntity> data = data(output);
         assertTrue(data.hasBlockGeometry);
         assertFalse(output.meshes.isEmpty());
-        // The chest's renderer is culled with the section, the beacon's is global, and the chest missing its entity gets none
+        // Checks the culled and global block entities.
         assertEquals(List.of(terrain.chestEntity), data.culledBlockEntities);
         assertEquals(List.of(terrain.beaconEntity), data.globalBlockEntities);
         assertTrue(data.animatedSprites.contains(terrain.animated));
         assertFalse(data.animatedSprites.contains(terrain.still));
-        // Water and the chest go through vanilla's dispatcher; modelled blocks never do
+        // Checks the blocks drawn by vanilla's dispatcher.
         assertSame(Blocks.WATER.getDefaultState(), terrain.vanilla.get(WATER));
         assertSame(Blocks.CHEST.getDefaultState(), terrain.vanilla.get(CHEST));
         assertSame(EMITTING.getDefaultState(), terrain.vanilla.get(EMITTER));
@@ -813,13 +813,13 @@ class TerrainMeshingTest {
             VintageChunkBuildContext context = new VintageChunkBuildContext(terrain.world, passes());
             ChunkBuildOutput modelled = mesh(terrain, context);
             assertTrue(data(modelled).hasBlockGeometry);
-            // Glass is forced into the translucent layer, and the invisible emitter still reaches vanilla's solid buffer
+            // Checks forced layers and the emitter.
             assertSame(EMITTING.getDefaultState(), terrain.vanilla.get(EMITTER));
             assertFalse(terrain.vanilla.containsKey(GLASS));
             context.cleanup();
             modelled.delete();
 
-            // With the fast renderer off, every block goes through vanilla's dispatcher and its quads are attributed afterwards
+            // Meshes with the fast renderer off.
             ChunkBuilderMeshingTask.USE_NEW_BLOCK_RENDERER = false;
             ChunkBuildOutput vanilla = mesh(terrain, context);
             assertTrue(data(vanilla).hasBlockGeometry);
@@ -829,7 +829,7 @@ class TerrainMeshingTest {
             context.cleanup();
             vanilla.delete();
 
-            // A quad buffered before the pack came up has no attribution run, so its block is found from its own corners
+            // Checks a quad without an attribution run.
             shaders.set(false);
             MinecraftBuiltRenderSectionData<TextureAtlasSprite, TileEntity> late = new MinecraftBuiltRenderSectionData<>();
             context.buffers.init(late, 0);
@@ -851,7 +851,7 @@ class TerrainMeshingTest {
     void aFailingBlockCrashesWithTheBlockItWasRendering() {
         Terrain terrain = new Terrain().build();
         VintageChunkBuildContext context = new VintageChunkBuildContext(terrain.world, passes());
-        // A model whose quads do not start with a position is refused, and the refusal becomes a crash report
+        // Checks a refused model becomes a crash report.
         terrain.set(GLASS, Blocks.OBSIDIAN.getDefaultState());
         ReportedException refused = assertThrows(ReportedException.class, () -> mesh(terrain, context));
         assertTrue(refused.getCrashReport().getCompleteReport().contains("Block being rendered"));
@@ -894,7 +894,7 @@ class TerrainMeshingTest {
             renderer.setupTerrain(viewport, camera, frame, false, true);
         }
         assertTrue(renderer.isSectionReady(0, 0, 0));
-        // The next column over has unloaded neighbours of its own, so it is never handed to the renderer
+        // Checks the column with unloaded neighbours.
         assertFalse(renderer.isSectionReady(1, 0, 0));
         assertTrue(renderer.getVisibleChunkCount() > 0);
         assertTrue(renderer.getChunksDebugString().startsWith("C: "));
@@ -909,12 +909,12 @@ class TerrainMeshingTest {
             renderer.drawChunkLayer(layer, 8, 20, 8);
         }
         verify(TestGl.gl(), atLeastOnce()).glMultiDrawElementsBaseVertex(anyInt(), anyLong(), anyInt(), anyLong(), anyInt(), anyLong());
-        // Each pass binds the atlas; cutout without mipmaps, the rest with them
+        // Checks the atlas binding of each pass.
         verify(terrain.textures, atLeastOnce()).bindTexture(TextureMap.LOCATION_BLOCKS_TEXTURE);
         verify(terrain.atlas, atLeastOnce()).setBlurMipmapDirect(false, false);
         verify(terrain.atlas, atLeastOnce()).setBlurMipmapDirect(false, true);
 
-        // Block entities draw per pass, a crash from an invalid one is swallowed and from a live one is not
+        // Checks block entity drawing and crashes.
         when(terrain.chestEntity.shouldRenderInPass(anyInt())).thenReturn(true);
         ImpetusWorldRenderer.TileEntityRenderContext tileContext = new ImpetusWorldRenderer.TileEntityRenderContext(new HashMap<>(), 0.5F);
         assertEquals(2, renderer.renderBlockEntities(tileContext));
@@ -928,7 +928,7 @@ class TerrainMeshingTest {
         when(terrain.chestEntity.isInvalid()).thenReturn(false);
         assertThrows(IllegalStateException.class, () -> renderer.renderBlockEntities(tileContext));
 
-        // Entity culling asks the graph unless it is off, the entity outlines or names itself, or the shadow pass draws
+        // Checks entity culling.
         Entity near = mock(Entity.class);
         when(near.getRenderBoundingBox()).thenReturn(new AxisAlignedBB(2, 1, 2, 3, 2, 3));
         Entity far = mock(Entity.class);
@@ -945,14 +945,14 @@ class TerrainMeshingTest {
         assertTrue(renderer.isEntityVisible(far));
         options.performance.useEntityCulling = true;
 
-        // The shadow pass walks both lists through its own entry, draws from the sun's matrices and sees every entity
+        // Checks the shadow pass entity walk.
         Statics.set(UmbraShadowRenderer.class, "shadowPassActive", true);
         assertTrue(manager.isInShadowPass());
         renderer.setupShadowTerrain(viewport, viewport, camera, 4, false);
         assertTrue(manager.didShadowPassRunThisFrame());
         renderer.drawChunkLayer(BlockRenderLayer.SOLID, 8, 20, 8);
         assertTrue(renderer.isEntityVisible(far));
-        // Shadow casters ask the shadow search's own sections instead, under the main pass's switch
+        // Checks shadow caster visibility.
         assertEquals(renderer.isBoxVisible(200, 1, 200, 201, 2, 201), renderer.isShadowCasterVisible(far));
         assertEquals(renderer.isBoxVisible(2, 1, 2, 3, 2, 3), renderer.isShadowCasterVisible(near));
         options.performance.useEntityCulling = false;
@@ -965,7 +965,7 @@ class TerrainMeshingTest {
         assertEquals(visibleBlockEntities, shadowBlockEntities);
         Statics.set(UmbraShadowRenderer.class, "shadowPassActive", false);
 
-        // A spectator inside the floor turns occlusion culling off, and a block change rebuilds its section
+        // Checks a spectator inside the floor.
         Viewport inside = Sections.viewport(8, 0.5, 8);
         renderer.setupTerrain(inside, new SimpleWorldRenderer.CameraState(8, 0.5, 8, 0, 0, 1000f), 5, true, false);
         terrain.set(new BlockPos(10, 1, 10), Blocks.STONE.getDefaultState());
@@ -1015,7 +1015,7 @@ class TerrainMeshingTest {
             for (int frame = 0; frame < 4; frame++) {
                 renderer.setupTerrain(viewport, camera, frame, false, true);
             }
-            // The build workers packed the column for the GPU store instead of the raster regions
+            // Checks the columns were packed for the GPU store.
             assertTrue(manager.getMeshTerrain().getPipeline().getSections().getRegions().getRegionCount() > 0);
             for (BlockRenderLayer layer : BlockRenderLayer.values()) {
                 renderer.drawChunkLayer(layer, 8, 20, 8);
@@ -1025,7 +1025,7 @@ class TerrainMeshingTest {
             // F3 names the backend first
             assertEquals("Terrain: Nvidium", renderer.getDebugStrings().iterator().next());
 
-            // A driver that advertises everything but refuses a program gets the raster renderer, for the rest of the session
+            // Checks the fallback for a refused program.
             when(TestGl.gl().glGetProgrami(anyInt(), eq(0x8B82))).thenReturn(0);
             renderer.reload();
             assertNull(renderer.getRenderSectionManager().getMeshTerrain());
@@ -1038,7 +1038,7 @@ class TerrainMeshingTest {
             options.graphicsApi = ImpetusGameOptions.GraphicsApi.OPENGL;
             assertFalse(ImpetusWorldRenderer.shouldUseMeshTerrain());
             assertEquals("Terrain: OpenGL", ImpetusWorldRenderer.terrainBackend(false));
-            // Nvidium picked again, the raster renderer stands until the reload that follows
+            // Picks Nvidium again.
             options.graphicsApi = ImpetusGameOptions.GraphicsApi.NVIDIUM;
             assertEquals("Terrain: OpenGL, Nvidium off: waiting for the renderer to reload", ImpetusWorldRenderer.terrainBackend(false));
             renderer.setWorld(null);
@@ -1071,7 +1071,7 @@ class TerrainMeshingTest {
         Mixins.set(com.bdmajora.impetus.umbra.Umbra.class, "currentPack", new com.bdmajora.impetus.umbra.shaderpack.ShaderPack(sources));
         sources.putAll(com.bdmajora.impetus.umbra.terrain.mesh.NvidiumPackPorter.portSources(sources, new ArrayList<>(), new ArrayList<>()));
         com.bdmajora.impetus.umbra.shaderpack.ShaderPack pack = new com.bdmajora.impetus.umbra.shaderpack.ShaderPack(sources);
-        // Every static answers its default under the mock, so the port's terrain program never prepares and the build fails
+        // Mocks the program override.
         try (MockedStatic<UmbraTerrainProgramOverride> overrides = Mockito.mockStatic(UmbraTerrainProgramOverride.class)) {
             overrides.when(UmbraTerrainProgramOverride::areShadersActive).thenReturn(true);
             assertFalse(ImpetusWorldRenderer.shouldUseMeshTerrain());
@@ -1099,7 +1099,7 @@ class TerrainMeshingTest {
             }
             assertTrue(manager.getMeshTerrain().getPipeline().getSections().getRegions().getRegionCount() > 0);
 
-            // The first draw builds the port's programs, cannot, and draws nothing with them
+            // Draws with programs that cannot be built.
             renderer.drawChunkLayer(BlockRenderLayer.SOLID, 8, 20, 8);
             verify(TestGl.gl(), never()).glMultiDrawMeshTasksIndirectNV(anyLong(), anyInt(), anyInt());
             assertFalse(com.bdmajora.impetus.umbra.terrain.UmbraMeshShading.canRun(pack));
@@ -1164,7 +1164,7 @@ class TerrainMeshingTest {
         assertNull(slice.getChunk(0, -5));
         assertSame(WorldType.DEFAULT, slice.getWorldType());
 
-        // Blocks, relative reads and air
+        // Checks blocks and relative reads and air.
         assertSame(Blocks.GLASS.getDefaultState(), slice.getBlockState(GLASS));
         assertSame(Blocks.GLASS.getDefaultState(), slice.getBlockStateRelative(GLASS.getX() + 16, GLASS.getY() + 16, GLASS.getZ() + 16));
         assertFalse(slice.isAirBlock(GLASS));
@@ -1172,7 +1172,7 @@ class TerrainMeshingTest {
         assertTrue(slice.isSideSolid(new BlockPos(0, 0, 0), EnumFacing.UP, false));
         assertEquals(0, slice.getStrongPower(GLASS, EnumFacing.UP));
 
-        // Tile entities come from the copy; a block missing its own gets a stand-in once, a block that cannot make one gets none
+        // Checks the tile entities of the copy.
         assertSame(terrain.chestEntity, slice.getTileEntity(CHEST));
         assertNull(slice.getTileEntity(GLASS));
         assertNull(slice.getBlockEntity(100, 1, 1));
@@ -1210,7 +1210,7 @@ class TerrainMeshingTest {
         create.run();
         verify(terrain.world).markBlockRangeForRenderUpdate(LONE_CHEST, LONE_CHEST);
 
-        // Light: open air reads the sky, outside the copy is the default, a slab takes its neighbours' brightest
+        // Checks the light reads.
         assertEquals(15 << 20, slice.getCombinedLight(GLASS.up(), 0));
         assertEquals(15 << 20 | 13 << 4, slice.getCombinedLight(WATER, 0));
         assertEquals(15 << 20 | 7 << 4, slice.getCombinedLight(GLASS.up(), 7));
@@ -1235,7 +1235,7 @@ class TerrainMeshingTest {
         assertEquals(1.0F, slice.getBrightness(EnumFacing.UP, false));
         assertEquals(0.5F, slice.getBrightness(EnumFacing.DOWN, true), 1e-6F);
 
-        // Biomes and tints come from the copy, with plains for anything it lacks
+        // Checks biomes and tints.
         assertSame(Biomes.FOREST, slice.getBiome(GLASS));
         assertSame(Biomes.PLAINS, slice.getBiome(new BlockPos(40, 1, 1)));
         assertSame(Biomes.FOREST, slice.getBiome(1, 1, 1));
@@ -1258,21 +1258,21 @@ class TerrainMeshingTest {
         when(terrain.client.isCallingFromMinecraftThread()).thenReturn(true);
         assertSame(Blocks.GOLD_BLOCK.getDefaultState(), slice.getBlockState(outside));
         when(terrain.client.isCallingFromMinecraftThread()).thenReturn(false);
-        // Off it, with no renderer or no section manager yet, it reads as air
+        // Checks the read with no manager.
         RenderGlobalMixin global = Mixins.instance(RenderGlobalMixin.class);
         Mixins.set(terrain.client, "renderGlobal", global);
         assertSame(Blocks.AIR.getDefaultState(), slice.getBlockState(outside));
         ImpetusWorldRenderer renderer = new ImpetusWorldRenderer();
         Mixins.set(global, "renderer", renderer);
         assertSame(Blocks.AIR.getDefaultState(), slice.getBlockState(outside));
-        // With a manager the section is cloned through its cache on the render thread, once
+        // Checks the section is cloned once.
         renderer.setWorld(terrain.world);
         assertSame(Blocks.GOLD_BLOCK.getDefaultState(), slice.getBlockState(outside));
-        // The copy is kept, so even a column whose storage was swapped out answers from it
+        // Checks the kept copy.
         terrain.chunks.get(ChunkPos.asLong(1, 1)).getBlockStorageArray()[2] = new ExtendedBlockStorage(32, true);
         terrain.set(outside, Blocks.IRON_BLOCK.getDefaultState());
         assertSame(Blocks.GOLD_BLOCK.getDefaultState(), slice.getBlockState(outside));
-        // A player who left the world gets air rather than a wait, and an unloaded column is an error
+        // Checks a player who left and an unloaded column.
         Mixins.set(terrain.client, "world", null);
         assertSame(Blocks.AIR.getDefaultState(), slice.getBlockState(new BlockPos(20, 60, 20)));
         Mixins.set(terrain.client, "world", terrain.world);
@@ -1297,11 +1297,11 @@ class TerrainMeshingTest {
         assertEquals(13, section.getLightLevel(3, 1, 1, EnumSkyBlock.BLOCK));
         assertEquals(15, section.getLightLevel(3, 1, 1, EnumSkyBlock.SKY));
         assertNull(section.getFluidData());
-        // A section with no storage, or past the column, is empty air in the default light
+        // Checks a section without storage.
         ClonedChunkSection empty = cache.acquire(0, 20, 0);
         assertSame(Blocks.AIR.getDefaultState(), empty.getBlockState(0, 0, 0));
         assertEquals(EnumSkyBlock.SKY.defaultLightValue, empty.getLightLevel(0, 0, 0, EnumSkyBlock.SKY));
-        // Invalidation re-clones, and cleanup drops what has not been touched for a while
+        // Checks invalidation and cleanup.
         cache.invalidate(0, 0, 0);
         assertNotSame(section, cache.acquire(0, 0, 0));
         ClonedChunkSection stale = cache.acquire(1, 0, 0);
@@ -1317,7 +1317,7 @@ class TerrainMeshingTest {
         new VintageRenderPassConfigurationBuilder();
         Terrain terrain = new Terrain();
         RenderPassConfiguration<BlockRenderLayer> consolidated = passes();
-        // Cutout-mipped rides along with solid, cutout keeps its own unmipmapped pass
+        // Checks the consolidated passes.
         assertEquals(2, consolidated.vanillaRenderStages().get(BlockRenderLayer.SOLID).size());
         assertNull(consolidated.vanillaRenderStages().get(BlockRenderLayer.CUTOUT_MIPPED));
         options.performance.useRenderPassConsolidation = false;
@@ -1335,7 +1335,7 @@ class TerrainMeshingTest {
         verify(terrain.atlas, Mockito.times(2)).setBlurMipmapDirect(false, true);
         solid.endDrawing();
         verify(terrain.atlas, Mockito.times(2)).setBlurMipmapDirect(false, true);
-        // With mipmaps off even the mipmapped passes bind unmipped, and a texture that is not an atlas is left alone
+        // Checks the passes with mipmaps off.
         terrain.settings.mipmapLevels = 0;
         solid.startDrawing();
         verify(terrain.atlas, Mockito.times(2)).setBlurMipmapDirect(false, false);
@@ -1354,7 +1354,7 @@ class TerrainMeshingTest {
         assertEquals(1.0F, diffuse.getDiffuse(ModelQuadFacing.NEG_Y, false));
         assertEquals(0.6F, diffuse.getDiffuse(1, 0, 0, true), 1e-6F);
         assertEquals(1.0F, diffuse.getDiffuse(1, 0, 0, false));
-        // oldLighting=false makes the pack light by normal itself, so vanilla's shading is not baked in
+        // Turns oldLighting off.
         WorldRenderingSettings.setOldLighting(false);
         try {
             assertEquals(1.0F, diffuse.getDiffuse(ModelQuadFacing.NEG_Y, true));
@@ -1393,7 +1393,7 @@ class TerrainMeshingTest {
             assertEquals(ChunkFogMode.fromGLMode(9729), fog.getFogMode());
             assertArrayEquals(new float[] {0.25F, 0.5F, 0.75F, 1.0F}, fog.getFogColor());
             assertEquals(Extras.options().render.fogShape.shaderIndex(), fog.getFogShapeIndex());
-            // Exponential fog never fully hides a chunk, and no fog at all has no cutoff or mode
+            // Checks the fog cutoffs.
             state.mode = 2048;
             assertEquals(Float.MAX_VALUE, fog.getFogCutoff());
             state.fog.currentState = false;

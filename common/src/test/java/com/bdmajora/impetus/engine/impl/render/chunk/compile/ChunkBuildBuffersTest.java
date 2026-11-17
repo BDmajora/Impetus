@@ -23,7 +23,7 @@ public class ChunkBuildBuffersTest {
     public static final RenderPassConfiguration<String> CONFIG = Passes.CONFIG;
     private static final int STRIDE = Passes.SOLID.vertexType().getVertexFormat().getStride();
 
-    // A unit quad at height y, in canonical top-face order
+    // Returns a unit quad.
     public static ChunkVertexEncoder.Vertex[] quad(float y) {
         ChunkVertexEncoder.Vertex[] quad = ChunkVertexEncoder.Vertex.uninitializedQuad();
         float[][] pos = {{0, y, 0}, {0, y, 1}, {1, y, 1}, {1, y, 0}};

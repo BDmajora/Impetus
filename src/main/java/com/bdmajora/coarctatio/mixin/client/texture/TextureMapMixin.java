@@ -1,6 +1,5 @@
 package com.bdmajora.coarctatio.mixin.client.texture;
 
-import com.bdmajora.coarctatio.Coarctatio;
 import com.bdmajora.coarctatio.MemoryReport;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.texture.TextureMap;

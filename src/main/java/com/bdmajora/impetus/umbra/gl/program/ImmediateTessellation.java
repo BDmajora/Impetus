@@ -42,7 +42,7 @@ public final class ImmediateTessellation {
         }
     }
 
-    // Returns whether active.
+    // Returns whether immediate draws are going through a tessellation program.
     public static boolean isActive() {
         return tessellatedProgram != 0 && LWJGL.glGetInteger(CURRENT_PROGRAM) == tessellatedProgram;
     }

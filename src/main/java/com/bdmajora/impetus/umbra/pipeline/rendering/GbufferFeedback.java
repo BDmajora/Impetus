@@ -14,7 +14,7 @@ import java.util.BitSet;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
-// Copies gbuffer targets that a program samples while writing them so it reads the previous contents.
+// Copies gbuffer targets a program samples while writing them.
 public final class GbufferFeedback {
     // GL enum of the current program.
     static final int GL_CURRENT_PROGRAM = 0x8B8D;
@@ -39,7 +39,7 @@ public final class GbufferFeedback {
         return prepare(LWJGL.glGetInteger(GL_CURRENT_PROGRAM), drawBuffers, activeFlips);
     }
 
-    // Same as prepare for a program the caller just bound, without asking GL.
+    // Prepares the copies for a program the caller just bound.
     public BitSet prepare(int program, int[] drawBuffers, BitSet activeFlips) {
         BitSet flips = null;
         int sampled = sampledGaux(program);
@@ -57,7 +57,7 @@ public final class GbufferFeedback {
         return flips == null ? activeFlips : flips;
     }
 
-    // Returns the bits of the gaux targets a program samples, every bit for no program, and inspects each once.
+    // Returns the bits of the gaux targets a program samples and every bit for no program.
     int sampledGaux(int program) {
         if (program == 0) {
             return ~0;

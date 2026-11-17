@@ -12,33 +12,33 @@ import org.spongepowered.asm.mixin.Unique;
 // Mixin that changes Block.
 @Mixin(Block.class)
 public abstract class BlockMixin implements LightInfoBlock {
-    // Field fulgor resolved added to the target.
+    // Flag set once the overrides were looked up.
     @Unique
     private static final int FULGOR_RESOLVED = 1;
-    // Field fulgor position aware light value added to the target.
+    // Flag of a block overriding the position aware getLightValue.
     @Unique
     private static final int FULGOR_POSITION_AWARE_LIGHT_VALUE = 1 << 1;
-    // Field fulgor position aware opacity added to the target.
+    // Flag of a block overriding the position aware getLightOpacity.
     @Unique
     private static final int FULGOR_POSITION_AWARE_OPACITY = 1 << 2;
 
-    // Field light info flags added to the target.
+    // Override flags of the block's class.
     @Unique
     private byte fulgor$lightInfoFlags;
 
-    // Returns whether position aware light value.
+    // Returns whether the block's light value depends on its position.
     @Override
     public boolean fulgor$hasPositionAwareLightValue() {
         return (fulgor$lightInfoFlags() & FULGOR_POSITION_AWARE_LIGHT_VALUE) != 0;
     }
 
-    // Returns whether position aware opacity.
+    // Returns whether the block's opacity depends on its position.
     @Override
     public boolean fulgor$hasPositionAwareOpacity() {
         return (fulgor$lightInfoFlags() & FULGOR_POSITION_AWARE_OPACITY) != 0;
     }
 
-    // Helper method light info flags added to the target.
+    // Returns the override flags and looks them up on first use.
     @Unique
     private int fulgor$lightInfoFlags() {
         int flags = this.fulgor$lightInfoFlags;
@@ -60,7 +60,7 @@ public abstract class BlockMixin implements LightInfoBlock {
         return flags;
     }
 
-    // Helper method overrides added to the target.
+    // Returns whether the block's class overrides a position aware method and true when unsure.
     @Unique
     private boolean fulgor$overrides(String name) {
         try {

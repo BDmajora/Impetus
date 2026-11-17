@@ -17,11 +17,11 @@ import java.util.Map;
 
 // Settings of the world rendering group.
 public final class WorldRenderingSettings {
-    // Choice of the block state ids option.
+    // Pack block ids by global state id or null without a block.properties.
     private static volatile int[] blockStateIds;
     private static volatile Map<ResourceLocation, Integer> itemIds;
     private static volatile Map<ResourceLocation, Integer> entityIds;
-    // Choice of the voxel render distance chunks option.
+    // Voxel distance in chunks with 0 meaning the render distance.
     private static volatile int voxelRenderDistanceChunks;
 
     // Prevents instantiation
@@ -48,7 +48,7 @@ public final class WorldRenderingSettings {
         entityIds = byResourceLocation(table);
     }
 
-    // Bies the resource location.
+    // Returns the table keyed by resource location.
     private static Map<ResourceLocation, Integer> byResourceLocation(Map<NamespacedId, Integer> table) {
         if (table == null) {
             return null;
@@ -58,18 +58,18 @@ public final class WorldRenderingSettings {
         return keyed;
     }
 
-    // Choice of the dynamic hand light option.
+    // Whether the held light uniforms report the held items' light.
     private static boolean dynamicHandLight = true;
-    // Choice of the separate ao option.
+    // Whether ambient occlusion goes to its own vertex channel.
     private static boolean separateAo;
-    // Choice of the old lighting option.
+    // Whether vanilla's directional shading stays on.
     private static volatile boolean oldLighting = true;
-    // Choice of the old hand light option.
+    // Whether heldItemId and heldBlockLightValue read the brighter hand.
     private static boolean oldHandLight = true;
-    // Choice of the voxelize light blocks option.
+    // Whether invisible light blocks are added to the mesh for voxelizing packs.
     private static boolean voxelizeLightBlocks;
 
-    // Returns whether old hand light.
+    // Returns whether hand light takes the brighter hand.
     public static boolean isOldHandLight() {
         return oldHandLight;
     }
@@ -93,7 +93,7 @@ public final class WorldRenderingSettings {
         return table == null ? null : table.get(block);
     }
 
-    // Returns whether voxelize light blocks.
+    // Returns whether invisible light blocks are meshed for voxelization.
     public static boolean isVoxelizeLightBlocks() {
         return voxelizeLightBlocks;
     }
@@ -103,7 +103,7 @@ public final class WorldRenderingSettings {
         voxelizeLightBlocks = value;
     }
 
-    // Returns whether dynamic hand light.
+    // Returns whether the held light uniforms report light.
     public static boolean isDynamicHandLight() {
         return dynamicHandLight;
     }
@@ -119,12 +119,12 @@ public final class WorldRenderingSettings {
         ChunkColorWriter.SeparateAoState.set(value);
     }
 
-    // Returns whether old lighting.
+    // Returns whether vanilla directional shading stays on.
     public static boolean isOldLighting() {
         return oldLighting;
     }
 
-    // Returns whether disable directional shading.
+    // Returns whether the pack turned vanilla directional shading off.
     public static boolean shouldDisableDirectionalShading() {
         return !oldLighting;
     }
@@ -134,7 +134,7 @@ public final class WorldRenderingSettings {
         oldLighting = value;
     }
 
-    // Choice of the ambient occlusion level option.
+    // Strength of vanilla ambient occlusion from 0 to 1.
     private static volatile float ambientOcclusionLevel = 1.0f;
 
     // Returns the ambient occlusion level.

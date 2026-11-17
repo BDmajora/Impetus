@@ -88,7 +88,7 @@ class DhCompatTest {
     private static final String MODERN_VERTEX = "#version 330 compatibility\nout vec4 color;\nvoid main() { gl_Position = ftransform(); color = gl_Color; }";
     private static final String MODERN_FRAGMENT = "#version 330 compatibility\n/* RENDERTARGETS: 0 */\nin vec4 color;\nlayout(location = 0) out vec4 outColor;\nvoid main() { outColor = color; }";
 
-    // Distinct locations for the uniforms the DH programs set themselves; every other name is undeclared
+    // Uniform locations of the DH programs.
     private static final Map<String, Integer> LOCATIONS = Map.ofEntries(
             entry(DhTerrainTransformer.MODEL_VIEW, 1),
             entry(DhTerrainTransformer.MODEL_VIEW_INVERSE, 2),
@@ -130,7 +130,7 @@ class DhCompatTest {
         Mixins.set(client, "gameSettings", settings);
         client.displayWidth = 320;
         client.displayHeight = 240;
-        // No lightmap texture yet, so the LOD programs bind the missing texture there
+        // Clears the lightmap texture.
         client.entityRenderer = Mc.uninitialized(EntityRenderer.class);
         defaultTexUnit = OpenGlHelper.defaultTexUnit;
         OpenGlHelper.defaultTexUnit = GL13.GL_TEXTURE0;
@@ -187,7 +187,7 @@ class DhCompatTest {
         CapturedRenderingState.INSTANCE.setCameraPosition(0, 0, 0);
     }
 
-    // A pack with the named programs; dh_water is written in the modern style, the rest legacy
+    // Returns a pack with the named programs.
     private static ShaderPack pack(String properties, String... programs) {
         Map<AbsolutePackPath, String> sources = new HashMap<>();
         sources.put(ShaderPack.PROPERTIES_PATH, properties);
@@ -264,22 +264,22 @@ class DhCompatTest {
         Mc.forge("distanthorizons");
         DhCompat.run();
         assertTrue(DhCompat.isPresent());
-        // Only the after-init handler is queued until DH finishes setting up, and only once
+        // Checks the queued handler.
         LodRendererEvents.setupEventHandlers();
         assertEquals(1, ApiEventInjector.INSTANCE.getAll(DhApiAfterDhInitEvent.class).size());
         assertNotNull(Mixins.construct(LodRendererEvents.class));
 
         assertEquals((float) ((32 * 16 + 512) * Math.sqrt(2)), DhCompat.getFarPlane());
         assertEquals(24.0F, DhCompat.getNearPlane());
-        // Until DH reports rendering on, the uniform falls back to the player's own distance
+        // Checks the render distance fallback.
         assertEquals(128, DhCompat.getRenderDistance());
         assertFalse(DhCompat.hasRenderingEnabled());
-        // With no pack in use there is nothing to reload, so the toggle is not taken up yet
+        // Checks nothing reloads without a pack.
         assertFalse(DhCompat.checkFrame());
         Mixins.set(Umbra.class, "currentPack", pack(""));
         assertTrue(DhCompat.checkFrame());
         assertTrue(DhCompat.hasRenderingEnabled());
-        // The reload found no config to load from, so the pack is gone
+        // Checks the pack is gone.
         assertNull(Umbra.getCurrentPack());
         assertEquals(512, DhCompat.getRenderDistance());
         assertTrue(DhCompat.checkFrame());
@@ -298,7 +298,7 @@ class DhCompatTest {
         assertEquals(0.0F, DhCompatInternal.getNearPlane());
         assertEquals(128, DhCompatInternal.getRenderDistance());
         assertTrue(DhCompatInternal.checkFrame());
-        // API 7.0 has no block atlas getter, which is looked for once
+        // Checks the missing atlas getter.
         assertEquals(-1, DhCompatInternal.getBlockAtlasTextureId());
         assertEquals(-1, DhCompatInternal.getBlockAtlasTextureId());
     }
@@ -330,7 +330,7 @@ class DhCompatTest {
         DhCompat.registerIrisAccessor();
         assertNull(ApiEventInjector.INSTANCE.get(DhApiBeforeDhInitEvent.class));
 
-        // With it the accessor is bound as DH starts its init, ahead of the point DH reads it
+        // Checks the accessor is bound at DH init.
         Mc.forge("distanthorizons");
         DhCompat.registerIrisAccessor();
         assertNull(ModAccessorInjector.INSTANCE.get(IIrisAccessor.class));
@@ -341,7 +341,7 @@ class DhCompatTest {
         assertTrue(accessor.getDelayedSetupComplete());
         accessor.finishDelayedSetup();
         assertFalse(accessor.isReverseZDuringShaders());
-        // An accessor already in place (Actinium's, or this one) is left alone rather than bound twice
+        // Checks an accessor in place is kept.
         ApiEventInjector.INSTANCE.fireAllEvents(DhApiBeforeDhInitEvent.class, null);
         assertEquals(1, ModAccessorInjector.INSTANCE.getAll(IIrisAccessor.class).size());
 
@@ -353,7 +353,7 @@ class DhCompatTest {
         Statics.set(UmbraShadowRenderer.class, "shadowPassActive", true);
         assertTrue(accessor.isRenderingShadowPass());
 
-        // The depth texture DH's framebuffer mixin made, and -1 for a framebuffer it never patched
+        // Checks the depth texture lookup.
         IFramebufferDepthTexture patched = mock(IFramebufferDepthTexture.class);
         when(patched.distantHorizons$getDistantHorizonsDepthTexture()).thenReturn(42);
         assertEquals(42, accessor.getFramebufferDepthTextureId(patched));
@@ -398,7 +398,7 @@ class DhCompatTest {
         assertThrows(IllegalStateException.class, () -> DhRenderProgram.transform(empty,
                 new ProgramSource("dh_terrain", LEGACY_VERTEX, null, null, null, null, null), false));
 
-        // With DH's rendering off, before its config exists, or without a pipeline, nothing is built or flagged
+        // Checks nothing is built without DH rendering.
         when(configs.graphics().renderingEnabled().getValue()).thenReturn(false);
         assertFalse(new DhCompatInternal(pipeline, pack("", "dh_terrain"), true).incompatiblePack());
         DhApi.Delayed.configs = null;
@@ -412,7 +412,7 @@ class DhCompatTest {
     void aBrokenPackFailsTheWayOtherProgramsDo() {
         Mc.forge("distanthorizons");
         DhCompat.run();
-        // A compile failure fails the pack as a whole, anything else is wrapped with its cause
+        // Checks the compile failure handling.
         ShaderPack failing = mock(ShaderPack.class);
         when(failing.getProgramSet()).thenThrow(new ShaderCompileException("dh_terrain.fsh", "syntax error"));
         assertThrows(ShaderCompileException.class, () -> new DhCompat(pipeline, failing, true));
@@ -454,10 +454,10 @@ class DhCompatTest {
         assertNotNull(internal.getSolidFBWrapper());
         assertNotNull(internal.getShadowFBWrapper());
         assertNotNull(internal.getShadowCullingFrustum());
-        // The atlas sampler is pointed at unit 0 once, at link
+        // Checks the atlas sampler unit.
         verify(TestGl.gl(), Mockito.atLeastOnce()).glUniform1i(7, 0);
 
-        // DH's depth texture is attached once per id, and the pre-translucent copy follows DH's texture size
+        // Checks the depth texture attachment and copy.
         int initialCopy = compat.getDepthTexNoTranslucent();
         internal.reconnectDHTextures(55, 640, 480);
         assertEquals(55, compat.getDepthTex());
@@ -468,7 +468,7 @@ class DhCompatTest {
         internal.copyTranslucents(800, 300);
         verify(TestGl.gl()).glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, 0, 0, 640, 300);
 
-        // The LOD programs take DH's pass matrices, offsets and near clip
+        // Checks the LOD program uniforms.
         Matrix4f projection = new Matrix4f().perspective(1.2F, 1.5F, 24.0F, 1000.0F);
         solid.fillUniformData(projection, new Matrix4f().translate(1, 2, 3), 5, 0.5F);
         verify(TestGl.gl()).glUniform1f(13, 0.01F);
@@ -486,7 +486,7 @@ class DhCompatTest {
         solid.unbind();
         verify(TestGl.gl(), Mockito.atLeastOnce()).glUseProgram(0);
 
-        // dh_generic draws DH's instanced boxes, and only while a pipeline is live
+        // Checks dh_generic.
         DhGenericRenderProgram generic = (DhGenericRenderProgram) internal.getGenericShader();
         assertArrayEquals(new int[] {0, 2}, generic.getDrawBuffers());
         assertFalse(generic.overrideThisFrame());
@@ -502,7 +502,7 @@ class DhCompatTest {
         when(group.getBlockLight()).thenReturn(3);
         when(group.getSkyLight()).thenReturn(15);
         generic.fillIndirectUniformData(param, null, group, new DhApiVec3d(-17, 64, 3.5));
-        // Positions split into whole chunks and the remainder, for precision far from the origin
+        // Checks the split positions.
         verify(TestGl.gl()).glUniform3i(21, 2, -2, 0);
         verify(TestGl.gl()).glUniform3f(22, 8, 12, 7);
         verify(TestGl.gl()).glUniform3i(23, -2, 4, 0);
@@ -534,7 +534,7 @@ class DhCompatTest {
     void theLodProgramsFallBackTheWayTheProgramSetDoes() {
         Mc.forge("distanthorizons");
         DhCompat.run();
-        // Only dh_water: it stands in for the terrain, clouds follow the pack's vanilla setting, and no shadow renderer means no LOD shadows
+        // Checks a pack with only dh_water.
         when(pipeline.getShadowRenderer()).thenReturn(null);
         DhCompatInternal waterOnly = new DhCompatInternal(pipeline, pack("clouds = off", "dh_water", "dh_shadow"), true);
         assertEquals("dh_water", waterOnly.getSolidShader().getName());
@@ -544,7 +544,7 @@ class DhCompatTest {
         assertNull(waterOnly.getGenericShader());
         waterOnly.clear();
 
-        // dh_terrain alone serves water and generic too; dhShadow.enabled=false keeps LOD shadows off and fancy DH clouds stay
+        // Checks a pack with only dh_terrain and LOD shadows off.
         when(pipeline.getShadowRenderer()).thenReturn(shadowRenderer);
         DhCompatInternal terrainOnly = new DhCompatInternal(pipeline,
                 pack("dhClouds = fancy\nclouds = off", "dh_terrain", "dh_shadow"), false);
@@ -564,7 +564,7 @@ class DhCompatTest {
         DhFramebufferWrapper wrapper = new DhFramebufferWrapper(framebuffer);
         assertTrue(wrapper.overrideThisFrame());
         wrapper.bind();
-        // DH's attachment calls are ignored: the compat attaches what belongs there itself
+        // Checks DH's attachment calls are ignored.
         wrapper.addDepthAttachment(4, true);
         wrapper.addColorAttachment(0, 5);
         wrapper.destroy();
@@ -602,7 +602,7 @@ class DhCompatTest {
         DhApiBeforeRenderPassEvent renderPass = handler(DhApiBeforeRenderPassEvent.class, 0);
         DhApiBeforeApplyShaderRenderEvent applyShader = handler(DhApiBeforeApplyShaderRenderEvent.class, 0);
 
-        // Shaders off: DH renders exactly as it would without Impetus
+        // Checks DH renders unchanged with shaders off.
         DhApiCancelableEventParam<DhApiRenderParam> frame = pass(EDhApiRenderPass.OPAQUE);
         deferSetup.beforeRender(frame);
         shadowCancel.beforeRender(frame);
@@ -623,13 +623,13 @@ class DhCompatTest {
         DhApiCancelableEventParam<DhApiRenderParam> ownApply = pass(EDhApiRenderPass.OPAQUE);
         applyShader.beforeRender(ownApply);
         assertFalse(ownApply.isEventCanceled());
-        // A pipeline without DH state, or whose compat never bound, is treated the same
+        // Checks a pipeline without DH state.
         Mixins.set(Umbra.class, "renderingPipeline", pipeline);
         deferSetup.beforeRender(pass(EDhApiRenderPass.OPAQUE));
         when(pipeline.getDhCompat()).thenReturn(mock(DhCompat.class));
         deferSetup.beforeRender(pass(EDhApiRenderPass.OPAQUE));
         verify(renderProxy, times(3)).setDeferTransparentRendering(false);
-        // ...and with no dh_shadow the LODs stay out of the shadow map, nothing cleared or drawn there
+        // Checks the shadow pass without dh_shadow.
         Statics.set(UmbraShadowRenderer.class, "shadowPassActive", true);
         DhApiCancelableEventParam<DhApiRenderParam> shadowFrame = pass(EDhApiRenderPass.OPAQUE);
         shadowCancel.beforeRender(shadowFrame);
@@ -656,7 +656,7 @@ class DhCompatTest {
         reconnect.beforeClear(pass(EDhApiRenderPass.OPAQUE));
         assertEquals(55, internal.getStoredDepthTex());
 
-        // Before DH's frame: its water defers and its fog is off
+        // Checks the state before DH's frame.
         DhApiCancelableEventParam<DhApiRenderParam> packFrame = pass(EDhApiRenderPass.OPAQUE);
         deferSetup.beforeRender(packFrame);
         shadowCancel.beforeRender(packFrame);
@@ -664,14 +664,14 @@ class DhCompatTest {
         verify(renderProxy).setDeferTransparentRendering(true);
         verify(configs.graphics().fog().enableDhFog()).setValue(false);
 
-        // The camera pass: the LOD gbuffer and dh_generic become DH's overrides, rebinding without a clash
+        // Checks the camera pass overrides.
         setup.beforeSetup(pass(EDhApiRenderPass.OPAQUE));
         setup.beforeSetup(pass(EDhApiRenderPass.OPAQUE));
         assertSame(internal.getSolidFBWrapper(), OverrideInjector.INSTANCE.get(IDhApiFramebuffer.class));
         assertSame(internal.getGenericShader(), OverrideInjector.INSTANCE.get(IDhApiGenericObjectShaderProgram.class));
         assertNull(OverrideInjector.INSTANCE.get(IDhApiShadowCullingFrustum.class));
 
-        // Only DH's own depth is cleared, forward-Z, and only at the opaque pass
+        // Checks the depth clear.
         DhApiCancelableEventParam<DhApiRenderParam> depthClear = pass(EDhApiRenderPass.OPAQUE);
         clear.beforeClear(depthClear);
         assertTrue(depthClear.isEventCanceled());
@@ -680,7 +680,7 @@ class DhCompatTest {
         clear.beforeClear(translucentClear);
         assertFalse(translucentClear.isEventCanceled());
 
-        // The opaque pass: dh_terrain with DH's matrices into the LOD gbuffer, the model offset per buffer
+        // Checks the opaque pass.
         renderPass.beforeRender(pass(EDhApiRenderPass.OPAQUE));
         verify(configs.graphics().ambientOcclusion().enabled()).setValue(false);
         DhLodRenderProgram solid = internal.getSolidShader();
@@ -690,7 +690,7 @@ class DhCompatTest {
         cleanup.beforeCleanup(pass(EDhApiRenderPass.OPAQUE));
         verify(pipeline).afterDhLodDraw(2);
 
-        // The deferred translucent pass: dhDepthTex1 is snapshotted, then dh_water draws blended
+        // Checks the translucent pass.
         renderPass.beforeRender(pass(EDhApiRenderPass.TRANSPARENT));
         verify(TestGl.gl()).glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, 0, 0, 640, 480);
         DhLodRenderProgram water = internal.getTranslucentShader();
@@ -699,10 +699,10 @@ class DhCompatTest {
         verify(TestGl.gl()).glUniform3f(11, 4, 5, 6);
         cleanup.beforeCleanup(pass(EDhApiRenderPass.TRANSPARENT));
         verify(pipeline).afterDhLodDraw(1);
-        // DH's combined pass should never run with shaders on, and is only reported
+        // Checks the combined pass is reported.
         renderPass.beforeRender(pass(EDhApiRenderPass.OPAQUE_AND_TRANSPARENT));
 
-        // DH's generic objects draw with dh_generic into their own framebuffer; its clouds are dropped for this pack
+        // Checks the generic objects pass.
         genericSetup.beforeSetup(pass(EDhApiRenderPass.OPAQUE));
         verify(pipeline).onDhLodDraw(eq(internal.getGenericFB()), any(), any(), eq(true));
         DhApiCancelableEventParam<DhApiBeforeGenericObjectRenderEvent.EventParam> clouds = genericObject("Clouds");
@@ -712,7 +712,7 @@ class DhCompatTest {
         genericObject.beforeRender(beacon);
         assertFalse(beacon.isEventCanceled());
 
-        // The shadow pass: dh_shadow into the shadow map, culled by the shadow frustum, nothing cleared
+        // Checks the shadow pass.
         Statics.set(UmbraShadowRenderer.class, "shadowPassActive", true);
         DhApiCancelableEventParam<DhApiRenderParam> lodShadows = pass(EDhApiRenderPass.OPAQUE);
         shadowCancel.beforeRender(lodShadows);
@@ -736,7 +736,7 @@ class DhCompatTest {
         verify(pipeline, times(1)).onDhLodDraw(eq(internal.getGenericFB()), any(), any(), anyBoolean());
         Statics.set(UmbraShadowRenderer.class, "shadowPassActive", false);
 
-        // DH's own composite onto MC's framebuffer is cancelled, and the overrides dropped until the next pass
+        // Checks DH's composite is cancelled.
         DhApiCancelableEventParam<DhApiRenderParam> apply = pass(EDhApiRenderPass.OPAQUE);
         applyShader.beforeRender(apply);
         assertTrue(apply.isEventCanceled());
@@ -744,7 +744,7 @@ class DhCompatTest {
         assertNull(OverrideInjector.INSTANCE.get(IDhApiShadowCullingFrustum.class));
         assertNull(OverrideInjector.INSTANCE.get(IDhApiGenericObjectShaderProgram.class));
 
-        // A pack without dh_shadow: the shadow pass binds nothing of its own and draws nothing
+        // Checks a pack without dh_shadow.
         DhCompat noShadow = new DhCompat(pipeline, pack("", "dh_terrain"), true);
         when(pipeline.getDhCompat()).thenReturn(noShadow);
         Statics.set(UmbraShadowRenderer.class, "shadowPassActive", true);
@@ -758,7 +758,7 @@ class DhCompatTest {
         Statics.set(UmbraShadowRenderer.class, "shadowPassActive", false);
         applyShader.beforeRender(pass(EDhApiRenderPass.OPAQUE));
 
-        // Shaders off again: the composite is DH's own
+        // Checks the composite with shaders off.
         Mixins.set(Umbra.class, "renderingPipeline", null);
         DhApiCancelableEventParam<DhApiRenderParam> own = pass(EDhApiRenderPass.OPAQUE);
         applyShader.beforeRender(own);

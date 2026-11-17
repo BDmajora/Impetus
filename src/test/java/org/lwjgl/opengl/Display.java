@@ -1,6 +1,6 @@
 package org.lwjgl.opengl;
 
-// Test stand-in for Cleanroom's lwjglx Display, whose real static initialiser opens GLFW; every query is a settable field
+// Test stand-in for Cleanroom's lwjglx Display with settable query fields.
 public final class Display {
     public static boolean visible, active, created, fullscreen, vsync, borderless;
     public static DisplayMode displayMode;

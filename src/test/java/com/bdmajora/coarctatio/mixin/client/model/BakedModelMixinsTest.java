@@ -15,6 +15,7 @@ import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.block.model.IBakedModel;
 import net.minecraft.client.renderer.block.model.ItemCameraTransforms;
 import net.minecraft.client.renderer.block.model.ItemOverrideList;
+import net.minecraft.client.renderer.block.model.ItemTransformVec3f;
 import net.minecraft.client.renderer.block.model.WeightedBakedModel;
 import net.minecraft.launchwrapper.Launch;
 import net.minecraft.util.EnumFacing;
@@ -53,8 +54,7 @@ class BakedModelMixinsTest {
 
     @Test
     void aQuadSubclassIsCountedRatherThanPooled() {
-        // Only an exact BakedQuad is pooled, since the subclasses mutate their array after construction; a mixin
-        // instance is always a subclass here, which is the rejected case
+        // Checks only exact BakedQuads are pooled.
         CoarctatioBakedQuadMixin quad = Mixins.instance(CoarctatioBakedQuadMixin.class);
         assertNotEquals(BakedQuad.class, ((Object) quad).getClass());
         ModelCaches.QUADS.deduplicate(new int[28]);
@@ -85,6 +85,35 @@ class BakedModelMixinsTest {
         assertSame(ItemOverrideList.NONE, Mixins.get(model, "itemOverrideList"));
     }
 
+    // Checks the transforms switch.
+    @Test
+    @SuppressWarnings("deprecation")
+    void theTransformsSwitchAloneDecidesWhetherTransformsAreShared() {
+        CoarctatioConfig.get().deduplicateModelTransforms = false;
+        SimpleBakedModelMixin model = Mixins.instance(SimpleBakedModelMixin.class);
+        Mixins.set(model, "generalQuads", new ArrayList<BakedQuad>());
+        Mixins.set(model, "faceQuads", new HashMap<EnumFacing, List<BakedQuad>>());
+        // Builds a transform equal to the default.
+        ItemTransformVec3f none = ItemTransformVec3f.DEFAULT;
+        ItemCameraTransforms transforms = new ItemCameraTransforms(none, none, none, none, none, none, none, none);
+        ItemOverrideList overrides = new ItemOverrideList(ImmutableList.of());
+        Mixins.set(model, "cameraTransforms", transforms);
+        Mixins.set(model, "itemOverrideList", overrides);
+
+        Mixins.call(model, "coarctatio$compactQuadLists", Mixins.ci());
+        // The lists are still compacted under compactBakedModels while both shared objects stay the model's own
+        assertInstanceOf(FixedArrayList.class, Mixins.get(model, "generalQuads"));
+        assertSame(transforms, Mixins.get(model, "cameraTransforms"));
+        assertSame(overrides, Mixins.get(model, "itemOverrideList"));
+
+        // Checks the pooled default.
+        CoarctatioConfig.get().deduplicateModelTransforms = true;
+        assertSame(ItemCameraTransforms.DEFAULT, TransformCaches.TRANSFORMS.deduplicate(ItemCameraTransforms.DEFAULT));
+        Mixins.call(model, "coarctatio$compactQuadLists", Mixins.ci());
+        assertSame(ItemCameraTransforms.DEFAULT, Mixins.get(model, "cameraTransforms"));
+        assertSame(ItemOverrideList.NONE, Mixins.get(model, "itemOverrideList"));
+    }
+
     @Test
     void aWeightedModelsListIsCompacted() {
         WeightedBakedModelMixin model = Mixins.instance(WeightedBakedModelMixin.class);
@@ -106,7 +135,7 @@ class BakedModelMixinsTest {
         Mixins.call(model, "coarctatio$compactSelectors", Mixins.ci());
         Map<Predicate<IBlockState>, IBakedModel> compacted = Mixins.get(model, "selectors");
         assertInstanceOf(ArrayBackedLinkedMap.class, compacted);
-        // Selectors apply in declaration order, so the order has to survive
+        // Checks the selector order.
         assertSame(first, compacted.keySet().iterator().next());
 
         // A mod re-baking in place must not copy an already compacted map

@@ -79,11 +79,11 @@ class EmitterPaletteTest {
         assertFalse(EmitterPalette.mayEmitLight(section));
         section.set(1, 2, 3, Blocks.GLOWSTONE.getDefaultState());
         assertTrue(EmitterPalette.mayEmitLight(section));
-        // Palettes never shrink, so a replaced light source still counts: a wasted scan, never a missed light
+        // Checks a replaced light source.
         section.set(1, 2, 3, Blocks.STONE.getDefaultState());
         assertTrue(EmitterPalette.mayEmitLight(section));
 
-        // Past sixteen states the palette is a hash map, still local and still read
+        // Checks a hash map palette.
         ExtendedBlockStorage wide = new ExtendedBlockStorage(64, true);
         for (int meta = 0; meta < 16; meta++) {
             wide.set(meta, 0, 0, Blocks.WOOL.getStateFromMeta(meta));
@@ -97,7 +97,7 @@ class EmitterPaletteTest {
 
     @Test
     void theGlobalPaletteAWorldContextBlockAndAnUnknownPaletteAreAlwaysScanned() {
-        // Past 256 states the section indexes the global registry, which lists every light source in the game
+        // Checks the registry palette.
         ExtendedBlockStorage crowded = new ExtendedBlockStorage(64, true);
         java.util.Set<IBlockState> distinct = new java.util.LinkedHashSet<>();
         for (IBlockState state : Block.BLOCK_STATE_IDS) {
@@ -113,7 +113,7 @@ class EmitterPaletteTest {
         assertInstanceOf(BlockStatePaletteRegistry.class, palette(crowded));
         assertTrue(EmitterPalette.mayEmitLight(crowded));
 
-        // A block that answers its light from the world may glow anywhere, whatever its state says
+        // Block whose light depends on the world.
         Block contextual = new Block(Material.ROCK) {
             @Override
             public int getLightValue(IBlockState state, IBlockAccess world, BlockPos pos) {
@@ -160,7 +160,7 @@ class EmitterPaletteTest {
         assertEquals(15, fixture.blockLight(lamp));
         assertEquals(14, fixture.blockLight(lamp.up()));
         assertEquals(0, fixture.blockLight(new BlockPos(8, 70, 8)));
-        // One palette read for the dark section instead of a lookup for each of its 4096 blocks
+        // Checks the dark section lookups.
         assertTrue(dark.lookups.get() < 64, "lookups " + dark.lookups.get());
     }
 
@@ -176,7 +176,7 @@ class EmitterPaletteTest {
         Chunk chunk = fixture.chunks.get(AsyncWorld.key(0, 0));
         BlockPos stone = new BlockPos(8, 70, 8);
         fixture.setBlock(stone, Blocks.STONE.getDefaultState());
-        // A glowing fluid shares every position, and no block in the palette emits
+        // Checks a glowing fluid.
         IFluidStateContainer container = (x, y, z, fallback) -> new FluidState(Blocks.SEA_LANTERN.getDefaultState());
         IFluidStateCapability.next[0] = y -> container;
         try {

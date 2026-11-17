@@ -3,8 +3,6 @@ package com.bdmajora.coarctatio.gui;
 import com.bdmajora.coarctatio.CoarctatioConfig;
 import com.bdmajora.impetus.api.options.structure.Option;
 import com.bdmajora.impetus.api.options.structure.OptionFlag;
-import com.bdmajora.impetus.api.options.structure.OptionGroup;
-import com.bdmajora.impetus.api.options.structure.OptionPage;
 import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
 import com.bdmajora.testing.OptionPages;
@@ -20,8 +18,6 @@ import org.mockito.Mockito;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
@@ -42,61 +38,68 @@ class CoarctatioGuiTest {
         Mixins.set(CoarctatioConfig.class, "instance", null);
     }
 
-    // Reads an option, writes the same value back and makes its row through the strict control checks
-    private static <T> void touch(Option<T> option) {
-        OptionPages.exercise(option);
-    }
-
     @Test
-    void theTwoPagesCoverEverySwitchInTheConfig() throws Exception {
-        List<OptionPage> pages = CoarctatioOptionPages.pages();
-        assertEquals(2, pages.size());
-        assertEquals("page.loading", pages.get(0).getId().getPath());
-        assertEquals("page.data", pages.get(1).getId().getPath());
+    void theMemorySwitchKeepsEveryFeatureSettingInTheFile() throws Exception {
+        Option<Boolean> memory = CoarctatioOptionPages.memory();
+        OptionPages.exercise(memory);
+        assertTrue(memory.getFlags().contains(OptionFlag.REQUIRES_GAME_RESTART));
+        CoarctatioConfig config = CoarctatioConfig.get();
+        assertSame(config, memory.getStorage().getData());
+        assertTrue(memory.getValue());
+        Path file = dir.resolve("config/impetus-coarctatio.cfg");
 
-        List<String> ids = new ArrayList<>();
-        Option<Boolean> restartFlagged = null;
-        Option<Boolean> live = null;
-        for (OptionPage page : pages) {
-            assertFalse(page.getGroups().isEmpty());
-            for (OptionGroup group : page.getGroups()) {
-                for (Option<?> option : group.getOptions()) {
-                    ids.add(option.getId().getPath());
-                    touch(option);
-                    if (option.getId().getPath().equals("optimize_block_states")) {
-                        restartFlagged = castToggle(option);
-                    }
-                    if (option.getId().getPath().equals("show_debug_overlay")) {
-                        live = castToggle(option);
-                    }
-                }
-            }
-        }
-        // Every config switch the screen exposes, plus the one numeric slider
-        assertTrue(ids.size() >= 30, "only " + ids.size() + " options");
-        assertTrue(ids.contains("nbt_array_map_threshold"));
-        assertNotNull(restartFlagged);
-        assertNotNull(live);
+        // Off writes only the master key and leaves the feature keys as they were.
+        config.dynamicModels = true;
+        memory.setValue(false);
+        assertTrue(memory.hasChanged());
+        memory.applyChanges();
+        assertFalse(config.enabled);
+        assertTrue(config.optimizeBlockStates);
+        memory.getStorage().save();
+        String text = Files.readString(file);
+        assertTrue(text.contains("\nenabled=false\n"));
+        assertTrue(text.contains("\noptimizeBlockStates=true\n"));
+        assertTrue(text.contains("\ndynamicModels=true\n"));
 
-        // The mixin plugin reads the config before the window exists, so nearly everything needs a restart
-        assertTrue(restartFlagged.getFlags().contains(OptionFlag.REQUIRES_GAME_RESTART));
-        // The F3 line is read every frame, so it applies immediately
-        assertFalse(live.getFlags().contains(OptionFlag.REQUIRES_GAME_RESTART));
+        // The next launch runs no feature but keeps the file values.
+        Mixins.set(CoarctatioConfig.class, "instance", null);
+        CoarctatioConfig held = CoarctatioConfig.get();
+        assertFalse(held.enabled);
+        assertFalse(held.optimizeBlockStates);
+        assertFalse(held.dynamicModels);
+        assertTrue(held.showDebugOverlay);
+        assertTrue(Files.readString(file).contains("\ndynamicModels=true\n"));
 
-        // Writing goes through the storage to the live config and then to the file
-        restartFlagged.setValue(false);
-        assertTrue(restartFlagged.hasChanged());
-        restartFlagged.applyChanges();
-        assertFalse(CoarctatioConfig.get().optimizeBlockStates);
-        assertSame(CoarctatioConfig.get(), restartFlagged.getStorage().getData());
-        restartFlagged.getStorage().save();
-        assertTrue(Files.readString(dir.resolve("config/impetus-coarctatio.cfg")).contains("optimizeBlockStates=false"));
+        // On again restores the file values on the launch after.
+        Option<Boolean> again = CoarctatioOptionPages.memory();
+        assertFalse(again.getValue());
+        again.setValue(true);
+        again.applyChanges();
+        again.getStorage().save();
+        Mixins.set(CoarctatioConfig.class, "instance", null);
+        CoarctatioConfig restored = CoarctatioConfig.get();
+        assertTrue(restored.enabled);
+        assertTrue(restored.optimizeBlockStates);
+        assertTrue(restored.dynamicModels);
+        assertFalse(restored.recycleEvents);
         assertNotNull(Mixins.construct(CoarctatioOptionPages.class));
     }
 
-    @SuppressWarnings("unchecked")
-    private static Option<Boolean> castToggle(Option<?> option) {
-        return (Option<Boolean>) option;
+    @Test
+    void theFileNotesAndDefaultsEveryKey() throws Exception {
+        CoarctatioConfig.get();
+        String text = Files.readString(dir.resolve("config/impetus-coarctatio.cfg"));
+        assertTrue(text.startsWith("# Impetus memory features."));
+        assertTrue(text.contains("# Turns every memory feature on."));
+        assertTrue(text.contains("# Default: false\ndynamicModels=false\n"));
+        assertTrue(text.contains("# Default: jds.bibliocraft\nblockStateBlacklist=jds.bibliocraft\n"));
+        String[] lines = text.split("\n");
+        for (int i = 0; i < lines.length; i++) {
+            if (!lines[i].isEmpty() && !lines[i].startsWith("#")) {
+                assertTrue(lines[i - 1].startsWith("# Default: "), lines[i]);
+                assertTrue(lines[i - 2].startsWith("# ") && !lines[i - 2].startsWith("# Default: "), lines[i]);
+            }
+        }
     }
 
     @Test
@@ -104,7 +107,7 @@ class CoarctatioGuiTest {
         CoarctatioStatsCommand command = new CoarctatioStatsCommand();
         assertEquals("coarctatio", command.getName());
         assertTrue(command.getUsage(mock(ICommandSender.class)).startsWith("/coarctatio"));
-        // Anyone may run it, since it only reads counters
+        // Checks the permission level.
         assertEquals(0, command.getRequiredPermissionLevel());
 
         ICommandSender sender = mock(ICommandSender.class);

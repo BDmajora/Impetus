@@ -3,7 +3,7 @@ package com.bdmajora.impetus.engine.impl.render.viewport;
 import com.bdmajora.impetus.engine.impl.render.chunk.region.RenderRegion;
 
 public final class CameraTransform {
-    // Reduce delta precision to avoid seams at chunk/region boundaries: cameraPos + 0 - 0 must equal cameraPos + 128 - 128
+    // Precision step of camera deltas.
     private static final float PRECISION_MODIFIER = RenderRegion.REGION_WIDTH * 16; // 16 blocks per section
 
     // The integer component of the translation vector
@@ -34,7 +34,7 @@ public final class CameraTransform {
         return (int) value;
     }
 
-    // Remainder as float, so positions stay precise far from origin
+    // Returns the fractional part as a float.
     private static float fractional(double value) {
         float fullPrecision = (float) (value - integral(value));
         float modifier = Math.copySign(PRECISION_MODIFIER, fullPrecision);

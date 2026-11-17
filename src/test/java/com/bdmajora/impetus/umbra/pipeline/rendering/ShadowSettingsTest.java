@@ -76,9 +76,9 @@ class ShadowSettingsTest {
     @Test
     void legacyDefinesReadTheFirstStageThatDeclaresThemAndSurviveGarbage() {
         assertEquals(512, ShadowSettings.defineInt(List.of("void a() {}", "#define SHADOWRES 512", "#define SHADOWRES 4096"), DEFINE, 1024));
-        // At the very start of a stage, which the old concatenation (no separator) hid behind the previous stage's last line
+        // Checks a define at the start of a stage.
         assertEquals(256, ShadowSettings.defineInt(List.of("int x = 1;", "#define SHADOWRES 256\n"), DEFINE, 1024));
-        // Too long for an int keeps the fallback instead of failing the whole pipeline
+        // Checks an overflowing value.
         assertEquals(1024, ShadowSettings.defineInt(List.of("#define SHADOWRES 99999999999"), DEFINE, 1024));
         assertEquals(1024, ShadowSettings.defineInt(List.of(), DEFINE, 1024));
         assertEquals(90.5f, ShadowSettings.defineFloat(List.of("#define SHADOWHPL 90.5"), FLOAT_DEFINE, 160.0f));
@@ -115,7 +115,7 @@ class ShadowSettingsTest {
         UmbraShadowRenderer renderer = create(pack);
         assertNotNull(renderer);
         try {
-            // A 0 from shaders.properties used to skip the check and fail allocation, disabling shadows
+            // Checks a zero resolution.
             assertEquals(ShadowSettings.DEFAULT_RESOLUTION, renderer.getResolution());
             assertEquals(4, WorldRenderingSettings.getVoxelRenderDistanceChunks());
         } finally {

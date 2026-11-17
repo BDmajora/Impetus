@@ -6,11 +6,11 @@ import java.io.IOException;
 import java.util.HashSet;
 import java.util.Set;
 
-// Test stand-in for CTM's resource helpers: a texture has metadata when the test says its file does
+// Test stand-in for CTM's resource helpers.
 public class ResourceUtil {
     public static final Set<ResourceLocation> WITH_METADATA = new HashSet<>();
 
-    // A file named here fails to read, the way a corrupt mcmeta would
+    // Files that fail to read.
     public static final Set<ResourceLocation> UNREADABLE = new HashSet<>();
 
     public static ResourceLocation spriteToAbsolute(ResourceLocation sprite) {

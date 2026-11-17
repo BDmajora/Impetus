@@ -11,11 +11,11 @@ class ComputeDirectivesTest {
     @Test
     void workGroupsReadEitherSpellingAndRejectWhatIsNotAPositiveCount() {
         assertArrayEquals(new int[]{2, 3, 4}, ComputeDirectives.workGroups("const ivec3 workGroups = ivec3(2, 3, 4);"));
-        // A single value splats, a 2-component vector leaves z at 1, unsigned suffixes are tolerated
+        // Checks the work group forms.
         assertArrayEquals(new int[]{5, 5, 5}, ComputeDirectives.workGroups("const ivec3 workGroups = ivec3(5);"));
         assertArrayEquals(new int[]{2, 7, 1}, ComputeDirectives.workGroups("const ivec2 workGroups = ivec2(2, 7);"));
         assertArrayEquals(new int[]{2, 2, 1}, ComputeDirectives.workGroups("const uvec3 workGroups = uvec3(2u, 2U, 1u);"));
-        // A zero, a negative, a float or an overflowing value voids the directive
+        // Checks the invalid work groups.
         assertNull(ComputeDirectives.workGroups("const ivec3 workGroups = ivec3(2, 0, 1);"));
         assertNull(ComputeDirectives.workGroups("const ivec3 workGroups = ivec3(2, -1, 1);"));
         assertNull(ComputeDirectives.workGroups("const vec3 workGroups = vec3(2.0, 1.0, 1.0);"));
@@ -24,7 +24,7 @@ class ComputeDirectivesTest {
         assertArrayEquals(new int[]{4, 1, 1}, ComputeDirectives.workGroups(
                 "const ivec3 workGroups = ivec3(2, 2);\nconst int workGroupsX = 4;"));
         assertArrayEquals(new int[]{3, 1, 6}, ComputeDirectives.workGroups("const int workGroupsX = 3;\nconst int workGroupsZ = 6;"));
-        // The first declaration of an axis wins; zero and overflow are not declarations
+        // Checks the per axis declarations.
         assertArrayEquals(new int[]{3, 1, 1}, ComputeDirectives.workGroups("const int workGroupsX = 3;\nconst int workGroupsX = 9;"));
         assertArrayEquals(new int[]{8, 1, 1}, ComputeDirectives.workGroups("const int workGroupsX = 0;\nconst int workGroupsX = 8;"));
         assertNull(ComputeDirectives.workGroups("const int workGroupsX = 99999999999;"));
@@ -38,7 +38,7 @@ class ComputeDirectivesTest {
         assertArrayEquals(new float[]{1.0f, 0.5f}, ComputeDirectives.renderScale("const vec2 workGroupsRender = vec2(1.0, 0.5, 9.0);"));
         assertNull(ComputeDirectives.renderScale("const vec2 workGroupsRender = vec2();"));
         assertNull(ComputeDirectives.renderScale("const vec2 workGroupsRender = vec2(a, b);"));
-        // NaN is the fixed-dispatch sentinel downstream, so a non-finite factor is not a declaration
+        // Checks a non finite render scale.
         assertNull(ComputeDirectives.renderScale("const vec2 workGroupsRender = vec2(NaN, 1.0);"));
         assertNull(ComputeDirectives.renderScale("const vec2 workGroupsRender = vec2(1.0, Infinity);"));
         assertNull(ComputeDirectives.renderScale("void main() {}"));
@@ -49,7 +49,7 @@ class ComputeDirectivesTest {
         assertArrayEquals(new int[]{8, 4, 2}, ComputeDirectives.localSize("layout(local_size_x = 8, local_size_y = 4, local_size_z = 2) in;"));
         assertArrayEquals(new int[]{8, 4, 1}, ComputeDirectives.localSize("layout(local_size_y = 4, local_size_x = 8) in;"));
         assertArrayEquals(new int[]{1, 16, 1}, ComputeDirectives.localSize("layout(local_size_y = 16) in;"));
-        // Zero or an overflow cannot be divided by, so it counts as 1; a specialisation id is no size
+        // Checks the local size rules.
         assertArrayEquals(new int[]{1, 2, 1}, ComputeDirectives.localSize("layout(local_size_x = 0, local_size_y = 2) in;"));
         assertArrayEquals(new int[]{1, 1, 1}, ComputeDirectives.localSize("layout(local_size_x = 99999999999) in;"));
         assertNull(ComputeDirectives.localSize("layout(local_size_x_id = 1) in;"));
@@ -72,7 +72,7 @@ class ComputeDirectivesTest {
         ComputeDirectives slow = ComputeDirectives.parse(source, Map.of());
         assertArrayEquals(new int[]{9, 9, 1}, slow.workGroups());
         assertArrayEquals(new int[]{16, 16, 1}, slow.localSize());
-        // Missing from the active text, so the raw one answers (the evaluator cannot expand every macro shape)
+        // Checks the raw directive fallback.
         assertArrayEquals(new float[]{0.5f, 0.5f}, slow.renderScale());
         ComputeDirectives fast = ComputeDirectives.parse(source, Map.of("FAST", ""));
         assertArrayEquals(new int[]{1, 1, 1}, fast.workGroups());
@@ -89,7 +89,7 @@ class ComputeDirectivesTest {
         assertSame(clean, ComputeDirectives.stripComments(clean));
         assertEquals("a \nb", ComputeDirectives.stripComments("a // x\nb"));
         assertEquals("const int   x;", ComputeDirectives.stripComments("const int /* y */ x;"));
-        // A block comment joins no tokens, and one opened inside a line comment opens nothing
+        // Checks comment stripping.
         assertEquals("const ivec3 workGroups", ComputeDirectives.stripComments("const/**/ivec3/**/workGroups"));
         assertEquals("a \nb */ c", ComputeDirectives.stripComments("a // /*\nb */ c"));
         assertEquals("x  ", ComputeDirectives.stripComments("x /* never closed"));

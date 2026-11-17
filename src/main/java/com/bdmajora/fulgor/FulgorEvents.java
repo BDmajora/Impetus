@@ -6,7 +6,7 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
 // Handler of world events for the async light engine.
 public final class FulgorEvents {
-    // Handles the world unload.
+    // Stops the light workers of an unloading world.
     @SubscribeEvent
     public void onWorldUnload(WorldEvent.Unload event) {
         if (event.getWorld() instanceof AsyncLitWorld) {

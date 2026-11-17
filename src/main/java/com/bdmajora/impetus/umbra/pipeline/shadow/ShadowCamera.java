@@ -52,7 +52,7 @@ public final class ShadowCamera {
                 0.0f, 0.0f, 2.0f * farPlane * nearPlane / (nearPlane - farPlane), 1.0f);
     }
 
-    // Skies the angle.
+    // Returns the sky angle the light rotation uses for a shadow angle.
     static float skyAngle(float shadowAngle) {
         return shadowAngle < 0.25f ? shadowAngle + 0.75f : shadowAngle - 0.25f;
     }

@@ -89,7 +89,7 @@ class RenderRegionTest {
         region.onSectionDataChanged();
         assertEquals(revision + 2, region.getDataRevision());
 
-        // Every pass shares the region's arena, so a pass whose vertex size does not divide its stride is refused
+        // Checks a mismatched stride.
         assertNull(region.getStorage(Passes.SOLID));
         assertFalse(region.hasSectionsInPass(Passes.SOLID));
         assertNotNull(region.createStorage(Passes.SOLID, Passes.CONFIG));
@@ -143,7 +143,7 @@ class RenderRegionTest {
         Mockito.verify(second).delete(commands);
         assertNull(resources.getTessellation(key));
 
-        // An index arena with live indices stays, an empty one goes
+        // Checks the index arena.
         PendingUpload indices = PendingUpload.of(new NativeBuffer(24));
         resources.getIndexArena().upload(commands, new ArrayList<>(List.of(indices)));
         assertFalse(resources.deleteIndexArenaIfPossible(commands));
@@ -152,7 +152,7 @@ class RenderRegionTest {
         assertNull(resources.getIndexArena());
         assertFalse(resources.deleteIndexArenaIfPossible(commands));
 
-        // The region drops an empty index arena, and then the whole resources once the geometry is gone too
+        // Checks the region release.
         PendingUpload geometry = PendingUpload.of(new NativeBuffer(4 * STRIDE));
         resources.getGeometryArena().upload(commands, new ArrayList<>(List.of(geometry)));
         resources.getOrCreateIndexArena(commands);
@@ -181,7 +181,7 @@ class RenderRegionTest {
         assertEquals(0, manager.getUploadDurationEstimator().getLastUploadBytes());
         BuiltRenderSectionData info = new BuiltRenderSectionData();
         ChunkBuildOutput build = new ChunkBuildOutput(section, info, meshes(Passes.TRANSLUCENT, true), 1);
-        // A new pass in the region changes what the search must list, so the graph is marked
+        // Checks a new pass.
         manager.uploadMeshes(commands, List.of(success(build)), graphUpdates::incrementAndGet);
         assertEquals(1, graphUpdates.get());
         assertNotNull(region.getStorage(Passes.TRANSLUCENT));
@@ -218,7 +218,7 @@ class RenderRegionTest {
         unused.put(Passes.SOLID, new ChunkSortOutput.SortedMesh(new NativeBuffer(4)));
         new ChunkSortOutput(section, 1, unused).delete();
         assertEquals(1L, success(build).executionTimeNanos());
-        // Drivers without persistent mapping, or a user who turned it off, get the copying staging buffer
+        // Checks the copying staging buffer.
         RenderRegionManager.USE_ADVANCED_STAGING_BUFFERS = false;
         new RenderRegionManager(commands, Passes.CONFIG).delete(commands);
         RenderRegionManager.USE_ADVANCED_STAGING_BUFFERS = true;

@@ -14,7 +14,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 // Mixin that changes TileEntityBeaconRenderer.
 @Mixin(TileEntityBeaconRenderer.class)
 public class TileEntityBeaconRendererMixin {
-    // Field current beacon added to the target.
+    // Beacon being drawn.
     @Unique
     private TileEntityBeacon impetus$currentBeacon;
 

@@ -31,7 +31,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class CyclingControlTest {
-    // Name "Cycle" at x 6, values ending 6 short of the right edge at 194, text on line 5 (centre 9 less half the glyph height)
+    // Checks the row layout.
     private static final Dim2i DIM = new Dim2i(0, 0, 200, 18);
     private static final String OPTION = "Option must not be null";
     private static final String ENUM_TYPE = "Enum type must not be null";
@@ -89,7 +89,7 @@ class CyclingControlTest {
 
     private record Size(int blocks) { }
 
-    // A value only ever equal to itself, counting the equality checks made on it
+    // Value equal only to itself.
     private static final class Counted {
         static int checks;
 
@@ -105,7 +105,7 @@ class CyclingControlTest {
         }
     }
 
-    // A value equal to any other of the same number, counting the equality checks made on it
+    // Value equal by number.
     private static final class Tally {
         static int checks;
         final int id;
@@ -126,7 +126,7 @@ class CyclingControlTest {
         }
     }
 
-    // A piece of text drawn with the component it came from, where and in what colour
+    // Text drawn with its component and colour.
     private record Drawn(TextComponent component, String text, int x, int y, int color) { }
 
     // Fake fonts keeping every piece of text drawn and counting the text work done outside drawing
@@ -160,7 +160,7 @@ class CyclingControlTest {
             return super.substrByWidth(str, maxWidth);
         }
 
-        // The last piece of text drawn, which is the value's name
+        // Returns the value name.
         Drawn value() {
             return this.drawn.getLast();
         }
@@ -173,7 +173,7 @@ class CyclingControlTest {
         }
     }
 
-    // A mock option named and holding a value that clicks and keys write back, available and unchanged
+    // Returns a mock option with a value.
     private static <T> Option<T> valued(String name, T initial) {
         @SuppressWarnings("unchecked")
         Option<T> option = Mockito.mock(Option.class);
@@ -211,7 +211,7 @@ class CyclingControlTest {
         return thrown;
     }
 
-    // The name of the value a row draws, or null when it draws none
+    // Returns the value name a row draws.
     private static String shown(ControlElement<?> row) {
         FakeDrawContext draw = new FakeDrawContext();
         row.render(draw, 5000, 5000, 0f);
@@ -285,7 +285,7 @@ class CyclingControlTest {
         Option<Unnamed> unnamed = valued("Cycle", Unnamed.ONE);
         refused(IllegalArgumentException.class, "Value TWO has no name", () -> new CyclingControl<>(unnamed, Unnamed.class));
         refused(IllegalArgumentException.class, "Value TWO has no name", () -> new CyclingControl<>(unnamed, Unnamed.class, new Unnamed[]{Unnamed.TWO}));
-        // A value whose own name fails is left to fail as it does, for the option to turn into a placeholder
+        // Checks a failing value name.
         Option<Failing> broken = valued("Cycle", null);
         refused(IllegalStateException.class, "no translation", () -> new CyclingControl<>(broken, Failing.class));
         refused(IllegalStateException.class, "no translation", () -> new CyclingControl<>(broken, Failing.class, new Failing[]{Failing.ONE}));
@@ -296,12 +296,12 @@ class CyclingControlTest {
         Option<Mode> option = valued("Cycle", Mode.A);
         refused(IllegalArgumentException.class, "Value A is listed at both 0 and 2", () -> new CyclingControl<>(option, new Mode[]{Mode.A, Mode.B, Mode.A}, names("a", "b", "c")));
         refused(IllegalArgumentException.class, "Value B is listed at both 0 and 1", () -> new CyclingControl<>(option, Mode.class, new Mode[]{Mode.B, Mode.B}));
-        // Values are found by equality, so equal values made apart and two nulls are the same value too
+        // Checks equal values.
         Option<Size> sizes = valued("Cycle", null);
         refused(IllegalArgumentException.class, "Value Size[blocks=8] is listed at both 1 and 2",
                 () -> new CyclingControl<>(sizes, new Size[]{new Size(4), new Size(8), new Size(8)}, names("4", "8", "eight")));
         refused(IllegalArgumentException.class, "Value null is listed at both 0 and 1", () -> new CyclingControl<>(option, new Mode[]{null, null}, names("unset", "none")));
-        // Values that only look alike stay apart, and so does one null among values
+        // Checks values that only look alike.
         assertEquals(3, new CyclingControl<>(sizes, new Size[]{new Size(8), null, new Size(16)}, names("8", "unset", "16")).getNames().length);
     }
 
@@ -310,7 +310,7 @@ class CyclingControlTest {
     void theValuesConstructorRefusesAValueNotOfItsTypeAndNamesTheRestAsTheyNameThemselves() {
         Option<Mode> option = valued("Cycle", Mode.A);
         refused(IllegalArgumentException.class, "Value null is not a " + Mode.class.getName(), () -> new CyclingControl<>(option, Mode.class, new Mode[]{Mode.A, null}));
-        // A raw call could hand it another enum's constant, which the option could not hold
+        // Checks another enum's constant.
         refused(IllegalArgumentException.class, "Value X is not a " + Mode.class.getName(), () -> new CyclingControl(option, Mode.class, new Object[]{Mode.A, Other.X}));
         // A type that names its own values need not be an enum
         Option<Quality> qualities = valued("Cycle", null);
@@ -327,7 +327,7 @@ class CyclingControlTest {
         assertEquals(List.of(TextComponent.literal("C"), TextComponent.literal("A")), List.of(new CyclingControl<>(valued("Cycle", Mode.A), Mode.class, new Mode[]{Mode.C, Mode.A}).getNames()));
         assertEquals(List.of(TextComponent.literal("x"), TextComponent.literal("y"), TextComponent.literal("z")),
                 List.of(new CyclingControl<>(valued("Cycle", Mode.A), Mode.class, names("x", "y", "z")).getNames()));
-        // A constant with a body is named by its constant's name, not its toString
+        // Checks a constant with a body.
         assertEquals(List.of(TextComponent.literal("ONE")), List.of(new CyclingControl<>(valued("Cycle", Bodied.ONE), Bodied.class).getNames()));
     }
 
@@ -338,11 +338,11 @@ class CyclingControlTest {
         assertSame(Mode.class, new CyclingControl<>(valued("Cycle", Mode.A), Mode.class, names("a", "b", "c")).getValueType());
         assertSame(Mode.class, new CyclingControl<>(valued("Cycle", Mode.A), Mode.class, new Mode[]{Mode.B}).getValueType());
         assertSame(Bodied.class, new CyclingControl<>(valued("Cycle", Bodied.ONE), Bodied.class).getValueType());
-        // An array made generically holds Objects, but the type given still says what they are
+        // Checks a generic array.
         assertSame(Mode.class, new CyclingControl(valued("Cycle", Mode.A), Mode.class, new Object[]{Mode.A, Mode.B}).getValueType());
         assertSame(Mode.class, new CyclingControl<>(valued("Cycle", Mode.A), new Mode[]{Mode.B}, names("b")).getValueType());
         assertSame(Object.class, new CyclingControl<>(valued("Cycle", null), new Object[]{"a"}, names("a")).getValueType());
-        // So the strict path refuses an option of another type
+        // Checks the strict path.
         Option enumOption = valued("Cycle", Mode.A);
         when(enumOption.getValueType()).thenReturn(Other.class);
         CyclingControl generic = bound(new CyclingControl(enumOption, Mode.class, new Object[]{Mode.A, Mode.B}));
@@ -412,7 +412,7 @@ class CyclingControlTest {
         ControlElement<Mode> row = bound(new CyclingControl<>(option, Mode.values(), names("Off", "Fast", "Fancy"))).createElement(new Dim2i(10, 20, 200, 18));
         Recording draw = new Recording();
         row.render(draw, 5000, 5000, 0f);
-        // Centre 29 less 4, and the 24 pixel "Fast" ending at 204
+        // Checks the value position.
         assertEquals(List.of(new Drawn(TextComponent.literal("Cycle").withStyle(TextFormattingStyle.WHITE), "Cycle", 16, 25, WHITE),
                 new Drawn(TextComponent.literal("Fast"), "Fast", 180, 25, WHITE)), draw.drawn);
     }
@@ -436,7 +436,7 @@ class CyclingControlTest {
         assertEquals("A", shown(row(valued("Cycle", (Mode) null), Mode.values(), "A", "B", "C")));
         assertEquals("B", shown(row(valued("Cycle", Mode.A), new Mode[]{Mode.B, Mode.C}, "B", "C")));
         assertEquals("UNSET", shown(row(valued("Cycle", (Mode) null), new Mode[]{Mode.B, null}, "B", "UNSET")));
-        // A value of another type entirely, as a mispaired option would hand over, is missing too
+        // Checks a value of another type.
         @SuppressWarnings({"unchecked", "rawtypes"})
         Option<Mode> mistyped = (Option) valued("Cycle", "B");
         assertEquals("A", shown(row(mistyped, Mode.values(), "A", "B", "C")));
@@ -444,14 +444,14 @@ class CyclingControlTest {
 
     @Test
     void aValueTooWideForTheRoomBesideTheNameIsCutToItAndRightAligned() {
-        // "graphics quality" takes 96 of the 118 the 70 column leaves, so values may start at 6 + 96 + 6 = 108 and end 6 short of 200: 86 pixels
+        // Checks the value start.
         Option<Mode> option = valued("graphics quality", Mode.B);
         Recording draw = new Recording();
         row(option, Mode.values(), "A", "A VERY LONG MODE NAME", "C").render(draw, 5000, 5000, 0f);
-        // 86 less the 18 pixel ellipsis leaves 68, eleven characters, the space they end on dropped
+        // Checks eleven characters.
         assertEquals(List.of("graphics quality", "A VERY LONG..."), draw.strings);
         assertEquals(110, draw.value().x());
-        // A row too narrow for a name leaves the value the whole row less its inset: 14 pixels, too few for the ellipsis but enough for one letter
+        // Checks a narrow row.
         for (Mode value : Mode.values()) {
             FakeDrawContext narrow = new FakeDrawContext();
             bound(new CyclingControl<>(valued("Cycle", value), Mode.values(), names("Fast", "B", "C"))).createElement(new Dim2i(0, 0, 20, 18)).render(narrow, 5000, 5000, 0f);
@@ -475,7 +475,7 @@ class CyclingControlTest {
     @SuppressWarnings("unchecked")
     void valuesAreMatchedByEqualitySoOnesMadeAfreshOnEveryReadAreStillFound() {
         Size[] sizes = {new Size(8), new Size(16), new Size(32)};
-        // Every read builds a fresh value, as an int field read through Integer does above 127
+        // Checks fresh values.
         int[] stored = {16};
         Option<Size> option = Mockito.mock(Option.class);
         when(option.getValue()).thenAnswer(invocation -> new Size(stored[0]));
@@ -514,13 +514,13 @@ class CyclingControlTest {
         ControlElement<Counted> row = row(option, values, "A", "B", "C", "D");
         Counted.checks = 0;
         assertEquals("C", shown(row));
-        // The two entries before it, the third being the same object
+        // Checks the earlier entries.
         assertEquals(2, Counted.checks);
         for (int frame = 0; frame < 5; frame++) {
             assertEquals("C", shown(row));
         }
         assertEquals(2, Counted.checks);
-        // The value just written is remembered where it was written, so the frame after the click compares nothing either
+        // Checks the written value.
         assertTrue(click(row, false));
         assertSame(values[3], option.getValue());
         assertEquals("D", shown(row));
@@ -574,7 +574,7 @@ class CyclingControlTest {
             }
             for (int start = 0; start < count; start++) {
                 for (boolean reverse : new boolean[]{false, true}) {
-                    // Boxed afresh, so the start is found by equality
+                    // Checks the boxed start.
                     Option<Integer> option = valued("Cycle", Integer.valueOf(1000 + start));
                     ControlElement<Integer> row = row(option, values, names);
                     assertTrue(click(row, reverse));
@@ -625,7 +625,7 @@ class CyclingControlTest {
             if (reverse) {
                 context.held.add(InteractionContext.SpecialKey.SHIFT);
             }
-            // Handled with its click, but there is nothing else to step to
+            // Checks a single value.
             assertTrue(row.mouseClicked(context, 100, 9, 0));
             row.setFocused(true);
             assertTrue(row.keyTyped(context, '\0', reverse ? Keys.LEFT : Keys.RIGHT));
@@ -694,11 +694,11 @@ class CyclingControlTest {
         ControlElement<Mode> row = bound(new CyclingControl<>(option, Mode.class)).createElement(new Dim2i(10, 20, 200, 18));
         FakeInteractionContext context = new FakeInteractionContext();
         clearInvocations(option);
-        // A right click is not a step back; Shift is
+        // Checks a right click.
         for (int button : new int[]{1, 2, -1, 7}) {
             assertFalse(row.mouseClicked(context, 100, 25, button), "button " + button);
         }
-        // Just past each edge, the right and bottom edges themselves, and no position at all
+        // Checks the edges.
         for (double[] at : new double[][]{{9, 25}, {210, 25}, {100, 19}, {100, 38}, {Double.NaN, 25}, {100, Double.NaN}}) {
             assertFalse(row.mouseClicked(context, at[0], at[1], 0), at[0] + "," + at[1]);
         }
@@ -760,7 +760,7 @@ class CyclingControlTest {
             expected = Mode.values()[(expected.ordinal() + 2) % 3];
             assertEquals(expected, option.getValue(), "shifted press " + i);
         }
-        // Shift turns a press round, not an arrow
+        // Checks Shift.
         for (boolean shift : new boolean[]{true, false}) {
             if (!shift) {
                 context.held.clear();
@@ -782,10 +782,10 @@ class CyclingControlTest {
         ControlElement<Mode> row = bound(new CyclingControl<>(option, Mode.class)).createElement(DIM);
         FakeInteractionContext context = new FakeInteractionContext();
         clearInvocations(option);
-        // Unfocused, every key is someone else's
+        // Checks unfocused keys.
         assertFalse(row.keyTyped(context, ' ', Keys.SPACE));
         row.setFocused(true);
-        // Letters, Tab by key and by character, Escape, Up and Down
+        // Checks the ignored keys.
         char[] typed = {'a', '\t', '\0', '\0', '\0', '\0'};
         int[] codes = {30, 0, Keys.TAB, 1, 200, 208};
         for (int i = 0; i < typed.length; i++) {

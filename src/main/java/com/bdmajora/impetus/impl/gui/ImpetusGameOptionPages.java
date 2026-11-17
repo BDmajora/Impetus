@@ -12,7 +12,6 @@ import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.impl.platform.WindowModes;
 import com.bdmajora.impetus.ImpetusVintage;
-import com.bdmajora.impetus.api.options.structure.Option;
 import com.bdmajora.impetus.api.options.structure.OptionFlag;
 import com.bdmajora.impetus.api.options.structure.OptionGroup;
 import com.bdmajora.impetus.api.options.structure.OptionImpact;
@@ -22,12 +21,19 @@ import com.bdmajora.impetus.api.options.structure.OptionStorage;
 import com.bdmajora.impetus.api.options.structure.StandardOptions;
 import com.bdmajora.impetus.impl.compat.modernui.MuiGuiScaleHook;
 import com.bdmajora.extras.gui.ExtrasOptionPages;
+import com.bdmajora.coarctatio.gui.CoarctatioOptionPages;
+import com.bdmajora.equilibrium.gui.EquilibriumOptionPages;
+import com.bdmajora.fulgor.gui.FulgorOptionPages;
+import com.bdmajora.impetus.api.options.OptionIdentifier;
+import com.bdmajora.impetus.engine.impl.gui.options.CommonOptionPages;
 
 import java.util.ArrayList;
 import java.util.List;
 
 // Builder of the Impetus pages of the video options screen.
 public class ImpetusGameOptionPages {
+    // Mod id of the Impetus groups.
+    private static final String IMPETUS = "impetus";
     // Sodium opts.
     private static final ImpetusGameOptions sodiumOpts = ImpetusVintage.options();
     // Storage of the vanilla settings.
@@ -40,7 +46,7 @@ public class ImpetusGameOptionPages {
     }
 
     // Returns the general page.
-    public static OptionPage general(Option<ImpetusGameOptions.GraphicsApi> graphicsApi) {
+    public static OptionPage general() {
         List<OptionGroup> groups = new ArrayList<>();
 
         groups.add(OptionGroup.createBuilder()
@@ -114,6 +120,7 @@ public class ImpetusGameOptionPages {
                         .setControl(option -> new SliderControl(option, 10, 260, 10, ControlValueFormatter.fpsLimit()))
                         .setBinding((opts, value) -> opts.limitFramerate = value, opts -> opts.limitFramerate <= 0 || opts.limitFramerate > 260 ? 260 : opts.limitFramerate)
                         .build())
+                .add(CommonOptionPages.inactivityFpsLimit(sodiumOpts))
                 .build());
 
         groups.add(OptionGroup.createBuilder()
@@ -137,11 +144,6 @@ public class ImpetusGameOptionPages {
                         .build())
                 .build());
 
-        groups.add(OptionGroup.createBuilder()
-                .setId(StandardOptions.Group.GRAPHICS)
-                .add(graphicsApi)
-                .build());
-
         return new OptionPage(StandardOptions.Pages.GENERAL, TextComponent.translatable("impetus.options.pages.general"), ImmutableList.copyOf(groups));
     }
 
@@ -156,12 +158,8 @@ public class ImpetusGameOptionPages {
                         .setName(TextComponent.translatable("options.improvedTransparency"))
                         .setTooltip(TextComponent.translatable("impetus.options.improved_transparency.tooltip"))
                         .setControl(TickBoxControl::new)
-                        .setBinding((opts, value) -> {
-                            opts.quality.improvedTransparency = value;
-                            if (value) {
-                                opts.performance.useTranslucentFaceSorting = true;
-                            }
-                        }, opts -> opts.quality.improvedTransparency)
+                        .setBinding((opts, value) -> opts.performance.useTranslucentFaceSorting = value,
+                                opts -> opts.performance.useTranslucentFaceSorting)
                         .setImpact(OptionImpact.HIGH)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .build())
@@ -230,7 +228,7 @@ public class ImpetusGameOptionPages {
                         .build())
                 .add(OptionImpl.createBuilder(int.class, sodiumOpts)
                         .setId(StandardOptions.Option.BIOME_BLEND.cast())
-                        .setName(TextComponent.translatable("options.biomeBlendRadius"))
+                        .setName(TextComponent.translatable("impetus.options.biomeBlendRadius"))
                         .setTooltip(TextComponent.translatable("impetus.options.biome_blend.tooltip"))
                         .setControl(option -> new SliderControl(option, 0, 7, 1, ControlValueFormatter.biomeBlend()))
                         .setBinding((opts, value) -> opts.quality.legacyBiomeBlendRadius = value, opts -> opts.quality.legacyBiomeBlendRadius)
@@ -331,22 +329,45 @@ public class ImpetusGameOptionPages {
         return new OptionPage(StandardOptions.Pages.QUALITY, TextComponent.translatable("impetus.options.pages.quality"), ImmutableList.copyOf(groups));
     }
 
-    // Returns the fluidlogging page.
-    public static OptionPage fluidlogging() {
-        OptionGroup group = OptionGroup.createBuilder()
-                .setId(StandardOptions.Group.FLUIDLOGGING)
-                .add(OptionImpl.createBuilder(ImpetusGameOptions.FluidloggingGuess.class, sodiumOpts)
-                        .setId(StandardOptions.Option.INFERRED_FLUIDLOGGING.cast())
-                        .setName(TextComponent.translatable("impetus.options.inferred_fluidlogging.name"))
-                        .setTooltip(TextComponent.translatable("impetus.options.inferred_fluidlogging.tooltip"))
-                        .setControl(option -> new CyclingControl<>(option, ImpetusGameOptions.FluidloggingGuess.class))
-                        .setBinding((opts, value) -> opts.quality.inferredFluidlogging = value, opts -> opts.quality.inferredFluidlogging)
-                        .setImpact(OptionImpact.LOW)
-                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
-                        .build())
-                .build();
+    // Returns the performance page with one switch for each engine.
+    public static OptionPage performance() {
+        List<OptionGroup> groups = new ArrayList<>();
 
-        return new OptionPage(StandardOptions.Pages.FLUIDLOGGING, TextComponent.translatable("impetus.options.pages.fluidlogging"), ImmutableList.of(group));
+        groups.add(OptionGroup.createBuilder()
+                .setId(OptionIdentifier.create(IMPETUS, "renderer"))
+                .setName(TextComponent.translatable("impetus.options.group.renderer"))
+                .add(CommonOptionPages.graphicsApi(sodiumOpts))
+                .add(ExtrasOptionPages.renderBudget())
+                .add(CommonOptionPages.chunkUpdateThreads(sodiumOpts))
+                .add(CommonOptionPages.deferChunkUpdates(sodiumOpts))
+                .build());
+
+        groups.add(OptionGroup.createBuilder()
+                .setId(OptionIdentifier.create(IMPETUS, "culling"))
+                .setName(TextComponent.translatable("impetus.options.group.culling"))
+                .add(CommonOptionPages.entityCulling(sodiumOpts))
+                .add(ExtrasOptionPages.occlusionCulling())
+                .add(ExtrasOptionPages.leafCulling())
+                .add(CommonOptionPages.animateVisibleTextures(sodiumOpts))
+                .build());
+
+        groups.add(OptionGroup.createBuilder()
+                .setId(OptionIdentifier.create(IMPETUS, "engines"))
+                .setName(TextComponent.translatable("impetus.options.group.engines"))
+                .add(FulgorOptionPages.engine())
+                .add(ExtrasOptionPages.bakedBlockEntities())
+                .add(ExtrasOptionPages.gpuBooster())
+                .add(ExtrasOptionPages.parallelTicking())
+                .add(CoarctatioOptionPages.memory())
+                .add(EquilibriumOptionPages.gameLogic())
+                .build());
+
+        return new OptionPage(StandardOptions.Pages.PERFORMANCE, TextComponent.translatable("impetus.options.pages.performance"), ImmutableList.copyOf(groups));
+    }
+
+    // Returns the interface page with the Impetus notification switches added.
+    public static OptionPage interfacePage() {
+        return ExtrasOptionPages.interfacePage(CommonOptionPages.showToasts(sodiumOpts), CommonOptionPages.incompatiblePackWarnings(sodiumOpts));
     }
 
     // Returns the vanilla opts.

@@ -35,7 +35,7 @@ class TimeUtilTest {
     private static final TimeUnit[] UNITS = TimeUnit.values();
     // Expected unit abbreviations indexed by ordinal
     private static final String[] ABBREVIATIONS = {"ns", "us", "ms", "s", "min", "h", "d"};
-    // Durations on the zero, sign, rounding, int, long and double precision boundaries
+    // Durations on the boundaries.
     private static final long[] EDGE_DURATIONS = {
             0, 1, -1, 2, -2, 5, 9, 10, 99, 100, 999, 1000, 1001, 9999, 10_000, 99_995, 999_950, 1_000_500, 9_999_500,
             Integer.MAX_VALUE, Integer.MIN_VALUE, 1L << 31, -(1L << 31), 1L << 53, (1L << 53) + 1, -(1L << 53) - 1,

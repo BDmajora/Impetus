@@ -22,11 +22,11 @@ public abstract class EntityTNTPrimedMixin extends Entity implements DynamicLigh
     @Shadow
     public abstract int getFuse();
 
-    // Field start fuse added to the target.
+    // Fuse length at ignition.
     @Unique
     private int impetus$startFuse = 80;
 
-    // Field tnt luminance added to the target.
+    // Light level the TNT gives off now.
     @Unique
     private int impetus$tntLuminance;
 
@@ -54,7 +54,7 @@ public abstract class EntityTNTPrimedMixin extends Entity implements DynamicLigh
         this.impetus$tickDynamicLight(this.isDead);
     }
 
-    // Handles dynamic light tick.
+    // Updates the TNT's light to 14 on fire and otherwise to 10 or a glow that grows as the fuse burns.
     @Override
     public void impetus$dynamicLightTick() {
         Entity self = (Entity) (Object) this;

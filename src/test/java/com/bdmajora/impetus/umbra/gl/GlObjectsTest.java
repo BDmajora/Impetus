@@ -49,7 +49,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class GlObjectsTest {
-    // Uploads once, skips an unchanged value, uploads again when it moves
+    // Checks the upload caching of a uniform.
     private static void updateTwiceThenChange(Uniform uniform, Runnable change) {
         uniform.update();
         uniform.update();
@@ -64,7 +64,7 @@ class GlObjectsTest {
         intUniform.updateIn(30);
         intUniform.updateIn(30);
         verify(TestGl.gl(), times(1)).glProgramUniform1i(30, 2, 4);
-        // The bound upload shares the cache, so an unchanged value is not sent again either way
+        // Checks the bound upload shares the cache.
         intUniform.update();
         verify(TestGl.gl(), never()).glUniform1i(anyInt(), anyInt());
         i[0] = 5;
@@ -75,7 +75,7 @@ class GlObjectsTest {
 
         float[] f = {Float.NaN};
         FloatUniform floatUniform = new FloatUniform(3, () -> f[0]);
-        // A NaN never equals itself, so it uploads each time as the bound form always did
+        // Checks a NaN uploads each time.
         floatUniform.updateIn(30);
         floatUniform.updateIn(30);
         verify(TestGl.gl(), times(2)).glProgramUniform1f(eq(30), eq(3), anyFloat());
@@ -93,7 +93,7 @@ class GlObjectsTest {
         color.set(0, 1, 0, 1);
         vector.update();
         verify(TestGl.gl()).glUniform4f(5, 0, 1, 0, 1);
-        // A failed targeted upload is not recorded, so the next call retries it
+        // Checks a failed targeted upload retries.
         color.set(0, 0, 1, 1);
         Mockito.doThrow(new IllegalStateException("lost")).doNothing().when(TestGl.gl())
                 .glProgramUniform4f(30, 5, 0, 0, 1, 1);
@@ -171,7 +171,7 @@ class GlObjectsTest {
         shader.destroy();
         assertTrue(shader.isDestroyed());
         verify(TestGl.gl(), times(1)).glDeleteShader(id);
-        // A destroyed name may be recycled by the driver, so using it is an error
+        // Checks a destroyed shader name throws.
         assertThrows(IllegalStateException.class, shader::getGlId);
 
         when(TestGl.gl().glCreateShader(anyInt())).thenReturn(0);
@@ -244,7 +244,7 @@ class GlObjectsTest {
         assertTrue(assertThrows(ProgramCreationException.class, () -> ProgramBuilder.begin("silent").link())
                 .getMessage().contains("(no info log)"));
         verify(TestGl.gl(), times(2)).glDeleteProgram(77);
-        // A stage already deleted is not detached, the others are
+        // Checks detaching skips a deleted stage.
         verify(TestGl.gl(), never()).glDetachShader(77, destroyedId);
         verify(TestGl.gl()).glDetachShader(77, kept.getGlId());
     }

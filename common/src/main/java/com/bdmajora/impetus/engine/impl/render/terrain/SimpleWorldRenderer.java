@@ -8,8 +8,6 @@ import com.bdmajora.impetus.engine.impl.render.chunk.ChunkRenderMatrices;
 import com.bdmajora.impetus.engine.impl.render.chunk.RenderPassConfiguration;
 import com.bdmajora.impetus.engine.impl.render.chunk.RenderSectionManager;
 import com.bdmajora.impetus.engine.impl.render.chunk.data.MinecraftBuiltRenderSectionData;
-import com.bdmajora.impetus.engine.impl.render.chunk.lists.ChunkRenderList;
-import com.bdmajora.impetus.engine.impl.render.chunk.lists.SortedRenderLists;
 import com.bdmajora.impetus.engine.impl.render.chunk.map.ChunkTracker;
 import com.bdmajora.impetus.engine.impl.render.chunk.map.ChunkTrackerHolder;
 import com.bdmajora.impetus.engine.impl.render.chunk.shader.TerrainDynamicLights;
@@ -23,9 +21,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.*;
 import java.util.function.Consumer;
 
-/**
- * Provides an extension to a game's regular world renderer.
- */
+// Extension of a game's regular world renderer.
 public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSectionManager, LAYER, BLOCKENTITY, BLOCKENTITY_RENDER_CONTEXT> {
     protected WORLD world;
     protected int renderDistance;
@@ -45,12 +41,12 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
             return;
         }
 
-        // If we have a world is already loaded, unload the renderer
+        // Unloads the renderer of the current world.
         if (this.world != null) {
             this.unloadWorld();
         }
 
-        // If we're loading a new world, load the renderer
+        // Loads the renderer for the new world.
         if (world != null) {
             this.loadWorld(world);
         }
@@ -69,53 +65,43 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
             this.renderSectionManager.destroy();
             this.renderSectionManager = null;
         }
-        // The moving-light buffer goes with the world; the next world's first draw makes a new one
+        // Deletes the moving light buffer.
         TerrainDynamicLights.delete();
 
         this.world = null;
     }
 
-    /**
-     * @return The number of chunk renders which are visible in the current camera's frustum
-     */
+    // Returns the number of visible sections in the current camera's frustum.
     public int getVisibleChunkCount() {
         return this.renderSectionManager.getVisibleChunkCount();
     }
 
-    /**
-     * Notifies the chunk renderer that the graph scene has changed and should be re-computed.
-     */
+    // Marks the section graph as changed.
     public void scheduleTerrainUpdate() {
-        // BUG: seems to be called before init
+        // Skips the call before the section manager exists.
         if (this.renderSectionManager != null) {
             this.renderSectionManager.markGraphDirty();
         }
     }
 
-    /**
-     * @return True if no chunks are pending rebuilds
-     */
+    // Returns whether no section is waiting for a rebuild.
     public boolean isTerrainRenderComplete() {
         return this.renderSectionManager.getBuilder().isBuildQueueEmpty();
     }
 
     public abstract int getEffectiveRenderDistance();
 
-    // Whether the section manager has to be rebuilt before this frame, beyond a render distance change
+    // Returns whether the section manager has to be rebuilt this frame.
     protected boolean needsRebuild() {
         return false;
     }
 
-    /**
-     * Whether terrain is currently being set up or rendered for a shadow pass.
-     */
+    // Returns whether terrain is being set up or drawn for a shadow pass.
     public boolean isInShadowPass() {
         return this.renderSectionManager.isInShadowPass();
     }
 
-    /**
-     * Called prior to any chunk rendering in order to update necessary state.
-     */
+    // Updates the terrain state before any section is drawn.
     public void setupTerrain(Viewport viewport,
                              CameraState cameraState,
                              int frame,
@@ -123,9 +109,7 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
                              boolean updateChunksImmediately) {
         NativeBuffer.reclaim(false);
 
-        // When a shadow pass preceded this one, it joined the previous frame's searches, applied the chunk events
-        // and submitted this frame's searches; joining again here would stall on those, and chunk events must
-        // be applied while no search is in flight.
+        // Joins the searches and applies chunk events when no shadow pass ran this frame.
         if (!this.renderSectionManager.didShadowPassRunThisFrame()) {
             this.renderSectionManager.finishAllGraphUpdates();
             this.processChunkEvents();
@@ -139,7 +123,7 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
 
         this.prepareFrame(viewport, cameraState, updateChunksImmediately);
 
-        // The mesh backend culls its regions against the player's view when it draws opaque terrain; the shadow pass never sets it
+        // Tracks the player viewport for the mesh backend.
         this.renderSectionManager.trackViewport(viewport);
 
         this.renderSectionManager.uploadChunks();
@@ -155,15 +139,7 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
         this.renderSectionManager.tickVisibleRenders();
     }
 
-    /**
-     * Shadow-pass counterpart of {@link #setupTerrain}. The shadow pass precedes the terrain pass in a frame, so
-     * this joins the previous frame's searches, applies chunk load/unload events while the lattice is quiescent,
-     * and runs the terrain search for {@code playerViewport} when one is due; the terrain pass then reuses it.
-     * Render-distance reloads and uploads are left to the terrain pass.
-     *
-     * @param playerViewport the player camera's viewport for this frame
-     * @param shadowViewport the shadow frustum, centred on the player camera
-     */
+    // Joins last frame's searches and applies chunk events and runs a due terrain search for the shadow pass.
     public void setupShadowTerrain(Viewport playerViewport,
                                    Viewport shadowViewport,
                                    CameraState cameraState,
@@ -182,7 +158,7 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
         this.renderSectionManager.tickVisibleRenders();
     }
 
-    // Steps common to both passes: camera-change detection, async task draining and chunk build scheduling.
+    // Detects camera changes and drains async tasks and schedules chunk builds.
     private void prepareFrame(Viewport viewport, CameraState cameraState, boolean updateChunksImmediately) {
         boolean dirty = this.lastCameraState == null || !this.lastCameraState.equals(cameraState);
 
@@ -209,12 +185,10 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
         return this.currentViewport;
     }
 
-    /**
-     * Performs a render pass for the given {@link LAYER} and draws all visible chunks for it.
-     */
+    // Draws every visible section of one layer.
     public void drawChunkLayer(LAYER renderLayer, double x, double y, double z) {
         ChunkRenderMatrices matrices = createChunkRenderMatrices();
-        // The draw origin is what u_RegionOffset is measured from, so the moving lights are uploaded relative to it
+        // Uploads the moving lights relative to the draw origin.
         TerrainDynamicLights.prepare(x, y, z);
 
         Collection<TerrainRenderPass> passes = this.renderSectionManager.getRenderPassConfiguration().vanillaRenderStages().get(renderLayer);
@@ -258,7 +232,7 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
 
     private int renderedBlockEntities;
 
-    // Visible sections' culled block entities, then every global one; returns how many were drawn
+    // Draws the culled block entities of visible sections and every global one and returns the count.
     public int renderBlockEntities(BLOCKENTITY_RENDER_CONTEXT renderContext) {
         this.renderedBlockEntities = 0;
         MinecraftBuiltRenderSectionData.forEachVisibleSectionData(this.renderSectionManager.getRenderLists(),
@@ -268,7 +242,7 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
         return this.renderedBlockEntities;
     }
 
-    // Visible sections' culled block entities, then every global one, one at a time
+    // Visits the culled block entities of visible sections and every global one.
     @SuppressWarnings("unchecked")
     public void forEachVisibleBlockEntity(Consumer<? super BLOCKENTITY> visitor) {
         MinecraftBuiltRenderSectionData.forEachVisibleSectionData(this.renderSectionManager.getRenderLists(),
@@ -304,8 +278,7 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
     }
 
     public boolean isBoxVisible(double x1, double y1, double z1, double x2, double y2, double z2) {
-        // Boxes outside the valid world height will never map to a rendered chunk
-        // Always render these boxes or they'll be culled incorrectly!
+        // Draws boxes outside the world height.
         if (y2 < getMinimumBuildHeight() + 0.5D || y1 > getMaximumBuildHeight() - 0.5D) {
             return true;
         }
@@ -337,7 +310,7 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
     }
 
     public String getChunksDebugString() {
-        // C: visible/total D: distance
+        // Formats the visible and total section counts and the render distance.
         return String.format("C: %d/%d D: %d %s", this.renderSectionManager.getVisibleChunkCount(),
                 this.renderSectionManager.getTotalSections(), this.renderDistance,
                 this.renderSectionManager.getTickerDebugString());
@@ -347,16 +320,12 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
         return this.renderSectionManager.getRenderPassConfiguration();
     }
 
-    /**
-     * Schedules chunk rebuilds for all chunks in the specified block region.
-     */
+    // Schedules rebuilds for every section in a block region.
     public void scheduleRebuildForBlockArea(int minX, int minY, int minZ, int maxX, int maxY, int maxZ, boolean important) {
         this.scheduleRebuildForChunks(minX >> 4, minY >> 4, minZ >> 4, maxX >> 4, maxY >> 4, maxZ >> 4, important);
     }
 
-    /**
-     * Schedules chunk rebuilds for all chunks in the specified chunk region.
-     */
+    // Schedules rebuilds for every section in a section region.
     public void scheduleRebuildForChunks(int minX, int minY, int minZ, int maxX, int maxY, int maxZ, boolean important) {
         for (int chunkX = minX; chunkX <= maxX; chunkX++) {
             for (int chunkY = minY; chunkY <= maxY; chunkY++) {
@@ -367,9 +336,7 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
         }
     }
 
-    /**
-     * Schedules a chunk rebuild for the render belonging to the given chunk section position.
-     */
+    // Schedules a rebuild of one section.
     public void scheduleRebuildForChunk(int x, int y, int z, boolean important) {
         this.renderSectionManager.scheduleRebuild(x, y, z, important);
     }
@@ -390,9 +357,7 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
         return this.renderSectionManager.isSectionBuilt(x, y, z);
     }
 
-    /**
-     * This interface should be implemented on the WorldRenderer or equivalent class.
-     */
+    // Implemented by the game's world renderer to expose its SimpleWorldRenderer.
     public interface Provider<T extends SimpleWorldRenderer<?, ?, ?, ?, ?>> {
         T impetus$getWorldRenderer();
 

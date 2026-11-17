@@ -1,9 +1,8 @@
 package com.bdmajora.impetus.engine.impl.model.quad;
 
 import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFacing;
-import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFlags;
 
-// Read-only view of a model quad; see ModelQuadViewMutable for mutable access
+// Read only view of a model quad.
 public interface ModelQuadView {
     float getX(int idx);
 
@@ -17,7 +16,7 @@ public interface ModelQuadView {
 
     float getTexV(int idx);
 
-    // Packed lightmap coords, or zero if regular lighting should be used instead
+    // Returns the packed lightmap coords or zero for regular lighting.
     int getLight(int idx);
 
     int getFlags();
@@ -34,7 +33,7 @@ public interface ModelQuadView {
 
     int getComputedFaceNormal();
 
-    // Prefers the explicit vertex-0 normal if set, falls back to the computed face normal otherwise
+    // Returns the explicit normal of vertex 0 or the computed face normal.
     default int getModFaceNormal() {
         int normal = getForgeNormal(0);
         return normal != 0 ? normal : getComputedFaceNormal();

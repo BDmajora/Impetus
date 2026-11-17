@@ -29,7 +29,7 @@ public final class ShadowTerrain {
     private final boolean packVoxelizes;
     // Sun path rotation.
     private final float sunPathRotation;
-    // Pack's entityShadowDistanceMul, scaling the cull distance for entities.
+    // Scale of the entity cull distance.
     private final float entityDistanceMul;
     // Player position of the frame.
     private final Vector3d playerPosition = new Vector3d();
@@ -37,12 +37,12 @@ public final class ShadowTerrain {
     private final Matrix4f playerViewProjection = new Matrix4f();
     // Frustum of the shadow selection.
     private Frustum cullingFrustum;
-    // Frustum entities are culled against, the selection's own unless the pack scales it.
+    // Frustum entities are culled against.
     private Frustum entityFrustum;
     // Frame counter of the selection.
     private int frame;
 
-    // Creates a shadow terrain from its content, distances, voxel switch, sun rotation and entity distance scale.
+    // Creates a shadow terrain from its content and distances and voxel switch and sun rotation and entity scale.
     public ShadowTerrain(ShadowContentSettings content, float cullDistance, float voxelDistance, boolean packVoxelizes,
                          float sunPathRotation, float entityDistanceMul) {
         this.content = Objects.requireNonNull(content, "content");
@@ -53,7 +53,7 @@ public final class ShadowTerrain {
         this.entityDistanceMul = entityDistanceMul;
     }
 
-    // Returns whether entities share the terrain frustum: Iris does for exactly one and for any negative value.
+    // Returns whether entities share the terrain frustum.
     static boolean entitiesUseTerrainFrustum(float entityDistanceMul) {
         // NaN fails the comparison and falls back to the terrain frustum too
         return !(entityDistanceMul >= 0.0f) || entityDistanceMul == 1.0f;

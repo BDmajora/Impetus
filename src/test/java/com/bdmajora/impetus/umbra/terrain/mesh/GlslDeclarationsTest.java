@@ -40,7 +40,7 @@ class GlslDeclarationsTest {
     void onlyGlobalStorageDeclarationsAreSeen() {
         List<Declaration> found = GlslDeclarations.collect(SOURCE);
         List<String> storages = found.stream().map(Declaration::storage).toList();
-        // Comments, the struct, the function parameters, the plain global and the directive-split statement are not declarations
+        // Checks the collected declarations.
         assertEquals(List.of("out", "out", "out", "uniform", "out", "out", "uniform", "const"), storages);
 
         Declaration first = found.getFirst();

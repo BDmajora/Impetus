@@ -2,7 +2,6 @@ package com.bdmajora.coarctatio.mixin.forge;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
-import it.unimi.dsi.fastutil.ints.IntArraySet;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import net.minecraft.item.Item;
@@ -24,13 +23,15 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import javax.annotation.Nonnull;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 // Mixin that changes OreDictionary.
 @Mixin(value = OreDictionary.class, remap = false)
 public abstract class OreDictionaryMixin {
-    // Field coarctatio no id added to the target.
+    // Default return value of the name map.
     @Unique
     private static final int COARCTATIO_NO_ID = -1;
 
@@ -69,26 +70,26 @@ public abstract class OreDictionaryMixin {
         stackToId = coarctatio$cast(new Int2ObjectOpenHashMap<IntList>((int) (128 * 0.75)));
     }
 
-    // Helper method cast added to the target.
+    // Casts a primitive map to the boxed type Forge declares the field with.
     @Unique
     @SuppressWarnings("unchecked")
     private static <T> T coarctatio$cast(Object value) {
         return (T) value;
     }
 
-    // Helper method names added to the target.
+    // Returns the name to id map as the primitive map it really is.
     @Unique
     private static Object2IntOpenHashMap<String> coarctatio$names() {
         return coarctatio$cast(nameToId);
     }
 
-    // Helper method stacks added to the target.
+    // Returns the stack hash to ids map as the primitive map it really is.
     @Unique
     private static Int2ObjectOpenHashMap<IntList> coarctatio$stacks() {
         return coarctatio$cast(stackToId);
     }
 
-    // Helper method ids added to the target.
+    // Returns the ids of a stack hash and converts a boxed list on first sight.
     @Unique
     @SuppressWarnings("unchecked")
     private static IntList coarctatio$ids(int hash) {
@@ -119,7 +120,7 @@ public abstract class OreDictionaryMixin {
         return id;
     }
 
-    // Replaces the whole method getOreIDs.
+    // Forge getOreIDs over the primitive maps in HashSet order.
     @Overwrite
     public static int[] getOreIDs(@Nonnull ItemStack stack) {
         if (stack.isEmpty()) {
@@ -135,17 +136,28 @@ public abstract class OreDictionaryMixin {
         int id = Item.REGISTRY.getIDForObject(stack.getItem().delegate.get());
         IntList byItem = coarctatio$ids(id);
         IntList byMeta = coarctatio$ids(id | ((stack.getItemDamage() + 1) << 16));
-        if (byItem == null || byItem.isEmpty()) {
-            return byMeta == null || byMeta.isEmpty() ? new int[0] : byMeta.toIntArray();
+        int itemCount = byItem == null ? 0 : byItem.size();
+        int metaCount = byMeta == null ? 0 : byMeta.size();
+        if (itemCount + metaCount == 0) {
+            return new int[0];
         }
-        if (byMeta == null || byMeta.isEmpty()) {
-            return byItem.toIntArray();
+        if (itemCount + metaCount == 1) {
+            return new int[]{itemCount == 1 ? byItem.getInt(0) : byMeta.getInt(0)};
         }
-
-        IntArraySet set = new IntArraySet(byItem.size() + byMeta.size());
-        set.addAll(byItem);
-        set.addAll(byMeta);
-        return set.toIntArray();
+        // Collects the ids in a HashSet like Forge does.
+        Set<Integer> set = new HashSet<>();
+        if (byItem != null) {
+            set.addAll(byItem);
+        }
+        if (byMeta != null) {
+            set.addAll(byMeta);
+        }
+        int[] ids = new int[set.size()];
+        int index = 0;
+        for (int oreId : set) {
+            ids[index++] = oreId;
+        }
+        return ids;
     }
 
     // Replaces the whole method doesOreNameExist.

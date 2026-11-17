@@ -173,8 +173,6 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
         // Distance entities are drawn at.
         public int entityDistance = 100;
 
-        // Whether translucent geometry is sorted more accurately.
-        public boolean improvedTransparency = false;
         // Filter of the block atlas.
         public PixelFilteringMode pixelFiltering = PixelFilteringMode.NEAREST;
         // Whether hidden fluid faces are culled.

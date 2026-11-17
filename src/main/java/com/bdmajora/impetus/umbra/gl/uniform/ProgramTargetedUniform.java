@@ -1,7 +1,7 @@
 package com.bdmajora.impetus.umbra.gl.uniform;
 
-// Uniform that can write straight into its program while another program, or none, is bound.
+// Uniform that writes straight into its program.
 public interface ProgramTargetedUniform {
-    // Uploads the current value into the program when it changed, sharing the change test of update.
+    // Uploads the current value into the program when it changed.
     void updateIn(int program);
 }

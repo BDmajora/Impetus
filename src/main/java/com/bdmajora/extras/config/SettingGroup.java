@@ -21,7 +21,7 @@ final class SettingGroup<S> {
     // Text of the category option.
     private final String category;
     private final Function<ExtrasConfig, S> owner;
-    // Choice of the settings option.
+    // Settings of the group in file order.
     private final Setting<S>[] settings;
 
     // Creates a setting group from its category and owner and settings.
@@ -31,7 +31,7 @@ final class SettingGroup<S> {
         this.settings = settings;
     }
 
-    // Handles the builder.
+    // Starts a group of settings stored in one config category.
     static <S> Builder<S> builder(String category, Function<ExtrasConfig, S> owner, Supplier<S> factory) {
         return new Builder<>(category, owner, factory);
     }
@@ -58,9 +58,9 @@ final class SettingGroup<S> {
         // Text of the category option.
         private final String category;
         private final Function<ExtrasConfig, S> owner;
-        // Choice of the defaults option.
+        // Fresh settings object the defaults are read from.
         private final S defaults;
-        // Choice of the settings option.
+        // Settings added so far.
         private final List<Setting<S>> settings = new ArrayList<>();
         // Text of the keys option.
         private final Set<String> keys = new HashSet<>();
@@ -72,22 +72,22 @@ final class SettingGroup<S> {
             this.defaults = Objects.requireNonNull(factory.get(), "factory result");
         }
 
-        // Handles the bool.
+        // Adds a boolean setting.
         Builder<S> bool(String key, String comment, Predicate<S> getter, BooleanSetting.Setter<S> setter) {
             return add(new BooleanSetting<>(key, getter.test(defaults), comment, getter, setter));
         }
 
-        // Handles the integer.
+        // Adds an integer setting clamped to a range.
         Builder<S> integer(String key, int min, int max, String comment, ToIntFunction<S> getter, ObjIntConsumer<S> setter) {
             return add(new IntSetting<>(key, getter.applyAsInt(defaults), min, max, comment, getter, setter));
         }
 
-        // Handles the choice.
+        // Adds an enum setting.
         <E extends Enum<E>> Builder<S> choice(String key, String comment, Function<S, E> getter, BiConsumer<S, E> setter) {
             return add(new ChoiceSetting<>(key, getter.apply(defaults), comment, getter, setter));
         }
 
-        // Handles the list.
+        // Adds a string list setting.
         Builder<S> list(String key, String comment, Function<S, String[]> getter, BiConsumer<S, String[]> setter) {
             return add(new ListSetting<>(key, getter.apply(defaults), comment, getter, setter));
         }

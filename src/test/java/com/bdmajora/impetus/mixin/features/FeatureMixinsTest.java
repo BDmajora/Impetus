@@ -116,7 +116,7 @@ class FeatureMixinsTest {
         uploaded.put("wide", wide);
         Mixins.set(atlas, "mapUploadedSprites", uploaded);
         Mixins.set(atlas, "mipmapLevels", 4);
-        // No GL texture yet, so the filtering step has nothing to bind
+        // Stubs a missing GL texture.
         doReturn(0).when((AbstractTexture) (Object) atlas).getGlTextureId();
         Stitcher stitcher = mock(Stitcher.class);
         when(stitcher.getCurrentWidth()).thenReturn(32);
@@ -131,7 +131,7 @@ class FeatureMixinsTest {
         assertSame(second, index.impetus$findFromUV(0.75F, 0.25F));
         assertSame(wide, index.impetus$findFromUV(0.5F, 0.75F));
 
-        // Only sprites something drew since the last update animate, unless every sprite is asked to
+        // Checks only drawn sprites animate.
         com.bdmajora.impetus.mixin.features.textures.TextureAtlasSpriteMixin drawn =
                 Mixins.instance(com.bdmajora.impetus.mixin.features.textures.TextureAtlasSpriteMixin.class);
         com.bdmajora.impetus.mixin.features.textures.TextureAtlasSpriteMixin hidden =
@@ -167,7 +167,7 @@ class FeatureMixinsTest {
         assertTrue((boolean) Mixins.call(hud, "impetus$redirectVignette"));
 
         MixinEntityRenderer weather = Mixins.instance(MixinEntityRenderer.class);
-        // Default weather quality follows vanilla's fancy toggle, the others override it
+        // Checks the weather quality default.
         settings.fancyGraphics = true;
         assertTrue((boolean) Mixins.call(weather, "redirectGetFancyWeather", settings));
         options.quality.weatherQuality = ImpetusGameOptions.GraphicsQuality.FAST;
@@ -199,7 +199,7 @@ class FeatureMixinsTest {
         try {
             MixinGuiOptions screen = Mixins.instance(MixinGuiOptions.class);
             Mixins.set(screen, "mc", client);
-            // Other buttons, and a disabled video button, are left to vanilla
+            // Checks other buttons are left to vanilla.
             CallbackInfo other = Mixins.ci();
             Mixins.call(screen, "open", new GuiButton(100, 0, 0, "Controls"), other);
             assertFalse(other.isCancelled());
@@ -227,11 +227,11 @@ class FeatureMixinsTest {
 
         com.bdmajora.impetus.mixin.features.mipmaps.TextureAtlasSpriteMixin sprite =
                 Mixins.instance(com.bdmajora.impetus.mixin.features.mipmaps.TextureAtlasSpriteMixin.class);
-        // Nothing loaded yet: the sprite stays translucent, the safe assumption
+        // Checks a sprite with nothing loaded.
         Mixins.call(sprite, "processSprite", 4, Mixins.ci());
         assertEquals(SpriteTransparencyLevel.TRANSLUCENT, sprite.impetus$getTransparencyLevel());
 
-        // An opaque block texture with fully clear pixels is transparent, and at a mip level its clear pixels take the average colour
+        // Checks a texture with clear pixels.
         int[] glass = {0xFF204060, 0xFF204060, 0x00000000, 0x00FFFFFF};
         List<int[][]> frames = new ArrayList<>();
         frames.add(new int[][] {glass});
@@ -248,7 +248,7 @@ class FeatureMixinsTest {
         assertEquals(0x60, glass[2] & 255, 1);
         assertEquals(glass[2], glass[3]);
 
-        // Partial alpha makes it translucent; without mipmaps, or for items and leaves, colours are left alone
+        // Checks a translucent texture.
         int[] item = {0x80FF0000, 0x00123456};
         Mixins.set(sprite, "framesTextureData", List.<int[][]>of(new int[][] {item}));
         Mixins.set(sprite, "iconName", "minecraft:items/apple");
@@ -282,12 +282,11 @@ class FeatureMixinsTest {
     @Test
     void pistonsKeepDrawingWhileTheirSectionCatchesUp() {
         TileEntityRenderDispatcherMixin dispatcher = Mixins.instance(TileEntityRenderDispatcherMixin.class);
-        Mc.Recorded<Boolean> invalid = Mc.operation(true);
-        assertFalse((boolean) Mixins.call(dispatcher, "allowSomeInvalidTESRs", new TileEntityPiston(), invalid));
-        assertTrue(invalid.calls.isEmpty());
+        assertFalse((boolean) Mixins.call(dispatcher, "allowSomeInvalidTESRs", true, new TileEntityPiston()));
+        assertFalse((boolean) Mixins.call(dispatcher, "allowSomeInvalidTESRs", false, new TileEntityPiston()));
         TileEntity chest = new TileEntityChest();
-        assertTrue((boolean) Mixins.call(dispatcher, "allowSomeInvalidTESRs", chest, invalid));
-        assertSame(chest, invalid.calls.get(0)[0]);
+        assertTrue((boolean) Mixins.call(dispatcher, "allowSomeInvalidTESRs", true, chest));
+        assertFalse((boolean) Mixins.call(dispatcher, "allowSomeInvalidTESRs", false, chest));
 
         TileEntityPistonRendererMixin renderer = Mixins.instance(TileEntityPistonRendererMixin.class);
         assertEquals(0F, (float) Mixins.call(renderer, "alwaysRenderTESR", new TileEntityPiston(), 0.75F));

@@ -80,7 +80,7 @@ public class UmbraTerrainShaderInterface implements ChunkShaderInterface {
         this.uRegionOffset = context.bindUniformIfPresent("u_RegionOffset", GlUniformFloat3v::new);
         this.uChunkAges = context.bindUniformIfPresent("iris_ChunkAgesMs", GlUniformFloatArray::new);
         this.uChunkFadeInv = context.bindUniformIfPresent("iris_ChunkFadeInv", GlUniformFloat::new);
-        // The generated prologue declares the light block without a binding qualifier, raster and Nvidium port alike
+        // Binds the moving light block.
         context.bindUniformBlockIfPresent(TerrainDynamicLights.BLOCK_NAME, TerrainDynamicLights.BINDING);
 
         GlUniformInt block = firstPresent(context, "tex", "texture", "gtexture", "gcolor");

@@ -596,7 +596,7 @@ class BufferCopyFunctionsTest {
         assertEquals(0, copies);
     }
 
-    // Checks that the GPU strategy is picked when GL 3.1 or ARB_copy_buffer is present and the mapping strategy otherwise
+    // Checks the GPU strategy.
     @ParameterizedTest
     @CsvSource({"true, true, CORE", "true, false, CORE", "false, true, CORE", "false, false, PIXEL_PACK"})
     void pickBestFollowsTheCopyCapabilities(boolean version, boolean extension, BufferCopyFunctions expected) {

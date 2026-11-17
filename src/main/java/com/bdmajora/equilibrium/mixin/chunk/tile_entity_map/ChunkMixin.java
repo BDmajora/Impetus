@@ -23,7 +23,7 @@ public abstract class ChunkMixin {
     @Mutable
     private Map<BlockPos, TileEntity> tileEntities;
 
-    // Value cubic chunks.
+    // Whether Cubic Chunks is loaded.
     private static final boolean CUBIC_CHUNKS = net.minecraftforge.fml.common.Loader.isModLoaded("cubicchunks");
 
     // Runs before every return of constructor.

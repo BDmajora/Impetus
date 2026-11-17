@@ -87,7 +87,7 @@ class FulgorAsyncMixinTest {
         Mixins.call(world, "fulgor$queueLightUpdate", EnumSkyBlock.BLOCK, BlockPos.ORIGIN, early);
         assertFalse(early.isCancelled());
         Mixins.call(world, "fulgor$markReady", Mixins.ci());
-        // A plain World is not the client's world and not a server world, so it gets no manager at all
+        // Checks a plain World gets no manager.
         assertNull(world.fulgor$getLightManager());
         var refused = Mixins.<Boolean>cir();
         Mixins.call(world, "fulgor$queueLightUpdate", EnumSkyBlock.BLOCK, BlockPos.ORIGIN, refused);
@@ -139,7 +139,7 @@ class FulgorAsyncMixinTest {
         assertFalse(chunk.fulgor$isLightUsable());
         assertFalse(chunk.fulgor$hasSavedLightValid());
 
-        // Until the engine says its light is usable, vanilla's own answer stands
+        // Checks vanilla's answer before the light is usable.
         var early = Mixins.<Integer>cir();
         Mixins.call(chunk, "fulgor$getLightFor", EnumSkyBlock.BLOCK, BlockPos.ORIGIN, early);
         assertFalse(early.isCancelled());
@@ -219,7 +219,7 @@ class FulgorAsyncMixinTest {
         Mockito.verify(manager).removeChunkFromQueues(Mockito.anyInt(), Mockito.anyInt());
         Mockito.verify(manager).unregisterChunk(Mockito.anyInt(), Mockito.anyInt());
 
-        // The client receives a chunk's light in a packet instead, and wraps the arrays it was sent
+        // Checks the client wraps received arrays.
         Mixins.set(world, "isRemote", true);
         Mixins.call(chunk, "fulgor$onRead", null, 0xFFFF, true, Mixins.ci());
         assertTrue(chunk.fulgor$isLightReady());
@@ -251,20 +251,40 @@ class FulgorAsyncMixinTest {
         when(((AsyncLitWorld) world).fulgor$getLightManager()).thenReturn(manager);
 
         BlockPos pos = new BlockPos(0, 64, 0);
-        Mixins.call(chunk, "fulgor$preSetBlockState", pos, Blocks.STONE.getDefaultState(), Mixins.cir());
+        com.llamalad7.mixinextras.sugar.ref.LocalBooleanRef wasEmpty = Mc.booleanRef(false);
+        Mixins.call(chunk, "fulgor$preSetBlockState", pos, Blocks.STONE.getDefaultState(), Mixins.cir(), wasEmpty);
+        assertTrue(wasEmpty.get());
+        // Checks a nested placement.
+        com.llamalad7.mixinextras.sugar.ref.LocalBooleanRef nested = Mc.booleanRef(false);
+        sections[5] = new ExtendedBlockStorage(80, true);
+        Mixins.call(chunk, "fulgor$preSetBlockState", new BlockPos(0, 80, 0), Blocks.STONE.getDefaultState(), Mixins.cir(), nested);
+        Mixins.call(chunk, "fulgor$postSetBlockState", new BlockPos(0, 80, 0), Blocks.STONE.getDefaultState(),
+                Mixins.cir(Blocks.AIR.getDefaultState()), nested);
+        assertFalse(nested.get());
         // The section vanilla created is filled from what the engine already knows
         sections[4] = new ExtendedBlockStorage(64, true);
         Mixins.call(chunk, "fulgor$postSetBlockState", pos, Blocks.STONE.getDefaultState(),
-                Mixins.cir(Blocks.AIR.getDefaultState()));
+                Mixins.cir(Blocks.AIR.getDefaultState()), wasEmpty);
         assertEquals(11, sections[4].getBlockLight().get(0, 0, 0));
         Mockito.verify(manager).queueSectionChange(0, 4, 0, false);
 
-        // Nothing happens when the section already existed, when the write was refused, or outside the world
-        Mixins.call(chunk, "fulgor$preSetBlockState", pos, Blocks.STONE.getDefaultState(), Mixins.cir());
-        Mixins.call(chunk, "fulgor$postSetBlockState", pos, Blocks.STONE.getDefaultState(), Mixins.cir(null));
-        Mixins.call(chunk, "fulgor$preSetBlockState", new BlockPos(0, 300, 0), Blocks.STONE.getDefaultState(), Mixins.cir());
+        // Checks the cases that do nothing.
+        com.llamalad7.mixinextras.sugar.ref.LocalBooleanRef again = Mc.booleanRef(false);
+        Mixins.call(chunk, "fulgor$preSetBlockState", pos, Blocks.STONE.getDefaultState(), Mixins.cir(), again);
+        Mixins.call(chunk, "fulgor$postSetBlockState", pos, Blocks.STONE.getDefaultState(), Mixins.cir(null), again);
+        com.llamalad7.mixinextras.sugar.ref.LocalBooleanRef outside = Mc.booleanRef(false);
+        Mixins.call(chunk, "fulgor$preSetBlockState", new BlockPos(0, 300, 0), Blocks.STONE.getDefaultState(), Mixins.cir(), outside);
         Mixins.call(chunk, "fulgor$postSetBlockState", new BlockPos(0, 300, 0), Blocks.STONE.getDefaultState(),
-                Mixins.cir(Blocks.AIR.getDefaultState()));
+                Mixins.cir(Blocks.AIR.getDefaultState()), outside);
+        // Checks a refused write.
+        com.llamalad7.mixinextras.sugar.ref.LocalBooleanRef refused = Mc.booleanRef(true);
+        Mixins.call(chunk, "fulgor$postSetBlockState", new BlockPos(0, 100, 0), Blocks.STONE.getDefaultState(), Mixins.cir(null), refused);
+        // Checks air placed into nothing.
+        Mixins.call(chunk, "fulgor$postSetBlockState", new BlockPos(0, 100, 0), Blocks.AIR.getDefaultState(),
+                Mixins.cir(Blocks.AIR.getDefaultState()), refused);
+        // A refused write outside the world
+        Mixins.call(chunk, "fulgor$postSetBlockState", new BlockPos(0, -20, 0), Blocks.STONE.getDefaultState(),
+                Mixins.cir(Blocks.AIR.getDefaultState()), refused);
         Mockito.verify(manager, Mockito.times(1)).queueSectionChange(Mockito.anyInt(), Mockito.anyInt(), Mockito.anyInt(), Mockito.anyBoolean());
     }
 
@@ -272,7 +292,7 @@ class FulgorAsyncMixinTest {
     @SuppressWarnings("deprecation")
     void everyBlockStateMemoisesItsLightInfo() {
         BlockStateMixin state = Mixins.instance(BlockStateMixin.class);
-        // The mixin is the state, so the info is computed from what it reports about itself
+        // Reads the mixin as the state.
         net.minecraft.block.state.IBlockState self = (net.minecraft.block.state.IBlockState) (Object) state;
         Mockito.doReturn(Blocks.GLOWSTONE).when(self).getBlock();
         Mockito.doReturn(0).when(self).getLightOpacity();
@@ -310,7 +330,7 @@ class FulgorAsyncMixinTest {
         Mixins.call(entry, "fulgor$gateSendOnLight", ready);
         assertFalse(ready.isCancelled());
 
-        // Already sent, no chunk at all, or the option turned off all skip the gate
+        // Checks the skipped gates.
         Mixins.set(entry, "sentToPlayers", true);
         Mixins.call(entry, "fulgor$gateSendOnLight", Mixins.<Boolean>cir());
         Mixins.set(entry, "sentToPlayers", false);

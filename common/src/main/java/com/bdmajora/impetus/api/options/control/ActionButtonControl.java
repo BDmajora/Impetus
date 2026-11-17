@@ -14,8 +14,7 @@ import org.apache.logging.log4j.Logger;
 import java.util.EnumSet;
 import java.util.Objects;
 
-// Control that shows a labelled button and runs an action when clicked
-// Uses the option for its name and id and availability without reading or writing its value
+// Labelled button that runs an action when clicked.
 public class ActionButtonControl implements Control<Boolean> {
     private static final Logger LOGGER = LogManager.getLogger();
 

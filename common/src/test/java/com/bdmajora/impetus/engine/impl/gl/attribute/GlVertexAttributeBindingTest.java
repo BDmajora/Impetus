@@ -311,7 +311,7 @@ class GlVertexAttributeBindingTest {
         assertEquals(16, attribute.reads);
     }
 
-    // Copies the layout that the accessors report instead of the fields the attribute was created with
+    // Checks the reported layout.
     @Test
     void copiesTheLayoutThatTheAccessorsReport() {
         Reporting attribute = new Reporting();

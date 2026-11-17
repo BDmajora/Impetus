@@ -76,7 +76,7 @@ public class MeshRenderPipeline {
     private final BindlessBuffer shadowScene;
     // Draw commands of the shadow pass.
     private final BindlessBuffer shadowCommands;
-    // Moving lights of the main pass, relative to its render origin.
+    // Moving lights of the main pass.
     private final BindlessBuffer sceneLights;
     // Moving lights of the shadow pass.
     private final BindlessBuffer shadowLights;
@@ -518,12 +518,12 @@ public class MeshRenderPipeline {
         LWJGL.glEnableClientState(NVVertexBufferUnifiedMemory.GL_ELEMENT_ARRAY_UNIFIED_NV);
         LWJGL.glEnableClientState(MeshShaderSupport.GL_DRAW_INDIRECT_UNIFIED_NV);
         LWJGL.glBufferAddressRangeNV(NVUniformBufferUnifiedMemory.GL_UNIFORM_BUFFER_ADDRESS_NV, 0, scene.getDeviceAddress(), SCENE_BYTES);
-        // With unified uniform buffers on, a binding point is only reached by address, so the light block gets one too
+        // Points the light block binding at its buffer address.
         LWJGL.glBufferAddressRangeNV(NVUniformBufferUnifiedMemory.GL_UNIFORM_BUFFER_ADDRESS_NV, TerrainDynamicLights.BINDING,
                 lights.getDeviceAddress(), TerrainDynamicLights.BYTES);
     }
 
-    // Writes the moving lights relative to the render origin, which every mesh program measures vertices from.
+    // Writes the moving lights relative to the render origin.
     private void writeLights(BindlessBuffer target, MeshCamera camera) {
         long ptr = this.uploadStream.upload(target, 0, TerrainDynamicLights.BYTES);
         TerrainDynamicLights.write(ptr, camera.renderX(), camera.renderY(), camera.renderZ());

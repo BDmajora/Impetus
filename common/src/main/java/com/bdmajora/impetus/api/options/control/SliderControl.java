@@ -93,7 +93,7 @@ public class SliderControl implements Control<Integer> {
             super(control.option, dim);
 
             this.control = control;
-            // Narrows the track to keep the inset on both sides of a narrow row
+            // Narrows the track by the inset on both sides.
             int width = (int) Math.clamp(dim.width() - 2L * SLIDER_INSET, 0, SLIDER_WIDTH);
             // Uses the track width only on a drawable row at least as tall as the slider
             this.sliderWidth = this.hasArea() && dim.height() >= SLIDER_HEIGHT ? width : 0;
@@ -109,7 +109,7 @@ public class SliderControl implements Control<Integer> {
             return this.dim.getCenterY() - SLIDER_HEIGHT / 2;
         }
 
-        // Draws the slider while hovered or held or focused and the value alone otherwise
+        // Draws the slider while hovered or held or focused and the value alone otherwise.
         @Override
         public void render(DrawContext drawContext, int mouseX, int mouseY, float delta) {
             super.render(drawContext, mouseX, mouseY, delta);

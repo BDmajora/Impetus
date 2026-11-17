@@ -301,7 +301,7 @@ abstract class LightEngineCache {
     // Returns whether use chunk.
     protected abstract boolean canUseChunk(Chunk chunk);
 
-    // Handles the nibble visible.
+    // Called when a cached nibble is published.
     protected void onNibbleVisible(int cacheIndex, SWMRNibbleArray nibble) {
     }
 }

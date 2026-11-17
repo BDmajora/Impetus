@@ -1,6 +1,7 @@
 package com.bdmajora.fulgor.mixin.async.world;
 
 import com.bdmajora.fulgor.Fulgor;
+import com.bdmajora.fulgor.FulgorRenderBridge;
 import com.bdmajora.fulgor.async.AsyncLitChunk;
 import com.bdmajora.fulgor.async.engine.FluidLightBridge;
 import com.bdmajora.fulgor.async.engine.LightInfo;
@@ -74,7 +75,7 @@ public abstract class ChunkLightingMixin {
     @Shadow
     public abstract void markDirty();
 
-    // Field lookup pos added to the target.
+    // Position reused for contextual opacity lookups.
     @Unique
     private final BlockPos.MutableBlockPos fulgor$lookupPos = new BlockPos.MutableBlockPos();
 
@@ -143,7 +144,7 @@ public abstract class ChunkLightingMixin {
         markDirty();
     }
 
-    // Helper method opacity at added to the target.
+    // Returns the opacity at a position including a fluidlogged fluid.
     @Unique
     private int fulgor$opacityAt(int x, int y, int z) {
         IBlockState state = getBlockState(x, y, z);
@@ -158,7 +159,7 @@ public abstract class ChunkLightingMixin {
         return FluidLightBridge.maxOpacityAt((Chunk) (Object) this, opacity, x, y, z, this.fulgor$lookupPos);
     }
 
-    // Helper method fill vanilla sky column added to the target.
+    // Seeds a column's vanilla sky light down from the top until it is absorbed.
     @Unique
     private void fulgor$fillVanillaSkyColumn(int x, int z, int topSegment) {
         ExtendedBlockStorage[] storageArrays = getBlockStorageArray();
@@ -179,6 +180,7 @@ public abstract class ChunkLightingMixin {
             NibbleArray skyArray = section.getSkyLight();
             if (skyArray != null) {
                 skyArray.set(x, y & 15, z, skyLevel);
+                FulgorRenderBridge.markLightChanged(section);
             }
             if (skyLevel <= 0) {
                 break;

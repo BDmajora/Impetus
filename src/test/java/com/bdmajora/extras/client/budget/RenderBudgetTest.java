@@ -45,7 +45,7 @@ class RenderBudgetTest {
     private WorldClient world;
     private EntityPlayer viewer;
 
-    // A particle class whose name marks it as a block particle, and one whose simple name marks it as weather
+    // Block particle class.
     static class ModTerrainParticle extends Particle {
         ModTerrainParticle() {
             super(null, 0, 0, 0);
@@ -58,7 +58,7 @@ class RenderBudgetTest {
         }
     }
 
-    // A block entity from a mod, which the budget never touches even when it extends a vanilla one
+    // Modded chest.
     static class ModdedChest extends TileEntityChest {
     }
 
@@ -80,7 +80,6 @@ class RenderBudgetTest {
         Mixins.set(RenderBudgetController.class, "lastFrameNanos", 0L);
         Mixins.set(RenderBudgetController.class, "emaFrameMillis", 0.0D);
         Mixins.set(RenderBudgetController.class, "frameIndex", 0L);
-        Mixins.set(RenderBudgetController.class, "armedLastTick", false);
         Mixins.set(RenderBudgetController.class, "lastProfile", null);
         Mixins.<Map<?, ?>>get(RenderBudgetController.class, "decisions").clear();
         Mixins.<Map<?, ?>>get(RenderBudgetController.class, "particleCategories").clear();
@@ -111,7 +110,7 @@ class RenderBudgetTest {
 
     @Test
     void theBudgetFollowsTheProfileThePressureAndAShaderPack() {
-        // Off, nothing is limited
+        // Checks the switch off.
         config.renderBudget.enabled = false;
         tick();
         assertSame(RenderBudget.NEUTRAL, RenderBudgetController.budget());
@@ -119,49 +118,61 @@ class RenderBudgetTest {
         assertFalse(RenderBudget.NEUTRAL.limitsEntities());
         assertFalse(RenderBudget.NEUTRAL.limitsBlockEntities());
 
-        // Balanced at target is not armed, but reports what would apply
+        // Checks the balanced profile limits from the start whatever the frame time.
         config.renderBudget.enabled = true;
         pressure(16.0);
         tick();
         RenderBudget balanced = RenderBudgetController.budget();
-        assertFalse(balanced.armed);
+        assertFalse(balanced.adaptiveActive);
         assertEquals(0.65, balanced.particleScale, 1e-9);
         assertEquals(96, balanced.entityCullDistance);
         assertTrue(balanced.limitsParticles());
         assertTrue(balanced.limitsEntities());
         assertTrue(balanced.limitsBlockEntities());
+        assertFalse(new ExtrasConfig().renderBudget.adaptive);
 
-        // A quarter over target arms it and tightens it one adaptive step
+        // Checks slow frames change nothing while the adaptive option is off.
         pressure(22.0);
         tick();
+        assertFalse(RenderBudgetController.budget().adaptiveActive);
+        assertEquals(0.65, RenderBudgetController.budget().particleScale, 1e-9);
+        assertEquals(96, RenderBudgetController.budget().entityCullDistance);
+
+        // Checks the adaptive option tightens one step a quarter over the profile frame time.
+        config.renderBudget.adaptive = true;
+        tick();
         RenderBudget pressed = RenderBudgetController.budget();
-        assertTrue(pressed.armed);
         assertTrue(pressed.adaptiveActive);
         assertEquals(0.45, pressed.particleScale, 1e-9);
         assertEquals(80, pressed.entityCullDistance);
-        // Once armed it stays so while there is any pressure at all
-        pressure(16.8);
-        tick();
-        assertTrue(RenderBudgetController.budget().armed);
 
-        // Quality keeps more, performance keeps less and is always armed
+        // Checks the quality and performance profiles.
         config.renderBudget.profile = ExtrasConfig.BudgetProfile.QUALITY;
         pressure(0.0);
         tick();
-        assertEquals(0.85, RenderBudgetController.budget().particleScale, 1e-9);
+        assertEquals(1.0, RenderBudgetController.budget().particleScale, 1e-9);
+        assertFalse(RenderBudgetController.budget().limitsParticles());
         assertEquals(128, RenderBudgetController.budget().entityCullDistance);
+        assertEquals(ExtrasConfig.RenderBudgetSettings.BLOCK_ENTITY_DISTANCE_DEFAULT + 16, RenderBudgetController.budget().blockEntityCullDistance);
+        // Checks Quality keeps every particle and never tightens under heavy pressure.
+        pressure(40.0);
+        tick();
+        assertFalse(RenderBudgetController.budget().adaptiveActive);
+        assertEquals(1.0, RenderBudgetController.budget().particleScale, 1e-9);
+        assertEquals(128, RenderBudgetController.budget().entityCullDistance);
+        pressure(0.0);
+        tick();
         config.renderBudget.profile = ExtrasConfig.BudgetProfile.PERFORMANCE;
         tick();
-        assertTrue(RenderBudgetController.budget().armed);
         assertEquals(0.45, RenderBudgetController.budget().particleScale, 1e-9);
         assertEquals(72, RenderBudgetController.budget().entityCullDistance);
-        // Relaxing the profile clamps the frame average to the new target so the old pressure does not linger
+        // Checks the relaxed profile.
         pressure(40.0);
         config.renderBudget.profile = ExtrasConfig.BudgetProfile.QUALITY;
         tick();
         assertEquals(ExtrasConfig.BudgetProfile.QUALITY.targetFrameMillis, RenderBudgetController.budget().emaFrameMillis, 0.01);
 
-        // All particles handed back stays that way, and the entity and block-entity limits can be switched off
+        // Checks the unlimited budgets.
         config.renderBudget.particleBudget = 100;
         config.renderBudget.smartEntityCulling = false;
         config.renderBudget.blockEntities = false;
@@ -217,14 +228,15 @@ class RenderBudgetTest {
 
     @Test
     void theAdaptiveStepTightensWhicheverSideIsBehind() {
+        config.renderBudget.adaptive = true;
         pressure(22.0);
-        // CPU-bound: only the mobs, which are CPU work
+        // Checks the CPU bound verdict.
         verdict(BottleneckDetector.State.CPU_BOUND);
         tick();
         assertEquals(0.65, RenderBudgetController.budget().particleScale, 1e-9);
         assertEquals(80, RenderBudgetController.budget().entityCullDistance);
         assertEquals(BottleneckDetector.State.CPU_BOUND, RenderBudgetController.budget().bottleneck);
-        // GPU-bound: particles mostly, mobs a little
+        // Checks the GPU bound verdict.
         verdict(BottleneckDetector.State.GPU_BOUND);
         tick();
         assertEquals(0.45, RenderBudgetController.budget().particleScale, 1e-9);
@@ -233,12 +245,12 @@ class RenderBudgetTest {
         tick();
         assertEquals(1.0, RenderBudgetController.budget().particleScale, 1e-9);
         config.renderBudget.particleBudget = 65;
-        // Mixed or unmeasured: both, as before
+        // Checks the mixed verdict.
         verdict(BottleneckDetector.State.MIXED);
         tick();
         assertEquals(0.45, RenderBudgetController.budget().particleScale, 1e-9);
         assertEquals(80, RenderBudgetController.budget().entityCullDistance);
-        // A detector that sees frames at target holds the step back even though the frame average says otherwise
+        // Checks the headroom verdict.
         verdict(BottleneckDetector.State.HEADROOM);
         tick();
         assertFalse(RenderBudgetController.budget().adaptiveActive);
@@ -269,7 +281,7 @@ class RenderBudgetTest {
         assertEquals(0.0, detector.gpuFrameMillis());
         frame();
 
-        // A driver without timer queries is asked once, and a thread without a context counts as one
+        // Checks the timer query probe.
         config.renderBudget.adaptive = true;
         Mockito.when(TestGl.gl().isOpenGLVersionSupported(3, 3)).thenReturn(false);
         Mockito.when(TestGl.gl().isExtensionSupported(GLExtension.ARB_timer_query)).thenReturn(false);
@@ -315,7 +327,7 @@ class RenderBudgetTest {
         Mixins.set(pig, "posX", 40.0);
         assertFalse(RenderBudgetController.shouldCullLivingEntity(pig));
         assertFalse(RenderBudgetController.wasCulledThisFrame(pig));
-        // A mob seen far, then skipped for a frame, starts its run over
+        // Checks a restarted run.
         Mixins.set(pig, "posX", 200.0);
         frame();
         RenderBudgetController.shouldCullLivingEntity(pig);
@@ -326,7 +338,7 @@ class RenderBudgetTest {
         Mixins.set(pig, "posX", 60.0);
         assertFalse(RenderBudgetController.shouldCullLivingEntity(pig));
 
-        // Players, the viewer itself, and having no viewer are never dropped
+        // Checks the never dropped entities.
         EntityPlayer player = mock(EntityPlayer.class);
         assertFalse(RenderBudgetController.shouldCullLivingEntity(player));
         when(client.getRenderViewEntity()).thenReturn(null);
@@ -390,7 +402,7 @@ class RenderBudgetTest {
         assertTrue(RenderBudgetController.blockEntitiesSkipped() > 0);
         assertTrue(RenderBudgetController.blockEntitiesProtected() > 0);
 
-        // Disarmed or unlimited, nothing is skipped
+        // Checks nothing is skipped.
         Mixins.set(RenderBudgetController.class, "budget", RenderBudget.NEUTRAL);
         assertFalse(RenderBudgetController.shouldCullBlockEntity(far));
     }

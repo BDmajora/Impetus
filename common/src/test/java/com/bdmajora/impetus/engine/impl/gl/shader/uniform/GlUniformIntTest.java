@@ -46,7 +46,7 @@ class GlUniformIntTest {
     // Shared GL mock that the reset extension clears before each test
     private final LWJGLService gl = TestGl.gl();
 
-    // Integer uniform that records every setInt call instead of calling GL
+    // Integer uniform that records calls.
     private static final class Recording extends GlUniformInt {
         // Values in the order setInt received them
         private final List<Integer> values = new ArrayList<>();

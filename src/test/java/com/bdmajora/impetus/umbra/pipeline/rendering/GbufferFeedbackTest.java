@@ -63,15 +63,15 @@ class GbufferFeedbackTest {
         GbufferFeedback feedback = new GbufferFeedback(this.targets);
         BitSet active = new BitSet();
         active.set(5);
-        // colortex6 is written and sampled (as gaux3), colortex5 and 0 only written
+        // Checks the written and sampled targets.
         BitSet flips = feedback.prepare(new int[]{0, 5, 6}, active);
         verifyCopies(1);
         UmbraRenderTarget six = this.targets.get(6);
         verify(TestGl.gl()).glFramebufferTexture2D(anyInt(), anyInt(), eq(GL11.GL_TEXTURE_2D), eq(six.getMainTexture()), eq(0));
-        // Into the back side, bound on the scratch unit and put back afterwards
+        // Checks the copy into the back side.
         verify(TestGl.gl()).glBindTexture(GL11.GL_TEXTURE_2D, six.getAltTexture());
         assertEquals(0, this.gl.textures[SamplerLayout.DEPTH_COPY_SCRATCH_UNIT]);
-        // The copy is read from: 6 flips, 5 keeps its flip, and the active snapshot itself is untouched
+        // Checks the flips.
         assertTrue(flips.get(6));
         assertTrue(flips.get(5));
         assertNotSame(active, flips);
@@ -89,7 +89,7 @@ class GbufferFeedbackTest {
         feedback.prepare(new int[]{4}, new BitSet());
         feedback.prepare(new int[]{4}, new BitSet());
         assertEquals(1 << 4, feedback.sampledGaux(PROGRAM));
-        // Four targets by up to two names each (colortex4 answers before gaux1 is asked), on the first prepare only
+        // Checks the uniform lookups.
         verify(TestGl.gl(), times(7)).glGetUniformLocation(eq(PROGRAM), any(CharSequence.class));
         verifyCopies(2);
     }
@@ -97,7 +97,7 @@ class GbufferFeedbackTest {
     @Test
     void aProgramTheCallerJustBoundIsNotAskedOfGl() {
         samples("gaux3");
-        // GL reports another program, which the explicit one overrides
+        // Reports another program.
         this.gl.program = 0;
         GbufferFeedback feedback = new GbufferFeedback(this.targets);
         BitSet flips = feedback.prepare(PROGRAM, new int[]{0, 6}, new BitSet());
@@ -115,7 +115,7 @@ class GbufferFeedbackTest {
         GbufferFeedback feedback = new GbufferFeedback(this.targets);
         assertEquals(~0, feedback.sampledGaux(0));
         BitSet flips = feedback.prepare(new int[]{0, 2, 4, 7, 9}, new BitSet());
-        // colortex0/2 are not gbuffer-sampled targets, colortex9 has none of the aux units
+        // Checks the copied targets.
         verifyCopies(2);
         assertTrue(flips.get(4));
         assertTrue(flips.get(7));
@@ -132,7 +132,7 @@ class GbufferFeedbackTest {
             this.gl.program = 0;
             GbufferFeedback feedback = new GbufferFeedback(sized);
             feedback.prepare(new int[]{4, 5}, new BitSet());
-            // colortex4 was never created; colortex5 copies 64x32, the screen size used to be an invalid region
+            // Checks a missing target and a sized copy.
             verify(TestGl.gl()).glCopyTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, 0, 0, 64, 32);
             verifyCopies(1);
             feedback.destroy();

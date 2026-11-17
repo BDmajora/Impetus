@@ -23,7 +23,7 @@ class ItemStackCapabilityMixinTest {
         Mc.bootstrap();
     }
 
-    // A stack whose item is whatever the test says, without Forge's capability gathering running
+    // Returns a stack of the given item.
     private static ItemStackCapabilityMixin stack(Item item) {
         ItemStackCapabilityMixin stack = Mixins.instance(ItemStackCapabilityMixin.class);
         Mixins.stub(stack, "getItemRaw", invocation -> item);
@@ -57,7 +57,7 @@ class ItemStackCapabilityMixinTest {
         assertNull(stack.getCapability(capability, null));
         assertFalse(Mixins.<Boolean>get(stack, "coarctatio$capabilitiesReady"));
 
-        // A real one builds once; with no item there is nothing to attach
+        // Checks a real one builds once.
         Mixins.set(stack, "isEmpty", false);
         assertFalse(stack.hasCapability(capability, null));
         assertTrue(Mixins.<Boolean>get(stack, "coarctatio$capabilitiesReady"));
@@ -75,7 +75,7 @@ class ItemStackCapabilityMixinTest {
     void twoStacksCompareTheirCapabilitiesAfterBothAreBuilt() {
         ItemStackCapabilityMixin left = stack(null);
         ItemStackCapabilityMixin right = stack(null);
-        // Neither has any, which is compatible
+        // Checks compatible empty capabilities.
         assertTrue(left.areCapsCompatible((ItemStack) (Object) right));
 
         CapabilityDispatcher dispatcher = mock(CapabilityDispatcher.class);
@@ -102,7 +102,7 @@ class ItemStackCapabilityMixinTest {
         Mixins.call(stack, "coarctatio$writeUnrealisedCaps", saved, Mixins.cir(saved));
         assertSame(caps, saved.getTag("ForgeCaps"));
 
-        // Nothing to carry when the dispatcher was built, when the tag is empty, or when Forge already wrote it
+        // Checks the cases with nothing to carry.
         Mixins.set(stack, "coarctatio$capabilitiesReady", true);
         NBTTagCompound built = new NBTTagCompound();
         Mixins.call(stack, "coarctatio$writeUnrealisedCaps", built, Mixins.cir(built));

@@ -44,11 +44,11 @@ class StateMixinsTest {
         Mixins.set(CoarctatioConfig.class, "instance", null);
     }
 
-    // Every hash cache is the same pair of hooks; this drives one of them end to end
+    // Checks a hash cache.
     private static void hashIsComputedOnceAndKept(Object mixin) {
         CallbackInfoReturnable<Integer> first = Mixins.cir();
         Mixins.call(mixin, "coarctatio$cachedHash", first);
-        // Nothing cached yet, so vanilla's own hashCode runs
+        // Checks the first call.
         assertFalse(first.isCancelled());
 
         Mixins.call(mixin, "coarctatio$rememberHash", Mixins.cir(1234));
@@ -90,7 +90,7 @@ class StateMixinsTest {
         CoarctatioConfig.get().blockStateBlacklist = new String[] {"net.minecraft.block.BlockFence"};
 
         assertNull(container.coarctatio$mapper(Blocks.OAK_FENCE));
-        // The decline is remembered, so the block is not analysed again per state
+        // Checks the decline is remembered.
         assertNull(container.coarctatio$mapper(Blocks.OAK_FENCE));
 
         CallbackInfoReturnable<BlockStateContainer.StateImplementation> cir = Mixins.cir();
@@ -110,7 +110,7 @@ class StateMixinsTest {
         ImmutableMap<IProperty<?>, Comparable<?>> values = ImmutableMap.of(BlockFence.NORTH, Boolean.FALSE);
         IUnlistedProperty<String> unlisted = Mockito.mock();
 
-        // Nothing unlisted means Forge delegates upward, which the base mixin already handles
+        // Checks nothing unlisted.
         CallbackInfoReturnable<BlockStateContainer.StateImplementation> plain = Mixins.cir();
         Mixins.call(extended, "coarctatio$createPackedExtendedState", Blocks.OAK_FENCE, values, ImmutableMap.of(), plain);
         assertFalse(plain.isCancelled());
@@ -118,7 +118,7 @@ class StateMixinsTest {
         Mixins.call(extended, "coarctatio$createPackedExtendedState", Blocks.OAK_FENCE, values, null, missing);
         assertFalse(missing.isCancelled());
 
-        // An unlisted map produces the packed extended state, clean while every value is still unset
+        // Checks an unlisted map.
         CallbackInfoReturnable<BlockStateContainer.StateImplementation> clean = Mixins.cir();
         Mixins.call(extended, "coarctatio$createPackedExtendedState", Blocks.OAK_FENCE, values,
                 ImmutableMap.of(unlisted, Optional.empty()), clean);
@@ -126,7 +126,7 @@ class StateMixinsTest {
         assertInstanceOf(CoarctatioExtendedBlockState.class, clean.getReturnValue());
         assertFalse(Mixins.<Boolean>get(clean.getReturnValue(), "dirty"));
 
-        // One a mod seeded with a value has to start dirty, or its next listed change would hand it to the clean instance
+        // Checks a seeded map.
         CallbackInfoReturnable<BlockStateContainer.StateImplementation> seeded = Mixins.cir();
         Mixins.call(extended, "coarctatio$createPackedExtendedState", Blocks.OAK_FENCE, values,
                 ImmutableMap.of(unlisted, Optional.of("seeded")), seeded);

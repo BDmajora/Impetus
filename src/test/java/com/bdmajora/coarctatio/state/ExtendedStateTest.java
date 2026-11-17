@@ -35,7 +35,7 @@ class ExtendedStateTest {
             return "mark";
         }
 
-        // Only values starting with ok are allowed, so the refusal path has something to refuse
+        // Allows values starting with ok.
         @Override
         public boolean isValid(String value) {
             return value == null || value.startsWith("ok");
@@ -121,7 +121,7 @@ class ExtendedStateTest {
         assertEquals(Optional.empty(), state.getUnlistedProperties().get(MARK));
         // A clean state is already the clean one
         assertSame(state, state.getClean());
-        // A property the block never declared is a caller bug, the way Forge reports it
+        // Checks an undeclared property.
         assertThrows(IllegalArgumentException.class, () -> state.getValue(FOREIGN));
         assertThrows(IllegalArgumentException.class, () -> state.withProperty(FOREIGN, "x"));
     }
@@ -135,7 +135,7 @@ class ExtendedStateTest {
         IExtendedBlockState dirty = state.withProperty(MARK, "ok1");
         assertNotSame(state, dirty);
         assertEquals("ok1", dirty.getValue(MARK));
-        // The clean state behind it is the registered instance, found by packed index rather than a table walk
+        // Checks the clean state.
         assertSame(state, dirty.getClean());
         // A value the property refuses is rejected rather than stored
         assertThrows(IllegalArgumentException.class, () -> dirty.withProperty(MARK, "bad"));
@@ -154,7 +154,7 @@ class ExtendedStateTest {
         assertNotSame(dirty, moved);
         assertEquals(Boolean.TRUE, moved.getValue(BlockFence.NORTH));
         assertEquals("ok1", ((IExtendedBlockState) moved).getValue(MARK));
-        // It is still a dirty state, so its clean twin is the registered one for the new value
+        // Checks the moved dirty state.
         assertSame(clean(true), ((IExtendedBlockState) moved).getClean());
 
         // A clean state's listed change is just the registered instance

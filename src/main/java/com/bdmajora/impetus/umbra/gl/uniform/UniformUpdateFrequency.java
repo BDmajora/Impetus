@@ -1,13 +1,13 @@
 package com.bdmajora.impetus.umbra.gl.uniform;
 
-// Choices of the uniform update frequency setting.
+// How often a pack uniform is uploaded.
 public enum UniformUpdateFrequency {
-    // Value that selects dynamic.
+    // Updated on every draw.
     DYNAMIC,
-    // Value that selects once.
+    // Updated once when the program is built.
     ONCE,
-    // Value that selects per tick.
+    // Once per game tick.
     PER_TICK,
-    // Value that selects per frame.
+    // Once per frame.
     PER_FRAME
 }

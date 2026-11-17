@@ -2,21 +2,21 @@ package com.bdmajora.impetus.umbra.shaderpack.texture;
 
 import java.util.Optional;
 
-// Choices of the texture stage setting.
+// Pipeline stages a custom texture.<stage>.<name> directive can bind into.
 public enum TextureStage {
-    // Value that selects setup.
+    // The setup programs.
     SETUP,
-    // Value that selects begin.
+    // The begin programs at the start of each frame.
     BEGIN,
-    // Value that selects shadowcomp.
+    // The shadow composite programs after the shadow pass.
     SHADOWCOMP,
-    // Value that selects prepare.
+    // The prepare programs before the gbuffers.
     PREPARE,
-    // Value that selects gbuffers and shadow.
+    // The gbuffer and shadow programs.
     GBUFFERS_AND_SHADOW,
-    // Value that selects deferred.
+    // The deferred programs between opaque and translucent geometry.
     DEFERRED,
-    // Value that selects composite and final.
+    // The composite programs and final.
     COMPOSITE_AND_FINAL;
 
     // Returns the stage of a name or empty.

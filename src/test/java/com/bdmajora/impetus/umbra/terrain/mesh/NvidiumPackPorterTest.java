@@ -39,7 +39,7 @@ class NvidiumPackPorterTest {
         return AbsolutePackPath.fromAbsolutePath(path);
     }
 
-    // A pack with terrain, water and shadow programs, its include, and whatever else a test adds
+    // Returns the sources of a test pack.
     static Map<AbsolutePackPath, String> pack(Map<String, String> extra) {
         Map<AbsolutePackPath, String> sources = new HashMap<>();
         sources.put(path("/lib/common.glsl"), COMMON);
@@ -54,7 +54,7 @@ class NvidiumPackPorterTest {
     @Test
     void everyTerrainFamilyProgramGetsItsStagesBesideItInEveryFolder() {
         Map<AbsolutePackPath, String> sources = pack(Map.of(
-                // The Nether ships only its own fragment stage, which pairs with the root's vertex stage as the loader pairs them
+                // Adds the Nether fragment stage.
                 "/world-1/gbuffers_terrain.fsh", FRAGMENT.replace("texcoord);", "texcoord) * 0.5;"),
                 "/gbuffers_basic.vsh", VERTEX,
                 "/gbuffers_basic.fsh", FRAGMENT,
@@ -72,7 +72,7 @@ class NvidiumPackPorterTest {
         assertTrue(stages.get(path("/world-1/gbuffers_terrain.mesh.fsh")).contains("* 0.5"));
         // Programs no mesh phase draws are left alone
         assertFalse(stages.containsKey(path("/gbuffers_entities.mesh")));
-        // Includes are flattened, so the option's #define rides in the ported file and the option system edits it there too
+        // Checks the flattened include.
         assertTrue(stages.get(path("/gbuffers_terrain.mesh")).contains("#define SCALE 1.0 // [0.5 1.0 2.0]"));
         assertTrue(NvidiumPackPorter.candidatePrograms().containsAll(List.of("gbuffers_terrain_cutout_mip", "gbuffers_textured_lit", "shadow_water")));
     }
@@ -107,7 +107,7 @@ class NvidiumPackPorterTest {
         assertFalse(new ShaderPack(pack(Map.of())).getProgramSet().get(ProgramId.TerrainCutoutMip).orElseThrow().hasMeshStages());
     }
 
-    // Writes a pack folder: its shaders, a texture and a readme at the root
+    // Writes a pack folder.
     private static Path writeFolderPack(Path root) throws IOException {
         for (Map.Entry<AbsolutePackPath, String> source : pack(Map.of()).entrySet()) {
             Path file = root.resolve("shaders" + source.getKey().getPathString());
@@ -137,7 +137,7 @@ class NvidiumPackPorterTest {
         // The port loads with the ordinary loader
         assertTrue(ShaderPackLoader.loadFromDirectory(target).getProgramSet().get(ProgramId.Water).orElseThrow().hasMeshStages());
 
-        // Porting again replaces the earlier port whole, leaving nothing stale behind
+        // Checks a repeated port replaces the old one.
         Files.writeString(target.resolve("shaders/stale.glsl"), "old");
         Files.writeString(source.resolve("shaders/gbuffers_water.gsh"), "#version 150\nvoid main() {}");
         NvidiumPackPorter.Result again = NvidiumPackPorter.port(source, target);
@@ -155,7 +155,7 @@ class NvidiumPackPorterTest {
 
         NvidiumPackPorter.Result first = NvidiumPackPorter.ensure(source, target);
         assertFalse(first.reused());
-        // Unchanged, the port is read back from its manifest and left as it is
+        // Checks an unchanged port is kept.
         Files.writeString(target.resolve("shaders/marker.txt"), "kept");
         NvidiumPackPorter.Result again = NvidiumPackPorter.ensure(source, target);
         assertTrue(again.reused());
@@ -167,7 +167,7 @@ class NvidiumPackPorterTest {
         Files.writeString(source.resolve("shaders/gbuffers_terrain.fsh"), FRAGMENT + "\n");
         assertFalse(NvidiumPackPorter.ensure(source, target).reused());
         assertFalse(Files.exists(target.resolve("shaders/marker.txt")));
-        // So does a port made by another format or from other templates, which a different fingerprint stands for
+        // Checks a port of another format.
         Path manifest = target.resolve(NvidiumPackPorter.MANIFEST);
         Files.writeString(manifest, Files.readString(manifest).replaceAll("fingerprint=\\w+", "fingerprint=old"));
         assertFalse(NvidiumPackPorter.ensure(source, target).reused());
@@ -197,7 +197,7 @@ class NvidiumPackPorterTest {
         assertTrue(Files.isRegularFile(target.resolve("shaders/shadow.mesh.fsh")));
         assertFalse(Files.exists(target.resolve("__MACOSX")));
 
-        // A folder the porter did not make is never deleted, and a pack without shaders/ is refused
+        // Checks a foreign folder and a pack without shaders.
         Path foreign = Files.createDirectories(temp.resolve("Foreign"));
         assertThrows(IOException.class, () -> NvidiumPackPorter.port(zip, foreign));
         Path empty = Files.createDirectories(temp.resolve("Empty"));
@@ -210,7 +210,7 @@ class NvidiumPackPorterTest {
         }
         NvidiumPackPorter.port(temp.resolve("bare.zip"), temp.resolve("bare"));
         assertTrue(Files.isRegularFile(temp.resolve("bare/shaders/gbuffers_terrain.vsh")));
-        // A zip is fingerprinted as one file, so the port just made is current; one that carried nothing reads back empty
+        // Checks a zip pack.
         NvidiumPackPorter.Result bare = NvidiumPackPorter.ensure(temp.resolve("bare.zip"), temp.resolve("bare"));
         assertTrue(bare.reused());
         assertTrue(bare.ported().isEmpty());

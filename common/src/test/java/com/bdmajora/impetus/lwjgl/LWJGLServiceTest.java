@@ -48,7 +48,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-// Every org.lwjgl.opengl native is a plain throwing method in the test LWJGL jar, so each GL class is stubbed with mockStatic, and GL.getCapabilities answers whatever caps holds
+// Tests LWJGLService against stubbed GL classes.
 class LWJGLServiceTest {
     private MockedStatic<GL> gl;
     private GLCapabilities caps;
@@ -65,7 +65,7 @@ class LWJGLServiceTest {
         gl.close();
     }
 
-    // GLCapabilities' constructor resolves function pointers, so one is allocated bare and its final flags written reflectively
+    // Returns bare GL capabilities with every flag set.
     private static GLCapabilities capabilities(boolean value) {
         try {
             GLCapabilities caps = Statics.allocate(GLCapabilities.class);
@@ -94,7 +94,7 @@ class LWJGLServiceTest {
         }
     }
 
-    // The mode types are private, so they are named through Object
+    // Returns the name of a mode.
     private static String name(Object mode) {
         return mode instanceof Enum<?> e ? e.name() : mode.getClass().getSimpleName();
     }
@@ -178,7 +178,7 @@ class LWJGLServiceTest {
         gl.when(GL::getFunctionProvider).thenReturn(functions);
         LWJGLService apple = LWJGLService.create();
         assertEquals("AppleVAO", name(apple.vaoMode()));
-        // LWJGL 3.4's Java 25 JNI is FFM-backed plain Java, which is what lets Mockito stand in for the call; a native one would jump to 0x10
+        // Checks JNI is plain Java.
         assertFalse(Modifier.isNative(JNI.class.getMethod("callPV", int.class, long.class, long.class).getModifiers()));
         assertFalse(Modifier.isNative(JNI.class.getMethod("callV", int.class, long.class).getModifiers()));
         try (MockedStatic<JNI> jni = mockStatic(JNI.class)) {
@@ -198,7 +198,7 @@ class LWJGLServiceTest {
             jni.verify(() -> JNI.callV(6, 0x30L));
         }
 
-        // Nothing at all: the optional paths throw or do nothing instead of calling a null entry point
+        // Checks the paths without capabilities.
         caps = capabilities(false);
         when(functions.getFunctionAddress("glBindVertexArrayAPPLE")).thenReturn(0L);
         LWJGLService none = LWJGLService.create();
@@ -329,7 +329,7 @@ class LWJGLServiceTest {
             assertEquals(7, service.glCreateShader(1));
             service.glShaderSource(7, "void main() {}");
             gl20.verify(() -> GL20C.glShaderSource(7, (CharSequence) "void main() {}"));
-            // The safe form hands GL one terminated UTF-8 string and no length array, then frees the string
+            // Checks the safe string upload.
             String[] sent = new String[1];
             gl20.when(() -> GL20C.nglShaderSource(eq(7), eq(1), anyLong(), eq(0L))).thenAnswer(inv -> {
                 sent[0] = MemoryUtil.memUTF8(MemoryUtil.memGetAddress(inv.<Long>getArgument(2)));
@@ -357,7 +357,7 @@ class LWJGLServiceTest {
             assertEquals("plog", service.glGetProgramInfoLog(8, 100));
             gl20.when(() -> GL20C.glGetProgrami(8, 1)).thenReturn(1);
             assertEquals(1, service.glGetProgrami(8, 1));
-            // LWJGL3 reports size and type separately; the service packs them into the caller's one buffer
+            // Checks the packed size and type.
             gl20.when(() -> GL20C.glGetActiveUniform(eq(8), eq(0), eq(32), any(IntBuffer.class), any(IntBuffer.class))).thenAnswer(inv -> {
                 inv.<IntBuffer>getArgument(3).put(0, 4);
                 inv.<IntBuffer>getArgument(4).put(0, 0x8B51);
@@ -430,13 +430,13 @@ class LWJGLServiceTest {
              MockedStatic<GL15C> gl15 = mockStatic(GL15C.class)) {
             service.glDrawElementsBaseVertex(4, 6, 2, 8L, 1);
             gl32.verify(() -> GL32C.glDrawElementsBaseVertex(4, 6, 2, 8L, 1));
-            // LWJGL3 takes the count/index/base-vertex arrays as addresses, so the multi-draw is one call, not an emulation
+            // Checks the single multi draw call.
             service.glMultiDrawElementsBaseVertex(4, 100L, 2, 200L, 3, 300L);
             gl32.verify(() -> GL32C.nglMultiDrawElementsBaseVertex(4, 100L, 2, 200L, 3, 300L));
             service.glMultiDrawElementsIndirect(4, 2, 0L, 5, 20);
             gl43.verify(() -> GL43C.glMultiDrawElementsIndirect(4, 2, 0L, 5, 20));
 
-            // Sync objects are plain handles on LWJGL3, no GLSync table to keep
+            // Checks the sync handle.
             gl32.when(() -> GL32C.glFenceSync(1, 0)).thenReturn(77L);
             assertEquals(77L, service.glFenceSync(1, 0));
             gl32.when(() -> GL32C.glClientWaitSync(77L, 1, 5L)).thenReturn(0x911A);

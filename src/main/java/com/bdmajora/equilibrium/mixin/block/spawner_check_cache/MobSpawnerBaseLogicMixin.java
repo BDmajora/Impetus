@@ -43,6 +43,8 @@ public abstract class MobSpawnerBaseLogicMixin {
         }
         this.equilibrium$cachedActive = cir.getReturnValue();
         this.equilibrium$cachedPlayerCount = world.playerEntities.size();
-        this.equilibrium$recheckAt = world.getTotalWorldTime() + CHECK_INTERVAL + (world.rand.nextInt() & 1);
+        // Staggers spawners by position.
+        long staggered = ((MobSpawnerBaseLogic) (Object) this).getSpawnerPosition().toLong() & 1L;
+        this.equilibrium$recheckAt = world.getTotalWorldTime() + CHECK_INTERVAL + staggered;
     }
 }

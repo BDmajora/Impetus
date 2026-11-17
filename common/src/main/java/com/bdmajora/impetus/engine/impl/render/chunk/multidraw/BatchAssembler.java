@@ -371,7 +371,7 @@ public final class BatchAssembler {
             int sectionStart = batch.size();
             int previousEnd = 0;
 
-            // Emits at least one run because the mask is never zero
+            // Emits the runs of the mask.
             do {
                 int firstFacing = Integer.numberOfTrailingZeros(mask);
                 int lastFacing = firstFacing + Integer.numberOfTrailingZeros(~(mask >>> firstFacing)) - 1;

@@ -38,7 +38,7 @@ class OptionStorageTest {
         }
     }
 
-    // A set that fails on any method at all, so the default can be shown never to look inside
+    // Returns a set that fails on any call.
     @SuppressWarnings("unchecked")
     private static Set<OptionFlag> untouchable() {
         return (Set<OptionFlag>) Proxy.newProxyInstance(OptionStorageTest.class.getClassLoader(), new Class<?>[]{Set.class},
@@ -52,7 +52,7 @@ class OptionStorageTest {
         Class<?> type = OptionStorage.class;
         assertTrue(type.isInterface());
         assertTrue(Modifier.isPublic(type.getModifiers()));
-        // Compiler-checked, so lambda storages keep compiling
+        // Checks the annotation.
         assertNotNull(type.getAnnotation(FunctionalInterface.class));
         assertEquals(0, type.getInterfaces().length);
         assertEquals(0, type.getDeclaredFields().length);
@@ -87,7 +87,7 @@ class OptionStorageTest {
         assertEquals(1, counting.getData());
         assertEquals(2, counting.getData());
         assertEquals(3, counting.getData());
-        // Null data passes through untouched, the interface has no opinion on it
+        // Checks null data.
         OptionStorage<String> empty = () -> null;
         assertNull(empty.getData());
         List<String> list = new ArrayList<>();
@@ -134,14 +134,14 @@ class OptionStorageTest {
         }
         sets.add(Collections.unmodifiableSet(EnumSet.of(OptionFlag.REQUIRES_RENDERER_RELOAD, OptionFlag.REQUIRES_ASSET_RELOAD)));
         sets.add(new HashSet<>(EnumSet.allOf(OptionFlag.class)));
-        // A HashSet may hold a null flag; the default never looks, so it is not refused
+        // Checks a null flag.
         sets.add(new HashSet<>(Arrays.asList(OptionFlag.REQUIRES_GAME_RESTART, null)));
         int expected = 0;
         for (Set<OptionFlag> flags : sets) {
             storage.save(flags);
             assertEquals(++expected, storage.saves.get(), flags::toString);
         }
-        // The same set again counts again, nothing remembers what was saved
+        // Checks a repeated set.
         Set<OptionFlag> repeated = EnumSet.of(OptionFlag.REQUIRES_RENDERER_UPDATE);
         storage.save(repeated);
         storage.save(repeated);
@@ -152,7 +152,7 @@ class OptionStorageTest {
     @Test
     void theFlaggedSaveNeverLooksInsideOrChangesTheSet() {
         Counting storage = new Counting();
-        // Not iterated, sized, copied, hashed or printed, so its cost does not grow with the set
+        // Checks the set is never read.
         storage.save(untouchable());
         assertEquals(1, storage.saves.get());
         EnumSet<OptionFlag> flags = EnumSet.of(OptionFlag.REQUIRES_RENDERER_RELOAD, OptionFlag.REQUIRES_SHADER_PIPELINE_RELOAD);
@@ -169,10 +169,10 @@ class OptionStorageTest {
     void aNullSetIsRefusedBeforeThePlainSaveRuns() {
         Counting storage = new Counting();
         NullPointerException refused = assertThrows(NullPointerException.class, () -> storage.save(null));
-        // Same message as ConfigStorage, so either storage reports a caller bug the same way
+        // Checks the message.
         assertEquals("Flags must not be null", refused.getMessage());
         assertEquals(0, storage.saves.get());
-        // A lambda storage is refused too, and both still save afterwards
+        // Checks a lambda storage.
         OptionStorage<String> lambda = () -> "s";
         assertEquals("Flags must not be null", assertThrows(NullPointerException.class, () -> lambda.save(null)).getMessage());
         assertDoesNotThrow(() -> lambda.save(Set.of()));
@@ -183,7 +183,7 @@ class OptionStorageTest {
 
     @Test
     void overridingOnlyTheFlaggedSaveLeavesThePlainSaveANoOp() {
-        // MinecraftOptionsStorage's shape: the plain save does not forward, or the two defaults would call each other forever
+        // Checks the storage shape.
         AtomicInteger flagged = new AtomicInteger();
         OptionStorage<String> storage = new OptionStorage<>() {
             @Override
@@ -228,7 +228,7 @@ class OptionStorageTest {
         storage.save(EnumSet.of(OptionFlag.REQUIRES_ASSET_RELOAD));
         assertEquals(List.of("flagged [REQUIRES_ASSET_RELOAD]", "plain"), calls);
         calls.clear();
-        // The default's null check runs inside the super call, after the override has started
+        // Checks the null check in the super call.
         assertThrows(NullPointerException.class, () -> storage.save(null));
         assertEquals(List.of("flagged null"), calls);
     }
@@ -259,7 +259,7 @@ class OptionStorageTest {
                 }
             }
         };
-        // Neither wrapped nor swallowed, and not retried
+        // Checks failures pass through.
         for (Throwable failure : failures) {
             int before = attempts.get();
             assertSame(failure, assertThrows(Throwable.class, () -> storage.save(Set.of(OptionFlag.REQUIRES_GAME_RESTART))));

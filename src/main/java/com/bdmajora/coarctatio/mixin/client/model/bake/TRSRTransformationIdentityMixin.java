@@ -14,21 +14,18 @@ import javax.vecmath.Matrix4f;
 // Mixin that changes TRSRTransformation.
 @Mixin(value = TRSRTransformation.class, remap = false)
 public abstract class TRSRTransformationIdentityMixin {
-    // Shared identity matrix.
-    private static final Matrix4f coarctatio$IDENTITY = coarctatio$identity();
-
     // Reference to the field matrix of the target.
     @Shadow
     @Final
     private Matrix4f matrix;
 
-    // Value is identity.
+    // Whether the matrix is the identity.
     private boolean coarctatio$isIdentity;
 
     // Runs before every return of <init>*.
     @Inject(method = "<init>*", at = @At("RETURN"))
     private void coarctatio$cacheIdentity(CallbackInfo ci) {
-        this.coarctatio$isIdentity = this.matrix.equals(coarctatio$IDENTITY);
+        this.coarctatio$isIdentity = coarctatio$isIdentity(this.matrix);
     }
 
     // Replaces the whole method isIdentity.
@@ -37,10 +34,12 @@ public abstract class TRSRTransformationIdentityMixin {
         return this.coarctatio$isIdentity;
     }
 
-    // Handles identity.
-    private static Matrix4f coarctatio$identity() {
-        Matrix4f identity = new Matrix4f();
-        identity.setIdentity();
-        return identity;
+    // Returns whether the matrix equals the identity.
+    private static boolean coarctatio$isIdentity(Matrix4f m) {
+        return m != null
+                && m.m00 == 1.0F && m.m01 == 0.0F && m.m02 == 0.0F && m.m03 == 0.0F
+                && m.m10 == 0.0F && m.m11 == 1.0F && m.m12 == 0.0F && m.m13 == 0.0F
+                && m.m20 == 0.0F && m.m21 == 0.0F && m.m22 == 1.0F && m.m23 == 0.0F
+                && m.m30 == 0.0F && m.m31 == 0.0F && m.m32 == 0.0F && m.m33 == 1.0F;
     }
 }

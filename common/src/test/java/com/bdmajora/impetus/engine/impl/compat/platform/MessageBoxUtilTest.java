@@ -151,7 +151,7 @@ class MessageBoxUtilTest {
         }
     }
 
-    // Returns every message logged since the last reset in call order
+    // Returns every message since the reset.
     private static List<Entry> entries() {
         List<Entry> entries = new ArrayList<>();
         for (Invocation call : mockingDetails(LOGGER).getInvocations()) {
@@ -164,7 +164,7 @@ class MessageBoxUtilTest {
         return entries;
     }
 
-    // Returns the one message logged since the last reset
+    // Returns the one message since the reset.
     private static Entry only() {
         List<Entry> entries = entries();
         assertEquals(1, entries.size());

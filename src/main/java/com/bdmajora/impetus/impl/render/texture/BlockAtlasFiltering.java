@@ -17,7 +17,7 @@ public final class BlockAtlasFiltering {
     private BlockAtlasFiltering() {
     }
 
-    // Reapplies the to block atlas.
+    // Applies the configured anisotropy and filtering to the bound block atlas again.
     public static void reapplyToBlockAtlas() {
         var mc = Minecraft.getMinecraft();
         if (mc == null) {
@@ -53,7 +53,7 @@ public final class BlockAtlasFiltering {
         }
     }
 
-    // Returns whether anisotropy supported.
+    // Returns whether the driver supports anisotropic filtering.
     private static boolean isAnisotropySupported() {
         if (anisotropySupported == null) {
             try {

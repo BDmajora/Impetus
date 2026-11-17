@@ -16,7 +16,7 @@ import com.bdmajora.impetus.ImpetusVintage;
 // Mixin that changes Minecraft.
 @Mixin(Minecraft.class)
 public class MinecraftMixin {
-    // Field render ahead manager added to the target.
+    // Limits how many frames the CPU may queue ahead of the GPU.
     @Unique
     private final RenderAheadManager impetus$renderAheadManager = new RenderAheadManager();
 
@@ -52,7 +52,7 @@ public class MinecraftMixin {
         return limit;
     }
 
-    // Helper method capped added to the target.
+    // Returns the lower of the limit and the cap and treats zero or less as no limit.
     @Unique
     private static int impetus$capped(int limit, int cap) {
         return limit > 0 ? Math.min(limit, cap) : cap;

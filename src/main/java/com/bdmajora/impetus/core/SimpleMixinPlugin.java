@@ -9,7 +9,7 @@ import java.util.Set;
 
 // Mixin plugin that applies every mixin unless a subclass skips it.
 public abstract class SimpleMixinPlugin implements IMixinConfigPlugin {
-    // Handles the load.
+    // Does nothing on load.
     @Override
     public void onLoad(String mixinPackage) {
     }
@@ -20,7 +20,7 @@ public abstract class SimpleMixinPlugin implements IMixinConfigPlugin {
         return null;
     }
 
-    // Returns whether apply mixin.
+    // Applies every mixin of the config.
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
         return true;

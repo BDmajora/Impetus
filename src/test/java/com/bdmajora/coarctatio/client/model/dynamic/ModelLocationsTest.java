@@ -56,14 +56,14 @@ class ModelLocationsTest {
         ModelLocations.init(loader, mapper);
         assertTrue(ModelLocations.ALL_KNOWN.contains(variant));
         assertTrue(ModelLocations.ALL_KNOWN.contains(new ModelResourceLocation("minecraft:diamond_sword", "inventory")));
-        // The item frame's models are loaded by the entity renderer, so nothing else would have listed them
+        // Checks the item frame models.
         assertTrue(ModelLocations.ALL_KNOWN.contains(new ModelResourceLocation("item_frame", "normal")));
         assertSame(Blocks.STONE, ModelLocations.blockFor(blockstate));
         assertTrue(ModelLocations.isKnownVariant(blockstate, variant));
         assertFalse(ModelLocations.isKnownVariant(blockstate, new ModelResourceLocation("minecraft:stone", "odd")));
         assertFalse(ModelLocations.isKnownVariant(new ResourceLocation("minecraft:nothing"), variant));
 
-        // Built once; a second reload only refreshes the item variant names
+        // Checks the second reload.
         ModelLocations.init(loader, mapper);
         assertEquals(List.of("minecraft:diamond_sword", "minecraft:broken_sword"),
                 ModelLocations.variantNames(Items.DIAMOND_SWORD));
@@ -115,7 +115,7 @@ class ModelLocationsTest {
         // The selectors need the block's own state container to build their predicates
         assertSame(Blocks.OAK_FENCE.getBlockState(), definition.getMultipartData().getStateContainer());
 
-        // A file that cannot be read, and one that is not valid JSON, are both reported against the model
+        // Checks unreadable and invalid files.
         when(resources.getAllResources(any())).thenThrow(new IOException("no such file"));
         assertThrows(RuntimeException.class, () -> ModelLocations.loadDefinition(fence));
         IResource broken = mock(IResource.class);
@@ -132,7 +132,7 @@ class ModelLocationsTest {
         for (int i = 0; i < 6; i++) {
             assertTrue(ModelLocations.canLogError("brokenmod"), "error " + i + " should still be logged");
         }
-        // The limit is announced once, then the namespace goes quiet
+        // Checks the error limit.
         assertFalse(ModelLocations.canLogError("brokenmod"));
         assertFalse(ModelLocations.canLogError("brokenmod"));
         assertTrue(ModelLocations.canLogError("anothermod"));

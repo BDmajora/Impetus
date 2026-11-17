@@ -29,7 +29,7 @@ public final class ActiveCustomUniforms {
         }
     }
 
-    // Assigns the to.
+    // Registers the active pack's custom uniforms with a program's collector.
     public static void assignTo(UniformCollector collector) {
         CustomUniforms current = active;
         if (current != null) {

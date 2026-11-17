@@ -44,10 +44,10 @@ class FailureTextTest {
         // Exactly the limit is kept whole
         String exact = "w".repeat(256 - PREFIX.length());
         assertEquals(PREFIX + exact, FailureText.of(new IllegalStateException(exact)));
-        // A pair across the limit is left out whole, and one ending at it stays
+        // Checks surrogate pairs.
         assertEquals("x".repeat(255), FailureText.firstLine("x".repeat(255) + "😀tail"));
         assertEquals("x".repeat(254) + "😀", FailureText.firstLine("x".repeat(254) + "😀tail"));
-        // A lone high surrogate at the very end is kept, as nothing past it is cut
+        // Checks a lone high surrogate.
         assertEquals("x".repeat(255) + "\uD83D", FailureText.firstLine("x".repeat(255) + "\uD83D"));
         assertEquals("", FailureText.firstLine(""));
     }

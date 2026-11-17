@@ -72,7 +72,7 @@ class AsyncMixinsTest {
         ParallelProcessor.apply(settings);
     }
 
-    // Calls each named wrap handler with placeholder arguments and a recording original, which must run exactly once
+    // Calls each named wrap handler with a recording original.
     private static void runsOriginal(Object mixin, String... handlers) {
         for (String name : handlers) {
             Method method = handler(mixin.getClass(), name);
@@ -176,14 +176,14 @@ class AsyncMixinsTest {
         IBlockState state = Blocks.STONE.getDefaultState();
         BlockPos pos = new BlockPos(1, 2, 3);
 
-        // Off, the block ticks in place
+        // Checks the serial path.
         doReturn(false).when(server).impetus$isParallel();
         Mc.Recorded<Void> original = Mc.operation();
         Mixins.call(server, "impetus$collectRandomTick", block, server, pos, state, new Random(), original);
         assertEquals(1, original.count());
         Mixins.call(server, "impetus$flushRandomTicks", Mixins.ci());
 
-        // On, the reaction waits for the flush, and runs with its own random source
+        // Checks the parallel path.
         parallel();
         doReturn(true).when(server).impetus$isParallel();
         Mc.Recorded<Void> deferred = Mc.operation();
@@ -194,7 +194,7 @@ class AsyncMixinsTest {
         Mixins.call(server, "impetus$flushRandomTicks", Mixins.ci());
         verify(block, org.mockito.Mockito.times(2)).randomTick(any(), any(), any(), any());
 
-        // A sweep that threw before its flush leaves a batch behind, which the next sweep drops instead of replaying
+        // Checks a leftover batch is dropped.
         Mixins.call(server, "impetus$collectRandomTick", block, server, pos, state, new Random(), deferred);
         assertNotNull(Mixins.get(server, "impetus$randomTickBatch"));
         Mixins.call(server, "impetus$discardStaleRandomTicks", Mixins.ci());
@@ -222,7 +222,7 @@ class AsyncMixinsTest {
         // An unloaded chunk goes through the original under the world and worldgen locks
         runsOriginal(provider, handlers);
 
-        // A loaded one is answered straight from the map, and a load callback still runs
+        // Checks a loaded chunk.
         Chunk chunk = mock(Chunk.class);
         doReturn(chunk).when(provider).getLoadedChunk(4, 5);
         Mc.Recorded<Chunk> original = Mc.operation(null);
@@ -264,7 +264,7 @@ class AsyncMixinsTest {
         BlockStateContainerParallelMixin palette = container();
         doReturn(new ExtendedBlockStorage[] {section(palette), null}).when(chunk).getBlockStorageArray();
 
-        // Not installed, no world, a client world or a serial world all leave the chunk as vanilla built it
+        // Checks the vanilla cases.
         Mixins.call(chunk, "impetus$installConcurrentMap", world, 0, 0, Mixins.ci());
         ParallelProcessor.INSTALLED = true;
         Mixins.call(chunk, "impetus$installConcurrentMap", null, 0, 0, Mixins.ci());
@@ -292,7 +292,7 @@ class AsyncMixinsTest {
         runsOriginal(chunk, "impetus$lockedAdd", "impetus$lockedRemove", "impetus$lockedGetEntities",
                 "impetus$lockedGetEntitiesOfType");
 
-        // A live block entity is answered lock-free; a check for one that is not there never builds it
+        // Checks a live block entity.
         BlockPos pos = new BlockPos(1, 1, 1);
         TileEntity tile = mock(TileEntity.class);
         Map<BlockPos, TileEntity> concurrent = Mixins.get(chunk, "tileEntities");
@@ -301,7 +301,7 @@ class AsyncMixinsTest {
         assertSame(tile, Mixins.call(chunk, "impetus$lockedGetTileEntity", pos, Chunk.EnumCreateEntityType.IMMEDIATE, create));
         assertNull(Mixins.call(chunk, "impetus$lockedGetTileEntity", new BlockPos(2, 2, 2), Chunk.EnumCreateEntityType.CHECK, create));
         assertEquals(0, create.count());
-        // An invalidated one goes to the original, which may replace it
+        // Checks an invalidated block entity.
         when(tile.isInvalid()).thenReturn(true);
         Mixins.call(chunk, "impetus$lockedGetTileEntity", pos, Chunk.EnumCreateEntityType.CHECK, create);
         assertEquals(1, create.count());
@@ -381,7 +381,7 @@ class AsyncMixinsTest {
         Mixins.set(world, "playerEntities", new ArrayList<>());
         doNothing().when((World) (Object) world).updateEntity(any());
 
-        // Not installed: vanilla's lists stay, nothing is armed, every entity ticks in place
+        // Checks the not installed path.
         Mixins.call(world, "impetus$installConcurrentLists", Mixins.ci());
         assertFalse(world.impetus$isParallel());
         Mixins.call(world, "impetus$armBatch", Mixins.ci());
@@ -410,7 +410,7 @@ class AsyncMixinsTest {
         Mixins.call(world, "impetus$runBatch", Mixins.ci());
         verify((World) (Object) world).updateEntity(pig);
 
-        // The dead leave their chunk, the list and the listeners once; one vanilla already removed is skipped
+        // Checks the dead entities.
         EntityPig dying = pig((World) (Object) world, true);
         EntityPig gone = pig((World) (Object) world, true);
         loaded.add(dying);

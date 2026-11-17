@@ -6,7 +6,7 @@ import net.minecraftforge.common.config.Property;
 
 // Contract of the setting.
 interface Setting<S> {
-    // Handles the key.
+    // Returns the config key of the setting.
     String key();
 
     // Loads the value.
@@ -18,7 +18,7 @@ interface Setting<S> {
     // Creates the value.
     void create(Configuration config, String category);
 
-    // Handles the property.
+    // Returns the Forge property of the setting and creates it with its default.
     default Property property(Configuration config, ConfigCategory section) {
         Property property = section.get(key());
         if (property == null) {

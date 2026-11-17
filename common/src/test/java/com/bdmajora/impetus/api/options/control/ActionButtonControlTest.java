@@ -57,12 +57,12 @@ class ActionButtonControlTest {
     private static final Runnable NOTHING = () -> { };
     private static final String FAILURE_LOG = "Action button {} ({}) failed";
 
-    // Records each string with the component it was drawn from; 6 pixels a character unless a width is pinned, and translation keys read from a table
+    // Draw context that records strings and widths.
     private static class RecordingDraw extends FakeDrawContext {
         final List<Text> texts = new ArrayList<>();
         final Map<String, Integer> widths = new HashMap<>();
         final Map<String, String> translations = new HashMap<>(Map.of(DEFAULT_KEY, "Open"));
-        // How many times a label was cut, which a kept cut does not repeat
+        // Number of label cuts.
         int cuts;
 
         @Override
@@ -83,7 +83,7 @@ class ActionButtonControlTest {
             return super.substrByWidth(str, maxWidth);
         }
 
-        // Moves on whenever the test changes a translation or pins a width, as a language or font reload moves a real context's version on
+        // Returns the text version.
         @Override
         public long textVersion() {
             return 31L * this.translations.hashCode() + this.widths.hashCode();
@@ -97,7 +97,7 @@ class ActionButtonControlTest {
             return super.extractString(component);
         }
 
-        // The button's label is the one underlined string; the option name never is
+        // Returns the underlined label.
         Text label() {
             List<Text> labels = this.texts.stream().filter(t -> styles(t.component()).contains(TextFormattingStyle.UNDERLINE)).toList();
             assertEquals(1, labels.size(), labels::toString);
@@ -125,7 +125,7 @@ class ActionButtonControlTest {
         }
     }
 
-    // Records like RecordingDraw while an underlined component measures what the operator makes of its plain width and length, keeping every width a cut was asked for
+    // Draw context that widens underlined text.
     private static class Widening extends RecordingDraw {
         final List<Integer> asked = new ArrayList<>();
         private final IntBinaryOperator underlined;
@@ -153,7 +153,7 @@ class ActionButtonControlTest {
         return component instanceof TextComponent.Styled styled ? styled.styles() : EnumSet.noneOf(TextFormattingStyle.class);
     }
 
-    // A mock option whose availability the test flips, with the name the base element draws
+    // Returns a mock option with flippable availability.
     private static Option<Boolean> option(AtomicBoolean available) {
         @SuppressWarnings("unchecked")
         Option<Boolean> option = Mockito.mock(Option.class);
@@ -174,7 +174,7 @@ class ActionButtonControlTest {
         return draw;
     }
 
-    // Ten letters, sixty pixels plain, on a 66 wide row that leaves the label 48 of the column
+    // Returns an element with a 48 pixel label.
     private static ControlElement<Boolean> tenInRoom48(AtomicBoolean available) {
         return element(option(available), TextComponent.literal("ABCDEFGHIJ"), NOTHING, new Dim2i(0, 0, 66, 20));
     }
@@ -184,7 +184,7 @@ class ActionButtonControlTest {
         Option<Boolean> option = option(new AtomicBoolean(true));
         TextComponent label = TextComponent.literal("Go");
         npe("Option must not be null", () -> new ActionButtonControl(null, NOTHING));
-        // The short form fills in the default label, so its only other null is the action
+        // Checks the null action.
         npe("Action must not be null", () -> new ActionButtonControl(option, null));
         npe("Option must not be null", () -> new ActionButtonControl(null, null));
         npe("Option must not be null", () -> new ActionButtonControl(null, label, NOTHING));
@@ -224,7 +224,7 @@ class ActionButtonControlTest {
         assertSame(option, second.getOption());
         assertSame(DIM, first.getDimensions());
         assertSame(elsewhere, second.getDimensions());
-        // The element is the control's own private, final button
+        // Checks the element type.
         Class<?> type = first.getClass();
         assertSame(ActionButtonControl.class, type.getEnclosingClass());
         assertTrue(Modifier.isPrivate(type.getModifiers()) && Modifier.isFinal(type.getModifiers()));
@@ -247,7 +247,7 @@ class ActionButtonControlTest {
             RecordingDraw draw = render(control.createElement(DIM));
             Text label = draw.label();
             assertEquals(shared, ((TextComponent.Styled) label.component()).inner());
-            // Measured and placed by its translation, not its key
+            // Checks the translated label.
             assertEquals("Open", label.text());
             assertEquals(LIMIT_X - 24 - 18, label.x());
         }
@@ -267,7 +267,7 @@ class ActionButtonControlTest {
         assertSame(draw.texts.get(1), label);
         assertEquals("Go", label.text());
         assertEquals(EnumSet.of(TextFormattingStyle.UNDERLINE), styles(label.component()));
-        // Right-aligned 18 pixels in from the edge, on the same line as the name
+        // Checks the label position.
         assertEquals(LIMIT_X - 12 - 18, label.x());
         assertEquals(TEXT_Y, label.y());
         assertEquals(TEXT_Y, draw.texts.getFirst().y());
@@ -286,7 +286,7 @@ class ActionButtonControlTest {
         Option<Boolean> option = option(new AtomicBoolean(true));
         Dim2i odd = new Dim2i(-40, 7, 151, 15);
         RecordingDraw draw = render(element(option, TextComponent.literal("Go"), NOTHING, odd));
-        // Right edge 111; centre 7 + 15 / 2 = 14 rounds down, then up 4
+        // Checks the arrow centre.
         assertEquals(111 - 12 - 18, draw.label().x());
         assertEquals(10, draw.label().y());
         assertEquals(101, draw.arrow().x());
@@ -386,7 +386,7 @@ class ActionButtonControlTest {
         draw = new RecordingDraw();
         draw.widths.put("Settings", 53);
         element.render(draw, 0, 0, 0f);
-        // 52 less the 18 pixel ellipsis leaves 34 for text, five characters here
+        // Checks the cut label.
         assertEquals("Setti...", draw.label().text());
         assertEquals(LIMIT_X - 48 - 18, draw.label().x());
     }
@@ -399,12 +399,12 @@ class ActionButtonControlTest {
         RecordingDraw draw = render(element);
         Text label = draw.label();
         assertEquals("Confi...", label.text());
-        // The cut keeps the label's own italic, underlined like the whole label
+        // Checks the cut keeps its style.
         assertEquals(TextComponent.literal("Confi...").withStyle(TextFormattingStyle.ITALIC, TextFormattingStyle.UNDERLINE), label.component());
         assertEquals(LIMIT_X - 48 - 18, label.x());
-        // Clear of the column's left edge, and so of the option name ControlElement keeps out of it
+        // Checks the label clears the column.
         assertTrue(label.x() >= LIMIT_X - 70);
-        // ControlElement cuts the name to the row width less the column and a 12 pixel gap, starting 6 in
+        // Checks the name cut.
         assertTrue(DIM.x() + 6 + DIM.width() - 70 - 12 <= label.x());
         assertEquals(DefaultColors.getModAccentColor(null), label.color());
 
@@ -436,30 +436,30 @@ class ActionButtonControlTest {
     @Test
     void narrowRowsShrinkTheColumnAndDropALabelThatCannotFitEvenTheEllipsis() {
         Option<Boolean> option = option(new AtomicBoolean(true));
-        // 40 wide leaves 22: a short label fits, a long one cuts to the bare ellipsis
+        // Checks a 40 wide row.
         assertEquals(40 - 12 - 18, render(element(option, TextComponent.literal("Go"), NOTHING, new Dim2i(0, 0, 40, 20))).label().x());
         Text bare = render(element(option, TextComponent.literal("Configure"), NOTHING, new Dim2i(0, 0, 40, 20))).label();
         assertEquals("...", bare.text());
         assertEquals(40 - 18 - 18, bare.x());
-        // 36 wide leaves exactly the ellipsis, drawn at the row's left edge
+        // Checks a 36 wide row.
         Text tight = render(element(option, TextComponent.literal("Configure"), NOTHING, new Dim2i(0, 0, 36, 20))).label();
         assertEquals("...", tight.text());
         assertEquals(0, tight.x());
-        // One narrower and nothing of the label fits, so only the arrow is drawn
+        // Checks a 35 wide row.
         RecordingDraw none = render(element(option, TextComponent.literal("Configure"), NOTHING, new Dim2i(0, 0, 35, 20)));
         assertTrue(none.drewNoLabel());
         assertEquals(25, none.arrow().x());
         assertEquals(35 - 12 - 18, render(element(option, TextComponent.literal("Go"), NOTHING, new Dim2i(0, 0, 35, 20))).label().x());
-        // Ten wide is the narrowest row the arrow fits in, drawn at its left edge with no room left for a label
+        // Checks a 10 wide row.
         RecordingDraw ten = render(element(option, TextComponent.literal("Go"), NOTHING, new Dim2i(0, 0, 10, 20)));
         assertTrue(ten.drewNoLabel());
         assertEquals(0, ten.arrow().x());
-        // Any narrower, zero wide or even negative, and the button draws nothing at all outside the row
+        // Checks narrower rows.
         for (int width : new int[]{9, 1, 0, -5}) {
             RecordingDraw nothing = render(element(option, TextComponent.literal("Go"), NOTHING, new Dim2i(0, 0, width, 20)));
             assertTrue(nothing.drewNoLabel(), () -> "width " + width);
             assertTrue(nothing.drewNoArrow(), () -> "width " + width);
-            // Nor does ControlElement, which has no room for even the name's ellipsis
+            // Checks the element has no room either.
             assertEquals(0, nothing.texts.size(), () -> "width " + width);
         }
     }
@@ -491,7 +491,7 @@ class ActionButtonControlTest {
         assertEquals(TextComponent.literal("Go").withStyle(TextFormattingStyle.RED, TextFormattingStyle.ITALIC, TextFormattingStyle.UNDERLINE),
                 render(element).label().component());
         available.set(false);
-        // Vanilla applies the set's colours in order, so a kept RED would land after GRAY and win
+        // Checks the colour order.
         assertEquals(TextComponent.literal("Go").withStyle(TextFormattingStyle.ITALIC, TextFormattingStyle.UNDERLINE, TextFormattingStyle.GRAY, TextFormattingStyle.STRIKETHROUGH),
                 render(element).label().component());
         // The caller's label is left as it was
@@ -507,7 +507,7 @@ class ActionButtonControlTest {
         assertEquals(new TextComponent.Styled(TextComponent.literal("Go"),
                 EnumSet.of(TextFormattingStyle.UNDERLINE, TextFormattingStyle.GRAY, TextFormattingStyle.STRIKETHROUGH)), label);
         available.set(true);
-        // Enabled, both layers stay, the outer one underlined
+        // Checks both layers while enabled.
         assertEquals(new TextComponent.Styled(new TextComponent.Styled(TextComponent.literal("Go"), EnumSet.of(TextFormattingStyle.RED)),
                 EnumSet.of(TextFormattingStyle.GOLD, TextFormattingStyle.UNDERLINE)), render(element(option(available), colours, NOTHING, DIM)).label().component());
     }
@@ -522,10 +522,10 @@ class ActionButtonControlTest {
         draw.translations.put("impetus.test.with_argument", "Go");
         element.render(draw, 0, 0, 0f);
         TextComponent inner = ((TextComponent.Styled) draw.label().component()).inner();
-        // Plain arguments, nulls included, pass through untouched
+        // Checks plain arguments pass through.
         assertEquals(new TextComponent.Translatable(List.of("impetus.test.with_argument"),
                 Arrays.asList(TextComponent.literal("x").withStyle(TextFormattingStyle.ITALIC), 5, null)), inner);
-        // While enabled the translation is an equal copy of the caller's, arguments and all
+        // Checks the copied translation.
         available.set(true);
         draw.clear();
         element.render(draw, 0, 0, 0f);
@@ -564,7 +564,7 @@ class ActionButtonControlTest {
         assertEquals(new TextComponent.Styled(new TextComponent.Styled(TextComponent.literal("Confi..."), EnumSet.of(TextFormattingStyle.RED)),
                 EnumSet.of(TextFormattingStyle.ITALIC, TextFormattingStyle.UNDERLINE)), cut);
         assertNotSame(innerStyles, ((TextComponent.Styled) ((TextComponent.Styled) cut).inner()).styles());
-        // The red-only inner layer goes while unavailable, the italic one stays
+        // Checks the inner layer while unavailable.
         available.set(false);
         assertEquals(new TextComponent.Styled(TextComponent.literal("Confi..."),
                 EnumSet.of(TextFormattingStyle.ITALIC, TextFormattingStyle.UNDERLINE, TextFormattingStyle.GRAY, TextFormattingStyle.STRIKETHROUGH)), render(element).label().component());
@@ -601,14 +601,14 @@ class ActionButtonControlTest {
         element.render(draw, 0, 0, 0f);
         assertSame(enabled, draw.label().component());
         assertEquals(1, draw.cuts);
-        // Another context is measured in its own fonts, so it cuts once for itself, here to the same label
+        // Checks another context cuts once.
         RecordingDraw next = new RecordingDraw();
         next.translations.put("impetus.test.long", "Configure shaders");
         element.render(next, 0, 0, 0f);
         assertEquals(enabled, next.label().component());
         assertEquals(1, next.cuts);
 
-        // A language change alters the text, even one that keeps the same full width (17 characters both)
+        // Checks a language change.
         draw.translations.put("impetus.test.long", "Shader einrichten");
         draw.clear();
         element.render(draw, 0, 0, 0f);
@@ -625,7 +625,7 @@ class ActionButtonControlTest {
         draw.clear();
         element.render(draw, 0, 0, 0f);
         assertEquals(3, draw.cuts);
-        // Back to a translation that fits, which needs no cut at all
+        // Checks a translation that fits.
         draw.translations.put("impetus.test.long", "Open");
         draw.clear();
         element.render(draw, 0, 0, 0f);
@@ -636,7 +636,7 @@ class ActionButtonControlTest {
     @Test
     void aCutDropsTheSpacesItEndsOnSoTheEllipsisFollowsTheLastWord() {
         Option<Boolean> option = option(new AtomicBoolean(true));
-        // Five characters fit: "Open " loses its space
+        // Checks five characters fit.
         Text word = render(element(option, TextComponent.literal("Open the pack list"), NOTHING, DIM)).label();
         assertEquals("Open...", word.text());
         assertEquals(LIMIT_X - 42 - 18, word.x());
@@ -653,12 +653,12 @@ class ActionButtonControlTest {
         ControlElement<Boolean> element = tenInRoom48(available);
         Widening fonts = new Widening((plain, length) -> plain + 12);
         element.render(fonts, 0, 0, 0f);
-        // "ABCDE..." fills the 48 plain and 60 underlined, so cut again into the 36 the overflow leaves
+        // Checks the second cut.
         Text label = fonts.label();
         assertEquals(TextComponent.literal("ABC...").withStyle(TextFormattingStyle.UNDERLINE), label.component());
         assertEquals(0, label.x());
         assertEquals(List.of(30, 18), fonts.asked);
-        // The disabled look is the same second cut, greyed without cutting again
+        // Checks the disabled look.
         available.set(false);
         fonts.clear();
         element.render(fonts, 0, 0, 0f);
@@ -672,7 +672,7 @@ class ActionButtonControlTest {
     void aCutThatTheUnderlineWidensForEachCharacterIsCutOnceMoreShorterToFit() {
         Widening fonts = new Widening((plain, length) -> plain + length);
         tenInRoom48(new AtomicBoolean(true)).render(fonts, 0, 0, 0f);
-        // Eight characters overflow by eight, the six of the second cut need 42
+        // Checks eight characters overflow.
         Text label = fonts.label();
         assertEquals("ABC...", label.text());
         assertEquals(66 - 42 - 18, label.x());
@@ -692,14 +692,14 @@ class ActionButtonControlTest {
     void anUnderlineThatOverflowsEveryCutLeavesTheLabelOutAfterTwoCutsAndKeepsItOut() {
         AtomicBoolean available = new AtomicBoolean(true);
         ControlElement<Boolean> element = tenInRoom48(available);
-        // One pixel over whatever is cut, so the second cut is only a pixel shorter and still overflows
+        // Checks a one pixel overflow.
         Widening fonts = new Widening((plain, length) -> 49);
         element.render(fonts, 0, 0, 0f);
         assertTrue(fonts.drewNoLabel());
         assertEquals(66 - 10, fonts.arrow().x());
         assertEquals(List.of(30, 29), fonts.asked);
         assertEquals(2, fonts.cuts);
-        // Nor is it cut again on later frames, enabled or not
+        // Checks later frames.
         available.set(false);
         fonts.clear();
         element.render(fonts, 0, 0, 0f);
@@ -713,7 +713,7 @@ class ActionButtonControlTest {
         List<Integer> soundsAtEachRun = new ArrayList<>();
         ControlElement<Boolean> element = element(option(new AtomicBoolean(true)), TextComponent.literal("Go"), () -> soundsAtEachRun.add(ctx.clicks), DIM);
         assertTrue(element.mouseClicked(ctx, 110, 30, 0));
-        // The sound has already played when the action runs, so an action that closes the screen does not leave it trailing
+        // Checks the sound plays first.
         assertEquals(List.of(1), soundsAtEachRun);
         assertTrue(element.mouseClicked(ctx, 110, 30, 0));
         assertTrue(element.mouseClicked(ctx, 11.5, 21.5, 0));
@@ -773,7 +773,7 @@ class ActionButtonControlTest {
         assertEquals(0, ctx.clicks);
         available.set(true);
         assertTrue(element.mouseClicked(ctx, 110, 30, 0));
-        // The action greyed the option out, so the next click on the same spot is ignored
+        // Checks the next click is ignored.
         assertFalse(element.mouseClicked(ctx, 110, 30, 0));
         available.set(true);
         assertTrue(element.mouseClicked(ctx, 110, 30, 0));
@@ -797,7 +797,7 @@ class ActionButtonControlTest {
                 }
             }, DIM);
             FakeInteractionContext ctx = new FakeInteractionContext();
-            // Unchecked, checked (thrown past javac), plain Errors including linkage failures from a missing mod class, and a bare Throwable
+            // Checks every kind of throwable.
             List<Throwable> failures = List.of(new IllegalStateException("broken"), new IOException("gone"), new AssertionError("no"),
                     new NoClassDefFoundError("missing/Mod"), new ExceptionInInitializerError("init"), new Throwable("odd"));
             for (Throwable failure : failures) {
@@ -838,7 +838,7 @@ class ActionButtonControlTest {
                 assertTrue(element.mouseClicked(new FakeInteractionContext(), 110, 30, 0));
                 assertTrue(Thread.currentThread().isInterrupted());
             } finally {
-                // Clears the flag so the rest of the suite runs uninterrupted
+                // Clears the interrupt flag.
                 Thread.interrupted();
             }
             verify(logger).error(eq(FAILURE_LOG), any(), any(), same(failure));
@@ -908,7 +908,7 @@ class ActionButtonControlTest {
         assertEquals(0, ctx.clicks);
     }
 
-    // Enter by either character or key code, keypad Enter, and Space by either
+    // Checks Enter and Space.
     private static final Object[][] PRESS_KEYS = {{'\r', 28}, {'\r', 0}, {'\n', 0}, {'\0', 28}, {'\0', 156}, {' ', 57}, {' ', 0}, {'\0', 57}};
 
     @Test
@@ -943,7 +943,7 @@ class ActionButtonControlTest {
         }
         assertEquals(List.of(1, 2, 3, 4, 5, 6, 7, 8), soundsAtEachRun);
         assertEquals(PRESS_KEYS.length, ctx.clicks);
-        // Still pressed by the mouse as before, and the key presses did not move the hit area
+        // Checks the mouse press.
         assertTrue(element.mouseClicked(ctx, 110, 30, 0));
         assertEquals(PRESS_KEYS.length + 1, soundsAtEachRun.size());
     }
@@ -956,7 +956,7 @@ class ActionButtonControlTest {
         ControlElement<Boolean> element = element(option, TextComponent.literal("Go"), runs::incrementAndGet, DIM);
         element.setFocused(true);
         clearInvocations(option);
-        // Letters, Tab (left to the container to move focus), Escape (left to the screen), the arrows, Backspace, nothing, and a GLFW Enter
+        // Checks the ignored keys.
         Object[][] keys = {{'a', 30}, {'\t', 15}, {'\0', 15}, {(char) 27, 1}, {'\0', 1}, {'\0', 203}, {'\0', 205}, {'\b', 14}, {'\0', 0}, {'\0', 257}};
         for (Object[] key : keys) {
             assertFalse(element.keyTyped(ctx, (char) key[0], (int) key[1]), () -> key[0] + "/" + key[1]);
@@ -980,7 +980,7 @@ class ActionButtonControlTest {
         assertEquals(0, ctx.clicks);
         available.set(true);
         assertTrue(element.keyTyped(ctx, ' ', 57));
-        // The action greyed the option out, so the next press is ignored and Tab would now pass the row over
+        // Checks the next press is ignored.
         assertFalse(element.keyTyped(ctx, '\r', 28));
         assertFalse(element.canFocus());
         available.set(true);
@@ -998,7 +998,7 @@ class ActionButtonControlTest {
             AtomicInteger runs = new AtomicInteger();
             ControlElement<Boolean> element = element(option, TextComponent.literal("Go"), runs::incrementAndGet, dim);
             clearInvocations(option);
-            // Where the label would lie, 30 in from the right edge on the centre line, which the edges of a row too far out still hold
+            // Checks the label spot.
             double x = (double) dim.x() + dim.width() - 30;
             double y = dim.getCenterY();
             assertEquals(dim.width() > 0 && dim.height() > 0, dim.containsCursor(x, y), dim::toString);
@@ -1061,7 +1061,7 @@ class ActionButtonControlTest {
                 throw failure;
             }, DIM);
             FakeInteractionContext ctx = new FakeInteractionContext();
-            // Before any frame there is no context to translate the name with, so its key stands in
+            // Checks the key before any frame.
             assertTrue(element.mouseClicked(ctx, 110, 30, 0));
             verify(logger).error(eq(FAILURE_LOG), eq("impetus.test.name"), isNull(), same(failure));
             assertEquals(List.of("Button failed: impetus.test.name"), toastTitles());
@@ -1098,7 +1098,7 @@ class ActionButtonControlTest {
             armed.set(new IllegalStateException());
             assertTrue(element.mouseClicked(ctx, 110, 30, 0));
             assertEquals(List.of("java.lang.IllegalStateException"), ImpetusNotifications.getVisible().getLast().lines());
-            // An option with no name, which a broken mod could hand over, still reports
+            // Checks an option with no name.
             when(option.getName()).thenReturn(null);
             Throwable failure = new IllegalArgumentException("x");
             armed.set(failure);
@@ -1121,7 +1121,7 @@ class ActionButtonControlTest {
 
         element.setFocused(true);
         RecordingDraw focused = render(element);
-        // The cursor is far away, yet the row is drawn hovered, then a one pixel outline on all four edges, then the name, label and arrow over it
+        // Checks the focus outline.
         assertEquals(List.of("fill(10,20,210,40," + hovered + ")",
                 "fill(10,20,210,21," + accent + ")", "fill(10,39,210,40," + accent + ")",
                 "fill(10,20,11,40," + accent + ")", "fill(209,20,210,40," + accent + ")"), focused.calls.subList(0, 5));
@@ -1144,7 +1144,7 @@ class ActionButtonControlTest {
                 .addChild(d -> second)
                 .build();
 
-        // Tab starts at the search bar, where Space and Enter are typing, not presses
+        // Checks Tab starts at the search bar.
         assertTrue(frame.dispatchKeyTyped(ctx, '\t', 15));
         assertTrue(search.isFocused());
         assertTrue(frame.dispatchKeyTyped(ctx, ' ', 57));
@@ -1152,19 +1152,19 @@ class ActionButtonControlTest {
         assertEquals(List.of(" "), queries);
         assertEquals(List.of(), presses);
 
-        // Tab leaves the search bar for the first row, and Space presses it
+        // Checks Tab into the first row.
         assertTrue(frame.dispatchKeyTyped(ctx, '\t', 15));
         assertFalse(search.isFocused());
         assertTrue(first.isFocused());
         assertTrue(frame.dispatchKeyTyped(ctx, ' ', 57));
-        // Typing a letter at a focused button reaches nobody, so the screen gets it
+        // Checks letters reach the screen.
         assertFalse(frame.dispatchKeyTyped(ctx, 'a', 30));
         assertTrue(frame.dispatchKeyTyped(ctx, '\0', 15));
         assertTrue(second.isFocused());
         assertTrue(frame.dispatchKeyTyped(ctx, '\0', 156));
         assertEquals(List.of("one", "two"), presses);
 
-        // Shift+Tab goes back; a row whose option is unavailable is skipped, and Tab wraps round past the end
+        // Checks Shift+Tab and wrapping.
         ctx.held.add(InteractionContext.SpecialKey.SHIFT);
         assertTrue(frame.dispatchKeyTyped(ctx, '\t', 15));
         assertTrue(first.isFocused());
@@ -1174,7 +1174,7 @@ class ActionButtonControlTest {
         assertTrue(search.isFocused());
         assertFalse(second.isFocused());
 
-        // A click on the second row focuses it and leaves the search bar, so Space presses the row and types nothing
+        // Checks a click moves focus.
         secondAvailable.set(true);
         assertTrue(frame.mouseClicked(ctx, 100, 50, 0));
         assertTrue(second.isFocused());
@@ -1234,7 +1234,7 @@ class ActionButtonControlTest {
         assertFalse(element.mouseClicked(ctx, 110, 30, 0));
         assertEquals(DefaultColors.TEXT_DISABLED, render(element).label().color());
         assertEquals(1, runs.get());
-        // Nothing pending, so nothing is written back through the placeholder binding
+        // Checks nothing is written back.
         assertFalse(option.hasChanged());
         option.applyChanges();
         assertEquals(0, writes.get());
@@ -1242,7 +1242,7 @@ class ActionButtonControlTest {
 
     // Swaps the class's static final logger for a mock while the body runs
     private static void withLogger(Consumer<Logger> body) {
-        // Reading it first runs the class initialiser, which would otherwise overwrite the swap
+        // Loads the class before the swap.
         Logger original = Statics.get(ActionButtonControl.class, "LOGGER");
         Logger mock = Mockito.mock(Logger.class);
         Statics.set(ActionButtonControl.class, "LOGGER", mock);
@@ -1255,7 +1255,7 @@ class ActionButtonControlTest {
         }
     }
 
-    // Titles of the error toasts this class raised, oldest first
+    // Returns the error toast titles.
     private static List<String> toastTitles() {
         return ImpetusNotifications.getVisible().stream().map(ImpetusNotification::title).filter(t -> t.startsWith("Button failed: ")).toList();
     }

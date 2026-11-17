@@ -113,7 +113,7 @@ public final class BlockMaterialMapping {
         return null;
     }
 
-    // Values the name.
+    // Returns the property value of a state as block.properties spells it.
     private static <T extends Comparable<T>> String valueName(IBlockState state, IProperty<T> property) {
         return property.getName(state.getValue(property));
     }

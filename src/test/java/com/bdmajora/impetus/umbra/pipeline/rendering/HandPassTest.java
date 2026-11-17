@@ -53,7 +53,7 @@ class HandPassTest {
         Mixins.set(this.state, "gbufferPrograms", this.programs);
         this.phases = new PhaseController(this.state);
         this.hand = new HandPass(this.state, this.phases);
-        // GlStateManager caches the depth func across tests; start from vanilla's
+        // Resets the depth func.
         net.minecraft.client.renderer.GlStateManager.depthFunc(GL11.GL_LEQUAL);
         this.gl.gl11.clearInvocations();
     }
@@ -130,7 +130,7 @@ class HandPassTest {
         verify(TestGl.gl()).glMultiTexCoord2f(OpenGlHelper.lightmapTexUnit, 160.0f, 240.0f);
         assertEquals(23, CapturedRenderingState.INSTANCE.getRenderStage());
         assertEquals(ProgramId.HandWater, this.phases.current());
-        // The light is read at the eye, from a position reused across frames
+        // Captures the eye position.
         ArgumentCaptor<BlockPos> eye = ArgumentCaptor.forClass(BlockPos.class);
         verify(this.gl.client.world).getCombinedLight(eye.capture(), org.mockito.ArgumentMatchers.eq(0));
         assertEquals(new BlockPos(10, 65, -4), eye.getValue().toImmutable());

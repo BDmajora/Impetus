@@ -48,7 +48,7 @@ class EquilibriumCommonTest {
         Mc.bootstrap();
     }
 
-    // A real stack carrying the previous-count field the mixin adds, spliced in for the test run
+    // Returns a stack with the previous count field.
     private static ItemStack counted(int count, int previous) {
         ItemStack stack = new ItemStack(Items.APPLE, count);
         ((PreviousStackSize) (Object) stack).equilibrium$setPreviousCount(previous);
@@ -117,7 +117,7 @@ class EquilibriumCommonTest {
         map.putAll(more);
         assertEquals(3, map.size());
 
-        // Entries expose real positions, and setValue and iterator removal reach the backing map
+        // Checks the entries.
         assertSame(map.entrySet(), map.entrySet());
         assertEquals(3, map.entrySet().size());
         Iterator<Map.Entry<BlockPos, String>> entries = map.entrySet().iterator();
@@ -178,7 +178,7 @@ class EquilibriumCommonTest {
 
     @Test
     void craftingCacheRemembersHitsAndMisses() {
-        // The registry is swapped for an empty one; the harness opens up the static final so this takes effect
+        // Swaps in an empty recipe registry.
         RegistryNamespaced<ResourceLocation, IRecipe> original = CraftingManager.REGISTRY;
         RegistryNamespaced<ResourceLocation, IRecipe> registry = new RegistryNamespaced<>();
         Statics.set(CraftingManager.class, "REGISTRY", registry);
@@ -200,13 +200,13 @@ class EquilibriumCommonTest {
             when(stone.matches(stones, world)).thenReturn(true);
 
             assertSame(apple, CraftingCache.findMatchingRecipe(apples, world));
-            // The last match is retried first, then the shape cache, then a full scan
+            // Checks the lookup order.
             assertSame(apple, CraftingCache.findMatchingRecipe(apples, world));
             Mockito.verify(apple, Mockito.times(2)).matches(apples, world);
             assertSame(stone, CraftingCache.findMatchingRecipe(stones, world));
             assertSame(apple, CraftingCache.findMatchingRecipe(apples, world));
             Mockito.verify(stone, Mockito.times(1)).matches(apples, world);
-            // A miss is scanned once and then answered from the cache, after the last-match retry
+            // Checks a cached miss.
             assertNull(CraftingCache.findMatchingRecipe(empty, world));
             assertNull(CraftingCache.findMatchingRecipe(empty, world));
             Mockito.verify(apple, Mockito.times(3)).matches(empty, world);

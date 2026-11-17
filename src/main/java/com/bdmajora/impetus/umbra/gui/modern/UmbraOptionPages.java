@@ -7,11 +7,13 @@ import com.bdmajora.impetus.api.options.OptionIdentifier;
 import com.bdmajora.impetus.api.options.control.ActionButtonControl;
 import com.bdmajora.impetus.api.options.control.CyclingControl;
 import com.bdmajora.impetus.api.options.control.ReadOnlyStringControl;
+import com.bdmajora.impetus.api.options.control.TickBoxControl;
 import com.bdmajora.impetus.umbra.pipeline.ColorSpaceConverter;
 import com.bdmajora.impetus.api.options.structure.OptionFlag;
 import com.bdmajora.impetus.api.options.structure.OptionGroup;
 import com.bdmajora.impetus.api.options.structure.OptionImpl;
 import com.bdmajora.impetus.api.options.structure.OptionPage;
+import com.bdmajora.impetus.api.options.structure.StandardOptions;
 import com.bdmajora.impetus.api.options.structure.OptionStorage;
 import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import com.bdmajora.impetus.umbra.Umbra;
@@ -39,6 +41,7 @@ public final class UmbraOptionPages {
     public static OptionPage shaderPacks(GuiScreen parent) {
         OptionGroup packs = OptionGroup.createBuilder()
                 .setId(OptionIdentifier.create(UMBRA_MOD_ID, "shader_packs"))
+                .add(shadersSwitch())
                 .add(openAction(
                         "open_shader_packs",
                         TextComponent.translatable("options.umbra.shaderPackSelection"),
@@ -81,9 +84,22 @@ public final class UmbraOptionPages {
                 .build();
 
         return new OptionPage(
-                OptionIdentifier.create(UMBRA_MOD_ID, "shader_packs"),
+                StandardOptions.Pages.SHADERS,
                 TextComponent.translatable("options.umbra.shaderPackSelection"),
                 ImmutableList.of(packs, settings));
+    }
+
+    // Returns the shaders on and off switch.
+    private static OptionImpl<UmbraMenuState, Boolean> shadersSwitch() {
+        return OptionImpl.createBuilder(boolean.class, STORAGE)
+                .setId(OptionIdentifier.create(UMBRA_MOD_ID, "shaders_enabled", boolean.class))
+                .setName(TextComponent.translatable("options.umbra.shaders"))
+                .setTooltip(TextComponent.translatable("options.umbra.shaders.tooltip"))
+                .setControl(TickBoxControl::new)
+                .setBinding((state, value) -> Umbra.storeShadersEnabled(value), state -> Umbra.areShadersEnabled())
+                .setEnabledPredicate(() -> Umbra.areShadersEnabled() || Umbra.canEnableShaders())
+                .setFlags(OptionFlag.REQUIRES_SHADER_PIPELINE_RELOAD)
+                .build();
     }
 
     // Returns a button option that runs an action.

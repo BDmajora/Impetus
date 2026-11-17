@@ -130,8 +130,8 @@ public final class ExtrasHud {
 
         lines.add(I18n.format("impetus.options.extras.overlay.budget.limits",
                 Math.round(budget.particleScale * 100.0),
-                distanceLimit(budget.limitsEntities(), budget.entityCullDistance, budget.armed),
-                distanceLimit(budget.limitsBlockEntities(), budget.blockEntityCullDistance, budget.armed)));
+                distanceLimit(budget.limitsEntities(), budget.entityCullDistance),
+                distanceLimit(budget.limitsBlockEntities(), budget.blockEntityCullDistance)));
 
         lines.add(I18n.format("impetus.options.extras.overlay.budget.counters",
                 RenderBudgetController.entitiesSkipped(), RenderBudgetController.entitiesProtected(),
@@ -151,13 +151,11 @@ public final class ExtrasHud {
     }
 
     // Returns the text of a distance limit.
-    private static String distanceLimit(boolean limited, int distance, boolean armed) {
+    private static String distanceLimit(boolean limited, int distance) {
         if (!limited) {
             return I18n.format("options.off");
         }
-        return I18n.format(armed
-                ? "impetus.options.extras.overlay.budget.distance_armed"
-                : "impetus.options.extras.overlay.budget.distance_idle", distance);
+        return I18n.format("impetus.options.extras.overlay.budget.distance", distance);
     }
 
     // Draws one line with the chosen contrast.

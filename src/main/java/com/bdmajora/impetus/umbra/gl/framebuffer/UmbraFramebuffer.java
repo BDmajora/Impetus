@@ -23,7 +23,7 @@ public class UmbraFramebuffer extends GlResource {
     private final int maxDrawBuffers;
     // Color attachment limit of the driver.
     private final int maxColorAttachments;
-    // Has depth attachment.
+    // Whether a depth texture is attached.
     private boolean hasDepthAttachment;
 
     // Creates an umbra framebuffer with default state.
@@ -181,7 +181,7 @@ public class UmbraFramebuffer extends GlResource {
         return index >= 0 && index < this.colorAttachments.length ? this.colorAttachments[index] : 0;
     }
 
-    // Returns whether depth attachment.
+    // Returns whether a depth texture is attached.
     public boolean hasDepthAttachment() {
         return this.hasDepthAttachment;
     }
@@ -192,7 +192,7 @@ public class UmbraFramebuffer extends GlResource {
         return LWJGL.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
     }
 
-    // Returns whether complete.
+    // Returns whether the driver reports the framebuffer complete.
     public boolean isComplete() {
         return getStatus() == GL30.GL_FRAMEBUFFER_COMPLETE;
     }

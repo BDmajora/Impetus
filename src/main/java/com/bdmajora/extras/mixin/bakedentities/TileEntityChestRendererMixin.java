@@ -25,7 +25,7 @@ public abstract class TileEntityChestRendererMixin {
         ci.cancel();
     }
 
-    // Returns whether renderer.
+    // Returns whether a chest needs drawing by its renderer rather than as baked terrain.
     private static boolean impetus$needsRenderer(TileEntityChest te) {
         return te != null && ((AnimatedBlockEntity) te).impetus$needsRenderer();
     }

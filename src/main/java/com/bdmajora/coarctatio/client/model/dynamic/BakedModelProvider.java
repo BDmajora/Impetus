@@ -50,7 +50,7 @@ public final class BakedModelProvider extends RegistrySimple<ModelResourceLocati
         this.models = java.util.Objects.requireNonNull(models, "models");
     }
 
-    // Returns an empty map because the provider keeps its own tables.
+    // Returns an empty map.
     @Override
     protected Map<ModelResourceLocation, IBakedModel> createUnderlyingMap() {
         return ImmutableMap.of();
@@ -190,19 +190,19 @@ public final class BakedModelProvider extends RegistrySimple<ModelResourceLocati
             return BakedModelProvider.this.permanent.size();
         }
 
-        // Returns false because models are produced on demand.
+        // Returns false.
         @Override
         public boolean isEmpty() {
             return false;
         }
 
-        // Returns true because every state has a model.
+        // Returns true.
         @Override
         public boolean containsKey(Object key) {
             return true;
         }
 
-        // Returns true because every value is accepted.
+        // Returns true.
         @Override
         public boolean containsValue(Object value) {
             return true;

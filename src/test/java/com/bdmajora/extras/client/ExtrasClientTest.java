@@ -84,7 +84,7 @@ class ExtrasClientTest {
     @BeforeAll
     static void bootstrap() {
         Mc.bootstrap();
-        // Translations answer with their own keys, which is enough to see which lines were built
+        // Installs a locale that answers with keys.
         Statics.set(I18n.class, "i18nLocale", new net.minecraft.client.resources.Locale());
     }
 
@@ -106,7 +106,7 @@ class ExtrasClientTest {
     void adaptiveSyncIsReassertedOnlyWhenOnAndGivenUpOnFailure() {
         Object supported = Mixins.get(AdaptiveSync.class, "supported");
         try (MockedStatic<GameWindow> window = Mockito.mockStatic(GameWindow.class)) {
-            // Support is an SDL swap-interval probe, cached only once a context is current
+            // Checks the adaptive sync probe.
             window.when(GameWindow::isContextCurrent).thenReturn(false);
             Mixins.set(AdaptiveSync.class, "supported", null);
             assertFalse(AdaptiveSync.isSupported());
@@ -124,7 +124,7 @@ class ExtrasClientTest {
             window.when(GameWindow::supportsAdaptiveSync).thenThrow(new IllegalStateException("no context"));
             assertFalse(AdaptiveSync.isSupported());
 
-            // Off, nothing is re-asserted; on and supported, the adaptive interval is set
+            // Checks the reapply.
             AdaptiveSync.reapply();
             window.verify(() -> GameWindow.setSwapInterval(Mockito.anyInt()), Mockito.never());
             config.extra.useAdaptiveSync = true;
@@ -228,7 +228,7 @@ class ExtrasClientTest {
         assertNotNull(Mixins.construct(ItemFrameLodState.class));
     }
 
-    // A renderer class with a name, which is what a profiler section is called after
+    // Named renderer class.
     static class PigRenderer {
     }
 
@@ -240,7 +240,7 @@ class ExtrasClientTest {
         profiler.startSection("root");
         Mixins.set(world, "profiler", profiler);
         PigRenderer renderer = new PigRenderer();
-        // Off by default, and never for a missing world or renderer
+        // Checks the default and missing cases.
         ProfilerHelper.startSection(world, renderer);
         ProfilerHelper.startSection(null, renderer);
         ProfilerHelper.startSection(world, null);
@@ -332,7 +332,7 @@ class ExtrasClientTest {
         assertTrue(FrameCounter.getOnePercentLowFps() > 0);
         assertTrue(FrameCounter.getPointOnePercentLowFps() > 0);
         assertTrue(Mixins.<long[]>get(FrameCounter.class, "sampleTimes").length > 512);
-        // Samples older than the window are dropped, leaving only the frame just recorded
+        // Checks old samples are dropped.
         long[] times = Mixins.get(FrameCounter.class, "sampleTimes");
         java.util.Arrays.fill(times, 1L);
         FrameCounter.onRenderTick(new TickEvent.RenderTickEvent(TickEvent.Phase.START, 0.0F));
@@ -369,7 +369,7 @@ class ExtrasClientTest {
         ItemTooltipEvent orphan = tooltip(new ItemStack(Items.APPLE), "Apple");
         ModNameTooltipHandler.onItemTooltip(orphan);
         assertEquals(1, orphan.getToolTip().size());
-        // Switched off, the tooltip is left alone
+        // Checks the switch off.
         config.extra.modNameTooltip = false;
         ModNameTooltipHandler.onItemTooltip(orphan);
         assertNotNull(Mixins.construct(ModNameTooltipHandler.class));
@@ -391,7 +391,7 @@ class ExtrasClientTest {
         EntityPlayer player = mock(net.minecraft.client.entity.EntityPlayerSP.class);
         Mixins.set(client, "player", player);
 
-        // Nothing switched on draws nothing, and the debug screen or a hidden GUI owns the corner
+        // Checks nothing is drawn.
         ExtrasHud.onRenderOverlay(overlay());
         verify(font, never()).drawStringWithShadow(anyString(), anyFloat(), anyFloat(), anyInt());
         client.gameSettings.showDebugInfo = true;
@@ -409,7 +409,7 @@ class ExtrasClientTest {
         ExtrasHud.onRenderOverlay(overlay());
         verify(font, times(4)).drawStringWithShadow(anyString(), anyFloat(), anyFloat(), anyInt());
 
-        // The budget readout, each corner and each contrast mode
+        // Checks the readout and corners and contrasts.
         config.renderBudget.enabled = true;
         RenderBudgetController.onClientTick(new TickEvent.ClientTickEvent(TickEvent.Phase.END));
         client.gameSettings.reducedDebugInfo = true;
@@ -471,7 +471,7 @@ class ExtrasClientTest {
             PaniniProjection.render(0.0F);
             Mixins.set(PaniniProjection.class, "failed", false);
 
-            // A loaded chain gets its uniforms and draws, then hands the main framebuffer back
+            // Checks a loaded chain.
             ShaderGroup group = Mc.mock(ShaderGroup.class, ShaderGroupAccessor.class);
             Shader other = mock(Shader.class);
             when(other.getShaderManager()).thenReturn(mock(ShaderManager.class));
@@ -498,7 +498,7 @@ class ExtrasClientTest {
             verify(group).deleteShaderGroup();
             Mixins.set(PaniniProjection.class, "failed", false);
 
-            // Switched off, the chain is released
+            // Checks the chain is released.
             Mixins.set(PaniniProjection.class, "shaderGroup", group);
             config.extra.paniniProjection = false;
             PaniniProjection.render(0.0F);
@@ -556,7 +556,7 @@ class ExtrasClientTest {
         verify(survival, never()).setWorldTime(Mockito.anyLong());
         verify(survival, never()).setRainStrength(anyFloat());
 
-        // Weather is forced, and players are told when a server is running
+        // Checks the forced weather.
         config.extra.timeOverride = ExtrasConfig.TimeOverride.DEFAULT;
         WorldServer clear = creativeWorld(0L, false, false);
         TimeWeatherOverride.apply(clear);
@@ -569,7 +569,7 @@ class ExtrasClientTest {
         config.extra.weatherOverride = ExtrasConfig.WeatherOverride.THUNDER;
         TimeWeatherOverride.apply(served);
         verify(players, times(3)).sendPacketToAllPlayers(any(SPacketChangeGameState.class));
-        // Already as asked, nothing to do
+        // Checks nothing to do.
         WorldServer stormy = creativeWorld(0L, true, true);
         TimeWeatherOverride.apply(stormy);
         verify(stormy, never()).setRainStrength(anyFloat());
@@ -579,7 +579,7 @@ class ExtrasClientTest {
         assertNotNull(Mixins.construct(TimeWeatherOverride.class));
     }
 
-    // Lowest and highest of one corner value across a quad: 0 1 2 for position, 3 4 for the texture
+    // Returns the low and high of one corner value.
     private static float[] spread(TexturedQuad quad, int component) {
         float[] spread = {Float.MAX_VALUE, -Float.MAX_VALUE};
         for (PositionTextureVertex corner : quad.vertexPositions) {
@@ -603,7 +603,7 @@ class ExtrasClientTest {
         return part;
     }
 
-    // What a split part draws: its one box's slices, flat faces as they were and each side as its slices top down
+    // Returns what a split part draws.
     private static List<TexturedQuad> drawn(ModelRenderer part) {
         return ((ShutShulker.QuadBox) part.cubeList.get(0)).quads();
     }
@@ -619,7 +619,7 @@ class ExtrasClientTest {
         TexturedQuad[] vanillaLid = ((ModelBoxAccess) model.lid.cubeList.get(0)).impetus$getQuads();
         List<TexturedQuad> basePieces = drawn(base);
         List<TexturedQuad> lidPieces = drawn(lid);
-        // Six faces each: the two flat ones whole, the four sides as two slices
+        // Checks the piece count.
         assertEquals(10, basePieces.size());
         assertEquals(10, lidPieces.size());
         int piece = 0;
@@ -636,7 +636,7 @@ class ExtrasClientTest {
             TexturedQuad lidUpper = lidPieces.get(piece);
             TexturedQuad lidBand = lidPieces.get(piece + 1);
             piece += 2;
-            // Every row stays: the base keeps its teeth (sheet rows 44 to 48) over its lower four, the lid its notched rows 24 to 28 under its upper eight
+            // Checks every row stays.
             assertArrayEquals(new float[] {-8.0F, -4.0F}, spread(baseBand, 1), 1.0E-6F);
             assertArrayEquals(new float[] {44.0F / 64.0F, 48.0F / 64.0F}, spread(baseBand, 4), 1.0E-6F);
             assertArrayEquals(new float[] {-4.0F, 0.0F}, spread(baseLower, 1), 1.0E-6F);
@@ -645,7 +645,7 @@ class ExtrasClientTest {
             assertArrayEquals(new float[] {16.0F / 64.0F, 24.0F / 64.0F}, spread(lidUpper, 4), 1.0E-6F);
             assertArrayEquals(new float[] {-8.0F, -4.0F}, spread(lidBand, 1), 1.0E-6F);
             assertArrayEquals(new float[] {24.0F / 64.0F, 28.0F / 64.0F}, spread(lidBand, 4), 1.0E-6F);
-            // The shared rows are one quad in both, corner for corner and on the same texel columns, so a lid notch and a base tooth always land on the same pixels
+            // Checks the shared rows.
             for (int corner = 0; corner < 4; corner++) {
                 PositionTextureVertex under = baseBand.vertexPositions[corner];
                 PositionTextureVertex over = lidBand.vertexPositions[corner];
@@ -654,7 +654,7 @@ class ExtrasClientTest {
                 assertEquals(under.vector3D.z, over.vector3D.z);
                 assertEquals(under.texturePositionX, over.texturePositionX);
             }
-            // A corner already on a slice's edge is the original vertex, so the outer rows keep vanilla's exact coordinates
+            // Checks the edge corners.
             for (int corner = 0; corner < 4; corner++) {
                 PositionTextureVertex original = vanillaBase[face].vertexPositions[corner];
                 if (original.vector3D.y == 0.0D) {
@@ -670,7 +670,7 @@ class ExtrasClientTest {
         new ShutShulker.QuadBox(base, model.base.cubeList.get(0), List.of(slice)).render(buffer, 0.0625F);
         verify(slice).draw(buffer, 0.0625F);
 
-        // Anything but two plain unturned single boxes on one footprint, with an edge inside the part, is left as vanilla draws it
+        // Checks the unsplit cases.
         assertSame(model.base, ShutShulker.split(model.base, part(-4.0F, -16.0F, -4.0F, 8, 12, 8)));
         assertSame(model.base, ShutShulker.split(model.base, part(-8.0F, -16.0F, -4.0F, 16, 12, 8)));
         assertSame(model.base, ShutShulker.split(model.base, part(-8.0F, -24.0F, -8.0F, 16, 8, 16)));

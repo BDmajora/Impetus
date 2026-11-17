@@ -10,7 +10,6 @@ import net.minecraft.client.renderer.entity.RenderManager;
 import net.minecraft.client.renderer.tileentity.TileEntityRendererDispatcher;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
-import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
@@ -37,7 +36,7 @@ public final class ShadowCasters {
     private final ShadowContentSettings content;
     // Distance within which casters draw.
     private final double cullRange;
-    // Vanilla camera over the entity frustum, reused every pass.
+    // Vanilla camera over the entity frustum.
     private final FrustumCamera frustumCamera = new FrustumCamera();
     // Matrix buffer.
     private final FloatBuffer matrixBuffer = ByteBuffer.allocateDirect(16 * Float.BYTES)
@@ -119,7 +118,7 @@ public final class ShadowCasters {
             if (entity instanceof EntityPlayer player ? !players || player.isSpectator() : !others) {
                 continue;
             }
-            // The camera's own body and what it rides always cast, as the main pass always draws them
+            // Always casts the camera's own body and what it rides.
             boolean attached = entity == viewEntity || entity.isRidingOrBeingRiddenBy(viewEntity);
             if (!attached && (!renderManager.shouldRender(entity, this.frustumCamera, camera.x, camera.y, camera.z)
                     || !view.isShadowCasterVisible(entity))) {
@@ -162,7 +161,7 @@ public final class ShadowCasters {
         private double y;
         private double z;
 
-        // Points the camera at a frustum, falling back to keeping everything without one.
+        // Points the camera at a frustum or keeps everything without one.
         void set(Frustum frustum, Vector3d camera) {
             this.frustum = frustum != null ? frustum : ShadowFrustums.NON_CULLING;
             this.x = camera.x;
@@ -179,7 +178,7 @@ public final class ShadowCasters {
                     (float) (box.maxZ - this.z));
         }
 
-        // Ignored: the position is the shadow camera's, set once per pass.
+        // Ignores the position.
         @Override
         public void setPosition(double x, double y, double z) {
         }

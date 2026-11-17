@@ -44,7 +44,7 @@ class DrawBuffersTest {
                 "#endif");
         assertArrayEquals(new int[] {0, 4, 5}, DrawBuffers.parseActive(gated, Map.of()));
         assertArrayEquals(new int[] {0, 1}, DrawBuffers.parseActive(gated, Map.of("WATER", "")));
-        // Without defines the standard macros decide, and a gate hiding every directive falls back to the raw last one
+        // Checks the draw buffers without defines.
         assertArrayEquals(new int[] {0, 4, 5}, DrawBuffers.parseActive(gated, null));
         assertArrayEquals(new int[] {7}, DrawBuffers.parseActive("#if 0\n/* DRAWBUFFERS:7 */\n#endif", Map.of()));
     }
@@ -115,7 +115,7 @@ class DrawBuffersTest {
                 "/* DRAWBUFFERS:02 */\nvoid main() { gl_FragColor = vec4(1.0); }", null);
         ShaderProgramCompiler.PatchedSource patched = ShaderProgramCompiler.patchSource("gbuffers_hand", hand, Map.of("FLAG", ""));
         assertArrayEquals(new int[] {0, 2}, patched.drawBuffers);
-        // The unfed tangent and mid-texture attributes become derived values, the hand reads its lightmap from a uniform
+        // Checks the derived attributes.
         assertTrue(patched.vertex.contains("iris_tangentFallback()"), patched.vertex);
         assertTrue(patched.vertex.contains("#define mc_midTexCoord gl_MultiTexCoord0.xy"), patched.vertex);
         assertTrue(patched.vertex.contains("uniform vec2 " + ShaderProgramCompiler.HAND_LIGHTMAP_UNIFORM + ";"), patched.vertex);
@@ -125,11 +125,11 @@ class DrawBuffersTest {
 
         UmbraProgram program = ShaderProgramCompiler.compile("gbuffers_hand", hand, Map.of());
         assertArrayEquals(new int[] {0, 2}, program.getDrawBuffers());
-        // The entity attribute is still declared after patching, so it keeps OptiFine's slot
+        // Checks the entity attribute slot.
         verify(TestGl.gl()).glBindAttribLocation(anyInt(), eq(10), eq("mc_Entity"));
         verify(TestGl.gl(), times(3)).glDeleteShader(anyInt());
 
-        // A modern single-source program is versioned for the compatibility context, without a geometry stage
+        // Checks a modern single source program.
         String modernVertex = "#version 330 core\nin float mc_midTexCoord;\nvoid main() {}";
         ProgramSource modern = new ProgramSource("gbuffers_clouds", modernVertex, null, null, null,
                 "#version 330 core\n/* RENDERTARGETS: 0 */\nout vec4 color;\nvoid main() { color = vec4(1.0); }", null);
@@ -142,12 +142,12 @@ class DrawBuffersTest {
         ProgramSource vec4Mid = new ProgramSource("gbuffers_hand_water", "attribute vec4 mc_midTexCoord;\nvoid main() {}",
                 null, null, null, "void main() {}", null);
         ShaderProgramCompiler.PatchedSource water = ShaderProgramCompiler.patchSource("gbuffers_hand_water", vec4Mid, Map.of());
-        // A hand program with no #version gets the default one, with the bridge right after it
+        // Checks a hand program without a version.
         assertTrue(water.vertex.startsWith("#version 120"), water.vertex);
         assertTrue(water.vertex.contains("#define mc_midTexCoord gl_MultiTexCoord0\n"), water.vertex);
         verify(TestGl.gl(), never()).glBindAttribLocation(anyInt(), eq(12), eq("at_tangent"));
 
-        // Tessellation needs both stages; a lone control stage is dropped, and a program reading mc_chunkFade outside terrain sees -1
+        // Checks the tessellation stages.
         ProgramSource tessellated = new ProgramSource("gbuffers_entities", "#version 400 compatibility\nout float fade;\nvoid main() { fade = mc_chunkFade; }",
                 null, "#version 400 compatibility\nlayout(vertices = 3) out;\nvoid main() {}",
                 "#version 400 compatibility\nlayout(triangles) in;\nvoid main() {}", "#version 400 compatibility\nvoid main() {}", null);

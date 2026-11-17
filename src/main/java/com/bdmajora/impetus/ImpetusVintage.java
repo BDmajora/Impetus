@@ -4,7 +4,6 @@ import com.mojang.realmsclient.gui.ChatFormatting;
 
 import java.lang.management.ManagementFactory;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.launchwrapper.Launch;
 import net.minecraftforge.client.ClientCommandHandler;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
@@ -24,7 +23,6 @@ import com.bdmajora.impetus.engine.impl.common.util.MathUtil;
 import com.bdmajora.impetus.engine.impl.common.util.NativeBuffer;
 import com.bdmajora.impetus.engine.impl.compat.checks.StartupChecks;
 import com.bdmajora.impetus.engine.impl.compat.environment.GlContextInfo;
-import com.bdmajora.impetus.engine.impl.gl.device.GLRenderDevice;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions;
 import com.bdmajora.impetus.engine.impl.render.chunk.region.RenderRegionManager;
 import com.bdmajora.coarctatio.Coarctatio;
@@ -39,6 +37,7 @@ import com.bdmajora.fulgor.FulgorConfig;
 import com.bdmajora.fulgor.gui.FulgorStatsCommand;
 import com.bdmajora.impetus.impl.command.TogglePassCommand;
 import com.bdmajora.impetus.impl.compat.ResourcePackScanner;
+import com.bdmajora.impetus.impl.gui.overlay.AutosaveIndicator;
 import com.bdmajora.impetus.impl.gui.overlay.ImpetusToastRenderer;
 import com.bdmajora.impetus.impl.render.terrain.ImpetusWorldRenderer;
 import com.bdmajora.impetus.impl.util.PlatformUtil;
@@ -56,7 +55,7 @@ public class ImpetusVintage {
     // Game options loaded at startup.
     private static final ImpetusGameOptions CONFIG = loadConfig();
 
-    // Handles the construct.
+    // Sets up the config and compatibility probes and the DH accessor and startup checks.
     @EventHandler
     public void onConstruct(FMLConstructionEvent event) {
         VERSION = Loader.instance().getIndexedModList().get(MODID).getVersion();
@@ -84,7 +83,7 @@ public class ImpetusVintage {
         StartupChecks.runAsync(GlContextInfo.capture());
     }
 
-    // Handles the init.
+    // Registers commands and key bindings and starts Umbra once the game is initialised.
     @EventHandler
     public void onInit(FMLInitializationEvent event) {
         if ((Boolean) Launch.blackboard.get("fml.deobfuscatedEnvironment")) {
@@ -95,6 +94,7 @@ public class ImpetusVintage {
 
         com.bdmajora.extras.client.budget.RenderBudgetKeys.register();
         com.bdmajora.extras.client.zoom.LogicalZoom.register();
+        com.bdmajora.impetus.umbra.gui.ShaderToggleKey.register();
 
         ClientCommandHandler.instance.registerCommand(new CoarctatioStatsCommand());
         ClientCommandHandler.instance.registerCommand(new FulgorStatsCommand());
@@ -110,13 +110,13 @@ public class ImpetusVintage {
         ClassLoaderCleaner.run();
     }
 
-    // Handles the post init.
+    // Lets Fulgor build its face table once every block is registered.
     @EventHandler
     public void onPostInit(FMLPostInitializationEvent event) {
         Fulgor.onPostInit();
     }
 
-    // Handles the render tick.
+    // Restores the saved window mode once and advances the resource pack scan and shader pipeline each frame.
     @SubscribeEvent
     public void onRenderTick(TickEvent.RenderTickEvent event) {
         if (event.phase == TickEvent.Phase.START) {
@@ -126,7 +126,15 @@ public class ImpetusVintage {
         }
     }
 
-    // Handles the disconnect.
+    // Steps the autosave indicator fade once per client tick
+    @SubscribeEvent
+    public void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase == TickEvent.Phase.END) {
+            AutosaveIndicator.tick(Minecraft.getMinecraft().getIntegratedServer() != null);
+        }
+    }
+
+    // Clears Coarctatio's pools when the player leaves a world and the switch is on.
     @SubscribeEvent
     public void onDisconnect(FMLNetworkEvent.ClientDisconnectionFromServerEvent event) {
         if (CoarctatioConfig.get().clearPoolsOnWorldLeave) {
@@ -134,15 +142,16 @@ public class ImpetusVintage {
         }
     }
 
-    // Handles the render overlay.
+    // Draws Impetus' toasts and the autosave indicator over the HUD.
     @SubscribeEvent
     public void onRenderOverlay(RenderGameOverlayEvent.Post event) {
         if (event.getType() == RenderGameOverlayEvent.ElementType.ALL) {
             ImpetusToastRenderer.render(Minecraft.getMinecraft(), event.getResolution());
+            AutosaveIndicator.render(Minecraft.getMinecraft(), event.getResolution(), event.getPartialTicks());
         }
     }
 
-    // Handles the f3 text.
+    // Adds the renderer and terrain and memory lines to the F3 screen.
     @SubscribeEvent
     public void onF3Text(RenderGameOverlayEvent.Text event) {
         if (!Minecraft.getMinecraft().gameSettings.showDebugInfo) {

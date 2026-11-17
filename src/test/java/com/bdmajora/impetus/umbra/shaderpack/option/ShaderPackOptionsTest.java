@@ -86,7 +86,7 @@ class ShaderPackOptionsTest {
         assertEquals("A", option.getName());
     }
 
-    // Two files declaring the same options, once agreeing and once not
+    // Returns two files declaring the same options.
     private static ShaderPackOptions twoFiles(Map<String, String> changed) {
         Map<AbsolutePackPath, String> sources = new LinkedHashMap<>();
         sources.put(path("/a.fsh"), String.join("\n",
@@ -129,7 +129,7 @@ class ShaderPackOptionsTest {
         ShaderPackOptions options = twoFiles(Map.of("SHARED", "false", "CLASH", "maybe", "LEVEL", "3", "LONELY", "5", "UNKNOWN", "1"));
         OptionSet set = options.getOptionSet();
         MutableOptionValues values = (MutableOptionValues) options.getOptionValues();
-        // An invalid boolean reads as the default, and a value equal to the default is not stored
+        // Checks an invalid boolean and a default value.
         assertEquals(Map.of("SHARED", false), values.getBooleanValues());
         assertEquals(Map.of("LEVEL", "3"), values.getStringValues());
         assertEquals(2, values.getOptionsChanged());
@@ -139,7 +139,7 @@ class ShaderPackOptionsTest {
         assertEquals(OptionalBoolean.DEFAULT, values.getBooleanValue("CLASH"));
         assertFalse(values.getBooleanValueOrDefault("SHARED"));
         assertEquals(set.getBooleanOptions().get("CLASH").getOption().getDefaultValue(), values.getBooleanValueOrDefault("CLASH"));
-        // Asking about an option nobody declared answers true, with a warning
+        // Checks an undeclared option.
         assertTrue(values.getBooleanValueOrDefault("NOT_AN_OPTION"));
         assertEquals("3", values.getStringValueOrDefault("LEVEL"));
         assertEquals("5", values.getStringValueOrDefault("LONELY"));
@@ -151,7 +151,7 @@ class ShaderPackOptionsTest {
         MutableOptionValues copy = frozen.mutableCopy();
         assertEquals(values.getBooleanValues(), copy.getBooleanValues());
         assertEquals(values.getStringValues(), copy.getStringValues());
-        // Setting a value back to its default forgets it, without touching the original
+        // Checks a value set back to its default.
         copy.addAll(Map.of("SHARED", "true", "LEVEL", "1"));
         assertEquals(0, copy.getOptionsChanged());
         assertEquals(2, values.mutableCopy().getOptionsChanged());
@@ -174,7 +174,7 @@ class ShaderPackOptionsTest {
         profiles.forEach((name, profile) -> order.add(name));
         assertEquals(List.of("LOW", "BASE", "HIGH"), order);
 
-        // Most constrained first: LOW, HIGH, then BASE, which the defaults match
+        // Checks the profile order.
         OptionValues defaults = new MutableOptionValues(set, Map.of());
         ProfileSet.ProfileResult atDefaults = profiles.scan(set, defaults);
         assertEquals("BASE", atDefaults.current.orElseThrow().name);
@@ -189,7 +189,7 @@ class ShaderPackOptionsTest {
         assertEquals("HIGH", low.next.name);
         assertEquals("BASE", low.previous.name);
 
-        // Nothing matching still offers neighbours to cycle to, and no profiles offer nothing
+        // Checks the neighbours with no match.
         ProfileSet onlyHigh = ProfileSet.fromTree(Map.of("HIGH", List.of("LEVEL=3")), set);
         ProfileSet.ProfileResult none = onlyHigh.scan(set, defaults);
         assertTrue(none.current.isEmpty());

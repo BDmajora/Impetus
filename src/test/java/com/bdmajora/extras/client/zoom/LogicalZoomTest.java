@@ -59,7 +59,7 @@ class LogicalZoomTest {
         LogicalZoom.update();
     }
 
-    // cot(fov / 2), the projection's y scale
+    // Returns the projection's y scale.
     private static double projectionScale(float fov) {
         return 1.0D / Math.tan(Math.toRadians(fov) / 2.0D);
     }
@@ -103,7 +103,7 @@ class LogicalZoomTest {
 
     @Test
     void theCinematicCameraIsBorrowedForTheZoomAndHandedBack() {
-        // Off before, on while held, off again after
+        // Checks the hold.
         hold(true);
         assertTrue(settings.smoothCamera);
         hold(true);
@@ -117,7 +117,7 @@ class LogicalZoomTest {
         hold(false);
         assertTrue(settings.smoothCamera);
 
-        // With the switch off the setting is never touched, even if the player flips it mid-zoom
+        // Checks the switch off.
         settings.smoothCamera = false;
         config.zoom.smoothCamera = false;
         hold(true);
@@ -132,7 +132,7 @@ class LogicalZoomTest {
         hold(true);
         assertTrue(LogicalZoom.isZoomed());
 
-        // The key is in-game only, so any open screen lets go of it
+        // Checks an open screen.
         client.currentScreen = mock(GuiScreen.class);
         LogicalZoom.update();
         assertFalse(LogicalZoom.isZoomed());
@@ -168,7 +168,7 @@ class LogicalZoomTest {
         Mixins.call(renderer, "impetus$updateZoom", 0.0F, 0L, Mixins.ci());
         assertTrue(LogicalZoom.isZoomed());
 
-        // The world projection narrows; the hand's fixed projection does not
+        // Checks the world and hand projections.
         assertEquals(LogicalZoom.zoomFov(70.0F), (float) Mixins.<Float>call(renderer, "impetus$zoomFov", 70.0F, true));
         assertTrue(LogicalZoom.zoomFov(70.0F) < 70.0F);
         assertEquals(70.0F, (float) Mixins.<Float>call(renderer, "impetus$zoomFov", 70.0F, false));

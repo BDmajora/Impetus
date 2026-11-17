@@ -25,37 +25,37 @@ public final class VanillaFeatureToggles {
         return directive.apply(pack.getProperties()).orElse(Boolean.TRUE);
     }
 
-    // Returns whether render sun.
+    // Returns whether vanilla draws the sun.
     public static boolean shouldRenderSun() {
         return isEnabled(ShaderProperties::getRenderSun);
     }
 
-    // Returns whether render moon.
+    // Returns whether vanilla draws the moon.
     public static boolean shouldRenderMoon() {
         return isEnabled(ShaderProperties::getRenderMoon);
     }
 
-    // Returns whether render stars.
+    // Returns whether vanilla draws the stars.
     public static boolean shouldRenderStars() {
         return isEnabled(ShaderProperties::getRenderStars);
     }
 
-    // Returns whether render sky.
+    // Returns whether vanilla draws the sky at all.
     public static boolean shouldRenderSky() {
         return isEnabled(ShaderProperties::getRenderSky);
     }
 
-    // Returns whether render vignette.
+    // Returns whether vanilla draws the vignette.
     public static boolean shouldRenderVignette() {
         return isEnabled(ShaderProperties::getRenderVignette);
     }
 
-    // Returns whether render underwater overlay.
+    // Returns whether vanilla draws the underwater overlay.
     public static boolean shouldRenderUnderwaterOverlay() {
         return isEnabled(ShaderProperties::getRenderUnderwaterOverlay);
     }
 
-    // Returns whether render weather.
+    // Returns whether vanilla draws rain and snow.
     public static boolean shouldRenderWeather() {
         return isEnabled(ShaderProperties::getRenderWeather);
     }

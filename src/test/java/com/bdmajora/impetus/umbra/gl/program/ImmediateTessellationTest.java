@@ -2,7 +2,6 @@ package com.bdmajora.impetus.umbra.gl.program;
 
 import com.bdmajora.impetus.mixin.core.shader.ModelRendererTessellationMixin;
 import com.bdmajora.impetus.mixin.core.shader.TessellationDrawMixin;
-import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
 import com.bdmajora.testing.Statics;
 import com.bdmajora.testing.TestGl;
@@ -54,7 +53,7 @@ class ImmediateTessellationTest {
         assertTrue(ImmediateTessellation.drawArrays(GL11.GL_TRIANGLES, 3, 6));
         Mockito.verify(TestGl.gl()).glDrawArrays(PATCHES, 3, 6);
 
-        // Quads go through the shared index buffer, offset by the first vertex
+        // Checks quads use the shared index buffer.
         assertTrue(ImmediateTessellation.drawArrays(GL11.GL_QUADS, 4, 8));
         Mockito.verify(TestGl.gl()).glDrawElementsBaseVertex(PATCHES, 12, GL11.GL_UNSIGNED_INT, 0L, 4);
         assertTrue(ImmediateTessellation.drawArrays(GL11.GL_QUADS, 0, 4));
@@ -108,12 +107,10 @@ class ImmediateTessellationTest {
         ModelRendererTessellationMixin model = Mixins.instance(ModelRendererTessellationMixin.class);
         ModelBox box = Mockito.mock(ModelBox.class);
         Mixins.set(model, "cubeList", new ArrayList<>(List.of(box)));
-        Mc.Recorded<Void> original = Mc.operation();
-        Mixins.call(model, "impetus$tessellatedList", 9, original, 0.5F);
+        assertEquals(Boolean.FALSE, Mixins.call(model, "impetus$tessellatedList", 9, 0.5F));
         Mockito.verify(box).render(Mockito.any(BufferBuilder.class), Mockito.eq(0.5F));
-        assertEquals(0, original.count());
         ImmediateTessellation.programBound(0, false);
-        Mixins.call(model, "impetus$tessellatedList", 9, original, 0.5F);
-        assertEquals(1, original.count());
+        assertEquals(Boolean.TRUE, Mixins.call(model, "impetus$tessellatedList", 9, 0.5F));
+        Mockito.verifyNoMoreInteractions(box);
     }
 }

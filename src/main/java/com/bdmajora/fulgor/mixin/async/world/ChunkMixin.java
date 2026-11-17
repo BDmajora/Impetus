@@ -47,31 +47,31 @@ public abstract class ChunkMixin implements AsyncLitChunk {
     @Shadow
     public abstract ExtendedBlockStorage[] getBlockStorageArray();
 
-    // Field block nibbles added to the target.
+    // Block light of the 18 light sections.
     @Unique
     private volatile SWMRNibbleArray[] fulgor$blockNibbles;
 
-    // Field sky nibbles added to the target.
+    // Sky light of the 18 light sections.
     @Unique
     private volatile SWMRNibbleArray[] fulgor$skyNibbles;
 
-    // Field block emptiness map added to the target.
+    // Which sections the block engine last saw as empty.
     @Unique
     private boolean[] fulgor$blockEmptinessMap;
 
-    // Field sky emptiness map added to the target.
+    // Which sections the sky engine last saw as empty.
     @Unique
     private boolean[] fulgor$skyEmptinessMap;
 
-    // Field light ready added to the target.
+    // Whether the chunk's light is final.
     @Unique
     private volatile boolean fulgor$lightReady;
 
-    // Field light usable added to the target.
+    // Whether the engine may already read and write the light before it is final.
     @Unique
     private volatile boolean fulgor$lightUsable;
 
-    // Field saved light valid added to the target.
+    // Whether saved light was loaded with the chunk and can be trusted.
     @Unique
     private volatile boolean fulgor$savedLightValid;
 
@@ -167,43 +167,43 @@ public abstract class ChunkMixin implements AsyncLitChunk {
         manager.queueChunkLoadInit(this.x, this.z, self, BfsLightEngine.getEmptySectionsForChunk(self));
     }
 
-    // Returns whether light ready.
+    // Returns whether the light is final.
     @Override
     public boolean fulgor$isLightReady() {
         return this.fulgor$lightReady;
     }
 
-    // Handles set light ready.
+    // Marks the light final or not.
     @Override
     public void fulgor$setLightReady(boolean ready) {
         this.fulgor$lightReady = ready;
     }
 
-    // Returns whether light usable.
+    // Returns whether the engine may use the light.
     @Override
     public boolean fulgor$isLightUsable() {
         return this.fulgor$lightReady || this.fulgor$lightUsable;
     }
 
-    // Handles set light usable.
+    // Lets the engine use the light before it is final.
     @Override
     public void fulgor$setLightUsable(boolean usable) {
         this.fulgor$lightUsable = usable;
     }
 
-    // Handles set saved light valid.
+    // Records whether the saved light can be trusted.
     @Override
     public void fulgor$setSavedLightValid(boolean valid) {
         this.fulgor$savedLightValid = valid;
     }
 
-    // Returns whether saved light valid.
+    // Returns whether the saved light can be trusted.
     @Override
     public boolean fulgor$hasSavedLightValid() {
         return this.fulgor$savedLightValid;
     }
 
-    // Handles sync light to vanilla.
+    // Copies the engine's light into vanilla's section arrays.
     @Override
     public void fulgor$syncLightToVanilla() {
         ChunkLightHelper.syncBlockToVanilla(this.fulgor$blockNibbles, getBlockStorageArray());
@@ -218,7 +218,7 @@ public abstract class ChunkMixin implements AsyncLitChunk {
         return this.fulgor$blockNibbles;
     }
 
-    // Handles set block nibbles.
+    // Replaces the block light nibbles.
     @Override
     public void fulgor$setBlockNibbles(SWMRNibbleArray[] nibbles) {
         this.fulgor$blockNibbles = nibbles;
@@ -230,7 +230,7 @@ public abstract class ChunkMixin implements AsyncLitChunk {
         return this.fulgor$blockEmptinessMap;
     }
 
-    // Handles set block emptiness map.
+    // Replaces the block engine's emptiness map.
     @Override
     public void fulgor$setBlockEmptinessMap(boolean[] emptinessMap) {
         this.fulgor$blockEmptinessMap = emptinessMap;
@@ -242,7 +242,7 @@ public abstract class ChunkMixin implements AsyncLitChunk {
         return this.fulgor$skyNibbles;
     }
 
-    // Handles set sky nibbles.
+    // Replaces the sky light nibbles.
     @Override
     public void fulgor$setSkyNibbles(SWMRNibbleArray[] nibbles) {
         this.fulgor$skyNibbles = nibbles;
@@ -254,7 +254,7 @@ public abstract class ChunkMixin implements AsyncLitChunk {
         return this.fulgor$skyEmptinessMap;
     }
 
-    // Handles set sky emptiness map.
+    // Replaces the sky engine's emptiness map.
     @Override
     public void fulgor$setSkyEmptinessMap(boolean[] emptinessMap) {
         this.fulgor$skyEmptinessMap = emptinessMap;

@@ -36,7 +36,7 @@ class GenericBindingTest {
         assertEquals(1, constructors.length);
         assertTrue(Modifier.isPublic(constructors[0].getModifiers()));
         assertArrayEquals(new Class<?>[]{BiConsumer.class, Function.class}, constructors[0].getParameterTypes());
-        // Only final state, so a binding handed to another thread without a lock is complete there
+        // Checks the final state.
         List<Field> state = Arrays.stream(type.getDeclaredFields()).filter(f -> !Modifier.isStatic(f.getModifiers())).toList();
         assertEquals(Set.of("setter", "getter"), state.stream().map(Field::getName).collect(Collectors.toSet()));
         for (Field field : state) {
@@ -69,7 +69,7 @@ class GenericBindingTest {
     void constructorRefusesANullSetterThenANullGetter() {
         npe("Setter must not be null", () -> new GenericBinding<AtomicInteger, Integer>(null, AtomicInteger::get));
         npe("Getter must not be null", () -> new GenericBinding<AtomicInteger, Integer>(AtomicInteger::set, null));
-        // Parameter order, so both null reports the setter
+        // Checks the parameter order.
         npe("Setter must not be null", () -> new GenericBinding<AtomicInteger, Integer>(null, null));
     }
 
@@ -114,7 +114,7 @@ class GenericBindingTest {
     @Test
     void aNullStorageIsRefusedBeforeEitherDelegateRuns() {
         AtomicInteger runs = new AtomicInteger();
-        // Delegates that never touch the storage would otherwise let a broken OptionStorage go unnoticed
+        // Builds a binding that never touches storage.
         GenericBinding<Object, String> binding = new GenericBinding<>((s, v) -> runs.incrementAndGet(), s -> {
             runs.incrementAndGet();
             return "value";
@@ -138,7 +138,7 @@ class GenericBindingTest {
         AtomicReference<String> storage = new AtomicReference<>("set");
         binding.setValue(storage, null);
         assertNull(storage.get());
-        // A config field Gson left null must still read, so the control can show it and write a real value back
+        // Checks a null config field.
         assertNull(binding.getValue(storage));
         binding.setValue(storage, "healed");
         assertEquals("healed", binding.getValue(storage));
@@ -167,7 +167,7 @@ class GenericBindingTest {
             return s.get();
         });
         AtomicInteger storage = new AtomicInteger(1);
-        // Unchecked, checked (thrown past javac) and an Error: none are caught, wrapped or swallowed
+        // Checks failures pass through.
         for (Throwable failure : List.of(new IllegalStateException("disk full"), new IOException("gone"), new StackOverflowError())) {
             armed.set(failure);
             assertSame(failure, assertThrowsExactly(failure.getClass(), () -> binding.setValue(storage, 2)));
@@ -253,7 +253,7 @@ class GenericBindingTest {
         CountDownLatch start = new CountDownLatch(1);
         AtomicBoolean writing = new AtomicBoolean(true);
         try {
-            // Only additions happen, so one reader must never see the total go down
+            // Checks the total never drops.
             Future<Boolean> monotonic = pool.submit(() -> {
                 start.await();
                 long last = 0;
@@ -310,7 +310,7 @@ class GenericBindingTest {
         try {
             Future<?> stalled = pool.submit(() -> binding.setValue(storage, 1));
             assertTrue(inSetter.await(10, SECONDS));
-            // The stalled write has not landed, and this thread is not held behind it
+            // Checks the stalled write.
             assertEquals(0, binding.getValue(storage));
             binding.setValue(storage, 2);
             assertEquals(2, binding.getValue(storage));
@@ -325,7 +325,7 @@ class GenericBindingTest {
 
     @Test
     void aBindingPublishedThroughARacyFieldIsAlwaysComplete() throws Exception {
-        // The final fields are the guarantee; this exercises it on whatever memory model the host has
+        // Checks the final field publication.
         Mailbox mailbox = new Mailbox();
         AtomicBoolean publishing = new AtomicBoolean(true);
         AtomicInteger observed = new AtomicInteger();
@@ -351,7 +351,7 @@ class GenericBindingTest {
             Future<?> writer = pool.submit(() -> {
                 start.await();
                 long deadline = System.nanoTime() + SECONDS.toNanos(10);
-                // Keeps publishing until the reader has raced plenty of them, so the test cannot pass on a starved reader
+                // Publishes until the reader raced enough.
                 for (int i = 0; (i < publications || observed.getOpaque() < wanted) && System.nanoTime() < deadline; i++) {
                     mailbox.binding = new GenericBinding<>(AtomicInteger::set, AtomicInteger::get);
                 }
@@ -366,7 +366,7 @@ class GenericBindingTest {
         }
     }
 
-    // Deliberately not volatile, so the reader gets no happens-before edge from the writer
+    // Non volatile mailbox.
     private static final class Mailbox {
         GenericBinding<AtomicInteger, Integer> binding;
     }

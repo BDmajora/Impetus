@@ -60,7 +60,7 @@ class NbtTest {
         assertEquals(4, map.size());
         assertEquals(new NBTTagInt(9), map.get("key0"));
 
-        // Clearing demotes again, so a briefly large compound does not keep the table alive
+        // Checks clearing demotes the map.
         map.clear();
         assertInstanceOf(Object2ObjectArrayMap.class, Mixins.get(map, "delegate"));
         assertTrue(map.isEmpty());
@@ -112,13 +112,13 @@ class NbtTest {
         assertEquals(new NBTTagString("one"), map.remove("a"));
         assertEquals(1, map.size());
 
-        // Equality and printing are the backing map's, so a compound compares the same either way
+        // Checks equality.
         assertEquals(map, map);
         Map<String, NBTBase> same = new HashMap<>();
         same.put("b", new NBTTagString("two"));
         assertEquals(same, map);
         assertEquals(same.hashCode(), map.hashCode());
-        // Printing is the backing map's own, which spells entries the fastutil way
+        // Checks printing.
         assertEquals(Mixins.<Map<String, NBTBase>>get(map, "delegate").toString(), map.toString());
     }
 
@@ -140,7 +140,7 @@ class NbtTest {
         assertNotSame(NbtPrimitivePool.of(9000L), NbtPrimitivePool.of(9000L));
         assertEquals(9000L, NbtPrimitivePool.of(9000L).getLong());
 
-        // A freshly read tag is swapped for its pooled twin, anything else is handed back
+        // Checks the pooled twin.
         assertSame(NbtPrimitivePool.of((byte) 3), NbtPrimitivePool.canonical(new NBTTagByte((byte) 3)));
         assertSame(NbtPrimitivePool.of((short) 3), NbtPrimitivePool.canonical(new NBTTagShort((short) 3)));
         assertSame(NbtPrimitivePool.of(3), NbtPrimitivePool.canonical(new NBTTagInt(3)));

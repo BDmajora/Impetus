@@ -2,7 +2,6 @@ package com.bdmajora.impetus.umbra.vertices;
 
 import net.minecraft.block.Block;
 import net.minecraft.block.state.IBlockState;
-import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 
 // Packers of extended vertex data.
 public final class ExtendedDataHelper {

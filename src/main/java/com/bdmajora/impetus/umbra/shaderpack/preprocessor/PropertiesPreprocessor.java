@@ -223,7 +223,7 @@ public final class PropertiesPreprocessor {
     }
 
     // Returns the keyword of a directive.
-    private static String directiveKeyword(String directive) {
+    static String directiveKeyword(String directive) {
         int end = 0;
         while (end < directive.length() && Character.isLetter(directive.charAt(end))) {
             end++;

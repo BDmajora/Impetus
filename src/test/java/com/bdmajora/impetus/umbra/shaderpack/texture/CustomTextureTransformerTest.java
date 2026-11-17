@@ -43,14 +43,14 @@ class CustomTextureTransformerTest {
         String deferred = CustomTextureTransformer.transform("deferred", source, TextureStage.DEFERRED, patches);
         assertTrue(deferred.contains("uniform sampler3D customtex0[2];"), deferred);
         assertTrue(deferred.contains("uniform usampler2D other, customtex1;"), deferred);
-        // A 1D texture does not feed a sampler3D, nor an unknown target anything
+        // Checks sampler targets.
         assertTrue(deferred.contains("uniform sampler3D colortex8;"), deferred);
         assertTrue(deferred.contains("uniform isampler2DRect customtex3;"), deferred);
         assertTrue(deferred.contains("uniform samplerCube colortex10;"), deferred);
         // A declaration inside a comment does not count
         assertTrue(deferred.contains("texture(colortex11, uv)"), deferred);
         assertTrue(deferred.contains("texture(customtex0[0], p)"), deferred);
-        // Other stages are untouched, and so is a program with nothing declared
+        // Checks untouched stages.
         assertEquals(source, CustomTextureTransformer.transform("gbuffers", source, TextureStage.GBUFFERS_AND_SHADOW, patches));
         assertEquals("void main() {}", CustomTextureTransformer.transform("x", "void main() {}", TextureStage.DEFERRED, patches));
         assertNull(CustomTextureTransformer.transform("x", null, TextureStage.DEFERRED, patches));

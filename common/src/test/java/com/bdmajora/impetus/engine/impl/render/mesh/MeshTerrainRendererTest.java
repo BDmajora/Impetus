@@ -43,7 +43,7 @@ class MeshTerrainRendererTest {
             inv.<IntBuffer>getArgument(2).put(0, 1);
             return 0x9119;
         }).when(TestGl.gl()).glGetSynci(Mockito.anyLong(), Mockito.anyInt(), Mockito.any());
-        // Eight gigabytes free, in kilobytes
+        // Free memory in kilobytes.
         Mockito.when(TestGl.gl().glGetInteger(MeshTerrainRenderer.GPU_MEMORY_AVAILABLE_NVX)).thenReturn(8 * 1024 * 1024);
         Statics.set(MeshShaderSupport.class, "supported", null);
     }
@@ -131,13 +131,13 @@ class MeshTerrainRendererTest {
 
     @Test
     void aFullRegionTableAndAnOverBudgetArenaEvict() {
-        // 64 MB budget sits inside the 100 MB headroom, so every frame evicts until nothing is left
+        // Checks eviction.
         MeshTerrainRenderer renderer = new MeshTerrainRenderer(manual(64, 0, 8), 4);
         int max = renderer.getPipeline().getMaxRegions();
         for (int region = 0; region < max; region++) {
             renderer.upload(region * 8, 0, 0, geometry());
         }
-        // The table is full, so a section in a new region pushes the farthest one out first
+        // Checks a full table.
         assertEquals(max - 1, renderer.getPipeline().getSections().getRegions().getRegionCount());
         renderer.upload(-8, 0, 0, geometry());
         assertEquals(max - 1, renderer.getPipeline().getSections().getRegions().getRegionCount());
@@ -156,7 +156,7 @@ class MeshTerrainRendererTest {
         var regions = renderer.getPipeline().getSections().getRegions();
         int max = renderer.getPipeline().getMaxRegions();
 
-        // Two regions inside the render distance of a camera at the origin, one past it
+        // Places the regions.
         renderer.upload(0, 0, 0, geometry());
         renderer.upload(0, 4, 0, geometry());
         renderer.upload(80, 0, 0, geometry());
@@ -177,11 +177,10 @@ class MeshTerrainRendererTest {
             tracker.record(new short[]{(short) near, (short) within, (short) far}, 3, address);
         }
 
-        // The never-visible region past the render distance goes first
-        // Checked by position, since the newcomer reuses the evicted region's id
+        // Evicts the never visible region past the render distance first.
         renderer.upload(-100, 0, 0, geometry());
         assertFalse(regions.hasRegionFor(80, 0, 0));
-        // Then the never-visible one inside it, while the visible one stays
+        // Checks the never visible region.
         renderer.upload(-200, 0, 0, geometry());
         assertFalse(regions.hasRegionFor(0, 4, 0));
         assertTrue(regions.hasRegionFor(0, 0, 0));
@@ -192,7 +191,7 @@ class MeshTerrainRendererTest {
     @Test
     void automaticBudgetsFollowFreeVideoMemory() {
         var automatic = new MeshTerrainConfig(false, MeshTranslucencySorting.NONE, MeshStatistics.NONE, true, 2048, 0, 8);
-        // Dense arenas cap at three gigabytes, sparse ones take free memory less the reserve
+        // Checks the arena caps.
         assertEquals(MeshTerrainRenderer.DENSE_AUTOMATIC_CAP_MB, MeshTerrainRenderer.computeBudgetMB(automatic, false, 0L));
         assertEquals(8192 - 1024 + 100, MeshTerrainRenderer.computeBudgetMB(automatic, true, 100L << 20));
         Mockito.when(TestGl.gl().glGetInteger(MeshTerrainRenderer.GPU_MEMORY_AVAILABLE_NVX)).thenReturn(512 * 1024);
@@ -214,7 +213,7 @@ class MeshTerrainRendererTest {
         assertEquals(7168L << 20, renderer.getBudgetBytes());
         clock.set(MeshTerrainRenderer.BUDGET_REFRESH_NANOS);
         renderer.renderOpaque(Sections.viewport(8, 8, 8), MATRICES, MeshFog.NONE, 8, 8, 8, 640, 480);
-        // Free memory plus the one sparse page the arena has committed, less the reserve
+        // Checks the sparse budget.
         assertEquals(3073L << 20, renderer.getBudgetBytes());
         List<String> lines = new ArrayList<>();
         renderer.addDebugStrings(lines);
@@ -225,7 +224,7 @@ class MeshTerrainRendererTest {
     @Test
     void regionTablesAreSizedForTheFarthestKeptDistance() {
         assertEquals(256, MeshTerrainRenderer.computeMaxRegions(manual(2048, 0, 8), 4));
-        // 32 chunks: 10 regions a side, four tall, a quarter spare
+        // Checks the region count.
         assertEquals(500, MeshTerrainRenderer.computeMaxRegions(manual(2048, 0, 32), 4));
         assertEquals(500, MeshTerrainRenderer.computeMaxRegions(manual(2048, 32, 8), 4));
         assertEquals(66 * 66 * 4 * 5 / 4, MeshTerrainRenderer.computeMaxRegions(manual(2048, 256, 8), 4));

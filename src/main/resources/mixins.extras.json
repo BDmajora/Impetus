@@ -70,7 +70,7 @@
     "bakedentities.TextureMapRegisteredSpritesAccessor",
     "booster.ParticleRandomMixin",
     "booster.WorldVertexBufferUploaderMixin",
-    "misc.GuiIngameMixin",
+    "misc.GuiIngameForgeHighlightMixin",
     "panini.EntityRendererPaniniMixin",
     "panini.ShaderGroupAccessor",
     "particle.EntityRendererRainSplashMixin",

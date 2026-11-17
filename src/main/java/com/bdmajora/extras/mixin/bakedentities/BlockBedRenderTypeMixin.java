@@ -14,7 +14,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class BlockBedRenderTypeMixin {
     // Runs at the start of getRenderType and can cancel it.
     @Inject(method = "getRenderType", at = @At("HEAD"), cancellable = true)
-    private void impetus(IBlockState state, CallbackInfoReturnable<EnumBlockRenderType> cir) {
+    private void impetus$bakedRenderType(IBlockState state, CallbackInfoReturnable<EnumBlockRenderType> cir) {
         if (BakedEntities.isBaked(state.getBlock())) {
             cir.setReturnValue(EnumBlockRenderType.MODEL);
         }

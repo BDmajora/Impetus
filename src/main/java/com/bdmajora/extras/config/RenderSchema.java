@@ -51,7 +51,7 @@ final class RenderSchema {
     static final SettingGroup<RenderBudgetSettings> RENDER_BUDGET = SettingGroup.builder("render_budget", c -> c.renderBudget, RenderBudgetSettings::new)
             .bool("enabled", "Adaptive render budgeting: skip distant idle mobs and thin cosmetic particles under frame pressure",
                     s -> s.enabled, (s, v) -> s.enabled = v)
-            .bool("adaptive", "Tighten the budget a further step when frames run 20% or more over the profile target",
+            .bool("adaptive", "Tighten the budget a further step when frames run 20% or more over the profile frame time (Quality 22.2 ms, Balanced 16.7 ms, Performance 14 ms). Never used by Quality",
                     s -> s.adaptive, (s, v) -> s.adaptive = v)
             .bool("smartEntityCulling", "Skip rendering distant non-player living entities under pressure",
                     s -> s.smartEntityCulling, (s, v) -> s.smartEntityCulling = v)
@@ -70,7 +70,7 @@ final class RenderSchema {
             .integer("blockEntityDistance", RenderBudgetSettings.BLOCK_ENTITY_DISTANCE_MIN, RenderBudgetSettings.BLOCK_ENTITY_DISTANCE_MAX,
                     "Distance in blocks past which decorative block entities and item frames may be skipped under pressure (vanilla stops most at 64 anyway)",
                     s -> s.blockEntityDistance, (s, v) -> s.blockEntityDistance = v)
-            .choice("profile", "Render budget profile (0 = Quality, 1 = Balanced, 2 = Performance)",
+            .choice("profile", "Render budget profile (0 = Quality keeps every particle and only hides idle mobs past 128 blocks, 1 = Balanced uses particleBudget and entityCullDistance, 2 = Performance shows under half of the particles and hides idle mobs past 72 blocks)",
                     s -> s.profile, (s, v) -> s.profile = v)
             .build();
 

@@ -21,7 +21,7 @@ public class IrisApi {
         return Umbra.isShaderPackInUse();
     }
 
-    // Returns whether rendering shadow pass.
+    // Returns whether the shadow pass is drawing.
     public boolean isRenderingShadowPass() {
         return UmbraShadowRenderer.isShadowPass();
     }

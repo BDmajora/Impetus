@@ -115,7 +115,7 @@ public final class ProgramSource {
         return Optional.ofNullable(this.meshFragmentSource);
     }
 
-    // Returns whether mesh stages.
+    // Returns whether the program has mesh and fragment stages for Nvidium.
     public boolean hasMeshStages() {
         return this.meshSource != null && this.meshFragmentSource != null;
     }
@@ -130,7 +130,7 @@ public final class ProgramSource {
         return this.computeSources.clone();
     }
 
-    // Returns whether compute source.
+    // Returns whether the program has any compute stage.
     public boolean hasComputeSource() {
         for (String source : this.computeSources) {
             if (source != null) {
@@ -140,12 +140,12 @@ public final class ProgramSource {
         return false;
     }
 
-    // Returns whether valid.
+    // Returns whether the program has both vertex and fragment stages.
     public boolean isValid() {
         return (this.vertexSource != null && this.fragmentSource != null) || hasComputeSource();
     }
 
-    // Returns whether raster stages.
+    // Returns whether the program has vertex and fragment stages.
     public boolean hasRasterStages() {
         return this.vertexSource != null && this.fragmentSource != null;
     }

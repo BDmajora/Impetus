@@ -40,7 +40,7 @@ public abstract class ExtendedBlockStateMixin {
                 coarctatio$hasPresentValue(unlistedProperties)));
     }
 
-    // Helper method has present value added to the target.
+    // Returns whether any unlisted property has a value.
     @Unique
     private static boolean coarctatio$hasPresentValue(ImmutableMap<IUnlistedProperty<?>, Optional<?>> unlisted) {
         for (Optional<?> value : unlisted.values()) {

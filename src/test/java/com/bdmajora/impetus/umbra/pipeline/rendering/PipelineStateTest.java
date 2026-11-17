@@ -47,11 +47,11 @@ class PipelineStateTest {
 
     @Test
     void packTexturesStayBelowThePipelinesFixedHighUnits() {
-        // A driver reporting 48 units used to hand the pack units 32+ that the scratch, overlay, DH and shadowcolor binds overwrote
+        // Checks the last programmable unit.
         assertEquals(31, (int) Statics.call(PipelineState.class, "lastProgrammableUnit"));
         this.gl.limits(28, 8, 8, 8);
         assertEquals(27, (int) Statics.call(PipelineState.class, "lastProgrammableUnit"));
-        // Too few units for any: the range ends below its start rather than wrapping onto fixed units
+        // Checks too few units.
         this.gl.limits(16, 8, 8, 8);
         assertEquals(SamplerLayout.CUSTOM_TEX_FIRST_UNIT - 1, (int) Statics.call(PipelineState.class, "lastProgrammableUnit"));
     }
@@ -68,7 +68,7 @@ class PipelineStateTest {
             assertTrue(overrides.containsKey("colorimg4"));
             assertEquals(-1, overrides.get("colorimg4").colorTarget);
             assertThrows(UnsupportedOperationException.class, () -> overrides.put("x", null));
-            // The live pipeline's gbuffer overrides are published for the terrain and DH programs, and withdrawn with it
+            // Checks the published overrides.
             assertTrue(SamplerAssignment.activeOverrides().containsKey("colorimg4"));
             pipeline.destroy();
             assertTrue(SamplerAssignment.activeOverrides().isEmpty());

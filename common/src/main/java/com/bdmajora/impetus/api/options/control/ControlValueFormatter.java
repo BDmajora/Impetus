@@ -7,17 +7,17 @@ import java.util.Objects;
 
 // Turns a control's integer value into the text shown for it
 public interface ControlValueFormatter {
-    // Shows the auto label at zero and the scale as a multiplier otherwise
+    // Shows the auto label at zero and the scale as a multiplier otherwise.
     static ControlValueFormatter guiScale() {
         return (v) -> (v == 0) ? TextComponent.translatable("options.guiScale.auto") : TextComponent.literal(v + "x");
     }
 
-    // Shows the unlimited label for zero or less and for 260 or more and the frame rate otherwise
+    // Shows the unlimited label at zero or less and at 260 or more and the frame rate otherwise.
     static ControlValueFormatter fpsLimit() {
         return (v) -> (v >= 260 || v <= 0) ? TextComponent.translatable("options.framerateLimit.max") : TextComponent.translatable("options.framerate", v);
     }
 
-    // Shows the minimum label at zero and the maximum label at 100 and a percentage otherwise
+    // Shows the minimum label at zero and the maximum label at 100 and a percentage otherwise.
     static ControlValueFormatter brightness() {
         return (v) -> {
             if (v == 0) {
@@ -30,7 +30,7 @@ public interface ControlValueFormatter {
         };
     }
 
-    // Shows the none label at zero and the blend radius in blocks otherwise
+    // Shows the none label at zero and the blend radius in blocks otherwise.
     static ControlValueFormatter biomeBlend() {
         return translateQuantityOrDisabled("impetus.options.biome_blend.value", "gui.none");
     }
@@ -53,7 +53,7 @@ public interface ControlValueFormatter {
         return (v) -> TextComponent.translatable(v == 1 || v == -1 ? one : other, v);
     }
 
-    // Shows the translation for the disabled key at zero and the quantity for the key otherwise
+    // Shows the disabled translation at zero and the quantity otherwise.
     static ControlValueFormatter translateQuantityOrDisabled(String key, String disabledKey) {
         ControlValueFormatter quantity = translateQuantity(key);
         Objects.requireNonNull(disabledKey, "Disabled key must not be null");
@@ -72,7 +72,7 @@ public interface ControlValueFormatter {
         return (v) -> TextComponent.literal(v + "x");
     }
 
-    // Shows the disabled text at zero and the value with its unit otherwise as untranslated literal text
+    // Shows the disabled text at zero and the value with its unit otherwise.
     static ControlValueFormatter quantityOrDisabled(String name, String disableText) {
         Objects.requireNonNull(name, "Unit must not be null");
         Objects.requireNonNull(disableText, "Disabled text must not be null");

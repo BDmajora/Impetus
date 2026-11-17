@@ -80,7 +80,7 @@ class ControlTest {
 
     private enum Other { X, Y }
 
-    // A mock option with a name, available and unchanged, whose control the test binds
+    // Returns a mock option for a test control.
     private static <T> Option<T> option(String name) {
         @SuppressWarnings("unchecked")
         Option<T> option = Mockito.mock(Option.class);
@@ -89,7 +89,7 @@ class ControlTest {
         return option;
     }
 
-    // A mock option holding a value, for the built-in controls whose elements read it when made
+    // Returns a mock option with a value.
     private static <T> Option<T> valued(String name, T initial) {
         Option<T> option = option(name);
         Object[] holder = {initial};
@@ -97,7 +97,7 @@ class ControlTest {
         return option;
     }
 
-    // A control whose option, width, value type and element factory the test picks, counting every call so the contract's costs are checkable
+    // Control with chosen parts that counts calls.
     private static final class Probe<T> implements Control<T> {
         Option<T> option;
         int maxWidth;
@@ -139,14 +139,14 @@ class ControlTest {
         }
     }
 
-    // Binds a probe to the option the way OptionImpl binds a control, so each edits the other
+    // Binds a probe to the option.
     private static <T> Probe<T> bound(Option<T> option, int maxWidth) {
         Probe<T> probe = new Probe<>(option, maxWidth);
         when(option.getControl()).thenReturn(probe);
         return probe;
     }
 
-    // Sizes its column from a translated label plus 18 pixels, as a control whose text changes with the language would
+    // Control sized from a translated label.
     private static final class LabelSized implements Control<Boolean> {
         private final Option<Boolean> option;
         int measures;
@@ -177,7 +177,7 @@ class ControlTest {
         }
     }
 
-    // Fake fonts reading translations from a table, standing in for the game's language, and counting how often each key is measured
+    // Fake fonts with a translation table.
     private static final class Language extends FakeDrawContext {
         private final Map<String, String> table;
         final Map<String, Integer> measured = new HashMap<>();
@@ -196,7 +196,7 @@ class ControlTest {
             return super.extractString(component);
         }
 
-        // Set while the fake's own drawString measures what it draws, which is not the caller measuring
+        // Set while drawString measures.
         private boolean drawing;
 
         @Override
@@ -219,12 +219,12 @@ class ControlTest {
         }
     }
 
-    // A row that throws from whichever of its methods the test arms, counting every call made on it
+    // Row that throws from chosen methods.
     private static final class Faulty extends ControlElement<Boolean> {
         final Set<String> armed = new HashSet<>();
         Throwable failure = new IllegalStateException("faulty");
         int calls;
-        // Pushes a transform, a scissor and another transform before its draw is entered, as a row failing halfway would leave them
+        // Row that fails after pushing state.
         boolean pushesFirst;
 
         Faulty(Option<Boolean> option, Dim2i dim) {
@@ -304,10 +304,10 @@ class ControlTest {
         }
     }
 
-    // A page whose first row is a faulty one for the given option, over a second plain row named Fine; rows sit at y 18 and 36 of a 200 wide frame
+    // Returns a page with a faulty first row.
     private record FaultyPage(OptionPageFrame frame, Option<Boolean> option, Faulty row) {
         static FaultyPage of(String name) {
-            // Qualified, as the record's own option() accessor would hide the helper
+            // Qualified call to the helper.
             Option<Boolean> option = ControlTest.option(name);
             AtomicReference<Faulty> made = new AtomicReference<>();
             bound(option, 30).factory = dim -> {
@@ -336,7 +336,7 @@ class ControlTest {
         }
     }
 
-    // One option per built-in control, each bound to its own control as OptionImpl binds them; widths 30, 70, 130, 90 and 70
+    // Returns one option per built in control.
     private static List<Option<?>> builtIns() {
         Option<Boolean> tick = valued("Tick", true);
         when(tick.getControl()).thenReturn(new TickBoxControl(tick));
@@ -366,7 +366,7 @@ class ControlTest {
         return frame.interactableChildren().filter(ControlElement.class::isInstance).<ControlElement<?>>map(child -> (ControlElement<?>) child).toList();
     }
 
-    // The strings one frame of a bare row draws, which is only its name
+    // Returns the strings a bare row draws.
     private static List<String> nameDrawnAt(int width, String name, int maxWidth) {
         Option<Boolean> option = option(name);
         bound(option, maxWidth);
@@ -403,7 +403,7 @@ class ControlTest {
 
     // Swaps the placeholder's static final logger for a mock while the body runs
     private static void withLogger(Consumer<Logger> body) {
-        // Reading it first runs the class initialiser, which would otherwise overwrite the swap
+        // Loads the class before the swap.
         Logger original = Statics.get(PlaceholderControlElement.class, "LOGGER");
         Logger mock = Mockito.mock(Logger.class);
         Statics.set(PlaceholderControlElement.class, "LOGGER", mock);
@@ -416,7 +416,7 @@ class ControlTest {
         }
     }
 
-    // The error toasts placeholders raised, oldest first
+    // Returns the placeholder error toasts.
     private static List<ImpetusNotification> toasts() {
         return ImpetusNotifications.getVisible().stream().filter(t -> t.title().startsWith("Option failed: ")).toList();
     }
@@ -473,7 +473,7 @@ class ControlTest {
                 "ControlElement placeholder[Option, Dim2i, Throwable]", "String describe[Option]"), concrete.keySet());
         assertTrue(Control.class.getMethod("getMaxWidth", FontMetricsProvider.class).isDefault());
         assertTrue(Control.class.getMethod("getValueType").isDefault());
-        // Static, so no implementation can override the checks away
+        // Checks the method is static.
         for (String name : List.of("int columnWidth[Control, FontMetricsProvider, int]", "ControlElement createElementFor[Option, Dim2i]",
                 "ControlElement createElementOrPlaceholder[Option, Dim2i]", "ControlElement placeholderFor[ControlElement, Throwable]",
                 "void reportBroken[Option, String, Throwable]")) {
@@ -498,7 +498,7 @@ class ControlTest {
             assertSame(Dim2i.class, create.getGenericParameterTypes()[1]);
             assertParameterized(create.getGenericReturnType(), ControlElement.class, own[0]);
         }
-        // columnWidth takes a control of any type, and the value type is any class
+        // Checks the parameter types.
         Type control = Control.class.getMethod("columnWidth", Control.class, FontMetricsProvider.class, int.class).getGenericParameterTypes()[0];
         WildcardType any = assertInstanceOf(WildcardType.class, assertInstanceOf(ParameterizedType.class, control).getActualTypeArguments()[0]);
         assertArrayEquals(new Type[]{Object.class}, any.getUpperBounds());
@@ -573,7 +573,7 @@ class ControlTest {
     @Test
     void aFontSizedControlFollowsTheLanguageItIsMeasuredIn() {
         LabelSized control = new LabelSized(option("Name"));
-        // "Open" is 24 pixels and "Ouvrir le menu" 84, each plus 18
+        // Checks the label widths.
         assertEquals(42, control.getMaxWidth(new Language("Open")));
         assertEquals(102, control.getMaxWidth(new Language("Ouvrir le menu")));
         assertEquals(42, Control.columnWidth(control, new Language("Open"), 200));
@@ -735,7 +735,7 @@ class ControlTest {
         npe("Control must not be null", () -> Control.columnWidth(null, fonts, 200));
         npe("Fonts must not be null", () -> Control.columnWidth(probe, null, 200));
         npe("Control must not be null", () -> Control.columnWidth(null, null, 200));
-        // Refused before the width is asked for, so an override never sees null
+        // Checks null is refused first.
         assertEquals(0, probe.widthReads);
     }
 
@@ -758,7 +758,7 @@ class ControlTest {
                 throw broken;
             }
         };
-        // Through the default font-aware width, so a failing fixed width is not swallowed on the way
+        // Checks the failing width.
         assertSame(broken, assertThrows(IllegalStateException.class, () -> Control.columnWidth(control, new FakeDrawContext(), 200)));
         assertSame(broken, assertThrows(IllegalStateException.class, () -> control.getMaxWidth(new FakeDrawContext())));
     }
@@ -769,7 +769,7 @@ class ControlTest {
         assertSame(Integer.class, new SliderControl(option("Slide"), 0, 1, 1, ControlValueFormatter.number()).getValueType());
         assertSame(String.class, new ReadOnlyStringControl(option("Text")).getValueType());
         assertSame(Boolean.class, new ActionButtonControl(option("Button"), () -> { }).getValueType());
-        // The cycler leaves its argument open, so it reads the type off its values instead
+        // Checks the cycler value type.
         assertSame(Object.class, ControlValueTypes.declared(CyclingControl.class));
         assertSame(Mode.class, new CyclingControl<>(ControlTest.<Mode>option("Cycle"), Mode.class).getValueType());
         assertSame(Mode.class, new CyclingControl<>(ControlTest.<Mode>option("Cycle"), new Mode[]{Mode.B}, new TextComponent[]{TextComponent.literal("b")}).getValueType());
@@ -781,18 +781,18 @@ class ControlTest {
     void aControlBuiltOverItsOwnOptionOfAnotherTypeIsCaughtBeforeItsFirstFrame() {
         AtomicInteger number = new AtomicInteger(7);
         OptionStorage<AtomicInteger> numbers = () -> number;
-        // Only a raw cast compiles this, and erasure lets it run
+        // Checks a raw cast.
         OptionImpl<AtomicInteger, Integer> option = OptionImpl.createBuilder(int.class, numbers)
                 .setId(OptionIdentifier.create(MOD, "raw_tick", int.class))
                 .setBinding(AtomicInteger::set, AtomicInteger::get)
                 .setControl(o -> (Control) new TickBoxControl((Option) o))
                 .build();
-        // The pairing holds, which is why the value types are compared too
+        // Checks the value types.
         assertSame(option, option.getControl().getOption());
         ise("Control of option " + MOD + ":raw_tick edits java.lang.Boolean values but the option holds java.lang.Integer", () -> Control.createElementFor(option, DIM));
         assertEquals(7, number.get());
         assertFalse(option.hasChanged());
-        // Without the check, the first frame would fail reading the number as a boolean
+        // Checks the first frame.
         ControlElement<Integer> unchecked = option.getControl().createElement(DIM);
         assertThrows(ClassCastException.class, () -> unchecked.render(new FakeDrawContext(), 0, 0, 0f));
     }
@@ -882,7 +882,7 @@ class ControlTest {
         Control.createElementFor(option, DIM);
         verify(option).getControl();
         verify(option).getValueType();
-        // No value, name, id or availability read, so making a row costs nothing beyond the element itself
+        // Checks nothing is read.
         verifyNoMoreInteractions(option);
         assertEquals(1, probe.optionReads);
         assertEquals(1, probe.typeReads);
@@ -926,12 +926,12 @@ class ControlTest {
         Option<Boolean> option = option("Shown name");
         when(option.getControl()).thenReturn(null);
         ise("Option Shown name has no control", () -> Control.createElementFor(option, DIM));
-        // The empty placeholder id names nothing, so the name is used
+        // Checks the empty id.
         when(option.getId()).thenAnswer(invocation -> OptionIdentifier.EMPTY);
         ise("Option Shown name has no control", () -> Control.createElementFor(option, DIM));
         when(option.getId()).thenReturn(OptionIdentifier.create(MOD, "described", Boolean.class));
         ise("Option " + MOD + ":described has no control", () -> Control.createElementFor(option, DIM));
-        // A translated name is named by its key, and an option with neither still reports
+        // Checks translated names.
         when(option.getId()).thenReturn(null);
         when(option.getName()).thenReturn(TextComponent.translatable("mod.options.key.name"));
         ise("Option mod.options.key.name has no control", () -> Control.createElementFor(option, DIM));
@@ -1000,13 +1000,13 @@ class ControlTest {
         Option<Integer> numbers = valued("Numbers", 7);
         TickBoxControl tick = new TickBoxControl(flags);
         when(flags.getControl()).thenReturn(tick);
-        // The raw cast compiles and erasure lets it run, so the pairing shows the mismatch
+        // Checks the mismatch.
         when(numbers.getControl()).thenReturn((Control<Integer>) (Control<?>) tick);
         clearInvocations(flags, numbers);
         ise("Control of option Numbers edits a different option", () -> Control.createElementFor(numbers, DIM));
         verify(numbers, never()).getValue();
         verify(flags, never()).getValue();
-        // A slider over a boolean option is caught the same way, before its element would read the value as an int
+        // Checks a slider on a boolean.
         Option<Integer> sliding = valued("Sliding", 3);
         SliderControl slider = new SliderControl(sliding, 0, 10, 1, ControlValueFormatter.number());
         when(flags.getControl()).thenReturn((Control<Boolean>) (Control<?>) slider);
@@ -1086,7 +1086,7 @@ class ControlTest {
             return kept.getFirst();
         };
         ControlElement<Boolean> first = Control.createElementFor(option, DIM);
-        // Handing the same element back at the same bounds is harmless, so only stale bounds are caught
+        // Checks stale bounds.
         assertSame(first, Control.createElementFor(option, new Dim2i(10, 20, 200, 18)));
         ise("Element of option Name has bounds Dim2i[x=10, y=20, width=200, height=18] instead of Dim2i[x=10, y=38, width=200, height=18]",
                 () -> Control.createElementFor(option, DIM.withY(38)));
@@ -1105,7 +1105,7 @@ class ControlTest {
             assertNotSame(again, moved, control::toString);
             for (ControlElement<?> element : List.of(first, again, moved)) {
                 assertSame(option, element.getOption());
-                // The control's own nested element, not a bare row
+                // Checks the nested element.
                 assertSame(control.getClass(), element.getClass().getEnclosingClass());
             }
             assertSame(DIM, first.getDimensions());
@@ -1134,7 +1134,7 @@ class ControlTest {
                 .setBinding(AtomicBoolean::set, AtomicBoolean::get)
                 .setControl(o -> new ActionButtonControl(o, () -> { }))
                 .build();
-        // Both sides boxed to the same class, so the type check is a single comparison
+        // Checks the boxed type check.
         assertSame(tick.getValueType(), tick.getControl().getValueType());
         assertSame(slide.getValueType(), slide.getControl().getValueType());
         assertSame(button.getValueType(), button.getControl().getValueType());
@@ -1282,7 +1282,7 @@ class ControlTest {
             assertEquals(ImpetusNotification.Level.ERROR, toast.level());
             assertEquals("Option failed: Name", toast.title());
             assertEquals(List.of("java.lang.IllegalStateException: first"), toast.lines());
-            // A failed check reports its own message, and an option with an id is named by it
+            // Checks the failure message.
             Option<Boolean> named = option("Named");
             when(named.getId()).thenReturn(OptionIdentifier.create(MOD, "named_failure", Boolean.class));
             bound(named, 30).factory = dim -> null;
@@ -1309,7 +1309,7 @@ class ControlTest {
             for (int i = 0; i < 5; i++) {
                 rows.add(Control.createElementOrPlaceholder(option, DIM.withY(i * 18)));
             }
-            // A fresh placeholder at each layout's bounds, and a single report
+            // Checks a fresh placeholder.
             assertEquals(5, rows.stream().distinct().count());
             assertEquals(DIM.withY(72), rows.getLast().getDimensions());
             verify(logger, times(1)).error(eq(FAILURE_LOG), eq("Once"), any(Throwable.class));
@@ -1377,13 +1377,13 @@ class ControlTest {
             Language draw = new Language("Open");
             row.render(draw, 0, 0, 0f);
             assertEquals(List.of("Shadows", "Error"), draw.strings);
-            // Struck through and grey with no change marker, though the option says it is available and changed
+            // Checks the placeholder look.
             assertEquals(EnumSet.of(TextFormattingStyle.GRAY, TextFormattingStyle.STRIKETHROUGH), styles(draw.drawn.getFirst()));
             assertTrue(draw.calls.stream().anyMatch(c -> c.startsWith("text(Shadows,16,25,")), draw.calls::toString);
-            // "Error" is 30 pixels, right-aligned 6 in from the 210 edge in red, on the text line of the 20..38 row
+            // Checks the error label.
             assertEquals(TextComponent.translatable(PLACEHOLDER_KEY), draw.drawn.get(1));
             assertTrue(draw.calls.contains("text(Error,174,25,ffff5555,false)"), draw.calls::toString);
-            // Drawn without asking the option anything, its name having been read when the placeholder was made
+            // Checks the option is not asked.
             verify(option, never()).getName();
             verify(option, never()).isAvailable();
             verify(option, never()).hasChanged();
@@ -1402,7 +1402,7 @@ class ControlTest {
                 row.render(draw, 0, 0, 0f);
             }
             assertEquals(1, draw.measured.get(PLACEHOLDER_KEY));
-            // The 42 pixel column leaves 146 for the name: 21 characters before the ellipsis
+            // Checks the name cut.
             assertEquals(List.of("Translucency sorting...", "Error"), draw.strings.subList(0, 2));
             assertEquals(6, draw.strings.size());
         });
@@ -1411,9 +1411,9 @@ class ControlTest {
     @Test
     void aPlaceholderInANarrowRowGivesWayFirstWithItsNameThenWithItsLabel() {
         assertEquals(List.of("Name", "Error"), placeholderDrawnAt(80));
-        // 42 of 60 leaves 6, room for no name
+        // Checks no room for the name.
         assertEquals(List.of("Error"), placeholderDrawnAt(60));
-        // The column is held to the row, and the label needs its 30 plus the 6 inset
+        // Checks the held column.
         assertEquals(List.of("Error"), placeholderDrawnAt(36));
         assertEquals(List.of(), placeholderDrawnAt(35));
         for (int width : new int[]{30, 1, 0, -5, Integer.MIN_VALUE}) {
@@ -1436,7 +1436,7 @@ class ControlTest {
             assertFalse(row.keyTyped(context, ' ', Keys.SPACE));
             assertFalse(row.mouseDragged(context, 100, 25, 0, 1, 0));
             assertEquals(0, context.clicks);
-            // Hovered it still draws, with no focus outline since it refused the focus
+            // Checks the hover.
             FakeDrawContext draw = new FakeDrawContext();
             row.render(draw, 100, 25, 0f);
             assertEquals(List.of("fill(10,20,210,38," + Integer.toHexString(DefaultColors.BACKGROUND_HOVERED) + ")", "text(" + PLACEHOLDER_KEY + ",24,25,ffff5555,false)"), draw.calls);
@@ -1446,7 +1446,7 @@ class ControlTest {
     @Test
     void aNegativeMaximumNoLongerLetsTheNameRunPastTheRow() {
         String name = "A very long option name that will not fit in the row";
-        // A 100 pixel row keeps 88 for the name, less 18 for the ellipsis, so eleven characters
+        // Checks eleven characters.
         for (int maximum : new int[]{-1, -1000, Integer.MIN_VALUE, 0}) {
             assertEquals(List.of("A very long..."), nameDrawnAt(100, name, maximum), () -> "maximum " + maximum);
         }
@@ -1469,7 +1469,7 @@ class ControlTest {
             assertEquals(List.of(), nameDrawnAt(100, name, maximum), () -> "maximum " + maximum);
             assertEquals(List.of(), nameDrawnAt(100, "N", maximum));
         }
-        // 70 of 100 leaves 18, room for the ellipsis alone
+        // Checks the lone ellipsis.
         assertEquals(List.of("..."), nameDrawnAt(100, name, 70));
     }
 
@@ -1482,7 +1482,7 @@ class ControlTest {
             element.render(new FakeDrawContext(), 0, 0, 0f);
         }
         assertEquals(1, probe.widthReads);
-        // A new width shows on the next element, which every resize, page switch or language change makes
+        // Checks the new width.
         probe.maxWidth = 130;
         FakeDrawContext kept = new FakeDrawContext();
         element.render(kept, 0, 0, 0f);
@@ -1563,13 +1563,13 @@ class ControlTest {
         LabelSized control = new LabelSized(option);
         when(option.getControl()).thenReturn(control);
         ControlElement<Boolean> element = Control.createElementFor(option, new Dim2i(0, 0, 200, 18));
-        // "Open" takes 42, leaving 146 for the name, 128 of it before the ellipsis: 21 characters, the trailing space dropped
+        // Checks 21 characters.
         Language english = new Language("Open");
         element.render(english, 0, 0, 0f);
         element.render(english, 0, 0, 0f);
         assertEquals(List.of("Translucency sorting...", "Translucency sorting..."), english.strings);
         assertEquals(1, control.measures);
-        // Changing the language rebuilds the screen, and the new row measures in the new language: 102 leaves 86, 11 characters
+        // Checks the new language.
         Language french = new Language("Ouvrir le menu");
         Control.createElementFor(option, new Dim2i(0, 0, 200, 18)).render(french, 0, 0, 0f);
         assertEquals(List.of("Translucenc..."), french.strings);
@@ -1597,7 +1597,7 @@ class ControlTest {
                         int column = Math.clamp(maximum, 0, Math.max(0, width));
                         int drawn = draw.strings.getFirst().length() * 6;
                         int row = width;
-                        // Starts 6 in and ends at least 6 short of the column, so never past the row either
+                        // Checks the name bounds.
                         assertTrue(6 + drawn <= row - column - 6, () -> "width " + row + " maximum " + probe.maxWidth + " " + draw.strings);
                     }
                 }
@@ -1616,9 +1616,9 @@ class ControlTest {
         OptionPageFrame frame = new OptionPageFrame(new Dim2i(5, 7, 200, 300), false, page(a, b, c), o -> true);
         List<ControlElement<?>> rows = rows(frame);
         assertEquals(List.of(a, b, c), rows.stream().map(ControlElement::getOption).toList());
-        // Sizing the frame makes nothing, so each row was made once
+        // Checks each row was made once.
         assertEquals(List.of(1, 1, 1), List.of(pa.creations, pb.creations, pc.creations));
-        // Under the 18 pixel page header, 18 pixel rows, offset by the frame
+        // Checks the row positions.
         assertEquals(new Dim2i(5, 25, 200, 18), rows.get(0).getDimensions());
         assertEquals(new Dim2i(5, 43, 200, 18), rows.get(1).getDimensions());
         assertEquals(new Dim2i(5, 61, 200, 18), rows.get(2).getDimensions());
@@ -1649,7 +1649,7 @@ class ControlTest {
             assertFalse(rows.get(0) instanceof PlaceholderControlElement<?>);
             assertInstanceOf(PlaceholderControlElement.class, rows.get(1));
             assertSame(borrower, rows.get(1).getOption());
-            // In the borrower's own row, under the owner's
+            // Checks the borrowed row.
             assertEquals(new Dim2i(10, 56, 200, 18), rows.get(1).getDimensions());
             verify(logger).error(eq(FAILURE_LOG), eq("Borrower"), isA(IllegalStateException.class));
             // Rebuilding the page makes a new placeholder without reporting again
@@ -1660,7 +1660,7 @@ class ControlTest {
             assertNotSame(rows.get(1), rebuilt.get(1));
             verify(logger, times(1)).error(eq(FAILURE_LOG), eq("Borrower"), any(Throwable.class));
             assertEquals(List.of("Option failed: Borrower"), toasts().stream().map(ImpetusNotification::title).toList());
-            // The page still draws, the owner's row as usual and the borrower's with its label
+            // Checks the page still draws.
             Language draw = new Language("Open");
             frame.render(draw, -1, -1, 0f);
             assertTrue(draw.strings.containsAll(List.of("Page", "Owner", "Borrower", "Error")), draw.strings::toString);
@@ -1693,7 +1693,7 @@ class ControlTest {
     void filteredOutOptionsAreNeverAskedForAControl() {
         Option<Boolean> shown = option("Shown");
         Probe<Boolean> probe = bound(shown, 30);
-        // No control at all, which would make a placeholder if the frame made its row
+        // Checks a missing control.
         Option<Boolean> hidden = option("Hidden");
         OptionPageFrame frame = new OptionPageFrame(DIM, false, page(shown, hidden), o -> o == shown);
         assertEquals(List.of(shown), rows(frame).stream().map(ControlElement::getOption).toList());
@@ -1713,11 +1713,11 @@ class ControlTest {
         assertEquals(options, rows(frame).stream().map(ControlElement::getOption).toList());
         FakeDrawContext draw = new FakeDrawContext();
         frame.render(draw, -1, -1, 0f);
-        // The tick box's 30 leaves 58, room for the whole name
+        // Checks the tick box room.
         assertTrue(draw.strings.contains("Tick"));
-        // The cycler's and button's 70 leave 18, room for the ellipsis alone
+        // Checks the cycler and button room.
         assertEquals(2, draw.strings.stream().filter("..."::equals).count(), draw.strings::toString);
-        // The read-only 90 leaves none, and the slider's 130 is held to the row and leaves none either
+        // Checks the wide columns.
         assertFalse(draw.strings.contains("Text"));
         assertFalse(draw.strings.contains("Slide"));
         // Each control still draws its own value
@@ -1735,11 +1735,11 @@ class ControlTest {
             assertInstanceOf(PlaceholderControlElement.class, first);
             assertSame(page.option(), first.getOption());
             assertEquals(new Dim2i(0, 18, 200, 18), first.getDimensions());
-            // The placeholder in the broken row's place and the row after it, all on the frame that failed
+            // Checks the failing frame.
             assertEquals(List.of("Page", "Broken", "Error", "Fine"), draw.strings);
             verify(logger).error(eq(FAILURE_LOG), eq("Broken"), same(page.row().failure));
             assertEquals("Option failed: Broken", toasts().getFirst().title());
-            // Later frames never call into the broken row again, from any of the frame's lists, and report nothing more
+            // Checks later frames.
             int calls = page.row().calls;
             for (int frame = 0; frame < 5; frame++) {
                 page.frame().render(new Language("Open"), 100, 27, 0f);
@@ -1760,7 +1760,7 @@ class ControlTest {
             assertNull(page.frame().getCapturedChild());
             assertNull(page.frame().getFocusedControl());
             assertEquals(0, context.clicks);
-            // The placeholder takes no click, nothing is reported twice and the row below is untouched
+            // Checks the placeholder click.
             assertFalse(page.frame().mouseClicked(context, 100, 27, 0));
             verify(logger, times(1)).error(eq(FAILURE_LOG), eq("Clicked"), same(page.row().failure));
             assertFalse(page.second() instanceof PlaceholderControlElement<?>);
@@ -1775,7 +1775,7 @@ class ControlTest {
             assertTrue(dragged.frame().mouseClicked(context, 100, 27, 0));
             assertSame(dragged.row(), dragged.frame().getCapturedChild());
             dragged.arm("mouseDragged");
-            // Well off the row, as a captured drag follows the cursor anywhere
+            // Checks the captured drag.
             assertTrue(dragged.frame().mouseDragged(context, 100, 200, 0, 0, 5));
             assertInstanceOf(PlaceholderControlElement.class, dragged.first());
             assertNull(dragged.frame().getCapturedChild());
@@ -1800,14 +1800,14 @@ class ControlTest {
             scrolled.arm("mouseScrolled");
             assertTrue(scrolled.frame().mouseScrolled(context, 100, 27, 0, 1));
             assertInstanceOf(PlaceholderControlElement.class, scrolled.first());
-            // The frame's hover pass on every frame, which then draws the placeholder
+            // Checks the hover pass.
             FaultyPage hovered = FaultyPage.of("Hovered");
             hovered.arm("isMouseOver");
             Language draw = new Language("Open");
             hovered.frame().render(draw, 100, 27, 0f);
             assertInstanceOf(PlaceholderControlElement.class, hovered.first());
             assertTrue(draw.strings.contains("Error"), draw.strings::toString);
-            // The container's own hover test, which answers no for the row that broke and yes once its placeholder is in
+            // Checks the container hover test.
             FaultyPage tested = FaultyPage.of("Tested");
             tested.arm("isMouseOver");
             assertFalse(tested.frame().isMouseOver(100, 27));
@@ -1826,11 +1826,11 @@ class ControlTest {
             page.row().setFocused(true);
             page.arm("keyTyped");
             FakeInteractionContext context = new FakeInteractionContext();
-            // Even a Tab, which a row that ignored it would have let move the focus
+            // Checks a Tab.
             assertTrue(page.frame().dispatchKeyTyped(context, '\t', Keys.TAB));
             assertInstanceOf(PlaceholderControlElement.class, page.first());
             assertNull(page.frame().getFocusedControl());
-            // The next Tab starts over, passes the placeholder and lands on the row that works
+            // Checks the next Tab.
             assertTrue(page.frame().dispatchKeyTyped(context, '\t', Keys.TAB));
             assertSame(page.second(), page.frame().getFocusedControl());
             verify(logger).error(eq(FAILURE_LOG), eq("Typed"), same(page.row().failure));
@@ -1851,7 +1851,7 @@ class ControlTest {
             held.arm("isFocused");
             assertNull(held.frame().getFocusedChild());
             assertInstanceOf(PlaceholderControlElement.class, held.first());
-            // Told to drop the focus, by a click elsewhere and by Tab stepping off it
+            // Checks focus loss.
             FaultyPage cleared = FaultyPage.of("Cleared");
             cleared.row().setFocused(true);
             cleared.arm("setFocused");
@@ -1926,7 +1926,7 @@ class ControlTest {
             page.arm("mouseClicked");
             assertTrue(outer.mouseClicked(new FakeInteractionContext(), 100, 27, 0));
             assertInstanceOf(PlaceholderControlElement.class, page.first());
-            // The outer frame cannot replace a page, and has nothing left to replace
+            // Checks the outer frame.
             assertFalse(outer.recoverChild(page.frame(), new IllegalStateException()));
             Language draw = new Language("Open");
             outer.render(draw, -1, -1, 0f);
@@ -1945,7 +1945,7 @@ class ControlTest {
             assertInstanceOf(PlaceholderControlElement.class, placeholder);
             IllegalStateException fonts = new IllegalStateException("fonts");
             FakeDrawContext failing = new FakeDrawContext() {
-                // The page's own short label, so it still clears the name and is drawn
+                // Checks the short label.
                 @Override
                 public String extractString(TextComponent component) {
                     return component.equals(TextComponent.translatable(PLACEHOLDER_KEY)) ? "Error" : super.extractString(component);
@@ -1990,7 +1990,7 @@ class ControlTest {
         int before = page.row().calls;
         for (int frame = 1; frame <= 4; frame++) {
             page.frame().render(new FakeDrawContext(), -1, -1, 0f);
-            // The frame's single hover pass, the draw, and the row's own hover test inside its draw
+            // Checks the hover calls.
             assertEquals(before + 3 * frame, page.row().calls);
         }
         assertSame(page.row(), page.first());
@@ -2017,10 +2017,10 @@ class ControlTest {
             assertSame(option, placeholder.getOption());
             assertSame(DIM, placeholder.getDimensions());
             verify(logger).error(eq(FAILURE_LOG), eq("Fields"), same(failure));
-            // Once per option, however many of its rows fail
+            // Checks one report per option.
             assertInstanceOf(PlaceholderControlElement.class, Control.placeholderFor(new ControlElement<>(option, DIM.withY(40)), failure));
             verify(logger, times(1)).error(eq(FAILURE_LOG), any(), any(Throwable.class));
-            // A placeholder comes back as it is, unreported
+            // Checks a placeholder stays.
             assertSame(placeholder, Control.placeholderFor(placeholder, failure));
             npe("Element must not be null", () -> Control.placeholderFor(null, failure));
             npe("Failure must not be null", () -> Control.placeholderFor(broken, null));
@@ -2031,16 +2031,16 @@ class ControlTest {
     @Test
     void aPlaceholderForAnOptionThatCannotNameItselfShowsItsDescription() {
         withLogger(logger -> {
-            // A row with no option at all cannot be made, so there is never one to replace
+            // Checks a row with no option.
             npe("Option must not be null", () -> new ControlElement<Boolean>(null, DIM));
-            // A name that throws, with the id standing in; a row wide enough for all 180 pixels of it
+            // Checks a throwing name.
             Option<Boolean> nameless = option("Unused");
             when(nameless.getId()).thenReturn(OptionIdentifier.create(MOD, "nameless", Boolean.class));
             when(nameless.getName()).thenThrow(new IllegalStateException("no name"));
             Language named = new Language("Open");
             Control.placeholderFor(new ControlElement<>(nameless, new Dim2i(0, 0, 400, 18)), new IllegalStateException("drawn")).render(named, 0, 0, 0f);
             assertEquals(List.of(MOD + ":nameless", "Error"), named.strings);
-            // No name at all, which is described as null
+            // Checks no name.
             Option<Boolean> blank = option("Unused");
             when(blank.getName()).thenReturn(null);
             Language empty = new Language("Open");
@@ -2049,7 +2049,7 @@ class ControlTest {
         });
     }
 
-    // Renders the frame hovering the given row three times, the last past the tooltip delay
+    // Renders the frame past the tooltip delay.
     private static void hoverPastTheDelay(OptionPageFrame frame, FakeDrawContext draw, int x, int y) throws ReflectiveOperationException {
         java.lang.reflect.Field lastTime = OptionPageFrame.class.getDeclaredField("lastTime");
         lastTime.setAccessible(true);
@@ -2077,7 +2077,7 @@ class ControlTest {
             hoverPastTheDelay(frame, draw, 100, 27);
             verify(logger).error(eq("Tooltip of option {} failed and is no longer shown"), eq(MOD + ":tipped"), same(failure));
             assertEquals("Tooltip failed: " + MOD + ":tipped", ImpetusNotifications.getVisible().getLast().title());
-            // Never asked again, while the row itself keeps working
+            // Checks the row keeps working.
             hoverPastTheDelay(frame, draw, 100, 27);
             verify(option, times(1)).getTooltip();
             assertFalse(rows(frame).getFirst() instanceof PlaceholderControlElement<?>);
@@ -2102,10 +2102,10 @@ class ControlTest {
             hoverPastTheDelay(second, failing, 100, 27);
             assertEquals(0, failing.matrixDepth);
             assertTrue(failing.calls.contains("push") && failing.calls.contains("pop"), failing.calls::toString);
-            // Named by its name, as it has no id
+            // Checks the name.
             verify(logger).error(eq("Tooltip of option {} failed and is no longer shown"), eq("Drawn"), same(fonts));
 
-            // A clip the failing draw left on is taken off too, though the tooltip never enables one itself
+            // Checks the clip is removed.
             Option<Boolean> clipped = option("Clipped");
             bound(clipped, 30);
             when(clipped.getTooltip()).thenReturn(TextComponent.literal("tip"));
@@ -2120,7 +2120,7 @@ class ControlTest {
                     return super.drawString(str, x, y, color, shadow);
                 }
             };
-            // An outer clip, as the scrolling frame around a page holds, stays where it was
+            // Checks the outer clip.
             leaving.enableScissor(0, 0, 200, 300);
             hoverPastTheDelay(third, leaving, 100, 27);
             assertEquals(1, leaving.scissorDepth);
@@ -2133,7 +2133,7 @@ class ControlTest {
 
     private static final String TOOLTIP_LOG = "Tooltip of option {} failed and is no longer shown";
 
-    // A real option rather than a mock, so its own equals and hashCode run, bound to a probe as OptionImpl binds its control
+    // Returns a real option bound to a probe.
     private static class Real implements Option<Boolean> {
         private final String name;
         private final Probe<Boolean> control = new Probe<>(this, 30);
@@ -2212,7 +2212,7 @@ class ControlTest {
         }
     }
 
-    // Equal to every other one, as an option comparing by its settings would be
+    // Equal to every other option.
     private static final class Twin extends Real {
         Twin(String name) {
             super(name);
@@ -2260,9 +2260,9 @@ class ControlTest {
         }
     }
 
-    // Swaps the page frame's static final logger for a mock while the body runs, with no toasts either side
+    // Runs the body with a mock logger.
     private static void withFrameLogger(ThrowingConsumer<Logger> body) throws Throwable {
-        // Reading it first runs the class initialiser, which would otherwise overwrite the swap
+        // Loads the class before the swap.
         Logger original = Statics.get(OptionPageFrame.class, "LOGGER");
         Logger mock = Mockito.mock(Logger.class);
         Statics.set(OptionPageFrame.class, "LOGGER", mock);
@@ -2275,7 +2275,7 @@ class ControlTest {
         }
     }
 
-    // A page of the one mock option, bound to a probe, whose tooltip throws the given failure; its row sits at y 18
+    // Returns a page with a failing tooltip.
     private static OptionPageFrame tooltipPage(Option<Boolean> option, Throwable failure) {
         bound(option, 30);
         when(option.getId()).thenReturn(OptionIdentifier.create(MOD, "tipped", Boolean.class));
@@ -2283,7 +2283,7 @@ class ControlTest {
         return new OptionPageFrame(new Dim2i(0, 0, 200, 300), false, page(option), o -> true);
     }
 
-    // The tooltip toasts, oldest first
+    // Returns the tooltip toasts.
     private static List<ImpetusNotification> tooltipToasts() {
         return ImpetusNotifications.getVisible().stream().filter(t -> t.title().startsWith("Tooltip failed: ")).toList();
     }
@@ -2306,7 +2306,7 @@ class ControlTest {
             option.tooltipFailure = failure;
             hoverPastTheDelay(frame, draw, 100, 27);
             hoverPastTheDelay(frame, draw, 100, 27);
-            // Asked once when drawn and once when it failed, then never again
+            // Checks the tooltip is asked twice.
             assertEquals(2, option.tooltipReads);
             verify(logger, times(1)).error(eq(TOOLTIP_LOG), eq(MOD + ":real_hostile"), same(failure));
             assertEquals(1, tooltipToasts().size());
@@ -2326,7 +2326,7 @@ class ControlTest {
             FakeDrawContext draw = new FakeDrawContext();
             hoverPastTheDelay(frame, draw, 100, 27);
             verify(logger).error(eq(TOOLTIP_LOG), eq(MOD + ":real_first"), same(failure));
-            // The equal option's tooltip is still drawn, and its own failure is its own report
+            // Checks the equal option.
             hoverPastTheDelay(frame, draw, 100, 45);
             assertTrue(draw.strings.contains("tip of second"), draw.strings::toString);
             IllegalStateException own = new IllegalStateException("second");
@@ -2340,7 +2340,7 @@ class ControlTest {
     @Test
     void aTooltipFailureOfAnOptionWhoseIdThrowsIsReportedUnderItsClassName() throws Throwable {
         withFrameLogger(logger -> {
-            // Each id throws only once the page is made, so the rows are working ones
+            // Checks working rows.
             Option<Boolean> option = option("Idless");
             IllegalStateException failure = new IllegalStateException("no tooltip");
             OptionPageFrame frame = tooltipPage(option, failure);
@@ -2365,7 +2365,7 @@ class ControlTest {
                 Thread.interrupted();
             }
             verify(logger).error(eq(TOOLTIP_LOG), eq(interrupted.getClass().getName()), same(stopped));
-            // A virtual machine error is not held, and the option was marked before its id was asked, so it is left off afterwards
+            // Checks a virtual machine error.
             Option<Boolean> overflowing = option("Overflowing");
             OptionPageFrame third = tooltipPage(overflowing, new IllegalStateException("overflowing"));
             StackOverflowError overflow = new StackOverflowError();
@@ -2377,7 +2377,7 @@ class ControlTest {
         });
     }
 
-    // Heights of the tooltip boxes drawn, which are the only fills in that colour
+    // Returns the tooltip box heights.
     private static List<Integer> tooltipBoxHeights(FakeDrawContext draw) {
         return draw.calls.stream().filter(call -> call.startsWith("fill(") && call.endsWith(",e0000000)")).map(call -> {
             String[] edges = call.substring("fill(".length(), call.length() - 1).split(",");
@@ -2388,7 +2388,7 @@ class ControlTest {
     @Test
     void anOptionWithNoTooltipShowsOnlyItsImpactAndModLinesOrNoBoxAtAll() throws Throwable {
         withFrameLogger(logger -> {
-            // No tooltip of its own, but an impact and another mod's id
+            // Checks an option without a tooltip.
             Option<Boolean> impacted = option("Impacted");
             bound(impacted, 30);
             when(impacted.getImpact()).thenReturn(OptionImpact.HIGH);
@@ -2400,11 +2400,11 @@ class ControlTest {
             assertTrue(draw.strings.stream().anyMatch(s -> s.startsWith("impetus.options.added_by_mod_string")), draw.strings::toString);
             // One box of two lines and the padding
             assertEquals(List.of(2 * 12 + 3), tooltipBoxHeights(draw), draw.calls::toString);
-            // Having none is not a failure, so it is asked again and drawn again
+            // Checks it is asked again.
             draw.strings.clear();
             hoverPastTheDelay(frame, draw, 100, 27);
             assertTrue(draw.strings.stream().anyMatch(s -> s.startsWith("impetus.options.performance_impact_string")), draw.strings::toString);
-            // Nothing at all to say draws no box, where a box of padding alone used to be drawn
+            // Checks no box.
             Option<Boolean> bare = option("Bare");
             bound(bare, 30);
             OptionPageFrame plain = new OptionPageFrame(new Dim2i(0, 0, 200, 300), false, page(bare), o -> true);
@@ -2423,14 +2423,14 @@ class ControlTest {
     void aTooltipFailureOfAnOptionWithNoIdIsReportedUnderItsName() throws Throwable {
         withFrameLogger(logger -> {
             IllegalStateException failure = new IllegalStateException("no tooltip");
-            // No id at all, which used to be reported as null
+            // Checks no id.
             Option<Boolean> idless = option("Idless");
             bound(idless, 30);
             when(idless.getTooltip()).thenThrow(failure);
             hoverPastTheDelay(new OptionPageFrame(new Dim2i(0, 0, 200, 300), false, page(idless), o -> true), new FakeDrawContext(), 100, 27);
             verify(logger).error(eq(TOOLTIP_LOG), eq("Idless"), same(failure));
             assertEquals("Tooltip failed: Idless", tooltipToasts().getLast().title());
-            // The empty id an option built without one carries, which used to be reported as a lone colon
+            // Checks the empty id.
             Option<Boolean> empty = option("Empty");
             bound(empty, 30);
             when(empty.getId()).thenAnswer(invocation -> OptionIdentifier.EMPTY);
@@ -2438,7 +2438,7 @@ class ControlTest {
             hoverPastTheDelay(new OptionPageFrame(new Dim2i(0, 0, 200, 300), false, page(empty), o -> true), new FakeDrawContext(), 100, 27);
             verify(logger).error(eq(TOOLTIP_LOG), eq("Empty"), same(failure));
             assertEquals("Tooltip failed: Empty", tooltipToasts().getLast().title());
-            // A translated name is named by its key, as the rest of the failure reports name it
+            // Checks a translated name.
             Option<Boolean> keyed = option("Unused");
             bound(keyed, 30);
             when(keyed.getName()).thenReturn(TextComponent.translatable(MOD + ".keyed"));
@@ -2457,7 +2457,7 @@ class ControlTest {
             assertEquals(prefix + "first", tooltipToastLine(new IllegalStateException("first\r\nsecond")));
             IllegalStateException huge = new IllegalStateException("x".repeat(100_000));
             assertEquals((prefix + "x".repeat(256)).substring(0, 256), tooltipToastLine(huge));
-            // A surrogate pair across the limit is left out whole, and one ending at it stays
+            // Checks surrogate pairs.
             String across = "x".repeat(255 - prefix.length()) + "😀tail";
             assertEquals(prefix + "x".repeat(255 - prefix.length()), tooltipToastLine(new IllegalStateException(across)));
             String ending = "x".repeat(254 - prefix.length()) + "😀tail";
@@ -2483,13 +2483,13 @@ class ControlTest {
             FaultyPage page = FaultyPage.of("Half");
             page.row().pushesFirst = true;
             page.arm("render");
-            // Translated, so the placeholder's label leaves its name room to be drawn
+            // Checks the translated label.
             Language draw = new Language("Open");
-            // A clip and a transform around the page, as the scrolling frame holds
+            // Checks the outer clip and transform.
             draw.enableScissor(0, 0, 200, 300);
             draw.pushMatrix();
             page.frame().render(draw, -1, -1, 0f);
-            // Back to what was pushed around the page, and no further
+            // Checks the unwind.
             assertEquals(1, draw.matrixDepth);
             assertEquals(1, draw.scissorDepth);
             // The row's two transforms and its scissor came off before the placeholder drew its name
@@ -2518,7 +2518,7 @@ class ControlTest {
         BasicFrame frame = BasicFrame.createBuilder().setDimension(new Dim2i(0, 0, 100, 100)).addChild(dim -> widget).build();
         FakeDrawContext draw = new FakeDrawContext();
         assertSame(failure, assertThrows(IllegalStateException.class, () -> frame.render(draw, 0, 0, 0f)));
-        // Nothing is drawn after it, so nothing is unwound on the way out either
+        // Checks nothing after it.
         assertEquals(1, draw.matrixDepth);
     }
 
@@ -2556,7 +2556,7 @@ class ControlTest {
             Control.reportBroken(option, "undoing changes", new IllegalStateException("again"));
             verify(logger, times(1)).error(eq("Option {} failed while {}"), eq("Elsewhere"), eq("applying"), same(failure));
             assertEquals(List.of("Option failed: Elsewhere"), toasts().stream().map(ImpetusNotification::title).toList());
-            // Its rows are placeholders from now on, made without asking its control
+            // Checks later rows are placeholders.
             clearInvocations(option);
             for (int i = 0; i < 3; i++) {
                 ControlElement<Boolean> row = Control.createElementOrPlaceholder(option, DIM.withY(i * 18));
@@ -2566,7 +2566,7 @@ class ControlTest {
             assertEquals(0, probe.creations);
             assertEquals(0, probe.optionReads);
             verify(option, never()).getControl();
-            // The strict path still makes its element, for callers that check rather than show
+            // Checks the strict path.
             assertFalse(Control.createElementFor(option, DIM) instanceof PlaceholderControlElement<?>);
             // A failure reported for an option whose control already failed adds no second report
             Option<Boolean> both = option("Both");

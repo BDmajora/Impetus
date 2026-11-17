@@ -119,7 +119,7 @@ class UmbraRenderingPipelineTest {
         lightmapTexUnit = OpenGlHelper.lightmapTexUnit;
         OpenGlHelper.defaultTexUnit = GL13.GL_TEXTURE0;
         OpenGlHelper.lightmapTexUnit = GL13.GL_TEXTURE0 + 1;
-        // The shadow pass enters the engine's managed scope, whose device must exist but start inactive
+        // Makes the device inactive.
         Devices.active().makeInactive();
         gl11 = Mockito.mockStatic(GL11.class);
         gl13 = Mockito.mockStatic(GL13.class);
@@ -135,7 +135,7 @@ class UmbraRenderingPipelineTest {
         Mockito.doNothing().when(TestGl.gl()).glEnablei(anyInt(), anyInt());
         Mockito.doNothing().when(TestGl.gl()).glDisablei(anyInt(), anyInt());
         Mockito.doNothing().when(TestGl.gl()).glBlendFuncSeparatei(anyInt(), anyInt(), anyInt(), anyInt(), anyInt());
-        // Every program declares every uniform and sampler it is offered, at location 1
+        // Declares every uniform at location 1.
         when(TestGl.gl().glGetUniformLocation(anyInt(), any(CharSequence.class))).thenReturn(1);
         // GL_CURRENT_PROGRAM answers whatever was last bound
         Mockito.doAnswer(invocation -> boundProgram[0] = invocation.getArgument(0)).when(TestGl.gl()).glUseProgram(anyInt());
@@ -229,11 +229,11 @@ class UmbraRenderingPipelineTest {
         sources.put(path("/prepare.vsh"), LEGACY_VERTEX);
         sources.put(path("/prepare.fsh"), "#version 120\n/* DRAWBUFFERS:9 */\nvoid main() { gl_FragData[0] = vec4(1.0); }");
         sources.put(path("/prepare.csh"), "#version 430\nlayout(local_size_x = 4) in;\nconst int workGroupsX = 3;\nvoid main() {}");
-        // The voxel volume is 16^3 at local 8x8x1: a declared 1x1x1 does not cover it and is widened
+        // Checks a widened voxel work group.
         sources.put(path("/shadowcomp.csh"), "#version 430\nlayout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;\nconst ivec3 workGroups = ivec3(1, 1, 1);\nvoid main() { imageStore(colorimg4, ivec2(0), vec4(0)); imageStore(shadowcolorimg2, ivec2(0), vec4(0)); imageStore(shadowcolorimg6, ivec2(0), vec4(0)); }");
         sources.put(path("/shadowcomp_a.csh"), "#version 430\nlayout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;\nvoid main() {}");
         sources.put(path("/shadowcomp1.vsh"), LEGACY_VERTEX);
-        // shadowcolor2 exists under HIGHER_SHADOWCOLOR; 9 is past even Iris's eight and is dropped
+        // Checks the shadowcolor buffers.
         sources.put(path("/shadowcomp1.fsh"), "#version 120\n/* DRAWBUFFERS:029 */\nvoid main() { gl_FragData[0] = vec4(1.0); }");
         sources.put(path("/deferred.vsh"), "#version 330 compatibility\nvoid main() { gl_Position = ftransform(); }");
         sources.put(path("/deferred.fsh"), "#version 330 compatibility\n/* RENDERTARGETS: 0,4 */\nlayout(location = 0) out vec4 color;\nlayout(location = 1) out vec4 aux;\nuniform sampler2D colortex4;\nvoid main() { color = vec4(1.0); aux = vec4(0.0); }");
@@ -287,7 +287,7 @@ class UmbraRenderingPipelineTest {
             sources.put(path("/" + gbuffer + ".vsh"), "#version 120\nattribute vec4 mc_Entity;\nvoid main() { gl_Position = ftransform(); }");
             sources.put(path("/" + gbuffer + ".fsh"), "#version 120\n/* DRAWBUFFERS:024 */\nuniform sampler2D gaux1;\nvoid main() { gl_FragData[0] = vec4(1.0); }");
         }
-        // A tessellated entity program: both stages compile, and immediate draws under it become patches
+        // Checks a tessellated entity program.
         sources.put(path("/gbuffers_entities.tcs"), "#version 400 compatibility\nlayout(vertices = 3) out;\nvoid main() {}");
         sources.put(path("/gbuffers_entities.tes"), "#version 400 compatibility\nlayout(triangles) in;\nvoid main() {}");
         sources.put(path("/gbuffers_terrain.vsh"), "#version 120\nvoid main() { gl_Position = ftransform(); }");
@@ -315,10 +315,10 @@ class UmbraRenderingPipelineTest {
         return new ShaderPack(sources, Map.of(), Map.of(path("/tex/noise.png"), png()));
     }
 
-    // The world the frame renders: a player in it, a pig and a dead cow nearby, a furnace with no renderer
+    // Places the player and mobs and a furnace.
     private void enterWorld() {
         WorldClient world = mock(WorldClient.class);
-        // Every built-in uniform supplier runs, so the world answers what they read
+        // Stubs the world for the built in uniforms.
         Mixins.set(world, "provider", mock(net.minecraft.world.WorldProvider.class));
         when(world.getBiome(any())).thenReturn(net.minecraft.init.Biomes.PLAINS);
         when(world.getBlockState(any())).thenReturn(net.minecraft.init.Blocks.AIR.getDefaultState());
@@ -402,14 +402,14 @@ class UmbraRenderingPipelineTest {
         enterWorld();
         for (int frame = 0; frame < 2; frame++) {
             renderFrame(pipeline);
-            // The second frame runs at a new size, rebuilding the screen-relative resources, with wide-gamut output on
+            // Renders a second frame at a new size.
             client.displayWidth = 400;
             client.displayHeight = 300;
             ColorSpaceConverter.setColorSpace(ColorSpaceConverter.ColorSpace.DCI_P3);
         }
         verify(TestGl.gl(), Mockito.atLeastOnce()).glDispatchCompute(anyInt(), anyInt(), anyInt());
         verify(TestGl.gl(), Mockito.atLeastOnce()).glDispatchComputeIndirect(anyLong());
-        // The shadow pass walks both lists through setupShadowTerrain, the player's walk with the player's view (unculled, this pack turns frustum culling off), never through the camera pass's entry
+        // Checks the shadow pass entity walk.
         ImpetusWorldRenderer worldRenderer = ImpetusWorldRenderer.instanceNullable();
         ArgumentCaptor<Viewport> playerView = ArgumentCaptor.forClass(Viewport.class);
         verify(worldRenderer, Mockito.atLeastOnce()).setupShadowTerrain(playerView.capture(), any(), any(), anyInt(), eq(false));
@@ -425,7 +425,7 @@ class UmbraRenderingPipelineTest {
         });
         pipeline.applyShadowSamplerKinds(ShadowSamplerKinds.detect(77), false);
         UmbraShadowRenderer shadow = pipeline.getShadowRenderer();
-        // Eight addressable shadowcolor buffers; only the touched ones exist, each in its own format
+        // Checks the shadowcolor buffer count.
         assertEquals(8, shadow.getColorBufferCount());
         assertNotEquals(0, shadow.getColorTextureId(2));
         assertNotEquals(0, shadow.getColorTextureId(3));
@@ -488,7 +488,7 @@ class UmbraRenderingPipelineTest {
         boundProgram[0] = 0;
         pipeline.refreshDynamicUniforms();
 
-        // Terrain draws redirect the gbuffer mask, including a target nothing attached
+        // Checks the terrain draw buffers.
         pipeline.onTerrainDraw(new int[] {0, 2, 9}, ProgramBlendState.empty());
         pipeline.onTerrainDraw(new int[] {0, 6}, ProgramBlendState.from(ShaderProperties.parse("blend.w = ONE ONE"), "w"),
                 ProgramAlphaTest.from(ShaderProperties.parse("alphaTest.w = GREATER 0.5"), "w"), true);
@@ -526,7 +526,7 @@ class UmbraRenderingPipelineTest {
         assertFalse(pipeline.isWorldRenderingActive());
     }
 
-    // No shadow pass, no deferred chain, no final program: colortex0 is blitted, prepare runs before the (absent) shadow map
+    // Checks a minimal pack.
     @Test
     void aMinimalPackFallsBackOnEveryOptionalStage() {
         Map<AbsolutePackPath, String> sources = new HashMap<>();
@@ -540,7 +540,7 @@ class UmbraRenderingPipelineTest {
         sources.put(path("/shadowcomp.vsh"), LEGACY_VERTEX);
         sources.put(path("/shadowcomp.fsh"), "#version 120\nvoid main() { gl_FragData[0] = vec4(1.0); }");
         sources.put(path("/composite.vsh"), LEGACY_VERTEX);
-        // colortex0 keeps last frame's contents and ends the chain flipped, so it is copied back after final
+        // Checks colortex0 is copied back.
         sources.put(path("/composite.fsh"), "#version 120\n/* DRAWBUFFERS:0 */\nconst bool colortex0Clear = false;\nvoid main() { gl_FragData[0] = vec4(1.0); }");
         sources.put(path("/final.vsh"), LEGACY_VERTEX);
         sources.put(path("/final.fsh"), "#version 120\nvoid main() { gl_FragColor = vec4(1.0); }");
@@ -555,7 +555,7 @@ class UmbraRenderingPipelineTest {
         pipeline.beginTranslucents();
         assertFalse(pipeline.isRenderingPostDeferredTranslucents());
         assertEquals(ProgramId.Entities, pipeline.getTranslucentEntityPhase());
-        // No hand program: fixed-function into colortex0
+        // Checks the hand without a program.
         assertTrue(pipeline.beginHandRendering());
         pipeline.endHandRendering();
         pipeline.applyShadowSamplerKinds(ShadowSamplerKinds.ALL_COMPARE, false);
@@ -583,7 +583,7 @@ class UmbraRenderingPipelineTest {
         assertTrue(stabilized.contains("vec4 lightVolume = vec4(0.0);"), stabilized);
         assertTrue(stabilized.contains("textureGrad(tex, uv, dx, dy)"), stabilized);
         assertTrue(stabilized.contains("textureLod(tex, uv, 0.0)"), stabilized);
-        // GLSL 120 keeps the ARB names, which only exist there
+        // Checks the GLSL 120 names.
         String legacy = "#version 120\nvec4 a = texture2DLodARB(tex, uv, 0.0);";
         assertEquals(legacy, ShaderSourceFixes.stabilize("x", legacy));
         assertEquals("void main() {}", ShaderSourceFixes.stabilize("x", "void main() {}"));

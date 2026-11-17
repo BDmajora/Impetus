@@ -128,7 +128,7 @@ public final class ModernBlockNames {
         return translated;
     }
 
-    // Legacies the tokens for.
+    // Returns the 1.12 block names a modern name with these state predicates stands for.
     private static String[] legacyTokensFor(String name, Map<String, String> predicates) {
         if ("true".equals(predicates.get("lit"))) {
             if ("redstone_lamp".equals(name)) {

@@ -8,20 +8,20 @@ import java.io.File;
 
 // Entry point of the Extras module.
 public final class Extras {
-    // Constant logger.
+    // Logger of the Extras module.
     public static final Logger LOGGER = LogManager.getLogger("Impetus/Extras");
 
-    // Constant file name.
+    // Name of the Extras config file in the config folder.
     private static final String FILE_NAME = "impetus-extras.cfg";
 
-    // Choice of the config option.
+    // Loaded config or null before the first use.
     private static volatile ExtrasConfig config;
 
     // Prevents instantiation
     private Extras() {
     }
 
-    // Handles the options.
+    // Returns the loaded config and loads it on first use.
     public static ExtrasConfig options() {
         ExtrasConfig loaded = config;
         if (loaded == null) {
@@ -46,7 +46,7 @@ public final class Extras {
         options().writeChanges();
     }
 
-    // Handles the config file.
+    // Returns the Extras config file in the config folder.
     private static File configFile() {
         return PropertiesConfig.configFile(LOGGER, FILE_NAME);
     }

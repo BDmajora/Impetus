@@ -4,19 +4,19 @@ import io.netty.buffer.ByteBuf;
 
 // Reusable buffers for packet decompression.
 public final class CompressionScratch {
-    // Constant initial.
+    // Starting size of the copy buffer.
     private static final int INITIAL = 8192;
-    // Constant retain limit.
+    // Largest copy buffer kept between packets.
     private static final int RETAIN_LIMIT = 1 << 20;
 
-    // Choice of the scratch option.
+    // Copy buffer for packets that have no backing array.
     private byte[] scratch = new byte[INITIAL];
 
-    // Choice of the array option.
+    // Array holding the loaded bytes.
     public byte[] array;
-    // Value of the offset option.
+    // Offset of the loaded bytes in the array.
     public int offset;
-    // Value of the length option.
+    // Number of loaded bytes.
     public int length;
 
     // Loads the value.

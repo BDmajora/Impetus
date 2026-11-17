@@ -782,25 +782,25 @@ public final class CommonUniforms {
                 LWJGL.glGetInteger(GL_BLEND_DST_ALPHA));
     }
 
-    // Returns whether right handed.
+    // Returns 1 when the main hand is the right one.
     private static int isRightHanded() {
         EntityPlayer player = player();
         return bool(player == null || player.getPrimaryHand() == EnumHandSide.RIGHT);
     }
 
-    // Returns whether sneaking.
+    // Returns 1 while the player sneaks.
     private static int isSneaking() {
         EntityPlayer player = player();
         return bool(player != null && player.isSneaking());
     }
 
-    // Returns whether sprinting.
+    // Returns 1 while the player sprints.
     private static int isSprinting() {
         EntityPlayer player = player();
         return bool(player != null && player.isSprinting());
     }
 
-    // Returns whether hurt.
+    // Returns 1 while the player's hurt time runs.
     private static int isHurt() {
         EntityPlayer player = player();
         return bool(player != null && player.hurtTime > 0);
@@ -812,25 +812,25 @@ public final class CommonUniforms {
         return player != null && (player.hurtTime > 0 || player.deathTime > 0) ? 0.4f : 0.0f;
     }
 
-    // Returns whether invisible.
+    // Returns 1 while the player is invisible.
     private static int isInvisible() {
         EntityPlayer player = player();
         return bool(player != null && player.isInvisible());
     }
 
-    // Returns whether burning.
+    // Returns 1 while the player is on fire.
     private static int isBurning() {
         EntityPlayer player = player();
         return bool(player != null && player.isBurning());
     }
 
-    // Returns whether on ground.
+    // Returns 1 while the player stands on the ground.
     private static int isOnGround() {
         EntityPlayer player = player();
         return bool(player != null && player.onGround);
     }
 
-    // Returns whether feet in water.
+    // Returns 1 while the player's feet are in water.
     private static int isFeetInWater() {
         EntityPlayer player = player();
         World world = world();
@@ -841,25 +841,25 @@ public final class CommonUniforms {
         return bool(world.isBlockLoaded(feet) && world.getBlockState(feet).getMaterial() == Material.WATER);
     }
 
-    // Returns whether in swimming animation.
+    // Returns 0.
     private static int isInSwimmingAnimation() {
         EntityPlayer player = player();
         return bool(player != null && player.isInWater());
     }
 
-    // Returns whether riding.
+    // Returns 1 while the player rides something.
     private static int isRiding() {
         EntityPlayer player = player();
         return bool(player != null && player.isRiding());
     }
 
-    // Returns whether elytra flying.
+    // Returns 1 while the player glides with an elytra.
     private static int isElytraFlying() {
         EntityPlayer player = player();
         return bool(player != null && player.isElytraFlying());
     }
 
-    // Returns whether vehicle in water.
+    // Returns 1 while the player's mount is in water.
     private static int isVehicleInWater() {
         Entity vehicle = vehicle();
         return bool(vehicle != null && vehicle.isInWater());
@@ -897,7 +897,7 @@ public final class CommonUniforms {
         return player == null ? null : player.getRidingEntity();
     }
 
-    // Returns whether survival like.
+    // Returns whether the player is in survival or adventure.
     private static boolean isSurvivalLike() {
         Minecraft mc = Minecraft.getMinecraft();
         return mc.player != null && mc.playerController != null && mc.playerController.isNotCreative()
@@ -955,12 +955,12 @@ public final class CommonUniforms {
         return isSurvivalLike() ? 300.0f : -1.0f;
     }
 
-    // Returns whether first person camera.
+    // Returns 1 in first person view.
     private static int isFirstPersonCamera() {
         return bool(Minecraft.getMinecraft().gameSettings.thirdPersonView == 0);
     }
 
-    // Returns whether spectator.
+    // Returns 1 for a spectator.
     private static int isSpectator() {
         Minecraft mc = Minecraft.getMinecraft();
         return bool(mc.playerController != null && mc.playerController.isSpectator());
@@ -972,7 +972,7 @@ public final class CommonUniforms {
         return world == null ? 0.0f : MathUtil.clamp(world.getThunderStrength(CapturedRenderingState.INSTANCE.getTickDelta()), 0.0f, 1.0f);
     }
 
-    // Returns whether heavy fog.
+    // Returns 1 under blindness or in lava.
     private static int isHeavyFog() {
         return bool(getBlindness() > 0.0f || isEyeInWater() == 2);
     }
@@ -1164,7 +1164,7 @@ public final class CommonUniforms {
         return chunks > 0 ? chunks : Minecraft.getMinecraft().gameSettings.renderDistanceChunks;
     }
 
-    // Returns whether fog enabled.
+    // Returns whether fixed function fog is on.
     private static boolean isFogEnabled() {
         return LWJGL.glGetInteger(GL11.GL_FOG) != 0;
     }
@@ -1278,7 +1278,7 @@ public final class CommonUniforms {
         return camera == null ? 0.0f : (float) (camera.posY + camera.getEyeHeight());
     }
 
-    // Returns whether eye in water.
+    // Returns 1 with the camera under water and 2 in lava and 0 otherwise.
     private static int isEyeInWater() {
         Entity camera = Minecraft.getMinecraft().getRenderViewEntity();
         World world = world();
@@ -1436,13 +1436,13 @@ public final class CommonUniforms {
         return world == null ? 256 : world.getActualHeight();
     }
 
-    // Returns whether ceiling.
+    // Returns 1 when the dimension has a ceiling.
     private static int hasCeiling() {
         World world = world();
         return bool(world != null && !world.provider.isSurfaceWorld());
     }
 
-    // Returns whether skylight.
+    // Returns 1 when the dimension has sky light.
     private static int hasSkylight() {
         World world = world();
         return bool(world == null || world.provider.isSurfaceWorld());

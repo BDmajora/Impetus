@@ -8,10 +8,10 @@ import com.bdmajora.impetus.engine.impl.render.mesh.MeshTerrainShading;
 import java.util.ArrayList;
 import java.util.List;
 
-// Mesh shading that records what the pipeline asks of it, standing in for a shader pack's translated programs
+// Mesh shading that records calls.
 public final class RecordingShading implements MeshTerrainShading {
     public final List<String> calls = new ArrayList<>();
-    // What the binds answer, and whether there are shadow programs
+    // Bind answers.
     public boolean bound = true;
     public boolean shadows = true;
 

@@ -38,14 +38,14 @@ class CoarctatioCoreTest {
     @Test
     void theConfigStartsFromDefaultsAndWritesEverySwitchBack() throws Exception {
         CoarctatioConfig config = CoarctatioConfig.get();
-        // Cached, so every reader shares one instance
+        // Checks the config is cached.
         assertSame(config, CoarctatioConfig.get());
         assertTrue(config.deduplicateResourceLocations);
         assertFalse(config.dynamicModels);
         assertEquals(12, config.nbtArrayMapThreshold);
         assertArrayEquals(new String[] {"jds.bibliocraft"}, config.blockStateBlacklist);
 
-        // A fresh file lists every switch, so a user who never opened it still discovers them
+        // Checks a fresh file lists every switch.
         Path file = dir.resolve("config/impetus-coarctatio.cfg");
         assertTrue(Files.isRegularFile(file));
         String written = Files.readString(file);
@@ -87,7 +87,7 @@ class CoarctatioCoreTest {
         assertTrue(plain.stream().anyMatch(line -> line.contains("NBT keys")));
         assertTrue(plain.stream().noneMatch(line -> line.contains("Block states")));
 
-        // With the state and model features on, their own counters are appended
+        // Turns the state and model features on.
         CoarctatioConfig.get().optimizeBlockStates = true;
         CoarctatioConfig.get().dynamicModels = true;
         List<String> full = Coarctatio.statistics();
@@ -114,7 +114,7 @@ class CoarctatioCoreTest {
         assertTrue(MemoryReport.totalBytes() > 0);
         assertTrue(MemoryReport.summary().endsWith("MB"));
 
-        // Megabytes above a megabyte, kilobytes below, so a small saving does not read as nothing
+        // Checks the size units.
         assertEquals("1.0 MB", MemoryReport.mib(1024L * 1024L));
         assertEquals("512 KB", MemoryReport.mib(512L * 1024L));
         assertNotNull(Mixins.construct(MemoryReport.class));
@@ -122,16 +122,16 @@ class CoarctatioCoreTest {
 
     @Test
     void definingIntoAnotherPackageReusesWhatIsAlreadyThere() {
-        // The property map ships with us and is already loaded, so the injection finds it rather than defining it twice
+        // Checks the shipped property map is found.
         Class<?> defined = ClassDefineTool.defineClass(ImmutableMap.class, "com.google.common.collect.CoarctatioPropertyMap");
         assertNotNull(defined);
         assertSame(defined, ClassDefineTool.defineClass(ImmutableMap.class, "com.google.common.collect.CoarctatioPropertyMap"));
-        // A class we do not ship has no bytecode to read, which is a refusal rather than a crash
+        // Checks an unshipped class is refused.
         assertNull(ClassDefineTool.defineClass(ImmutableMap.class, "com.google.common.collect.NotOurs"));
         assertNotNull(Mixins.construct(ClassDefineTool.class));
         // Bytes that are not a class are refused
         assertNull(Mixins.call(ClassDefineTool.class, "defineWithLookup", ImmutableMap.class, new byte[] {1, 2, 3}));
-        // A host in a named module that does not open its package (java.base) refuses the private lookup, which is logged once and not fatal
+        // Checks a closed module host.
         assertNull(ClassDefineTool.defineClass(String.class, "com.google.common.collect.CoarctatioPropertyMap"));
     }
 }

@@ -1,5 +1,6 @@
 package com.bdmajora.coarctatio.mixin.client.model;
 
+import com.bdmajora.coarctatio.CoarctatioConfig;
 import com.bdmajora.coarctatio.collections.CollectionHelper;
 import com.bdmajora.coarctatio.dedup.TransformCaches;
 import net.minecraft.client.renderer.block.model.BakedQuad;
@@ -48,8 +49,11 @@ public class SimpleBakedModelMixin {
     // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void coarctatio$compactQuadLists(CallbackInfo ci) {
-        this.cameraTransforms = TransformCaches.TRANSFORMS.deduplicate(this.cameraTransforms);
-        this.itemOverrideList = TransformCaches.deduplicate(this.itemOverrideList);
+        // Shares the transforms and overrides when their switch is on.
+        if (CoarctatioConfig.get().deduplicateModelTransforms) {
+            this.cameraTransforms = TransformCaches.TRANSFORMS.deduplicate(this.cameraTransforms);
+            this.itemOverrideList = TransformCaches.deduplicate(this.itemOverrideList);
+        }
 
         this.generalQuads = CollectionHelper.fixed(this.generalQuads);
 

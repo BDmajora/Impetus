@@ -57,7 +57,7 @@ class ProgramLayoutTest {
         SamplerLimits.reset();
         ImageLimits.reset();
         Mc.client();
-        // GlStateManager indexes its unit cache relative to this, which the game sets to GL_TEXTURE0 at startup
+        // Reads the default texture unit.
         defaultTexUnit = net.minecraft.client.renderer.OpenGlHelper.defaultTexUnit;
         net.minecraft.client.renderer.OpenGlHelper.defaultTexUnit = GL13.GL_TEXTURE0;
     }
@@ -70,7 +70,7 @@ class ProgramLayoutTest {
         ImageLimits.reset();
     }
 
-    // The program declares these uniforms with these GL types, each at location index + 1
+    // Declares the uniforms with their GL types.
     private static void declare(Map<String, Integer> uniforms) {
         List<String> names = List.copyOf(uniforms.keySet());
         when(TestGl.gl().glGetProgrami(PROGRAM, GL_ACTIVE_UNIFORMS)).thenReturn(names.size());
@@ -118,7 +118,7 @@ class ProgramLayoutTest {
         float[] time = {0.4F};
         builder.uniform1f(UniformUpdateFrequency.PER_FRAME, "f", () -> time[0])
                 .uniform1i(UniformUpdateFrequency.PER_TICK, "i", () -> 1)
-                // A float provider for an int declaration is rounded, an int provider for a float one widened
+                // Checks the provider type conversion.
                 .uniform1f(UniformUpdateFrequency.PER_FRAME, "framemod8", () -> 2.6F)
                 .uniform1i(UniformUpdateFrequency.PER_TICK, "worldTime", () -> 6000)
                 // Any other disagreement drops the uniform
@@ -151,7 +151,7 @@ class ProgramLayoutTest {
         verify(TestGl.gl(), never()).glUniform2f(eq(5), anyFloat(), anyFloat());
         verify(TestGl.gl()).glUniform2f(eq(6), anyFloat(), anyFloat());
         int dynamic = ProgramUniforms.dynamicPass();
-        // Nothing is due again within the same frame and tick, except the dynamic bucket
+        // Checks nothing is due twice in a frame.
         time[0] = 0.9F;
         uniforms.update();
         assertEquals(dynamic + 1, ProgramUniforms.dynamicPass());
@@ -169,7 +169,7 @@ class ProgramLayoutTest {
         // The per-object bucket holds only the material ids and colours
         uniforms.updatePerObject();
         verify(TestGl.gl(), times(1)).glUniform1i(14, 7);
-        // Ids and colours can all be written into the program by name, which shares the change test
+        // Checks the per object uniforms.
         assertTrue(uniforms.canUpdatePerObjectIn());
         uniforms.updatePerObjectIn(PROGRAM);
         verify(TestGl.gl(), never()).glProgramUniform1i(anyInt(), anyInt(), anyInt());
@@ -191,7 +191,7 @@ class ProgramLayoutTest {
         when(TestGl.gl().glGetInteger(0x8824)).thenReturn(8);
         assertEquals(4, SamplerLimits.get().getMaxTextureUnits());
         assertEquals(8, SamplerLimits.get().getMaxDrawBuffers());
-        // Unit 1 belongs to the lightmap, unit 9 does not exist on this driver
+        // Reserves units 1 and 9.
         ProgramSamplers.Builder builder = ProgramSamplers.builder(PROGRAM, Set.of(1, 9));
         assertTrue(builder.hasSampler("gtexture"));
         assertFalse(builder.hasSampler("shadowtex0"));
@@ -204,7 +204,7 @@ class ProgramLayoutTest {
         assertFalse(builder.addDynamicSampler(() -> 12, "shadowtex0"));
         assertTrue(builder.addDynamicSampler(GL12.GL_TEXTURE_3D, () -> 13, "colortex2"));
         assertTrue(builder.addDynamicSampler(() -> 14, "colortex1"));
-        // Out of units: this and every later one reads unit 0, reported once
+        // Checks running out of units.
         assertFalse(builder.addDynamicSampler(() -> 15, "colortex3"));
         assertFalse(builder.addDynamicSampler(() -> 16, "colortex4"));
         ProgramSamplers samplers = builder.build();
@@ -265,7 +265,7 @@ class ProgramLayoutTest {
         assertTrue(kinds.isRaw(0));
         assertFalse(kinds.isRaw(1));
 
-        // With watershadow declared, `shadow` means shadowtex1
+        // Checks the watershadow mapping.
         Map<String, Integer> water = new LinkedHashMap<>();
         water.put("watershadow", 0x8B62);
         water.put("shadow", 0x8B5E);
@@ -285,7 +285,7 @@ class ProgramLayoutTest {
     @Test
     void textureUnitsKeepTheStateCacheHonest() {
         try (MockedStatic<GL11> gl11 = Mockito.mockStatic(GL11.class); MockedStatic<GL13> gl13 = Mockito.mockStatic(GL13.class)) {
-            // A negative unit, from an exhausted allocator, is refused rather than corrupting the cache
+            // Checks a negative unit is refused.
             GlTextureUnits.selectScratch(-1);
             GlTextureUnits.bindTextureInRun(-1, GL11.GL_TEXTURE_2D, 3);
             GlTextureUnits.selectScratch(2);

@@ -9,7 +9,7 @@ import org.spongepowered.asm.mixin.Unique;
 // Mixin that changes IntCache.
 @Mixin(IntCache.class)
 public abstract class IntCacheMixin {
-    // Field pool added to the target.
+    // IntCache pool of each thread.
     @Unique
     private static final ThreadLocal<IntCachePool> equilibrium$pool = ThreadLocal.withInitial(IntCachePool::new);
 

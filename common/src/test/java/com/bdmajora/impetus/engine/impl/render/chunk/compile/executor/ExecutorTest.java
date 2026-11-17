@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class ExecutorTest {
     private static final RenderSection SECTION = new RenderSection(null, 0, 0, 0);
 
-    // A task that produces an empty sort output, or null when asked to behave as cancelled, or throws
+    // Task with a chosen outcome.
     private static ChunkBuilderTask<ChunkSortOutput> task(String mode) {
         return new ChunkBuilderTask<>() {
             @Override
@@ -52,7 +52,7 @@ class ExecutorTest {
         assertInstanceOf(ChunkJobResult.Success.class, results.get(0));
         new ChunkJobTyped<>(task("throw"), results::add).execute(context());
         assertInstanceOf(ChunkJobResult.Failure.class, results.get(1));
-        // A job cancelled mid-run or before it starts still reports, with no result, so a waiting collector wakes
+        // Checks a cancelled job.
         new ChunkJobTyped<>(task("null"), results::add).execute(context());
         assertEquals(3, results.size());
         assertNull(results.get(2));
@@ -83,7 +83,7 @@ class ExecutorTest {
         assertEquals(2, builder.getScheduledJobCount());
         assertFalse(builder.isBuildQueueEmpty());
         assertEquals(0, builder.getSchedulingBudget());
-        // Sorts are never starved completely, even with the mesh budget spent
+        // Checks sorts are not starved.
         assertEquals(4, builder.getSortSchedulingBudget());
         builder.tryStealTask(job);
         assertEquals(1, results.size());

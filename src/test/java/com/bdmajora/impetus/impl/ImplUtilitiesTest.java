@@ -155,17 +155,17 @@ class ImplUtilitiesTest {
             gl11.verify(() -> GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST));
             gl11.verify(() -> GL11.glTexParameterf(GL11.GL_TEXTURE_2D, EXTTextureFilterAnisotropic.GL_TEXTURE_MAX_ANISOTROPY_EXT, 1.0f));
 
-            // Without mipmaps minification is plain nearest, and linear magnification follows the option
+            // Checks the filtering without mipmaps.
             settings.mipmapLevels = 0;
             ImpetusRuntimeOptions.pixelFiltering = ImpetusGameOptions.PixelFilteringMode.LINEAR;
             BlockAtlasFiltering.apply(8);
             gl11.verify(() -> GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST));
             gl11.verify(() -> GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR));
-            // No texture, nothing bound
+            // Checks a missing texture.
             BlockAtlasFiltering.apply(0);
             gl11.verify(() -> GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0), never());
 
-            // A driver without the extension, or no context at all, skips the anisotropy reset
+            // Checks a driver without anisotropy.
             Mixins.set(BlockAtlasFiltering.class, "anisotropySupported", null);
             gl.when(GL::getCapabilities).thenReturn(TestCaps.with(TestCaps.all(), "GL_EXT_texture_filter_anisotropic", false));
             BlockAtlasFiltering.apply(9);

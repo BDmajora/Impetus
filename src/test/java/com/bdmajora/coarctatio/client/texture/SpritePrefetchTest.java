@@ -47,8 +47,7 @@ class SpritePrefetchTest {
         SpritePrefetch.clear();
     }
 
-    // A sprite the prefetch can read, without going near Mockito: instrumenting the sprite class would undo the
-    // constructor the harness adds to it
+    // Returns a sprite the prefetch can read.
     private static TextureAtlasSprite sprite(String name) {
         TextureAtlasSprite sprite = Mc.uninitialized(TextureAtlasSprite.class);
         Mixins.set(sprite, "iconName", name);
@@ -88,11 +87,11 @@ class SpritePrefetchTest {
         assertTrue(prefetched.hasMetadata());
         assertEquals(16, prefetched.sizeInfo().pngWidth);
         assertEquals(16, prefetched.sizeInfo().pngHeight);
-        // The animation section was read ahead of time; anything else reopens the real resource
+        // Checks the prefetched metadata.
         assertSame(animation, prefetched.getMetadata("animation"));
         assertNull(prefetched.getMetadata("texture"));
 
-        // The decoded image is handed over once, and a second reader falls back to the file
+        // Checks the image is handed over once.
         BufferedImage taken = prefetched.takeImage();
         assertNotNull(taken);
         assertEquals(0xFF00FF00, taken.getRGB(3, 4));
@@ -116,7 +115,7 @@ class SpritePrefetchTest {
         try (InputStream stream = prefetched.getInputStream()) {
             assertInstanceOf(SpritePrefetch.PrefetchedStream.class, stream);
             assertSame(prefetched, ((SpritePrefetch.PrefetchedStream) stream).resource());
-            // The frame loader recognises the stream and takes the image; any other reader gets the bytes
+            // Checks the stream fallback.
             assertEquals(png[0] & 0xFF, stream.read());
             byte[] rest = new byte[7];
             assertEquals(7, stream.read(rest, 0, 7));

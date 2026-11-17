@@ -23,9 +23,9 @@ public abstract class VariantLoaderDynamicMixin {
     @Shadow
     private ModelLoader loader;
 
-    // Value weighted model.
+    // Constructor of ModelLoader$WeightedRandomModel.
     private static final MethodHandle WEIGHTED_MODEL = constructor("net.minecraftforge.client.model.ModelLoader$WeightedRandomModel", ResourceLocation.class, VariantList.class);
-    // Value multipart model.
+    // Constructor of ModelLoader$MultipartModel.
     private static final MethodHandle MULTIPART_MODEL = constructor("net.minecraftforge.client.model.ModelLoader$MultipartModel", ResourceLocation.class, Multipart.class);
 
     // Replaces the whole method loadModel.
@@ -47,7 +47,7 @@ public abstract class VariantLoaderDynamicMixin {
         return coarctatio$construct(MULTIPART_MODEL, blockstate, definition.getMultipartData());
     }
 
-    // Handles variant.
+    // Returns a definition's variant with normal standing in for an empty name.
     private static VariantList coarctatio$variant(ModelBlockDefinition definition, String name) {
         if (definition.hasVariant(name)) {
             return definition.getVariant(name);
@@ -58,7 +58,7 @@ public abstract class VariantLoaderDynamicMixin {
         return null;
     }
 
-    // Handles construct.
+    // Calls a model constructor and rethrows checked exceptions.
     private static IModel coarctatio$construct(MethodHandle constructor, Object first, Object second) throws Exception {
         try {
             return (IModel) constructor.invoke(first, second);
@@ -69,7 +69,7 @@ public abstract class VariantLoaderDynamicMixin {
         }
     }
 
-    // Handles constructor.
+    // Returns a handle to the public constructor of a package private Forge model class.
     private static MethodHandle constructor(String className, Class<?>... parameters) {
         try {
             return MethodHandles.lookup().unreflectConstructor(Class.forName(className).getDeclaredConstructor(parameters));

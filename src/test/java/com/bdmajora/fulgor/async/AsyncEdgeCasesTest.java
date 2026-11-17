@@ -93,7 +93,7 @@ class AsyncEdgeCasesTest {
         AsyncWorld fixture = neighbourhood();
         BlockLightEngine engine = new BlockLightEngine(fixture.world);
         assertFalse(engine.wasQueueOverflowed());
-        // The queues grow on demand, which is what keeps a large batch from overflowing
+        // Checks the queue growth.
         assertNotNull(Mixins.call(engine, "resizeIncreaseQueue"));
         assertNotNull(Mixins.call(engine, "resizeDecreaseQueue"));
         Mixins.call(engine, "warnQueueOverflow");
@@ -176,7 +176,7 @@ class AsyncEdgeCasesTest {
         Statics.set(Fulgor.class, "dynamicLights", true);
         assertNull(Mixins.call(DynamicLightsBridge.class, "resolve"));
 
-        // Bound to a stand-in, the bridge reports what it answers and wraps whatever it throws
+        // Binds the bridge to a stand-in.
         MethodHandle handle = MethodHandles.lookup().findStatic(StandInLights.class, "getLightValue",
                 MethodType.methodType(int.class, net.minecraft.block.Block.class,
                         net.minecraft.block.state.IBlockState.class, net.minecraft.world.IBlockAccess.class, BlockPos.class));
@@ -217,7 +217,7 @@ class AsyncEdgeCasesTest {
         when(chunk.getBiomeArray()).thenReturn(new byte[256]);
         when(chunk.getTileEntityMap()).thenReturn(new java.util.HashMap<>());
 
-        // The packet is built on the server thread, so the listener hands its work to the scheduler
+        // Stubs the server.
         net.minecraft.server.MinecraftServer server = mock(net.minecraft.server.MinecraftServer.class);
         when(server.addScheduledTask(any())).thenAnswer(invocation -> {
             invocation.getArgument(0, Runnable.class).run();
@@ -234,11 +234,11 @@ class AsyncEdgeCasesTest {
             manager.registerChunk(loaded);
         }
         assertTrue(manager.forceRelightChunk(0, 0));
-        // The lanes have their own daemons here, but driving them from the test thread too keeps the wait short
+        // Drives the lanes from the test thread.
         for (int i = 0; i < 100 && manager.hasPendingLightWork(0, 0); i++) {
             manager.processClientUpdates();
         }
-        // 1.12.2 has no light-only packet, so the whole chunk goes back out to the watchers
+        // Checks the chunk is sent again.
         verify(entry, timeout(5000)).sendPacket(any(net.minecraft.network.play.server.SPacketChunkData.class));
         manager.shutdown();
     }

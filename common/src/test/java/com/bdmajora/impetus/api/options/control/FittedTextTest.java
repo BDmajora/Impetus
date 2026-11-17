@@ -14,10 +14,10 @@ import java.util.function.IntBinaryOperator;
 import static org.junit.jupiter.api.Assertions.*;
 
 class FittedTextTest {
-    // Ten letters, sixty pixels in the fake fonts
+    // Ten letters.
     private static final String TEN = "ABCDEFGHIJ";
 
-    // Fake fonts in which a styled component measures what the operator makes of its plain width and length, recording every width a cut was asked for
+    // Fake fonts with styled widths.
     private static class Widening extends FakeDrawContext {
         final List<Integer> asked = new ArrayList<>();
         private final IntBinaryOperator styled;
@@ -39,7 +39,7 @@ class FittedTextTest {
         }
     }
 
-    // Fake fonts that fail any text work, for checking none is done
+    // Fake fonts that fail any text work.
     private static final class Silent extends FakeDrawContext {
         @Override
         public int getStringWidth(TextComponent component) {
@@ -147,7 +147,7 @@ class FittedTextTest {
             assertEquals(0, text.width());
             assertTrue(text.isFittedFor(1, null, 0, false, room));
         }
-        // Not even an empty text, which would draw nothing anyway
+        // Checks empty text.
         text.fit(new Silent(), 1, null, 0, false, 0, TextComponent.literal(""));
         assertNull(text.text());
         text.fit(new Silent(), 2, null, 0, false, 60, null);
@@ -173,7 +173,7 @@ class FittedTextTest {
         text.fit(new FakeDrawContext(), 1, null, 0, false, 60, TextComponent.literal(TEN));
         assertEquals(TextComponent.literal(TEN), text.text());
         assertEquals(60, text.width());
-        // 59 leaves 41 after the ellipsis, six letters
+        // Checks six letters.
         text.fit(new FakeDrawContext(), 1, null, 0, false, 59, TextComponent.literal(TEN));
         assertEquals(TextComponent.literal("ABCDEF..."), text.text());
         assertEquals(54, text.width());
@@ -194,7 +194,7 @@ class FittedTextTest {
         text.fit(new FakeDrawContext(), 1, null, 0, false, 60, styled);
         styled.styles().add(TextFormattingStyle.UNDERLINE);
         assertEquals(new TextComponent.Styled(TextComponent.literal("AB"), styles(TextFormattingStyle.GOLD)), text.text());
-        // A translation's arguments are its own too, though the array they came from is the maker's
+        // Checks the arguments are copied.
         Object[] args = {"x", TextComponent.literal("y").withStyle(TextFormattingStyle.RED)};
         text.fit(new FakeDrawContext(), 2, null, 0, false, 600, TextComponent.translatable("key", args));
         args[0] = "changed";
@@ -209,7 +209,7 @@ class FittedTextTest {
     @Test
     void aCutKeepsEveryStyleLayerInOrderWithSetsOfItsOwn() {
         FittedText text = new FittedText();
-        // Two layers, which withStyle would have merged into one
+        // Checks two layers.
         TextComponent.Styled inner = new TextComponent.Styled(TextComponent.literal(TEN), styles(TextFormattingStyle.GOLD));
         TextComponent.Styled outer = new TextComponent.Styled(inner, styles(TextFormattingStyle.UNDERLINE));
         text.fit(new FakeDrawContext(), 1, null, 0, false, 48, outer);
@@ -247,7 +247,7 @@ class FittedTextTest {
     void aCutThatAStyleWidensByAFixedAmountIsCutOnceMoreShorterToFit() {
         Widening fonts = new Widening((plain, length) -> plain + 12);
         FittedText text = underlinedTen(fonts);
-        // 48 wide, 60 underlined, so cut again into the 36 the overflow leaves
+        // Checks the second cut.
         assertEquals(TextComponent.literal("ABC...").withStyle(TextFormattingStyle.UNDERLINE), text.text());
         assertEquals(48, text.width());
         assertEquals(List.of(30, 18), fonts.asked);
@@ -257,7 +257,7 @@ class FittedTextTest {
     void aCutThatAStyleWidensForEachCharacterIsCutOnceMoreShorterToFit() {
         Widening fonts = new Widening((plain, length) -> plain + length);
         FittedText text = underlinedTen(fonts);
-        // Eight characters overflow by eight, the six of the second cut need 42
+        // Checks eight characters.
         assertEquals(TextComponent.literal("ABC...").withStyle(TextFormattingStyle.UNDERLINE), text.text());
         assertEquals(42, text.width());
         assertEquals(List.of(30, 22), fonts.asked);
@@ -265,7 +265,7 @@ class FittedTextTest {
 
     @Test
     void aStyleThatOverflowsEveryCutLeavesTheTextOutAfterTwoCutsAtMost() {
-        // One pixel over whatever is cut, so the second cut is only a pixel shorter and still overflows
+        // Checks a one pixel overflow.
         Widening always = new Widening((plain, length) -> 49);
         assertNull(underlinedTen(always).text());
         assertEquals(List.of(30, 29), always.asked);
@@ -300,7 +300,7 @@ class FittedTextTest {
                 }
             };
             assertNull(underlinedTen(fonts).text());
-            // Far below zero stays there instead of wrapping to a huge room, and far above is held a pixel under the first
+            // Checks extreme room.
             assertEquals(bad < 0 ? List.of(30) : List.of(30, 29), fonts.asked);
         }
     }
@@ -385,7 +385,7 @@ class FittedTextTest {
     @Test
     void cutDropsHalfACharacterButKeepsAWholeOne() {
         FakeDrawContext fonts = new FakeDrawContext();
-        // 35 leaves 17 for two chars, the second half of the emoji's pair
+        // Checks a split emoji.
         assertEquals("A...", FittedText.cut(fonts, "A😀BCDEF", "...", 35));
         // 36 leaves room for both halves
         assertEquals("A😀...", FittedText.cut(fonts, "A😀BCDEF", "...", 36));
@@ -439,7 +439,7 @@ class FittedTextTest {
         outer.styles().add(TextFormattingStyle.STRIKETHROUGH);
         assertEquals(new TextComponent.Styled(new TextComponent.Styled(TextComponent.literal("A"), styles(TextFormattingStyle.GOLD)),
                 styles(TextFormattingStyle.UNDERLINE, TextFormattingStyle.ITALIC)), copy);
-        // A layer over nothing stays over nothing, and one with no set is refused
+        // Checks an empty layer.
         assertEquals(new TextComponent.Styled(null, styles(TextFormattingStyle.GOLD)), FittedText.copied(new TextComponent.Styled(null, styles(TextFormattingStyle.GOLD))));
         assertThrows(NullPointerException.class, () -> FittedText.copied(new TextComponent.Styled(TextComponent.literal("A"), null)));
     }
@@ -453,7 +453,7 @@ class FittedTextTest {
         TextComponent.Translatable original = new TextComponent.Translatable(keys, Arrays.asList(args));
         TextComponent.Translatable copy = (TextComponent.Translatable) FittedText.copied(original);
         assertEquals(original, copy);
-        // Arguments that are not components are the same objects, nulls included
+        // Checks plain arguments.
         assertSame(kept, copy.args().get(0));
         assertNull(copy.args().get(1));
         assertNotSame(styledArgument, copy.args().get(3));

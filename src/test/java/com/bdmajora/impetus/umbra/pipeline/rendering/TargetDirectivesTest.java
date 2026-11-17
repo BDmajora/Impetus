@@ -56,7 +56,7 @@ class TargetDirectivesTest {
                         "#ifdef NEVER",
                         "const int colortex2Format = R8;",
                         "#endif",
-                        // Unknown names, unknown formats, wrong types and non-identifier values change nothing
+                        // Checks invalid directives change nothing.
                         "const int shadowcolor0Format = RGBA16F;",
                         "const int colortex3Format = BOGUS;",
                         "const float colortex5Format = 1.0;",
@@ -84,7 +84,7 @@ class TargetDirectivesTest {
         assertEquals(InternalTextureFormat.RGB16, format(7));
         this.targets.destroy();
         this.targets = new UmbraRenderTargets(4, 4);
-        // The const directive is applied after every legacy one, so it wins regardless of where it sits
+        // Checks the const directive wins.
         apply(PackSourcesTest.pack("/composite.vsh", "const int colortex7Format = RGBA16F;\n" + VERTEX,
                 "/composite.fsh", "/* GAUX4FORMAT:RGB32F */\nvoid main() {}"));
         assertEquals(InternalTextureFormat.RGBA16F, format(7));
@@ -117,7 +117,7 @@ class TargetDirectivesTest {
         assertTrue(directives.clears(3));
         assertTrue(directives.clears(6));
         assertArrayEquals(new float[]{1.0f, 0.5f, 0.25f, 1.0f}, directives.clearColor(0));
-        // A malformed later colour keeps the earlier one, as Umbra ignores what it cannot parse
+        // Checks a malformed later colour.
         assertArrayEquals(new float[]{0.5f, 0.5f, 0.5f, 0.5f}, directives.clearColor(2));
         assertArrayEquals(new float[]{0, 0, 0, 0}, directives.clearColor(7));
         assertArrayEquals(new float[]{0, 0, 0, 0}, directives.clearColor(8));

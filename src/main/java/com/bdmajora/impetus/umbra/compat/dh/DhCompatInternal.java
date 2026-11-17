@@ -192,7 +192,7 @@ public final class DhCompatInternal {
         return DhApi.Delayed.renderProxy.getNearClipPlaneDistanceInBlocks(CapturedRenderingState.INSTANCE.getTickDelta());
     }
 
-    // Returns whether rendering enabled.
+    // Returns whether Distant Horizons is drawing LODs.
     public static boolean isRenderingEnabled() {
         return dhEnabled;
     }
@@ -286,12 +286,12 @@ public final class DhCompatInternal {
         return this.incompatible;
     }
 
-    // Returns whether override.
+    // Returns whether the pack replaces DH's LOD program.
     public boolean shouldOverride() {
         return this.shouldOverride;
     }
 
-    // Returns whether override shadow.
+    // Returns whether the pack replaces DH's LOD shadow program.
     public boolean shouldOverrideShadow() {
         return this.shouldOverrideShadow;
     }

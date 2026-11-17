@@ -13,18 +13,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 // Mixin that changes TileEntityEnderChest.
 @Mixin(TileEntityEnderChest.class)
 public abstract class TileEntityEnderChestAnimationMixin extends TileEntity implements AnimatedBlockEntity {
-    // Field lid added to the target.
+    // Lid tracking state.
     @Unique
     private int impetus$lid = LidTracking.INITIAL;
 
-    // Returns whether settled.
+    // Returns whether the lid is shut and still.
     @Override
     public boolean impetus$isSettled() {
         TileEntityEnderChest self = (TileEntityEnderChest) (Object) this;
         return self.lidAngle == 0.0F && self.prevLidAngle == 0.0F;
     }
 
-    // Returns whether renderer.
+    // Returns whether the chest needs its block entity renderer.
     @Override
     public boolean impetus$needsRenderer() {
         return LidTracking.needsRenderer(this.impetus$lid, impetus$isSettled());

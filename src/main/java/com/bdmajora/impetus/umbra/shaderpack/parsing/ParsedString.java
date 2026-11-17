@@ -47,12 +47,12 @@ public class ParsedString {
         return true;
     }
 
-    // Currentlies the contains.
+    // Returns whether the unread text contains the given text.
     public boolean currentlyContains(String text) {
         return this.text.contains(text);
     }
 
-    // Returns whether end.
+    // Returns whether the whole text was read.
     public boolean isEnd() {
         return text.isEmpty();
     }

@@ -9,7 +9,7 @@ import org.spongepowered.asm.mixin.Mixin;
 // Mixin that changes PlayerChunkMapEntry.
 @Mixin(PlayerChunkMapEntry.class)
 public abstract class PlayerChunkMapEntryParallelMixin {
-    // Handles locked block changed.
+    // Records a changed block under the entry's lock.
     @WrapMethod(method = "blockChanged")
     private void impetus$lockedBlockChanged(int x, int y, int z, Operation<Void> original) {
         if (!ParallelProcessor.INSTALLED) {
@@ -21,7 +21,7 @@ public abstract class PlayerChunkMapEntryParallelMixin {
         }
     }
 
-    // Handles locked update.
+    // Sends the entry's changes under its lock.
     @WrapMethod(method = "update")
     private void impetus$lockedUpdate(Operation<Void> original) {
         if (!ParallelProcessor.INSTALLED) {

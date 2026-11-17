@@ -28,11 +28,11 @@ public abstract class StateImplementationMixin {
             return;
         }
 
-        // Nothing lit skips the state queries below, which run for every block a mesh reads
+        // Returns early when the access is empty or no light source exists.
         if (source == EmptyBlockAccess.INSTANCE || DynamicLights.engine().getLightSourcesCount() == 0) {
             return;
         }
-        // Meshes leave moving lights to the terrain shaders: a chunk slice, or any thread but the client's, such as LittleTiles' render thread baking against the live world
+        // Leaves moving lights to the terrain shaders for chunk slices and for every thread but the client thread.
         if (TerrainDynamicLights.isShaderApplied()
                 && (source instanceof WorldSlice || !Minecraft.getMinecraft().isCallingFromMinecraftThread())) {
             return;

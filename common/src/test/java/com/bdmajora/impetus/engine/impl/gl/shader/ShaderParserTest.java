@@ -56,7 +56,7 @@ class ShaderParserTest {
         assertEquals(List.of("A1", "B", "A2", "B", "A1", "B", "A2"), ShaderParser.parseShader("#import <n:a>\n#import <n:b>\n#import <n:a>", provider(files)));
     }
 
-    // Splits at the last colon so the namespace keeps earlier colons.
+    // Checks the last colon.
     @Test
     void greedyNamespace() {
         Map<String, String> files = Map.of("a:b:c", "X");

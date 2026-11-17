@@ -47,7 +47,7 @@ class RecycledEventsTest {
 
     @Test
     void aPlayerTickIsPerThreadAndNestedPostsGetTheirOwnEvent() {
-        // Allocated rather than mocked: instrumenting EntityPlayer would undo the constructor the harness adds to it
+        // Allocates a player.
         EntityPlayer player = Mc.uninitialized(net.minecraft.entity.player.EntityPlayerMP.class);
         Mixins.set(player, "world", mock(World.class));
 
@@ -87,19 +87,19 @@ class RecycledEventsTest {
         assertNotSame(entity, stack);
         assertNotSame(stack, chunk);
 
-        // The village and world variants are never recycled, so releasing one does nothing
+        // Checks the never recycled variants.
         RecycledEvents.releaseCapabilities(new AttachCapabilitiesEvent<>(World.class, mock(World.class)));
     }
 
     @Test
     void aRecycledEventForgetsWhatTheBusWroteOnIt() {
-        // Tick events are neither cancelable nor result-carrying, so resetting one only clears the dispatch phase
+        // Checks a tick event reset.
         TickEvent.ClientTickEvent event = RecycledEvents.clientTick(TickEvent.Phase.START);
         assertFalse(event.isCanceled());
         assertSame(event, RecycledEvents.clientTick(TickEvent.Phase.START));
         assertNull(event.getPhase());
 
-        // The phase only ever advances, the way Forge's own bus expects
+        // Checks the phase only advances.
         assertEquals(EventPriority.NORMAL, RecyclableEvent.advancePhase(EventPriority.HIGH, EventPriority.NORMAL));
         assertEquals(EventPriority.HIGHEST, RecyclableEvent.advancePhase(null, EventPriority.HIGHEST));
         assertThrows(IllegalArgumentException.class,
@@ -110,7 +110,7 @@ class RecycledEventsTest {
 
     @Test
     void everyRefreshIsANoOpUntilAnEventClassOverridesIt() {
-        // The defaults exist so RecycledEvents can call them on any event; the per-class mixins do the real work
+        // Checks the default methods.
         RecyclableEvent event = (RecyclableEvent) RecycledEvents.clientTick(TickEvent.Phase.START);
         event.coarctatio$refreshSide(net.minecraftforge.fml.relauncher.Side.CLIENT);
         event.coarctatio$refreshPlayer(null);

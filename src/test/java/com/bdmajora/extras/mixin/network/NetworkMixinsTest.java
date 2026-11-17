@@ -71,7 +71,7 @@ class NetworkMixinsTest {
     void installConfig() {
         config = new ExtrasConfig();
         Mixins.set(Extras.class, "config", config);
-        // Without LittleTiles, whose absence is otherwise looked up in a mod table these tests never install
+        // Marks LittleTiles absent.
         Mixins.set(NetworkLimits.class, "littleTiles", false);
     }
 
@@ -103,7 +103,7 @@ class NetworkMixinsTest {
         PacketBufferMixin buffer = Mixins.instance(PacketBufferMixin.class);
         assertEquals(Long.MAX_VALUE, (long) Mixins.call(buffer, "impetus$nbtLimit", 2097152L));
         assertEquals(Integer.MAX_VALUE / 8, (int) Mixins.call(buffer, "impetus$writeStringLimit", 32767));
-        // Only the generic cap is widened; a small explicit one stays as the caller asked
+        // Checks the widened cap.
         assertEquals(Integer.MAX_VALUE / 8, (int) Mixins.call(buffer, "impetus$readStringLimit", NetworkLimits.VANILLA_STRING));
         assertEquals(16, (int) Mixins.call(buffer, "impetus$readStringLimit", 16));
     }
@@ -122,7 +122,7 @@ class NetworkMixinsTest {
         assertSame(buffer, written.getReturnValue());
         assertEquals(2, backing.readableBytes());
 
-        // Switched off, vanilla's own methods answer
+        // Checks the switch off.
         config.network.fastVarInts = false;
         CallbackInfoReturnable<Integer> vanillaSize = Mixins.cir();
         Mixins.call(PacketBufferVarIntMixin.class, "impetus$tableSize", 300, vanillaSize);
@@ -234,7 +234,7 @@ class NetworkMixinsTest {
     @Test
     void framesAreSplitWithoutReadingThePrefixTwice() {
         NettyVarint21FrameDecoderMixin decoder = Mixins.instance(NettyVarint21FrameDecoderMixin.class);
-        // Switched off, vanilla decodes
+        // Checks the switch off.
         config.network.fastVarInts = false;
         CallbackInfo off = Mixins.ci();
         Mixins.call(decoder, "impetus$fastDecode", activeContext(true), Unpooled.buffer(), new ArrayList<>(), off);
@@ -257,7 +257,7 @@ class NetworkMixinsTest {
         assertTrue(ci.isCancelled());
         assertEquals(3, ((ByteBuf) out.get(0)).readableBytes());
 
-        // A frame whose body or prefix has not fully arrived waits, consuming nothing
+        // Checks a partial frame.
         ByteBuf shortBody = Unpooled.wrappedBuffer(new byte[] {5, 1});
         Mixins.call(decoder, "impetus$fastDecode", activeContext(true), shortBody, new ArrayList<>(), Mixins.ci());
         assertEquals(2, shortBody.readableBytes());
@@ -265,7 +265,7 @@ class NetworkMixinsTest {
         Mixins.call(decoder, "impetus$fastDecode", activeContext(true), shortPrefix, new ArrayList<>(), Mixins.ci());
         assertEquals(1, shortPrefix.readableBytes());
 
-        // A negative length, and one wider than the limit, are both refused
+        // Checks the refused lengths.
         ByteBuf negative = Unpooled.wrappedBuffer(new byte[] {(byte) 0x80, (byte) 0x80, (byte) 0x80, (byte) 0x80, 0x0F});
         assertThrows(DecoderException.class,
                 () -> Mixins.call(decoder, "impetus$fastDecode", activeContext(true), negative, new ArrayList<>(), Mixins.ci()));
@@ -300,7 +300,7 @@ class NetworkMixinsTest {
         NetworkManagerFlushMixin manager = Mixins.instance(NetworkManagerFlushMixin.class);
         SPacketKeepAlive packet = new SPacketKeepAlive(1L);
 
-        // Outside a tick every packet is flushed as it goes, from the event loop or handed to it
+        // Checks flushes outside a tick.
         Channel direct = channel(EnumConnectionState.PLAY, true);
         Mixins.set(manager, "channel", direct);
         Mixins.call(manager, "dispatchPacket", packet, null);
@@ -312,7 +312,7 @@ class NetworkMixinsTest {
         Mixins.call(manager, "dispatchPacket", packet, listeners);
         verify(handedOver).writeAndFlush(packet);
 
-        // A packet from another protocol state switches the channel first, unless Forge proxies it
+        // Checks the protocol switch.
         Channel switching = channel(EnumConnectionState.HANDSHAKING, true);
         Mixins.set(manager, "channel", switching);
         Mixins.call(manager, "dispatchPacket", packet, null);
@@ -320,7 +320,7 @@ class NetworkMixinsTest {
         FMLProxyPacket proxy = mock(FMLProxyPacket.class);
         Mixins.call(manager, "dispatchPacket", proxy, null);
 
-        // Inside a tick writes are held back, and the end of the tick flushes once
+        // Checks the held writes.
         FlushBatch.beginTick();
         Channel batched = channel(EnumConnectionState.PLAY, true);
         Mixins.set(manager, "channel", batched);
@@ -330,6 +330,20 @@ class NetworkMixinsTest {
         manager.impetus$flushDeferred();
         manager.impetus$flushDeferred();
         verify(batched).flush();
+
+        // Checks a queued write is flushed.
+        Channel queued = channel(EnumConnectionState.PLAY, false);
+        EventLoop held = queued.eventLoop();
+        java.util.List<Runnable> pending = new java.util.ArrayList<>();
+        doAnswer(invocation -> pending.add(invocation.getArgument(0))).when(held).execute(any());
+        Mixins.set(manager, "channel", queued);
+        Mixins.call(manager, "dispatchPacket", packet, null);
+        manager.impetus$flushDeferred();
+        verify(queued).flush();
+        pending.forEach(Runnable::run);
+        verify(queued).write(packet);
+        verify(queued, never()).writeAndFlush(any());
+        FlushBatch.endTick();
     }
 
     @Test
@@ -337,7 +351,7 @@ class NetworkMixinsTest {
         MinecraftServerFlushMixin server = Mixins.instance(MinecraftServerFlushMixin.class);
         Mixins.call(server, "impetus$beginBatch", Mixins.ci());
         assertTrue(FlushBatch.shouldDefer());
-        // No network system yet, nothing to flush
+        // Checks a server without a network system.
         Mixins.call(server, "impetus$flushAll", Mixins.ci());
         assertFalse(FlushBatch.shouldDefer());
 

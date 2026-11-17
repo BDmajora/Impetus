@@ -88,7 +88,7 @@ class AsyncTest {
         list.forEach(visited::add);
         assertEquals(list.copy(), visited);
 
-        // Removing through the iterator reaches the live list by identity, while the walk carries on over its copy
+        // Checks iterator removal.
         Iterator<Entity> iterator = list.iterator();
         assertThrows(IllegalStateException.class, iterator::remove);
         int walked = 0;
@@ -114,7 +114,7 @@ class AsyncTest {
         assertTrue(list.isEmpty());
         assertEquals(0, list.snapshot().length);
 
-        // Equal to any list with the same contents, hashed by identity since the contents move
+        // Checks equality and hashing.
         list.add(a);
         assertEquals(list, List.of(a));
         assertEquals(list, list);
@@ -151,7 +151,7 @@ class AsyncTest {
         assertFalse(entries.remove(new AbstractMap.SimpleEntry<>("4", "four")));
         assertFalse(entries.remove("not an entry"));
 
-        // Entries write through, and the iterator can skip and remove
+        // Checks the entries.
         for (Long2ObjectMap.Entry<String> entry : entries) {
             if (entry.getLongKey() == 1L) {
                 assertEquals("one", entry.setValue("ein"));
@@ -172,11 +172,11 @@ class AsyncTest {
     @Test
     void theCostModelCutsBatchesToAboutAQuarterMillisecond() {
         CostModel model = new CostModel(10_000D);
-        // 25 items of 10 us is one target task, so anything under two tasks' worth runs in place
+        // Checks the sequential threshold.
         assertTrue(model.shouldRunSequentially(40));
         assertFalse(model.shouldRunSequentially(60));
         assertEquals(25, model.chunkSize(10_000, 4));
-        // Never more than an even share, so every worker gets something
+        // Checks the chunk size.
         assertEquals(2, model.chunkSize(10, 4));
 
         AtomicInteger ran = new AtomicInteger();
@@ -248,7 +248,7 @@ class AsyncTest {
         assertTrue(ParallelProcessor.maxThreads() >= 1);
         assertEquals(0, ParallelProcessor.poolSize());
 
-        // A running pool is resized in place, growing and shrinking
+        // Checks the pool resize.
         ParallelProcessor.forEachParallel(new ArrayList<>(Collections.nCopies(400, 1)), new CostModel(1_000_000D), item -> { });
         assertEquals(1, ParallelProcessor.poolSize());
         settings.threads = 2;
@@ -259,7 +259,7 @@ class AsyncTest {
         assertEquals(1, ParallelProcessor.poolSize());
         ParallelProcessor.apply(settings);
 
-        // Auto leaves headroom, and on a client one more thread for rendering
+        // Checks the automatic thread count.
         settings.threads = 0;
         ParallelProcessor.apply(settings);
         assertTrue(ParallelProcessor.desiredThreads() >= 1);
@@ -275,7 +275,7 @@ class AsyncTest {
         Statics.set(FMLLaunchHandler.class, "side", Side.CLIENT);
     }
 
-    // Forge finds an entity's id by its exact class, so a generated mock class is registered under a name while a test runs
+    // Returns Forge's entity map by class.
     private static Map<Class<? extends Entity>, net.minecraftforge.fml.common.registry.EntityEntry> byClass() {
         return Mixins.get(net.minecraftforge.fml.common.registry.EntityRegistry.instance(), "entityClassEntries");
     }
@@ -297,7 +297,7 @@ class AsyncTest {
             assertFalse(ParallelProcessor.shouldTickSynchronously(pig));
             // Cached per class after the first answer
             assertFalse(ParallelProcessor.shouldTickSynchronously(pig));
-            // A modded entity only joins the pool when the user lets modded ones in, and not if they listed it
+            // Checks a modded entity.
             assertTrue(ParallelProcessor.shouldTickSynchronously(beast));
             ExtrasConfig.AsyncSettings settings = new ExtrasConfig.AsyncSettings();
             settings.moddedEntities = true;
@@ -325,7 +325,7 @@ class AsyncTest {
         Mixins.set(unregistered, "world", world);
         assertTrue(ParallelProcessor.shouldTickSynchronously(unregistered));
 
-        // A client world never batches, and neither does a stopping server
+        // Checks a client world and a stopping server.
         World client = Mc.mock(World.class, ParallelWorld.class);
         Mixins.set(client, "isRemote", true);
         assertTrue(ParallelProcessor.shouldTickSynchronously(pig(client, 0, 0)));
@@ -338,7 +338,7 @@ class AsyncTest {
     void entitiesTickInSectionBatchesAndACrashSurfacesOnTheMainThread() {
         WorldServer world = world(true);
         List<Entity> async = new ArrayList<>();
-        // Some sections full enough for their own tasks, the rest packed together
+        // Fills the sections.
         for (int i = 0; i < 400; i++) {
             async.add(pig(world, i < 300 ? 0 : i, i < 300 ? 0 : -i));
         }
@@ -354,9 +354,9 @@ class AsyncTest {
         EntityPig crashing = async.get(350) instanceof EntityPig p ? p : null;
         doThrow(new IllegalStateException("bad tick")).when(world).updateEntity(crashing);
         assertThrows(ReportedException.class, () -> ParallelProcessor.tickEntities(world, async, sync));
-        // A small batch ticks in place, throwing straight away
+        // Checks a small batch.
         assertThrows(ReportedException.class, () -> ParallelProcessor.tickEntities(world, List.of(crashing), List.of()));
-        // With Forge's removal switch on, the entity is dropped instead
+        // Checks Forge's removal switch.
         ForgeModContainer.removeErroringEntities = true;
         ParallelProcessor.tickEntities(world, List.of(crashing), List.of());
         verify(world).removeEntity(crashing);
@@ -413,7 +413,7 @@ class AsyncTest {
         Chunk chunk = mock(Chunk.class);
         when(chunk.getHeight(any())).thenReturn(63);
         when(world.getChunk(anyInt(), anyInt())).thenReturn(chunk);
-        // Every random start lands in stone, so each chunk is visited and nothing is placed
+        // Stubs every block as stone.
         when(world.getBlockState(any())).thenReturn(Blocks.STONE.getDefaultState());
         // Animals are over their cap already
         when(world.countEntities(any(), anyBoolean())).thenAnswer(invocation ->

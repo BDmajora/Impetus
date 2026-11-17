@@ -6,7 +6,7 @@ import net.minecraft.tileentity.TileEntity;
 import java.util.ArrayList;
 import java.util.List;
 
-// Test stand-in for LittleTiles' tile entity: the loaded flag and the quad-cache hook Impetus's compat calls, which here records its argument
+// Test stand-in for LittleTiles' tile entity.
 public class TileEntityLittleTiles extends TileEntity {
     public TileEntityRenderManager render;
     public boolean loaded = true;

@@ -16,7 +16,7 @@ import com.bdmajora.impetus.umbra.uniforms.CapturedRenderingState;
 // Mixin that changes TileEntityRendererDispatcher.
 @Mixin(TileEntityRendererDispatcher.class)
 public class TileEntityRendererDispatcherIdMixin {
-    // Field block entity id stack added to the target.
+    // Block entity ids of nested draws.
     @Unique
     private final IntArrayList impetus$blockEntityIdStack = new IntArrayList();
 

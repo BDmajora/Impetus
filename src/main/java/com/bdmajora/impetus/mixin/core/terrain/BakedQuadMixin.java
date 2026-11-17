@@ -46,15 +46,15 @@ public abstract class BakedQuadMixin implements BakedQuadView {
     @Shadow
     @Final
     protected int tintIndex;
-    // Field flags added to the target.
+    // Quad flags computed on first read.
     @Unique
     private int flags;
 
-    // Field normal added to the target.
+    // Packed face normal computed on first read with 0 meaning not yet.
     @Unique
     private int normal;
 
-    // Field normal face added to the target.
+    // Facing closest to the normal computed on first read.
     @Unique
     private ModelQuadFacing normalFace;
 
@@ -78,13 +78,13 @@ public abstract class BakedQuadMixin implements BakedQuadView {
         return f;
     }
 
-    // Handles add flags.
+    // Adds flags the mesher learned about the quad.
     @Override
     public void addFlags(int flags) {
         this.flags |= flags;
     }
 
-    // Returns whether shade.
+    // Returns whether the quad takes diffuse shading.
     @Override
     public boolean hasShade() {
         return this.applyDiffuseLighting;
@@ -102,7 +102,7 @@ public abstract class BakedQuadMixin implements BakedQuadView {
         return null;
     }
 
-    // Helper method layout added to the target.
+    // Returns the vertex layout of the quad's format.
     @Unique
     private VertexFormatExtension impetus$layout() {
         return (VertexFormatExtension) this.getFormat();

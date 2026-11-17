@@ -144,7 +144,7 @@ public final class Umbra {
         }
     }
 
-    // Handles the world changed.
+    // Selects the pack folder of the new dimension and rebuilds the pipeline when it changed.
     public static synchronized void onWorldChanged(int id, String name) {
         dimensionId = id;
         dimensionName = name;
@@ -373,11 +373,107 @@ public final class Umbra {
             return;
         }
         config.setShaderPackName(name);
+        saveConfig();
+        loadCurrentShaderpack();
+    }
+
+    // Applies a pick from the pack screen and returns whether the active pack changed.
+    public static synchronized boolean selectShaderpack(String name, boolean enabled) {
+        if (config == null) {
+            return false;
+        }
+        String before = config.getShaderPackName();
+        String lastBefore = config.getLastShaderPackName();
+        config.setShaderPackName(enabled ? name : UmbraConfig.NO_PACK);
+        config.rememberShaderPackName(name);
+        boolean changed = !before.equals(config.getShaderPackName());
+        if (changed || !lastBefore.equals(config.getLastShaderPackName())) {
+            saveConfig();
+        }
+        if (changed) {
+            loadCurrentShaderpack();
+        }
+        return changed;
+    }
+
+    // Outcome of switching shaders on or off.
+    public enum ToggleResult {
+        // Shaders are on with the remembered pack.
+        ENABLED,
+        // Shaders are off and the pack is kept.
+        DISABLED,
+        // No pack was ever picked.
+        NO_PACK,
+        // The remembered pack is no longer in the shaderpacks folder.
+        MISSING,
+        // The remembered pack failed to load.
+        FAILED
+    }
+
+    // Returns whether a pack is selected and switched on.
+    public static boolean areShadersEnabled() {
+        return config != null && config.isShaderPackEnabled();
+    }
+
+    // Returns the pack that switching shaders on would load.
+    public static String getLastPackName() {
+        return config == null ? UmbraConfig.NO_PACK : config.getLastShaderPackName();
+    }
+
+    // Returns whether shaders could be switched on right now.
+    public static boolean canEnableShaders() {
+        return config != null && config.isPackInstalled(config.getLastShaderPackName());
+    }
+
+    // Flips shaders on or off and keeps the pack.
+    public static synchronized ToggleResult toggleShaders() {
+        return setShadersEnabled(!areShadersEnabled());
+    }
+
+    // Switches shaders on with the remembered pack or off and loads the result.
+    public static synchronized ToggleResult setShadersEnabled(boolean enabled) {
+        if (enabled == areShadersEnabled()) {
+            return enabled ? ToggleResult.ENABLED : ToggleResult.DISABLED;
+        }
+        ToggleResult result = storeShadersEnabled(enabled);
+        if (result != ToggleResult.ENABLED && result != ToggleResult.DISABLED) {
+            return result;
+        }
+        loadCurrentShaderpack();
+        if (enabled && currentPack == null) {
+            config.setShadersEnabled(false);
+            saveConfig();
+            return ToggleResult.FAILED;
+        }
+        return result;
+    }
+
+    // Saves the switch without loading the pack.
+    public static synchronized ToggleResult storeShadersEnabled(boolean enabled) {
+        if (config == null) {
+            return ToggleResult.NO_PACK;
+        }
+        if (enabled) {
+            String last = config.getLastShaderPackName();
+            if (UmbraConfig.NO_PACK.equals(last)) {
+                return ToggleResult.NO_PACK;
+            }
+            if (!config.isPackInstalled(last)) {
+                return ToggleResult.MISSING;
+            }
+        }
+        if (config.setShadersEnabled(enabled)) {
+            saveConfig();
+        }
+        return enabled ? ToggleResult.ENABLED : ToggleResult.DISABLED;
+    }
+
+    // Writes optionsshaders.txt and logs a failure.
+    private static void saveConfig() {
         try {
             config.save();
         } catch (IOException e) {
             LOGGER.error("Failed to save shader selection to optionsshaders.txt", e);
         }
-        loadCurrentShaderpack();
     }
 }

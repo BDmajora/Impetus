@@ -13,12 +13,12 @@ public final class TextureFilteringData {
         this.clamp = clamp;
     }
 
-    // Returns whether blur.
+    // Returns whether the texture uses linear filtering.
     public boolean shouldBlur() {
         return this.blur;
     }
 
-    // Returns whether clamp.
+    // Returns whether the texture clamps at its edges.
     public boolean shouldClamp() {
         return this.clamp;
     }

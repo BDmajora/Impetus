@@ -3,7 +3,7 @@ package com.bdmajora.impetus.engine.impl.gui.theme;
 import com.bdmajora.impetus.api.config.theme.ConfigTheme;
 import com.bdmajora.impetus.api.config.theme.ConfigThemeRegistry;
 
-// Colors shared by the GUI and the accent colors of the subsystems.
+// Colors shared by the GUI and the accent colors of other mods.
 public class DefaultColors {
     // Accent color of controls and unthemed mods.
     public static final int ELEMENT_ACTIVATED = ConfigTheme.DEFAULT_ACCENT_COLOR;
@@ -18,16 +18,6 @@ public class DefaultColors {
     // Background color of disabled elements.
     public static final int BACKGROUND_DISABLED = 0x60000000;
 
-    // Accent color of Coarctatio.
-    private static final int COARCTATIO_ACCENT = 0xFF80CBC4;
-    // Accent color of Fulgor.
-    private static final int FULGOR_ACCENT = 0xFFEBCB8B;
-    // Accent color of Equilibrium.
-    private static final int EQUILIBRIUM_ACCENT = 0xFF88C0D0;
-    // Accent color of Umbra.
-    private static final int UMBRA_ACCENT = 0xFFD86AFF;
-    // Accent color of Extras.
-    private static final int EXTRAS_ACCENT = 0xFF5FD0A8;
     // Colors assigned to unknown mods by their id.
     private static final int[] MOD_ACCENT_PALETTE = {
             0xFF80CBC4,
@@ -57,12 +47,8 @@ public class DefaultColors {
         }
 
         return switch (id) {
-            case "minecraft", "impetus", "sodium" -> ELEMENT_ACTIVATED;
-            case "extras" -> EXTRAS_ACCENT;
-            case "coarctatio" -> COARCTATIO_ACCENT;
-            case "fulgor" -> FULGOR_ACCENT;
-            case "equilibrium" -> EQUILIBRIUM_ACCENT;
-            case "umbra" -> UMBRA_ACCENT;
+            case "minecraft", "impetus", "sodium", "extras", "coarctatio", "fulgor", "equilibrium", "umbra",
+                 "dynamiclights", "linuxextras" -> ELEMENT_ACTIVATED;
             default -> MOD_ACCENT_PALETTE[Math.floorMod(id.hashCode(), MOD_ACCENT_PALETTE.length)];
         };
     }

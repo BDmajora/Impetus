@@ -102,12 +102,12 @@ class LightInfoAndFacesTest {
         assertEquals(LightInfo.opacity(slabInfo), LightInfo.absorption(slabInfo, slab, 5));
         assertTrue(LightInfo.isFaceSolid(slabInfo, 5));
         assertTrue(LightInfo.faceBits(slabInfo) != 0);
-        // The scalar answer is the block's own opacity, which for a full cube is vanilla's 255
+        // Checks the scalar absorption.
         assertEquals(255, FaceOcclusion.resolveScalarAbsorption(Blocks.STONE.getDefaultState(), 0));
         assertEquals(1, FaceOcclusion.resolveScalarAbsorption(slab, 4));
     }
 
-    // A block whose light values depend on where it is, which is what the contextual flags are for
+    // Block whose light values depend on its position.
     private static final class ContextualBlock extends Block {
         ContextualBlock() {
             super(net.minecraft.block.material.Material.ROCK);
@@ -146,7 +146,7 @@ class LightInfoAndFacesTest {
         when(state.getLightValue()).thenReturn(0);
         int info = LightInfo.compute(state);
         assertTrue((info & LightInfo.DYNAMIC) != 0);
-        // Directions here are the engine's own order (east, west, south, north, up, down), not EnumFacing's
+        // Checks the absorption in engine order.
         assertEquals(1, LightInfo.absorption(info, state, 4));
         assertEquals(12, LightInfo.absorption(info, state, 3));
         assertEquals(12, FaceOcclusion.resolveScalarAbsorption(state, 3));
@@ -166,7 +166,7 @@ class LightInfoAndFacesTest {
         BlockMixin contextual = Mixins.instance(ContextualBlockMixin.class);
         assertTrue(contextual.fulgor$hasPositionAwareLightValue());
         assertTrue(contextual.fulgor$hasPositionAwareOpacity());
-        // A name that cannot be resolved is treated as overridden, the safe answer
+        // Checks an unresolved name.
         assertTrue((boolean) Mixins.call(block, "fulgor$overrides", "noSuchMethod"));
     }
 

@@ -22,17 +22,17 @@ public final class SectionPos extends Vector3i {
         return z() * 16;
     }
 
-    // Last block x, inclusive
+    // Returns the last block x.
     public int maxX() {
         return minX() + 15;
     }
 
-    // Last block y, inclusive
+    // Returns the last block y.
     public int maxY() {
         return minY() + 15;
     }
 
-    // Last block z, inclusive
+    // Returns the last block z.
     public int maxZ() {
         return minZ() + 15;
     }

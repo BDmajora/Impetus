@@ -14,7 +14,7 @@ public final class FluidLightBridge {
     private FluidLightBridge() {
     }
 
-    // Capabilities the of.
+    // Returns the chunk's Fluidlogged API fluid capability or null.
     public static Object capabilityOf(Chunk chunk) {
         if (!Fulgor.hasFluidloggedApi() || chunk == null) {
             return null;
@@ -32,7 +32,8 @@ public final class FluidLightBridge {
         int fluidInfo = LightInfo.resolveContextual(LightInfo.of(fluidState), fluidState, access, lookupPos, x, y, z);
         int opacity = Math.max(info & LightInfo.OPACITY_MASK, fluidInfo & LightInfo.OPACITY_MASK);
         int emission = Math.max(LightInfo.emission(info), LightInfo.emission(fluidInfo));
-        return LightInfo.COMPUTED | opacity | (emission << LightInfo.EMISSION_SHIFT);
+        // Returns the light info with the fluid's opacity and emission.
+        return LightInfo.withLightValues(info, opacity, emission);
     }
 
     // Returns the larger of the block and fluid opacity.

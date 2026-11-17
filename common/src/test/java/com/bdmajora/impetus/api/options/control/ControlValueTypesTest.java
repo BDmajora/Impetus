@@ -36,7 +36,7 @@ class ControlValueTypesTest {
 
     private enum Other { X }
 
-    // Not final, and sealed by javac, since a constant with a body is a class of its own
+    // Checks the constant classes.
     private enum Bodied {
         A {
         },
@@ -97,7 +97,7 @@ class ControlValueTypesTest {
     private static final class RightOnly implements Right {
     }
 
-    // An open class and an interface it does not implement, met by this subclass
+    // Class and interface for the lookup.
     private static final class RunnableList extends AbstractList<Object> implements Runnable {
         @Override
         public Object get(int index) {
@@ -114,7 +114,7 @@ class ControlValueTypesTest {
         }
     }
 
-    // Minimal controls for the value type lookup, which reads only their classes; public where generated classes in another package extend them
+    // Minimal controls for the value type lookup.
     public abstract static class Stub<V> implements Control<V> {
         @Override
         public Option<V> getOption() {
@@ -355,10 +355,10 @@ class ControlValueTypesTest {
         return Local.class;
     }
 
-    // Defines classes from bytes the test writes, so their signatures can say what javac never would, and records each class it lacks
+    // Loader for hand made class files.
     private static final class Generated extends ClassLoader {
         private final Map<String, byte[]> classes = new HashMap<>();
-        // Class files handed out as resources, the defined bytes unless a test swaps them
+        // Returns the class files.
         private final Map<String, Supplier<InputStream>> files = new HashMap<>();
         private final List<String> missed = new ArrayList<>();
 
@@ -379,7 +379,7 @@ class ControlValueTypesTest {
             return this;
         }
 
-        // Hands out the given stream as the class file of a generated class, or no class file when it gives null
+        // Returns the given stream as a class file.
         Generated file(String name, Supplier<InputStream> file) {
             this.files.put(GENERATED + name + ".class", file);
             return this;
@@ -403,7 +403,7 @@ class ControlValueTypesTest {
             return file != null ? file.get() : super.getResourceAsStream(name);
         }
 
-        // Runs under the loader's own lock, which loadClass takes for a loader that is not parallel capable
+        // Runs under the loader lock.
         @Override
         protected Class<?> findClass(String name) throws ClassNotFoundException {
             byte[] bytes = this.classes.get(name);
@@ -440,7 +440,7 @@ class ControlValueTypesTest {
         assertSame(Long.class, new LongStub().getValueType());
         assertSame(String.class, new StringPassOn().getValueType());
         assertSame(Short.class, declared(RelayLeaf.class));
-        // The right one of several parameters, even when a parent passes them on in another order
+        // Checks parameter order.
         assertSame(Integer.class, declared(SwappedLeaf.class));
         assertSame(Double.class, declared(ReorderedLeaf.class));
         assertSame(Boolean.class, declared(TickSubclass.class));
@@ -452,7 +452,7 @@ class ControlValueTypesTest {
     void interfacesAreFollowedAndUnrelatedOnesAheadOfThemPassedOver() {
         assertSame(Boolean.class, declared(ViaInterface.class));
         assertSame(Double.class, new ViaGenericInterface().getValueType());
-        // An interface is a control class of its own, open or bound
+        // Checks interfaces.
         assertSame(Boolean.class, declared(BooleanControl.class));
         assertSame(Object.class, declared(ValueControl.class));
         assertSame(Double.class, declared(DoubleValues.class));
@@ -497,11 +497,11 @@ class ControlValueTypesTest {
         assertSame(Integer.class, declared(GenericLeaf.class));
         assertSame(String.class, declared(PairLeaf.class));
         assertSame(Byte.class, declared(RelayedLeaf.class));
-        // Through every enclosing level, to whichever level's parameter the control names
+        // Checks enclosing levels.
         assertSame(String.class, declared(DeepestLeaf.class));
         assertSame(Integer.class, declared(FlippedLeaf.class));
         assertSame(Object.class, declared(Outer.Middle.Deepest.class));
-        // A static nested class has no outer arguments, and its raw outer class gives none
+        // Checks a static nested class.
         assertSame(Long.class, declared(NestedLeaf.class));
         assertSame(Object.class, declared(Outer.Nested.class));
     }
@@ -518,7 +518,7 @@ class ControlValueTypesTest {
         // A proxy implements Control raw
         Object proxy = Proxy.newProxyInstance(Control.class.getClassLoader(), new Class<?>[]{Control.class}, (self, method, args) -> null);
         assertSame(Object.class, declared(proxy.getClass()));
-        // A class outside Control is answered before its signature, which here names a missing class, is read
+        // Checks a class outside Control.
         Generated generated = new Generated().add("Outside", OBJECT + signature(Supplier.class, GONE), "java/lang/Object", internal(Supplier.class));
         assertSame(Object.class, declared(generated.get("Outside")));
         assertEquals(List.of(), generated.missed());
@@ -541,7 +541,7 @@ class ControlValueTypesTest {
                 .add("Direct", OBJECT + signature(Control.class, GONE), "java/lang/Object", internal(Control.class))
                 .add("ThroughStub", signature(Stub.class, GONE), internal(Stub.class))
                 .add("ThroughBounded", signature(Bounded.class, GONE), internal(Bounded.class))
-                // The superclass is read apart from the interfaces, so a missing class among them leaves it whole
+                // Checks the superclass alone.
                 .add("Superclass", signature(Stub.class, "Ljava/lang/Long;") + signature(Supplier.class, GONE), internal(Stub.class), internal(Supplier.class))
                 .add("Erased", OBJECT + signature(Supplier.class, GONE) + signature(BooleanControl.class), "java/lang/Object", internal(Supplier.class), internal(BooleanControl.class))
                 .add("ErasedOpen", OBJECT + signature(Supplier.class, GONE) + signature(ValueControl.class, "Ljava/lang/Double;"), "java/lang/Object",
@@ -551,12 +551,12 @@ class ControlValueTypesTest {
         assertSame(Number.class, declared(generated.get("ThroughBounded")));
         assertSame(Long.class, declared(generated.get("Superclass")));
         assertSame(Boolean.class, declared(generated.get("Erased")));
-        // Rebuilt from the class file one interface at a time, the missing class costs Supplier's argument and leaves ValueControl's
+        // Checks the rebuilt interfaces.
         assertSame(Double.class, declared(generated.get("ErasedOpen")));
         List<String> missed = generated.missed();
         assertFalse(missed.isEmpty());
         assertTrue(missed.stream().allMatch((GENERATED + "Gone").replace('/', '.')::equals), missed::toString);
-        // A failure is answered like any other class, so the signature is never read again
+        // Checks a cached failure.
         for (String name : List.of("Direct", "ThroughStub", "ThroughBounded", "Superclass", "Erased", "ErasedOpen")) {
             declared(generated.get(name));
         }
@@ -565,7 +565,7 @@ class ControlValueTypesTest {
 
     @Test
     void aClassThatWillNotLinkCountsAsMissing() {
-        // Broken is there to be found but its own superclass is not, so loading it throws NoClassDefFoundError
+        // Checks a broken superclass.
         String broken = "L" + GENERATED + "Broken;";
         Generated generated = new Generated()
                 .add("Broken", null, GENERATED + "Gone")
@@ -620,7 +620,7 @@ class ControlValueTypesTest {
 
     @Test
     void aRawParentIsResolvedOnceForAllOfItsSubclasses() {
-        // The parent's bound is missing, so each time its own answer is worked out the loader is asked for that class again
+        // Checks a missing parent bound.
         Generated generated = new Generated()
                 .add("Parent", "<A:" + GONE + ">" + OBJECT + signature(Control.class, "TA;"), "java/lang/Object", internal(Control.class))
                 .add("First", null, GENERATED + "Parent")
@@ -680,7 +680,7 @@ class ControlValueTypesTest {
 
     @Test
     void aTypeOfNoKindReflectionHandsOutIsUnknown() {
-        // Reflection gives only classes, parameterized and array types, parameters and wildcards, so these reach the last guard
+        // Checks the other type kinds.
         Type foreign = new Type() {
         };
         assertNull(Statics.call(ControlValueTypes.class, "erase", foreign, Map.of()));
@@ -712,7 +712,7 @@ class ControlValueTypesTest {
                 .add("Direct", OBJECT + missing + signature(Control.class, "Ljava/lang/Short;"), "java/lang/Object", internal(Supplier.class), internal(Control.class))
                 .add("DirectWrongArity", OBJECT + missing + signature(Control.class, "Ljava/lang/Short;", "Ljava/lang/Short;"), "java/lang/Object",
                         internal(Supplier.class), internal(Control.class))
-                // A superclass is rebuilt argument by argument, with each class around it
+                // Checks a rebuilt superclass.
                 .add("Known", signature(Swapped.class, GONE, "Ljava/lang/Integer;"), internal(Swapped.class))
                 .add("Unknown", signature(Swapped.class, "Ljava/lang/Integer;", GONE), internal(Swapped.class))
                 .add("Inner", "L" + internal(Outer.class) + "<Ljava/lang/Integer;>.Pair<" + GONE + ">;", internal(Outer.Pair.class))
@@ -737,7 +737,7 @@ class ControlValueTypesTest {
         assertSame(Long[].class, declared(generated.get("VariableArray")));
         assertSame(Object.class, declared(generated.get("MissingArray")));
         assertSame(Object.class, declared(generated.get("TooDeep")));
-        // Only the outermost class of an argument counts, so a missing one inside it costs nothing
+        // Checks nested arguments.
         assertSame(List.class, declared(generated.get("Nested")));
         assertSame(Number.class, declared(generated.get("Extends")));
         assertSame(Object.class, declared(generated.get("Super")));
@@ -808,12 +808,12 @@ class ControlValueTypesTest {
         // Past the method to the class that declares it
         assertSame(Short.class, declared(generated.get("Host$2Outward")));
         assertSame(Byte.class, declared(generated.get("Host$3Constructor")));
-        // Reflection throws InternalError for an enclosing method its class lacks, yet the class around it is still searched
+        // Checks a missing enclosing method.
         assertThrows(InternalError.class, () -> generated.get("Host$4Absent").getEnclosingMethod());
         assertSame(Short.class, declared(generated.get("Host$4Absent")));
         // Two classes that each name the other as the class around them are searched once each
         assertSame(Object.class, declared(generated.get("Ping")));
-        // A class named as around itself, or one that is missing, leaves no scope past the class's own
+        // Checks a bad enclosing class.
         assertThrows(InternalError.class, () -> generated.get("Selfish").getEnclosingClass());
         assertSame(Object.class, declared(generated.get("Selfish")));
         assertThrows(NoClassDefFoundError.class, () -> generated.get("Lost").getEnclosingClass());
@@ -825,10 +825,10 @@ class ControlValueTypesTest {
     @Test
     void aRebuiltSupertypeTakesOnlyWhatItsClassReallyDeclares() {
         Generated generated = new Generated()
-                // A top-level class whose name holds a dollar sign has no class around it, whatever a signature calls it
+                // Checks a dollar sign name.
                 .add("Out$In", signature(Stub.class, "Ljava/lang/Long;"), internal(Stub.class))
                 .add("Claims", "L" + GENERATED + "Out<" + GONE + ">.In;", GENERATED + "Out$In")
-                // An interface whose own signature is malformed has no parameters to bind, so its erased supertypes answer for it
+                // Checks a malformed interface signature.
                 .add("Shapeless", Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_INTERFACE, "garbage", "java/lang/Object", new String[]{internal(BooleanControl.class)},
                         writer -> { })
                 .add("UsesShapeless", OBJECT + signature(Supplier.class, GONE) + "L" + GENERATED + "Shapeless<Ljava/lang/Long;>;", "java/lang/Object",
@@ -836,7 +836,7 @@ class ControlValueTypesTest {
                 // A signature listing another interface than the class has leaves the class's own one erased
                 .add("Mislisted", OBJECT + signature(Supplier.class, GONE) + signature(ValueControl.class, "Ljava/lang/Double;"), "java/lang/Object",
                         internal(Supplier.class), internal(BooleanControl.class))
-                // A class claiming to be a member of one that does not list it makes reflection throw, which costs only the class around it
+                // Checks a false member class.
                 .add("Stranger", OBJECT, "java/lang/Object")
                 .add("Disowned", Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "<A:Ljava/lang/Object;B:Ljava/lang/Object;>" + signature(Swapped.class, "TA;", "TB;"),
                         internal(Swapped.class), new String[0], writer -> writer.visitInnerClass(GENERATED + "Disowned", GENERATED + "Stranger", "Disowned", Opcodes.ACC_PUBLIC))
@@ -849,7 +849,7 @@ class ControlValueTypesTest {
         assertSame(Integer.class, declared(generated.get("Heir")));
     }
 
-    // The attributes javac gives a local class, which the JVM reads its enclosing method attribute only alongside
+    // Returns the attributes of a local class.
     private static Consumer<ClassWriter> local(String name, String around, String method, String descriptor) {
         return writer -> {
             writer.visitOuterClass(around, method, descriptor);
@@ -857,14 +857,14 @@ class ControlValueTypesTest {
         };
     }
 
-    // A class signature whose interfaces reflection cannot build, the second naming the given parameter for ValueControl
+    // Returns a broken class signature.
     private static String naming(String parameter) {
         return OBJECT + signature(Supplier.class, GONE) + signature(ValueControl.class, "T" + parameter + ";");
     }
 
     @Test
     void anArrayOfTheDeepestKindIsNotNestedFurther() {
-        // 254 dimensions bound to E still nest once more into the JVM's limit of 255, which cannot be passed
+        // Checks the dimension limit.
         Generated generated = new Generated()
                 .add("Deep", signature(GenericArray.class, "[".repeat(254) + "I"), internal(GenericArray.class))
                 .add("Deepest", signature(GenericArray.class, "[".repeat(255) + "I"), internal(GenericArray.class));
@@ -880,7 +880,7 @@ class ControlValueTypesTest {
 
     @Test
     void aSignatureNestingAnArrayPastTheLimitIsUnreadableWhereverItSits() {
-        // Reflection throws UnsupportedOperationException for these, and the class file parser rejects the depth too
+        // Checks the unsupported types.
         String tooDeep = "[".repeat(256) + "I";
         Generated generated = new Generated()
                 .add("Argument", OBJECT + signature(Control.class, tooDeep), "java/lang/Object", internal(Control.class))
@@ -963,7 +963,7 @@ class ControlValueTypesTest {
         assertFalse(ControlValueTypes.related(int.class, long.class));
         assertFalse(ControlValueTypes.related(String.class, Mode.class));
         assertFalse(ControlValueTypes.related(Mode.class, Other.class));
-        // Abstract or not, a class has one line of superclasses
+        // Checks a superclass line.
         assertFalse(ControlValueTypes.related(Number.class, String.class));
         assertFalse(ControlValueTypes.related(AbstractList.class, Thread.class));
         assertFalse(ControlValueTypes.related(Enum.class, Number.class));
@@ -971,7 +971,7 @@ class ControlValueTypesTest {
 
     @Test
     void anInterfaceMeetsEveryClassThatIsNeitherFinalNorAnEnum() {
-        // An Integer is both, and a subclass of an open class can implement anything
+        // Checks Integer and an open class.
         assertTrue(ControlValueTypes.related(Number.class, Comparable.class));
         assertTrue(ControlValueTypes.related(Comparable.class, Number.class));
         assertTrue(ControlValueTypes.related(Runnable.class, AbstractList.class));
@@ -979,7 +979,7 @@ class ControlValueTypesTest {
         assertTrue(ControlValueTypes.related(Runnable.class, Enum.class));
         assertTrue(ControlValueTypes.related(Runnable.class, CharSequence.class));
         assertTrue(ControlValueTypes.related(Runnable.class, Spread.class));
-        // A final class, a record and an enum have only the interfaces they declare
+        // Checks final types.
         assertFalse(ControlValueTypes.related(CharSequence.class, Integer.class));
         assertFalse(ControlValueTypes.related(Runnable.class, String.class));
         assertFalse(ControlValueTypes.related(Runnable.class, Circle.class));
@@ -998,7 +998,7 @@ class ControlValueTypesTest {
         assertTrue(ControlValueTypes.related(Runnable.class, Vehicle.class));
         assertTrue(ControlValueTypes.related(Vehicle.class, Runnable.class));
         assertFalse(ControlValueTypes.related(CharSequence.class, Vehicle.class));
-        // Down through sealed subtypes of sealed types, and between two sealed types
+        // Checks sealed types.
         assertTrue(ControlValueTypes.related(Runnable.class, Tree.class));
         assertFalse(ControlValueTypes.related(CharSequence.class, Tree.class));
         assertTrue(ControlValueTypes.related(Left.class, Right.class));
@@ -1018,7 +1018,7 @@ class ControlValueTypesTest {
         assertTrue(ControlValueTypes.related(Object[].class, int[][].class));
         assertFalse(ControlValueTypes.related(Integer[].class, Boolean[].class));
         assertFalse(ControlValueTypes.related(Runnable[].class, String[].class));
-        // Primitive components are never boxed, and an int[] is no Object[]
+        // Checks primitive components.
         assertFalse(ControlValueTypes.related(int[].class, Integer[].class));
         assertFalse(ControlValueTypes.related(int[].class, long[].class));
         assertFalse(ControlValueTypes.related(Object[].class, int[].class));

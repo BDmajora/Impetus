@@ -34,7 +34,7 @@ class LightQueueTest {
         assertEquals(ChunkPos.asLong(0, 0), first.chunkCoordinate);
         assertEquals(2, first.changedPositions.size());
         assertTrue(first.changedPositions.contains(1 | (2 << 4) | (64 << 8)));
-        // A dequeued task is in flight until it completes, and the chunk still counts as busy
+        // Checks a task in flight.
         assertTrue(queue.hasPendingWork(0, 0));
         assertTrue(queue.hasPendingLightWork(ChunkPos.asLong(0, 0)));
         assertNotNull(queue.getPendingWorkFuture(ChunkPos.asLong(0, 0)));

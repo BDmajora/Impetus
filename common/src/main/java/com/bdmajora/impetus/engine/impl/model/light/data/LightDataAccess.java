@@ -1,11 +1,10 @@
 package com.bdmajora.impetus.engine.impl.model.light.data;
 
 import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFacing;
-import com.bdmajora.impetus.engine.impl.util.position.SectionPos;
 
 import java.util.Arrays;
 
-// Caches per-block light/occlusion data as packed ints (BL/SL/LU 4 bits each, AO 16 bits @ 12-bit precision, then EM/OP/FO/FC flag bits; see pack/unpack below)
+// Caches packed light and occlusion data of each block.
 public abstract class LightDataAccess {
     private static final int NEIGHBOR_BLOCK_RADIUS = 2;
     private static final int BLOCK_LENGTH = 16 + (NEIGHBOR_BLOCK_RADIUS * 2);
@@ -38,7 +37,7 @@ public abstract class LightDataAccess {
 
     protected abstract int compute(int x, int y, int z);
 
-    // Lazily computes and caches the packed light word for a position; 0 is treated as "not yet computed"
+    // Returns the packed light word of a position and computes it on first use.
     public int get(int x, int y, int z) {
         int l = this.index(x, y, z);
 
@@ -127,7 +126,7 @@ public abstract class LightDataAccess {
         return ((word >>> 29) & 0b1) != 0;
     }
 
-    // Full-opaque flag bit, for AO
+    // Packs the full opaque flag bit.
     public static int packFO(boolean opaque) {
         return (opaque ? 1 : 0) << 30;
     }
@@ -162,14 +161,14 @@ public abstract class LightDataAccess {
         return (packed >> 20) & 0xFFFF;
     }
 
-    // Mirrors LevelRenderer.getLightColor, minus the emissive check
+    // Returns the lightmap of a packed word.
     public static int getLightmap(int word) {
         return pack(Math.max(unpackBL(word), unpackLU(word)), unpackSL(word));
     }
 
     public static final int FULL_BRIGHT = pack(15, 15);
 
-    // Same as getLightmap, but short-circuits to full bright for emissive blocks
+    // Returns full bright for emissive blocks and the lightmap otherwise.
     public static int getEmissiveLightmap(int word) {
         if (unpackEM(word)) {
             return FULL_BRIGHT;

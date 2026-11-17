@@ -8,6 +8,7 @@ import net.minecraft.block.state.IBlockState;
 import net.minecraft.init.Blocks;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
+import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.WorldType;
@@ -21,9 +22,12 @@ import java.util.Set;
 // Table of the faces of each block that stop light.
 @SuppressWarnings("deprecation")
 public final class FaceOcclusion {
+    // Closed face bits by block for 16 metas and the sided metas.
     private static final Reference2ObjectOpenHashMap<Block, long[]> FACE_SOLIDITY = new Reference2ObjectOpenHashMap<>();
-    // Has sided transparency.
+    // Blocks with at least one sided meta and every FaceLightOcclusion block.
     private static final Set<Block> HAS_SIDED_TRANSPARENCY = Collections.newSetFromMap(new IdentityHashMap<>());
+    // All six face bits
+    private static final int ALL_FACES = (1 << 6) - 1;
 
     // Facings by axis and direction.
     private static final EnumFacing[] AXIS_TO_FACING = {
@@ -37,19 +41,31 @@ public final class FaceOcclusion {
     private FaceOcclusion() {
     }
 
-    // Returns whether a block passes light on some faces only.
+    // Returns whether any meta of a block passes light on some faces only.
     public static boolean hasSidedTransparency(Block block) {
         return HAS_SIDED_TRANSPARENCY.contains(block);
     }
 
+    // Returns the closed face bits of a sided meta or -1 for a meta that treats every face alike.
+    public static int sidedFaces(Block block, int meta) {
+        long[] table = FACE_SOLIDITY.get(block);
+        if (table == null || meta < 0 || meta > 15 || (table[2] & (1L << meta)) == 0) {
+            return -1;
+        }
+        int faces = 0;
+        for (int dir = 0; dir < 6; ++dir) {
+            int bitIndex = meta * 6 + dir;
+            if ((table[bitIndex >> 6] & (1L << (bitIndex & 63))) != 0) {
+                faces |= 1 << dir;
+            }
+        }
+        return faces;
+    }
+
     // Returns whether a face of a block state stops light.
     public static boolean isFaceSolid(Block block, int meta, int axisDir) {
-        long[] bits = FACE_SOLIDITY.get(block);
-        if (bits == null || meta < 0 || meta > 15 || axisDir < 0 || axisDir > 5) {
-            return true;
-        }
-        int bitIndex = meta * 6 + axisDir;
-        return (bits[bitIndex >> 6] & (1L << (bitIndex & 63))) != 0;
+        int faces = sidedFaces(block, meta);
+        return faces < 0 || axisDir < 0 || axisDir > 5 || (faces & (1 << axisDir)) != 0;
     }
 
     // Returns the opacity of a state toward a direction.
@@ -60,7 +76,10 @@ public final class FaceOcclusion {
         }
         int opacity = state.getLightOpacity();
         if (opacity > 1 && hasSidedTransparency(block)) {
-            return isFaceSolid(block, block.getMetaFromState(state), dirOrdinal) ? opacity : 1;
+            int faces = sidedFaces(block, block.getMetaFromState(state));
+            if (faces >= 0) {
+                return (faces & (1 << dirOrdinal)) != 0 ? opacity : 1;
+            }
         }
         return Math.max(1, opacity);
     }
@@ -80,9 +99,7 @@ public final class FaceOcclusion {
                 continue;
             }
 
-            boolean anySidedDifference = false;
-            long bits0 = 0, bits1 = 0;
-
+            long[] table = new long[3];
             for (int meta = 0; meta < 16; meta++) {
                 IBlockState state;
                 try {
@@ -90,33 +107,48 @@ public final class FaceOcclusion {
                     if (state.isFullCube() || state.getLightOpacity() <= 0) {
                         continue;
                     }
+                } catch (VirtualMachineError fatal) {
+                    throw fatal;
                 } catch (Throwable t) {
                     continue;
                 }
                 fake.state = state;
 
+                int closed = 0;
                 for (int dir = 0; dir < 6; dir++) {
                     boolean solid;
                     try {
                         solid = block.isSideSolid(state, fake, BlockPos.ORIGIN, AXIS_TO_FACING[dir]);
+                    } catch (VirtualMachineError fatal) {
+                        throw fatal;
                     } catch (Throwable t) {
-                        continue;
+                        // A face that cannot be asked keeps the block's plain opacity
+                        solid = true;
                     }
                     if (solid) {
-                        int bitIndex = meta * 6 + dir;
-                        if (bitIndex < 64) {
-                            bits0 |= 1L << bitIndex;
-                        } else {
-                            bits1 |= 1L << (bitIndex - 64);
-                        }
-                    } else {
-                        anySidedDifference = true;
+                        closed |= 1 << dir;
                     }
                 }
+                // Leaves a meta with no solid face or all solid faces unsided.
+                if (closed == 0 || closed == ALL_FACES) {
+                    continue;
+                }
+                // Adds the faces the bounding box fills.
+                closed |= coveredFaces(state, fake);
+                if (closed == ALL_FACES) {
+                    continue;
+                }
+                for (int dir = 0; dir < 6; dir++) {
+                    if ((closed & (1 << dir)) != 0) {
+                        int bitIndex = meta * 6 + dir;
+                        table[bitIndex >> 6] |= 1L << (bitIndex & 63);
+                    }
+                }
+                table[2] |= 1L << meta;
             }
 
-            if (anySidedDifference) {
-                FACE_SOLIDITY.put(block, new long[]{bits0, bits1});
+            if (table[2] != 0) {
+                FACE_SOLIDITY.put(block, table);
                 HAS_SIDED_TRANSPARENCY.add(block);
                 count++;
             }
@@ -124,6 +156,47 @@ public final class FaceOcclusion {
 
         registered = true;
         Fulgor.LOGGER.info("Registered {} blocks with per-face light transparency", count);
+    }
+
+    // Returns the faces a state's bounding box fills or none for a whole cube box.
+    static int coveredFaces(IBlockState state, IBlockAccess access) {
+        AxisAlignedBB box;
+        try {
+            box = state.getBoundingBox(access, BlockPos.ORIGIN);
+        } catch (VirtualMachineError fatal) {
+            throw fatal;
+        } catch (Throwable t) {
+            return 0;
+        }
+        if (box == null) {
+            return 0;
+        }
+        boolean spansX = box.minX <= 0 && box.maxX >= 1;
+        boolean spansY = box.minY <= 0 && box.maxY >= 1;
+        boolean spansZ = box.minZ <= 0 && box.maxZ >= 1;
+        if (spansX && spansY && spansZ) {
+            return 0;
+        }
+        int faces = 0;
+        if (box.maxX >= 1 && spansY && spansZ) {
+            faces |= 1;
+        }
+        if (box.minX <= 0 && spansY && spansZ) {
+            faces |= 1 << 1;
+        }
+        if (box.maxZ >= 1 && spansX && spansY) {
+            faces |= 1 << 2;
+        }
+        if (box.minZ <= 0 && spansX && spansY) {
+            faces |= 1 << 3;
+        }
+        if (box.maxY >= 1 && spansX && spansZ) {
+            faces |= 1 << 4;
+        }
+        if (box.minY <= 0 && spansX && spansZ) {
+            faces |= 1 << 5;
+        }
+        return faces;
     }
 
     // Block access that returns one state at every position.
@@ -137,7 +210,7 @@ public final class FaceOcclusion {
             return pos.equals(BlockPos.ORIGIN) ? this.state : Blocks.AIR.getDefaultState();
         }
 
-        // Returns whether air block.
+        // Returns whether a position is air.
         @Override
         public boolean isAirBlock(BlockPos pos) {
             return !pos.equals(BlockPos.ORIGIN);
@@ -167,7 +240,7 @@ public final class FaceOcclusion {
             return Biome.getBiomeForId(0);
         }
 
-        // Returns whether side solid.
+        // Returns whether a side of the probed state is solid at the origin.
         @Override
         public boolean isSideSolid(BlockPos pos, EnumFacing side, boolean _default) {
             return pos.equals(BlockPos.ORIGIN) ? this.state.isSideSolid(this, pos, side) : _default;

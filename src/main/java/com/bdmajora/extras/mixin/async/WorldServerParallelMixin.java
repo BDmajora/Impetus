@@ -26,11 +26,11 @@ import java.util.UUID;
 // Mixin that changes WorldServer.
 @Mixin(WorldServer.class)
 public abstract class WorldServerParallelMixin implements ParallelWorld {
-    // Field random tick random added to the target.
+    // Random of each random tick worker.
     @Unique
     private static final ThreadLocal<Random> impetus$randomTickRandom = ThreadLocal.withInitial(Random::new);
 
-    // Field random tick batch added to the target.
+    // Random ticks collected this tick.
     @Unique
     private List<Runnable> impetus$randomTickBatch;
 
@@ -58,7 +58,7 @@ public abstract class WorldServerParallelMixin implements ParallelWorld {
         }
     }
 
-    // Lockeds the get entity from uuid.
+    // Looks an entity up by UUID under the world lock.
     @WrapMethod(method = "getEntityFromUuid")
     private Entity impetus$lockedGetEntityFromUuid(UUID uuid, Operation<Entity> original) {
         if (!this.impetus$isParallel()) {
@@ -93,7 +93,7 @@ public abstract class WorldServerParallelMixin implements ParallelWorld {
         }
     }
 
-    // Lockeds the is block tick pending.
+    // Checks for a pending block tick under the world lock.
     @WrapMethod(method = "isBlockTickPending")
     private boolean impetus$lockedIsBlockTickPending(BlockPos pos, Block block, Operation<Boolean> original) {
         if (!this.impetus$isParallel()) {
@@ -104,7 +104,7 @@ public abstract class WorldServerParallelMixin implements ParallelWorld {
         }
     }
 
-    // Lockeds the is update scheduled.
+    // Checks for a scheduled update under the world lock.
     @WrapMethod(method = "isUpdateScheduled")
     private boolean impetus$lockedIsUpdateScheduled(BlockPos pos, Block block, Operation<Boolean> original) {
         if (!this.impetus$isParallel()) {

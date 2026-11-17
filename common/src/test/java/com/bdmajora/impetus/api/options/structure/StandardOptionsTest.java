@@ -127,7 +127,7 @@ class StandardOptionsTest {
 
     private static final Pattern WORDS = Pattern.compile("[a-z0-9]+(_[a-z0-9]+)*");
 
-    // Field name to "mod:path" from the pinned lines
+    // Returns the pinned ids by field name.
     private static Map<String, String> pinned(List<String> lines) {
         Map<String, String> ids = new LinkedHashMap<>();
         for (String line : lines) {
@@ -137,7 +137,7 @@ class StandardOptionsTest {
         return ids;
     }
 
-    // Every static field of a holder by name, read through reflection so a holder from another loader works too
+    // Returns every static field of a holder.
     private static Map<String, Object> declared(Class<?> holder) throws IllegalAccessException {
         Map<String, Object> values = new LinkedHashMap<>();
         for (Field field : holder.getDeclaredFields()) {
@@ -196,7 +196,7 @@ class StandardOptionsTest {
                 assertSame(void.class, id.getType(), name);
                 assertTrue(OptionIdentifier.isPresent(id), name);
                 assertNotSame(OptionGroup.DEFAULT_ID, id, name);
-                // Whichever way the pair is asked for, it is this one object
+                // Checks the interned pair.
                 assertSame(id, OptionIdentifier.create(id.getModId(), id.getPath()), name);
                 assertSame(id, OptionIdentifier.create(id.getModId(), id.getPath(), void.class), name);
                 assertSame(id, OptionIdentifier.intern(id.getModId(), id.getPath()), name);
@@ -217,10 +217,10 @@ class StandardOptionsTest {
         assertEquals(GROUPS.size(), groups.size());
         assertEquals(PAGES.size(), pages.size());
         assertEquals(OPTIONS.size(), options.size());
-        // The fluidlogging page and its lone group are one id, which ConfigApi routes apart by registry
+        // Checks the shared fluidlogging id.
         assertSame(StandardOptions.Group.FLUIDLOGGING, StandardOptions.Pages.FLUIDLOGGING);
         assertEquals(Set.of(StandardOptions.Group.FLUIDLOGGING), shared(groups, pages));
-        // Option ids are untyped too, so one named like a group or page would be that very object
+        // Checks the option ids.
         assertEquals(Set.of(), shared(options, groups));
         assertEquals(Set.of(), shared(options, pages));
     }
@@ -230,7 +230,7 @@ class StandardOptionsTest {
         for (Class<?> holder : HOLDERS.keySet()) {
             for (OptionIdentifier<?> id : ids(holder)) {
                 assertTrue(Set.of("minecraft", "impetus").contains(id.getModId()), id.toString());
-                // No ':' or '/', so toString and the controller's search_results/<path> ids stay unambiguous
+                // Checks the id paths.
                 assertTrue(WORDS.matcher(id.getPath()).matches(), id.toString());
                 assertEquals(id.getModId() + ":" + id.getPath(), id.toString());
             }
@@ -270,7 +270,7 @@ class StandardOptionsTest {
         Method create = ids.getMethod("create", String.class, String.class, Class.class);
         Method untyped = ids.getMethod("create", String.class, String.class);
         Method type = ids.getMethod("getType");
-        // One pair per holder typed first, plus one made untyped first
+        // Creates the typed and untyped pairs.
         Object vsync = create.invoke(null, "minecraft", "vsync", Boolean.class);
         Object general = create.invoke(null, "impetus", "general", Integer.class);
         Object sorting = create.invoke(null, "impetus", "sorting", String.class);
@@ -355,7 +355,7 @@ class StandardOptionsTest {
             for (Future<Map<String, Object>> creator : creators) {
                 creator.get().forEach((name, id) -> assertSame(first.get(name), id, name));
             }
-            // Either the mod typed vsync first and the holder took its id, or the holder came first and the mod was refused
+            // Checks the outcome.
             Object outcome = typed.get();
             Object type = ids.getMethod("getType").invoke(first.get("VSYNC"));
             if (outcome instanceof IllegalArgumentException) {

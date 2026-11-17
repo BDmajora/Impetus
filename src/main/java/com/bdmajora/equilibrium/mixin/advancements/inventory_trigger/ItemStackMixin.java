@@ -10,13 +10,13 @@ public abstract class ItemStackMixin implements PreviousStackSize {
     // Count before the change.
     private int equilibrium$previousCount;
 
-    // Handles previous count.
+    // Returns the stack's count before the change being reported.
     @Override
     public int equilibrium$previousCount() {
         return this.equilibrium$previousCount;
     }
 
-    // Handles set previous count.
+    // Records the stack's count before a change.
     @Override
     public void equilibrium$setPreviousCount(int count) {
         this.equilibrium$previousCount = count;

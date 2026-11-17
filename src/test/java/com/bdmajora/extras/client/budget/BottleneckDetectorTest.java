@@ -19,7 +19,7 @@ class BottleneckDetectorTest {
 
     @Test
     void theSplitOfFrameTimeNamesTheBottleneck() {
-        // At target nothing is behind; past it, the GPU's share of the frame decides
+        // Checks the classification.
         assertEquals(State.HEADROOM, BottleneckDetector.classify(17.0, 5.0, TARGET));
         assertEquals(State.CPU_BOUND, BottleneckDetector.classify(30.0, 15.0, TARGET));
         assertEquals(State.GPU_BOUND, BottleneckDetector.classify(30.0, 27.0, TARGET));
@@ -31,7 +31,7 @@ class BottleneckDetectorTest {
         BottleneckDetector detector = new BottleneckDetector();
         assertEquals(State.UNKNOWN, detector.state());
         assertEquals(0.0, detector.gpuFrameMillis());
-        // Twenty samples before any verdict, then thirty agreeing ones before it is adopted
+        // Checks the sample counts.
         for (int i = 0; i < BottleneckDetector.MIN_VALID_SAMPLES - 1; i++) {
             assertEquals(State.UNKNOWN, detector.record(30.0, 10.0, TARGET));
         }

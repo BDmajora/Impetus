@@ -47,7 +47,7 @@ class LightSnapshotTest {
         client = Mc.client();
         Mixins.set(client, "renderGlobal", rebuildRenderer());
         Mixins.set(DynamicLights.class, "config", new DynamicLightsConfig());
-        // These tests drive the meshed fallback, which a legacy GLSL context still uses
+        // Uses the meshed fallback path.
         TerrainDynamicLights.setShaderApplied(false);
         DynamicLights.engine().clearLightSources();
     }
@@ -87,7 +87,7 @@ class LightSnapshotTest {
         double[] zs = new double[count];
         int[] luminances = new int[count];
         List<DynamicLightSource> sources = new ArrayList<>();
-        // Spread across section edges, negative coordinates, fractional positions and every luminance incl. dark
+        // Builds sources across section edges and luminances.
         for (int i = 0; i < count; i++) {
             xs[i] = random.nextDouble() * 48.0D - 24.0D;
             ys[i] = random.nextDouble() * 48.0D + 40.0D;
@@ -97,7 +97,7 @@ class LightSnapshotTest {
         }
         LightSnapshot snapshot = LightSnapshot.capture(sources);
         assertEquals(count, snapshot.sources.length);
-        // The plain arrays stand in for the mocks so the full sweep stays fast; one spot check ties them together
+        // Compares one spot check against the mocks.
         assertEquals(DynamicLightsEngine.maxDynamicLightLevel(1, 60, 1, sources.get(0), 0.0D),
                 DynamicLightsEngine.lightLevel(1, 60, 1, xs[0], ys[0], zs[0], luminances[0], 0.0D));
 
@@ -158,7 +158,7 @@ class LightSnapshotTest {
                         if ((int) DynamicLightsEngine.lightLevel(px, py, pz, x, y, z, luminance, 0.0D) < 1) {
                             continue;
                         }
-                        // Every section whose mesh reads this block, its own and any one block away
+                        // Walks every section whose mesh reads this block.
                         for (int sx = (px - 1) >> 4; sx <= (px + 1) >> 4; sx++) {
                             for (int sy = (py - 1) >> 4; sy <= (py + 1) >> 4; sy++) {
                                 for (int sz = (pz - 1) >> 4; sz <= (pz + 1) >> 4; sz++) {
@@ -201,7 +201,7 @@ class LightSnapshotTest {
         assertEquals(Set.of(DynamicLightsEngine.packSection(0, 0, 0)), first);
         verify(accessor).impetus$markBlocksForUpdate(0, 0, 0, 15, 15, 15, false);
 
-        // Crossing into the next section rebuilds both, the shared one only once
+        // Crosses into the next section.
         LongOpenHashSet second = DynamicLightsEngine.relightSections(renderer, world, first, 24.0D, 8.0D, 8.0D, 14);
         assertEquals(Set.of(DynamicLightsEngine.packSection(1, 0, 0)), second);
         verify(accessor, times(2)).impetus$markBlocksForUpdate(0, 0, 0, 15, 15, 15, false);
@@ -210,13 +210,13 @@ class LightSnapshotTest {
         assertEquals(2, edge.size());
         verify(accessor, times(2)).impetus$markBlocksForUpdate(16, 0, 0, 31, 15, 15, false);
 
-        // Going dark rebuilds only what it lit, and returns nothing to track
+        // Goes dark.
         Mockito.clearInvocations(accessor);
         assertNull(DynamicLightsEngine.relightSections(renderer, world, edge, 16.0D, 8.0D, 8.0D, 0));
         verify(accessor, times(2)).impetus$markBlocksForUpdate(anyInt(), anyInt(), anyInt(), anyInt(), anyInt(),
                 anyInt(), anyBoolean());
 
-        // A light of a world that is not shown, or no renderer, still reports its reach but queues nothing
+        // Checks a hidden world and a missing renderer.
         Mockito.clearInvocations(accessor);
         assertEquals(1, DynamicLightsEngine.relightSections(renderer, clientWorld(), edge, 8.0D, 8.0D, 8.0D, 14).size());
         assertEquals(1, DynamicLightsEngine.relightSections(null, world, edge, 8.0D, 8.0D, 8.0D, 14).size());
@@ -230,7 +230,7 @@ class LightSnapshotTest {
         World world = clientWorld();
         DynamicLightSource torch = source(world, 0.5D, 64.5D, 0.5D, 14);
         assertEquals(0.0D, engine.getDynamicLightLevel(0, 64, 0));
-        // A second light far away keeps the engine non-empty, so the lookup below goes through the snapshot
+        // Adds a far light.
         engine.addLightSource(source(world, 200.5D, 64.5D, 0.5D, 14));
         engine.addLightSource(torch);
         assertEquals(14.0D, engine.getDynamicLightLevel(0, 64, 0));
@@ -255,7 +255,7 @@ class LightSnapshotTest {
         engine.addLightSource(torch);
         assertEquals(14.0D, engine.getDynamicLightLevel(0, 64, 0));
 
-        // A move the source declined to apply keeps the lookups on the captured position, matching the meshes
+        // Keeps the captured position for a declined move.
         when(torch.impetus$getDynamicLightX()).thenReturn(40.5D);
         when(torch.impetus$updateDynamicLight(renderer)).thenReturn(false);
         Mixins.set(engine, "lastUpdate", 0L);
@@ -351,7 +351,7 @@ class LightSnapshotTest {
                 anyInt(), anyInt(), anyBoolean());
     }
 
-    // A viewer standing at the origin, between its last tick and this one
+    // Returns a viewer at the origin.
     private net.minecraft.entity.Entity viewer() {
         net.minecraft.entity.Entity viewer = mock(net.minecraft.entity.Entity.class);
         viewer.lastTickPosX = -2.0D;
@@ -360,7 +360,7 @@ class LightSnapshotTest {
         return viewer;
     }
 
-    // The published lights, read back through the block the terrain receives, x y z luminance each
+    // Reads the published lights back.
     private static float[] published() {
         java.nio.ByteBuffer block = org.lwjgl.system.MemoryUtil.memCalloc(TerrainDynamicLights.BYTES);
         try {
@@ -381,7 +381,7 @@ class LightSnapshotTest {
         DynamicLightsEngine engine = DynamicLights.engine();
         World world = clientWorld();
         viewer();
-        // Ten more lights than the block holds, each one block farther out along x
+        // Publishes ten more lights than the block holds.
         int total = TerrainDynamicLights.MAX_LIGHTS + 10;
         for (int i = 0; i < total; i++) {
             engine.addLightSource(source(world, total - i, 64.0D, 0.0D, 1 + i % 14));
@@ -400,7 +400,7 @@ class LightSnapshotTest {
             assertFalse(Float.isNaN(lights[i]));
             xs.add(lights[i]);
         }
-        // The viewer sits at x 0 this frame, so the nearest are x 1 to MAX_LIGHTS and the ten farthest drop out
+        // Checks the nearest lights were kept.
         for (int x = 1; x <= TerrainDynamicLights.MAX_LIGHTS; x++) {
             assertTrue(xs.contains((float) x), "x " + x);
         }
@@ -434,7 +434,7 @@ class LightSnapshotTest {
         when(client.getRenderViewEntity()).thenReturn(null);
         engine.publishTerrainLights(0.0F);
         assertEquals(0, TerrainDynamicLights.lightCount());
-        // Already empty, a source-less frame publishes nothing new
+        // Publishes an empty frame.
         engine.clearLightSources();
         viewer();
         engine.publishTerrainLights(0.0F);

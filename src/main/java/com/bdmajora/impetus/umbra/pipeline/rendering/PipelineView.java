@@ -14,17 +14,17 @@ public final class PipelineView {
         this.state = state;
     }
 
-    // Returns whether active.
+    // Returns whether a pipeline is active.
     public boolean isActive() {
         return this.state.active;
     }
 
-    // Returns whether post deferred.
+    // Returns whether the deferred passes already ran this frame.
     public boolean isPostDeferred() {
         return this.state.active && this.state.isPostDeferred();
     }
 
-    // Returns whether camera pass active.
+    // Returns whether the camera pass is drawing.
     public boolean isCameraPassActive() {
         return this.state.active && !UmbraShadowRenderer.isShadowPass();
     }

@@ -14,7 +14,7 @@ import com.bdmajora.extras.mixin.lightmap.EntityRendererLightmapMixin;
 import com.bdmajora.extras.mixin.loading.MinecraftLoadWorldGcMixin;
 import com.bdmajora.extras.mixin.loading.NetHandlerPlayClientRespawnMixin;
 import com.bdmajora.extras.mixin.loading.ScreenShotHelperMixin;
-import com.bdmajora.extras.mixin.misc.GuiIngameMixin;
+import com.bdmajora.extras.mixin.misc.GuiIngameForgeHighlightMixin;
 import com.bdmajora.extras.mixin.misc.MinecraftServerMixin;
 import com.bdmajora.extras.mixin.misc.WorldServerMixin;
 import com.bdmajora.extras.mixin.models.ModelRendererMatrixMixin;
@@ -132,27 +132,35 @@ class SmallMixinsTest {
     @Test
     void animationsFollowTheirCategorySwitch() {
         TextureMapMixin atlas = Mixins.instance(TextureMapMixin.class);
-        Mc.Recorded<Void> animate = Mc.operation();
-        // Anything goes with the defaults, including a missing sprite or name
-        Mixins.call(atlas, "impetus$controlAnimation", null, animate);
-        Mixins.call(atlas, "impetus$controlAnimation", sprite(null), animate);
-        Mixins.call(atlas, "impetus$controlAnimation", sprite("modded:blocks/gear"), animate);
-        assertEquals(3, animate.count());
+        // Checks the defaults.
+        assertEquals(Boolean.TRUE, Mixins.call(atlas, "impetus$controlAnimation", (Object) null));
+        assertEquals(Boolean.TRUE, Mixins.call(atlas, "impetus$controlAnimation", sprite(null)));
+        assertEquals(Boolean.TRUE, Mixins.call(atlas, "impetus$controlAnimation", sprite("modded:blocks/gear")));
 
         String[] names = {"water_still", "water_flow", "water_overlay", "lava_still", "lava_flow", "fire_layer_0", "fire_layer_1",
                 "portal", "redstone", "explosion", "flame", "smoke", "sculk_sensor"};
+        for (String name : names) {
+            assertEquals(Boolean.TRUE, Mixins.call(atlas, "impetus$controlAnimation", sprite("minecraft:blocks/" + name)));
+        }
         ExtrasConfig.AnimationSettings settings = config.animation;
         settings.water = settings.lava = settings.fire = settings.portal = settings.redstone = false;
         settings.explosion = settings.flame = settings.smoke = settings.sculkSensor = settings.blockAnimations = false;
-        Mc.Recorded<Void> off = Mc.operation();
+        // Names seen before keep their category but still read the current switches
         for (String name : names) {
-            Mixins.call(atlas, "impetus$controlAnimation", sprite("minecraft:blocks/" + name), off);
+            assertEquals(Boolean.FALSE, Mixins.call(atlas, "impetus$controlAnimation", sprite("minecraft:blocks/" + name)), name);
         }
-        Mixins.call(atlas, "impetus$controlAnimation", sprite("modded:blocks/gear"), off);
-        assertEquals(0, off.count());
+        assertEquals(Boolean.FALSE, Mixins.call(atlas, "impetus$controlAnimation", sprite("modded:blocks/gear")));
+        Map<String, ?> byName = Mixins.get(atlas, "impetus$categoryByName");
+        assertEquals(names.length + 1, byName.size());
+        // Only the lava switch back on brings back only the lava sprites
+        settings.lava = true;
+        assertEquals(Boolean.TRUE, Mixins.call(atlas, "impetus$controlAnimation", sprite("minecraft:blocks/lava_flow")));
+        assertEquals(Boolean.FALSE, Mixins.call(atlas, "impetus$controlAnimation", sprite("minecraft:blocks/water_flow")));
+        // The first fragment wins when a name holds two
+        assertEquals(Boolean.TRUE, Mixins.call(atlas, "impetus$controlAnimation", sprite("modded:blocks/lava_still_smoke")));
         settings.all = false;
-        Mixins.call(atlas, "impetus$controlAnimation", null, off);
-        assertEquals(0, off.count());
+        assertEquals(Boolean.FALSE, Mixins.call(atlas, "impetus$controlAnimation", (Object) null));
+        assertEquals(Boolean.FALSE, Mixins.call(atlas, "impetus$controlAnimation", sprite("minecraft:blocks/lava_flow")));
     }
 
     @Test
@@ -166,7 +174,7 @@ class SmallMixinsTest {
             Mixins.set(part, "compiled", true);
             return null;
         });
-        // Off, vanilla renders
+        // Checks the switch off.
         config.entityModels.matrixTransforms = false;
         assertFalse(cancels(part, "impetus$renderWithMatrix", 0.0625F));
         assertFalse(cancels(part, "impetus$renderWithRotationMatrix", 0.0625F));
@@ -182,7 +190,7 @@ class SmallMixinsTest {
             assertTrue(cancels(part, "impetus$renderWithMatrix", 0.0625F));
             gl.verify(() -> GL11.glTranslatef(0.0625F, 0.0F, 0.0F), Mockito.atLeastOnce());
             assertTrue(cancels(part, "impetus$postRenderMatrix", 0.0625F));
-            // Rotations become one matrix, in the order each call site uses
+            // Checks the rotation matrix.
             Mixins.set(part, "rotateAngleX", 0.3F);
             Mixins.set(part, "rotateAngleY", 0.2F);
             Mixins.set(part, "rotateAngleZ", 0.1F);
@@ -197,7 +205,7 @@ class SmallMixinsTest {
             Mixins.set(part, "rotateAngleZ", 0.0F);
             Mixins.set(part, "rotationPointX", 0.0F);
             assertTrue(cancels(part, "impetus$postRenderMatrix", 0.0625F));
-            // Nothing for a hidden part, and compiling happens once
+            // Checks a hidden part and one compile.
             Mixins.set(part, "compiled", false);
             assertTrue(cancels(part, "impetus$renderWithRotationMatrix", 0.0625F));
             Mixins.set(part, "compiled", false);
@@ -271,7 +279,7 @@ class SmallMixinsTest {
         }
         surrounded.put(BlockPos.ORIGIN.offset(EnumFacing.UP, 2), Blocks.STONE.getDefaultState());
         IBlockAccess inside = leafWorld(surrounded);
-        // The default rule, or fast leaves, leave vanilla alone
+        // Checks the default rule and fast leaves.
         assertNull(cull(leaves, inside, EnumFacing.UP));
         config.leaves.cullingMode = ExtrasConfig.LeafCulling.CHECK;
         Mixins.set(leaves, "leavesFancy", false);
@@ -332,10 +340,13 @@ class SmallMixinsTest {
         assertTrue(cancels(shaders, "impetus$preventLoadShader", (Object) null));
         assertTrue(cancels(shaders, "impetus$preventSwitchUseShader"));
 
-        GuiIngameMixin ingame = Mixins.instance(GuiIngameMixin.class);
-        assertFalse(cancels(ingame, "impetus$renderSelectedItem", (Object) null));
+        // The switch only ever narrows the game's own heldItemTooltips setting
+        GuiIngameForgeHighlightMixin ingame = Mixins.instance(GuiIngameForgeHighlightMixin.class);
+        assertTrue((boolean) Mixins.<Boolean>call(ingame, "impetus$heldItemTooltips", true));
+        assertFalse((boolean) Mixins.<Boolean>call(ingame, "impetus$heldItemTooltips", false));
         config.detail.heldItemTooltips = false;
-        assertTrue(cancels(ingame, "impetus$renderSelectedItem", (Object) null));
+        assertFalse((boolean) Mixins.<Boolean>call(ingame, "impetus$heldItemTooltips", true));
+        assertFalse((boolean) Mixins.<Boolean>call(ingame, "impetus$heldItemTooltips", false));
 
         MinecraftServerMixin server = Mixins.instance(MinecraftServerMixin.class);
         assertEquals(ExtrasConfig.ExtraSettings.AUTOSAVE_VANILLA_TICKS, (int) Mixins.<Integer>call(server, "impetus$autosaveInterval", 900));
@@ -414,7 +425,7 @@ class SmallMixinsTest {
         Mockito.doReturn(mock(Render.class)).when(renderManager).getEntityRenderObject(any());
     }
 
-    // A dimension that brings its own lightmap colours, which the cache must not freeze
+    // Dimension with its own lightmap colours.
     static class LitProvider extends WorldProviderSurface {
         @Override
         public void getLightmapColors(float partialTicks, float sunBrightness, float skyLight, float blockLight, float[] colors) {
@@ -432,7 +443,7 @@ class SmallMixinsTest {
         when(world.getSunBrightness(anyFloat())).thenReturn(0.5F);
         EntityPlayerSP player = mock(EntityPlayerSP.class);
 
-        // Nothing to cache without an update pending, with caching off, or without a world
+        // Checks the uncached cases.
         assertFalse(cancels(renderer, "impetus$skipUnchanged", 0F));
         Mixins.set(renderer, "lightmapUpdateNeeded", true);
         config.clientTick.lightmapCaching = false;
@@ -442,17 +453,17 @@ class SmallMixinsTest {
         Mixins.set(client, "world", world);
         Mixins.set(client, "player", player);
 
-        // The first frame builds and remembers; an unchanged second frame is skipped
+        // Checks the first and second frame.
         assertFalse(cancels(renderer, "impetus$skipUnchanged", 0F));
         assertTrue(cancels(renderer, "impetus$skipUnchanged", 0F));
         assertFalse((boolean) Mixins.<Boolean>get(renderer, "lightmapUpdateNeeded"));
-        // Night vision, fading or not, is part of what it reads
+        // Checks night vision.
         Mixins.set(renderer, "lightmapUpdateNeeded", true);
         when(player.getActivePotionEffect(MobEffects.NIGHT_VISION)).thenReturn(new PotionEffect(MobEffects.NIGHT_VISION, 1000));
         assertFalse(cancels(renderer, "impetus$skipUnchanged", 0F));
         when(player.getActivePotionEffect(MobEffects.NIGHT_VISION)).thenReturn(new PotionEffect(MobEffects.NIGHT_VISION, 100));
         assertFalse(cancels(renderer, "impetus$skipUnchanged", 0F));
-        // A boss fading the sky, or a dimension with its own colours, always rebuilds
+        // Checks the boss fade and dimension colours.
         Mixins.set(renderer, "bossColorModifier", 0.5F);
         assertFalse(cancels(renderer, "impetus$skipUnchanged", 0F));
         Mixins.set(renderer, "bossColorModifier", 0.0F);
@@ -466,34 +477,46 @@ class SmallMixinsTest {
         GuiOverlayDebugMixin debug = Mixins.instance(GuiOverlayDebugMixin.class);
         Mixins.set(debug, "impetus$leftCache", new ArrayList<String>());
         Mixins.set(debug, "impetus$rightCache", new ArrayList<String>());
-        // Off, every frame rebuilds
-        config.extra.steadyDebugHud = false;
-        Mixins.call(debug, "impetus$decideRebuild", null, Mixins.ci());
-        CallbackInfoReturnable<List<String>> live = Mixins.cir(new ArrayList<>(List.of("fps")));
-        Mixins.call(debug, "impetus$leftFromCache", live);
-        assertFalse(live.isCancelled());
-        Mixins.call(debug, "impetus$cacheLeft", live);
-        CallbackInfoReturnable<List<String>> right = Mixins.cir(new ArrayList<>(List.of("java")));
-        Mixins.call(debug, "impetus$rightFromCache", right);
-        Mixins.call(debug, "impetus$cacheRight", right);
+        int[] builds = new int[2];
+        com.llamalad7.mixinextras.injector.wrapoperation.Operation<List<String>> left =
+                args -> new ArrayList<>(List.of("fps " + ++builds[0]));
+        com.llamalad7.mixinextras.injector.wrapoperation.Operation<List<String>> right =
+                args -> new ArrayList<>(List.of("java " + ++builds[1]));
 
+        // Checks the switch off.
+        config.extra.steadyDebugHud = false;
+        assertEquals(List.of("fps 1"), Mixins.call(debug, "impetus$steadyLeft", left));
+        assertEquals(List.of("java 1"), Mixins.call(debug, "impetus$steadyRight", right));
+        assertEquals(List.of("fps 2"), Mixins.call(debug, "impetus$steadyLeft", left));
+        assertEquals(0L, (long) Mixins.<Long>get(debug, "impetus$nextUpdateNanos"));
+
+        // Checks the reused columns.
         config.extra.steadyDebugHud = true;
         config.extra.steadyDebugHudRefreshInterval = 20;
+        assertEquals(List.of("fps 3"), Mixins.call(debug, "impetus$steadyLeft", left));
+        assertEquals(List.of("java 2"), Mixins.call(debug, "impetus$steadyRight", right));
+        List<String> cachedLeft = Mixins.call(debug, "impetus$steadyLeft", left);
+        List<String> cachedRight = Mixins.call(debug, "impetus$steadyRight", right);
+        assertEquals(List.of("fps 3"), cachedLeft);
+        assertEquals(List.of("java 2"), cachedRight);
+        assertEquals(3, builds[0]);
+        assertEquals(2, builds[1]);
+        // Checks Forge's append does not leak.
+        cachedLeft.add("Debug: Pie");
+        assertEquals(List.of("fps 3"), Mixins.call(debug, "impetus$steadyLeft", left));
+
+        // Past the interval both columns rebuild together
         Mixins.set(debug, "impetus$nextUpdateNanos", 0L);
-        Mixins.call(debug, "impetus$decideRebuild", null, Mixins.ci());
-        Mixins.call(debug, "impetus$cacheLeft", live);
-        Mixins.call(debug, "impetus$cacheRight", right);
-        // Within the interval the columns come from the cache, as copies
-        Mixins.call(debug, "impetus$decideRebuild", null, Mixins.ci());
-        CallbackInfoReturnable<List<String>> cachedLeft = Mixins.cir();
-        Mixins.call(debug, "impetus$leftFromCache", cachedLeft);
-        assertEquals(List.of("fps"), cachedLeft.getReturnValue());
-        CallbackInfoReturnable<List<String>> cachedRight = Mixins.cir();
-        Mixins.call(debug, "impetus$rightFromCache", cachedRight);
-        assertEquals(List.of("java"), cachedRight.getReturnValue());
-        Mixins.call(debug, "impetus$cacheLeft", cachedLeft);
-        Mixins.call(debug, "impetus$cacheRight", cachedRight);
-        assertEquals(List.of("fps"), Mixins.get(debug, "impetus$leftCache"));
+        assertEquals(List.of("fps 4"), Mixins.call(debug, "impetus$steadyLeft", left));
+        assertEquals(List.of("java 3"), Mixins.call(debug, "impetus$steadyRight", right));
+
+        // A right column read before any left column still builds once
+        GuiOverlayDebugMixin fresh = Mixins.instance(GuiOverlayDebugMixin.class);
+        Mixins.set(fresh, "impetus$leftCache", new ArrayList<String>());
+        Mixins.set(fresh, "impetus$rightCache", new ArrayList<String>());
+        Mixins.set(fresh, "impetus$rebuild", false);
+        assertEquals(List.of("java 4"), Mixins.call(fresh, "impetus$steadyRight", right));
+        assertEquals(List.of("java 4"), Mixins.call(fresh, "impetus$steadyRight", right));
     }
 
     @Test
@@ -540,12 +563,21 @@ class SmallMixinsTest {
         CallbackInfoReturnable<ITextComponent> timestamped = Mixins.cir();
         Mixins.call(ScreenShotHelperMixin.class, "impetus$saveAsync", dir.toFile(), null, 2, 2, null, timestamped);
         assertEquals("screenshot.success", ((net.minecraft.util.text.TextComponentTranslation) timestamped.getReturnValue()).getKey());
+        // Checks the claimed name.
+        assertTrue(Files.exists(dir.resolve("screenshots/shot.png")));
+        // Checks a truncated old file.
+        Files.write(dir.resolve("screenshots/named.png"), new byte[100_000]);
+        java.io.ByteArrayOutputStream fresh = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), "png", fresh);
         CallbackInfoReturnable<ITextComponent> named = Mixins.cir();
         Mixins.call(ScreenShotHelperMixin.class, "impetus$saveAsync", dir.toFile(), "named.png", 2, 2, null, named);
         assertTrue(named.isCancelled());
         awaitWritten(dir.resolve("screenshots/shot.png"));
-        awaitWritten(dir.resolve("screenshots/named.png"));
-        // A file that cannot be written is reported in chat from the client thread; ImageIO deletes an empty directory in its way, so this one has something in it
+        for (int i = 0; i < 200 && dir.resolve("screenshots/named.png").toFile().length() != fresh.size(); i++) {
+            Thread.sleep(50);
+        }
+        assertArrayEquals(fresh.toByteArray(), Files.readAllBytes(dir.resolve("screenshots/named.png")));
+        // A file that cannot be written (a directory in the way) is reported in chat from the client thread
         Files.createDirectories(dir.resolve("screenshots/blocked.png"));
         Files.writeString(dir.resolve("screenshots/blocked.png/keep"), "");
         GuiIngame ingame = mock(GuiIngame.class);
@@ -568,7 +600,7 @@ class SmallMixinsTest {
         CallbackInfoReturnable<ITextComponent> failed = Mixins.cir();
         Mixins.call(ScreenShotHelperMixin.class, "impetus$saveAsync", dir.toFile(), null, 2, 2, null, failed);
         assertEquals("screenshot.failure", ((net.minecraft.util.text.TextComponentTranslation) failed.getReturnValue()).getKey());
-        // Switched off, vanilla saves as it always did
+        // Checks the switch off.
         config.loading.asyncScreenshots = false;
         CallbackInfoReturnable<ITextComponent> vanilla = Mixins.cir();
         Mixins.call(ScreenShotHelperMixin.class, "impetus$saveAsync", dir.toFile(), null, 2, 2, null, vanilla);

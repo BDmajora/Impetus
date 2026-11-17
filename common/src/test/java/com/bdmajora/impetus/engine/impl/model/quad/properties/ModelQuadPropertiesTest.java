@@ -8,7 +8,7 @@ import org.mockito.Mockito;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ModelQuadPropertiesTest {
-    // A full unit face in Minecraft's canonical vertex order, at the far or near side of the axis
+    // Returns a full unit face.
     private static ModelQuadView face(ModelQuadFacing facing, int color) {
         float[][] v = switch (facing) {
             case NEG_Y -> new float[][]{{0, 0, 1}, {0, 0, 0}, {1, 0, 0}, {1, 0, 1}};
@@ -71,7 +71,7 @@ class ModelQuadPropertiesTest {
         }
         float[][] slanted = {{0, 0, 1}, {0, 1, 0}, {1, 1, 0}, {1, 0, 1}};
         assertFalse(ModelQuadFlags.contains(ModelQuadFlags.getQuadFlags(quad(slanted, -1), ModelQuadFacing.NEG_Y), ModelQuadFlags.IS_PARALLEL));
-        // UNASSIGNED has no axis, so the axis switch trips before its own guard does
+        // Checks UNASSIGNED.
         assertThrows(IllegalArgumentException.class, () -> ModelQuadFlags.getQuadFlags(quad(slanted, -1), ModelQuadFacing.UNASSIGNED));
         new ModelQuadFlags();
     }

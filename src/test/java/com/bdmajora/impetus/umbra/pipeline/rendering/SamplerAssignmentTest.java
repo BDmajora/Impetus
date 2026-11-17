@@ -27,7 +27,7 @@ class SamplerAssignmentTest {
         SamplerAssignment.withdraw(this);
     }
 
-    // The program declares exactly these names, each at its own location (1000 + index)
+    // Declares the given uniform names.
     private static void declares(String... names) {
         for (int i = 0; i < names.length; i++) {
             String name = names[i];

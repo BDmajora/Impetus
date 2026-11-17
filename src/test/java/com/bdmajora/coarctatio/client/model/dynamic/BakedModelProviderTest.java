@@ -74,7 +74,7 @@ class BakedModelProviderTest {
         assertEquals(java.util.Set.of(location), provider.getKeys());
         assertSame(model, provider.iterator().next());
 
-        // Invalidating drops the baked and the unbaked entry, for a mod that replaced a model after a bake
+        // Checks invalidation.
         provider.invalidate(location);
         assertNull(provider.getIfBaked(location));
     }
@@ -93,12 +93,12 @@ class BakedModelProviderTest {
 
         // So does a block variant the state mapper produced
         ModelResourceLocation block = new ModelResourceLocation("examplemod:machine", "normal");
-        // The table holds the trimmable sets the location scan builds, so a test entry has to be one too
+        // Adds a trimmable variant set.
         ModelLocations.VARIANTS_BY_BLOCKSTATE.put(new ResourceLocation("examplemod:machine"),
                 new it.unimi.dsi.fastutil.objects.ObjectOpenHashSet<>(java.util.List.of(block)));
         assertSame(missing, provider.getObject(block));
 
-        // Anything else is simply absent, the way vanilla's registry answered
+        // Checks an absent model.
         assertNull(provider.getObject(new ModelResourceLocation("examplemod:nothing", "normal")));
     }
 
@@ -130,7 +130,7 @@ class BakedModelProviderTest {
         assertSame(model, store.get(stone));
         assertNull(store.get("not a state"));
 
-        // Writing pins the model for that state's location, which is what a mod replacing a model expects
+        // Checks a write pins the model.
         ModelResourceLocation location = new ModelResourceLocation("minecraft:stone", "normal");
         when(((LocationAwareBlockModelShapes) shapes).coarctatio$locationForState(stone)).thenReturn(location);
         IBakedModel replacement = mock(IBakedModel.class);
@@ -150,7 +150,7 @@ class BakedModelProviderTest {
         IBakedModel model = mock(IBakedModel.class);
         provider.putObject(new ModelResourceLocation("minecraft:stone", "normal"), model);
 
-        // Mods probe this map rather than iterate it, so it claims to hold everything and lists nothing
+        // Checks the probe only map.
         assertEquals(1, store.size());
         assertFalse(store.isEmpty());
         assertTrue(store.containsKey(Blocks.STONE.getDefaultState()));

@@ -80,7 +80,7 @@ public class VisibleChunkCollector implements OcclusionCuller.Visitor {
     // Adds a visited section to its render list and the rebuild candidates.
     @Override
     public void visit(int latticeIndex, int regionId, int sectionIndex, int chunkX, int chunkY, int chunkZ, int meta, boolean visible) {
-        // Creates the list of the region even for an empty section to keep the draw order
+        // Creates the list of the region even for an empty section.
         ChunkRenderList renderList = this.renderListsByRegion[regionId];
 
         if (renderList == null) {

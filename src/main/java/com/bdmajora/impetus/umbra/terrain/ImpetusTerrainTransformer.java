@@ -87,7 +87,7 @@ public final class ImpetusTerrainTransformer {
             ""
     ) + "\n";
 
-    // Bridge inputs of the vertex prologue, which the Nvidium port turns into globals its fetch fills.
+    // Bridge inputs of the vertex prologue.
     private static final String BRIDGE_INPUTS = String.join("\n",
             "in vec3 a_PosId;",
             "in vec4 a_Color;",
@@ -100,7 +100,7 @@ public final class ImpetusTerrainTransformer {
             "in vec4 iris_MidBlock;",
             "");
 
-    // Raster replacement of the bridge inputs: the 36 byte UmbraChunkVertexType words, unpacked into the same names.
+    // Packed vertex inputs that replace the bridge inputs on the raster path.
     private static final String PACKED_INPUTS = String.join("\n",
             "in uvec4 a_PackedA;",
             "in uvec4 a_PackedB;",
@@ -138,7 +138,7 @@ public final class ImpetusTerrainTransformer {
             "}",
             "");
 
-    // Line the packed raster main gains first, before the bridge inputs are read.
+    // Unpack call added at the start of the packed raster main.
     private static final String UNPACK_CALL = "    _umbra_unpackVertex();\n";
 
     // Opening of the generated vertex main.
@@ -270,12 +270,12 @@ public final class ImpetusTerrainTransformer {
         return transformed;
     }
 
-    // Rewrites a vertex stage for the raster terrain, reading the packed 36 byte vertex.
+    // Rewrites a vertex stage for the raster terrain with the packed vertex.
     public static String transformRasterVertexShader(String source, boolean shadow) {
         return packVertexInputs(transformVertexShader(source, shadow));
     }
 
-    // Rewrites a modern vertex stage for the raster terrain, reading the packed 36 byte vertex.
+    // Rewrites a modern vertex stage for the raster terrain with the packed vertex.
     public static String transformRasterVertexShaderModern(String source, boolean shadow) {
         return packVertexInputs(transformVertexShaderModern(source, shadow));
     }
@@ -284,7 +284,7 @@ public final class ImpetusTerrainTransformer {
     static String packVertexInputs(String transformed) {
         int inputs = transformed.indexOf(BRIDGE_INPUTS);
         int main = transformed.lastIndexOf(MAIN_OPENING);
-        // Both are generated text, so a miss means the prologue or main changed without this
+        // Throws when the generated prologue or main is missing.
         if (inputs < 0 || main < inputs) {
             throw new IllegalStateException("transformed vertex stage lacks the generated bridge inputs or main");
         }
@@ -425,7 +425,7 @@ public final class ImpetusTerrainTransformer {
                 + " + gl_TessCoord.z * iris_varyingsIn[2]." + member;
     }
 
-    // Compats the for.
+    // Turns the core prologue into a compatibility one at the pack's version.
     static String compatFor(String prologue, String packBody) {
         int version = 330;
         Matcher declared = DECLARED_VERSION.matcher(packBody);
@@ -459,7 +459,7 @@ public final class ImpetusTerrainTransformer {
                 + "#define at_midBlock " + adaptTo(declaredTypes.get("at_midBlock"), "iris_MidBlock") + "\n";
     }
 
-    // Adapts the to.
+    // Returns the engine vec4 swizzled down to the type the pack declared the attribute as.
     private static String adaptTo(String declaredType, String vec4Global) {
         if (declaredType == null) {
             return vec4Global;

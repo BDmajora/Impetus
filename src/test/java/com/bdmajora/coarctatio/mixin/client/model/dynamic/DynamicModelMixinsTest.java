@@ -88,7 +88,7 @@ class DynamicModelMixinsTest {
         IBakedModel model = mock(IBakedModel.class);
         state.coarctatio$cacheModel(model);
         assertSame(model, state.coarctatio$cachedModel());
-        // Clearing drops the reference itself, not just what it points at
+        // Checks clearing the reference.
         state.coarctatio$cacheModel(null);
         assertNull(state.coarctatio$cachedModel());
     }
@@ -113,15 +113,15 @@ class DynamicModelMixinsTest {
 
         assertSame(location, shapes.coarctatio$locationForState(state));
         assertSame(stone, shapes.getModelForState(state));
-        // The state answers from then on, without asking the manager again
+        // Checks the cached answer.
         assertSame(stone, shapes.getModelForState(state));
         verify(manager, times(1)).getModel(location);
 
-        // A state that cannot hold a model is looked up each time, and one with no model answers the missing one
+        // Checks uncachable and missing models.
         IBlockState dirt = Blocks.DIRT.getDefaultState();
         when(mapper.getVariants(Blocks.DIRT)).thenReturn(Map.of(dirt, new ModelResourceLocation("minecraft:dirt", "normal")));
         assertSame(missing, shapes.getModelForState(dirt));
-        // Mods pass null states, which vanilla's table answered with the missing model
+        // Checks a null state.
         assertSame(missing, shapes.getModelForState(null));
     }
 
@@ -129,7 +129,7 @@ class DynamicModelMixinsTest {
     void aReloadTurnsTheStateTableIntoAViewOverTheRegistry() {
         BlockModelShapesDynamicMixin shapes = Mixins.instance(BlockModelShapesDynamicMixin.class);
         Mixins.set(shapes, "blockStateMapper", mock(BlockStateMapper.class));
-        // Before any dynamic reload there is nothing to view, so the field is left alone
+        // Checks nothing changes before a reload.
         shapes.reloadModels();
         assertNull(Mixins.get(shapes, "bakedModelStore"));
 
@@ -149,7 +149,7 @@ class DynamicModelMixinsTest {
         IBakedModel model = mock(IBakedModel.class);
         when(manager.getModel(diamond)).thenReturn(model);
 
-        // Registering only records the location; fetching the model would bake it
+        // Checks registering records the location.
         mesher.register(Items.DIAMOND, 0, diamond);
         mesher.register(Items.DIAMOND, 1, diamond);
         verify(manager, never()).getModel(any());
@@ -158,11 +158,11 @@ class DynamicModelMixinsTest {
         assertSame(model, Mixins.call(mesher, "getItemModel", Items.DIAMOND, 0));
         assertSame(model, Mixins.call(mesher, "getItemModel", Items.DIAMOND, 0));
         verify(manager, times(1)).getModel(diamond);
-        // An unregistered meta or item answers null, as vanilla's mesher did
+        // Checks unregistered items.
         assertNull(Mixins.call(mesher, "getItemModel", Items.DIAMOND, 7));
         assertNull(Mixins.call(mesher, "getItemModel", Items.APPLE, 0));
 
-        // A rebuild forgets the cached models, so the next lookup asks the registry again
+        // Checks a rebuild.
         mesher.rebuildCache();
         assertSame(model, Mixins.call(mesher, "getItemModel", Items.DIAMOND, 0));
         verify(manager, times(2)).getModel(diamond);
@@ -178,7 +178,7 @@ class DynamicModelMixinsTest {
 
     @Test
     void theBakeEventRemembersWhichModItIsRunningFor() {
-        // ModelBakeEvent is spliced, so the mixin gets a generated subclass rather than a Mockito one
+        // Builds a concrete bake event.
         ModelBakeEventContextMixin event = Mixins.concrete(ModelBakeEventContextMixin.class);
         ModContainer mod = mock(ModContainer.class);
         event.setModContainer(mod);
@@ -194,10 +194,10 @@ class DynamicModelMixinsTest {
         when(resources.getAllResources(broken)).thenThrow(new IOException("unreadable"));
 
         ModelLoaderDefinitionMixin loader = Mixins.instance(ModelLoaderDefinitionMixin.class);
-        // Every variant of a block shares one definition, keyed by the plain location
+        // Checks the shared definition.
         ModelBlockDefinition machine = loader.coarctatio$definition(new ModelResourceLocation("examplemod:machine", "normal"));
         assertSame(machine, loader.coarctatio$definition(new ModelResourceLocation("examplemod:machine", "facing=north")));
-        // A file that cannot be read is an empty definition, on which the variant load then fails
+        // Checks an unreadable file.
         assertFalse(loader.coarctatio$definition(new ResourceLocation("examplemod:broken")).hasMultipartData());
 
         CallbackInfoReturnable<ModelBlockDefinition> cir = Mixins.cir();
@@ -209,7 +209,7 @@ class DynamicModelMixinsTest {
     void modelRequestsGoThroughTheDynamicProvider() throws Exception {
         assertNotNull(Mixins.instance(ModelLoaderRegistryDynamicMixin.class));
         ResourceLocation location = new ResourceLocation("examplemod:block/machine");
-        // Asked before the first reload there is no provider, which Forge reports as a loader failure
+        // Checks the lookup before a reload.
         assertThrows(ModelLoaderRegistry.LoaderException.class, () -> ModelLoaderRegistryDynamicMixin.getModel(location));
 
         IModel model = mock(IModel.class);
@@ -282,7 +282,7 @@ class DynamicModelMixinsTest {
         Mixins.set(stitcher, "currentWidth", 256);
         Mixins.set(stitcher, "currentHeight", 256);
 
-        // Only a weakly registered sprite no model references is dropped, and the failed attempt is reset
+        // Checks the dropped weak sprite.
         DynamicModels.rememberWeakSprites(Set.of("examplemod:blocks/scanned", "examplemod:blocks/large"));
         stitcher.coarctatio$retainSprites(Set.of("examplemod:blocks/large"));
         assertEquals(Set.of(small, large), holders);
@@ -290,7 +290,7 @@ class DynamicModelMixinsTest {
         assertEquals(0, (int) Mixins.<Integer>get(stitcher, "currentWidth"));
         assertEquals(0, (int) Mixins.<Integer>get(stitcher, "currentHeight"));
 
-        // Then the largest remaining, one at a time, until nothing is left
+        // Checks the remaining drops.
         assertTrue(stitcher.coarctatio$dropLargestSprite());
         assertEquals(Set.of(small), holders);
         assertTrue(stitcher.coarctatio$dropLargestSprite());
@@ -314,7 +314,7 @@ class DynamicModelMixinsTest {
 
         ResourceLocation ore = new ResourceLocation("examplemod:blocks/ore");
         atlas.coarctatio$registerSpriteWeak(ore);
-        // A second weak registration, or one for a name already present, does nothing
+        // Checks repeated weak registrations.
         atlas.coarctatio$registerSpriteWeak(ore);
         verify(atlas, times(1)).registerSprite(ore);
         registered.put("examplemod:blocks/gem", registered.get("examplemod:blocks/ore"));
@@ -328,23 +328,23 @@ class DynamicModelMixinsTest {
         Mixins.call(atlas, "coarctatio$replaceWeak", new ResourceLocation("examplemod:blocks/gem"), Mixins.cir());
         assertTrue(registered.containsKey("examplemod:blocks/gem"));
 
-        // So does a mod setting an entry of its own, which names the sprite rather than its location
+        // Checks a mod's own entry.
         atlas.coarctatio$registerSpriteWeak(ore);
         Mixins.call(atlas, "coarctatio$replaceWeakEntry", registered.get("examplemod:blocks/ore"), Mixins.<Boolean>cir());
         assertFalse(registered.containsKey("examplemod:blocks/ore"));
 
-        // Once stitching starts the weak set is handed over, and only its names stay droppable
+        // Checks the hand over at stitching.
         atlas.coarctatio$registerSpriteWeak(ore);
         Mixins.call(atlas, "coarctatio$handOverWeakSprites", mock(IResourceManager.class), Mixins.ci());
         assertTrue(DynamicModels.isDroppable("examplemod:blocks/ore", Set.of()));
         assertFalse(DynamicModels.isDroppable("examplemod:blocks/gem", Set.of()));
 
-        // Loading sprites starts a fresh weak set; this atlas is not the one reloading, so nothing is scanned into it
+        // Checks a fresh weak set.
         Mixins.call(atlas, "coarctatio$registerScannedSprites", mock(IResourceManager.class),
                 mock(net.minecraft.client.renderer.texture.ITextureMapPopulator.class), Mixins.ci());
         assertTrue(Mixins.<Set<String>>get(atlas, "coarctatio$weakSprites").isEmpty());
 
-        // The stitch goes through the fallback, which on success forgets the droppable names
+        // Checks the stitch fallback.
         Stitcher stitcher = mock(Stitcher.class);
         Mixins.call(atlas, "coarctatio$stitchWithFallback", stitcher);
         verify(stitcher).doStitch();
@@ -358,7 +358,7 @@ class DynamicModelMixinsTest {
                 "{\"overrides\":[{\"predicate\":{\"pulling\":1},\"model\":\"examplemod:item/bow_pulling\"}]}"));
         Mixins.set(wrapper, "model", model);
 
-        // Nothing goes into the loader's stateModels, and no override is loaded while listing dependencies
+        // Checks the dependency listing.
         Map<Object, Object> stateModels = new HashMap<>();
         assertNull(Mixins.call(wrapper, "coarctatio$skipStateModelPut", stateModels, "key", "value"));
         assertTrue(stateModels.isEmpty());
@@ -380,7 +380,7 @@ class DynamicModelMixinsTest {
         assertSame(baked, cir.getReturnValue());
     }
 
-    // A model Forge's variant constructors can wrap: it keeps its own state and processes to itself
+    // Returns a wrappable model.
     private static IModel part() {
         IModel model = mock(IModel.class);
         when(model.uvlock(anyBoolean())).thenReturn(model);
@@ -399,7 +399,7 @@ class DynamicModelMixinsTest {
         VariantLoaderDynamicMixin variants = Mixins.instance(VariantLoaderDynamicMixin.class);
         ModelLoader loader = Mc.mock(ModelLoader.class, DefinitionLoader.class);
         Mixins.set(variants, "loader", loader);
-        // The variants' model files resolve from Forge's cache, read reflectively as mixin-package calls are not rewritten
+        // Fills Forge's model cache.
         Mixins.<Map<ResourceLocation, IModel>>get(ModelLoaderRegistry.class, "cache")
                 .put(new ResourceLocation("examplemod:block/machine"), part());
 
@@ -414,7 +414,7 @@ class DynamicModelMixinsTest {
                 .thenReturn(definition("{\"variants\":{\"\":{\"model\":\"examplemod:machine\"}}}", "examplemod:forge_machine"));
         assertNotNull(variants.loadModel(forge));
 
-        // A variant the definition lacks, with no multipart to fall back on, is missing
+        // Checks a missing variant.
         ModelResourceLocation odd = new ModelResourceLocation("examplemod:machine", "odd");
         when(((DefinitionLoader) (Object) loader).coarctatio$definition(odd))
                 .thenReturn(definition("{\"variants\":{\"normal\":{\"model\":\"examplemod:machine\"}}}", "examplemod:machine"));

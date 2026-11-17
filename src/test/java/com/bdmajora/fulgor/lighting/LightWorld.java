@@ -24,15 +24,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-// A world of real block-storage sections behind mocked chunks, which is everything the deferred lighting engine
-// touches: block states, stored light, sky visibility and the render notification
+// World of real block storage sections behind mocked chunks for the deferred engine.
 final class LightWorld {
     final World world = mock(World.class);
     final IChunkProvider provider = mock(IChunkProvider.class);
     final Map<Long, Chunk> chunks = new HashMap<>();
     final List<BlockPos> notified = new ArrayList<>();
 
-    // Positions at or above this see the sky, which is what skylight seeds from
+    // Height at and above which positions see the sky.
     int skyHeight = Integer.MAX_VALUE;
 
     LightWorld() {

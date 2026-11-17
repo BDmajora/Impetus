@@ -235,7 +235,7 @@ class BufferMapRangeFunctionsTest {
         assertEquals(255, sets.size());
     }
 
-    // Checks that the whole buffer strategy maps with read and write access for both bits and write only access for the write bit and read only access otherwise
+    // Checks the whole buffer strategy.
     @Test
     void sliceMapsTheWholeBufferWithTheAccessOfTheFlags() {
         GlMutableBuffer buffer = storage(16);
@@ -505,7 +505,7 @@ class BufferMapRangeFunctionsTest {
         assertTrue(mapped.isEmpty());
     }
 
-    // Checks that the range strategy is picked when GL 3.0 or ARB_map_buffer_range is present and the whole buffer strategy otherwise
+    // Checks the range strategy.
     @ParameterizedTest
     @CsvSource({"true, true, CORE", "true, false, CORE", "false, true, CORE", "false, false, MAP_FULL_AND_SLICE"})
     void pickBestFollowsTheMapCapabilities(boolean version, boolean extension, BufferMapRangeFunctions expected) {

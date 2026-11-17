@@ -28,7 +28,7 @@ public final class IdMap {
     private final Map<Integer, List<BlockEntry>> blockPropertiesMap;
     private final Map<NamespacedId, Integer> itemIdMap;
     private final Map<NamespacedId, Integer> entityIdMap;
-    // Has block properties.
+    // Whether the pack has a block.properties.
     private final boolean hasBlockProperties;
     private final Map<NamespacedId, BlockRenderLayer> blockRenderLayerMap;
 
@@ -238,7 +238,7 @@ public final class IdMap {
         void accept(int intId, String value);
     }
 
-    // Fors the each property.
+    // Calls the consumer for every key of a properties file that starts with the prefix.
     private static void forEachProperty(String preprocessed, String prefix, PropertyConsumer consumer) {
         for (String line : preprocessed.split("\n")) {
             String trimmed = line.trim();
@@ -262,7 +262,7 @@ public final class IdMap {
         }
     }
 
-    // Returns whether block properties.
+    // Returns whether the pack has a block.properties.
     public boolean hasBlockProperties() {
         return this.hasBlockProperties;
     }

@@ -14,12 +14,12 @@ import static org.junit.jupiter.api.Assertions.*;
 class FeatureFlagsTest {
     @Test
     void everyIrisFlagIsHonouredWhenTheGpuCanRunIt() {
-        // TestGl runs the interface's default here, which answers false
+        // Stubs buffer blending support.
         Mockito.when(TestGl.gl().supportsBufferBlending()).thenReturn(true);
         for (FeatureFlags flag : FeatureFlags.values()) {
             assertEquals(flag != FeatureFlags.UNKNOWN, flag.isUsable(), flag.name());
         }
-        // Iris's old misspelling still names the flag, loosely written tokens are normalised, and anything else is unknown
+        // Checks the feature name parsing.
         assertEquals(FeatureFlags.TESSELLATION_SHADERS, FeatureFlags.byName("tesselation_shaders"));
         assertEquals(FeatureFlags.FADE_VARIABLE, FeatureFlags.byName(" fade_variable "));
         assertEquals(FeatureFlags.UNKNOWN, FeatureFlags.byName("MADE_UP"));
@@ -51,7 +51,7 @@ class FeatureFlagsTest {
         assertEquals("not supported by Umbra", FeatureFlags.describeUnsupported(List.of("MADE_UP")));
         assertEquals("not supported by Umbra or by this GPU", FeatureFlags.describeUnsupported(List.of("SSBO", "MADE_UP")));
 
-        // A thread with no GL context cannot ask, and is treated as capable
+        // Checks a thread without a GL context.
         Mockito.when(TestGl.gl().isOpenGLVersionSupported(4, 2)).thenThrow(new IllegalStateException("no context"));
         assertTrue(FeatureFlags.CUSTOM_IMAGES.isUsable());
     }

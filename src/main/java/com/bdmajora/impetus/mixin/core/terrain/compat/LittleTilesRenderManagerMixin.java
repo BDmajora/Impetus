@@ -20,14 +20,14 @@ public abstract class LittleTilesRenderManagerMixin implements BakedLightTracker
     @Shadow
     private TileEntityLittleTiles te;
 
-    // Field light added to the target.
+    // Light fingerprint of the last LittleTiles bake.
     @Unique
     private int impetus$light;
-    // Field light seen added to the target.
+    // Whether a fingerprint was taken yet.
     @Unique
     private boolean impetus$lightSeen;
 
-    // Handles light changed.
+    // Returns whether the light changed since the last bake and stores the new fingerprint.
     @Override
     public boolean impetus$lightChanged(int fingerprint) {
         boolean changed = !this.impetus$lightSeen || this.impetus$light != fingerprint;

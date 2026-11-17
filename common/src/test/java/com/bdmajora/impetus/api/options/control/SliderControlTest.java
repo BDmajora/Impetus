@@ -34,13 +34,13 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class SliderControlTest {
-    // Name "Slide" from 6 to 36, the track from 104 to 194 over rows 4 to 14 with its line on row 8, text on line 5 (centre 9 less half the glyph height)
+    // Checks the row layout.
     private static final Dim2i DIM = new Dim2i(0, 0, 200, 18);
     private static final int WHITE = 0xFFFFFFFF;
     private static final int ACCENT = DefaultColors.ELEMENT_ACTIVATED;
     private static final int TRACK = ColorARGB.withAlpha(ACCENT, 0xB8);
 
-    // A piece of text drawn with the component it came from, where and in what colour
+    // Text drawn with its component and colour.
     private record Drawn(TextComponent component, String text, int x, int y, int color) { }
 
     // A filled box by its edges and colour
@@ -50,7 +50,7 @@ class SliderControlTest {
         }
     }
 
-    // Fake fonts keeping every fill and piece of text drawn and counting the text work done outside drawing, with a settable line height and text version
+    // Fake fonts that record fills and text work.
     private static class Recording extends FakeDrawContext {
         final List<Drawn> drawn = new ArrayList<>();
         final List<Fill> fills = new ArrayList<>();
@@ -109,17 +109,17 @@ class SliderControlTest {
             return super.getModAccentColor(modId);
         }
 
-        // The track's line, which is the only fill in its colour
+        // Returns the track line.
         List<Fill> tracks() {
             return this.fills.stream().filter(fill -> fill.color() == TRACK).toList();
         }
 
-        // The thumb, the only accent fill four wide and ten high, since the focus outline is one pixel thick
+        // Returns the thumb.
         List<Fill> thumbs() {
             return this.fills.stream().filter(fill -> fill.color() == ACCENT && fill.x2() - fill.x1() == 4 && fill.y2() - fill.y1() == 10).toList();
         }
 
-        // The last piece of text drawn, which is the value when one is drawn
+        // Returns the value text.
         Drawn last() {
             return this.drawn.getLast();
         }
@@ -133,7 +133,7 @@ class SliderControlTest {
         }
     }
 
-    // A mock option named and holding a value that clicks and keys write back, available and unchanged
+    // Returns a mock option with a value.
     private static <T> Option<T> valued(String name, T initial) {
         @SuppressWarnings("unchecked")
         Option<T> option = Mockito.mock(Option.class);
@@ -206,7 +206,7 @@ class SliderControlTest {
         ControlValueFormatter number = ControlValueFormatter.number();
         Option<Integer> option = valued("Slide", 0);
         refused(NullPointerException.class, "Option must not be null", () -> new SliderControl(null, 10, 0, 0, null));
-        // Every missing argument is refused as the other controls refuse theirs, before the range is looked at
+        // Checks missing arguments.
         refused(NullPointerException.class, "Formatter must not be null", () -> new SliderControl(option, 10, 0, 0, null));
         refused(IllegalArgumentException.class, "Slider maximum 0 must be greater than its minimum 10", () -> new SliderControl(option, 10, 0, 0, number));
         refused(IllegalArgumentException.class, "Slider maximum 5 must be greater than its minimum 5", () -> new SliderControl(option, 5, 5, 1, number));
@@ -218,10 +218,10 @@ class SliderControlTest {
         refused(IllegalArgumentException.class, "Slider range 0 to 10 is not a whole number of intervals of 3", () -> new SliderControl(option, 0, 10, 3, number));
         refused(IllegalArgumentException.class, "Slider range 0 to 10 is not a whole number of intervals of 20", () -> new SliderControl(option, 0, 10, 20, number));
         refused(IllegalArgumentException.class, "Slider range 0 to 10 is not a whole number of intervals of 2147483647", () -> new SliderControl(option, 0, 10, Integer.MAX_VALUE, number));
-        // The whole int range spans 2^32 - 1, which is odd
+        // Checks the full int range.
         refused(IllegalArgumentException.class, "Slider range -2147483648 to 2147483647 is not a whole number of intervals of 2",
                 () -> new SliderControl(option, Integer.MIN_VALUE, Integer.MAX_VALUE, 2, number));
-        // Two stops, an interval equal to the range, and every divisor of 2^32 - 1 (3 x 5 x 17 x 257 x 65537) that fits an int over the whole range
+        // Checks the divisors.
         assertDoesNotThrow(() -> new SliderControl(option, 0, 1, 1, number));
         assertDoesNotThrow(() -> new SliderControl(option, 0, 10, 10, number));
         assertDoesNotThrow(() -> new SliderControl(option, -10, -5, 5, number));
@@ -236,29 +236,29 @@ class SliderControlTest {
     void aHoveredSliderDrawsItsTrackSixInFromTheRightEdgeWithTheThumbAtTheValueAndTheValueSixShortOfTheTrack() {
         ControlElement<Integer> row = row(valued("Slide", 4), 0, 10, 2, new Dim2i(10, 20, 200, 18));
         Recording draw = render(row, 11, 21);
-        // The 90 pixel track from 114 to 204, its line on row 28: centre 29 less half the 10 pixel slider, then 4 down
+        // Checks the track.
         Fill track = new Fill(114, 28, 204, 29, TRACK);
-        // 4 of 0..10 lies 36 pixels along it, the 4 pixel thumb centred there over the slider's height
+        // Checks the thumb.
         Fill thumb = new Fill(148, 24, 152, 34, ACCENT);
         assertEquals(List.of(track), draw.tracks());
         assertEquals(List.of(thumb), draw.thumbs());
         assertTrue(draw.fills.indexOf(thumb) < draw.fills.indexOf(track));
-        // The value ends 6 short of the track at 108, on the name's line
+        // Checks the value text.
         assertEquals(List.of(new Drawn(TextComponent.literal("Slide").withStyle(TextFormattingStyle.WHITE), "Slide", 16, 25, WHITE),
                 new Drawn(TextComponent.literal("4"), "4", 102, 25, WHITE)), draw.drawn);
     }
 
-    // One hovered frame of a 0..7 slider holding the value, at the bounds
+    // Draws one hovered frame.
     private static Recording hovered(Dim2i dim, int value) {
         return render(row(valued("Slide", value), 0, 7, 1, dim), dim.x(), dim.y());
     }
 
     @Test
     void aRowAnywhereOnScreenDrawsAndHitsItsTrackThumbAndValueAtTheSamePlacesWithinIt() {
-        // 3 of 0..7 lies 38.57 pixels along the track, a place between two pixels
+        // Checks a place between pixels.
         for (int height : new int[]{10, 11, 17, 18, 19, 40}) {
             Recording origin = hovered(new Dim2i(0, 0, 200, height), 3);
-            // The line 4 below the slider's top, which sits 5 above the centre
+            // Checks the line.
             assertEquals(List.of(new Fill(104, height / 2 - 1, 194, height / 2, TRACK)), origin.tracks(), "height " + height);
             assertEquals(List.of(new Fill(140, height / 2 - 5, 144, height / 2 + 5, ACCENT)), origin.thumbs(), "height " + height);
             for (int[] at : new int[][]{{-300, -40}, {-7, -13}, {-1, -1}, {-205, -5}, {-104, -9}, {37, 101}}) {
@@ -267,7 +267,7 @@ class SliderControlTest {
                 String context = dim + " " + moved.fills;
                 assertEquals(origin.fills.stream().map(fill -> fill.moved(at[0], at[1])).toList(), moved.fills, context);
                 assertEquals(origin.drawn.stream().map(text -> new Drawn(text.component(), text.text(), text.x() + at[0], text.y() + at[1], text.color())).toList(), moved.drawn, context);
-                // The track's first pixel is the minimum, its last the maximum and its middle the stop nearest halfway
+                // Checks the track ends.
                 Option<Integer> option = valued("Slide", 3);
                 ControlElement<Integer> row = row(option, 0, 7, 1, dim);
                 int centre = dim.getCenterY();
@@ -287,20 +287,20 @@ class SliderControlTest {
         assertEquals(List.of(), idle.tracks());
         assertEquals(List.of(), idle.thumbs());
         assertEquals(new Drawn(TextComponent.literal("4"), "4", 188, 5, WHITE), idle.last());
-        // Hovered at the row's corners, its far edges lying outside it
+        // Checks the corners.
         for (int[] at : new int[][]{{0, 0}, {199, 17}, {0, 17}, {199, 0}}) {
             assertEquals(1, render(row, at[0], at[1]).tracks().size(), at[0] + "," + at[1]);
         }
         for (int[] at : new int[][]{{200, 9}, {100, 18}, {-1, 9}, {100, -1}}) {
             assertEquals(List.of(), render(row, at[0], at[1]).tracks(), at[0] + "," + at[1]);
         }
-        // Focused with the cursor elsewhere, the value moved beside the track
+        // Checks the focused value.
         row.setFocused(true);
         Recording focused = render(row, 5000, 5000);
         assertEquals(List.of(new Fill(104, 8, 194, 9, TRACK)), focused.tracks());
         assertEquals(new Drawn(TextComponent.literal("4"), "4", 92, 5, WHITE), focused.last());
         row.setFocused(false);
-        // Held by a press on the track's first pixel and dragged off the row, until the release
+        // Checks a drag off the row.
         assertTrue(click(row, 104, 9));
         assertEquals(0, option.getValue());
         assertTrue(drag(row, -5000, -5000));
@@ -336,14 +336,14 @@ class SliderControlTest {
         }
         for (int value : new int[]{10, 11, 15, Integer.MAX_VALUE}) {
             Recording draw = hoveredAt(value);
-            // Two pixels past the track's end, still inside the six pixel inset
+            // Checks past the track end.
             assertEquals(List.of(new Fill(192, 4, 196, 14, ACCENT)), draw.thumbs(), "value " + value);
         }
         assertEquals("-7", hoveredAt(-7).last().text());
         assertEquals("15", hoveredAt(15).last().text());
     }
 
-    // One frame of a 0..10 slider in twos holding the value, hovered on its track
+    // Draws one hovered frame.
     private static Recording hoveredAt(int value) {
         return render(row(valued("Slide", value), 0, 10, 2, DIM), 150, 9);
     }
@@ -406,7 +406,7 @@ class SliderControlTest {
             Option<Integer> option = valued("Slide", 5);
             ControlElement<Integer> row = row(option, 0, 10, 1, dim);
             clearInvocations(option);
-            // Where the track would lie, 50 in from the right edge on the centre line
+            // Checks the track spot.
             double x = (double) dim.x() + dim.width() - 50;
             double y = dim.getCenterY();
             assertFalse(click(row, x, y), dim::toString);
@@ -423,7 +423,7 @@ class SliderControlTest {
     @Test
     void anIdleRowWithNoRoomForALineDrawsNoValueAndNeverReadsTheOption() {
         for (Dim2i dim : new Dim2i[]{new Dim2i(0, 0, 200, 8), new Dim2i(0, 0, 200, 1)}) {
-            // Too short for the slider as well, so neither hovering nor focus shows it
+            // Checks a short row.
             for (boolean focused : new boolean[]{false, true}) {
                 Option<Integer> option = valued("Slide", 5);
                 ControlElement<Integer> row = row(option, 0, 10, 1, dim);
@@ -433,7 +433,7 @@ class SliderControlTest {
                 verify(option, never()).getValue();
             }
         }
-        // Lines twenty high leave no room in an eighteen high row, where only the shown track needs the value
+        // Checks tall lines.
         Option<Integer> option = valued("Slide", 5);
         ControlElement<Integer> row = row(option, 0, 10, 1, DIM);
         Recording tall = new Recording();
@@ -464,14 +464,14 @@ class SliderControlTest {
 
     @Test
     void aClickOnTheTrackJumpsToTheStopNearestTheCursorFromTheFirstPixelToTheLast() {
-        // 0..10 in twos over the 90 pixel track from 104, whose first pixel is the minimum and whose last, 193, the maximum
+        // Checks the stops.
         for (int pixel = 104; pixel <= 193; pixel++) {
             Option<Integer> option = valued("Slide", -1);
             ControlElement<Integer> row = row(option, 0, 10, 2, DIM);
             assertTrue(click(row, pixel, 9));
             assertEquals((int) Math.round((pixel - 104) / 89.0 * 5) * 2, option.getValue(), "pixel " + pixel);
         }
-        // Anywhere over the slider's ten rows, and a cursor between pixels at the last one
+        // Checks the slider rows.
         for (double[] at : new double[][]{{193.9, 4}, {193.9, 13.99}, {104, 4}}) {
             Option<Integer> option = valued("Slide", -1);
             assertTrue(click(row(option, 0, 10, 2, DIM), at[0], at[1]));
@@ -502,7 +502,7 @@ class SliderControlTest {
         for (int button : new int[]{1, 2, -1, 7}) {
             assertFalse(row.mouseClicked(new FakeInteractionContext(), 150, 9, button), "button " + button);
         }
-        // Just past each edge, the right and bottom edges themselves, and no place at all
+        // Checks the edges.
         for (double[] at : new double[][]{{-0.01, 9}, {200, 9}, {150, -0.01}, {150, 18}, {Double.NaN, 9}, {150, Double.NaN}}) {
             assertFalse(click(row, at[0], at[1]), at[0] + "," + at[1]);
         }
@@ -522,7 +522,7 @@ class SliderControlTest {
         assertTrue(click(row, 150, 9));
         assertEquals(6, option.getValue());
         clearInvocations(option);
-        // Every place from 148.5 to 166.3 rounds to the fourth stop, as does any height
+        // Checks the fourth stop.
         for (double x = 149; x <= 166; x += 0.5) {
             assertTrue(drag(row, x, 9), "at " + x);
         }
@@ -554,7 +554,7 @@ class SliderControlTest {
         assertTrue(click(row, 150, 9));
         assertFalse(row.mouseReleased(context, 150, 9, 1));
         assertTrue(drag(row, 120, 9));
-        // As does a drag by another button, which moves nothing
+        // Checks another button.
         assertFalse(row.mouseDragged(context, 190, 9, 1, 0, 0));
         assertTrue(drag(row, 121, 9));
         assertEquals(2, option.getValue());
@@ -643,7 +643,7 @@ class SliderControlTest {
                 {Integer.MIN_VALUE, Integer.MAX_VALUE, 0x55555555}, {Integer.MAX_VALUE - 6, Integer.MAX_VALUE, 3}, {Integer.MIN_VALUE, Integer.MIN_VALUE + 10, 5}};
         for (int[] slider : sliders) {
             List<Long> stops = stops(slider[0], slider[1], slider[2]);
-            // Every stop, either side of it, halfway to the next and an interval below, and both ends of the int range
+            // Checks every stop.
             TreeSet<Long> values = new TreeSet<>(List.of((long) Integer.MIN_VALUE, (long) Integer.MAX_VALUE));
             for (long stop : stops) {
                 for (long near : new long[]{stop - 1, stop, stop + 1, stop + slider[2] / 2, stop - slider[2]}) {
@@ -709,7 +709,7 @@ class SliderControlTest {
         assertEquals(List.of(new Fill(102, 4, 106, 14, ACCENT)), render(row, 5000, 5000).thumbs());
         assertTrue(key(row, Keys.RIGHT));
         assertEquals(6, option.getValue());
-        // Stepping or clicking onto the minimum still writes it, as the option holds nothing
+        // Checks the minimum.
         for (Runnable write : List.<Runnable>of(() -> key(row, Keys.LEFT), () -> click(row, 104, 9), () -> click(row, 110, 9))) {
             option.setValue(null);
             clearInvocations(option);
@@ -728,11 +728,11 @@ class SliderControlTest {
         ControlElement<Integer> row = row(option, 0, 10, 2, DIM);
         FakeInteractionContext context = new FakeInteractionContext();
         clearInvocations(option);
-        // Unfocused, the arrows are someone else's
+        // Checks unfocused arrows.
         assertFalse(row.keyTyped(context, '\0', Keys.RIGHT));
         assertFalse(row.keyTyped(context, '\0', Keys.LEFT));
         row.setFocused(true);
-        // Letters, Tab by key and by character, Escape, Up, Down and every press
+        // Checks the ignored keys.
         char[] typed = {'a', '\t', '\0', '\0', '\0', '\0', ' ', '\r', '\0'};
         int[] codes = {30, 0, Keys.TAB, 1, 200, 208, Keys.SPACE, Keys.RETURN, Keys.NUMPAD_ENTER};
         for (int i = 0; i < typed.length; i++) {
@@ -759,7 +759,7 @@ class SliderControlTest {
         Recording draw = new Recording();
         row.render(draw, 5000, 5000, 0f);
         assertEquals(1, formats.get());
-        // Repeated frames do no text work at all, idle or shown, each keeping its own fit
+        // Checks repeated frames.
         for (boolean focused : new boolean[]{false, true, false, true}) {
             row.setFocused(focused);
             row.render(draw, 5000, 5000, 0f);
@@ -776,20 +776,20 @@ class SliderControlTest {
         row.render(draw, 5000, 5000, 0f);
         row.render(draw, 5000, 5000, 0f);
         assertEquals(3, formats.get());
-        // Greyed while unavailable, then shown again as it was
+        // Checks the greyed value.
         when(option.isAvailable()).thenReturn(false);
         row.render(draw, 5000, 5000, 0f);
         assertEquals(4, formats.get());
         when(option.isAvailable()).thenReturn(true);
         row.render(draw, 5000, 5000, 0f);
         assertEquals(4, formats.get());
-        // The idle fit was the greyed one, so the plain idle value is formatted again
+        // Checks the idle value.
         row.setFocused(false);
         draw.clear();
         row.render(draw, 5000, 5000, 0f);
         assertEquals(5, formats.get());
         assertEquals(new Drawn(TextComponent.literal("6 UNITS"), "6 UNITS", 152, 5, WHITE), draw.last());
-        // A new font source, then a new text version in it, each fit it again in both places
+        // Checks new fonts and versions.
         Recording other = new Recording();
         row.render(other, 5000, 5000, 0f);
         row.setFocused(true);
@@ -805,10 +805,10 @@ class SliderControlTest {
     @Test
     void aLongValueIsCutToTheRoomTheNameLeavesBesideTheRowsEdgeIdleAndBesideTheTrackShown() {
         ControlElement<Integer> row = bound(new SliderControl(valued("Slide", 4), 0, 10, 2, value -> TextComponent.literal("VALUE " + value + " WITH A VERY LONG UNIT NAME"))).createElement(DIM);
-        // From the name's end and gap at 42 to 194 leaves 152, 134 after the ellipsis: 22 characters
+        // Checks 22 characters.
         Recording idle = render(row, 5000, 5000);
         assertEquals(new Drawn(TextComponent.literal("VALUE 4 WITH A VERY LO..."), "VALUE 4 WITH A VERY LO...", 44, 5, WHITE), idle.last());
-        // From 42 to 98 leaves 56, 38 after the ellipsis: six characters, the space they end on dropped
+        // Checks six characters.
         row.setFocused(true);
         Recording shown = render(row, 5000, 5000);
         assertEquals(new Drawn(TextComponent.literal("VALUE..."), "VALUE...", 50, 5, WHITE), shown.last());
@@ -816,9 +816,9 @@ class SliderControlTest {
 
     @Test
     void theThumbLiesAtTheExactWholePixelAlongTheTrackWhereFloatingPointWouldFallShort() {
-        // 7 of 0..10 is 63 pixels along the 90 pixel track, which 0.7 x 90 in doubles makes 62.99999999999999
+        // Checks the rounding.
         assertEquals(List.of(new Fill(165, 4, 169, 14, ACCENT)), hoveredAt(7).thumbs());
-        // Every value of ranges where that happens, over tracks of 22, 55, 88 and 90 pixels
+        // Checks every value.
         for (int range : new int[]{7, 10, 11, 15, 22, 23, 26}) {
             for (int width : new int[]{34, 67, 100, 102, 200}) {
                 int track = Math.min(90, width - 12);
@@ -842,7 +842,7 @@ class SliderControlTest {
             spied.render(new Recording(), at[0], at[1], 0f);
             verify(spied, times(1)).isMouseOver(anyDouble(), anyDouble());
         }
-        // Focused, the outline and the thumb both take the accent, asked for once across every frame in one font source
+        // Checks the accent.
         ControlElement<Integer> row = row(option, 0, 10, 2, DIM);
         clearInvocations(option);
         row.setFocused(true);
@@ -858,7 +858,7 @@ class SliderControlTest {
         assertEquals(1, other.accents);
     }
 
-    // A private field of a row, read by reflection
+    // Reads a private row field.
     private static Object field(Object row, String name) throws ReflectiveOperationException {
         Field field = row.getClass().getDeclaredField(name);
         field.setAccessible(true);
@@ -876,11 +876,11 @@ class SliderControlTest {
         assertSame(control, field(second, "control"));
         assertEquals(90, field(first, "sliderWidth"));
         assertEquals(90, field(second, "sliderWidth"));
-        // Worked out once, by the control
+        // Checks it is worked out once.
         assertEquals(10L, field(control, "range"));
         assertEquals(5L, field(control, "lastStop"));
         assertEquals(4294967295L, field(new SliderControl(valued("Wide", 0), Integer.MIN_VALUE, Integer.MAX_VALUE, 0x55555555, ControlValueFormatter.number()), "range"));
-        // A row the slider does not fit holds no width, rather than a flag beside it
+        // Checks a row without the slider.
         assertEquals(0, field(control.createElement(new Dim2i(0, 0, 200, 9)), "sliderWidth"));
         assertEquals(0, field(control.createElement(new Dim2i(0, 0, (1 << 30) + 1, 18)), "sliderWidth"));
         assertEquals(1, field(control.createElement(new Dim2i(0, 0, 13, 10)), "sliderWidth"));
@@ -907,7 +907,7 @@ class SliderControlTest {
         render(row, 5000, 5000);
         assertSame(idle, field(row, "idleText"));
         assertSame(shown, field(row, "shownText"));
-        // A row with no line for text makes neither, hovered, focused or held
+        // Checks a row without text.
         ControlElement<Integer> low = row(valued("Slide", 4), 0, 10, 2, new Dim2i(0, 0, 200, 8));
         ControlElement<Integer> tall = row(valued("Slide", 4), 0, 10, 2, DIM);
         Recording lines = new Recording();

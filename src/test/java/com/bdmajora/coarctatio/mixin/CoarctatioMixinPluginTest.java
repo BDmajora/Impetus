@@ -66,14 +66,14 @@ class CoarctatioMixinPluginTest {
         assertFalse(applies(plugin, "events.TickEventMixin"));
         assertFalse(applies(plugin, "client.model.ModelLoaderRegistryMissingMixin"));
 
-        // The resource manager mixin carries two features, so either one keeps it
+        // Checks the resource manager features.
         config.stacklessResourceExceptions = false;
         config.resourceExistenceCache = true;
         assertTrue(applies(plugin, "client.resources.SimpleReloadableResourceManagerMixin"));
         config.resourceExistenceCache = false;
         assertFalse(applies(plugin, "client.resources.SimpleReloadableResourceManagerMixin"));
 
-        // The model manager drives the pool lifecycle, which dynamic models take over
+        // Checks the model manager lifecycle.
         config.poolQuadVertexData = true;
         config.dynamicModels = false;
         assertTrue(applies(plugin, "client.ModelManagerMixin"));
@@ -86,13 +86,13 @@ class CoarctatioMixinPluginTest {
         assertFalse(applies(plugin, "client.model.dynamic.RenderItemPrebakeMixin"));
         config.resourceExistenceCache = true;
         assertFalse(applies(plugin, "client.model.dynamic.FileResourcePackAccessor"));
-        // The model prefetch feeds the eager loader pass, which the dynamic reload replaces
+        // Checks the prefetch is replaced.
         assertFalse(applies(plugin, "client.model.ModelLoaderPrefetchMixin"));
         config.dynamicModels = false;
         assertTrue(applies(plugin, "client.model.ModelLoaderPrefetchMixin"));
         assertTrue(applies(plugin, "client.model.ModelBakeryPrefetchMixin"));
         assertTrue(applies(plugin, "client.model.ModelBlockAnimationPrefetchMixin"));
-        // It lists packs through the same accessors as the dynamic texture scan, so either feature keeps them
+        // Checks the shared accessors.
         assertTrue(applies(plugin, "client.model.dynamic.SimpleReloadableResourceManagerAccessor"));
         assertTrue(applies(plugin, "client.model.dynamic.LegacyV2AdapterAccessor"));
         config.resourceExistenceCache = false;
@@ -102,7 +102,7 @@ class CoarctatioMixinPluginTest {
         assertFalse(applies(plugin, "client.model.dynamic.FallbackResourceManagerAccessor"));
         assertFalse(applies(plugin, "client.model.dynamic.FileResourcePackAccessor"));
 
-        // Anything the switch table does not know is applied, with a warning
+        // Checks an unknown mixin.
         assertTrue(applies(plugin, "something.UnknownMixin"));
         assertTrue(plugin.shouldApplyMixin("net.minecraft.world.World", "com.example.Foreign"));
     }
@@ -117,7 +117,7 @@ class CoarctatioMixinPluginTest {
         try (MockedStatic<MixinService> services = mockStatic(MixinService.class)) {
             services.when(MixinService::getService).thenReturn(service);
 
-            // Defaults: the loader mixins are on, event recycling is off; no tracker means nothing can report a target loaded
+            // Checks the defaults.
             when(service.getClassTracker()).thenReturn(null);
             List<String> defaults = plugin.getMixins();
             assertEquals(List.of("forge.ASMDataMixin", "forge.ModCandidateMixin", "forge.JarDiscovererMixin"), defaults);
@@ -129,7 +129,7 @@ class CoarctatioMixinPluginTest {
             assertTrue(all.contains("events.ForgeEventFactoryMixin"));
             assertTrue(all.contains("forge.ModCandidateMixin"));
 
-            // A target another coremod already pulled in would fail the whole config, so only its own feature backs out
+            // Checks a target loaded early.
             when(tracker.isClassLoaded("net.minecraftforge.fml.common.discovery.ModCandidate")).thenReturn(true);
             when(tracker.isClassLoaded("net.minecraftforge.event.ForgeEventFactory")).thenReturn(true);
             assertEquals(List.of("forge.ASMDataMixin", "forge.JarDiscovererMixin"), plugin.getMixins());

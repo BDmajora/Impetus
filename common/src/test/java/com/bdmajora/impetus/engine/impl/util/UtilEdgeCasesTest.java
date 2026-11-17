@@ -18,7 +18,7 @@ import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-// Tests range, null and overflow edge cases of the small utilities.
+// Tests the small utilities.
 class UtilEdgeCasesTest {
     // Returns the Stafford variant 13 mix used as the reference.
     private static long mix13(long z) {

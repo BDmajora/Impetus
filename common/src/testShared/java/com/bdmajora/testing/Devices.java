@@ -7,7 +7,7 @@ import com.bdmajora.impetus.engine.impl.gl.device.RenderDevice;
 public final class Devices {
     private Devices() {}
 
-    // The engine reaches RenderDevice.INSTANCE directly in places, so that is the one made active
+    // Makes the device active.
     public static GLRenderDevice active() {
         GLRenderDevice device = (GLRenderDevice) RenderDevice.INSTANCE;
         device.makeActive();

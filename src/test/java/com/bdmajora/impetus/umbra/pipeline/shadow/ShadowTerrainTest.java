@@ -219,7 +219,7 @@ class ShadowTerrainTest {
         Mockito.verifyNoMoreInteractions(this.renderer);
     }
 
-    // Checks that only a scaled entity distance builds its own frustum, as Iris does
+    // Checks a scaled entity distance.
     @Test
     void anEntityDistanceScaleBuildsItsOwnFrustum() {
         assertTrue(ShadowTerrain.entitiesUseTerrainFrustum(1.0f));
@@ -235,7 +235,7 @@ class ShadowTerrainTest {
         shared.select(this.renderer, this.gl.client, new Vector3d(), new Matrix4f());
         assertSame(shared.cullingFrustum(), shared.entityFrustum());
 
-        // A voxelizing pack culls by box, so a quarter scale keeps a 25 block box for entities
+        // Checks a quarter scale box.
         ShadowTerrain scaled = new ShadowTerrain(ShadowContentSettings.defaults(), 100, 0, true, 0, 0.25f);
         scaled.select(this.renderer, this.gl.client, new Vector3d(), new Matrix4f());
         ShadowBoxCuller entities = assertInstanceOf(ShadowBoxCuller.class, scaled.entityFrustum());

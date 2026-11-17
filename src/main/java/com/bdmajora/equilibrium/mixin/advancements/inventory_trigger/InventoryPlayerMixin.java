@@ -17,33 +17,33 @@ public abstract class InventoryPlayerMixin implements SlotChangeContext {
     @Nullable
     private SlotCounts equilibrium$counts;
 
-    // Handles changed stack.
+    // Returns the stack that changed or null for an unknown change.
     @Override
     @Nullable
     public ItemStack equilibrium$changedStack() {
         return this.equilibrium$changed;
     }
 
-    // Handles set changed stack.
+    // Records the stack that changed.
     @Override
     public void equilibrium$setChangedStack(ItemStack stack) {
         this.equilibrium$changed = stack;
     }
 
-    // Handles slot counts.
+    // Returns the slot counts taken with the change.
     @Override
     @Nullable
     public SlotCounts equilibrium$slotCounts() {
         return this.equilibrium$counts;
     }
 
-    // Handles set slot counts.
+    // Records the slot counts of the inventory.
     @Override
     public void equilibrium$setSlotCounts(int full, int empty, int occupied) {
         this.equilibrium$counts = new SlotCounts(full, empty, occupied);
     }
 
-    // Handles clear.
+    // Forgets the recorded change.
     @Override
     public void equilibrium$clear() {
         this.equilibrium$changed = null;

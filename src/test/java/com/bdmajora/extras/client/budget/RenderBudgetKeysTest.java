@@ -77,7 +77,7 @@ class RenderBudgetKeysTest {
         gl11 = Mockito.mockStatic(GL11.class);
         gl13 = Mockito.mockStatic(GL13.class);
         display = Mockito.mockStatic(GameWindow.class);
-        // F9 opens settings, including the fullscreen resolution selector
+        // Checks F9.
         display.when(GameWindow::fullscreenModes).thenReturn(new DisplayMode[0]);
         Statics.set(FullscreenResolutions.class, "modes", null);
         Mockito.clearInvocations(client, client.fontRenderer);

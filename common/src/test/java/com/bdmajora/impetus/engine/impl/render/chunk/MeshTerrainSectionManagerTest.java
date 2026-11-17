@@ -86,11 +86,11 @@ class MeshTerrainSectionManagerTest {
         Viewport viewport = Sections.viewport(8, 8, 8);
         frame(viewport, 1);
         frame(viewport, 2);
-        // Both sections of the column built into the GPU store, none into the raster regions
+        // Checks the GPU store.
         assertEquals(2, manager.builds.get());
         assertEquals(1, mesh.getPipeline().getSections().getRegions().getRegionCount());
 
-        // Moving the camera queues no sort tasks, since the GPU keeps translucency ordered
+        // Checks no sort tasks.
         frame(Sections.viewport(9, 8, 8), 3);
         assertEquals(2, manager.builds.get());
 
@@ -99,7 +99,7 @@ class MeshTerrainSectionManagerTest {
         manager.renderLayer(MATRICES, Passes.MESH_SOLID, camera, camera);
         manager.renderLayer(MATRICES, Passes.MESH_CUTOUT, camera, camera);
         manager.renderLayer(MATRICES, Passes.MESH_TRANSLUCENT, camera, camera);
-        // Region and section boxes, then the temporal and translucent multi-draws; the raster renderer never runs
+        // Checks the draws.
         Mockito.verify(TestGl.gl(), Mockito.times(2)).glDrawMeshTasksNV(Mockito.eq(0), Mockito.anyInt());
         Mockito.verify(TestGl.gl(), Mockito.never()).glMultiDrawElementsBaseVertex(Mockito.anyInt(), Mockito.anyLong(), Mockito.anyInt(), Mockito.anyLong(), Mockito.anyInt(), Mockito.anyLong());
 
@@ -137,7 +137,7 @@ class MeshTerrainSectionManagerTest {
             return null;
         }).when(TestGl.gl()).glGetIntegerv(Mockito.eq(0x0BA2), Mockito.any(int[].class));
         manager.renderLayer(MATRICES, Passes.MESH_SOLID, camera, camera);
-        // Cutout passes ride along with the solid one, and the sorted pass draws the shadow map's translucency
+        // Checks the shadow passes.
         manager.renderLayer(MATRICES, Passes.MESH_CUTOUT, camera, camera);
         manager.renderLayer(MATRICES, Passes.MESH_TRANSLUCENT, camera, camera);
         assertEquals(java.util.List.of("opaque SHADOW", "finish", "translucent SHADOW", "finish"), shading.calls);

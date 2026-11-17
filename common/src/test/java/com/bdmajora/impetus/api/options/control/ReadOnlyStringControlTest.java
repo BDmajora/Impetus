@@ -24,14 +24,14 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class ReadOnlyStringControlTest {
-    // Name "Text" at x 6 ending at 30, the value's room from 36 to the inset at 194, text on line 5 (centre 9 less half the glyph height)
+    // Checks the row layout.
     private static final Dim2i DIM = new Dim2i(0, 0, 200, 18);
     private static final int WHITE = 0xFFFFFFFF;
 
-    // A piece of text drawn with the component it came from, where and in what colour
+    // Text drawn with its component and colour.
     private record Drawn(TextComponent component, String text, int x, int y, int color) { }
 
-    // Fake fonts keeping every piece of text drawn and every string measured or cut outside drawing, with a settable text version
+    // Fake fonts that record text work.
     private static class Recording extends FakeDrawContext {
         final List<Drawn> drawn = new ArrayList<>();
         final List<String> measured = new ArrayList<>();
@@ -73,13 +73,13 @@ class ReadOnlyStringControlTest {
             return this.measured.stream().filter(text::equals).count();
         }
 
-        // The last piece of text drawn, which is the value when one is drawn
+        // Returns the value text.
         Drawn last() {
             return this.drawn.getLast();
         }
     }
 
-    // A mock option named and holding a value that writes go to, available and unchanged
+    // Returns a mock option with a value.
     private static <T> Option<T> valued(String name, T initial) {
         @SuppressWarnings("unchecked")
         Option<T> option = Mockito.mock(Option.class);
@@ -159,11 +159,11 @@ class ReadOnlyStringControlTest {
         assertFalse(row.isFocused());
         FakeDrawContext draw = new FakeDrawContext();
         row.render(draw, 5000, 5000, 0f);
-        // Only the idle background, with no accent outline and so no lookup of the option's mod
+        // Checks the idle background.
         assertEquals(List.of("fill(0,0,200,18," + Integer.toHexString(DefaultColors.BACKGROUND_DEFAULT) + ")"),
                 draw.calls.stream().filter(call -> call.startsWith("fill(")).toList());
         verify(option, never()).getId();
-        // Under the cursor it still highlights, as every row does for its tooltip
+        // Checks the hover highlight.
         FakeDrawContext hovered = new FakeDrawContext();
         row.render(hovered, 100, 9, 0f);
         assertEquals("fill(0,0,200,18," + Integer.toHexString(DefaultColors.BACKGROUND_HOVERED) + ")", hovered.calls.getFirst());
@@ -228,7 +228,7 @@ class ReadOnlyStringControlTest {
 
     @Test
     void aValueTooWideForTheRoomBesideTheNameIsCutWithAnEllipsisAndStillEndsAtTheInset() {
-        // Thirty letters are 180 wide against 158 of room, so 23 letters and the ellipsis make 156
+        // Checks 23 letters.
         String cut = "X".repeat(23) + "...";
         assertEquals(List.of(text("Text", 6, 5), text(cut, 38, 5)), shown("X".repeat(30)));
         // A greyed cut keeps both its styles
@@ -242,16 +242,16 @@ class ReadOnlyStringControlTest {
 
     @Test
     void theValueUsesTheRoomTheDrawnNameLeavesRatherThanTheColumn() {
-        // A one-letter name ends at 12, leaving 176 for the value, so 29 letters fit whole
+        // Checks 29 letters.
         assertEquals(List.of(text("T", 6, 5), text("X".repeat(29), 20, 5)), texts(row(valued("T", "X".repeat(29)), DIM)));
-        // With no name the value may start at the row's left edge, so 32 letters fit whole
+        // Checks 32 letters.
         assertEquals(List.of(text("X".repeat(32), 2, 5)), texts(row(valued(null, "X".repeat(32)), DIM)));
         assertEquals(List.of(text("X".repeat(29) + "...", 2, 5)), texts(row(valued(null, "X".repeat(33)), DIM)));
     }
 
     @Test
     void narrowRowsShowAsMuchOfTheValueAsTheirRoomAllowsAndNothingWhenTheInsetLeavesNone() {
-        // Rows at most 102 wide leave the name no room beside the 90 column, so the value's room is the width less the inset
+        // Checks narrow rows.
         for (int width : new int[]{1, 5, 6, 7, 23}) {
             assertEquals(List.of(), texts(row(valued("Text", "VALUE"), new Dim2i(0, 0, width, 18))), "width " + width);
         }
@@ -301,7 +301,7 @@ class ReadOnlyStringControlTest {
         assertEquals(text("A   B", 164, 5), shown("A \n B").getLast());
         assertEquals(text("A  B", 170, 5), shown("A  B").getLast());
         assertEquals(text("A B", 176, 5), shown("A B").getLast());
-        // Cleaned first, then cut to the room
+        // Checks cleaning then cutting.
         assertEquals(text("X".repeat(20) + " YY...", 38, 5), shown("X".repeat(20) + "\r\n" + "Y".repeat(20)).getLast());
         assertEquals(text("A B C", 164, 5), shown(" \nA\nB\u0000\u0001\u0002C\n ").getLast());
     }
@@ -349,7 +349,7 @@ class ReadOnlyStringControlTest {
         row.render(draw, 5000, 5000, 0f);
         row.render(draw, 5000, 5000, 0f);
         assertEquals(3, draw.work("OTHER"));
-        // A new name of the same width leaves the room as it was, a wider one moves it
+        // Checks a new name.
         when(option.getName()).thenReturn(TextComponent.literal("Tex2"));
         row.render(draw, 5000, 5000, 0f);
         assertEquals(3, draw.work("OTHER"));
@@ -357,7 +357,7 @@ class ReadOnlyStringControlTest {
         row.render(draw, 5000, 5000, 0f);
         row.render(draw, 5000, 5000, 0f);
         assertEquals(4, draw.work("OTHER"));
-        // A new text version of the same fonts, then new fonts, each fit it once more
+        // Checks new text versions and fonts.
         draw.version++;
         row.render(draw, 5000, 5000, 0f);
         row.render(draw, 5000, 5000, 0f);
@@ -412,7 +412,7 @@ class ReadOnlyStringControlTest {
             assertEquals(List.of(), draw.calls, dim::toString);
             verify(option, never()).getValue();
         }
-        // Rows shorter than a line of text draw their background only, height 9 is the least that holds one
+        // Checks short rows.
         for (int height : new int[]{1, 7, 8}) {
             Option<String> option = valued("Text", "VALUE");
             FakeDrawContext draw = new FakeDrawContext();
@@ -425,7 +425,7 @@ class ReadOnlyStringControlTest {
 
     @Test
     void aCutNeverEndsOnHalfOfASurrogatePair() {
-        // Sixty chars of thirty emoji against 158 of room: 23 chars would end on a high surrogate, so 11 whole emoji and the ellipsis are kept
+        // Checks surrogate pairs.
         String drawn = shown("😀".repeat(30)).getLast();
         assertEquals(text("😀".repeat(11) + "...", 44, 5), drawn);
     }

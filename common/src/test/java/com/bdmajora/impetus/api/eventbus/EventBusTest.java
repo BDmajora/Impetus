@@ -27,7 +27,7 @@ class EventBusTest {
 
     private static final class Plain extends ImpetusEvent {}
 
-    // Carries which listeners ran, so each post can be checked on its own while another thread adds
+    // Records which listeners ran.
     private static final class Recording extends ImpetusEvent {
         final List<Integer> seen = new ArrayList<>();
     }
@@ -97,7 +97,7 @@ class EventBusTest {
         NullPointerException rejected = assertThrowsExactly(NullPointerException.class, () -> bus.post(null));
         assertEquals("Event must not be null", rejected.getMessage());
         assertEquals(List.of(), seen);
-        // An empty bus rejects it too, rather than failing later on isCancelable
+        // Checks an empty bus.
         assertThrowsExactly(NullPointerException.class, () -> new EventHandlerRegistrar<Plain>().post(null));
     }
 
@@ -143,7 +143,7 @@ class EventBusTest {
         assertSame(failure, assertThrowsExactly(IllegalStateException.class, () -> bus.post(event)));
         assertEquals(List.of("first", "second"), seen);
         assertEquals(0, failure.getSuppressed().length);
-        // The cancellation still landed on the event, though post threw instead of reporting it
+        // Checks the cancellation.
         assertTrue(event.isCanceled());
         // One failed post leaves the bus as it was
         failing[0] = false;
@@ -240,7 +240,7 @@ class EventBusTest {
             assertArrayEquals(new Throwable[] {earlier}, fatal.getSuppressed());
             assertEquals(List.of(), seen);
         }
-        // With nothing failed before it, the error comes out bare
+        // Checks a bare error.
         EventHandlerRegistrar<Plain> bus = new EventHandlerRegistrar<>();
         StackOverflowError alone = new StackOverflowError();
         bus.addListener(e -> {
@@ -255,7 +255,7 @@ class EventBusTest {
         EventHandlerRegistrar<Plain> bus = new EventHandlerRegistrar<>();
         bus.addListener(bus::post);
         bus.addListener(bus::post);
-        // Carrying on past the overflow would send every frame into both listeners, which never finishes
+        // Checks the overflow stops.
         assertTimeoutPreemptively(Duration.ofSeconds(30), () -> assertThrows(StackOverflowError.class, () -> bus.post(new Plain())));
     }
 
@@ -323,7 +323,7 @@ class EventBusTest {
                 throw failure;
             }
         });
-        // The inner post rethrows into the first listener, and the outer post holds it until the second listener has run
+        // Checks the nested rethrow.
         assertSame(failure, assertThrowsExactly(IllegalStateException.class, () -> bus.post(new Plain())));
         assertEquals(List.of("inner", "outer"), seen);
         assertEquals(0, failure.getSuppressed().length);
@@ -359,7 +359,7 @@ class EventBusTest {
         Recording event = new Recording();
         bus.post(event);
         assertEquals(threads * perThread, event.seen.size());
-        // Every listener ran once, and each thread's in the order that thread added them
+        // Checks the listener order.
         int[] next = new int[threads];
         for (int code : event.seen) {
             assertEquals(next[code / perThread]++, code % perThread);
@@ -413,11 +413,11 @@ class EventBusTest {
         }
         long allocated = threads.getCurrentThreadAllocatedBytes() - before;
         assertEquals(240_000, calls[0]);
-        // An iterator per post would be at least 1.6 MB here; the slack covers the measuring calls themselves
+        // Checks the allocation.
         assertTrue(allocated < 16_384, allocated + " bytes allocated");
     }
 
-    // Posts once, checks the listeners that ran were the first ones added in order and no fewer than before, and returns how many ran
+    // Posts once and checks the listeners.
     private static int postAndCheckPrefix(EventHandlerRegistrar<Recording> bus, int atLeast) {
         Recording event = new Recording();
         bus.post(event);

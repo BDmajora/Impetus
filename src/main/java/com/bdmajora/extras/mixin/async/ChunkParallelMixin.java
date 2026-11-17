@@ -42,11 +42,11 @@ public abstract class ChunkParallelMixin {
     @Final
     private World world;
 
-    // Field entity lock added to the target.
+    // Lock of the chunk's entity lists.
     @Unique
     private final Object impetus$entityLock = new Object();
 
-    // Field parallel added to the target.
+    // Whether the chunk belongs to a parallel ticked world.
     @Unique
     private boolean impetus$parallel;
 
@@ -86,7 +86,7 @@ public abstract class ChunkParallelMixin {
         return section;
     }
 
-    // Helper method lock sections added to the target.
+    // Turns on the parallel lock of every section of a parallel chunk.
     @Unique
     private void impetus$lockSections() {
         if (!this.impetus$parallel) {
@@ -123,7 +123,7 @@ public abstract class ChunkParallelMixin {
         }
     }
 
-    // Handles locked get entities.
+    // Collects entities in a box under the chunk's entity lock.
     @WrapMethod(method = "getEntitiesWithinAABBForEntity")
     private void impetus$lockedGetEntities(Entity except, AxisAlignedBB box, List<Entity> out, Predicate<? super Entity> filter, Operation<Void> original) {
         if (!this.impetus$parallel) {
@@ -135,7 +135,7 @@ public abstract class ChunkParallelMixin {
         }
     }
 
-    // Handles locked get entities of type.
+    // Collects entities of a type in a box under the chunk's entity lock.
     @WrapMethod(method = "getEntitiesOfTypeWithinAABB")
     private <T extends Entity> void impetus$lockedGetEntitiesOfType(Class<? extends T> type, AxisAlignedBB box, List<T> out, Predicate<? super T> filter, Operation<Void> original) {
         if (!this.impetus$parallel) {
@@ -147,7 +147,7 @@ public abstract class ChunkParallelMixin {
         }
     }
 
-    // Handles locked get tile entity.
+    // Returns a live block entity without locking or creates it under the world lock.
     @WrapMethod(method = "getTileEntity")
     private TileEntity impetus$lockedGetTileEntity(BlockPos pos, Chunk.EnumCreateEntityType mode, Operation<TileEntity> original) {
         if (!this.impetus$parallel) {

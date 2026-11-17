@@ -22,7 +22,7 @@ public final class DynamicLightsBridge {
     private DynamicLightsBridge() {
     }
 
-    // Returns whether available.
+    // Returns whether the dynamic lights mod's hook was found.
     public static boolean isAvailable() {
         return GET_LIGHT_VALUE != null;
     }

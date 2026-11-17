@@ -30,12 +30,12 @@ class CoreMixinsTest {
 
     @Test
     void aRegistryIsBackedByACompactMap() {
-        // Mockito cannot instrument this target, so the mixin gets a plain generated subclass
+        // Builds a concrete registry.
         @SuppressWarnings("unchecked")
         RegistrySimpleMixin<String, String> registry = Mixins.concrete(RegistrySimpleMixin.class);
         CallbackInfoReturnable<Map<String, String>> cir = Mixins.cir();
         Mixins.call(registry, "coarctatio$compactBackingMap", cir);
-        // Cancelled at head, so vanilla's HashMap is never built at all
+        // Checks the head cancel.
         assertTrue(cir.isCancelled());
         assertInstanceOf(Object2ObjectOpenHashMap.class, cir.getReturnValue());
     }
@@ -61,7 +61,7 @@ class CoreMixinsTest {
         Mixins.call(lookup, "coarctatio$compactLookups", Mixins.ci());
         Map<Class<?>, List<Object>> compacted = Mixins.get(lookup, "map");
         assertInstanceOf(Reference2ObjectOpenHashMap.class, compacted);
-        // The contents come across, since vanilla has already populated both by then
+        // Checks the contents come across.
         assertEquals(List.of("a"), compacted.get(String.class));
         Set<Class<?>> keys = Mixins.get(lookup, "knownKeys");
         assertInstanceOf(ReferenceOpenHashSet.class, keys);
@@ -71,7 +71,7 @@ class CoreMixinsTest {
     @Test
     void anEmptyLockIsSharedRatherThanAllocated() {
         LockCodeMixin lock = Mixins.concrete(LockCodeMixin.class);
-        // The shadow of a static field is a field of its own on the mixin, so the test fills it the way Mixin would
+        // Fills the shadowed static.
         com.bdmajora.testing.Statics.set(LockCodeMixin.class, "EMPTY_CODE", LockCode.EMPTY_CODE);
         NBTTagCompound empty = new NBTTagCompound();
         empty.setString("Lock", "");
@@ -80,7 +80,7 @@ class CoreMixinsTest {
         assertTrue(cir.isCancelled());
         assertSame(LockCode.EMPTY_CODE, cir.getReturnValue());
 
-        // A real lock needs its own instance, and an absent or wrongly typed tag is vanilla's business
+        // Checks a real lock.
         NBTTagCompound named = new NBTTagCompound();
         named.setString("Lock", "key");
         CallbackInfoReturnable<LockCode> real = Mixins.cir();
@@ -106,7 +106,7 @@ class CoreMixinsTest {
         holders.add("holder");
         Mixins.set(registry, "objectHolders", holders);
         Mixins.call(registry, "coarctatio$trimHolders", Mixins.ci());
-        // The refs survive, since applyObjectHolders runs again on every registry change
+        // Checks the refs survive.
         assertEquals(1, holders.size());
 
         // A list another mod replaced is left alone

@@ -61,10 +61,10 @@ class BakedEntityMixinsTest {
     @Test
     void bakedBlocksRenderAsModels() {
         List<Object[]> cases = List.of(
-                new Object[] {Mixins.instance(BlockChestRenderTypeMixin.class), "impetus", Blocks.CHEST},
-                new Object[] {Mixins.instance(BlockEnderChestRenderTypeMixin.class), "impetus", Blocks.ENDER_CHEST},
-                new Object[] {Mixins.instance(BlockBedRenderTypeMixin.class), "impetus", Blocks.BED},
-                new Object[] {Mixins.instance(BlockShulkerBoxRenderTypeMixin.class), "impetus", Blocks.PURPLE_SHULKER_BOX},
+                new Object[] {Mixins.instance(BlockChestRenderTypeMixin.class), "impetus$bakedRenderType", Blocks.CHEST},
+                new Object[] {Mixins.instance(BlockEnderChestRenderTypeMixin.class), "impetus$bakedRenderType", Blocks.ENDER_CHEST},
+                new Object[] {Mixins.instance(BlockBedRenderTypeMixin.class), "impetus$bakedRenderType", Blocks.BED},
+                new Object[] {Mixins.instance(BlockShulkerBoxRenderTypeMixin.class), "impetus$bakedRenderType", Blocks.PURPLE_SHULKER_BOX},
                 new Object[] {Mixins.instance(BlockContainerRenderTypeMixin.class), "impetus$bakedRenderType", Blocks.STANDING_SIGN});
         for (Object[] c : cases) {
             IBlockState state = ((net.minecraft.block.Block) c[2]).getDefaultState();
@@ -90,11 +90,11 @@ class BakedEntityMixinsTest {
     void bakedShulkerBoxesDrawInTheCutoutLayer() {
         BlockShulkerBoxLayerMixin layers = Mixins.instance(BlockShulkerBoxLayerMixin.class, Material.ROCK);
         IBlockState box = Blocks.PURPLE_SHULKER_BOX.getDefaultState();
-        // Unbaked, vanilla's own answer: the solid layer
+        // Checks the unbaked layer.
         for (BlockRenderLayer layer : BlockRenderLayer.values()) {
             assertEquals(layer == BlockRenderLayer.SOLID, layers.canRenderInLayer(box, layer), layer.toString());
         }
-        // Baked, only the cutout layer, which discards the lid's see-through texels over the base's teeth
+        // Checks the baked layer.
         switches(true);
         for (BlockRenderLayer layer : BlockRenderLayer.values()) {
             assertEquals(layer == BlockRenderLayer.CUTOUT, layers.canRenderInLayer(box, layer), layer.toString());
@@ -132,7 +132,7 @@ class BakedEntityMixinsTest {
         assertTrue(chest.impetus$isSettled());
         assertFalse(chest.impetus$needsRenderer());
 
-        // Without a world, or on a server, nothing is tracked
+        // Checks the untracked cases.
         Mixins.call(chest, "impetus$trackLid", Mixins.ci());
         Mixins.set(chest, "world", mock(World.class));
         Mixins.call(chest, "impetus$trackLid", Mixins.ci());
@@ -147,7 +147,7 @@ class BakedEntityMixinsTest {
         Mixins.call(chest, "impetus$trackLid", Mixins.ci());
         verify(world).markBlockRangeForRenderUpdate(10, 64, 10, 11, 64, 10);
         assertTrue(chest.impetus$needsRenderer());
-        // No change of rest, no rebuild
+        // Checks no rebuild without a change.
         Mixins.call(chest, "impetus$trackLid", Mixins.ci());
         verify(world).markBlockRangeForRenderUpdate(anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt());
     }
@@ -186,7 +186,7 @@ class BakedEntityMixinsTest {
         switches(true);
         World world = clientWorld();
 
-        // A chest at rest is drawn by the mesh; one animating, or next to one, still goes through the renderer
+        // Checks the chest renderer.
         TileEntityChestRendererMixin chests = Mixins.instance(TileEntityChestRendererMixin.class);
         TileEntityChestAnimationMixin chest = Mixins.instance(TileEntityChestAnimationMixin.class);
         Mixins.set(chest, "impetus$lid", 1);
@@ -229,22 +229,19 @@ class BakedEntityMixinsTest {
         assertTrue(skip(beds, "impetus$skipStaticBed", bed, -1).isCancelled());
         assertFalse(skip(beds, "impetus$skipStaticBed", bed, 2).isCancelled());
 
-        // A sign's board is baked, its text still drawn; breaking it draws the board again for the crack overlay
+        // Checks the sign renderer.
         TileEntitySignRendererMixin signs = Mixins.instance(TileEntitySignRendererMixin.class);
-        Mc.Recorded<Void> board = Mc.operation();
-        Mixins.call(signs, "impetus$skipStaticBoard", mock(ModelSign.class), board, -1);
-        assertEquals(0, board.count());
-        Mixins.call(signs, "impetus$skipStaticBoard", mock(ModelSign.class), board, 4);
-        assertEquals(1, board.count());
+        assertEquals(Boolean.FALSE, Mixins.call(signs, "impetus$skipStaticBoard", mock(ModelSign.class), -1));
+        assertEquals(Boolean.TRUE, Mixins.call(signs, "impetus$skipStaticBoard", mock(ModelSign.class), 4));
+        assertEquals(Boolean.TRUE, Mixins.call(signs, "impetus$skipStaticBoard", mock(ModelSign.class), 0));
 
-        // Switched off, every renderer draws as vanilla
+        // Checks the switches off.
         switches(false);
         assertFalse(skip(chests, "impetus$skipStaticChest", te, -1).isCancelled());
         assertFalse(skip(enders, "impetus$skipStaticChest", enderTe, -1).isCancelled());
         assertFalse(skip(boxes, "impetus$skipStaticBox", boxTe, -1).isCancelled());
         assertFalse(skip(beds, "impetus$skipStaticBed", bed, -1).isCancelled());
-        Mixins.call(signs, "impetus$skipStaticBoard", mock(ModelSign.class), board, -1);
-        assertEquals(2, board.count());
+        assertEquals(Boolean.TRUE, Mixins.call(signs, "impetus$skipStaticBoard", mock(ModelSign.class), -1));
         verify(world, never()).markBlockRangeForRenderUpdate(anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt());
     }
 

@@ -1,6 +1,6 @@
 package org.lwjgl;
 
-// Test stand-in for Cleanroom's lwjglx Sys, which its Keyboard reads timestamps from
+// Test stand-in for Cleanroom's lwjglx Sys.
 public final class Sys {
     private Sys() {}
 
@@ -10,7 +10,7 @@ public final class Sys {
         return "2.9.4-test";
     }
 
-    // The test JVM is always 64-bit, which is what Pointer.POINTER_SIZE and PointerBuffer derive from
+    // Returns true for the 64 bit test JVM.
     public static boolean is64Bit() {
         return true;
     }

@@ -81,7 +81,7 @@ public final class PackLanguage {
         return fallback != null ? fallback : name;
     }
 
-    // Values the label.
+    // Returns the translated label of one option value or the raw value.
     public String valueLabel(String name, String value) {
         String label = get("value." + name + "." + value);
         return label != null ? label : value;

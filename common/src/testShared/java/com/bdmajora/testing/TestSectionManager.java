@@ -50,9 +50,9 @@ public class TestSectionManager extends RenderSectionManager {
     public boolean respectQueueLimit = true;
     // Sections that mesh to nothing at all
     public final LongOpenHashSet empty = new LongOpenHashSet();
-    // Sections whose translucent geometry needs a partition tree, re-sorted when the camera crosses its cut plane
+    // Sections with a partition tree.
     public final LongOpenHashSet translucent = new LongOpenHashSet();
-    // Sections whose translucent geometry can only be distance-sorted, every time the camera moves far enough
+    // Sections sorted by distance.
     public final LongOpenHashSet distanceSorted = new LongOpenHashSet();
     // Sections that carry a global block entity
     public final LongOpenHashSet globalEntities = new LongOpenHashSet();
@@ -62,9 +62,9 @@ public class TestSectionManager extends RenderSectionManager {
     public final AtomicInteger sorts = new AtomicInteger();
     public final AtomicInteger invalidations = new AtomicInteger();
 
-    // The pass set builds go into; the mesh constructor swaps in the mesh-layout passes
+    // Pass set for builds.
     private final RenderPassConfiguration<String> passes;
-    // Set when this manager drives the mesh backend, so builds pack their geometry like the real meshing task
+    // Mesh backend flag.
     private final boolean meshTerrain;
 
     public TestSectionManager(CommandList commandList, int renderDistance, int minSection, int maxSection, boolean hasShadowPass, AsyncOcclusionMode asyncMode, int threads) {
@@ -74,14 +74,14 @@ public class TestSectionManager extends RenderSectionManager {
         this.meshTerrain = false;
     }
 
-    // A manager whose terrain belongs to the mesh-shader backend; builds run inline
+    // Returns a mesh manager.
     public TestSectionManager(CommandList commandList, int renderDistance, int minSection, int maxSection, MeshTerrainConfig mesh) {
         super(Passes.MESH_CONFIG, () -> new ChunkBuildContext(Passes.MESH_CONFIG), (device, config) -> new Renderer(device), renderDistance, commandList, minSection, maxSection, -1, false, mesh);
         this.passes = Passes.MESH_CONFIG;
         this.meshTerrain = true;
     }
 
-    // The same with outside mesh shading, as a shader pack brings, and a shadow pass to drive it
+    // Returns a mesh manager with shading.
     public TestSectionManager(CommandList commandList, int renderDistance, int minSection, int maxSection, MeshTerrainConfig mesh, MeshTerrainShading shading) {
         super(Passes.MESH_CONFIG, () -> new ChunkBuildContext(Passes.MESH_CONFIG), (device, config) -> new Renderer(device), renderDistance, commandList, minSection, maxSection, -1, true, mesh, shading);
         this.passes = Passes.MESH_CONFIG;
@@ -97,13 +97,13 @@ public class TestSectionManager extends RenderSectionManager {
         protected void configureShaderInterface(ChunkShaderInterface shader) {}
     }
 
-    // The mode is read during construction, before the field can be set, so NONE is the constructor's answer
+    // Mesh mode.
     @Override
     protected AsyncOcclusionMode getAsyncOcclusionMode() {
         return asyncMode == null ? AsyncOcclusionMode.NONE : asyncMode;
     }
 
-    // Read during construction; the tests drive the CPU occlusion graph
+    // Occlusion mode.
     @Override
     protected boolean useRasterOcclusionCulling() {
         return false;
@@ -197,7 +197,7 @@ public class TestSectionManager extends RenderSectionManager {
         };
     }
 
-    // A quad spanning from (x0,y0,z0) up to (x1,y1,z1) with a vertical edge, so different (x1,z1) give different normals
+    // Returns a quad.
     private static ChunkVertexEncoder.Vertex[] quad(float x0, float y0, float z0, float x1, float y1, float z1) {
         ChunkVertexEncoder.Vertex[] quad = ChunkVertexEncoder.Vertex.uninitializedQuad();
         float[][] pos = {{x0, y0, z0}, {x0, y1, z0}, {x1, y1, z1}, {x1, y0, z1}};
@@ -220,7 +220,7 @@ public class TestSectionManager extends RenderSectionManager {
         return task;
     }
 
-    // The loaded section at a position, or null
+    // Returns the loaded section or null.
     public RenderSection section(int x, int y, int z) {
         long key = PositionUtil.packSection(x, y, z);
         for (RenderSection section : getAllRenderSections()) {
@@ -231,7 +231,7 @@ public class TestSectionManager extends RenderSectionManager {
         return null;
     }
 
-    // Every section key currently loaded, for assertions
+    // Returns every loaded section key.
     public List<Long> keys() {
         List<Long> keys = new ArrayList<>();
         for (RenderSection section : getAllRenderSections()) {

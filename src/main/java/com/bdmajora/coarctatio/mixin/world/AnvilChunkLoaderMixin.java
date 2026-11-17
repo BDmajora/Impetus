@@ -12,7 +12,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 // Mixin that changes AnvilChunkLoader.
 @Mixin(AnvilChunkLoader.class)
 public abstract class AnvilChunkLoaderMixin {
-    // Field coarctatio retained tags added to the target.
+    // Level tags the deferred chunk read still needs.
     @Unique
     private static final String[] COARCTATIO_RETAINED_TAGS = {"Entities", "TileEntities", "TileTicks"};
 

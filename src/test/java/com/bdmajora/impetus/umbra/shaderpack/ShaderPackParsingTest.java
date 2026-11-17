@@ -39,7 +39,7 @@ class ShaderPackParsingTest {
         assertTrue(eval("5 / 0 == 0") && eval("5 % 0 == 0"));
         assertTrue(eval("!0") && eval("-1 < 0") && eval("+1"));
         assertTrue(eval("(1 + 1) * 2 == 4"));
-        // Identifiers resolve through their defines, chained, with undefined and flags as zero
+        // Checks chained identifier resolution.
         assertTrue(eval("A == 3", defines));
         assertTrue(eval("B == 4", defines));
         assertTrue(eval("HEX == 16", defines));
@@ -48,7 +48,7 @@ class ShaderPackParsingTest {
         assertTrue(eval("LOOP == 0", defines));
         assertTrue(eval("BAD == 0", defines));
         assertTrue(eval("defined(FLAG) && defined A && !defined(NOPE)", defines));
-        // Floats truncate like JCPP, suffixes are ignored
+        // Checks float truncation and suffixes.
         assertTrue(eval("1.9 == 1") && eval(".5 == 0") && eval("1e+2 == 100") && eval("2.5f == 2"));
         assertTrue(eval("10u == 10") && eval("0X1F == 31"));
         // Malformed expressions are reported as unevaluable
@@ -115,7 +115,7 @@ class ShaderPackParsingTest {
         assertEquals(List.of("a = yes", "b = elif", "c = shown  continued", "d = local", "e = undefined", "size = A A.5 B_A image.A",
                 "sliders = A", "screen.X = A", "profile.P = A", "plain line", "chain = CHAIN FLAGGED FLOATY",
                 "trailing\\\\", "last = continued "), List.of(plain.split("\n")));
-        // The properties flavour also substitutes numeric macros into values, never into keys or menu lines
+        // Checks numeric macro substitution in values.
         String expanded = PropertiesPreprocessor.preprocessProperties(source, defines);
         assertTrue(expanded.contains("size = 2 2.5 B_A image.A"), expanded);
         assertTrue(expanded.contains("sliders = A"), expanded);
@@ -197,7 +197,7 @@ class ShaderPackParsingTest {
         String[] lines = folded.split("\n", -1);
         assertEquals("#if 1", lines[0]);
         assertEquals("#elif SPEED > 1", lines[1]);
-        // Unbalanced parentheses fold to false, a continued line is left for the driver
+        // Checks unbalanced parentheses and a continued line.
         assertEquals("#if 0", lines[4]);
         assertEquals("#elif ( \\", lines[6]);
         assertEquals("#if 1", lines[8]);
@@ -206,7 +206,7 @@ class ShaderPackParsingTest {
         assertEquals("#if defined(HALF) && WEIRD", lines[12]);
         // A directive inside a block comment is not one
         assertEquals("/* #if 2.0 > 1.0", lines[14]);
-        // INSIDE was defined, and MOTION_BLUR undefined, by the active branch above
+        // Checks the INSIDE and MOTION_BLUR branches.
         assertEquals("#if 0", lines[23]);
         assertEquals("#elif 0", lines[29]);
         assertEquals(lines.length, source.split("\n", -1).length);
@@ -215,10 +215,131 @@ class ShaderPackParsingTest {
     }
 
     @Test
+    void foldingKeepsItsStackThroughTabsAndTrailingText() {
+        // Builds a source with float comparisons.
+        String source = String.join("\n",
+                "#if 0",
+                "#ifdef\tMISSING",
+                "#endif",
+                "#define KEPT 5.0",
+                "#endif",
+                "#if KEPT > 1.5",
+                "#endif",
+                "#if 0",
+                "#endif GUARD",
+                "#define AFTER 5.0",
+                "#if AFTER > 1.5",
+                "#endif",
+                "#define\tTABBED 5.0",
+                "#if TABBED > 1.5",
+                "#endif",
+                "#undef\tGONE",
+                "#if GONE > 1.5",
+                "#endif",
+                "#ifdef",
+                "#define BARE 5.0",
+                "#endif",
+                "#if BARE > 1.5",
+                "#endif",
+                "#define",
+                "#pragma optimize(on)");
+        String[] lines = GlslPreprocessor.foldFloatConditionals(source, Map.of("GONE", "5.0")).split("\n", -1);
+        // Checks the tabbed ifdef.
+        assertEquals("#if 0", lines[5]);
+        // Checks text after an endif.
+        assertEquals("#if 1", lines[10]);
+        assertEquals("#if 1", lines[13]);
+        assertEquals("#if 0", lines[16]);
+        // A bare ifdef opens a frame that is never taken
+        assertEquals("#if 0", lines[21]);
+        assertEquals("#define", lines[23]);
+    }
+
+    @Test
+    void extensionsInsideSkippedBranchesStayPut() {
+        String source = String.join("\n",
+                "#version 120",
+                "#define MC_GL_ARB_shader_texture_lod",
+                "uniform float x;",
+                // Known true condition.
+                "#ifdef MC_GL_ARB_shader_texture_lod",
+                "#extension GL_ARB_shader_texture_lod : require",
+                "#endif",
+                // Known false condition.
+                "#ifdef MC_GL_ARB_missing",
+                "#extension GL_ARB_missing : require",
+                "#elif 0",
+                "#extension GL_ARB_zero : require",
+                "#else",
+                "#extension GL_ARB_else : enable",
+                "#endif",
+                // Undecidable driver macro.
+                "#ifdef GL_ARB_gpu_shader5",
+                "#extension GL_ARB_gpu_shader5 : enable",
+                "#endif",
+                // An else after an unknown branch is unknown too
+                "#ifndef GL_ARB_gpu_shader5",
+                "#define FALLBACK",
+                "#else",
+                "#extension GL_ARB_unknown_else : enable",
+                "#endif",
+                "#ifdef FALLBACK",
+                "#extension GL_ARB_fallback : enable",
+                "#endif",
+                "#if __VERSION__ >= 130 || UNDEFINED_THING",
+                "#extension GL_ARB_version : enable",
+                "#endif",
+                "#if 1",
+                "#if 0",
+                "#extension GL_ARB_nested : require",
+                "#endif",
+                "#elif 1",
+                "#extension GL_ARB_after_taken : require",
+                "#endif",
+                "#if (",
+                "#extension GL_ARB_malformed : enable",
+                "#endif",
+                "#define SHOWN",
+                "#undef SHOWN",
+                "#ifdef SHOWN",
+                "#extension GL_ARB_undefined : require",
+                "#endif",
+                "/* #if 0",
+                "*/",
+                "#extension GL_ARB_after_comment : enable",
+                "void main() {}");
+        String hoisted = GlslPreprocessor.hoistExtensionDirectives(source);
+        String[] lines = hoisted.split("\n", -1);
+        assertEquals("#version 120", lines[0]);
+        assertEquals("#extension GL_ARB_shader_texture_lod : require", lines[1]);
+        assertTrue(hoisted.indexOf("#extension GL_ARB_else : enable") < hoisted.indexOf("#define MC_GL"));
+        assertTrue(hoisted.indexOf("#extension GL_ARB_gpu_shader5 : enable") < hoisted.indexOf("#define MC_GL"));
+        assertTrue(hoisted.indexOf("#extension GL_ARB_unknown_else : enable") < hoisted.indexOf("#define MC_GL"));
+        assertTrue(hoisted.indexOf("#extension GL_ARB_fallback : enable") < hoisted.indexOf("#define MC_GL"));
+        assertTrue(hoisted.indexOf("#extension GL_ARB_version : enable") < hoisted.indexOf("#define MC_GL"));
+        assertTrue(hoisted.indexOf("#extension GL_ARB_malformed : enable") < hoisted.indexOf("#define MC_GL"));
+        assertTrue(hoisted.indexOf("#extension GL_ARB_after_comment : enable") < hoisted.indexOf("#define MC_GL"));
+        // Checks the skipped lines stay in place.
+        for (String skipped : new String[]{"GL_ARB_missing", "GL_ARB_zero", "GL_ARB_nested", "GL_ARB_after_taken",
+                "GL_ARB_undefined"}) {
+            assertTrue(hoisted.indexOf("#extension " + skipped) > hoisted.indexOf("uniform float x;"), skipped);
+        }
+        assertEquals(source.split("\n", -1).length + 8, lines.length);
+
+        // When every directive after the code is in a skipped branch there is nothing to move
+        String quiet = "#version 120\nint x;\n#if 0\n#extension GL_ARB_foo : require\n#endif";
+        assertSame(quiet, GlslPreprocessor.hoistExtensionDirectives(quiet));
+        // A directive already above the code stays inside its conditional even when another one moves
+        String mixed = "#version 120\n#ifdef GL_ARB_a\n#extension GL_ARB_a : enable\n#endif\nint x;\n#extension GL_ARB_b : enable";
+        assertEquals("#version 120\n#extension GL_ARB_b : enable\n#ifdef GL_ARB_a\n#extension GL_ARB_a : enable\n#endif\nint x;\n",
+                GlslPreprocessor.hoistExtensionDirectives(mixed));
+    }
+
+    @Test
     void extensionsAreHoistedUnderTheVersion() {
         assertNull(GlslPreprocessor.hoistExtensionDirectives(null));
         assertEquals("void main() {}", GlslPreprocessor.hoistExtensionDirectives("void main() {}"));
-        // Already in place, or nothing but directives, leaves the source alone
+        // Checks sources that need no hoisting.
         String placed = "#version 330\n#extension GL_ARB_foo : enable\nvoid main() {}";
         assertEquals(placed, GlslPreprocessor.hoistExtensionDirectives(placed));
         String directives = "#version 330\n// only\n/* block */\n#extension GL_ARB_foo : enable";
@@ -314,7 +435,7 @@ class ShaderPackParsingTest {
         assertEquals(Optional.empty(), consts.getIntToken("missing"));
         assertArrayEquals(new float[] {1.0f, 0.5f, 0.25f, 1.0f}, consts.getVec4("clear4").orElseThrow());
         assertArrayEquals(new float[] {0.5f, 0.5f, 0.5f, 0.5f}, consts.getVec4("clear1").orElseThrow());
-        // Two components, unparsable components, a non-vec4 initialiser and an absent name all read as absent
+        // Checks the absent vec4 cases.
         assertEquals(Optional.empty(), consts.getVec4("clear2"));
         assertEquals(Optional.empty(), consts.getVec4("clearBad"));
         assertEquals(Optional.empty(), consts.getVec4("clearCall"));

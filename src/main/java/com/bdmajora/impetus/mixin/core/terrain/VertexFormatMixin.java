@@ -34,58 +34,58 @@ public abstract class VertexFormatMixin implements VertexFormatExtension {
     @Shadow
     public abstract int getNormalOffset();
 
-    // Field stride added to the target.
+    // Vertex size in ints or -1 until the offsets are computed.
     @Unique
     private int impetus$stride = -1;
-    // Field color added to the target.
+    // Int offset of the colour or -1.
     @Unique
     private int impetus$color;
-    // Field uv added to the target.
+    // Int offset of the texture coordinates.
     @Unique
     private int impetus$uv;
-    // Field light added to the target.
+    // Int offset of the lightmap coordinates or -1.
     @Unique
     private int impetus$light;
-    // Field normal added to the target.
+    // Int offset of the normal or -1.
     @Unique
     private int impetus$normal;
 
-    // Handles int stride.
+    // Returns the vertex size in ints.
     @Override
     public int impetus$intStride() {
         int stride = this.impetus$stride;
         return stride >= 0 ? stride : this.impetus$derive();
     }
 
-    // Handles color index.
+    // Returns the int offset of the colour or -1.
     @Override
     public int impetus$colorIndex() {
         this.impetus$intStride();
         return this.impetus$color;
     }
 
-    // Handles uv index.
+    // Returns the int offset of the texture coordinates.
     @Override
     public int impetus$uvIndex() {
         this.impetus$intStride();
         return this.impetus$uv;
     }
 
-    // Handles light index.
+    // Returns the int offset of the lightmap coordinates or -1.
     @Override
     public int impetus$lightIndex() {
         this.impetus$intStride();
         return this.impetus$light;
     }
 
-    // Handles normal index.
+    // Returns the int offset of the normal or -1.
     @Override
     public int impetus$normalIndex() {
         this.impetus$intStride();
         return this.impetus$normal;
     }
 
-    // Helper method derive added to the target.
+    // Works out every offset from the format's elements and returns the size.
     @Unique
     private int impetus$derive() {
         int colorOffset = this.getColorOffset();

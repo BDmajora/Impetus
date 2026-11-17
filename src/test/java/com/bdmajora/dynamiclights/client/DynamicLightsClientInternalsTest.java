@@ -15,7 +15,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-// The package-private client internals, which only their own package can reach
+// Tests the package private client internals.
 class DynamicLightsClientInternalsTest {
     @BeforeAll
     static void bootstrap() {
@@ -31,17 +31,6 @@ class DynamicLightsClientInternalsTest {
         when(access.getBlockState(any())).thenReturn(Blocks.WATER.getDefaultState());
         // With no fluidlogged data at the position the real block state is what comes back
         assertSame(Blocks.WATER.getDefaultState(), FluidloggedCompat.getFluidOrReal(access, BlockPos.ORIGIN));
-    }
-
-    @Test
-    void registryIdsAreTurnedIntoReadableLabels() {
-        assertEquals("Wall Banner", Mixins.call(LightSourceSettings.class, "prettify", "wall_banner"));
-        assertEquals("Chest", Mixins.call(LightSourceSettings.class, "prettify", "chest"));
-        assertEquals("A B C", Mixins.call(LightSourceSettings.class, "prettify", "a/b.c"));
-        assertEquals("Zombie", Mixins.call(LightSourceSettings.class, "displayName", null,
-                new net.minecraft.util.ResourceLocation("minecraft", "zombie")));
-        assertEquals("Named", Mixins.call(LightSourceSettings.class, "displayName", "Named",
-                new net.minecraft.util.ResourceLocation("minecraft", "zombie")));
     }
 
     @Test

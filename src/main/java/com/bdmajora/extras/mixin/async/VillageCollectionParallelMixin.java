@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.Mixin;
 // Mixin that changes VillageCollection.
 @Mixin(VillageCollection.class)
 public abstract class VillageCollectionParallelMixin {
-    // Handles locked add position.
+    // Queues a villager position under the collection lock.
     @WrapMethod(method = "addToVillagerPositionList")
     private void impetus$lockedAddPosition(BlockPos pos, Operation<Void> original) {
         if (!ParallelProcessor.INSTALLED) {

@@ -28,7 +28,7 @@ public final class DhFramebufferWrapper implements IDhApiFramebuffer {
         this.framebuffer.bind();
     }
 
-    // Ignores the attachment because the pipeline attaches its own depth texture.
+    // Ignores the attachment.
     @Override
     public void addDepthAttachment(int textureId, boolean isCombinedStencil) {
     }
@@ -46,12 +46,12 @@ public final class DhFramebufferWrapper implements IDhApiFramebuffer {
         return LWJGL.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
     }
 
-    // Ignores the attachment because the pipeline attaches its own color textures.
+    // Ignores the attachment.
     @Override
     public void addColorAttachment(int textureIndex, int textureId) {
     }
 
-    // Leaves the framebuffer alive because the pipeline deletes it.
+    // Leaves the framebuffer alive.
     @Override
     public void destroy() {
     }

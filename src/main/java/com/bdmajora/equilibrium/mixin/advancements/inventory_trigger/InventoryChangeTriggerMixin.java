@@ -38,7 +38,7 @@ public abstract class InventoryChangeTriggerMixin {
         equilibrium$tallySlots(inventory, context);
     }
 
-    // Handles tally slots.
+    // Counts the full and empty and occupied slots of an inventory.
     private static void equilibrium$tallySlots(InventoryPlayer inventory, SlotChangeContext context) {
         int full = 0;
         int empty = 0;

@@ -81,7 +81,8 @@ public abstract class InventoryChangeTriggerInstanceMixin {
                 continue;
             }
             for (int i = 0; i < count; i++) {
-                if (!matched[i] && ((SizeCheckedPredicate) this.items[i]).equilibrium$matchesCrossing(stack)) {
+                // Tests the changed stack against each unmatched item.
+                if (!matched[i] && this.items[i].test(stack)) {
                     matched[i] = true;
                     if (--remaining == 0) {
                         cir.setReturnValue(true);

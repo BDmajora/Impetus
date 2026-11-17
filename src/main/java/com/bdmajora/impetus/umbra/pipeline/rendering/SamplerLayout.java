@@ -167,12 +167,12 @@ public final class SamplerLayout {
         return GBUFFER;
     }
 
-    // Fors the stage.
+    // Returns the sampler units of one texture stage by sampler name.
     public static Map<String, Integer> forStage(TextureStage stage) {
         return stage == TextureStage.GBUFFERS_AND_SHADOW ? GBUFFER : FULLSCREEN;
     }
 
-    // Bies the stage.
+    // Returns the sampler units of every texture stage.
     public static Map<TextureStage, Map<String, Integer>> byStage() {
         return BY_STAGE;
     }

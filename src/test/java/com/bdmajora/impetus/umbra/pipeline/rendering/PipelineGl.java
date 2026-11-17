@@ -27,7 +27,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-// The GL a rendering test runs against: GL11/13/14 statics mocked, every texture unit and sampler binding modelled whichever path bound it (GlStateManager's cached one or a raw LWJGL call), the bound program tracked for GL_CURRENT_PROGRAM, and a 1.12 client at 320x240
+// Mocked GL of the rendering tests.
 public final class PipelineGl implements AutoCloseable {
     public static final int GL_CURRENT_PROGRAM = 0x8B8D;
     public static final int UNITS = 64;
@@ -67,7 +67,7 @@ public final class PipelineGl implements AutoCloseable {
         OpenGlHelper.framebufferSupported = true;
         OpenGlHelper.defaultTexUnit = GL13.GL_TEXTURE0;
         OpenGlHelper.lightmapTexUnit = GL13.GL_TEXTURE0 + 1;
-        // The shadow pass enters the engine's managed scope, whose device must exist but start inactive
+        // Makes the device inactive.
         Devices.active().makeInactive();
         this.gl11 = Mockito.mockStatic(GL11.class);
         this.gl13 = Mockito.mockStatic(GL13.class);
@@ -95,7 +95,7 @@ public final class PipelineGl implements AutoCloseable {
         resetStateManager();
     }
 
-    // GL_MAX_TEXTURE_IMAGE_UNITS, GL_MAX_DRAW_BUFFERS, GL_MAX_COLOR_ATTACHMENTS, GL_MAX_IMAGE_UNITS
+    // Sets the GL unit and buffer limits.
     public void limits(int textureUnits, int drawBuffers, int attachments, int imageUnits) {
         LWJGLService gl = TestGl.gl();
         when(gl.glGetInteger(0x8872)).thenReturn(textureUnits);
@@ -106,12 +106,12 @@ public final class PipelineGl implements AutoCloseable {
         when(gl.glGetInteger(0x90DE)).thenReturn(1 << 24);
     }
 
-    // Every program declares every uniform and sampler it is offered, at location 1
+    // Declares every uniform at location 1.
     public void allUniforms() {
         when(TestGl.gl().glGetUniformLocation(anyInt(), any(CharSequence.class))).thenReturn(1);
     }
 
-    // GlStateManager's cache back to "unit 0, nothing bound", matching the modelled GL
+    // Resets GlStateManager's cache.
     public static void resetStateManager() {
         Statics.set(GlStateManager.class, "activeTextureUnit", 0);
         Object[] states = Statics.get(GlStateManager.class, "textureState");
@@ -125,12 +125,12 @@ public final class PipelineGl implements AutoCloseable {
         return new UmbraRenderingPipeline(PackSourcesTest.pack(pathsAndSources));
     }
 
-    // The state behind a pipeline, whose package-private fields a test may read or swap
+    // Returns the state behind a pipeline.
     static PipelineState state(UmbraRenderingPipeline pipeline) {
         return Mixins.get(pipeline, "state");
     }
 
-    // Puts a built state into its frame, as beginWorldRendering leaves it, without running the frame start
+    // Puts a built state into its frame.
     static void enterFrame(PipelineState state) {
         state.active = true;
         state.gbuffers.current = state.schedule.gbuffer;

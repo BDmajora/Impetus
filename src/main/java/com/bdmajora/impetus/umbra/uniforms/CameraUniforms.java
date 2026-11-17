@@ -118,7 +118,7 @@ public final class CameraUniforms {
 
         // Moves the current positions to the previous ones and reads the new camera position and updates the shift.
         private void update() {
-            // Swaps the vectors so the frame update allocates nothing
+            // Swaps the camera vectors.
             Vector3d recycled = this.previousCameraPosition;
             this.previousCameraPosition = this.currentCameraPosition;
             this.currentCameraPosition = recycled;

@@ -15,7 +15,7 @@ public final class CoarctatioPropertyMap<K, V> extends ImmutableMap<K, V> {
         this.values = values;
     }
 
-    // Indexes the of.
+    // Returns the slot of a key in the shared key array or -1 when the key is absent.
     private int indexOf(Object key) {
         Object[] keys = this.keys;
 
@@ -46,7 +46,7 @@ public final class CoarctatioPropertyMap<K, V> extends ImmutableMap<K, V> {
         return this.keys.length;
     }
 
-    // Returns whether empty.
+    // Returns whether the map holds no entries.
     @Override
     public boolean isEmpty() {
         return this.keys.length == 0;
@@ -74,7 +74,7 @@ public final class CoarctatioPropertyMap<K, V> extends ImmutableMap<K, V> {
         return false;
     }
 
-    // Returns whether partial view.
+    // Returns false.
     @Override
     boolean isPartialView() {
         return false;

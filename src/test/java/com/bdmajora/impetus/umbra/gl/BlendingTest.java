@@ -132,19 +132,19 @@ class BlendingTest {
         ProgramBlendState composite = ProgramBlendState.from(props, "composite");
         BlendMode eyes = new BlendMode(GL11.GL_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ZERO, GL11.GL_ONE);
         ProgramBlendState defaulted = ProgramBlendState.from(props, "gbuffers_spidereyes", eyes);
-        // Indexed blending is an optional backend feature, off unless the context has it
+        // Stubs indexed blending support.
         when(TestGl.gl().supportsBufferBlending()).thenReturn(true);
         Mockito.doNothing().when(TestGl.gl()).glEnablei(anyInt(), anyInt());
         Mockito.doNothing().when(TestGl.gl()).glDisablei(anyInt(), anyInt());
         Mockito.doNothing().when(TestGl.gl()).glBlendFuncSeparatei(anyInt(), anyInt(), anyInt(), anyInt(), anyInt());
         try (MockedStatic<GL11> gl11 = Mockito.mockStatic(GL11.class); MockedStatic<GL14> gl14 = Mockito.mockStatic(GL14.class)) {
             ProgramBlendState.empty().apply(new int[] {0});
-            // Slot 0 writes colortex0 (base mode), slot 1 colortex1 (off), slot 2 colortex4 (its own mode)
+            // Checks the per slot blend modes.
             water.apply(new int[] {0, 1, 4});
             verify(TestGl.gl()).glEnablei(GL11.GL_BLEND, 0);
             verify(TestGl.gl()).glDisablei(GL11.GL_BLEND, 1);
             verify(TestGl.gl()).glBlendFuncSeparatei(2, GL11.GL_ONE, GL11.GL_ONE, GL11.GL_ONE, GL11.GL_ONE);
-            // A plain `off` disables blending on every slot, a malformed mode counts as off
+            // Checks off and malformed modes.
             hand.apply(new int[] {0, 1});
             verify(TestGl.gl()).glDisablei(GL11.GL_BLEND, 0);
             block.apply(new int[] {0});
@@ -153,7 +153,7 @@ class BlendingTest {
             // Per-target modes without a base leave the other slots alone
             composite.apply(new int[] {0, 2});
             verify(TestGl.gl()).glBlendFuncSeparatei(1, GL11.GL_ONE, GL11.GL_ZERO, GL11.GL_ONE, GL11.GL_ZERO);
-            // Without per-buffer blending the global state still applies, and per-target requests are refused once
+            // Checks blending without per buffer support.
             when(TestGl.gl().supportsBufferBlending()).thenReturn(false);
             hand.apply(new int[] {0});
             composite.apply(new int[] {0, 2});
@@ -164,7 +164,7 @@ class BlendingTest {
 
     @Test
     void theGuardHoldsABlendOffOverride() {
-        // Nothing captured, nothing suppressed
+        // Checks nothing is suppressed.
         BlendOverrideGuard.afterProgramBlendApply();
         assertFalse(BlendOverrideGuard.recordEnableBlend());
         BlendOverrideGuard.beforeProgramBlendApply(true);

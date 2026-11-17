@@ -53,7 +53,7 @@ public class VintageRenderSectionManager extends RenderSectionManager {
         this.sectionCache = new ClonedChunkSectionCache(world);
     }
 
-    // Returns whether in shadow pass.
+    // Returns whether the shadow pass is running.
     @Override
     public boolean isInShadowPass() {
         return com.bdmajora.impetus.umbra.pipeline.UmbraShadowRenderer.isShadowPass();
@@ -102,7 +102,7 @@ public class VintageRenderSectionManager extends RenderSectionManager {
         return ImpetusVintage.options().performance.asyncOcclusionMode;
     }
 
-    // Returns whether respect update task queue size limit.
+    // Returns true.
     @Override
     protected boolean shouldRespectUpdateTaskQueueSizeLimit() {
         return true;

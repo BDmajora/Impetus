@@ -21,23 +21,23 @@ public abstract class ParticleCollisionCacheMixin {
     // Ticks between collision rechecks.
     private static final int RECHECK_TICKS = 10;
 
-    // Field cell x added to the target.
+    // Block cell the particle's collision boxes were last read in.
     @Unique
     private int impetus$cellX = Integer.MIN_VALUE;
 
-    // Field cell y added to the target.
+    // Y of that cell.
     @Unique
     private int impetus$cellY;
 
-    // Field cell z added to the target.
+    // Z of that cell.
     @Unique
     private int impetus$cellZ;
 
-    // Field cell empty added to the target.
+    // Whether that cell had no collision boxes.
     @Unique
     private boolean impetus$cellEmpty;
 
-    // Field cell age added to the target.
+    // Ticks since the cell was read.
     @Unique
     private int impetus$cellAge;
 

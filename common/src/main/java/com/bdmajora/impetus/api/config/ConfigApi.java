@@ -15,21 +15,21 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
 
-// Entry point for mods to add pages, groups and options to the options screen
+// Entry point for mods to add pages and groups and options to the options screen.
 public final class ConfigApi {
-    // Guards the three registries; held only to append or to read one bucket, never while a supplier runs
+    // Guards the three registries.
     private static final Object LOCK = new Object();
 
     // Page suppliers in registration order
     private static final Bucket PAGES = new Bucket();
 
-    // Group suppliers by page id; identity keys are exact because OptionIdentifier is interned and matches() compares references
+    // Group suppliers by page id.
     private static final Map<OptionIdentifier<?>, Bucket> GROUPS = new IdentityHashMap<>();
 
-    // Option suppliers by group id, kept apart from GROUPS since one id can name both a page and a group
+    // Option suppliers by group id.
     private static final Map<OptionIdentifier<?>, Bucket> OPTIONS = new IdentityHashMap<>();
 
-    // One listener per bus serves every registration, so the buses never grow and a page or group build costs one lookup
+    // Registers one listener per bus.
     static {
         OptionGUIConstructionEvent.BUS.addListener(ConfigApi::addPages);
         OptionPageConstructionEvent.BUS.addListener(ConfigApi::addGroups);
@@ -66,7 +66,7 @@ public final class ConfigApi {
         }
     }
 
-    // Appends a fresh page from every page supplier, in registration order
+    // Appends a fresh page from every page supplier in registration order.
     private static void addPages(OptionGUIConstructionEvent event) {
         Supplier<?>[] suppliers;
         int count;
@@ -75,7 +75,7 @@ public final class ConfigApi {
             count = PAGES.size;
         }
         for (int i = 0; i < count; i++) {
-            // The cast fails fast on a heap-polluted supplier instead of letting a stranger into the page list
+            // Casts the supplied page.
             OptionPage page = (OptionPage) suppliers[i].get();
             if (page == null) {
                 throw new NullPointerException("Page supplier returned null");
@@ -131,12 +131,12 @@ public final class ConfigApi {
         }
     }
 
-    // Append-only supplier list; slots below size are never rewritten, so an array and size read under the lock stay valid after it is released
+    // Append only supplier list.
     private static final class Bucket {
         private Supplier<?>[] suppliers = new Supplier<?>[1];
         private int size;
 
-        // Doubles the array when full, so an append is amortised O(1) and a reader's old array keeps its slots
+        // Appends a supplier and doubles the array when full.
         private void add(Supplier<?> supplier) {
             if (this.size == this.suppliers.length) {
                 this.suppliers = Arrays.copyOf(this.suppliers, this.size << 1);

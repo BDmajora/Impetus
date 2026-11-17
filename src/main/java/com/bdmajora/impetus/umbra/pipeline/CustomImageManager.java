@@ -7,7 +7,6 @@ import com.bdmajora.impetus.umbra.gl.texture.InternalTextureFormat;
 import com.bdmajora.impetus.umbra.shaderpack.texture.CustomImageDefinition;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
-import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL30;
 

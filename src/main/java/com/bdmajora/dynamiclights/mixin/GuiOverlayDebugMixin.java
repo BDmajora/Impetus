@@ -2,7 +2,7 @@ package com.bdmajora.dynamiclights.mixin;
 
 import com.bdmajora.dynamiclights.DynamicLights;
 import com.bdmajora.dynamiclights.client.DynamicLightsEngine;
-import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
+import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import net.minecraft.client.gui.GuiOverlayDebug;
 import net.minecraft.util.text.TextFormatting;
 import org.spongepowered.asm.mixin.Mixin;
@@ -13,11 +13,8 @@ import java.util.List;
 // Mixin that changes GuiOverlayDebug.
 @Mixin(GuiOverlayDebug.class)
 public abstract class GuiOverlayDebugMixin {
-    // Changes an expression value in renderDebugInfoLeft.
-    @ModifyExpressionValue(
-            method = "renderDebugInfoLeft",
-            at = @At(value = "INVOKE",
-                    target = "Lnet/minecraft/client/gui/GuiOverlayDebug;call()Ljava/util/List;"))
+    // Adds the dynamic light line to the list Forge's debug overlay reads from call().
+    @ModifyReturnValue(method = "call()Ljava/util/List;", at = @At("RETURN"))
     private List<String> impetus$addDynamicLightInfo(List<String> lines) {
         if (!DynamicLights.options().showDebugInfo) {
             return lines;

@@ -17,7 +17,7 @@ public abstract class ClassInheritanceMultiMapMixin<T> extends AbstractSet<T> {
     @Final
     private List<T> values;
 
-    // Handles for each.
+    // Iterates the entity list directly.
     @Override
     public void forEach(Consumer<? super T> action) {
         this.values.forEach(action);

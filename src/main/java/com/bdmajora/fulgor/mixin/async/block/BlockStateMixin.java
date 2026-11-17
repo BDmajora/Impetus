@@ -10,11 +10,11 @@ import org.spongepowered.asm.mixin.Unique;
 // Mixin that changes StateImplementation.
 @Mixin(BlockStateContainer.StateImplementation.class)
 public abstract class BlockStateMixin implements LightCachedState {
-    // Field light info added to the target.
+    // Packed light info of the state or 0 until computed.
     @Unique
     private int fulgor$lightInfo;
 
-    // Handles light info.
+    // Returns the packed light info and computes it on first use.
     @Override
     public int fulgor$lightInfo() {
         int info = this.fulgor$lightInfo;

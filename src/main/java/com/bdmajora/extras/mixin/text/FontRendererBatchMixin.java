@@ -7,10 +7,13 @@ import net.minecraft.util.ResourceLocation;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+
+import java.util.function.Consumer;
 
 // Mixin that changes FontRenderer.
 @Mixin(FontRenderer.class)
@@ -57,7 +60,11 @@ public abstract class FontRendererBatchMixin {
     // Batch of queued glyphs.
     private final GlyphBatch impetus$batch = new GlyphBatch();
 
-    // Handles enabled.
+    // Texture binder handed to the batch.
+    @Unique
+    private final Consumer<ResourceLocation> impetus$binder = this::bindTexture;
+
+    // Returns whether glyph batching is on.
     private static boolean impetus$enabled() {
         return Extras.options().text.batchGlyphs;
     }
@@ -79,7 +86,7 @@ public abstract class FontRendererBatchMixin {
         float skew = italic ? 1.0F : 0.0F;
         int width = this.charWidth[ch];
         float f = (float) width - 0.01F;
-        this.impetus$batch.prepare(this::bindTexture, this.locationFontTexture);
+        this.impetus$batch.prepare(this.impetus$binder, this.locationFontTexture);
         this.impetus$batch.quad(this.posX, this.posY, f - 1.0F, 7.99F, skew,
                 column / 128.0F, row / 128.0F, (column + f - 1.0F) / 128.0F, (row + 7.99F) / 128.0F);
         cir.setReturnValue((float) width);
@@ -105,7 +112,7 @@ public abstract class FontRendererBatchMixin {
         float v = (float) ((ch & 255) / 16 * 16);
         float span = f1 - f - 0.02F;
         float skew = italic ? 1.0F : 0.0F;
-        this.impetus$batch.prepare(this::bindTexture, this.getUnicodePageLocation(page));
+        this.impetus$batch.prepare(this.impetus$binder, this.getUnicodePageLocation(page));
         this.impetus$batch.quad(this.posX, this.posY, span / 2.0F, 7.99F, skew,
                 u / 256.0F, v / 256.0F, (u + span) / 256.0F, (v + 15.98F) / 256.0F);
         cir.setReturnValue((f1 - f) / 2.0F + 1.0F);
@@ -115,13 +122,13 @@ public abstract class FontRendererBatchMixin {
     @Inject(method = "doDraw", at = @At("HEAD"))
     private void impetus$flushBeforeDecorations(float advance, CallbackInfo ci) {
         if ((this.strikethroughStyle || this.underlineStyle) && this.impetus$batch.isOpen()) {
-            this.impetus$batch.flush(this::bindTexture);
+            this.impetus$batch.flush(this.impetus$binder);
         }
     }
 
     // Runs before every return of renderStringAtPos.
     @Inject(method = "renderStringAtPos", at = @At("RETURN"))
     private void impetus$flushString(String text, boolean shadow, CallbackInfo ci) {
-        this.impetus$batch.flush(this::bindTexture);
+        this.impetus$batch.flush(this.impetus$binder);
     }
 }

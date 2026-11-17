@@ -17,6 +17,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -49,7 +51,7 @@ class CoreTest {
         LaunchEnvironment.install(home);
         try (MockedStatic<ModDiscoverer> mods = Mockito.mockStatic(ModDiscoverer.class);
              MockedStatic<Config> configs = Mockito.mockStatic(Config.class)) {
-            // Cleanroom's discoverer knows Phosphor is installed, not Alfheim
+            // Reports Phosphor as installed.
             mods.when(() -> ModDiscoverer.isModPresent("phosphor-lighting")).thenReturn(true);
             ImpetusMixinRegistrar.hijackSupersededLighting();
             configs.verify(() -> Config.blacklist("mixins.phosphor.json"));
@@ -69,7 +71,7 @@ class CoreTest {
         } finally {
             LaunchEnvironment.restore();
         }
-        // DH skipped it on seeing Impetus's IrisApi, so Impetus queues it
+        // Adds DH's depth texture config.
         Files.writeString(classpath.resolve("DistantHorizons.iris.mixins.json"), "{}");
         LaunchEnvironment.install(home, classpath.toUri().toURL());
         try (MockedStatic<Mixins> mixins = Mockito.mockStatic(Mixins.class)) {
@@ -131,7 +133,7 @@ class CoreTest {
             assertArrayEquals(new String[] {"a", "b"}, config.list("items", ""));
             assertArrayEquals(new String[] {"x", "y"}, config.list("absent", "x,y"));
 
-            // An unreadable file falls back to defaults, and a config directory that cannot exist is reported
+            // Checks an unreadable file and a bad config directory.
             Files.createDirectories(home.resolve("config/unreadable.cfg"));
             assertTrue(new PropertiesConfig(logger, "unreadable.cfg", "").load().isEmpty());
             Path blocked = home.resolve("blocked");
@@ -143,6 +145,51 @@ class CoreTest {
             stranded.save(values);
             verify(logger, Mockito.atLeastOnce()).warn(Mockito.anyString(), Mockito.any(Object.class));
             verify(logger).warn(Mockito.eq("Could not write {}"), Mockito.any(Object.class), Mockito.any(IOException.class));
+        } finally {
+            LaunchEnvironment.restore();
+        }
+    }
+
+    @Test
+    void theSharedPropertiesFileKeepsOrderNotesAndDefaultsAndReadsBackExactly(@TempDir Path home) throws IOException {
+        LaunchEnvironment.install(home);
+        try {
+            PropertiesConfig config = new PropertiesConfig(mock(Logger.class), "notes.cfg", "Header line.\nSecond paragraph.");
+            config.load();
+            Map<String, String> values = new LinkedHashMap<>();
+            values.put("zeta", "true");
+            values.put("alpha", "1");
+            values.put("odd key=:#!", " lead\ttab\nline\\back = : # !");
+            values.put("empty", "");
+            values.put("wide", "caf\u00e9 \u20ac \uD83D\uDE00");
+            String note = "word ".repeat(40).trim();
+            config.save(values, Map.of("zeta", note, "wide", "Euro \u20ac sign"), Map.of("zeta", "false", "alpha", "1"));
+            String text = Files.readString(home.resolve("config/notes.cfg"), StandardCharsets.ISO_8859_1);
+
+            // Checks the header and then each key under its note and default in order.
+            assertTrue(text.startsWith("# Header line.\n# Second paragraph.\n\n# word "));
+            assertTrue(text.indexOf("\nzeta=") < text.indexOf("\nalpha=") && text.indexOf("\nalpha=") < text.indexOf("\nodd"));
+            assertTrue(text.contains("# Default: false\nzeta=true\n"));
+            assertTrue(text.contains("\n\n# Default: 1\nalpha=1\n"));
+            assertTrue(text.contains("\n\nempty=\n"));
+            assertTrue(text.contains("# Euro \\u20AC sign\n"));
+            for (String line : text.split("\n")) {
+                assertTrue(line.length() <= 78, line);
+                assertTrue(line.chars().allMatch(c -> c >= 0x20 && c < 0x7F), line);
+            }
+            assertEquals(3, text.lines().filter(line -> line.startsWith("# word")).count());
+
+            // Properties reads every key and value back unchanged.
+            Properties read = new Properties();
+            try (var in = Files.newInputStream(home.resolve("config/notes.cfg"))) {
+                read.load(in);
+            }
+            assertEquals(values, new LinkedHashMap<>(Map.copyOf((Map) read)));
+
+            // The one argument save writes the header and keys alone.
+            config.save(Map.of("only", "x"));
+            assertEquals("# Header line.\n# Second paragraph.\n\nonly=x\n", Files.readString(home.resolve("config/notes.cfg")));
+            assertEquals("only=x\n", new PropertiesConfig(mock(Logger.class), "bare.cfg", "").format(Map.of("only", "x"), Map.of(), Map.of()));
         } finally {
             LaunchEnvironment.restore();
         }

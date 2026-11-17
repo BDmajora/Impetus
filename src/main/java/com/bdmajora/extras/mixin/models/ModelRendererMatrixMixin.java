@@ -78,7 +78,7 @@ public abstract class ModelRendererMatrixMixin {
     @Shadow
     protected abstract void compileDisplayList(float scale);
 
-    // Value matrix.
+    // Scratch buffer the part matrix is uploaded from.
     private static final FloatBuffer MATRIX = BufferUtils.createFloatBuffer(16);
 
     // Runs at the start of render and can cancel it.
@@ -147,14 +147,14 @@ public abstract class ModelRendererMatrixMixin {
         this.impetus$multiply(scale, false, false);
     }
 
-    // Returns whether transform.
+    // Returns whether the part moves or rotates or offsets anything.
     private boolean impetus$hasTransform() {
         return this.offsetX != 0.0F || this.offsetY != 0.0F || this.offsetZ != 0.0F
                 || this.rotationPointX != 0.0F || this.rotationPointY != 0.0F || this.rotationPointZ != 0.0F
                 || this.rotateAngleX != 0.0F || this.rotateAngleY != 0.0F || this.rotateAngleZ != 0.0F;
     }
 
-    // Handles render children.
+    // Draws the part's children.
     private void impetus$renderChildren(float scale) {
         if (this.childModels != null) {
             for (int i = 0, n = this.childModels.size(); i < n; i++) {
@@ -163,7 +163,7 @@ public abstract class ModelRendererMatrixMixin {
         }
     }
 
-    // Handles multiply.
+    // Applies the part's translation and rotation to the current matrix in one multiply.
     private void impetus$multiply(float scale, boolean withOffset, boolean yxzOrder) {
         float tx = this.rotationPointX * scale;
         float ty = this.rotationPointY * scale;

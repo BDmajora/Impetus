@@ -27,7 +27,7 @@ public final class TimeUtil {
     // Longest formatted number in bytes
     private static final int NUMBER_LENGTH = 10;
 
-    // Fills the ratio, suffix and power tables
+    // Fills the ratio and suffix and power tables.
     static {
         for (int fine = 0; fine < COUNT; fine++) {
             for (int coarse = fine; coarse < COUNT; coarse++) {

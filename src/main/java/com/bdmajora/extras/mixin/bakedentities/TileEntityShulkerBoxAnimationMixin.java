@@ -13,11 +13,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 // Mixin that changes TileEntityShulkerBox.
 @Mixin(TileEntityShulkerBox.class)
 public abstract class TileEntityShulkerBoxAnimationMixin extends TileEntity implements AnimatedBlockEntity {
-    // Field lid added to the target.
+    // Lid tracking state.
     @Unique
     private int impetus$lid = LidTracking.INITIAL;
 
-    // Returns whether settled.
+    // Returns whether the lid is shut and still.
     @Override
     public boolean impetus$isSettled() {
         TileEntityShulkerBox self = (TileEntityShulkerBox) (Object) this;
@@ -25,7 +25,7 @@ public abstract class TileEntityShulkerBoxAnimationMixin extends TileEntity impl
                 && self.getProgress(0.0F) == 0.0F && self.getProgress(1.0F) == 0.0F;
     }
 
-    // Returns whether renderer.
+    // Returns whether the box needs its block entity renderer.
     @Override
     public boolean impetus$needsRenderer() {
         return LidTracking.needsRenderer(this.impetus$lid, impetus$isSettled());

@@ -130,7 +130,7 @@ class BlocksAndChunksMixinTest {
         Mixins.call(navigate, "equilibrium$flagNavigationCache", world, BlockPos.ORIGIN, BlockPos.ORIGIN, 1, building);
         assertFalse(NavigationChunkGuard.isNavigating());
         assertEquals(1, originals[0]);
-        // A client world keeps loading, since only the server path search is guarded
+        // Checks a client world.
         Mixins.set(world, "isRemote", true);
         NavigationChunkGuard.set(true);
         assertSame(generated, Mixins.call(cache, "equilibrium$loadedOnlyWhileNavigating", world, 1, 2, original));
@@ -138,7 +138,7 @@ class BlocksAndChunksMixinTest {
 
     @Test
     void craftingLookupsGoThroughTheCache() {
-        // The registry is swapped for an empty one; the harness opens up the static final so this takes effect
+        // Swaps in an empty recipe registry.
         RegistryNamespaced<ResourceLocation, IRecipe> original = CraftingManager.REGISTRY;
         RegistryNamespaced<ResourceLocation, IRecipe> registry = new RegistryNamespaced<>();
         Statics.set(CraftingManager.class, "REGISTRY", registry);
@@ -162,7 +162,7 @@ class BlocksAndChunksMixinTest {
             Mixins.call(CraftingManagerMixin.class, "equilibrium$cachedRemaining", matrix, world, remaining);
             assertSame(leftovers, remaining.getReturnValue());
 
-            // With no recipe the grid's own contents come back, which is what vanilla's fallback does
+            // Checks the grid fallback.
             when(recipe.matches(matrix, world)).thenReturn(false);
             Mixins.set(CraftingCache.class, "lastMatch", null);
             var empty = Mixins.<NonNullList<ItemStack>>cir();
@@ -245,12 +245,12 @@ class BlocksAndChunksMixinTest {
         Mockito.doReturn(2.0D).when(hopper).getXPos();
         Mockito.doReturn(3.0D).when(hopper).getYPos();
         Mockito.doReturn(4.0D).when(hopper).getZPos();
-        // Metadata 2 faces north, so the destination is one block along -Z
+        // Faces the hopper north.
         Mockito.doReturn(2).when(hopper).getBlockMetadata();
         assertSame(furnace, Mixins.call(hopper, "getInventoryForHopperTransfer"));
         assertSame(furnace, Mixins.call(TileEntityHopperMixin.class, "getSourceInventory", hopper));
 
-        // A hopper without caches, such as a minecart, resolves uncached
+        // Checks a hopper without caches.
         TileEntityHopper cartless = mock(TileEntityHopper.class);
         when(cartless.getWorld()).thenReturn(world);
         when(cartless.getXPos()).thenReturn(2.0D);
@@ -285,13 +285,13 @@ class BlocksAndChunksMixinTest {
         BlockPos pos = new BlockPos(0, 4, 0);
         when(world.getBlockState(pos)).thenReturn(powered);
 
-        // No neighbour carries current, so the wire stays at zero and nothing is scheduled
+        // Checks a wire without current.
         ShadowStubs.on(wire, "getMaxCurrentStrength", args -> args[2]);
         IBlockState result = Mixins.call(wire, "calculateCurrentChanges", world, pos, pos.down(), powered);
         assertEquals(0, result.getValue(BlockRedstoneWire.POWER).intValue());
         assertTrue(Mixins.<java.util.Set<BlockPos>>get(wire, "blocksNeedingUpdate").isEmpty());
 
-        // A neighbouring wire at strength 9 leaves 8 here, and every touched position is scheduled
+        // Checks a wire beside strength 9.
         ShadowStubs.on(wire, "getMaxCurrentStrength", args -> Math.max((int) args[2], args[1].equals(pos.down()) ? 0 : 9));
         result = Mixins.call(wire, "calculateCurrentChanges", world, pos, pos.down(), powered);
         assertEquals(8, result.getValue(BlockRedstoneWire.POWER).intValue());
@@ -335,9 +335,10 @@ class BlocksAndChunksMixinTest {
         Mixins.set(world, "rand", new Random(4));
         Mixins.set(world, "playerEntities", new java.util.ArrayList<net.minecraft.entity.player.EntityPlayer>());
         Mockito.doReturn(world).when((net.minecraft.tileentity.MobSpawnerBaseLogic) (Object) spawner).getSpawnerWorld();
+        Mockito.doReturn(new net.minecraft.util.math.BlockPos(1, 64, 0)).when((net.minecraft.tileentity.MobSpawnerBaseLogic) (Object) spawner).getSpawnerPosition();
         when(world.getTotalWorldTime()).thenReturn(100L);
 
-        // Nothing cached yet, so vanilla's check runs and its answer is kept
+        // Checks the first check.
         var first = Mixins.<Boolean>cir();
         Mixins.call(spawner, "equilibrium$answerFromCache", first);
         assertFalse(first.isCancelled());
@@ -346,8 +347,12 @@ class BlocksAndChunksMixinTest {
         var cached = Mixins.<Boolean>cir();
         Mixins.call(spawner, "equilibrium$answerFromCache", cached);
         assertTrue(cached.getReturnValue());
+        // Checks the position stagger.
+        long staggered = new net.minecraft.util.math.BlockPos(1, 64, 0).toLong() & 1L;
+        assertEquals(100L + 10L + staggered, (long) Mixins.get(spawner, "equilibrium$recheckAt"));
+        assertEquals(new Random(4).nextInt(), world.rand.nextInt());
 
-        // The answer expires after the interval, and a change in player count drops it early
+        // Checks the cache expiry.
         when(world.getTotalWorldTime()).thenReturn(200L);
         var expired = Mixins.<Boolean>cir();
         Mixins.call(spawner, "equilibrium$answerFromCache", expired);
@@ -359,7 +364,7 @@ class BlocksAndChunksMixinTest {
         Mixins.call(spawner, "equilibrium$answerFromCache", changed);
         assertFalse(changed.isCancelled());
 
-        // A spawner with no world at all, as when its tile entity is not placed, is left alone
+        // Checks a spawner without a world.
         Mockito.doReturn(null).when((net.minecraft.tileentity.MobSpawnerBaseLogic) (Object) spawner).getSpawnerWorld();
         var worldless = Mixins.<Boolean>cir();
         Mixins.call(spawner, "equilibrium$answerFromCache", worldless);
@@ -388,12 +393,17 @@ class BlocksAndChunksMixinTest {
         Mixins.set(chunk, "storageArrays", null);
         assertThrows(net.minecraft.util.ReportedException.class, () -> chunk.getBlockState(1, 2, 3));
 
-        // The debug world answers from its generator instead of the sections
+        // Checks the debug world.
         when(world.getWorldType()).thenReturn(WorldType.DEBUG_ALL_BLOCK_STATES);
         Mixins.call(chunk, "equilibrium$resolveWorldType", Mixins.ci());
         assertEquals(Blocks.BARRIER.getDefaultState(), chunk.getBlockState(0, 60, 0));
         assertEquals(Blocks.AIR.getDefaultState(), chunk.getBlockState(0, 50, 0));
         assertNotNull(chunk.getBlockState(0, 70, 0));
+        // A chunk built without a world reads its sections rather than failing in its constructor
+        Mixins.set(chunk, "world", null);
+        Mixins.set(chunk, "storageArrays", sections);
+        Mixins.call(chunk, "equilibrium$resolveWorldType", Mixins.ci());
+        assertEquals(Blocks.STONE.getDefaultState(), chunk.getBlockState(1, 2, 3));
 
         // The tile entity map is swapped for the long-keyed one unless Cubic Chunks is present
         Mc.forge();

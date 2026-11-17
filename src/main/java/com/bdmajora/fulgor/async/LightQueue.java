@@ -221,7 +221,7 @@ public final class LightQueue {
         return null;
     }
 
-    // Returns whether initial light task.
+    // Returns whether an initial light task is queued.
     public synchronized boolean hasInitialLightTask() {
         return this.initialLightCount > 0;
     }
@@ -250,31 +250,31 @@ public final class LightQueue {
         task.onComplete.set(null);
     }
 
-    // Handles the task removed.
+    // Forgets a removed task's keys and completes its future.
     private void onTaskRemoved(ChunkTasks task) {
         if (task.initialLightChunk != null) {
             this.initialLightCount--;
         }
     }
 
-    // Handles the task dequeued.
+    // Moves a dequeued task to the in-flight set.
     private void onTaskDequeued(ChunkTasks task) {
         onTaskRemoved(task);
         this.inFlightTasks.put(task.chunkCoordinate, task);
     }
 
-    // Returns whether pending work.
+    // Returns whether a chunk has queued or in-flight work.
     public synchronized boolean hasPendingWork(int cx, int cz) {
         long key = ChunkPos.asLong(cx, cz);
         return this.tasksByChunk.containsKey(key) || this.inFlightTasks.containsKey(key);
     }
 
-    // Returns whether work.
+    // Returns whether any work is queued or in flight.
     public synchronized boolean hasWork() {
         return !this.tasksByChunk.isEmpty() || !this.inFlightTasks.isEmpty();
     }
 
-    // Returns whether empty.
+    // Returns whether no task is queued.
     public synchronized boolean isEmpty() {
         return this.tasksByChunk.isEmpty();
     }
@@ -284,7 +284,7 @@ public final class LightQueue {
         return this.tasksByChunk.size();
     }
 
-    // Returns whether pending light work.
+    // Returns whether a chunk has light value work queued or in flight.
     public synchronized boolean hasPendingLightWork(long key) {
         return changesLightValues(this.tasksByChunk.get(key)) || changesLightValues(this.inFlightTasks.get(key));
     }

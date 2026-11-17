@@ -34,11 +34,12 @@ public abstract class ItemLayerFaceDataMixin {
     // Runs before every return of constructor.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void coarctatio$allocate(int uMax, int vMax, CallbackInfo ci) {
-        this.coarctatio$wordsPerFace = (uMax * vMax + 31) / 32;
+        // Sizes each face for vMax rows of the wider dimension.
+        this.coarctatio$wordsPerFace = (vMax * Math.max(uMax, vMax) + 31) / 32;
         this.coarctatio$bits = new int[4 * this.coarctatio$wordsPerFace];
     }
 
-    // Handles face index.
+    // Returns the slot of one of the four faces a layer edge can have.
     private static int coarctatio$faceIndex(EnumFacing facing) {
         return switch (facing) {
             case WEST -> 0;

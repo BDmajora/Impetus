@@ -1,7 +1,6 @@
 package com.bdmajora.impetus.engine.impl.render.chunk.lists;
 
 import com.bdmajora.impetus.engine.impl.render.chunk.LocalSectionIndex;
-import com.bdmajora.impetus.engine.impl.render.chunk.RenderSection;
 import com.bdmajora.impetus.engine.impl.util.iterator.ByteIterator;
 import com.bdmajora.impetus.engine.impl.util.iterator.ByteArrayIterator;
 import com.bdmajora.impetus.engine.impl.render.chunk.region.RenderRegion;

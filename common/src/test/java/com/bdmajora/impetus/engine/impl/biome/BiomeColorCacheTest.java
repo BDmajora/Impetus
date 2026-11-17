@@ -39,9 +39,9 @@ class BiomeColorCacheTest {
         }
     }
 
-    // Biome id hashes the position, so a resolve can be matched to the cell it was asked for
+    // Biome id from the position.
     private static final PositionalSupplier<Integer> BIOMES = BiomeColorCacheTest::biomeAt;
-    // Colour carries the low byte of each axis, unique across any region the cache keeps
+    // Colour from the position.
     private static final Tint POS = (biome, x, y, z) -> pos(x, y, z);
     private static final Tint NOISE = (biome, x, y, z) -> noise(x, y, z);
 
@@ -67,7 +67,7 @@ class BiomeColorCacheTest {
         return cache;
     }
 
-    // Edge-clamped box average along x then z, flooring each channel per pass like BoxBlur
+    // Expected box blur.
     private static int[] referenceBlur(int[] field, int size, int radius) {
         return boxPass(boxPass(field, size, radius, 1, 0), size, radius, 0, 1);
     }
@@ -139,7 +139,7 @@ class BiomeColorCacheTest {
                 assertEquals(colours[x], cache.getColor(byX, x, 5, 5));
             }
         }
-        // Zero is a colour like any other, so it stays cached too
+        // Checks zero is cached.
         assertEquals(colours.length, cache.calls.size());
     }
 
@@ -397,7 +397,7 @@ class BiomeColorCacheTest {
         sharp.getColor(POS, 5, 6, 5);
         sharp.getColor(POS, 6, 6, 5);
         assertEquals(2, heldLayers(sharp, POS));
-        // Unblended caches never blur, so they keep no scratch buffer
+        // Checks no scratch buffer.
         assertNull(field(sharp, "tempColorBuffer"));
         Cache blended = at(2, 0, 0, 0);
         blended.getColor(POS, 5, 5, 5);

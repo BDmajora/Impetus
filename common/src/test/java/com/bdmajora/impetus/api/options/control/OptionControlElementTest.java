@@ -46,7 +46,7 @@ class OptionControlElementTest {
 
     private enum Mode { A, B }
 
-    // A mock option holding a value, available and unchanged
+    // Returns a mock option with a value.
     private static <T> Option<T> option(String name, T initial) {
         @SuppressWarnings("unchecked")
         Option<T> option = Mockito.mock(Option.class);
@@ -83,14 +83,14 @@ class OptionControlElementTest {
         }
     }
 
-    // Binds a control to the option the way OptionImpl binds one, so each edits the other
+    // Binds a control to the option.
     private static Bound bind(Option<Boolean> option, Function<Dim2i, ControlElement<Boolean>> factory) {
         Bound control = new Bound(option, factory);
         when(option.getControl()).thenReturn(control);
         return control;
     }
 
-    // A row counting its getter calls and answering with whatever the test sets, its own option until then
+    // Row that counts getter calls.
     private static final class Counting extends ControlElement<Boolean> {
         Supplier<Option<Boolean>> answer;
         int reads;
@@ -107,10 +107,10 @@ class OptionControlElementTest {
         }
     }
 
-    // A page whose only row is a counting one for the named option, at y 18 to 36 of a 200 wide frame
+    // Returns a page with one counting row.
     private record Hovered(OptionPageFrame frame, Option<Boolean> option, Counting row) {
         static Hovered of(String name) {
-            // Qualified, as the record's own option() accessor would hide the helper
+            // Qualified call to the helper.
             Option<Boolean> option = OptionControlElementTest.option(name, true);
             when(option.getTooltip()).thenReturn(TextComponent.literal("tip for " + name));
             AtomicReference<Counting> made = new AtomicReference<>();
@@ -124,12 +124,12 @@ class OptionControlElementTest {
             return new Hovered(new OptionPageFrame(new Dim2i(0, 0, 200, 300), false, page, o -> true), option, made.get());
         }
 
-        // The frame's row as it stands now, the counting one or its placeholder
+        // Returns the current row.
         ControlElement<?> current() {
             return this.frame.interactableChildren().filter(ControlElement.class::isInstance).<ControlElement<?>>map(child -> (ControlElement<?>) child).findFirst().orElseThrow();
         }
 
-        // Renders the frame hovering the row twice, then once more past the tooltip delay
+        // Renders the frame past the tooltip delay.
         void hoverPastTheDelay(FakeDrawContext draw) {
             this.frame.render(draw, 100, 27, 0f);
             this.frame.render(draw, 100, 27, 0f);
@@ -146,7 +146,7 @@ class OptionControlElementTest {
 
     // Runs the body with the placeholder logger swapped for a mock and no toasts before or after
     private static void withLogger(Consumer<Logger> body) {
-        // Reading it first runs the class initialiser, which would otherwise overwrite the swap
+        // Loads the class before the swap.
         Logger original = Statics.get(PlaceholderControlElement.class, "LOGGER");
         Logger mock = Mockito.mock(Logger.class);
         Statics.set(PlaceholderControlElement.class, "LOGGER", mock);
@@ -171,7 +171,7 @@ class OptionControlElementTest {
         assertEquals(message, assertThrows(NullPointerException.class, call).getMessage());
     }
 
-    // One row of every built-in kind, each with the option it was made for
+    // Returns one row of every built in kind.
     private static List<Map.Entry<Option<?>, ControlElement<?>>> builtInRows() {
         Option<Boolean> tick = option("Tick", true);
         Option<Integer> slide = option("Slide", 4);
@@ -201,7 +201,7 @@ class OptionControlElementTest {
         TypeVariable<?>[] parameters = type.getTypeParameters();
         assertEquals(1, parameters.length);
         assertArrayEquals(new Type[]{Object.class}, parameters[0].getBounds());
-        // The getter is the only method, so an addon row needs nothing else and a new abstract method would break it
+        // Checks the single method.
         Method getter = type.getMethod("getOption");
         assertEquals(List.of(getter), Arrays.stream(type.getDeclaredMethods()).filter(m -> !m.isSynthetic()).toList());
         assertTrue(Modifier.isPublic(getter.getModifiers()) && Modifier.isAbstract(getter.getModifiers()) && !getter.isDefault());
@@ -224,7 +224,7 @@ class OptionControlElementTest {
         Method getter = ControlElement.class.getMethod("getOption");
         assertSame(ControlElement.class, getter.getDeclaringClass());
         assertSame(Option.class, getter.getReturnType());
-        // Addon rows override it, which creation and the page's tooltip both guard against
+        // Checks the guarded override.
         assertFalse(Modifier.isFinal(getter.getModifiers()));
         assertFalse(getter.isBridge());
     }
@@ -236,12 +236,12 @@ class OptionControlElementTest {
             OptionControlElement<?> row = entry.getValue();
             String kind = row.getClass().getName();
             clearInvocations(option);
-            // The same instance on every call, through the interface as through the row
+            // Checks the same instance.
             for (int call = 0; call < 3; call++) {
                 assertSame(option, row.getOption(), kind);
                 assertSame(option, entry.getValue().getOption(), kind);
             }
-            // A plain field read, so neither the option nor its control is called
+            // Checks a plain field read.
             verifyNoInteractions(option);
         }
     }
@@ -282,7 +282,7 @@ class OptionControlElementTest {
         npe("Option must not be null", () -> new ReadOnlyStringControl(null));
         npe("Option must not be null", () -> new ActionButtonControl(null, () -> { }));
         assertThrows(NullPointerException.class, () -> new CyclingControl<>(null, Mode.class));
-        // The placeholder path refuses it too, before any row is made
+        // Checks the placeholder path.
         npe("Option must not be null", () -> Control.createElementOrPlaceholder(null, DIM));
     }
 
@@ -307,7 +307,7 @@ class OptionControlElementTest {
             };
             // Its own failure comes through untouched rather than as a broken contract
             assertSame(failure, assertThrows(IllegalStateException.class, () -> Control.createElementFor(option, DIM)));
-            // The page's path shows a placeholder, which answers from its field
+            // Checks the page path.
             ControlElement<Boolean> placeholder = Control.createElementOrPlaceholder(option, DIM);
             assertInstanceOf(PlaceholderControlElement.class, placeholder);
             assertSame(option, placeholder.getOption());
@@ -324,7 +324,7 @@ class OptionControlElementTest {
         FakeDrawContext draw = new FakeDrawContext();
         page.frame().render(draw, 100, 27, 0f);
         page.frame().render(draw, 100, 27, 0f);
-        // Hovered but not yet due, so nothing is asked
+        // Checks the delay.
         assertEquals(made, page.row().reads);
         page.hoverPastTheDelay(draw);
         assertEquals(made + 1, page.row().reads);
@@ -355,7 +355,7 @@ class OptionControlElementTest {
             verify(logger).error(eq(FAILURE_LOG), eq("Thrower"), same(failure));
             assertEquals(List.of("Option failed: Thrower"), toastTitles());
             assertFalse(draw.strings.contains("tip for Thrower"));
-            // The broken row is never asked again, and the placeholder's own hover brings the tooltip back
+            // Checks the broken row.
             int reads = page.row().reads;
             FakeDrawContext later = new FakeDrawContext();
             page.hoverPastTheDelay(later);
@@ -375,7 +375,7 @@ class OptionControlElementTest {
             assertInstanceOf(PlaceholderControlElement.class, page.current());
             verify(logger).error(eq(FAILURE_LOG), eq("Nothing"),
                     argThat((Throwable t) -> t instanceof IllegalStateException && "Element reports no option".equals(t.getMessage())));
-            // Reported as the row's failure only, never as a broken tooltip
+            // Checks the report.
             assertEquals(List.of("Option failed: Nothing"), toastTitles());
             FakeDrawContext later = new FakeDrawContext();
             page.hoverPastTheDelay(later);
@@ -392,7 +392,7 @@ class OptionControlElementTest {
                 throw fatal;
             };
             assertSame(fatal, assertThrows(InternalError.class, () -> page.hoverPastTheDelay(new FakeDrawContext())));
-            // The row stays, as nothing can be trusted to recover from it
+            // Checks the row stays.
             assertSame(page.row(), page.current());
             verifyNoInteractions(logger);
             assertEquals(List.of(), toastTitles());

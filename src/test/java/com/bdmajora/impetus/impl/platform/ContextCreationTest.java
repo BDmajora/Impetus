@@ -4,6 +4,7 @@ import com.bdmajora.impetus.engine.impl.compat.environment.OsKind;
 import com.bdmajora.impetus.engine.impl.compat.probe.GraphicsAdapterInfo;
 import com.bdmajora.impetus.engine.impl.compat.probe.GraphicsAdapterProbe;
 import com.bdmajora.impetus.engine.impl.compat.probe.GraphicsVendor;
+import com.bdmajora.impetus.engine.impl.gl.debug.GLDebug;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions;
 import com.bdmajora.impetus.mixin.core.ContextCreationMixin;
 import com.bdmajora.testing.Mixins;
@@ -216,6 +217,33 @@ class ContextCreationTest {
             return window;
         };
         assertSame(window, Mixins.call(Mixins.instance(ContextCreationMixin.class), "impetus$createWindow", builder, original));
+    }
+
+    // Checks that creation reads the debug switch so debug groups reach the new context only when it is on
+    @Test
+    void creationReadsTheGlDebugSwitchAndLimits() {
+        String before = System.getProperty("impetus.enableGLDebug");
+        try {
+            Mockito.doReturn(true).when(TestGl.gl()).isOpenGLVersionSupported(4, 3);
+            Mockito.doReturn(256).when(TestGl.gl()).glGetInteger(0x82E8);
+            Mockito.doReturn(1024).when(TestGl.gl()).glGetInteger(0x9143);
+            Mockito.doReturn(64).when(TestGl.gl()).glGetInteger(0x826C);
+            System.setProperty("impetus.enableGLDebug", "true");
+            ContextCreation.create(this::record);
+            GLDebug.pushGroup(7, "terrain");
+            GLDebug.popGroup();
+            Mockito.verify(TestGl.gl()).glPushDebugGroup(0x824A, 7, "terrain");
+            Mockito.verify(TestGl.gl()).glPopDebugGroup();
+
+            System.clearProperty("impetus.enableGLDebug");
+            ContextCreation.create(this::record);
+            GLDebug.pushGroup(8, "off");
+            Mockito.verify(TestGl.gl(), Mockito.never()).glPushDebugGroup(0x824A, 8, "off");
+        } finally {
+            if (before == null) System.clearProperty("impetus.enableGLDebug");
+            else System.setProperty("impetus.enableGLDebug", before);
+            GLDebug.reloadDebugState();
+        }
     }
 
     // Shared probe that records each wait and answers at once with its adapters

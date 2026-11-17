@@ -333,7 +333,7 @@ class GlMutableBufferTest {
     void setSizeClearsTheMappingBeforeAThrowingDispose() {
         GlMutableBuffer buffer = new GlMutableBuffer();
         GlBufferMapping mapping = new GlBufferMapping(buffer, block(8)) {
-            // Throws instead of marking the mapping disposed
+            // Throws instead of disposing.
             @Override
             public void dispose() {
                 throw new IllegalStateException("Dispose failed");

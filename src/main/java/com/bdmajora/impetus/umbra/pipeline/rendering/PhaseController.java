@@ -37,7 +37,7 @@ public final class PhaseController {
     private int beforeGlintStage;
     // Flag set during the glint phase.
     private boolean glintActive;
-    // Whether glProgramUniform is available: UNKNOWN_SUPPORT until the first refresh, then 1 or 0.
+    // Whether glProgramUniform is available or UNKNOWN_SUPPORT before the first refresh.
     private int programUniformSupport = UNKNOWN_SUPPORT;
 
     // Creates a phase controller from its state.
@@ -102,7 +102,7 @@ public final class PhaseController {
         entry.getProgram().bind();
         this.state.binder.bindPackResources();
         int[] drawBuffers = entry.drawBuffersReadOnly();
-        // The program was just bound here, so feedback need not ask GL which one it is
+        // Binds the color samplers for the program just bound.
         this.state.feedback.bindColorSamplers(this.state.feedback.prepare(entry.getProgram().getProgram().getGlId(),
                 drawBuffers, this.state.activeGbufferFlips));
         entry.getUniforms().update();
@@ -154,7 +154,7 @@ public final class PhaseController {
         }
     }
 
-    // Uploads the per-object uniforms of the phase's program, called around every entity, block entity and item.
+    // Uploads the per object uniforms of the phase's program.
     public void refreshDynamicUniforms() {
         if (!this.state.active || UmbraShadowRenderer.isShadowPass() || this.current == null) {
             return;
@@ -165,7 +165,7 @@ public final class PhaseController {
         }
         ProgramUniforms uniforms = entry.getUniforms();
         int program = entry.getProgram().getProgram().getGlId();
-        // Written into the program by name, so whatever a renderer left bound is untouched and no query stalls
+        // Writes the uniforms into the program by name.
         if (this.programUniforms() && uniforms.canUpdatePerObjectIn()) {
             uniforms.updatePerObjectIn(program);
         } else if (LWJGL.glGetInteger(GbufferFeedback.GL_CURRENT_PROGRAM) == program) {
@@ -173,7 +173,7 @@ public final class PhaseController {
         }
     }
 
-    // Returns whether the context writes uniforms into unbound programs, asked once on the render thread.
+    // Returns whether the context writes uniforms into unbound programs.
     private boolean programUniforms() {
         if (this.programUniformSupport == UNKNOWN_SUPPORT) {
             this.programUniformSupport = LWJGL.supportsProgramUniforms() ? 1 : 0;

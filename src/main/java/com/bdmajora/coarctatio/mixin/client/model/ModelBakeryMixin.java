@@ -28,7 +28,7 @@ public abstract class ModelBakeryMixin implements BakeStateReleasable {
     @Final
     private Map<ModelBlockDefinition, Collection<ModelResourceLocation>> multipartVariantMap;
 
-    // Handles release bakery state.
+    // Clears the multipart variant map after baking and returns how many entries it held.
     @Override
     public int coarctatio$releaseBakeryState() {
         int size = this.multipartVariantMap.size();

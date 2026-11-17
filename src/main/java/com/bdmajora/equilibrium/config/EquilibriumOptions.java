@@ -147,6 +147,15 @@ public final class EquilibriumOptions {
                 "The AI goal selector holds its task sets in fastutil linked open hash sets rather than "
                         + "java.util.LinkedHashSet. Both sets are walked every tick for every mob in "
                         + "range, and the vanilla ones put every task behind its own node.");
+        builder.add("mixin.ai.pathfinding_chunk_load", true,
+                "A path search snapshots the blocks around the mob into a ChunkCache, and building that cache "
+                        + "loads, and if need be generates, every chunk the box touches. Unloaded chunks are now "
+                        + "left out of the snapshot; the path finder sees them as empty (Universal Tweaks).");
+        builder.add("mixin.ai.remove_look_tasks", false,
+                "Drops the two cosmetic look tasks when a mob registers its AI (Universal Tweaks, AI "
+                        + "Improvements). Watching the nearest player runs an entity search around every idle "
+                        + "mob each tick, and idle looking only picks a random heading.",
+                "Mobs no longer turn their heads toward players or glance around while idle.");
 
         builder.add("mixin.alloc", true,
                 "Patches that reduce memory allocations");
@@ -182,6 +191,18 @@ public final class EquilibriumOptions {
                 "Redstone wire power calculation reads each neighbouring block once instead of twice, "
                         + "and resolves the block above the wire once per update rather than once per "
                         + "direction.");
+        builder.add("mixin.block.crafting_cache", true,
+                "Remembers which recipe matched a crafting grid by the items and metadata in it, so the "
+                        + "next identical grid skips the walk over every registered recipe (Universal Tweaks). "
+                        + "Grids holding NBT are never cached and a hit is re-verified with the recipe's own "
+                        + "matches().");
+        builder.add("mixin.block.furnace_recipes", true,
+                "Smelting lookups consult a per-item index over the furnace recipe table instead of "
+                        + "comparing the input against every entry (Chibi). The table itself is untouched, so "
+                        + "registration order and metadata wildcards behave exactly as before.");
+        builder.add("mixin.block.spawner_check_cache", true,
+                "A spawner's player-in-range check is held for ten ticks instead of repeated every tick, "
+                        + "and redone at once if the player count changes (FoamFix).");
 
         builder.add("mixin.chunk", true,
                 "Various world chunk optimizations");
@@ -216,10 +237,6 @@ public final class EquilibriumOptions {
                         + "column rather than once per block. The search walks a column at a time, so "
                         + "sixteen consecutive reads share one section.")
                 .requires("mixin.util.chunk_access", true);
-        builder.add("mixin.entity.fast_elytra_check", true,
-                "Skip writing to the tracked-data table every tick to record that a living entity is "
-                        + "still not elytra flying. The write was already a no-op; the lookup it needed "
-                        + "was not.");
         builder.add("mixin.entity.fast_retrieval", true,
                 "Entity queries resolve each chunk once instead of testing whether it is loaded and then "
                         + "fetching the chunk that test just found.")

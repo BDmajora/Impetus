@@ -40,13 +40,13 @@ public abstract class ModelManagerDynamicMixin implements DynamicModels.ModelMan
         DynamicModels.reload((ModelManager) (Object) this, resourceManager, this.texMap, this.modelProvider);
     }
 
-    // Handles set model registry.
+    // Installs the on demand model registry.
     @Override
     public void coarctatio$setModelRegistry(BakedModelProvider registry) {
         this.modelRegistry = registry;
     }
 
-    // Handles set default model.
+    // Installs the missing model.
     @Override
     public void coarctatio$setDefaultModel(IBakedModel model) {
         this.defaultModel = model;

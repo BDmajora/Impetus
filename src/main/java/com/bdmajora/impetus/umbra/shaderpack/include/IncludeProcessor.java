@@ -44,7 +44,7 @@ public final class IncludeProcessor {
         return out;
     }
 
-    // Processes the into.
+    // Expands the include lines of a file into the output and refuses include cycles.
     private void processInto(AbsolutePackPath path, List<String> lines, List<String> out, Deque<AbsolutePackPath> stack) {
         if (stack.contains(path)) {
             throw new IllegalStateException("Cyclic #include detected involving " + path.getPathString());

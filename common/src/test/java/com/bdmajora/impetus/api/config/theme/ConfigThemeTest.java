@@ -34,7 +34,7 @@ class ConfigThemeTest {
 
     @Test
     void nullAndBlankModIdsAreRejectedByBuilderAndConstructor() {
-        // The builder fails on creation, before build() is reached
+        // Checks the builder fails.
         assertEquals("Mod id must not be null", assertThrows(NullPointerException.class, () -> ConfigTheme.builder(null)).getMessage());
         assertEquals("Mod id must not be blank", assertThrows(IllegalArgumentException.class, () -> ConfigTheme.builder("")).getMessage());
         assertThrows(IllegalArgumentException.class, () -> ConfigTheme.builder(" \t\n"));
@@ -49,7 +49,7 @@ class ConfigThemeTest {
         assertEquals("mymod", new ConfigTheme(" MyMod ", 0).modId());
         assertEquals("mymod", ConfigTheme.builder("MYMOD\n").build().modId());
         assertEquals("my_mod-2", ConfigTheme.canonicalModId("My_Mod-2"));
-        // strip() rather than trim(), so Unicode spaces such as the em space go too
+        // Checks strip.
         assertEquals("mymod", ConfigTheme.canonicalModId(" mymod "));
         // Inner whitespace is part of the id and stays
         assertEquals("my mod", ConfigTheme.canonicalModId("My Mod"));
@@ -60,11 +60,11 @@ class ConfigThemeTest {
     void lowerCasingIgnoresTheDefaultLocale() {
         Locale previous = Locale.getDefault();
         try {
-            // Turkish lower-cases "I" to a dotless "ı", which would split "IMPETUS" from "impetus"
+            // Checks Turkish.
             Locale.setDefault(Locale.forLanguageTag("tr-TR"));
             assertEquals("impetus", ConfigTheme.canonicalModId("IMPETUS"));
             assertEquals("impetus", new ConfigTheme("IMPETUS", 0).modId());
-            // The non-ASCII path is pinned to ROOT as well, where Turkish would drop the combining dot from a dotted capital I
+            // Checks the non ASCII path.
             assertEquals("id", "\u0130D".toLowerCase(Locale.getDefault()));
             assertEquals("i\u0307d", ConfigTheme.canonicalModId("\u0130D"));
         } finally {
@@ -80,7 +80,7 @@ class ConfigThemeTest {
         // Any non-zero alpha is the caller's choice and is kept
         assertEquals(0x80123456, new ConfigTheme("themed", 0x80123456).accentColor());
         assertEquals(0x01123456, new ConfigTheme("themed", 0x01123456).accentColor());
-        // Normalised before equality, so the RGB and ARGB spellings are the same theme
+        // Checks RGB and ARGB.
         assertEquals(new ConfigTheme("themed", 0xFF123456), new ConfigTheme("themed", 0x123456));
     }
 
@@ -92,7 +92,7 @@ class ConfigThemeTest {
         assertEquals(0xFF111111, first.accentColor());
         assertEquals(0xFF222222, second.accentColor());
         assertEquals("themed", second.modId());
-        // Each build() is a fresh theme, equal by value
+        // Checks equal builds.
         assertEquals(builder.build(), builder.build());
         assertNotSame(builder.build(), builder.build());
         assertSame(builder, builder.accentColor(0xFF333333));
@@ -112,7 +112,7 @@ class ConfigThemeTest {
 
     @Test
     void equalsAndHashCodeKeepTheObjectContract() {
-        // Three routes to the same theme: builder, plain constructor, and an RGB colour with a messy id
+        // Checks three routes.
         ConfigTheme a = ConfigTheme.builder("themed").accentColor(0xFF123456).build();
         ConfigTheme b = new ConfigTheme("themed", 0xFF123456);
         ConfigTheme c = new ConfigTheme(" Themed ", 0x123456);
@@ -144,12 +144,12 @@ class ConfigThemeTest {
         assertEquals(List.of("modId", "accentColor"), Arrays.stream(components).map(RecordComponent::getName).toList());
         assertEquals(List.of(String.class, int.class), Arrays.stream(components).map(RecordComponent::getType).toList());
         assertTrue(Modifier.isPublic(ConfigTheme.class.getDeclaredConstructor(String.class, int.class).getModifiers()));
-        // The hex format behind toString() stays private, so the default colour is the only public field
+        // Checks the public fields.
         assertEquals(List.of("DEFAULT_ACCENT_COLOR"), Arrays.stream(ConfigTheme.class.getFields()).map(Field::getName).toList());
-        // builder() is the only way in, and nothing can subclass the builder
+        // Checks the builder access.
         assertTrue(Modifier.isFinal(ConfigTheme.Builder.class.getModifiers()));
         assertTrue(Modifier.isPrivate(ConfigTheme.Builder.class.getDeclaredConstructor(String.class).getModifiers()));
-        // The blank-tolerant variant exists for the registry, so it stays package-private
+        // Checks package access.
         Method orNull = ConfigTheme.class.getDeclaredMethod("canonicalModIdOrNull", String.class);
         int modifiers = orNull.getModifiers();
         assertTrue(Modifier.isStatic(modifiers));
@@ -162,17 +162,17 @@ class ConfigThemeTest {
         for (String blank : List.of("", " ", "\t\n\r\f\u000B", "\u001C\u001D\u001E\u001F", "　", " ".repeat(1000))) {
             assertNull(ConfigTheme.canonicalModIdOrNull(blank));
         }
-        // An id with nothing to change comes back as the same instance, which is what lets the registry skip its second lookup
+        // Checks the same instance.
         for (String id : List.of("themed", "a", "my mod", "a\tb", "möd", "οδος", "i̇d", " ", "​")) {
             assertSame(id, ConfigTheme.canonicalModIdOrNull(id));
         }
-        // The JDK copies any id holding a surrogate even when nothing changes, so those only come back equal
+        // Checks surrogates.
         assertEquals("𐐨", ConfigTheme.canonicalModIdOrNull("𐐨"));
         assertEquals("\uD800", ConfigTheme.canonicalModIdOrNull("\uD800"));
         assertEquals("mymod", ConfigTheme.canonicalModIdOrNull(" MyMod\t"));
         assertEquals("οδος", ConfigTheme.canonicalModIdOrNull("ΟΔΟΣ"));
         assertEquals("𐐨", ConfigTheme.canonicalModIdOrNull(" 𐐀 "));
-        // Ruling out null is the caller's job, which canonicalModId and the registry both do first
+        // Checks null is the caller's job.
         assertThrows(NullPointerException.class, () -> ConfigTheme.canonicalModIdOrNull(null));
     }
 
@@ -192,7 +192,7 @@ class ConfigThemeTest {
             if (c >= 'A' && c <= 'Z') {
                 assertEquals("a" + (char) (c + 32) + "b", ConfigTheme.canonicalModId(id));
             } else {
-                // Inner whitespace and control characters belong to the id, so nothing changes and nothing is copied
+                // Checks inner whitespace.
                 assertSame(id, ConfigTheme.canonicalModId(id));
             }
         }
@@ -200,12 +200,12 @@ class ConfigThemeTest {
 
     @Test
     void fastPathEdgesSitJustOutsideTheUpperCaseRange() {
-        // '@' and '[' border 'A' and 'Z', and DEL is the last ASCII character
+        // Checks the ASCII borders.
         assertSame("@id[", ConfigTheme.canonicalModId("@id["));
         assertSame("id\u007F", ConfigTheme.canonicalModId("id\u007F"));
         assertEquals("aid", ConfigTheme.canonicalModId("Aid"));
         assertEquals("idz", ConfigTheme.canonicalModId("idZ"));
-        // U+0080 is the first character handed to the JDK, which leaves it alone
+        // Checks U+0080.
         assertEquals("id\u0080", ConfigTheme.canonicalModId("id\u0080"));
         // An upper-case letter found at the very end still lower-cases the whole id
         assertEquals("abcdefghijklmnopqrstuvwxyz", ConfigTheme.canonicalModId("abcdefghijklmnopqrstuvwxyZ"));
@@ -229,7 +229,7 @@ class ConfigThemeTest {
         stored.setAccessible(true);
         Object canonical = stored.get(builder);
         assertEquals("mymod", canonical);
-        // The record's own pass finds nothing left to change, so the builder's string goes straight through
+        // Checks the builder string.
         assertSame(canonical, builder.build().modId());
         assertSame(canonical, builder.accentColor(0xFF123456).build().modId());
         assertSame(builder.build().modId(), builder.build().modId());
@@ -250,13 +250,13 @@ class ConfigThemeTest {
             assertEquals("Mod id must not be blank", assertThrows(IllegalArgumentException.class, () -> ConfigTheme.canonicalModId(pad)).getMessage());
             assertEquals("Mod id must not be blank", assertThrows(IllegalArgumentException.class, () -> ConfigTheme.canonicalModId(pad + " " + pad)).getMessage());
         }
-        // Five ASCII controls, four separators, fourteen breaking spaces, and the line and paragraph separators
+        // Checks whitespace kinds.
         assertEquals(25, found);
     }
 
     @Test
     void spaceLikeCharactersJavaDoesNotCountAsWhitespaceAreKept() {
-        // No-break spaces, the zero-width space, the byte order mark and NEL all survive strip(), so they survive here too
+        // Checks kept characters.
         for (char c : new char[]{' ', ' ', ' ', '​', '﻿', '\u0085'}) {
             String id = c + "id" + c;
             assertEquals(id, ConfigTheme.canonicalModId(id));
@@ -276,10 +276,10 @@ class ConfigThemeTest {
 
     @Test
     void caseMappingsOutsideAsciiStillApply() {
-        // The Kelvin sign lower-cases to a plain k, so it names the same mod as "key"
+        // Checks the Kelvin sign.
         assertEquals("key", ConfigTheme.canonicalModId("Key"));
         assertEquals(new ConfigTheme("key", 0xFF123456), new ConfigTheme("KEY", 0xFF123456));
-        // A title-case letter is not isUpperCase, which is why the fast path tests for ASCII rather than for upper case
+        // Checks title case.
         assertFalse(Character.isUpperCase('ǅ'));
         assertEquals("ǆ", ConfigTheme.canonicalModId("ǅ"));
         // A dotted capital I grows into an i and a combining dot under ROOT
@@ -288,7 +288,7 @@ class ConfigThemeTest {
         assertEquals("οδος", ConfigTheme.canonicalModId("ΟΔΟΣ"));
         assertEquals("ß", ConfigTheme.canonicalModId("ẞ"));
         assertEquals("été", ConfigTheme.canonicalModId("ÉTÉ"));
-        // A Deseret capital is a surrogate pair, lower-cased as one code point
+        // Checks a Deseret capital.
         assertEquals("𐐨", ConfigTheme.canonicalModId("𐐀"));
         assertEquals("möd", ConfigTheme.canonicalModId("　MÖD "));
     }
@@ -305,7 +305,7 @@ class ConfigThemeTest {
                 assertEquals(orNull(expected), ConfigTheme.canonicalModIdOrNull(id), () -> "U+" + Integer.toHexString(point));
                 if (expected.startsWith("ok:")) {
                     String once = expected.substring(3);
-                    // A second pass changes nothing, so normalising a key the registry already holds lands on that same key
+                    // Checks a second pass.
                     assertEquals(once, ConfigTheme.canonicalModId(once), () -> "U+" + Integer.toHexString(point));
                 }
             }
@@ -314,7 +314,7 @@ class ConfigThemeTest {
 
     @Test
     void randomIdsAgreeWithTheReference() {
-        // Both ASCII cases, every kind of padding, and the non-ASCII mappings that change length or depend on context
+        // Checks the spellings.
         String pool = "aZm09_-. \t\n\u000B\f\r\u001F  　\u0085​ÉéßẞİıǅKΣσΟΔ𐐀";
         Random random = new Random(0x7EA1L);
         for (int i = 0; i < 20_000; i++) {
@@ -384,7 +384,7 @@ class ConfigThemeTest {
     @Test
     void toStringMatchesTheOldFormattedOutput() {
         List<Integer> colours = new ArrayList<>(List.of(0, -1, Integer.MIN_VALUE, Integer.MAX_VALUE, 0x01000000, 0x00FFFFFF, 0x0F0F0F0F, 0xF0F0F0F0, ConfigTheme.DEFAULT_ACCENT_COLOR));
-        // Every hex digit in every position, so no nibble can lose its padding or its case
+        // Checks every hex digit.
         for (int shift = 0; shift < 32; shift += 4) {
             for (int digit = 0; digit < 16; digit++) {
                 colours.add(digit << shift);
@@ -407,7 +407,7 @@ class ConfigThemeTest {
         assertEquals("ConfigTheme[modId=themed, accentColor=0x7FFFFFFF]", new ConfigTheme("themed", Integer.MAX_VALUE).toString());
         assertEquals("ConfigTheme[modId=themed, accentColor=0x01000000]", new ConfigTheme("themed", 0x01000000).toString());
         assertEquals("ConfigTheme[modId=themed, accentColor=0xABCDEF12]", new ConfigTheme("themed", 0xABCDEF12).toString());
-        // Zero alpha is fixed before printing, so a bare RGB value prints opaque
+        // Checks zero alpha.
         assertEquals("ConfigTheme[modId=themed, accentColor=0xFF000000]", new ConfigTheme("themed", 0).toString());
         assertEquals("ConfigTheme[modId=themed, accentColor=0xFFFFFFFF]", new ConfigTheme("themed", 0x00FFFFFF).toString());
         // The record's own toString would print the colour as a signed int
@@ -416,7 +416,7 @@ class ConfigThemeTest {
 
     @Test
     void toStringPrintsTheIdAsStored() {
-        // Format specifiers in an id are printed, not interpreted
+        // Checks format specifiers.
         assertEquals("ConfigTheme[modId=%s%n%08x, accentColor=0xFF123456]", new ConfigTheme("%s%n%08X", 0xFF123456).toString());
         assertEquals("ConfigTheme[modId=a[b]=c, accentColor=0xFF123456]", new ConfigTheme("A[b]=C", 0xFF123456).toString());
         assertEquals("ConfigTheme[modId=möd, accentColor=0xFF123456]", new ConfigTheme(" MÖD ", 0xFF123456).toString());
@@ -436,7 +436,7 @@ class ConfigThemeTest {
         }
     }
 
-    // The three-pass version canonicalModId replaced, which the single pass must match on every input
+    // Old three pass canonical form.
     private static String reference(String modId) {
         Objects.requireNonNull(modId, "Mod id must not be null");
         if (modId.isBlank()) {
@@ -445,7 +445,7 @@ class ConfigThemeTest {
         return modId.strip().toLowerCase(Locale.ROOT);
     }
 
-    // Folds a result, or the exception and message it threw, into one string so two implementations compare in one assert
+    // Folds a result or failure into a string.
     private static String outcome(UnaryOperator<String> canonicalise, String modId) {
         try {
             return "ok:" + canonicalise.apply(modId);
@@ -454,7 +454,7 @@ class ConfigThemeTest {
         }
     }
 
-    // What canonicalModIdOrNull must give for an id whose canonicalModId outcome is known, where the only failure an id can hit is being blank
+    // Returns the expected blank result.
     private static String orNull(String outcome) {
         return outcome.startsWith("ok:") ? outcome.substring(3) : null;
     }

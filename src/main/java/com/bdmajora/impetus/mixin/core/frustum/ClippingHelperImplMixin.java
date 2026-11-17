@@ -14,13 +14,13 @@ import com.bdmajora.impetus.impl.render.frustum.IClippingHelper;
 // Mixin that changes ClippingHelperImpl.
 @Mixin(ClippingHelperImpl.class)
 public abstract class ClippingHelperImplMixin extends ClippingHelper implements IClippingHelper {
-    // Field frustum added to the target.
+    // JOML frustum of the same matrices.
     @Unique
     private final FrustumIntersection impetus$frustum = new FrustumIntersection();
-    // Field joml projection added to the target.
+    // Projection matrix as JOML.
     @Unique
     private final Matrix4f impetus$jomlProjection = new Matrix4f();
-    // Field joml modelview added to the target.
+    // Modelview matrix as JOML.
     @Unique
     private final Matrix4f impetus$jomlModelview = new Matrix4f();
 

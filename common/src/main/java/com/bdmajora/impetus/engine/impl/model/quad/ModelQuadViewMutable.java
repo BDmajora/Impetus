@@ -1,9 +1,8 @@
 package com.bdmajora.impetus.engine.impl.model.quad;
 
 import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFacing;
-import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFlags;
 
-// Mutable view of a model quad; see ModelQuadView for the read-only counterpart
+// Mutable view of a model quad.
 public interface ModelQuadViewMutable extends ModelQuadView {
     void setX(int idx, float x);
 

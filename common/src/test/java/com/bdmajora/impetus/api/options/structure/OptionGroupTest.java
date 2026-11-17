@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class OptionGroupTest {
     private static final String MOD = "option_group_test";
 
-    // A listener on the group bus for one test, taken off again on close
+    // Listener on the group bus for one test.
     private interface Listening extends AutoCloseable {
         @Override
         void close();
@@ -38,7 +38,7 @@ class OptionGroupTest {
         return () -> BusListeners.remove(OptionGroupConstructionEvent.BUS, handler);
     }
 
-    // A listener that only acts on the given group, so other tests' builds pass through it untouched
+    // Adds a listener for one group.
     private static Listening onGroup(OptionIdentifier<Void> id, EventHandlerRegistrar.Handler<OptionGroupConstructionEvent> handler) {
         return listening(event -> {
             if (event.getId() == id) {
@@ -51,7 +51,7 @@ class OptionGroupTest {
         return OptionIdentifier.create(MOD, path);
     }
 
-    // A distinct option that answers only identity, so the group touching anything else fails the test
+    // Returns an option that only answers identity.
     private static Option<?> option(String label) {
         return (Option<?>) Proxy.newProxyInstance(Option.class.getClassLoader(), new Class<?>[]{Option.class}, (proxy, method, args) -> switch (method.getName()) {
             case "equals" -> proxy == args[0];
@@ -101,10 +101,10 @@ class OptionGroupTest {
         OptionGroup.Builder builder = OptionGroup.createBuilder().setId(id("null_option")).add(a);
         assertEquals("Option must not be null", assertThrows(NullPointerException.class, () -> builder.add(null)).getMessage());
         assertEquals("Option supplier returned null", assertThrows(NullPointerException.class, () -> builder.addConditionally(true, () -> null)).getMessage());
-        // A missing supplier is a mistake whichever way the condition goes, so it fails on every machine, not just the ones where the condition holds
+        // Checks a missing supplier.
         assertEquals("Option supplier must not be null", assertThrows(NullPointerException.class, () -> builder.addConditionally(true, null)).getMessage());
         assertEquals("Option supplier must not be null", assertThrows(NullPointerException.class, () -> builder.addConditionally(false, null)).getMessage());
-        // Nothing refused got in, so the builder still builds
+        // Checks the builder still builds.
         assertEquals(List.of(a), builder.build().getOptions());
     }
 
@@ -114,7 +114,7 @@ class OptionGroupTest {
         assertEquals("Group id must not be null", assertThrows(NullPointerException.class, () -> builder.setId(null)).getMessage());
         assertSame(OptionGroup.DEFAULT_ID, builder.build().getId());
         assertSame(OptionIdentifier.create("impetus", "empty"), OptionGroup.DEFAULT_ID);
-        // An unnamed group's event carries the default id, so a listener can tell what it is extending
+        // Checks an unnamed group's event id.
         AtomicReference<OptionIdentifier<Void>> seen = new AtomicReference<>();
         Option<?> a = option("a");
         try (Listening ignored = listening(event -> {
@@ -142,7 +142,7 @@ class OptionGroupTest {
         assertNotSame(OptionGroup.class, group);
         assertSame(typed, group.getField("DEFAULT_ID").get(null));
         assertSame(Boolean.class, getType.invoke(typed));
-        // With nobody first, the default is made untyped and is the pair every later create hands out
+        // Checks the default id with a fresh class.
         FreshClasses clean = new FreshClasses(OptionIdentifier.class, OptionGroup.class);
         Object made = clean.initialise(OptionGroup.class).getField("DEFAULT_ID").get(null);
         Class<?> cleanIds = clean.load(OptionIdentifier.class);
@@ -166,7 +166,7 @@ class OptionGroupTest {
     @Test
     void theBuiltOptionsAreReadOnlyAndTheSameListOnEveryRead() {
         Option<?> extra = option("extra");
-        // Empty, one, two and many options, which the JDK stores in different list shapes
+        // Checks every list size.
         for (int size = 0; size <= 4; size++) {
             OptionGroup.Builder builder = OptionGroup.createBuilder().setId(id("read_only_" + size));
             for (int i = 0; i < size; i++) {
@@ -319,7 +319,7 @@ class OptionGroupTest {
 
     @Test
     void theGroupAndBuilderHoldOnlyWhatTheyNeed() {
-        // Pinned so a new field or method is a decision, not drift
+        // Checks the fields.
         assertEquals(Set.of("id", "name", "options"), instanceFields(OptionGroup.class));
         assertEquals(Set.of("id", "name", "options"), instanceFields(OptionGroup.Builder.class));
         assertEquals(Set.of("getId", "getName", "getOptions", "createBuilder"), publicMethods(OptionGroup.class));

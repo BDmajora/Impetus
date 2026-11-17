@@ -67,7 +67,7 @@ class DeduplicationTest {
         pool.deduplicate("b");
         assertTrue(pool.toString().contains("saturated"));
 
-        // Closing keeps the statistics but drops the table, and later values pass straight through
+        // Checks closing the pool.
         pool.close();
         assertEquals(2, pool.size());
         String passedThrough = new String("a");
@@ -118,7 +118,7 @@ class DeduplicationTest {
         assertEquals(1, cache.size());
         assertTrue(cache.toString().contains("1/2 shared"));
 
-        // Clearing releases the tables; strings already handed out stay valid
+        // Checks clearing the cache.
         cache.clear();
         assertEquals(0, cache.size());
         assertEquals(0, cache.shared());
@@ -127,7 +127,7 @@ class DeduplicationTest {
 
     @Test
     void aSaturatedShardStillServesHitsWithoutGrowing() {
-        // One entry per shard, so the second distinct key landing on a shard is refused
+        // Checks the shard limit.
         ShardedStringCache cache = new ShardedStringCache("Tiny", 1);
         String kept = null;
         String rejected = null;
@@ -185,7 +185,7 @@ class DeduplicationTest {
         ModelCaches.recordSkippedQuad(Integer.class);
         assertEquals("2x java.lang.String, 1x java.lang.Integer", ModelCaches.skippedSummary());
 
-        // Closing drops the bake pools; variants stay open for the rest of the session
+        // Checks closing the model caches.
         ModelCaches.close();
         assertSame(quad, ModelCaches.QUADS.deduplicate(quad));
         assertSame(ModelCaches.VARIANTS.deduplicate("inventory"), ModelCaches.VARIANTS.deduplicate(new String("inventory")));
@@ -198,20 +198,18 @@ class DeduplicationTest {
     @SuppressWarnings("deprecation")
     void cameraTransformsAreComparedByTheirEightVectors() {
         TransformCaches.open();
-        // Vanilla's ItemTransformVec3f hashes its Vector3f fields, which compare by value but hash by identity, so two
-        // separately built but identical transforms collapse only when they happen to land in the same bucket; every
-        // assertion here therefore avoids pooling two equal-by-value instances, the default included (scale 1)
+        // Checks the shared transform instances.
         assertSame(ItemCameraTransforms.DEFAULT, TransformCaches.TRANSFORMS.deduplicate(ItemCameraTransforms.DEFAULT));
         ItemTransformVec3f vector = vector(3f);
         ItemCameraTransforms first = transforms(vector);
         assertSame(first, TransformCaches.TRANSFORMS.deduplicate(first));
-        // What reliably collapses is every model that shares one instance, which is the common case
+        // Checks shared instances collapse.
         assertSame(first, TransformCaches.TRANSFORMS.deduplicate(transforms(vector)));
         assertNotSame(first, TransformCaches.TRANSFORMS.deduplicate(transforms(vector(2f))));
         assertNotNull(TransformCaches.TRANSFORMS.deduplicate(transforms(vector(3f))));
         assertNull(TransformCaches.TRANSFORMS.deduplicate(null));
 
-        // An empty override list collapses onto the shared one; a real list is per-model
+        // Checks the override lists.
         assertNull(TransformCaches.deduplicate(null));
         assertSame(ItemOverrideList.NONE, TransformCaches.deduplicate(new ItemOverrideList(ImmutableList.of())));
         ItemOverrideList populated = new ItemOverrideList(ImmutableList.of(

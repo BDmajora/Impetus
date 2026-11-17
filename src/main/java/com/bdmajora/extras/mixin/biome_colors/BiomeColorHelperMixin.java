@@ -11,13 +11,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 // Mixin that changes BiomeColorHelper.
 @Mixin(BiomeColorHelper.class)
 public class BiomeColorHelperMixin {
-    // Field default grass color added to the target.
+    // Plains grass colour.
     @Unique
     private static final int IMPETUS$DEFAULT_GRASS_COLOR = 0x91BD59;
-    // Field default water color added to the target.
+    // Untinted water colour.
     @Unique
     private static final int IMPETUS$DEFAULT_WATER_COLOR = 0xFFFFFF;
-    // Field default foliage color added to the target.
+    // Plains foliage colour.
     @Unique
     private static final int IMPETUS$DEFAULT_FOLIAGE_COLOR = 0x59AE30;
 

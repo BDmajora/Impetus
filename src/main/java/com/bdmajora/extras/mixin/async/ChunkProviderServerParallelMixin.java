@@ -35,7 +35,7 @@ public abstract class ChunkProviderServerParallelMixin {
     @Shadow
     public abstract Chunk getLoadedChunk(int x, int z);
 
-    // Field parallel added to the target.
+    // Whether the provider serves a parallel ticked world.
     @Unique
     private boolean impetus$parallel;
 
@@ -49,7 +49,7 @@ public abstract class ChunkProviderServerParallelMixin {
         this.loadedChunks = new ConcurrentLong2ObjectMap<>(this.loadedChunks);
     }
 
-    // Handles locked provide chunk.
+    // Returns a loaded chunk without locking or loads it under the world and worldgen locks.
     @WrapMethod(method = "provideChunk")
     private Chunk impetus$lockedProvideChunk(int x, int z, Operation<Chunk> original) {
         if (!this.impetus$parallel) {
@@ -66,7 +66,7 @@ public abstract class ChunkProviderServerParallelMixin {
         }
     }
 
-    // Handles locked load chunk.
+    // Returns a loaded chunk without locking or loads it under the world lock.
     @WrapMethod(method = "loadChunk(IILjava/lang/Runnable;)Lnet/minecraft/world/chunk/Chunk;")
     private Chunk impetus$lockedLoadChunk(int x, int z, Runnable callback, Operation<Chunk> original) {
         if (!this.impetus$parallel) {
@@ -84,7 +84,7 @@ public abstract class ChunkProviderServerParallelMixin {
         }
     }
 
-    // Handles locked queue unload.
+    // Queues a chunk for unload under the world lock.
     @WrapMethod(method = "queueUnload")
     private void impetus$lockedQueueUnload(Chunk chunk, Operation<Void> original) {
         if (!this.impetus$parallel) {
@@ -96,7 +96,7 @@ public abstract class ChunkProviderServerParallelMixin {
         }
     }
 
-    // Handles locked queue unload all.
+    // Queues every chunk for unload under the world lock.
     @WrapMethod(method = "queueUnloadAll")
     private void impetus$lockedQueueUnloadAll(Operation<Void> original) {
         if (!this.impetus$parallel) {
@@ -108,7 +108,7 @@ public abstract class ChunkProviderServerParallelMixin {
         }
     }
 
-    // Handles locked tick.
+    // Unloads queued chunks under the world lock.
     @WrapMethod(method = "tick")
     private boolean impetus$lockedTick(Operation<Boolean> original) {
         if (!this.impetus$parallel) {
@@ -119,7 +119,7 @@ public abstract class ChunkProviderServerParallelMixin {
         }
     }
 
-    // Handles locked save chunks.
+    // Saves chunks under the world lock.
     @WrapMethod(method = "saveChunks")
     private boolean impetus$lockedSaveChunks(boolean all, Operation<Boolean> original) {
         if (!this.impetus$parallel) {

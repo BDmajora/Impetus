@@ -26,7 +26,7 @@ public abstract class BlockFarmlandMixin {
         return equilibrium$isUnloaded(access, pos) ? Blocks.AIR.getDefaultState() : original.call(access, pos);
     }
 
-    // Returns whether unloaded.
+    // Returns whether a position's chunk is unloaded.
     private static boolean equilibrium$isUnloaded(IBlockAccess access, BlockPos pos) {
         if (!(access instanceof World)) {
             return false;

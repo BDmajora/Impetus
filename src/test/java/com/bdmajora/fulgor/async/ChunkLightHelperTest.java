@@ -32,12 +32,12 @@ class ChunkLightHelperTest {
         ChunkLightHelper.importVanillaBlock(block, storage);
         assertEquals(11, sky[5].getVisible(1, 2, 3));
         assertEquals(7, block[5].getVisible(1, 2, 3));
-        // Importing copies, so a later vanilla write is not seen
+        // Checks importing copies the array.
         storage[4].getSkyLight().set(1, 2, 3, 0);
         assertEquals(11, sky[5].getVisible(1, 2, 3));
         storage[4].getSkyLight().set(1, 2, 3, 11);
 
-        // Wrapping shares the array, so the engine writes straight into what the renderer reads
+        // Checks wrapping shares the array.
         SWMRNibbleArray[] wrappedSky = ChunkLightHelper.newNullNibbles();
         SWMRNibbleArray[] wrappedBlock = ChunkLightHelper.newNullNibbles();
         ChunkLightHelper.wrapVanillaSky(wrappedSky, storage);
@@ -78,7 +78,7 @@ class ChunkLightHelperTest {
         ChunkLightHelper.syncBlockToVanilla(block, storage);
         assertEquals(0, storage[4].getSkyLight().get(1, 2, 3));
         assertEquals(0, storage[4].getBlockLight().get(1, 2, 3));
-        // A null sky nibble leaves the vanilla data alone, since the column fill already approximates open sky
+        // Checks a null sky nibble.
         storage[4].getSkyLight().set(1, 2, 3, 15);
         sky[5] = new SWMRNibbleArray(null, true);
         ChunkLightHelper.syncSkyToVanilla(sky, storage);
@@ -127,7 +127,7 @@ class ChunkLightHelperTest {
         assertEquals(9, ChunkLightHelper.getBlockLight(block, 1, 66, 3));
 
         SWMRNibbleArray[] sky = ChunkLightHelper.newNullNibbles();
-        // Above the world is full daylight, below it is dark, and an all-null column reads as open sky
+        // Checks the sky light outside the world.
         assertEquals(15, ChunkLightHelper.getSkyLight(sky, 0, 300, 0));
         assertEquals(0, ChunkLightHelper.getSkyLight(sky, 0, -20, 0));
         assertEquals(15, ChunkLightHelper.getSkyLight(null, 0, 64, 0));
@@ -141,7 +141,7 @@ class ChunkLightHelperTest {
         sky[6].setUninitialised();
         sky[6].updateVisible();
         assertEquals(0, ChunkLightHelper.getSkyLight(sky, 1, 64, 3));
-        // A section of its own answers directly, and uninitialised means present and dark
+        // Checks a section's own nibble.
         sky[5] = new SWMRNibbleArray();
         sky[5].set(1, 2, 3, 7);
         sky[5].updateVisible();

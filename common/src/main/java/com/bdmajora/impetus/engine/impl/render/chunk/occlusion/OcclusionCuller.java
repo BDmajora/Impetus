@@ -492,10 +492,8 @@ public class OcclusionCuller {
         return ((((dx * dx) + (dz * dz)) < (maxDistance * maxDistance)) && (Math.abs(dy) < maxDistance));
     }
 
-    // Half size of a section with margin in blocks.
-    static final float CHUNK_SECTION_SIZE = 8.0f /* section half-size */
-            + 1.0f /* maximum model extent */
-            + 0.125f /* epsilon */;
+    // Half size of a section in blocks plus model overhang and epsilon.
+    static final float CHUNK_SECTION_SIZE = 8.0f + 1.0f + 0.125f;
 
     // Returns whether the box of a section intersects the frustum.
     public static boolean isWithinFrustum(Viewport viewport, int chunkX, int chunkY, int chunkZ) {

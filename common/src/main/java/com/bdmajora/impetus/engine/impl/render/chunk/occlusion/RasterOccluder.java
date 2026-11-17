@@ -75,7 +75,7 @@ public final class RasterOccluder extends BoxOccluder {
                 src.m03(), src.m13(), src.m23(), src.m33());
     }
 
-    // Sizes the buffer so a block at the search distance spans one pixel.
+    // Sizes the buffer to one pixel per block at the search distance.
     private void chooseBufferSize(Matrix4fc vp, float searchDistance) {
         // Keeps the buffer for matrices without a perspective row
         float perspectiveRow = (float) Math.sqrt((vp.m03() * vp.m03()) + (vp.m13() * vp.m13()) + (vp.m23() * vp.m23()));

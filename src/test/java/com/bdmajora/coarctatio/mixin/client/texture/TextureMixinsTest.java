@@ -88,7 +88,7 @@ class TextureMixinsTest {
         var ci = Mixins.ci();
         Mixins.call(stitcher, "coarctatio$shelfStitch", ci);
         assertTrue(ci.isCancelled());
-        // One exact-size slot per sprite, which is what every reader of the stitcher's output expects
+        // Checks one slot per sprite.
         assertEquals(2, slots.size());
         for (Stitcher.Slot slot : slots) {
             assertNotNull(slot.getStitchHolder());
@@ -113,7 +113,7 @@ class TextureMixinsTest {
         uploaded.put("missing", null);
         Mixins.set(map, "mapUploadedSprites", uploaded);
 
-        // Distant Horizons reads block pixels for its LOD colours whenever it likes, so with it installed nothing is freed
+        // Checks nothing is freed with Distant Horizons.
         long before = MemoryReport.totalBytes();
         Mc.forge("distanthorizons");
         Mixins.call(map, "coarctatio$releaseStaticSpriteData", mock(IResourceManager.class), Mixins.ci());
@@ -122,7 +122,7 @@ class TextureMixinsTest {
 
         Mc.forge();
         Mixins.call(map, "coarctatio$releaseStaticSpriteData", mock(IResourceManager.class), Mixins.ci());
-        // The static sprite's pixels are gone and counted; the animated one still needs its frames
+        // Checks the freed static sprite.
         assertEquals(0, stone.getFrameCount());
         assertEquals(1, animated.getFrameCount());
         assertTrue(MemoryReport.totalBytes() > before);
@@ -148,13 +148,13 @@ class TextureMixinsTest {
         assertEquals(0, lookup.count());
         assertSame(prefetched, Mixins.call(map, "coarctatio$prefetchedForFrames", manager, LOCATION, lookup, stone));
 
-        // The header was parsed during the prefetch, so the vanilla call is skipped
+        // Checks the skipped header read.
         Mc.Recorded<PngSizeInfo> header = Mc.operation(null);
         PngSizeInfo size = Mixins.call(map, "coarctatio$prefetchedSize", prefetched, header);
         assertEquals(16, size.pngWidth);
         assertEquals(0, header.count());
 
-        // A sprite the prefetch skipped, and a resource that is not a prefetched one, both take the vanilla path
+        // Checks the vanilla path.
         TextureAtlasSprite other = sprite("minecraft:blocks/dirt", 16, 16);
         IResource vanilla = mock(IResource.class);
         Mc.Recorded<IResource> fallback = Mc.operation(vanilla);
@@ -184,7 +184,7 @@ class TextureMixinsTest {
         assertNotSame(decoded, taken);
         assertEquals(0, decoder.count());
 
-        // The image is handed over once; a second read decodes as usual, and so does any other stream
+        // Checks the image is handed over once.
         assertSame(decoded, Mixins.call(sprite, "coarctatio$takePrefetchedImage", stream, Mc.operation(decoded)));
         assertSame(decoded, Mixins.call(sprite, "coarctatio$takePrefetchedImage",
                 new ByteArrayInputStream(png), Mc.operation(decoded)));

@@ -17,13 +17,15 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import javax.annotation.Nullable;
 import javax.imageio.ImageIO;
+import javax.imageio.stream.FileImageOutputStream;
+import javax.imageio.stream.ImageOutputStream;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.RandomAccessFile;
 import java.nio.IntBuffer;
 
 // Mixin that changes ScreenShotHelper.
@@ -82,10 +84,19 @@ public abstract class ScreenShotHelperMixin {
                 return;
             }
             final File file = event.getScreenshotFile();
+            // Claims the file name before writing.
+            file.createNewFile();
             Thread.ofVirtual().name("Impetus Screenshot Writer").start(() -> {
-                try {
-                    ImageIO.write(image, "png", file);
+                // Writes the image into the claimed file in place.
+                try (RandomAccessFile out = new RandomAccessFile(file, "rw")) {
+                    out.setLength(0L);
+                    try (ImageOutputStream stream = new FileImageOutputStream(out)) {
+                        ImageIO.write(image, "png", stream);
+                    }
                 } catch (Exception e) {
+                    if (file.length() == 0L) {
+                        file.delete();
+                    }
                     LOGGER.warn("Couldn't save screenshot", e);
                     Minecraft.getMinecraft().addScheduledTask(() -> Minecraft.getMinecraft().ingameGUI.getChatGUI()
                             .printChatMessage(new TextComponentTranslation("screenshot.failure", e.getMessage())));

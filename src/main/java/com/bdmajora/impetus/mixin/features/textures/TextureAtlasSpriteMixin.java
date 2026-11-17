@@ -9,16 +9,16 @@ import com.bdmajora.impetus.impl.extensions.SpriteExtension;
 // Mixin that changes TextureAtlasSprite.
 @Mixin(TextureAtlasSprite.class)
 public abstract class TextureAtlasSpriteMixin implements SpriteExtension {
-    // Value is active.
+    // Whether the sprite was drawn since its last animation update.
     private boolean impetus$isActive = false;
 
-    // Handles mark active.
+    // Marks the sprite as drawn.
     @Override
     public void impetus$markActive() {
         this.impetus$isActive = true;
     }
 
-    // Returns whether update.
+    // Returns whether the sprite was drawn since the last tick and clears the mark.
     @Override
     public boolean impetus$shouldUpdate() {
         if (this.impetus$isActive) {

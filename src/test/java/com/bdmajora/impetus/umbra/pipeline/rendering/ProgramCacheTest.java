@@ -139,7 +139,7 @@ class ProgramCacheTest {
         verify(TestGl.gl(), times(2)).glDeleteProgram(anyInt());
         cache.destroy();
         verify(TestGl.gl(), times(2)).glDeleteProgram(anyInt());
-        // Forgotten: asking again compiles again
+        // Checks a forgotten program compiles again.
         cache.get(source("composite", LEGACY_VERTEX, LEGACY_FRAGMENT));
         verify(TestGl.gl(), times(3)).glCreateProgram();
     }

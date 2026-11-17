@@ -28,9 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-// The release jar runs on SRG names and the build rewrites only selectors that remap; one with remap off keeps its MCP name, so on a Forge or mod
-// class it must not name a method inherited from Minecraft (BlockFluidFinite.updateTick is func_180650_b at runtime, and the unremapped selector
-// failed the class load and crashed the chunk builder on a server join). Minecraft targets are left out: Forge adds methods to them that rightly skip remapping
+// Checks mixin selectors and At targets against what the remapping build can resolve.
 class MixinRemapAuditTest {
     private static final String MIXIN = "Lorg/spongepowered/asm/mixin/Mixin;";
     private static final String OVERWRITE = "Lorg/spongepowered/asm/mixin/Overwrite;";
@@ -38,17 +36,17 @@ class MixinRemapAuditTest {
     private static final String INVOKER = "Lorg/spongepowered/asm/mixin/gen/Invoker;";
     private static final String AT = "Lorg/spongepowered/asm/mixin/injection/At;";
 
-    // Methods Forge patches into Minecraft classes: no SRG name exists for them, so an unremapped selector is the right one
+    // Methods Forge patches into Minecraft classes.
     private static final Set<String> FORGE_ADDED = Set.of("net/minecraft/block/state/BlockStateContainer.createState");
 
     private record Inherited(String owner, String name, String desc) {
     }
 
-    // A selector's bare name and, when it spells one out, its descriptor
+    // A selector's bare name and descriptor.
     record Selector(String name, String desc) {
     }
 
-    // Per target, every method its Minecraft ancestors declare
+    // Methods each target's Minecraft ancestors declare.
     private final Map<String, List<Inherited>> inherited = new HashMap<>();
 
     @Test
@@ -92,14 +90,14 @@ class MixinRemapAuditTest {
 
     @Test
     void theAuditSeesForgeOverridesOfMinecraftMethods() {
-        // The selector that crashed, bare and described: updateTick is declared by Block
+        // Checks the BlockFluidFinite.updateTick selector.
         String finite = "net/minecraftforge/fluids/BlockFluidFinite";
         assertTrue(this.namesMinecraft(finite, parse("updateTick")));
         assertTrue(this.namesMinecraft(finite, parse("updateTick(Lnet/minecraft/world/World;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/block/state/IBlockState;Ljava/util/Random;)V")));
-        // A different overload of the same name is not Minecraft's, nor is a method only Forge's IFluidBlock declares
+        // Checks another overload and a Forge only method.
         assertFalse(this.namesMinecraft(finite, parse("updateTick(I)V")));
         assertFalse(this.namesMinecraft(finite, parse("getFluid")));
-        // Forge's own addition to BlockStateContainer, overridden by ExtendedBlockState
+        // Checks Forge's createState addition.
         assertFalse(this.namesMinecraft("net/minecraftforge/common/property/ExtendedBlockState", parse("createState")));
         // A class the test classpath does not have contributes nothing rather than failing
         assertFalse(this.namesMinecraft("absent/ModClass", parse("updateTick")));
@@ -111,9 +109,7 @@ class MixinRemapAuditTest {
         assertNull(parse("decode").desc());
     }
 
-    // remapShadowJar rewrites every remapped @At target and prints a TinyRemapper warning for each it cannot: a JDK owner (the JDK is not on its classpath),
-    // a bare NEW class name it cannot parse, or a descriptor-only NEW target, which maps to itself since 1.12 MCP and SRG share class names and so reads as failed.
-    // None of those has anything to remap, so each must say remap = false to keep the build quiet
+    // Checks every remapped At target can be remapped by the build.
     @Test
     void remappedAtTargetsAreOnesTheBuildCanRemap() throws Exception {
         Path classes = Path.of(NetworkLimits.class.getProtectionDomain().getCodeSource().getLocation().toURI());
@@ -145,12 +141,12 @@ class MixinRemapAuditTest {
         assertTrue(unmappable("Ljava/util/Queue;isEmpty()Z"));
         assertTrue(unmappable("java/util/Random"));
         assertTrue(unmappable("(IZ)Lnet/minecraft/world/chunk/storage/ExtendedBlockStorage;"));
-        // A Minecraft owner resolves, JDK types in its descriptor included; so does a class-only target
+        // Checks a Minecraft owner and a class only target.
         assertFalse(unmappable("Lnet/minecraft/client/Minecraft;scheduledTasks:Ljava/util/Queue;"));
         assertFalse(unmappable("Lnet/minecraft/world/WorldProvider;getCloudHeight()F"));
         assertFalse(unmappable("Lnet/minecraft/world/ChunkCache;"));
 
-        // A JDK target under an injector inherits remap from the class, and the @At's own remap = false wins over both
+        // Collects the offending targets.
         List<String> offenders = new ArrayList<>();
         int[] remapped = {0};
         unmappableTargets(injector(at("Ljava/lang/Thread;yield()V", null)), true, "remapped", offenders, remapped);
@@ -170,7 +166,7 @@ class MixinRemapAuditTest {
         assertEquals(List.of("slice -> java/util/Random"), offenders);
     }
 
-    // Carries remap down from the class through the injector and any @Slice to each @At, the way the build inherits it
+    // Carries remap down from the class to each At.
     private static void unmappableTargets(AnnotationNode annotation, boolean inherited, String where, List<String> offenders, int[] remapped) {
         boolean remap = value(annotation, "remap") instanceof Boolean explicit ? explicit : inherited;
         if (remap && AT.equals(annotation.desc) && value(annotation, "target") instanceof String target) {
@@ -193,7 +189,7 @@ class MixinRemapAuditTest {
         }
     }
 
-    // A descriptor-only target, a JDK owner, or a bare class name; "owner.name" dotted targets parse
+    // Returns whether a target cannot be remapped.
     static boolean unmappable(String target) {
         if (target.startsWith("(")) {
             return true;
@@ -258,7 +254,7 @@ class MixinRemapAuditTest {
         });
     }
 
-    // What the annotation points at: an injector's method selectors, an invoker's explicit name, or the overwritten or shadowed method itself
+    // Returns the selectors an annotation points at.
     private static List<Selector> selectors(AnnotationNode member, MethodNode method) {
         if (OVERWRITE.equals(member.desc)) {
             return List.of(new Selector(method.name, method.desc));
@@ -278,7 +274,7 @@ class MixinRemapAuditTest {
         return selectors;
     }
 
-    // "name", "name(desc)", "name*" or "Lowner;name(desc)"; constructors and regex selectors come back with an empty name, which nothing declares
+    // Parses a selector into its name and descriptor.
     static Selector parse(String selector) {
         String rest = selector;
         int owner = rest.indexOf(';');
@@ -323,7 +319,7 @@ class MixinRemapAuditTest {
         return null;
     }
 
-    // Mixin's annotations are class-retained, MixinExtras' vary; both lists are read
+    // Reads the visible and invisible annotations.
     private static List<AnnotationNode> annotations(List<AnnotationNode> visible, List<AnnotationNode> invisible) {
         List<AnnotationNode> all = new ArrayList<>();
         if (visible != null) {

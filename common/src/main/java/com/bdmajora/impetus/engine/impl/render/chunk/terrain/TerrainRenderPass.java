@@ -13,7 +13,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Map;
 import java.util.Objects;
 
-// One draw call over a subset of terrain geometry; passes carry fixed configuration so the shader can optimise at compile time (e.g. no discard on the solid pass), while Material carries the dynamic properties
+// One draw call over a subset of terrain geometry.
 @Accessors(fluent = true)
 @EqualsAndHashCode
 public class TerrainRenderPass {
@@ -29,7 +29,7 @@ public class TerrainRenderPass {
     private final boolean useReverseOrder;
     // whether fragment alpha testing should be enabled for this render pass
     private final boolean fragmentDiscard;
-    // whether this render pass wants to opt in to translucency sorting, when it is enabled
+    // Whether this pass uses translucency sorting.
     private final boolean useTranslucencySorting;
     // whether this render pass has no lightmap texture
     private final boolean hasNoLightmap;
@@ -73,7 +73,7 @@ public class TerrainRenderPass {
         this.extraDefines = Map.copyOf(extraDefines);
     }
 
-    // Draw back-to-front, for translucents
+    // Returns whether the pass draws back to front.
     public boolean isReverseOrder() {
         return this.useReverseOrder;
     }
@@ -83,7 +83,7 @@ public class TerrainRenderPass {
         return this.useTranslucencySorting;
     }
 
-    // Passes drawn without the lightmap, e.g. unlit overlays
+    // Returns whether the pass draws without the lightmap.
     public boolean hasNoLightmap() {
         return this.hasNoLightmap;
     }
@@ -98,7 +98,7 @@ public class TerrainRenderPass {
         this.pipelineState.clear();
     }
 
-    // Whether the shader may discard, for cutout passes
+    // Returns whether the shader may discard fragments.
     public boolean supportsFragmentDiscard() {
         return this.fragmentDiscard;
     }

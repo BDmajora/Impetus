@@ -21,7 +21,7 @@ public abstract class ModelLoaderPrefetchMixin extends ModelBakery {
         super(manager, atlas, shapes);
     }
 
-    // Handles prefetch models.
+    // Reads every model file on worker threads before vanilla bakes.
     @WrapMethod(method = "setupModelRegistry()Lnet/minecraft/util/registry/IRegistry;")
     private IRegistry<ModelResourceLocation, IBakedModel> coarctatio$prefetchModels(Operation<IRegistry<ModelResourceLocation, IBakedModel>> original) {
         ModelPrefetch.run(this.resourceManager, this::loadModel);

@@ -61,7 +61,7 @@ class TranslucentSorterTest {
         assertThrows(IllegalArgumentException.class, () -> new QuadSet(1, new float[3], new float[6], new float[3], new float[1], new byte[0]));
 
         QuadSet quads = set(facingY(1, 0, 2, 0, 3), facingX(-1, 4, 5, -2, 0));
-        // The nearest and farthest bound corners along a direction, whichever way it points
+        // Returns the bound corners.
         assertEquals(0, quads.minDot(0, 1, 0, 0), 1e-6);
         assertEquals(-2, quads.minDot(0, -1, 0, 0), 1e-6);
         assertEquals(-1, quads.minDot(0, 0, -1, 0), 1e-6);
@@ -84,7 +84,7 @@ class TranslucentSorterTest {
         assertEquals(1, union.maxDot(-1, 0, 0), 1e-6);
         assertEquals(-1, union.maxDot(0, -1, 0), 1e-6);
 
-        // Opposite facings in one plane are coplanar; a parallel quad elsewhere is not
+        // Checks coplanar faces.
         QuadSet pair = set(UNIT_UP, flipped(UNIT_UP), facingY(3, 0, 1, 0, 1), facingX(0, 0, 1, 0, 1));
         assertTrue(pair.isCoplanar(0, 1));
         assertFalse(pair.isCoplanar(0, 2));
@@ -102,22 +102,22 @@ class TranslucentSorterTest {
         // The outside faces of a block can never overlap on screen
         assertSame(SortState.NONE, analyze(facingY(1, 0, 1, 0, 1), flipped(UNIT_UP), facingX(1, 0, 1, 0, 1), flipped(facingX(0, 0, 1, 0, 1))));
 
-        // The inside faces of the same block are parallel, so one order holds from everywhere
+        // Checks parallel faces.
         SortState.Static inward = assertInstanceOf(SortState.Static.class, analyze(UNIT_UP, flipped(facingY(1, 0, 1, 0, 1))));
         assertArrayEquals(new int[]{0, 1}, inward.order());
         SortState.Static stacked = assertInstanceOf(SortState.Static.class, analyze(facingY(3, 0, 1, 0, 1), UNIT_UP));
         assertArrayEquals(new int[]{1, 0}, stacked.order());
         assertEquals(2, stacked.quadCount());
 
-        // Not parallel, but one is always behind the other
+        // Checks one behind the other.
         SortState.Static ordered = assertInstanceOf(SortState.Static.class, analyze(facingY(1, 0, 1, 0, 1), facingX(0, 0, 1, 0, 1)));
         assertArrayEquals(new int[]{1, 0}, ordered.order());
 
-        // Mutually overlapping, but apart along an axis: a tree reorders across its one cut
+        // Checks overlapping quads.
         PartitionTree split = assertInstanceOf(PartitionTree.class, analyze(straddling(0)));
         assertArrayEquals(new float[]{1}, split.cutPlanes(2));
         assertEquals(0, split.cutPlanes(0).length);
-        // Crossing each other: no cut exists, so the tree draws them in a fixed order
+        // Checks crossing quads.
         PartitionTree crossed = assertInstanceOf(PartitionTree.class, analyze(facingY(0, 0, 2, 0, 1), facingX(1, -1, 1, 0, 1)));
         assertArrayEquals(new int[]{0, 1}, crossed.order(0, 9, 0));
         assertArrayEquals(new int[]{0, 1}, crossed.order(9, -9, 9));
@@ -182,7 +182,7 @@ class TranslucentSorterTest {
         assertArrayEquals(new int[0], streamed.get(1));
         assertTrue(tree.crossesCutPlane(0, 0, 0.5, 0, 0, 5));
         assertTrue(tree.crossesCutPlane(0, 0, 5, 0, 0, 0.9));
-        // Half-open: arriving on the plane crosses it, leaving it does not
+        // Checks half open planes.
         assertTrue(tree.crossesCutPlane(0, 0, 0.5, 0, 0, 1));
         assertFalse(tree.crossesCutPlane(0, 0, 1, 0, 0, 2));
         assertFalse(tree.crossesCutPlane(-9, -9, 0.5, 9, 9, 0.9));
@@ -192,7 +192,7 @@ class TranslucentSorterTest {
         assertArrayEquals(new float[]{1, 2}, merged[2]);
         assertEquals(0, merged[0].length);
 
-        // With no static leaves allowed even an ordered pair is cut: the quad lying on the plane goes between its slabs
+        // Checks no static leaves.
         PartitionTree onPlane = PartitionTree.build(set(facingY(1, 0, 1, 0, 1), facingX(0, 0, 1, 0, 1)), 0);
         assertArrayEquals(new float[]{0}, onPlane.cutPlanes(0));
         assertArrayEquals(new int[]{1, 0}, onPlane.order(5, 0, 0));
@@ -200,7 +200,7 @@ class TranslucentSorterTest {
         // Crossing quads are split into a fixed order when they cannot be cut either
         PartitionTree fixed = PartitionTree.build(set(facingY(0, 0, 2, 0, 1), facingX(1, -1, 1, 0, 1)), 1);
         assertArrayEquals(new int[]{0, 1}, fixed.order(0, 0, 0));
-        // Parallel slabs keep only the cuts that carry quads, so a gap is not a trigger plane
+        // Checks parallel slabs.
         PartitionTree layered = PartitionTree.build(set(UNIT_UP, facingY(2, 0, 1, 0, 1), facingZ(0.5f, 0, 1, -2, -1), facingZ(0.5f, 0, 1, 3, 4)), 0);
         assertArrayEquals(new float[]{0, 2}, layered.cutPlanes(1));
         assertArrayEquals(new int[]{2, 0, 3, 1}, layered.order(0, 1, 0));
@@ -216,7 +216,7 @@ class TranslucentSorterTest {
         assertTrue(hits.isEmpty());
         index.put("a", new float[][]{{}, {4, 8}, {}}, 0, 0, 0);
         index.put("b", new float[][]{{2}, {}, {}}, 16, 0, 0);
-        // A tree with no cuts can never reorder, so it is not indexed
+        // Checks a tree with no cuts.
         index.put("leaf", new float[][]{{}, {}, {}}, 0, 0, 0);
         assertEquals(2, index.size());
         assertEquals(3, index.planeCount());
@@ -231,19 +231,19 @@ class TranslucentSorterTest {
         index.query(17, 0, 0, 19, 0, 0, hits::add);
         assertEquals(List.of("b"), hits);
         hits.clear();
-        // Crossing both of a's planes, or planes on two axes, reports each owner once
+        // Checks each owner once.
         index.query(0, 9, 0, 0, 2, 0, hits::add);
         assertEquals(List.of("a"), hits);
         hits.clear();
         index.query(19, 2, 0, 17, 6, 0, hits::add);
         assertEquals(Set.of("a", "b"), new HashSet<>(hits));
         hits.clear();
-        // A long jump scans every owner instead of every bucket
+        // Checks a long jump.
         index.query(0, -1000, 0, 0, 1000, 0, hits::add);
         assertEquals(List.of("a"), hits);
         hits.clear();
 
-        // Re-putting replaces the planes; two owners can share a bucket and each leaves it alone
+        // Checks re-putting.
         index.put("a", new float[][]{{}, {}, {3}}, 0, 0, 0);
         index.put("c", new float[][]{{}, {}, {3.5f}}, 0, 0, 0);
         assertEquals(3, index.planeCount());

@@ -56,14 +56,14 @@ class ModelPrefetchTest {
         ModelPrefetch.clear();
     }
 
-    // A zip pack whose existence index is already built, the way the server pack is by the time models load
+    // Returns a zip pack with its index built.
     static IResourcePack zipPack(String... paths) {
         FileResourcePackMixin pack = Mixins.instance(FileResourcePackMixin.class);
         Mixins.set(pack, "coarctatio$entries", Set.of(paths));
         return (IResourcePack) pack;
     }
 
-    // A manager serving these packs in which no armature exists, as in nearly every real pack
+    // Returns a manager serving these packs.
     static SimpleReloadableResourceManager manager(IResourcePack... packs) throws Exception {
         FallbackResourceManager domain = Mc.mock(FallbackResourceManager.class);
         when(((FallbackResourceManagerAccessor) domain).coarctatio$packs()).thenReturn(new ArrayList<>(Arrays.asList(packs)));
@@ -81,7 +81,7 @@ class ModelPrefetchTest {
         Files.writeString(dir.resolve("assets/example/models/block/lamp.json"), "{}");
         FolderResourcePack folder = Mc.mock(FolderResourcePack.class, AbstractResourcePackAccessor.class);
         when(((AbstractResourcePackAccessor) folder).coarctatio$file()).thenReturn(dir.toFile());
-        // A format-2 adapter is listed as the zip it wraps; one wrapping a kind that cannot be listed is skipped
+        // Checks the format 2 adapter listing.
         LegacyV2Adapter adapter = Mc.mock(LegacyV2Adapter.class);
         when(((LegacyV2AdapterAccessor) adapter).coarctatio$pack())
                 .thenReturn(zipPack("assets/minecraft/models/item/teacup.json", "assets/minecraft/models/item/mug.json"));
@@ -89,7 +89,7 @@ class ModelPrefetchTest {
         when(((LegacyV2AdapterAccessor) wrapsUnknown).coarctatio$pack()).thenReturn(mock(IResourcePack.class));
         IResourcePack server = zipPack("pack.mcmeta", "assets/minecraft/textures/items/teacup.png", "assets/minecraft/blockstates/lamp.json",
                 "assets/minecraft/models/item/teacup.json", "assets/minecraft/models/item/broken.json");
-        // The built-in pack would mean walking the classpath, so it is never listed
+        // Checks the built in pack is skipped.
         SimpleReloadableResourceManager manager = manager(Mc.mock(DefaultResourcePack.class), folder, adapter, wrapsUnknown,
                 mock(IResourcePack.class), server);
 
@@ -105,19 +105,19 @@ class ModelPrefetchTest {
             model.name = location.toString();
             return model;
         });
-        // Each model file is read once however many packs hold it, and nothing that is not one is read at all
+        // Checks each model file is read once.
         assertEquals(Set.of(TEACUP, MUG, BROKEN, LAMP), asked);
         assertEquals(4, reads.get());
 
         ModelBlock teacup = ModelPrefetch.takeModel(TEACUP);
         assertNotNull(teacup);
         assertEquals("minecraft:models/item/teacup", teacup.name);
-        // Handed out once, since the loader goes on to link its parent
+        // Checks the model is handed out once.
         assertNull(ModelPrefetch.takeModel(TEACUP));
         ResourceLocation teacupArmature = new ResourceLocation("minecraft", "armatures/item/teacup.json");
         assertNotNull(ModelPrefetch.takeAnimation(teacupArmature));
         assertNull(ModelPrefetch.takeAnimation(teacupArmature));
-        // A model that could not be read is left for the loader to report, with nothing kept beside it
+        // Checks an unreadable model.
         assertNull(ModelPrefetch.takeModel(BROKEN));
         assertNull(ModelPrefetch.takeAnimation(new ResourceLocation("minecraft", "armatures/item/broken.json")));
 
@@ -146,7 +146,7 @@ class ModelPrefetchTest {
         assertNull(ModelPrefetch.modelLocation("pack.mcmeta"));
         assertNull(ModelPrefetch.modelLocation("assets/minecraft/blockstates/stone.json"));
         assertNull(ModelPrefetch.modelLocation("assets/minecraft/models/item/teacup.png"));
-        // No namespace folder, an empty one, and an empty model name
+        // Checks the invalid locations.
         assertNull(ModelPrefetch.modelLocation("assets/minecraft.json"));
         assertNull(ModelPrefetch.modelLocation("assets//models/item/teacup.json"));
         assertNull(ModelPrefetch.modelLocation("assets/minecraft/models/.json"));

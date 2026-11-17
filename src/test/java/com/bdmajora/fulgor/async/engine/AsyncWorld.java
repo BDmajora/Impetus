@@ -22,8 +22,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-// A world the async light engines can work in: real sections and SWMR nibbles behind mocked chunks, with the
-// light-readiness flags and emptiness maps the engines read and write
+// World for the async light engines with real sections behind mocked chunks.
 public final class AsyncWorld {
     public final World world;
     public final Map<Long, Chunk> chunks = new HashMap<>();
@@ -47,7 +46,7 @@ public final class AsyncWorld {
         return ((long) chunkX << 32) | (chunkZ & 0xFFFFFFFFL);
     }
 
-    // A chunk of empty sections, its nibbles all NULL and its light already usable to the engine
+    // Returns a chunk of empty sections.
     public Chunk chunk(int chunkX, int chunkZ) {
         Chunk chunk = Mc.mock(Chunk.class, AsyncLitChunk.class);
         Mixins.set(chunk, "x", chunkX);
@@ -79,7 +78,7 @@ public final class AsyncWorld {
                 .set(pos.getX() & 15, pos.getY() & 15, pos.getZ() & 15, state);
     }
 
-    // Visible block light at a world position, the way a reader outside the engine sees it
+    // Returns the visible block light at a position.
     public int blockLight(BlockPos pos) {
         Chunk chunk = chunks.get(key(pos.getX() >> 4, pos.getZ() >> 4));
         return ChunkLightHelper.getBlockLight(((AsyncLitChunk) chunk).fulgor$getBlockNibbles(),

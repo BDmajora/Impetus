@@ -39,20 +39,20 @@ import java.util.stream.Collectors;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ConfigBuildersTest {
-    // Ids stay interned for the whole JVM, so every path here is this class's own and belongs to one test
+    // Mod id of this class's ids.
     private static final String MOD = "config_builders_test";
     private static final TextComponent NAME = TextComponent.literal("Name");
     private static final ConfigStorage<AtomicInteger> STORAGE = ConfigStorage.of(new AtomicInteger(), () -> { });
-    // Blank by String.isBlank: empty, spaces, control whitespace and a Unicode em space
+    // Blank ids.
     private static final List<String> BLANKS = List.of("", " ", "\t\n", " ");
-    // The racing kinds: a group (void) and two option types
+    // Racing id kinds.
     private static final List<Class<?>> KINDS = List.of(void.class, Integer.class, String.class);
 
     @Test
     void publicShapeStaysTheApiOtherModsCompileAgainst() throws ReflectiveOperationException {
         Class<ConfigBuilders> type = ConfigBuilders.class;
         assertTrue(Modifier.isPublic(type.getModifiers()) && Modifier.isFinal(type.getModifiers()));
-        // Generic signatures are what other mods' sources compile against, and their erasures what compiled mods link against
+        // Checks the signatures.
         Set<String> expected = Set.of(
                 "com.bdmajora.impetus.api.config.ConfigPageBuilder page(java.lang.String, java.lang.String, com.bdmajora.impetus.engine.impl.gui.framework.TextComponent)",
                 "com.bdmajora.impetus.api.config.ConfigPageBuilder page(com.bdmajora.impetus.api.options.OptionIdentifier<java.lang.Void>, com.bdmajora.impetus.engine.impl.gui.framework.TextComponent)",
@@ -68,14 +68,14 @@ class ConfigBuildersTest {
             assertTrue(Modifier.isStatic(method.getModifiers()), method.getName());
             assertEquals(0, method.getExceptionTypes().length, method.getName());
         }
-        // The rest are private static helpers and there are no fields, so concurrent calls share nothing but OptionIdentifier's synchronised intern table
+        // Checks the class has no fields.
         for (Method method : type.getDeclaredMethods()) {
             if (!method.isSynthetic() && !Modifier.isPublic(method.getModifiers())) {
                 assertTrue(Modifier.isPrivate(method.getModifiers()) && Modifier.isStatic(method.getModifiers()), method.getName());
             }
         }
         assertEquals(List.of(), Arrays.stream(type.getDeclaredFields()).filter(field -> !field.isSynthetic()).toList());
-        // One private no-argument constructor, so nothing outside can make an instance
+        // Checks the private constructor.
         Constructor<?>[] constructors = type.getDeclaredConstructors();
         assertEquals(1, constructors.length);
         assertEquals(0, constructors[0].getParameterCount());
@@ -92,7 +92,7 @@ class ConfigBuildersTest {
         assertSame(void.class, page.getId().getType());
         assertSame(NAME, page.getName());
         assertEquals(List.of(), page.getGroups());
-        // Groups keep the order they were added in, and the page lists their options in that order
+        // Checks the group order.
         Option<?> firstOption = Mockito.mock(Option.class);
         Option<?> secondOption = Mockito.mock(Option.class);
         OptionGroup first = ConfigBuilders.group(MOD, "page_parts_first").add(firstOption).build();
@@ -100,9 +100,9 @@ class ConfigBuildersTest {
         OptionPage full = builder.addGroup(first).addGroup(second).build();
         assertEquals(List.of(first, second), full.getGroups());
         assertEquals(List.of(firstOption, secondOption), full.getOptions());
-        // The builder refuses a null group where it is added, not later when the page is built
+        // Checks a null group.
         npe("Group must not be null", () -> builder.addGroup(null));
-        // Every call hands out its own builder, so a second one for the same page starts empty
+        // Checks a fresh builder.
         ConfigPageBuilder again = ConfigBuilders.page(MOD, "page_parts", NAME);
         assertNotSame(builder, again);
         assertEquals(List.of(), again.build().getGroups());
@@ -122,7 +122,7 @@ class ConfigBuildersTest {
         npe("Mod id must not be null", () -> ConfigBuilders.page(null, null, null));
         iae("Mod id must not be blank", () -> ConfigBuilders.page("", null, null));
         npe("Path must not be null", () -> ConfigBuilders.page(MOD, null, null));
-        // A null name used to fail only after the id was interned, which tied the path to void for good
+        // Checks a null name.
         assertSame(String.class, OptionIdentifier.create(MOD, "page_reject", String.class).getType());
     }
 
@@ -135,7 +135,7 @@ class ConfigBuildersTest {
         assertSame(NAME, page.getName());
         assertNotSame(builder, ConfigBuilders.page(id, NAME));
         assertSame(id, ConfigBuilders.page(MOD, "page_id", TextComponent.literal("Other")).build().getId());
-        // Ids made elsewhere work the same, the built-in ones included
+        // Checks ids made elsewhere.
         assertSame(StandardOptions.Pages.GENERAL, ConfigBuilders.page(StandardOptions.Pages.GENERAL, NAME).build().getId());
     }
 
@@ -145,7 +145,7 @@ class ConfigBuildersTest {
         npe("Page id must not be null", () -> ConfigBuilders.page(null, NAME));
         npe("Page name must not be null", () -> ConfigBuilders.page(id, null));
         npe("Page id must not be null", () -> ConfigBuilders.page(null, null));
-        // An option id cast to Void, and EMPTY, are not page ids even though the compiler takes them
+        // Checks option ids are refused.
         OptionIdentifier<Void> typed = OptionIdentifier.create(MOD, "page_typed", Integer.class).cast();
         iae("Page id 'config_builders_test:page_typed' has type class java.lang.Integer, but page and group ids have type void", () -> ConfigBuilders.page(typed, NAME));
         iae("Page id ':' has type class java.lang.Void, but page and group ids have type void", () -> ConfigBuilders.page(OptionIdentifier.EMPTY, NAME));
@@ -160,13 +160,13 @@ class ConfigBuildersTest {
         assertSame(OptionIdentifier.create(MOD, "group_parts"), group.getId());
         assertNull(group.getName());
         assertEquals(List.of(), group.getOptions());
-        // Every call hands out its own builder, so options added to one never show up in another
+        // Checks a fresh builder.
         Option<?> option = Mockito.mock(Option.class);
         OptionGroup.Builder again = ConfigBuilders.group(MOD, "group_parts");
         assertNotSame(builder, again);
         assertEquals(List.of(option), builder.add(option).build().getOptions());
         assertEquals(List.of(), again.build().getOptions());
-        // A page may share a group's id; ConfigApi keeps their registrations apart
+        // Checks a shared page and group id.
         assertSame(group.getId(), ConfigBuilders.page(MOD, "group_parts", NAME).build().getId());
     }
 
@@ -191,14 +191,14 @@ class ConfigBuildersTest {
         assertSame(id, builder.build().getId());
         assertNotSame(builder, ConfigBuilders.group(id));
         assertSame(id, ConfigBuilders.group(MOD, "group_id").build().getId());
-        // Ids made elsewhere work the same, the built-in ones included
+        // Checks ids made elsewhere.
         assertSame(StandardOptions.Group.RENDERING, ConfigBuilders.group(StandardOptions.Group.RENDERING).build().getId());
         assertSame(OptionGroup.DEFAULT_ID, ConfigBuilders.group(OptionGroup.DEFAULT_ID).build().getId());
     }
 
     @Test
     void groupFromIdRefusesNullTypedIdsAndEmpty() {
-        // OptionGroup.Builder would quietly swap a null id for DEFAULT_ID, so the mistake is caught here
+        // Checks a null id.
         npe("Group id must not be null", () -> ConfigBuilders.group(null));
         OptionIdentifier<Void> typed = OptionIdentifier.create(MOD, "group_typed", boolean.class).cast();
         iae("Group id 'config_builders_test:group_typed' has type boolean, but page and group ids have type void", () -> ConfigBuilders.group(typed));
@@ -214,7 +214,7 @@ class ConfigBuildersTest {
         OptionImpl<AtomicInteger, Integer> option = builder.setBinding(AtomicInteger::set, AtomicInteger::get).setControl(o -> null).build();
         assertSame(OptionIdentifier.create(MOD, "option_parts", Integer.class), option.getId());
         assertSame(storage, option.getStorage());
-        // With no name or tooltip set, both come from the id's parts
+        // Checks the default name and tooltip.
         assertEquals(TextComponent.translatable(MOD + ".options.option_parts.name"), option.getName());
         assertEquals(TextComponent.translatable(MOD + ".options.option_parts.tooltip"), option.getTooltip());
         // Values go through the storage that was passed in
@@ -226,7 +226,7 @@ class ConfigBuildersTest {
 
     @Test
     void optionFromPartsTakesAnyValueType() {
-        // Primitives are how the built-in pages type their options, so each keeps its own type rather than its box
+        // Checks primitive types.
         for (Class<?> type : List.of(int.class, boolean.class, Integer.class, String.class, OptionFlag.class, int[].class)) {
             assertSame(type, built(ConfigBuilders.option(MOD, "option_type_" + type.getSimpleName(), type, STORAGE)).getId().getType());
         }
@@ -242,7 +242,7 @@ class ConfigBuildersTest {
             iae("Mod id must not be blank", () -> ConfigBuilders.option(blank, "option_reject", Integer.class, STORAGE));
             iae("Path must not be blank", () -> ConfigBuilders.option(MOD, blank, Integer.class, STORAGE));
         }
-        // void would intern the option as a page or group id, and Void leaves it nothing to hold
+        // Checks void and Void.
         iae("Option type must not be void", () -> ConfigBuilders.option(MOD, "option_reject", void.class, STORAGE));
         iae("Option type must not be class java.lang.Void", () -> ConfigBuilders.option(MOD, "option_reject", Void.class, STORAGE));
         // The leftmost bad argument is the one reported
@@ -250,7 +250,7 @@ class ConfigBuildersTest {
         npe("Path must not be null", () -> ConfigBuilders.option(MOD, null, null, null));
         npe("Option type must not be null", () -> ConfigBuilders.option(MOD, "option_reject", null, null));
         iae("Option type must not be void", () -> ConfigBuilders.option(MOD, "option_reject", void.class, null));
-        // A null type used to intern a typeless id, after which every typed option on the path was refused
+        // Checks a null type.
         assertSame(Integer.class, built(ConfigBuilders.option(MOD, "option_reject", Integer.class, STORAGE)).getId().getType());
     }
 
@@ -263,7 +263,7 @@ class ConfigBuildersTest {
         assertSame(id, built(ConfigBuilders.option(MOD, "option_id", Integer.class, STORAGE)).getId());
         OptionIdentifier<Integer> primitive = OptionIdentifier.create(MOD, "option_id_int", int.class);
         assertSame(primitive, built(ConfigBuilders.option(primitive, int.class, STORAGE)).getId());
-        // Built-in options are named with untyped ids cast to their value type, so those pass too
+        // Checks built in options.
         OptionIdentifier<Integer> renderDistance = StandardOptions.Option.RENDER_DISTANCE.cast();
         assertSame(StandardOptions.Option.RENDER_DISTANCE, built(ConfigBuilders.option(renderDistance, int.class, STORAGE)).getId());
     }
@@ -289,9 +289,9 @@ class ConfigBuildersTest {
         // Erasure lets a cast id through the compiler with any type
         OptionIdentifier<String> asString = boxed.cast();
         iae("Option id 'config_builders_test:option_mismatch' has type class java.lang.Integer, not class java.lang.String", () -> ConfigBuilders.option(asString, String.class, STORAGE));
-        // int.class is a Class<Integer>, so this compiles without a cast, yet the intern table holds int and Integer apart
+        // Checks int.class.
         iae("Option id 'config_builders_test:option_mismatch' has type class java.lang.Integer, not int", () -> ConfigBuilders.option(boxed, int.class, STORAGE));
-        // EMPTY stands for no id at all, and would name the option ".options..name"
+        // Checks EMPTY.
         OptionIdentifier<Integer> empty = OptionIdentifier.EMPTY.cast();
         iae("Option id ':' has type class java.lang.Void, not class java.lang.Integer", () -> ConfigBuilders.option(empty, Integer.class, STORAGE));
         // A mismatch is reported before a missing storage
@@ -302,14 +302,14 @@ class ConfigBuildersTest {
 
     @Test
     void onePathHoldsOneKindOfIdForTheWholeGame() {
-        // The group comes first, since OptionGroup's class init interns DEFAULT_ID and would throw off the counts below
+        // Checks the group first.
         OptionIdentifier<Void> group = ConfigBuilders.group(MOD, "clash_group").build().getId();
         OptionIdentifier<Integer> boxed = built(ConfigBuilders.option(MOD, "clash_option", Integer.class, STORAGE)).getId();
         String option = MOD + ":clash_option";
-        // Another value type is refused, the primitive of the same box included
+        // Checks another value type.
         clash(option, () -> ConfigBuilders.option(MOD, "clash_option", String.class, STORAGE));
         clash(option, () -> ConfigBuilders.option(MOD, "clash_option", int.class, STORAGE));
-        // Pages and groups are untyped, so they cannot take an option's path, nor an option theirs
+        // Checks pages and groups.
         clash(option, () -> ConfigBuilders.page(MOD, "clash_option", NAME));
         clash(option, () -> ConfigBuilders.group(MOD, "clash_option"));
         clash(MOD + ":clash_group", () -> ConfigBuilders.option(MOD, "clash_group", Integer.class, STORAGE));
@@ -320,7 +320,7 @@ class ConfigBuildersTest {
 
     @Test
     void emptyPartsAreRefusedInsteadOfClashingWithEmpty() {
-        // ("", "") is EMPTY's own key, which the intern table would refuse with a message about Void that names no argument
+        // Checks the empty key.
         iae("Mod id must not be blank", () -> ConfigBuilders.page("", "", NAME));
         iae("Mod id must not be blank", () -> ConfigBuilders.group("", ""));
         iae("Mod id must not be blank", () -> ConfigBuilders.option("", "", Integer.class, STORAGE));
@@ -329,7 +329,7 @@ class ConfigBuildersTest {
 
     @Test
     void partsAreTakenVerbatim() {
-        // Ids must be the ones OptionIdentifier.create makes from the same parts or ConfigApi lookups would miss, so nothing is trimmed or folded
+        // Checks the ids match create.
         OptionIdentifier<Void> plain = ConfigBuilders.group(MOD, "verbatim").build().getId();
         OptionIdentifier<Void> upper = ConfigBuilders.group(MOD, "Verbatim").build().getId();
         OptionIdentifier<Void> padded = ConfigBuilders.group(MOD, " verbatim ").build().getId();
@@ -337,7 +337,7 @@ class ConfigBuildersTest {
         assertNotSame(plain, padded);
         assertEquals(" verbatim ", padded.getPath());
         assertSame(padded, OptionIdentifier.create(MOD, " verbatim "));
-        // Paths may nest, as the search results pages' do
+        // Checks nested paths.
         assertEquals("verbatim/nested", ConfigBuilders.group(MOD, "verbatim/nested").build().getId().getPath());
     }
 
@@ -351,17 +351,17 @@ class ConfigBuildersTest {
         assertSame(data, storage.getData());
         storage.save();
         assertEquals(1, runs.get());
-        // A Runnable has nowhere to take flags, so every form of save runs it once
+        // Checks the Runnable runs once.
         storage.save(Set.of(OptionFlag.REQUIRES_GAME_RESTART));
         storage.save(Set.of());
         assertEquals(3, runs.get());
-        // Null flags are still a caller bug, so they are refused before the action runs
+        // Checks null flags.
         npe("Flags must not be null", () -> storage.save(null));
         assertEquals(3, runs.get());
-        // The data is held, not copied, so options read later changes
+        // Checks the data is held.
         data.add("later");
         assertEquals(List.of("later"), storage.getData());
-        // Every call wraps afresh, even over the same data and action
+        // Checks a fresh wrapper.
         assertNotSame(storage, ConfigBuilders.storage(data, runs::incrementAndGet));
     }
 
@@ -396,7 +396,7 @@ class ConfigBuildersTest {
         try {
             ConfigApi.registerOption(groupId, () -> extraOption);
             ConfigApi.registerGroup(pageId, () -> extraGroup);
-            // ConfigApi keys by identity, which only works because both sides reach the same interned id
+            // Checks identity keys.
             Option<?> own = Mockito.mock(Option.class);
             assertEquals(List.of(own, extraOption), ConfigBuilders.group(MOD, "api_group").add(own).build().getOptions());
             assertEquals(List.of(extraOption), ConfigBuilders.group(groupId).build().getOptions());
@@ -443,7 +443,7 @@ class ConfigBuildersTest {
         Set<Object> distinct = Collections.newSetFromMap(new IdentityHashMap<>());
         distinct.addAll(builders);
         assertEquals(threads * rounds * 3, distinct.size());
-        // and each one carries the single interned id for its path; built here, since a builder belongs to one thread
+        // Builds one option of each kind.
         OptionIdentifier<Void> shared = OptionIdentifier.create(MOD, "race_shared");
         OptionIdentifier<Integer> option = OptionIdentifier.create(MOD, "race_shared_option", Integer.class);
         for (Object builder : builders) {
@@ -462,7 +462,7 @@ class ConfigBuildersTest {
         int threads = 9;
         ExecutorService pool = Executors.newFixedThreadPool(threads);
         try {
-            // Fresh paths each round, so every round races for the first intern
+            // Fresh paths each round.
             for (int round = 0; round < 50; round++) {
                 String path = "race_kind_" + round;
                 CountDownLatch start = new CountDownLatch(1);
@@ -494,7 +494,7 @@ class ConfigBuildersTest {
                         winners.add(won);
                     }
                 }
-                // One kind got through, every call of that kind did, every other call was refused, and the id kept the winner's type
+                // Checks the race result.
                 assertEquals(1, winners.size(), path);
                 assertEquals(threads - threads / KINDS.size(), refused, path);
                 Class<?> winner = winners.iterator().next();
@@ -539,7 +539,7 @@ class ConfigBuildersTest {
         assertEquals((long) threads * saves, runs.sum());
     }
 
-    // Builds with a no-op binding and no control widget, the two parts OptionImpl.Builder insists on
+    // Builds with a no op binding.
     private static <S, T> OptionImpl<S, T> built(OptionImpl.Builder<S, T> builder) {
         return builder.setBinding((data, value) -> { }, data -> null).setControl(option -> null).build();
     }
@@ -552,14 +552,14 @@ class ConfigBuildersTest {
         rejected(IllegalArgumentException.class, message, call);
     }
 
-    // Fails with exactly this exception and message, and leaves the intern table as it found it
+    // Checks the exception and table.
     private static void rejected(Class<? extends RuntimeException> type, String message, Executable call) {
         int before = interned();
         assertEquals(message, assertThrowsExactly(type, call).getMessage());
         assertEquals(before, interned(), message);
     }
 
-    // Refused by the intern table, which names the id already holding the path, and nothing new is interned
+    // Checks the refusal.
     private static void clash(String id, Executable call) {
         int before = interned();
         String message = assertThrowsExactly(IllegalArgumentException.class, call).getMessage();
@@ -567,13 +567,13 @@ class ConfigBuildersTest {
         assertEquals(before, interned(), message);
     }
 
-    // Every id interned so far in this JVM; tests that read it run on one thread
+    // Returns every interned id.
     private static int interned() {
         Map<?, ? extends Map<?, ?>> mods = Statics.get(OptionIdentifier.class, "IDENTIFIERS");
         return mods.values().stream().mapToInt(Map::size).sum();
     }
 
-    // Type parameters, generic return type, name and generic parameters, as a mod's source sees the method
+    // Returns the generic method shape.
     private static String signature(Method method) {
         TypeVariable<Method>[] variables = method.getTypeParameters();
         String parameters = variables.length == 0 ? "" : Arrays.stream(variables).map(TypeVariable::getName).collect(Collectors.joining(", ", "<", "> "));
@@ -581,7 +581,7 @@ class ConfigBuildersTest {
                 + Arrays.stream(method.getGenericParameterTypes()).map(Type::getTypeName).collect(Collectors.joining(", ", "(", ")"));
     }
 
-    // Waits for a task and rethrows what failed inside it, so a broken assertion in a thread reads like any other
+    // Waits for a task and rethrows its failure.
     private static <T> T join(Future<T> task) throws Exception {
         try {
             return task.get(60, TimeUnit.SECONDS);

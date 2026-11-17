@@ -5,9 +5,6 @@ import com.bdmajora.equilibrium.config.EquilibriumConfig;
 import com.bdmajora.equilibrium.config.EquilibriumOptions;
 import com.bdmajora.impetus.api.options.structure.Option;
 import com.bdmajora.impetus.api.options.structure.OptionFlag;
-import com.bdmajora.impetus.api.options.structure.OptionGroup;
-import com.bdmajora.impetus.api.options.structure.OptionImpact;
-import com.bdmajora.impetus.api.options.structure.OptionPage;
 import com.bdmajora.testing.Mixins;
 import com.bdmajora.testing.OptionPages;
 import net.minecraft.command.ICommandSender;
@@ -34,51 +31,45 @@ class EquilibriumGuiTest {
     }
 
     @Test
-    void pagesMirrorTheOptionTreeAndWriteThroughToTheConfig() throws Exception {
+    void theMasterSwitchStopsEveryPatchAndKeepsTheKeysBelowIt() throws Exception {
         Path file = dir.resolve("gui.properties");
         Equilibrium.setConfig(EquilibriumConfig.load(file));
-        List<OptionPage> pages = EquilibriumOptionPages.pages();
-        assertEquals(3, pages.size());
-        assertEquals("page.world", pages.get(0).getId().getPath());
-        assertEquals("page.entities", pages.get(1).getId().getPath());
-        assertEquals("page.internals", pages.get(2).getId().getPath());
-        int toggles = 0;
-        Option<?> raycast = null;
-        for (OptionPage page : pages) {
-            for (OptionGroup group : page.getGroups()) {
-                assertTrue(group.getId().getPath().startsWith("group."));
-                for (Option<?> option : group.getOptions()) {
-                    toggles++;
-                    OptionPages.exercise(option);
-                    assertTrue(option.getFlags().contains(OptionFlag.REQUIRES_GAME_RESTART));
-                    if (option.getId().getPath().equals("world_raycast")) {
-                        raycast = option;
-                    }
-                    String category = EquilibriumOptions.get("mixin." + option.getId().getPath().replace('_', '.')) == null
-                            ? null : EquilibriumOptions.get("mixin." + option.getId().getPath().replace('_', '.')).category();
-                    if (category != null) {
-                        OptionImpact expected = switch (category) {
-                            case "world" -> OptionImpact.HIGH;
-                            case "entity", "math", "worldgen", "advancements" -> OptionImpact.MEDIUM;
-                            case "ai", "alloc", "block", "chunk" -> OptionImpact.LOW;
-                            default -> null;
-                        };
-                        assertEquals(expected, option.getImpact(), option.getId().getPath());
-                    }
-                }
-            }
+        EquilibriumConfig config = Equilibrium.config();
+        Option<Boolean> logic = EquilibriumOptionPages.gameLogic();
+        OptionPages.exercise(logic);
+        assertTrue(logic.getFlags().contains(OptionFlag.REQUIRES_GAME_RESTART));
+        assertTrue(logic.getValue());
+
+        // Off stops every patch and leaves every key below as it was.
+        config.setOptionEnabled("mixin.world.raycast", false);
+        logic.setValue(false);
+        assertTrue(logic.hasChanged());
+        logic.applyChanges();
+        assertFalse(config.isEnabled());
+        for (String category : EquilibriumOptions.categories()) {
+            assertFalse(config.isOptionEnabled("mixin." + category), category);
         }
-        assertEquals(EquilibriumOptions.entries().size(), toggles);
-        assertNotNull(raycast);
-        @SuppressWarnings("unchecked")
-        Option<Boolean> toggle = (Option<Boolean>) raycast;
-        assertTrue(toggle.getValue());
-        toggle.setValue(false);
-        assertTrue(toggle.hasChanged());
-        toggle.applyChanges();
-        assertFalse(Equilibrium.config().isOptionEnabled("mixin.world.raycast"));
-        toggle.getStorage().save();
-        assertTrue(Files.readString(file).contains("\nmixin.world.raycast=false\n"));
+        assertEquals("enabled", config.getEffectiveOptionForMixin("world.raycast.SomeMixin").getName());
+        assertFalse(config.getEffectiveOptionForMixin("ai.goal_selector.SomeMixin").isEnabled());
+        assertTrue(config.getOption("mixin.world").isEnabled());
+        logic.getStorage().save();
+        String text = Files.readString(file);
+        assertTrue(text.contains("\nenabled=false\n"));
+        assertFalse(text.contains("\nmixin.world=false\n"));
+        assertTrue(text.contains("\nmixin.world.raycast=false\n"));
+
+        // The next launch reads the master key back.
+        EquilibriumConfig reloaded = EquilibriumConfig.load(file);
+        assertFalse(reloaded.isEnabled());
+        assertFalse(reloaded.isOptionEnabled("mixin.world"));
+
+        logic.setValue(true);
+        logic.applyChanges();
+        assertTrue(config.isOptionEnabled("mixin.world"));
+        assertTrue(config.isOptionEnabled("mixin.ai.goal_selector"));
+        assertFalse(config.isOptionEnabled("mixin.world.raycast"));
+        assertTrue(config.getEffectiveOptionForMixin("ai.goal_selector.SomeMixin").isEnabled());
+        assertNotNull(Mixins.construct(EquilibriumOptionPages.class));
     }
 
     @Test

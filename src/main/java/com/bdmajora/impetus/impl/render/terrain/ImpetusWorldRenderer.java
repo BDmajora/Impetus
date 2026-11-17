@@ -104,7 +104,7 @@ public class ImpetusWorldRenderer extends SimpleWorldRenderer<WorldClient, Vinta
         return VintageRenderSectionManager.create(chooseVertexType(), this.world, renderDistance, commandList, null);
     }
 
-    // Returns whether rebuild.
+    // Returns whether a ported pack the mesh backend could not build sends terrain back to OpenGL on the next frame.
     @Override
     protected boolean needsRebuild() {
         return this.meshShading != null && this.meshShading.hasFailed();
@@ -211,7 +211,7 @@ public class ImpetusWorldRenderer extends SimpleWorldRenderer<WorldClient, Vinta
         return count;
     }
 
-    // Returns whether entity visible.
+    // Returns whether an entity's section was visible in the last terrain search.
     public boolean isEntityVisible(Entity entity) {
         if (!ImpetusVintage.options().performance.useEntityCulling || this.renderSectionManager.isInShadowPass()) {
             return true;
@@ -226,14 +226,14 @@ public class ImpetusWorldRenderer extends SimpleWorldRenderer<WorldClient, Vinta
         return this.isBoxVisible(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
     }
 
-    // Returns whether the entity overlaps a section the shadow search kept, under the same switch as the main pass.
+    // Returns whether the entity overlaps a section the shadow search kept.
     @Override
     public boolean isShadowCasterVisible(Entity entity) {
         if (!ImpetusVintage.options().performance.useEntityCulling) {
             return true;
         }
 
-        // Called inside the shadow pass, so the lookup reads the shadow search's sections
+        // Reads the entity's render box.
         AxisAlignedBB box = entity.getRenderBoundingBox();
         return this.isBoxVisible(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
     }

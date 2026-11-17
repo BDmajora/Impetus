@@ -99,7 +99,7 @@ class TabsTest {
         assertTrue(draw.strings.contains("-"));
 
         FakeInteractionContext ctx = new FakeInteractionContext();
-        // Rows: impetus header 0-30, General 30-48, Quality 48-66, extras header 66-96, Extras 96-114, Refused 114-132
+        // Row positions.
         assertTrue(frame.mouseClicked(ctx, 10, 57, 0));
         assertEquals("Quality", selected.get().toString());
         assertEquals(1, switches.get());
@@ -148,7 +148,7 @@ class TabsTest {
         assertTrue(header.mouseClicked(new FakeInteractionContext(), 5, 5, 0));
         assertEquals(1, toggles.get());
 
-        // Focused, it is washed as when hovered and outlined last in the mod's accent
+        // Checks the focused look.
         String accent = Integer.toHexString(draw.getModAccentColor("impetus"));
         FakeDrawContext focused = new FakeDrawContext();
         header.setFocused(true);
@@ -160,7 +160,7 @@ class TabsTest {
         assertEquals(2, toggles.get());
     }
 
-    // What the frame's focused control is, by kind and label
+    // Returns the focused control.
     private static String focus(TabFrame frame) {
         Focusable focused = frame.getFocusedControl();
         if (focused instanceof TabHeaderWidget) {
@@ -193,14 +193,14 @@ class TabsTest {
             FakeInteractionContext ctx = new FakeInteractionContext();
             assertEquals("null", focus(frame));
 
-            // The sidebar in order, then the rows of the page shown, which is General until another is picked
+            // Checks the Tab order.
             List<String> order = new ArrayList<>();
             while (frame.moveFocus(true)) {
                 order.add(focus(frame));
             }
             assertEquals(List.of("header", "General", "Quality", "header", "Extras", "General0", "General1"), order);
 
-            // Enter on Quality switches to it, and the rebuilt Quality entry has the focus
+            // Checks Enter on a page.
             for (int i = 0; i < 3; i++) {
                 assertTrue(frame.dispatchKeyTyped(ctx, '\t', Keys.TAB));
             }
@@ -212,7 +212,7 @@ class TabsTest {
             assertNotSame(before, frame.getFocusedControl());
             assertEquals(1, ctx.clicks);
 
-            // Shift+Tab back to the group header, where Space folds the group and the header keeps the focus
+            // Checks folding.
             ctx.held.add(InteractionContext.SpecialKey.SHIFT);
             assertTrue(frame.dispatchKeyTyped(ctx, '\t', Keys.TAB));
             assertTrue(frame.dispatchKeyTyped(ctx, '\t', Keys.TAB));
@@ -227,7 +227,7 @@ class TabsTest {
             assertTrue(draw.strings.contains("+"));
             assertFalse(draw.strings.contains("General"));
 
-            // The folded pages are passed over: on to the second header, then the rows of Quality, and round again
+            // Checks folded pages.
             order.clear();
             for (int i = 0; i < 5; i++) {
                 assertTrue(frame.dispatchKeyTyped(ctx, '\t', Keys.TAB));
@@ -235,12 +235,12 @@ class TabsTest {
             }
             assertEquals(List.of("header", "Extras", "Quality0", "Quality1", "header"), order);
 
-            // Space unfolds it again, still focused
+            // Checks unfolding.
             assertTrue(frame.dispatchKeyTyped(ctx, ' ', Keys.SPACE));
             assertFalse(collapsed.contains("keys_a"));
             assertEquals("header", focus(frame));
 
-            // A click on an entry rebuilds the sidebar under it, and the entry it landed on is gone, so nothing keeps the focus; rows: header 0-30, General 30-48
+            // Checks a click on an entry.
             assertTrue(frame.mouseClicked(ctx, 10, 39, 0));
             assertEquals("General", selected.get().toString());
             assertEquals("null", focus(frame));

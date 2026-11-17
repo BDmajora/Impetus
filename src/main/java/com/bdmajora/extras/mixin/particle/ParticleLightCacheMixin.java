@@ -33,15 +33,15 @@ public abstract class ParticleLightCacheMixin implements LightCachedParticle {
     @Shadow
     protected double posZ;
 
-    // Field cached light added to the target.
+    // Combined light sampled once this tick.
     @Unique
     private int impetus$cachedLight;
 
-    // Field cached light tick added to the target.
+    // Tick the light was sampled on or -1 before the first sample.
     @Unique
     private int impetus$cachedLightTick = -1;
 
-    // Handles sample light.
+    // Samples the combined light at the particle once per tick.
     @Override
     public void impetus$sampleLight() {
         BlockPos pos = new BlockPos(this.posX, this.posY, this.posZ);

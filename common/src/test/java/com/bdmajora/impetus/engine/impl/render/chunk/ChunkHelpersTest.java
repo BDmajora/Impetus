@@ -48,7 +48,7 @@ class ChunkHelpersTest {
     void colourWritersFoldAoDifferently() {
         int white = ColorABGR.pack(255, 255, 255, 255);
         assertEquals(ChunkColorWriter.IMPETUS, ChunkColorWriter.active());
-        // 0.5 becomes the byte 127, and (255 * 127 + 255) >> 8 rounds to 127
+        // Checks the 0.5 byte.
         assertEquals(ColorABGR.pack(127, 127, 127, 255), ChunkColorWriter.IMPETUS.writeColor(white, 0.5f));
         ChunkColorWriter.SeparateAoState.set(true);
         assertTrue(ChunkColorWriter.SeparateAoState.isEnabled());
@@ -60,7 +60,7 @@ class ChunkHelpersTest {
     void matricesCopyFromBuffers() {
         Matrix4f projection = new Matrix4f().perspective(1f, 1f, 0.1f, 10f);
         Matrix4f modelView = new Matrix4f().translate(1, 2, 3);
-        // JOML reads NIO buffers through Unsafe, so a heap buffer here takes the JVM down
+        // Uses a direct buffer.
         FloatBuffer p = ByteBuffer.allocateDirect(64).order(ByteOrder.nativeOrder()).asFloatBuffer();
         FloatBuffer m = ByteBuffer.allocateDirect(64).order(ByteOrder.nativeOrder()).asFloatBuffer();
         projection.get(p);

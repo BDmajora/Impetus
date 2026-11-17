@@ -4,32 +4,32 @@ import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Objects;
 
-// Stores a mod's id and the accent colour for its config screen, created through the nested Builder
+// A mod's id and the accent colour of its config screen.
 public record ConfigTheme(String modId, int accentColor) {
     // Solid teal is set as the default accent colour
     public static final int DEFAULT_ACCENT_COLOR = 0xFF00CBCB;
 
-    // Kept as a constant because withUpperCase() makes a new format on every call
+    // Upper case hex format.
     private static final HexFormat UPPER_HEX = HexFormat.of().withUpperCase();
 
     // Runs on every new theme to normalise the id and correct a zero alpha before the values are stored
     public ConfigTheme {
         modId = canonicalModId(modId);
 
-        // An alpha of 00 makes the colour invisible, so it is set to FF
+        // Sets the alpha to FF when it is 00.
         if ((accentColor & 0xFF000000) == 0) {
             accentColor |= 0xFF000000;
         }
     }
 
-    // Returns a builder for this mod, where the colour is set before calling build()
+    // Returns a builder for this mod.
     public static Builder builder(String modId) {
         return new Builder(modId);
     }
 
-    // Rejects null or blank ids, otherwise trims spaces and lower-cases
+    // Returns the trimmed lower case id and rejects null or blank ids.
     public static String canonicalModId(String modId) {
-        // Throws straight away if the id is null, before any characters are read
+        // Rejects a null id.
         Objects.requireNonNull(modId, "Mod id must not be null");
         String canonical = canonicalModIdOrNull(modId);
         // Null comes back only when every character was whitespace or the id was empty
@@ -39,38 +39,36 @@ public record ConfigTheme(String modId, int accentColor) {
         return canonical;
     }
 
-    // Same rules as canonicalModId but answers null for a blank id, so the registry's lookup needs neither isBlank() nor an exception
+    // Returns the canonical id or null for a blank id.
     static String canonicalModIdOrNull(String modId) {
-        // Walks in from both ends past the same whitespace isBlank() and strip() look for, so the id is scanned once
-        // start and end mark the part of the id that is kept, beginning as the whole string
+        // Walks start and end in past the whitespace at both ends.
         int start = 0;
         int end = modId.length();
         // Moves start forward past any leading whitespace
         while (start < end && Character.isWhitespace(modId.charAt(start))) {
             start++;
         }
-        // If start reached the end, every character was whitespace or the id was empty
+        // Returns null when the id was empty or all whitespace.
         if (start == end) {
             return null;
         }
-        // Moves end back past any trailing whitespace, with no bounds check needed since a non-whitespace character is known to exist
+        // Moves end back past the trailing whitespace.
         while (Character.isWhitespace(modId.charAt(end - 1))) {
             end--;
         }
         // Checks each kept character to see whether lower-casing would change anything
         for (int i = start; i < end; i++) {
             char c = modId.charAt(i);
-            // Upper-case ASCII or anything outside ASCII goes to the JDK, with ROOT so the system language cannot change the result
+            // Lower cases the id through the JDK with ROOT when it holds upper case or non ASCII characters.
             if (c >= 0x80 || (c >= 'A' && c <= 'Z')) {
                 return modId.substring(start, end).toLowerCase(Locale.ROOT);
             }
         }
-        // Every kept character is already lower-case ASCII, so only the trim is applied
-        // substring returns the same string when nothing was trimmed, so an id that is already clean allocates nothing
+        // Returns the trimmed id.
         return modId.substring(start, end);
     }
 
-    // Prints the colour as eight hex digits instead of a negative number, joined with + because formatted() parses its pattern on every call
+    // Prints the colour as eight hex digits.
     @Override
     public String toString() {
         return "ConfigTheme[modId=" + this.modId + ", accentColor=0x" + UPPER_HEX.toHexDigits(this.accentColor) + "]";
@@ -81,7 +79,7 @@ public record ConfigTheme(String modId, int accentColor) {
         private final String modId;
         private int accentColor = DEFAULT_ACCENT_COLOR;
 
-        // Validates and normalises the id when the builder is created, so invalid ids are rejected before build()
+        // Validates and normalises the id.
         private Builder(String modId) {
             this.modId = canonicalModId(modId);
         }
@@ -92,7 +90,7 @@ public record ConfigTheme(String modId, int accentColor) {
             return this;
         }
 
-        // Creates the ConfigTheme; the record re-checks the stored id, which is already clean, so an ASCII id costs one scan and no copy
+        // Creates the ConfigTheme.
         public ConfigTheme build() {
             return new ConfigTheme(this.modId, this.accentColor);
         }

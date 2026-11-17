@@ -51,7 +51,7 @@ class GlUniformFloatTest {
     // Shared GL mock that the reset extension clears before each test
     private final LWJGLService gl = TestGl.gl();
 
-    // Float uniform that records every setFloat call instead of calling GL
+    // Float uniform that records calls.
     private static final class Recording extends GlUniformFloat {
         // Values in the order setFloat received them
         private final List<Float> values = new ArrayList<>();

@@ -7,9 +7,9 @@ import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFacing;
 
 import static com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFacing.*;
 
-// Choices of the vintage diffuse provider setting.
+// Directional shading of 1.12 faces.
 public enum VintageDiffuseProvider implements DiffuseProvider {
-    // Value that selects instance.
+    // The one instance.
     INSTANCE;
 
     // Flag set when directional shading is off.
@@ -39,7 +39,7 @@ public enum VintageDiffuseProvider implements DiffuseProvider {
         };
     }
 
-    // Creates from the enum facing.
+    // Returns the quad facing of a 1.12 face.
     public static ModelQuadFacing fromEnumFacing(EnumFacing facing) {
         return switch (facing) {
             case DOWN  -> NEG_Y;
@@ -51,7 +51,7 @@ public enum VintageDiffuseProvider implements DiffuseProvider {
         };
     }
 
-    // Creates from the enum facing or unassigned.
+    // Returns the quad facing of a 1.12 face or UNASSIGNED for none.
     public static ModelQuadFacing fromEnumFacingOrUnassigned(EnumFacing facing) {
         if (facing == null) {
             return UNASSIGNED;

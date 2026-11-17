@@ -98,7 +98,7 @@ class PassRunnerTest {
         verify(pass.blendState).apply(new int[]{0, 1});
         // colortex9 is beyond the cached units and still bound for the pass
         assertEquals(409, this.gl.textures[9]);
-        // A legacy pass has its own matrices; only modern ones get the fixed-function ortho
+        // Checks the ortho matrix.
         this.gl.gl11.verify(() -> GL11.glOrtho(anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble()), never());
     }
 
@@ -135,7 +135,7 @@ class PassRunnerTest {
             runner.dispatch(List.of(compute(), compute(), compute()));
             verify(TestGl.gl(), times(1)).glMemoryBarrier(GL42.GL_ALL_BARRIER_BITS);
             Mockito.clearInvocations(TestGl.gl());
-            // Nothing dispatched, nothing to publish
+            // Checks an empty dispatch.
             runner.dispatch(List.of());
             verify(TestGl.gl(), never()).glMemoryBarrier(anyInt());
         } finally {

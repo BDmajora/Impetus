@@ -118,7 +118,7 @@ class UniformSurfaceTest {
         return table.get(name).get();
     }
 
-    // Every registered supplier, twice with a frame in between so the per-frame caches and the previous-frame matrices roll
+    // Resolves every supplier over two frames.
     private Map<String, CustomUniformValue> resolveAll(MockedStatic<GL11> gl11) {
         Map<String, CustomUniformValue> values = new TreeMap<>();
         for (int pass = 0; pass < 2; pass++) {
@@ -175,7 +175,7 @@ class UniformSurfaceTest {
         assertEquals(0.0F, resolve("pixelSizeY").x());
     }
 
-    // A player standing in water in an End-like dimension, riding a boat, lit, hurt, burning and holding two lights
+    // World of the uniform tests.
     private WorldClient world;
     private EntityPlayerSP player;
     private WorldProvider provider;
@@ -344,7 +344,7 @@ class UniformSurfaceTest {
         WorldRenderingSettings.setDynamicHandLight(false);
         EyeBrightnessTracker.setHalfLives(0.0F, 0.0F, 0.0F);
         Statics.set(UmbraShadowRenderer.class, "shadowPassActive", true);
-        // A singular projection inverts to identity instead of NaN
+        // Checks a singular projection.
         CapturedRenderingState.INSTANCE.setGbufferProjection(new Matrix4f().zero());
         CapturedRenderingState.INSTANCE.setShadowProjection(new Matrix4f().zero());
         Map<String, CustomUniformValue> v;
@@ -377,7 +377,7 @@ class UniformSurfaceTest {
             resolve("biome_precipitation");
         }
         assertTrue(categories.size() > 12, categories.toString());
-        // A block the crosshair points at in an unloaded chunk, or no block at all, has no id
+        // Checks a block without an id.
         when(world.isBlockLoaded(any())).thenReturn(false);
         assertEquals(0.0F, resolve("currentSelectedBlockId").x());
         client.objectMouseOver = new RayTraceResult(Mc.uninitialized(EntityBoat.class));
@@ -397,7 +397,7 @@ class UniformSurfaceTest {
         player.lastTickPosX = 40000;
         notifier.onNewFrame();
         assertEquals(2, frames[0]);
-        // The shader-facing float is pulled back inside the walk range, the unshifted value is not
+        // Checks the camera position walk range.
         assertTrue(Math.abs(CameraUniforms.getCurrentCameraPosition().x) < 30000.0, String.valueOf(CameraUniforms.getCurrentCameraPosition().x));
         assertEquals(40000.0, CameraUniforms.getCurrentCameraPositionUnshifted().x);
         assertEquals(40000.0, CameraUniforms.getCurrentRenderOriginUnshifted().x);
@@ -416,7 +416,7 @@ class UniformSurfaceTest {
         enterWorld();
         CelestialUniforms.setSunPathRotation(30.0F);
         assertEquals(30.0F, CelestialUniforms.getSunPathRotation());
-        // Morning casts from the rising sun, midnight from the moon overhead; either way the shadow light is up
+        // Checks the shadow light is up.
         assertTrue(CelestialUniforms.getShadowLightPositionInWorldSpace().y > 0);
         when(world.getCelestialAngle(anyFloat())).thenReturn(0.5F);
         assertEquals(86.6F, CelestialUniforms.getShadowLightPositionInWorldSpace().y, 0.1F);
@@ -477,7 +477,7 @@ class UniformSurfaceTest {
         timer.beginFrame(1_000_000_000L);
         assertEquals(1.0F, timer.getLastFrameTime());
         assertEquals(1.0F, timer.getFrameTimeCounter());
-        // Past an hour the counter wraps to keep float precision
+        // Checks the counter wraps.
         timer.beginFrame(3_602_000_000_000L);
         assertTrue(timer.getFrameTimeCounter() < 3600.0F);
         assertEquals(3, timer.getFrameCounter());

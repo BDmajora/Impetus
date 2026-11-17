@@ -2,16 +2,16 @@ package com.bdmajora.impetus.umbra.shaderpack;
 
 import java.util.function.BooleanSupplier;
 
-// Choices of the optional boolean setting.
+// A shaders.properties boolean that may be unset.
 public enum OptionalBoolean {
-    // Value that selects default.
+    // Not set by the pack.
     DEFAULT,
-    // Value that selects false.
+    // Set to false.
     FALSE,
-    // Value that selects true.
+    // Set to true.
     TRUE;
 
-    // Ors the else.
+    // Returns the value or the default when it is unset.
     public boolean orElse(boolean defaultValue) {
         if (this == DEFAULT) {
             return defaultValue;
@@ -20,7 +20,7 @@ public enum OptionalBoolean {
         return this == TRUE;
     }
 
-    // Ors the else get.
+    // Returns the value or the supplier's answer when it is unset.
     public boolean orElseGet(BooleanSupplier defaultValue) {
         if (this == DEFAULT) {
             return defaultValue.getAsBoolean();

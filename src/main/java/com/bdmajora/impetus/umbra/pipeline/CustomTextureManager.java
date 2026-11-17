@@ -15,7 +15,6 @@ import com.bdmajora.impetus.umbra.shaderpack.texture.CustomTextureData;
 import com.bdmajora.impetus.umbra.shaderpack.texture.TextureStage;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
-import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL30;
 
 import java.io.IOException;
@@ -25,7 +24,6 @@ import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -261,7 +259,7 @@ public class CustomTextureManager {
             int pixelType = pixelType(data.getPixelType());
             requireEnoughPixels(data, target);
             int texture = LWJGL.glGenTextures();
-            // Owns the texture before the upload so a failure still deletes it
+            // Adds the texture to the owned list before the upload.
             this.ownedRawTextures.add(texture);
 
             ByteBuffer pixels = ByteBuffer.allocateDirect(data.getContent().length).order(ByteOrder.nativeOrder());

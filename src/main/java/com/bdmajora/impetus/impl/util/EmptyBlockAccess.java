@@ -11,9 +11,9 @@ import net.minecraft.world.WorldType;
 import net.minecraft.world.biome.Biome;
 import org.jetbrains.annotations.Nullable;
 
-// Choices of the empty block access setting.
+// Block access that reads air everywhere with no light and the plains biome.
 public enum EmptyBlockAccess implements IBlockAccess {
-    // Value that selects instance.
+    // The one instance.
     INSTANCE;
 
     // Air block state.
@@ -37,7 +37,7 @@ public enum EmptyBlockAccess implements IBlockAccess {
         return AIR;
     }
 
-    // Returns whether air block.
+    // Returns true for every position.
     @Override
     public boolean isAirBlock(BlockPos pos) {
         return true;
@@ -61,7 +61,7 @@ public enum EmptyBlockAccess implements IBlockAccess {
         return WorldType.DEFAULT;
     }
 
-    // Returns whether side solid.
+    // Returns false for every side.
     @Override
     public boolean isSideSolid(BlockPos blockPos, EnumFacing enumFacing, boolean bl) {
         return false;

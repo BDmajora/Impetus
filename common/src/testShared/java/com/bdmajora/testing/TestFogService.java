@@ -4,7 +4,7 @@ import com.bdmajora.impetus.engine.impl.render.chunk.fog.FogService;
 import com.bdmajora.impetus.engine.impl.render.chunk.shader.ChunkFogMode;
 import com.bdmajora.impetus.engine.impl.render.chunk.shader.ChunkShaderComponent;
 
-// The fog state the chunk shaders read in tests, found through META-INF/services; every value is a settable static
+// Fog state for tests.
 public final class TestFogService implements FogService {
     public static float end = 100f, start = 10f, density = 0.05f, cutoff = 1f;
     public static int shape;

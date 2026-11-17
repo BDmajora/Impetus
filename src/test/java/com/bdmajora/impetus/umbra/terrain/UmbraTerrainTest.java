@@ -122,7 +122,7 @@ class UmbraTerrainTest {
         ChunkShaderOptions solid = options(false, false);
         ChunkShaderOptions cutout = options(false, true);
         ChunkShaderOptions water = options(true, false);
-        // No pack: nothing to override
+        // Checks nothing is overridden without a pack.
         assertFalse(UmbraTerrainProgramOverride.areShadersActive());
         assertNull(UmbraTerrainProgramOverride.getProgramOverride(solid));
         assertNull(UmbraTerrainProgramOverride.getShadowProgramOverride(solid));
@@ -131,7 +131,7 @@ class UmbraTerrainTest {
         sources.put(ShaderPack.PROPERTIES_PATH, String.join("\n",
                 "alphaTest.gbuffers_terrain_cutout = GREATER 0.2",
                 "blend.gbuffers_water = SRC_ALPHA ONE_MINUS_SRC_ALPHA"));
-        // Legacy terrain, a modern water program, and a legacy shadow program covering every shadow variant
+        // Adds the terrain and water and shadow programs.
         sources.put(path("/gbuffers_terrain.vsh"), LEGACY_VERTEX);
         sources.put(path("/gbuffers_terrain.fsh"), LEGACY_FRAGMENT);
         sources.put(path("/gbuffers_water.vsh"), MODERN_VERTEX);
@@ -151,7 +151,7 @@ class UmbraTerrainTest {
         // The pack's own attribute layout is bound by name in the vertex type's order
         verify(TestGl.gl(), Mockito.atLeastOnce()).glBindAttribLocation(anyInt(), eq(0), any(CharSequence.class));
 
-        // Shadow programs are cached per variant, each falling back to the plain shadow program
+        // Checks the shadow program cache.
         GlProgram<ChunkShaderInterface> shadowSolid = UmbraTerrainProgramOverride.getShadowProgramOverride(solid);
         assertSame(shadowSolid, UmbraTerrainProgramOverride.getShadowProgramOverride(solid));
         GlProgram<ChunkShaderInterface> shadowCutout = UmbraTerrainProgramOverride.getShadowProgramOverride(cutout);
@@ -160,7 +160,7 @@ class UmbraTerrainTest {
         UmbraTerrainProgramOverride.destroyShadowPrograms();
         verify(TestGl.gl(), Mockito.atLeast(2)).glDeleteProgram(anyInt());
 
-        // A pack without the program, one that disables it, or a program the driver rejects, leaves the engine's own
+        // Checks the cases that keep the engine's program.
         Mixins.set(Umbra.class, "currentPack", new ShaderPack(Map.of(ShaderPack.PROPERTIES_PATH, "")));
         assertNull(UmbraTerrainProgramOverride.getProgramOverride(solid));
         Mixins.set(Umbra.class, "currentPack", new ShaderPack(Map.of(ShaderPack.PROPERTIES_PATH, "program.gbuffers_terrain.enabled = false",
@@ -175,7 +175,7 @@ class UmbraTerrainTest {
 
     @Test
     void theShaderInterfaceFeedsTheGbufferAndTheEnginesPerDrawState() {
-        // Every uniform the prologue declares is present, and the block sampler under its second spelling
+        // Checks the prologue uniforms.
         ShaderBindingContext context = mock(ShaderBindingContext.class);
         when(context.bindUniformIfPresent(any(), any())).thenAnswer(invocation -> {
             String name = invocation.getArgument(0);
@@ -187,7 +187,7 @@ class UmbraTerrainTest {
         ProgramBlendState blend = ProgramBlendState.empty();
         ProgramAlphaTest alpha = ProgramAlphaTest.empty();
         UmbraTerrainShaderInterface shader = new UmbraTerrainShaderInterface(context, new int[] {0, 2}, blend, alpha);
-        // The prologue's moving-light block has no binding qualifier, so the interface points it at its binding
+        // Checks the moving light block binding.
         verify(context).bindUniformBlockIfPresent(com.bdmajora.impetus.engine.impl.render.chunk.shader.TerrainDynamicLights.BLOCK_NAME,
                 com.bdmajora.impetus.engine.impl.render.chunk.shader.TerrainDynamicLights.BINDING);
         shader.setProjectionMatrix(new Matrix4f());
@@ -211,7 +211,7 @@ class UmbraTerrainTest {
         shader.restoreState();
         assertEquals(GlPrimitiveType.TRIANGLES, shader.getPrimitiveType());
 
-        // With one, terrain lands in the gbuffer under the program's draw buffers, water with OptiFine's blend restored first
+        // Checks the gbuffer draw state.
         UmbraRenderingPipeline pipeline = mock(UmbraRenderingPipeline.class);
         Mixins.set(Umbra.class, "renderingPipeline", pipeline);
         shader.setShadowSamplerKinds(ShadowSamplerKinds.ALL_COMPARE);
@@ -230,7 +230,7 @@ class UmbraTerrainTest {
         shader.restoreState();
         verify(pipeline, times(1)).afterTerrainDraw(anyInt());
 
-        // A program with no prologue uniforms and no samplers ignores the engine's state, and defaults its draw buffers
+        // Checks a bare program.
         ShaderBindingContext bare = mock(ShaderBindingContext.class);
         UmbraTerrainShaderInterface plain = new UmbraTerrainShaderInterface(bare, null, blend, alpha);
         plain.setProjectionMatrix(new Matrix4f());
@@ -249,7 +249,7 @@ class UmbraTerrainTest {
         assertTrue(ImpetusTerrainTransformer.transformFragmentShaderModern(
                 MODERN_FRAGMENT.replace("color = ", "gl_FragData[0] = ").replace("layout(location = 0) out vec4 color;", ""),
                 new int[] {0}).contains("discard"));
-        // Modern attributes are adapted to the type the pack declared them with, and their declarations removed
+        // Checks modern attribute adaptation.
         String modern = ImpetusTerrainTransformer.transformVertexShaderModern(MODERN_VERTEX);
         assertTrue(modern.contains("#define mc_Entity (iris_EntityFull.xyz)"), modern);
         assertTrue(modern.contains("#define mc_midTexCoord (iris_MidTexFull.xy)"), modern);
@@ -277,7 +277,7 @@ class UmbraTerrainTest {
                 ImpetusTerrainTransformer.transformRasterVertexShader(LEGACY_VERTEX, false)}) {
             assertTrue(vertex.contains(block), vertex);
             assertTrue(vertex.contains(applied), vertex);
-            // Declared once, ahead of the main that calls it
+            // Checks the function is declared once.
             assertEquals(vertex.indexOf("float impetus_dynamicLightLevel("), vertex.lastIndexOf("float impetus_dynamicLightLevel("));
             assertTrue(vertex.indexOf(block) < vertex.lastIndexOf("\nvoid main() {\n"));
         }
@@ -300,11 +300,11 @@ class UmbraTerrainTest {
             int main = raster.lastIndexOf("\nvoid main() {\n");
             assertTrue(raster.indexOf("    _umbra_unpackVertex();\n", main) > main, raster);
             assertTrue(raster.indexOf("    _umbra_unpackVertex();\n", main) < raster.indexOf("uint lightData = a_LightCoord;", main), raster);
-            // The decode sits ahead of main, once
+            // Checks the decode is declared once.
             assertEquals(raster.indexOf("void _umbra_unpackVertex() {"), raster.lastIndexOf("void _umbra_unpackVertex() {"));
             assertTrue(raster.indexOf("void _umbra_unpackVertex() {") < main);
         }
-        // A pack's own main, renamed to irisMain, never receives the call
+        // Checks a pack's own main.
         String packMain = ImpetusTerrainTransformer.transformRasterVertexShader("#version 120\nvoid main() {\n}\n", false);
         assertFalse(packMain.contains("void irisMain() {\n    _umbra_unpackVertex();"), packMain);
 
@@ -353,7 +353,7 @@ class UmbraTerrainTest {
                 com.bdmajora.impetus.engine.impl.gl.shader.ShaderType.TESS_EVALUATE);
         assertFalse(evaluationWrites.contains("gl_TessCoord.x * iris_varyingsIn[0].iris_FogFragCoord"), evaluationWrites);
 
-        // mc_chunkFade: live on the camera path, a constant in the shadow pass, absent when unread
+        // Checks mc_chunkFade.
         String fading = ImpetusTerrainTransformer.transformVertexShader("#version 120\nvarying float f;\nvoid main() { f = mc_chunkFade; }", false);
         assertTrue(fading.contains("uniform float iris_ChunkAgesMs[256];"), fading);
         assertTrue(fading.contains("mc_chunkFade = iris_ChunkFadeInv <= 0.0 ? 1.0"), fading);
@@ -380,7 +380,7 @@ class UmbraTerrainTest {
         GlProgram<ChunkShaderInterface> terrain = UmbraTerrainProgramOverride.getProgramOverride(options(false, false));
         assertNotNull(terrain);
         verify(TestGl.gl()).glCreateShader(0x8E88);
-        // The real uniforms read the client; the draw-state switch is what matters here
+        // Stubs the uniforms.
         ((UmbraTerrainShaderInterface) terrain.getInterface()).setUniforms(mock(ProgramUniforms.class));
         terrain.getInterface().setupState(options(false, false).pass());
         assertEquals(GlPrimitiveType.PATCHES, terrain.getInterface().getPrimitiveType());
@@ -403,7 +403,7 @@ class UmbraTerrainTest {
             when(context.bindUniformIfPresent(any(), any())).thenAnswer(invocation ->
                     ((java.util.function.IntFunction<?>) invocation.getArgument(1)).apply(4));
             UmbraTerrainShaderInterface fading = new UmbraTerrainShaderInterface(context, null, ProgramBlendState.empty(), ProgramAlphaTest.empty(), false);
-            // Ages in milliseconds, capped at thirty seconds; no fade duration reads as a finished fade
+            // Checks the section ages.
             fading.setSectionAges(100_000_000_000L, new long[] {99_000_000_000L, 0L});
             verify(TestGl.gl()).glUniform1fv(eq(4), any(float[].class));
             verify(TestGl.gl()).glUniform1f(4, 0.0f);
@@ -419,7 +419,7 @@ class UmbraTerrainTest {
                     .setSectionAges(1_000_000L, new long[] {0L});
             verify(TestGl.gl()).glUniform1fv(eq(6), any(float[].class));
 
-            // No fade in the program: nothing uploads
+            // Checks nothing uploads without a fade.
             Mockito.clearInvocations(TestGl.gl());
             new UmbraTerrainShaderInterface(mock(ShaderBindingContext.class), null, ProgramBlendState.empty(), ProgramAlphaTest.empty())
                     .setSectionAges(1L, new long[] {0L});

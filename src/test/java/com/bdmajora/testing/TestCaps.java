@@ -8,7 +8,7 @@ import org.mockito.Mockito;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 
-// LWJGL3 capabilities for tests: GLCapabilities is final with a constructor that resolves function pointers, so one is allocated bare, every boolean flag raised, and single flags lowered reflectively (its fields are final, which reflection may still write on Java 25)
+// LWJGL3 capabilities for tests.
 public final class TestCaps {
     private TestCaps() {}
 

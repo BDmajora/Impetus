@@ -16,16 +16,12 @@ import net.minecraft.util.EnumParticleTypes;
 import net.minecraft.util.ReportedException;
 import net.minecraft.world.World;
 import net.minecraftforge.event.world.WorldEvent;
-import net.minecraftforge.fml.common.LoadController;
-import net.minecraftforge.fml.common.Loader;
-import net.minecraftforge.fml.common.ModContainer;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.io.File;
 import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.List;
@@ -41,7 +37,7 @@ class ParticlesTest {
     private final ParticleClassRegistry registry = ParticleClassRegistry.getInstance();
     private ExtrasConfig config;
 
-    // A particle class outside net.minecraft, which is what modded means to the ticker and the registry
+    // Particle class outside net.minecraft.
     static class ModdedParticle extends Particle {
         ModdedParticle(World world) {
             super(world, 0, 0, 0);
@@ -64,8 +60,8 @@ class ParticlesTest {
         Mc.client();
         config = new ExtrasConfig();
         Mixins.set(Extras.class, "config", config);
-        // The registry is one per client, so each test starts it from nothing
-        for (String field : new String[] {"discoveredClasses", "classModIds", "factoryModIds", "disabledClasses", "seenClasses"}) {
+        // Clears the registry.
+        for (String field : new String[] {"discoveredClasses", "disabledClasses", "seenClasses"}) {
             Object value = Mixins.get(registry, field);
             if (value instanceof Map<?, ?> map) {
                 map.clear();
@@ -73,7 +69,6 @@ class ParticlesTest {
                 ((java.util.Collection<?>) value).clear();
             }
         }
-        Mixins.set(registry, "sourceToModId", null);
         registry.markClean();
     }
 
@@ -87,7 +82,7 @@ class ParticlesTest {
 
     @Test
     void namedSwitchesFilterParticlesByVanillaId() {
-        // Everything passes with the defaults, including ids no switch governs and ids past the table
+        // Checks the defaults.
         for (EnumParticleTypes type : EnumParticleTypes.values()) {
             assertTrue(ParticleFilters.isAllowed(type.getParticleID()), type.name());
         }
@@ -118,42 +113,30 @@ class ParticlesTest {
         assertNotNull(Mixins.construct(ParticleFilters.class));
     }
 
+    // Returns the display name recorded for a class or null.
+    private String discoveredName(String className) {
+        for (String entry : registry.getDiscoveredClassesArray()) {
+            if (entry.startsWith(className + "|")) {
+                return entry.substring(className.length() + 1);
+            }
+        }
+        return null;
+    }
+
     @Test
-    void particleClassesAreDiscoveredNamedAndAttributed() {
+    void particleClassesAreDiscoveredAndNamed() {
         registry.recordClass(null);
         registry.recordClass(ParticleFlame.class);
-        assertEquals("ParticleFlame", registry.getDiscoveredClasses().get(ParticleFlame.class.getName()));
-        assertEquals("minecraft", registry.getModId(ParticleFlame.class.getName()));
-
-        // The factory a mod registered names that mod, and a later sighting with the same factory changes nothing
-        IParticleFactory factory = mock(IParticleFactory.class);
-        registry.registerFactoryMod(factory, "examplemod");
-        registry.registerFactoryMod(null, "examplemod");
-        registry.recordClass(ModdedParticle.class, factory);
-        registry.recordClass(ModdedParticle.class, factory);
-        registry.recordClass(ModdedParticle.class);
-        assertEquals("examplemod", registry.getModId(ModdedParticle.class.getName()));
-
-        // Without a factory the jar the class came from is matched against the loaded mods
-        Mixins.set(registry, "sourceToModId", null);
-        ModContainer testMod = mock(ModContainer.class);
-        when(testMod.getModId()).thenReturn("testmod");
-        File source = new File(OtherModdedParticle.class.getProtectionDomain().getCodeSource().getLocation().getPath());
-        when(testMod.getSource()).thenReturn(source);
-        LoadController controller = mock(LoadController.class);
-        when(controller.getActiveModList()).thenReturn(List.of(testMod, mock(ModContainer.class)));
-        Object previous = Mixins.get(Loader.instance(), "modController");
-        Mixins.set(Loader.instance(), "modController", controller);
-        registry.recordClass(OtherModdedParticle.class);
-        assertEquals("testmod", registry.getModId(OtherModdedParticle.class.getName()));
-        // A class from nowhere known answers null, and so does a name never seen
-        assertNull(registry.getModId("com.example.Unknown"));
+        assertEquals("ParticleFlame", discoveredName(ParticleFlame.class.getName()));
+        // A second sighting changes nothing
+        registry.markClean();
+        registry.recordClass(ParticleFlame.class);
+        assertFalse(registry.isDirty());
 
         // An anonymous class still gets a usable display name
         Object anonymous = new Object() { };
         registry.recordClass(anonymous.getClass());
-        assertTrue(Character.isDigit(registry.getDiscoveredClasses().get(anonymous.getClass().getName()).charAt(0)));
-        Mixins.set(Loader.instance(), "modController", previous);
+        assertTrue(Character.isDigit(discoveredName(anonymous.getClass().getName()).charAt(0)));
     }
 
     @Test
@@ -163,14 +146,14 @@ class ParticlesTest {
                 ParticleFlame.class.getName(),
                 OtherModdedParticle.class.getName() + "|",
                 "|nameless", "", null});
-        assertEquals("Gone", registry.getDiscoveredClasses().get("com.example.gone.GoneParticle"));
-        assertEquals("ParticleFlame", registry.getDiscoveredClasses().get(ParticleFlame.class.getName()));
-        assertEquals("OtherModdedParticle", registry.getDiscoveredClasses().get(OtherModdedParticle.class.getName()));
+        assertEquals("Gone", discoveredName("com.example.gone.GoneParticle"));
+        assertEquals("ParticleFlame", discoveredName(ParticleFlame.class.getName()));
+        assertEquals("OtherModdedParticle", discoveredName(OtherModdedParticle.class.getName()));
 
-        // A class whose mod is gone is dropped; one that still loads is kept and attributed
+        // A class whose mod is gone is dropped and one that still loads is kept
         registry.pruneDiscoveredCache();
-        assertFalse(registry.getDiscoveredClasses().containsKey("com.example.gone.GoneParticle"));
-        assertTrue(registry.getDiscoveredClasses().containsKey(ParticleFlame.class.getName()));
+        assertFalse((discoveredName("com.example.gone.GoneParticle") != null));
+        assertTrue((discoveredName(ParticleFlame.class.getName()) != null));
 
         String[] written = registry.getDiscoveredClassesArray();
         assertTrue(List.of(written).contains(ParticleFlame.class.getName() + "|ParticleFlame"));
@@ -179,26 +162,19 @@ class ParticlesTest {
     }
 
     @Test
-    void theUserCanSwitchSingleClassesOff() {
+    void theConfigCanSwitchSingleClassesOff() {
         registry.loadDisabledClasses(new String[] {"b.Second", "", null, "a.First"});
         assertFalse(registry.isEmptyDisabled());
         assertArrayEquals(new String[] {"a.First", "b.Second"}, registry.getDisabledClassesArray());
-        registry.markClean();
-        // Only a real change marks the config dirty
-        registry.setClassEnabled("c.Third", true);
-        assertFalse(registry.isDirty());
-        registry.setClassEnabled("a.First", true);
-        assertTrue(registry.isDirty());
-        assertFalse(registry.isClassDisabled("a.First"));
-        registry.setClassEnabled("a.First", false);
         assertTrue(registry.isClassDisabled("a.First"));
-        registry.loadDisabledClasses(new String[0]);
+        assertFalse(registry.isClassDisabled("c.Third"));
+        registry.loadDisabledClasses(null);
         assertTrue(registry.isEmptyDisabled());
     }
 
     @Test
     void factoriesAreScannedForTheClassesTheyMake() {
-        // No manager, or one that cannot be read, is simply nothing to scan
+        // Checks nothing to scan.
         registry.scanFactories(null);
         registry.scanFactories(mock(ParticleManager.class));
         ParticleManager manager = Mc.mock(ParticleManager.class, ParticleManagerAccessor.class);
@@ -218,8 +194,8 @@ class ParticlesTest {
         factories.put(3, (id, world, x, y, z, dx, dy, dz, args) -> null);
         when(((ParticleManagerAccessor) manager).impetus$getParticleTypes()).thenReturn(factories);
         registry.scanFactories(manager);
-        assertTrue(registry.getDiscoveredClasses().containsKey(ParticleFlame.class.getName()));
-        assertTrue(registry.getDiscoveredClasses().containsKey(ModdedParticle.class.getName()));
+        assertTrue((discoveredName(ParticleFlame.class.getName()) != null));
+        assertTrue((discoveredName(ModdedParticle.class.getName()) != null));
     }
 
     @Test
@@ -232,13 +208,13 @@ class ParticlesTest {
         ParticleManager manager = Mc.mock(ParticleManager.class, ParticleManagerAccessor.class);
         when(((ParticleManagerAccessor) manager).impetus$getParticleTypes()).thenReturn(Map.of(0, new ParticleFlame.Factory()));
         Mixins.set(client, "effectRenderer", manager);
-        registry.setClassEnabled("z.Dirty", false);
+        Mixins.set(registry, "dirty", true);
         ParticleDiscoveryHandler.onClientTick(new TickEvent.ClientTickEvent(TickEvent.Phase.END));
         assertSame(manager, Mixins.get(ParticleDiscoveryHandler.class, "lastScanned"));
         // The same manager is not scanned twice
         ParticleDiscoveryHandler.onClientTick(new TickEvent.ClientTickEvent(TickEvent.Phase.END));
 
-        // Leaving a client world persists what the session gathered; a server world is not ours to save for
+        // Checks the world unload.
         WorldClient world = Mc.uninitialized(WorldClient.class);
         Mixins.set(world, "isRemote", true);
         ParticleDiscoveryHandler.onWorldUnload(new WorldEvent.Unload(world));
@@ -280,12 +256,12 @@ class ParticlesTest {
         });
         assertEquals(301, ticked.get());
         assertSame(caller, moddedThread.get());
-        // The dead are dropped afterwards, as vanilla's iterator did
+        // Checks the dead are dropped.
         assertEquals(151, layer.size());
         assertTrue(ParticleTicker.isModded(modded));
         assertFalse(ParticleTicker.isModded(layer.peek()));
 
-        // A particle that throws fails the whole tick with its own exception, a crash report as it was
+        // Checks a throwing particle.
         ParticleTicker.moddedParticles = true;
         assertThrows(IllegalStateException.class, () -> ParticleTicker.tickLayer(layer, particle -> {
             throw new IllegalStateException("bad particle");

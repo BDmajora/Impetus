@@ -38,7 +38,7 @@ class EventMixinsTest {
         assertNull(event.getPhase());
         event.setPhase(EventPriority.HIGH);
         assertEquals(EventPriority.HIGH, event.getPhase());
-        // The bus only ever advances the phase, and a recycled event forgets it before the next post
+        // Checks the phase only advances.
         assertThrows(IllegalArgumentException.class, () -> event.setPhase(EventPriority.HIGHEST));
         event.coarctatio$resetPhase();
         assertNull(event.getPhase());
@@ -88,7 +88,7 @@ class EventMixinsTest {
 
     @Test
     void aRecycledCapabilityEventSwapsItsObjectAndDropsTheProvidersFromLastTime() {
-        // Mockito cannot instrument the spliced event class, so the mixin gets a plain generated subclass instead
+        // Builds a concrete event.
         @SuppressWarnings("unchecked")
         AttachCapabilitiesEventMixin<TileEntity> event = Mixins.concrete(AttachCapabilitiesEventMixin.class);
         Map<net.minecraft.util.ResourceLocation, net.minecraftforge.common.capabilities.ICapabilityProvider> caps =
@@ -118,12 +118,12 @@ class EventMixinsTest {
         assertNotNull(Mixins.call(handler, "coarctatio$worldTick", Side.SERVER, TickEvent.Phase.START, mock(World.class)));
         assertNotNull(Mixins.call(handler, "coarctatio$renderTick", TickEvent.Phase.END, 0.5F));
 
-        // Allocated rather than mocked: instrumenting EntityPlayer would undo the constructor the harness adds to it
+        // Allocates a player.
         EntityPlayer player = Mc.uninitialized(net.minecraft.entity.player.EntityPlayerMP.class);
         Mixins.set(player, "world", mock(World.class));
         TickEvent.PlayerTickEvent tick = Mixins.call(handler, "coarctatio$playerTick", TickEvent.Phase.START, player);
         assertNotNull(tick);
-        // The slot is freed as soon as the post returns, so the next tick gets the same instance back
+        // Checks the slot is freed.
         Mixins.call(handler, "coarctatio$releasePreTick", player, Mixins.ci());
         assertSame(tick, Mixins.call(handler, "coarctatio$playerTick", TickEvent.Phase.START, player));
         Mixins.call(handler, "coarctatio$releasePreTick", player, Mixins.ci());
@@ -146,7 +146,7 @@ class EventMixinsTest {
         BlockEvent.NeighborNotifyEvent first = Mixins.call(ForgeEventFactoryMixin.class, "coarctatio$neighborEvent",
                 world, BlockPos.ORIGIN, Blocks.STONE.getDefaultState(), sides, false);
         assertNotNull(first);
-        // The next notification on this thread reuses the instance, refreshed with the new block
+        // Checks the instance is reused.
         BlockEvent.NeighborNotifyEvent second = Mixins.call(ForgeEventFactoryMixin.class, "coarctatio$neighborEvent",
                 world, new BlockPos(1, 2, 3), Blocks.DIRT.getDefaultState(), EnumSet.of(EnumFacing.UP), true);
         assertSame(first, second);

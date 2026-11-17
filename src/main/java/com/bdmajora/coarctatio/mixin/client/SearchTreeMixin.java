@@ -14,7 +14,7 @@ import java.util.List;
 // Mixin that changes SearchTree.
 @Mixin(SearchTree.class)
 public abstract class SearchTreeMixin<T> {
-    // Field stale added to the target.
+    // Whether items were added since the tree was built.
     @Unique
     private boolean coarctatio$stale = true;
 

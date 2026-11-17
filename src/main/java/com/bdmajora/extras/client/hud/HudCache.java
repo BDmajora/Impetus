@@ -73,12 +73,13 @@ public final class HudCache {
         }
         framebuffer.framebufferClear();
         framebuffer.bindFramebuffer(false);
+        // Sets the capturing flag before the blend change.
+        capturing = true;
         GlStateManager.disableBlend();
         GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA);
         GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
         GlStateManager.disableLighting();
         GlStateManager.disableFog();
-        capturing = true;
         try {
             gui.renderGameOverlay(partialTicks);
         } finally {

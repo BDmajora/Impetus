@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 // Mixin that changes NetHandlerPlayClient.
 @Mixin(NetHandlerPlayClient.class)
 public abstract class NetHandlerPlayClientRetireMixin implements RetiredNetHandler {
-    // Field retired added to the target.
+    // Set once the handler is cleaned up.
     @Unique
     private boolean impetus$retired;
 
@@ -21,7 +21,7 @@ public abstract class NetHandlerPlayClientRetireMixin implements RetiredNetHandl
         this.impetus$retired = true;
     }
 
-    // Returns whether retired.
+    // Returns whether the handler was cleaned up.
     @Override
     public boolean impetus$isRetired() {
         return this.impetus$retired;

@@ -11,7 +11,7 @@ import net.minecraft.client.renderer.BufferBuilder;
 import java.util.ArrayList;
 import java.util.List;
 
-// Splits the shulker model so that the closed box has no overlapping faces.
+// Splits the shulker model into faces that do not overlap when closed.
 public final class ShutShulker {
     // Prevents instantiation
     private ShutShulker() {

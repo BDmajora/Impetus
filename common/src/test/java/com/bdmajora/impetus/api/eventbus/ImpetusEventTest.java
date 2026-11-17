@@ -34,7 +34,7 @@ class ImpetusEventTest {
 
     private static final class Plain extends ImpetusEvent {}
 
-    // Cancelability a test can switch, counting how often it is asked
+    // Event with switchable cancelability.
     private static final class Switchable extends ImpetusEvent {
         boolean cancelable = true;
         int asked;
@@ -81,7 +81,7 @@ class ImpetusEventTest {
             assertEquals("Event " + event.getClass().getName() + " is not cancelable", thrown.getMessage());
             assertFalse(event.isCanceled());
         }
-        // The binary name, so a nested class reads with its $ and an anonymous one is not left blank like its simple name
+        // Checks the binary name.
         assertEquals("Event com.bdmajora.impetus.api.eventbus.ImpetusEventTest$Plain is not cancelable",
                 assertThrows(UnsupportedOperationException.class, () -> new Plain().setCanceled(true)).getMessage());
         assertTrue(assertThrows(UnsupportedOperationException.class, () -> anonymous.setCanceled(true)).getMessage()
@@ -124,7 +124,7 @@ class ImpetusEventTest {
         assertThrowsExactly(UnsupportedOperationException.class, () -> event.setCanceled(true));
         assertEquals(2, event.asked);
         assertTrue(event.isCanceled());
-        // Clearing skips the check, which is what lets an event that stopped being cancelable be cleared at all
+        // Checks clearing.
         event.setCanceled(false);
         assertEquals(2, event.asked);
         assertFalse(event.isCanceled());
@@ -184,7 +184,7 @@ class ImpetusEventTest {
         Cancelable event = new Cancelable();
         event.setCanceled(true);
         assertTrue(bus.post(event));
-        // Only the outermost post cleared the earlier cancellation; the inner ones kept the outer listener's
+        // Checks the outermost clear.
         assertEquals(List.of("1:false", "2:true", "3:true"), seen);
         assertEquals(0, event.postDepth);
         seen.clear();
@@ -241,7 +241,7 @@ class ImpetusEventTest {
         outer.addListener(e -> e.setCanceled(true));
         outer.addListener(e -> innerResult[0] = inner.post(carried));
         Cancelable event = new Cancelable();
-        // The depth belongs to each event, so the outer post running does not make the carried event's post a nested one
+        // Checks per event depth.
         assertTrue(outer.post(event));
         assertFalse(innerResult[0]);
         assertEquals(List.of(false), innerSaw);
@@ -264,7 +264,7 @@ class ImpetusEventTest {
         });
         Cancelable event = new Cancelable();
         assertSame(failure, assertThrowsExactly(IllegalStateException.class, () -> bus.post(event)));
-        // The failed post's cancellation stays readable, and its depth was given back
+        // Checks the failed post.
         assertTrue(event.isCanceled());
         assertEquals(0, event.postDepth);
         failing[0] = false;
@@ -305,7 +305,7 @@ class ImpetusEventTest {
         });
         Cancelable event = new Cancelable();
         assertThrows(StackOverflowError.class, () -> bus.post(event));
-        // Every frame gave its depth back while the overflow unwound, so the next post is an outermost one again
+        // Checks the unwind.
         assertEquals(0, event.postDepth);
         assertTrue(event.isCanceled());
         assertFalse(new EventHandlerRegistrar<Cancelable>().post(event));
@@ -360,7 +360,7 @@ class ImpetusEventTest {
         });
         Switchable event = new Switchable();
         assertFalse(bus.post(event));
-        // The flag is still set; only post's answer goes through isCancelable
+        // Checks the flag.
         assertTrue(event.isCanceled());
         cancel[0] = false;
         assertFalse(bus.post(event));
@@ -369,7 +369,7 @@ class ImpetusEventTest {
 
     @Test
     void postReportsWhatTheEventsOwnOverridesSay() {
-        // An override keeps its own state, which post neither clears nor second-guesses
+        // Checks an override.
         Cancelable stuck = new Cancelable() {
             @Override
             public boolean isCanceled() {
@@ -416,14 +416,14 @@ class ImpetusEventTest {
             spinning.countDown();
             // Without volatile the JIT may read the flag once and spin on that value for good
             while (!event.isCanceled()) {
-                // Busy on purpose, since a sleep or onSpinWait would act as the barrier the flag has to provide
+                // Busy waits.
             }
             sawCancel.countDown();
             while (event.isCanceled()) {
-                // Busy on purpose, as above
+                // Busy waits.
             }
         }, "impetus-event-reader");
-        // A reader stuck on a stale value would otherwise keep the test JVM alive
+        // Bounds the wait.
         reader.setDaemon(true);
         reader.start();
         assertTrue(spinning.await(10, TimeUnit.SECONDS));
@@ -456,7 +456,7 @@ class ImpetusEventTest {
         try {
             List<Future<Integer>> tasks = new ArrayList<>();
             for (int t = 0; t < threads; t++) {
-                // Each thread reuses its own event, so the clearing has to be per event and never reach another thread's
+                // Checks per thread events.
                 tasks.add(pool.submit(() -> {
                     Numbered event = new Numbered();
                     int wrong = 0;

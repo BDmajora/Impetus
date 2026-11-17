@@ -16,7 +16,7 @@ public abstract class BlockShulkerBoxLayerMixin extends BlockContainer {
         super(material);
     }
 
-    // Returns whether render in layer.
+    // Puts a baked shulker box in the cutout layer.
     @Override
     public boolean canRenderInLayer(IBlockState state, BlockRenderLayer layer) {
         if (BakedEntities.isBaked(state.getBlock())) {

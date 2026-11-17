@@ -6,9 +6,9 @@ import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.init.SoundEvents;
 import com.bdmajora.impetus.engine.impl.gui.framework.InteractionContext;
 
-// Choices of the vintage interaction context setting.
+// Interaction context of the 1.12 GUI.
 public enum VintageInteractionContext implements InteractionContext {
-    // Value that selects instance.
+    // The one instance.
     INSTANCE;
 
     // Returns whether a modifier key is held.

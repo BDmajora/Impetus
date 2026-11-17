@@ -30,7 +30,7 @@ class UnbakedModelProviderTest {
         Mc.bootstrap();
         Minecraft client = Mc.client();
         when(client.getResourceManager()).thenReturn(mock(IReloadableResourceManager.class));
-        // The provider checks each loaded model against Forge's missing one, which needs an active loader
+        // Mocks Forge's model loader.
         net.minecraftforge.client.model.ModelLoader loader = Mc.mock(net.minecraftforge.client.model.ModelLoader.class);
         Mixins.stub(loader, "getMissingModel", invocation -> mock(IModel.class));
         Object vanillaLoader = com.bdmajora.testing.Statics.get(
@@ -79,7 +79,7 @@ class UnbakedModelProviderTest {
         assertEquals(1, loads.get());
         assertEquals(1, provider.cachedCount());
 
-        // Invalidation sends the next lookup back to the loader, and clearing drops everything
+        // Checks invalidation and clearing.
         provider.invalidate(location);
         assertSame(model, provider.getObject(location));
         assertEquals(2, loads.get());
@@ -106,7 +106,7 @@ class UnbakedModelProviderTest {
         ResourceLocation builtin = new ResourceLocation("builtin/entity");
         UnbakedModelProvider provider = new UnbakedModelProvider(new LinkedHashSet<>(List.of(loaderFor(model()))));
         provider.putObject(builtin, entity);
-        // The alias the constructor installs, and one a caller adds
+        // Checks the aliases.
         assertSame(entity, provider.getObject(new ResourceLocation("block/builtin/entity")));
         provider.putAlias(new ResourceLocation("examplemod:alias"), builtin);
         assertSame(entity, provider.getObject(new ResourceLocation("examplemod:alias")));
@@ -167,7 +167,7 @@ class UnbakedModelProviderTest {
         when(loader.accepts(any())).thenReturn(true);
         try {
             when(loader.loadModel(any())).thenAnswer(invocation -> {
-                // The loader is asked for the location under models/, which is where the file actually lives
+                // Checks the loader location.
                 ResourceLocation asked = invocation.getArgument(0);
                 if (asked.getPath().endsWith("item/machine")) {
                     return itemModel;
@@ -182,9 +182,9 @@ class UnbakedModelProviderTest {
         ModelLocations.addItemVariantFile(variant, itemFile);
         assertSame(itemModel, provider.getObject(variant));
 
-        // With neither the variant nor an item file, the failure carries both causes
+        // Checks a missing variant and item file.
         ModelResourceLocation missing = new ModelResourceLocation("examplemod:nothing", "inventory");
-        // getObject wraps whatever the load threw, and the failure inside carries both attempts
+        // Checks the failure carries both attempts.
         RuntimeException thrown = assertThrows(RuntimeException.class, () -> provider.getObject(missing));
         assertInstanceOf(ModelLoaderRegistry.LoaderException.class, thrown.getCause());
         assertEquals(2, thrown.getCause().getSuppressed().length);

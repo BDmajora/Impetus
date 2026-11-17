@@ -6,15 +6,15 @@ import net.minecraftforge.common.config.Configuration;
 
 // Lists of particle classes named in the config.
 final class ParticleClassLists {
-    // Constant category.
+    // Config category of the particle class lists.
     static final String CATEGORY = "particle_classes";
-    // Constant none.
+    // Empty default list.
     private static final String[] NONE = new String[0];
-    // Constant disabled.
+    // Particle classes the player turned off.
     private static final ListSetting<ParticleClassRegistry> DISABLED = new ListSetting<>("disabledClasses", NONE,
             "Particle classes the user has switched off",
             ParticleClassRegistry::getDisabledClassesArray, ParticleClassRegistry::loadDisabledClasses);
-    // Constant discovered.
+    // Particle classes seen so far.
     private static final ListSetting<ParticleClassRegistry> DISCOVERED = new ListSetting<>("discoveredClasses", NONE,
             "Cache of discovered particle classes; rebuilt automatically",
             ParticleClassRegistry::getDiscoveredClassesArray, ParticleClassRegistry::loadDiscoveredClasses);

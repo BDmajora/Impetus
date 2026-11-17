@@ -30,7 +30,7 @@ public enum GraphicsVendor {
         };
     }
 
-    // Returns MESA for a Mesa version or renderer or an X.Org vendor and otherwise classifies the vendor string
+    // Returns MESA for a Mesa version or renderer or an X.Org vendor and classifies the vendor string otherwise.
     public static GraphicsVendor fromContext(GlContextInfo context) {
         if (namesMesa(context.version()) || namesMesa(context.renderer())) {
             return MESA;
@@ -54,7 +54,7 @@ public enum GraphicsVendor {
         return false;
     }
 
-    // Returns MESA for an X.Org vendor and otherwise the vendor named with NVIDIA ahead of AMD and AMD ahead of Intel and OTHER for a null vendor
+    // Returns the vendor named in the string or OTHER.
     private static GraphicsVendor classifyVendor(String vendor) {
         var named = OTHER;
 

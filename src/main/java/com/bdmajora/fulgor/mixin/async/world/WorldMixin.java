@@ -21,11 +21,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 // Mixin that changes World.
 @Mixin(World.class)
 public abstract class WorldMixin implements AsyncLitWorld {
-    // Field light manager added to the target.
+    // Light manager created on first use.
     @Unique
     private volatile WorldLightManager fulgor$lightManager;
 
-    // Field ready added to the target.
+    // Set once the constructor returned.
     @Unique
     private volatile boolean fulgor$ready;
 
@@ -78,7 +78,7 @@ public abstract class WorldMixin implements AsyncLitWorld {
         return manager;
     }
 
-    // Helper method is real world added to the target.
+    // Returns whether the world is a server world or the client's current one.
     @Unique
     private static boolean fulgor$isRealWorld(World world) {
         if (world instanceof WorldServer) {
@@ -94,14 +94,14 @@ public abstract class WorldMixin implements AsyncLitWorld {
         return manager == null ? null : manager.getLoadedChunk(chunkX, chunkZ);
     }
 
-    // Returns whether chunk pending light.
+    // Returns whether a chunk still has light work queued.
     @Override
     public boolean fulgor$hasChunkPendingLight(int chunkX, int chunkZ) {
         WorldLightManager manager = this.fulgor$lightManager;
         return manager != null && manager.hasChunkPendingLight(chunkX, chunkZ);
     }
 
-    // Handles shutdown light manager.
+    // Stops the light workers and drops the manager.
     @Override
     public void fulgor$shutdownLightManager() {
         WorldLightManager manager = this.fulgor$lightManager;

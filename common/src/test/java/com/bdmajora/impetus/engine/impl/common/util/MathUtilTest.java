@@ -27,13 +27,13 @@ class MathUtilTest {
     private static final int MIN = Integer.MIN_VALUE;
     private static final int MAX = Integer.MAX_VALUE;
 
-    // ints on the sign, power-of-two and overflow boundaries, plus consecutive Fibonacci numbers (Euclid's worst case)
+    // Ints on the boundaries.
     private static final int[] EDGE_INTS = {
             0, 1, -1, 2, -2, 3, -3, 6, -6, 7, 8, -8, 9, 12, 16, 18, 20, 28, 32, 255, 256, 46340, 46341, 46342, 65535, 65536,
             65537, 1 << 20, 1 << 29, 1 << 30, -(1 << 30), (1 << 30) + 1, 1134903170, 1836311903, MAX - 1, MAX, MIN + 1, MIN
     };
 
-    // floats on the zero, unit, tolerance, integer-precision and int-range boundaries, plus every kind of special
+    // Floats on the boundaries.
     private static final float[] EDGE_FLOATS = {
             0f, -0f, 1f, -1f, 0.5f, -0.5f, 1.5f, -1.5f, Math.nextDown(1f), Math.nextUp(1f), Math.nextUp(-1f), Math.nextDown(-1f),
             Float.MIN_VALUE, -Float.MIN_VALUE, Float.MIN_NORMAL, 1e-5f, -1e-5f, Math.nextDown(1e-5f), 1e-7f, 0x1p23f, 0x1p23f + 1,
@@ -42,7 +42,7 @@ class MathUtilTest {
             Float.intBitsToFloat(0xFFFFFFFF)
     };
 
-    // doubles around zero, the unit, the world border, the int range and the integer-precision limit
+    // Doubles on the boundaries.
     private static final double[] EDGE_DOUBLES = {
             0.0, -0.0, 1.0, -1.0, 1.9, -1.5, Math.nextDown(1.0), Math.nextDown(-1.0), Math.nextUp(-1.0), Double.MIN_VALUE,
             -Double.MIN_VALUE, 30_000_000.5, -30_000_000.5, 2147483647.0, 2147483647.5, 2147483648.0, -2147483647.5,
@@ -50,10 +50,10 @@ class MathUtilTest {
             -Double.MAX_VALUE, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.NaN
     };
 
-    // one uninstrumented copy of MathUtil and the sweeps: FreshClasses defines them without a code source, so JaCoCo's shared probe writes do not serialise the threads
+    // Uninstrumented copy of the class and sweeps.
     private static final FreshClasses UNINSTRUMENTED = new FreshClasses(MathUtil.class, Sweeps.class);
 
-    // runs one sweep over all 2^32 patterns on the uninstrumented copy and returns its first failing pattern, or -1
+    // Runs one sweep on the copy.
     private static long sweep(String name) throws ReflectiveOperationException {
         Class<?> copy = UNINSTRUMENTED.load(MathUtil.class);
         assertNotSame(MathUtil.class, copy);
@@ -70,9 +70,9 @@ class MathUtilTest {
         return Float.floatToRawIntBits(f);
     }
 
-    // the exhaustive checks; public so the fresh copy is reachable reflectively, and nothing here touches the outer class
+    // Exhaustive checks.
     public static final class Sweeps {
-        // first pattern of all 2^32 that fails, scanning 65536-pattern blocks in parallel, or -1
+        // Returns the first failing pattern or -1.
         private static long first(LongPredicate fails) {
             return LongStream.rangeClosed(0, 0xFFFF).parallel()
                     .map(block -> {
@@ -96,7 +96,7 @@ class MathUtilTest {
             });
         }
 
-        // r <= f < r + 1 inside the int range, saturation outside it, 0 for NaN, and the double overload agrees on every float
+        // Checks the floor.
         public static long floorMismatch() {
             return first(bits -> {
                 float f = Float.intBitsToFloat((int) bits);
@@ -129,7 +129,7 @@ class MathUtilTest {
             });
         }
 
-        // NaN and everything up to zero (including -0) is +0, everything from one up is 1, and the rest passes through bit-exact
+        // Checks saturate.
         public static long saturateMismatch() {
             return first(bits -> {
                 float f = Float.intBitsToFloat((int) bits);
@@ -139,7 +139,7 @@ class MathUtilTest {
             });
         }
 
-        // a float product of two floats is one rounding of the exact product, which a double holds without loss
+        // Checks the float product.
         public static long squareMismatch() {
             return first(bits -> {
                 float f = Float.intBitsToFloat((int) bits);
@@ -147,7 +147,7 @@ class MathUtilTest {
             });
         }
 
-        // each float against itself and its upward neighbour, whose gap float subtraction gets exactly, so a double model can judge it
+        // Checks each float and its neighbour.
         public static long roughlyEqualMismatch() {
             return first(bits -> {
                 float f = Float.intBitsToFloat((int) bits);
@@ -167,7 +167,7 @@ class MathUtilTest {
         assertEquals(0, constructors[0].getParameterCount());
         constructors[0].setAccessible(true);
         assertNotNull(constructors[0].newInstance());
-        // JaCoCo adds synthetic members to the loaded class; only the declared ones count
+        // Checks the declared members.
         List<Method> methods = Arrays.stream(MathUtil.class.getDeclaredMethods()).filter(m -> !m.isSynthetic()).toList();
         assertEquals(List.of("clamp", "clamp", "gcd", "isPowerOfTwo", "lcm", "mojfloor", "mojfloor", "nearestToZero", "roughlyEqual",
                         "roundToward", "saturate", "square", "toMib"),
@@ -284,14 +284,14 @@ class MathUtilTest {
         SplittableRandom random = new SplittableRandom(0x6CD);
         for (int i = 0; i < 100_000; i++) {
             checkGcd(random.nextInt(), random.nextInt());
-            // a shared factor with a few trailing zeros, so the result is rarely 1
+            // Shared factor with trailing zeros.
             int factor = random.nextInt(1, 1 << 12) << random.nextInt(8);
             checkGcd(factor * random.nextInt(-1 << 12, 1 << 12), factor * random.nextInt(-1 << 12, 1 << 12));
             checkGcd(random.nextInt() >> random.nextInt(32), random.nextInt() >> random.nextInt(32));
         }
     }
 
-    // BigInteger's gcd is the non-negative gcd of the magnitudes; 2^31 has to throw
+    // Checks gcd.
     private static void checkGcd(int a, int b) {
         BigInteger expected = BigInteger.valueOf(a).gcd(BigInteger.valueOf(b));
         if (expected.bitLength() > 31) {
@@ -311,7 +311,7 @@ class MathUtilTest {
         assertEquals(MAX, MathUtil.lcm(MAX, 1));
         assertEquals(MAX, MathUtil.lcm(MAX, MAX));
         assertEquals(1 << 30, MathUtil.lcm(1 << 30, 1 << 29));
-        // consecutive, so coprime: 46340 * 46341 still fits in an int and 46341 * 46342 does not
+        // Checks the int limit.
         assertEquals(46340 * 46341, MathUtil.lcm(46340, 46341));
     }
 
@@ -372,7 +372,7 @@ class MathUtilTest {
         }
     }
 
-    // |a * b| / gcd in BigInteger, 0 when either is 0; anything past MAX_VALUE has to throw
+    // Checks lcm.
     private static void checkLcm(int a, int b) {
         BigInteger x = BigInteger.valueOf(a);
         BigInteger y = BigInteger.valueOf(b);
@@ -407,7 +407,7 @@ class MathUtilTest {
         assertEquals(MIN, MathUtil.roundToward(MIN, 1));
         assertEquals(MIN, MathUtil.roundToward(MIN, 8));
         assertEquals(MIN, MathUtil.roundToward(MIN, 1 << 30));
-        // -MIN_VALUE wraps, so negating before the divide gets these wrong
+        // Checks MIN_VALUE.
         assertEquals(-2147483646, MathUtil.roundToward(MIN, 3));
         assertEquals(-2147483640, MathUtil.roundToward(MIN, 10));
         assertEquals(-MAX, MathUtil.roundToward(MIN, MAX));
@@ -453,7 +453,7 @@ class MathUtilTest {
         }
     }
 
-    // the ceiling quotient by negated floor division in long, where nothing wraps
+    // Expected ceiling quotient.
     private static void checkRound(int value, int factor) {
         long expected = -Math.floorDiv(-(long) value, factor) * factor;
         if (expected > MAX) {
@@ -481,7 +481,7 @@ class MathUtilTest {
         assertEquals(-1, MathUtil.toMib(-(1L << 20) - 1));
         assertEquals((1L << 43) - 1, MathUtil.toMib(Long.MAX_VALUE));
         assertEquals(-(1L << 43), MathUtil.toMib(Long.MIN_VALUE));
-        // a negative size reads as the negated positive one, never a MiB further from zero
+        // Checks a negative size.
         for (long bytes : new long[]{1, (1L << 20) - 1, 1L << 20, (3L << 20) + 5, Long.MAX_VALUE}) {
             assertEquals(-MathUtil.toMib(bytes), MathUtil.toMib(-bytes));
         }
@@ -506,7 +506,7 @@ class MathUtilTest {
         assertEquals(Float.POSITIVE_INFINITY, MathUtil.square(Float.NEGATIVE_INFINITY));
         assertTrue(Float.isNaN(MathUtil.square(Float.NaN)));
         assertEquals(2 * Float.MIN_VALUE, MathUtil.square(0x1p-74f));
-        // 2^-150 is exactly half the smallest subnormal and the tie goes to even, which is zero
+        // Checks the subnormal tie.
         assertEquals(bits(0f), bits(MathUtil.square(0x1p-75f)));
         assertEquals(bits(0f), bits(MathUtil.square(-Float.MIN_VALUE)));
     }
@@ -534,7 +534,7 @@ class MathUtilTest {
         assertEquals(1 << 30, MathUtil.mojfloor(0x1p30f));
         assertEquals(2147483520, MathUtil.mojfloor(2147483520f));
         assertEquals(MIN, MathUtil.mojfloor(-0x1p31f));
-        // the culler's section radius: search distance over 16
+        // Checks the section radius.
         assertEquals(12, MathUtil.mojfloor(200f / 16f));
     }
 
@@ -543,7 +543,7 @@ class MathUtilTest {
         assertEquals(MAX, MathUtil.mojfloor(0x1p31f));
         assertEquals(MAX, MathUtil.mojfloor(Float.MAX_VALUE));
         assertEquals(MAX, MathUtil.mojfloor(Float.POSITIVE_INFINITY));
-        // the cast saturates at MIN_VALUE, where stepping down for the fraction would wrap to MAX_VALUE
+        // Checks the MIN_VALUE cast.
         assertEquals(MIN, MathUtil.mojfloor(Math.nextDown(-0x1p31f)));
         assertEquals(MIN, MathUtil.mojfloor(-Float.MAX_VALUE));
         assertEquals(MIN, MathUtil.mojfloor(Float.NEGATIVE_INFINITY));
@@ -586,7 +586,7 @@ class MathUtilTest {
         assertEquals(MAX, MathUtil.mojfloor(0x1p52));
         assertEquals(MAX, MathUtil.mojfloor(Double.MAX_VALUE));
         assertEquals(MAX, MathUtil.mojfloor(Double.POSITIVE_INFINITY));
-        // the cast saturates at MIN_VALUE, where stepping down for the fraction would wrap to MAX_VALUE
+        // Checks the MIN_VALUE cast.
         assertEquals(MIN, MathUtil.mojfloor(-2147483648.5));
         assertEquals(MIN, MathUtil.mojfloor(-2147483649.0));
         assertEquals(MIN, MathUtil.mojfloor(-0x1p52));
@@ -613,7 +613,7 @@ class MathUtilTest {
         }
     }
 
-    // r <= d < r + 1 in range, saturation outside it, 0 for NaN, and vanilla's cast-and-step wherever that does not wrap
+    // Checks the double floor.
     private static void checkFloor(double d) {
         int r = MathUtil.mojfloor(d);
         if (d != d) {
@@ -755,7 +755,7 @@ class MathUtilTest {
         assertFalse(MathUtil.roughlyEqual(0f, 1e-5f));
         assertFalse(MathUtil.roughlyEqual(0f, -1e-5f));
         assertFalse(MathUtil.roughlyEqual(1e-5f, 0f));
-        // absolute, not relative: neighbouring floats at 1e7 are a whole unit apart, while 1e-7 and 2e-7 match
+        // Checks the absolute tolerance.
         assertFalse(MathUtil.roughlyEqual(1e7f, Math.nextUp(1e7f)));
         assertTrue(MathUtil.roughlyEqual(1e-7f, 2e-7f));
         assertTrue(MathUtil.roughlyEqual(Float.MAX_VALUE, Float.MAX_VALUE));

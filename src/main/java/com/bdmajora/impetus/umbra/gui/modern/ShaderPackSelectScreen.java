@@ -53,8 +53,9 @@ public class ShaderPackSelectScreen extends GuiScreen {
         this.widgets.clear();
 
         if (this.stagedSelection == null) {
-            this.stagedSelection = Umbra.getSelectedPackName();
-            this.stagedEnabled = !UmbraConfig.NO_PACK.equals(this.stagedSelection);
+            this.stagedEnabled = Umbra.areShadersEnabled();
+            // Stages the remembered pack while shaders are off.
+            this.stagedSelection = this.stagedEnabled ? Umbra.getSelectedPackName() : Umbra.getLastPackName();
         }
 
         this.packs = new ArrayList<>();
@@ -77,8 +78,8 @@ public class ShaderPackSelectScreen extends GuiScreen {
         int end = Math.min(this.packs.size(), start + rowsPerPage);
         for (int i = start; i < end; i++) {
             String name = this.packs.get(i);
-            boolean selected = this.stagedEnabled && name.equals(this.stagedSelection);
-            String label = selected ? "§e" + name : name;
+            boolean staged = name.equals(this.stagedSelection);
+            String label = staged ? (this.stagedEnabled ? "§e" + name : "§7" + name + " §8(off)") : name;
             addRow(rowLeft, y, label, true, () -> {
                 this.stagedSelection = name;
                 this.stagedEnabled = true;
@@ -131,13 +132,11 @@ public class ShaderPackSelectScreen extends GuiScreen {
         return button;
     }
 
-    // Applies the selection.
+    // Applies the selection and remembers a pack picked while shaders are off.
     private void applySelection() {
-        String target = this.stagedEnabled ? this.stagedSelection : UmbraConfig.NO_PACK;
-        if (target.equals(Umbra.getSelectedPackName())) {
+        if (!Umbra.selectShaderpack(this.stagedSelection, this.stagedEnabled && !UmbraConfig.NO_PACK.equals(this.stagedSelection))) {
             return;
         }
-        Umbra.setShaderpackAndReload(target);
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.renderGlobal != null) {
             mc.renderGlobal.loadRenderers();

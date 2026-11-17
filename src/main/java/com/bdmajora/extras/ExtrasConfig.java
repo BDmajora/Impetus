@@ -49,7 +49,7 @@ public final class ExtrasConfig {
     // Group of the zoom settings.
     public final ZoomSettings zoom = new ZoomSettings();
 
-    // Choice of the config option.
+    // Forge configuration behind the settings or null for a detached config.
     private Configuration config;
 
     // Loads the value.
@@ -81,13 +81,13 @@ public final class ExtrasConfig {
 
     // Choices of the overlay corner setting.
     public enum OverlayCorner implements Localized {
-        // Value that selects top left.
+        // Top left corner.
         TOP_LEFT("impetus.options.extras.overlay_corner.top_left", false, false),
-        // Value that selects top right.
+        // Top right corner.
         TOP_RIGHT("impetus.options.extras.overlay_corner.top_right", false, true),
-        // Value that selects bottom left.
+        // Bottom left corner.
         BOTTOM_LEFT("impetus.options.extras.overlay_corner.bottom_left", true, false),
-        // Value that selects bottom right.
+        // Bottom right corner.
         BOTTOM_RIGHT("impetus.options.extras.overlay_corner.bottom_right", true, true);
 
         // Text of the key option.
@@ -110,12 +110,12 @@ public final class ExtrasConfig {
             return this.key;
         }
 
-        // Returns whether bottom.
+        // Returns whether the corner is at the bottom of the screen.
         public boolean isBottom() {
             return this.bottom;
         }
 
-        // Returns whether right.
+        // Returns whether the corner is at the right of the screen.
         public boolean isRight() {
             return this.right;
         }
@@ -123,11 +123,11 @@ public final class ExtrasConfig {
 
     // Choices of the leaf culling setting.
     public enum LeafCulling implements Localized {
-        // Value that selects default.
+        // Vanilla leaf culling.
         DEFAULT("impetus.options.extras.leaf_culling.default"),
-        // Value that selects check.
+        // Culls a leaf face toward another leaf when every other side is also covered.
         CHECK("impetus.options.extras.leaf_culling.check"),
-        // Value that selects depth.
+        // Culls a leaf face toward another leaf unless air lies within the configured depth behind it.
         DEPTH("impetus.options.extras.leaf_culling.depth");
 
         // Text of the key option.
@@ -147,11 +147,11 @@ public final class ExtrasConfig {
 
     // Choices of the text contrast setting.
     public enum TextContrast implements Localized {
-        // Value that selects none.
+        // Text drawn as is.
         NONE("impetus.options.extras.text_contrast.none"),
-        // Value that selects background.
+        // Text on a dark backing.
         BACKGROUND("impetus.options.extras.text_contrast.background"),
-        // Value that selects shadow.
+        // Text with a drop shadow.
         SHADOW("impetus.options.extras.text_contrast.shadow");
 
         // Text of the key option.
@@ -171,11 +171,11 @@ public final class ExtrasConfig {
 
     // Choices of the cloud translucency setting.
     public enum CloudTranslucency implements Localized {
-        // Value that selects default.
+        // Vanilla's cloud draw order.
         DEFAULT("impetus.options.extras.cloud_translucency.default"),
-        // Value that selects always.
+        // Clouds always drawn after translucent terrain.
         ALWAYS("impetus.options.extras.cloud_translucency.always"),
-        // Value that selects never.
+        // Clouds always drawn before translucent terrain.
         NEVER("impetus.options.extras.cloud_translucency.never");
 
         // Text of the key option.
@@ -195,13 +195,13 @@ public final class ExtrasConfig {
 
     // Choices of the fog shape setting.
     public enum FogShape implements Localized {
-        // Value that selects vanilla.
+        // Vanilla's fog by depth.
         VANILLA("impetus.options.extras.fog_shape.vanilla"),
-        // Value that selects cylindrical.
+        // Fog by horizontal distance.
         CYLINDRICAL("impetus.options.extras.fog_shape.cylindrical"),
-        // Value that selects radial.
+        // Fog by spherical distance.
         RADIAL("impetus.options.extras.fog_shape.radial"),
-        // Value that selects planar.
+        // Fog by distance along the view axis.
         PLANAR("impetus.options.extras.fog_shape.planar");
 
         // Text of the key option.
@@ -218,7 +218,7 @@ public final class ExtrasConfig {
             return this.key;
         }
 
-        // Handles the shader index.
+        // Returns the fog shape index the terrain shaders switch on.
         public int shaderIndex() {
             return this.ordinal();
         }
@@ -226,11 +226,11 @@ public final class ExtrasConfig {
 
     // Choices of the time override setting.
     public enum TimeOverride implements Localized {
-        // Value that selects default.
+        // The world's own time.
         DEFAULT("impetus.options.extras.time.default"),
-        // Value that selects day.
+        // Always noon.
         DAY("impetus.options.extras.time.day"),
-        // Value that selects night.
+        // Always midnight.
         NIGHT("impetus.options.extras.time.night");
 
         // Text of the key option.
@@ -250,13 +250,13 @@ public final class ExtrasConfig {
 
     // Choices of the weather override setting.
     public enum WeatherOverride implements Localized {
-        // Value that selects default.
+        // The world's own weather.
         DEFAULT("impetus.options.extras.weather.default"),
-        // Value that selects clear.
+        // Always clear.
         CLEAR("impetus.options.extras.weather.clear"),
-        // Value that selects rain.
+        // Always raining.
         RAIN("impetus.options.extras.weather.rain"),
-        // Value that selects thunder.
+        // Always thundering.
         THUNDER("impetus.options.extras.weather.thunder");
 
         // Text of the key option.
@@ -276,11 +276,11 @@ public final class ExtrasConfig {
 
     // Choices of the budget profile setting.
     public enum BudgetProfile implements Localized {
-        // Value that selects quality.
+        // Frame budget of 45 FPS.
         QUALITY("impetus.options.extras.budget_profile.quality", 22.2),
-        // Value that selects balanced.
+        // Frame budget of 60 FPS.
         BALANCED("impetus.options.extras.budget_profile.balanced", 16.7),
-        // Value that selects performance.
+        // Frame budget of about 71 FPS.
         PERFORMANCE("impetus.options.extras.budget_profile.performance", 14.0);
 
         // Text of the key option.
@@ -301,13 +301,62 @@ public final class ExtrasConfig {
         }
     }
 
+    // Choices of the render budget row with Off first.
+    public enum RenderBudgetMode implements Localized {
+        // Budget off.
+        OFF("options.off", null),
+        // Performance profile.
+        PERFORMANCE("impetus.options.extras.budget_profile.performance", BudgetProfile.PERFORMANCE),
+        // Balanced profile.
+        BALANCED("impetus.options.extras.budget_profile.balanced", BudgetProfile.BALANCED),
+        // Quality profile.
+        QUALITY("impetus.options.extras.budget_profile.quality", BudgetProfile.QUALITY);
+
+        // Translation key of the entry.
+        private final String key;
+        // Profile the entry selects or null for off.
+        public final BudgetProfile profile;
+
+        // Creates a mode from its key and profile.
+        RenderBudgetMode(String key, BudgetProfile profile) {
+            this.key = key;
+            this.profile = profile;
+        }
+
+        // Returns the mode the settings hold.
+        public static RenderBudgetMode of(RenderBudgetSettings settings) {
+            if (!settings.enabled) {
+                return OFF;
+            }
+            return switch (settings.profile) {
+                case PERFORMANCE -> PERFORMANCE;
+                case BALANCED -> BALANCED;
+                case QUALITY -> QUALITY;
+            };
+        }
+
+        // Stores the mode in the settings and keeps the profile when turned off.
+        public void applyTo(RenderBudgetSettings settings) {
+            settings.enabled = this != OFF;
+            if (this.profile != null) {
+                settings.profile = this.profile;
+            }
+        }
+
+        // Returns the translation key of the entry.
+        @Override
+        public String translationKey() {
+            return this.key;
+        }
+    }
+
     // Choices of the vertical sync setting.
     public enum VerticalSync implements Localized {
-        // Value that selects off.
+        // No vertical sync.
         OFF("options.off"),
-        // Value that selects on.
+        // Vertical sync.
         ON("options.on"),
-        // Value that selects adaptive.
+        // Adaptive sync.
         ADAPTIVE("impetus.options.extras.vertical_sync.adaptive");
 
         // Text of the key option.
@@ -424,7 +473,7 @@ public final class ExtrasConfig {
     public static final class RenderSettings {
         // Smallest value of the cloud scale setting.
         public static final int CLOUD_SCALE_MIN = 1;
-        // Constant cloud scale vanilla.
+        // Vanilla's cloud cell scale.
         public static final int CLOUD_SCALE_VANILLA = 4;
         // Largest value of the cloud scale setting.
         public static final int CLOUD_SCALE_MAX = 16;
@@ -435,11 +484,11 @@ public final class ExtrasConfig {
         public int fogStart = 100;
         // Value of the fog distance option.
         public int fogDistance = 0;
-        // Choice of the fog shape option.
+        // Shape of the distance fog.
         public FogShape fogShape = FogShape.VANILLA;
         // Value of the cloud scale option.
         public int cloudScale = CLOUD_SCALE_VANILLA;
-        // Choice of the cloud translucency option.
+        // Whether clouds draw before or after translucent terrain.
         public CloudTranslucency cloudTranslucency = CloudTranslucency.DEFAULT;
         // Switch of the light updates option.
         public boolean lightUpdates = true;
@@ -481,11 +530,11 @@ public final class ExtrasConfig {
         public static final int STEADY_HUD_REFRESH_DEFAULT = 1;
         // Largest value of the steady hud refresh setting.
         public static final int STEADY_HUD_REFRESH_MAX = 20;
-        // Constant autosave vanilla ticks.
+        // Vanilla's autosave interval of 45 seconds.
         public static final int AUTOSAVE_VANILLA_TICKS = 900;
-        // Constant autosave min ticks.
+        // Shortest autosave interval with 0 turning autosave off.
         public static final int AUTOSAVE_MIN_TICKS = 0;
-        // Constant autosave max ticks.
+        // Longest autosave interval of 30 minutes.
         public static final int AUTOSAVE_MAX_TICKS = 36000;
 
         // Switch of the show fps option.
@@ -496,9 +545,9 @@ public final class ExtrasConfig {
         public boolean showCoords = false;
         // Switch of the ignore reduced debug info option.
         public boolean ignoreReducedDebugInfo = false;
-        // Choice of the overlay corner option.
+        // Corner the overlay sits in.
         public OverlayCorner overlayCorner = OverlayCorner.TOP_LEFT;
-        // Choice of the text contrast option.
+        // How overlay text stays readable.
         public TextContrast textContrast = TextContrast.SHADOW;
         // Switch of the steady debug hud option.
         public boolean steadyDebugHud = true;
@@ -522,9 +571,9 @@ public final class ExtrasConfig {
         public boolean paniniProjection = false;
         // Value of the panini projection strength option.
         public int paniniProjectionStrength = 25;
-        // Choice of the time override option.
+        // Time of day shown on the client.
         public TimeOverride timeOverride = TimeOverride.DEFAULT;
-        // Choice of the weather override option.
+        // Weather shown on the client.
         public WeatherOverride weatherOverride = WeatherOverride.DEFAULT;
         // Value of the autosave interval option.
         public int autosaveInterval = AUTOSAVE_VANILLA_TICKS;
@@ -553,10 +602,10 @@ public final class ExtrasConfig {
 
         // Switch of the enabled option.
         public boolean enabled = false;
-        // Choice of the profile option.
+        // Frame budget the render budget controller aims for.
         public BudgetProfile profile = BudgetProfile.BALANCED;
         // Switch of the adaptive option.
-        public boolean adaptive = true;
+        public boolean adaptive = false;
         // Value of the particle budget option.
         public int particleBudget = PARTICLE_BUDGET_DEFAULT;
         // Value of the entity cull distance option.
@@ -591,7 +640,7 @@ public final class ExtrasConfig {
     public static final class AsyncSettings {
         // Largest value of the threads setting.
         public static final int THREADS_MAX = 64;
-        // Constant default synchronized.
+        // Entity ids that tick on the main thread in a fresh config.
         public static final String[] DEFAULT_SYNCHRONIZED = {
                 "minecraft:tnt", "minecraft:item", "minecraft:xp_orb", "minecraft:hopper_minecart"
         };
@@ -661,7 +710,7 @@ public final class ExtrasConfig {
     public static final class ThreadSettings {
         // Smallest value of the priority setting.
         public static final int PRIORITY_MIN = Thread.MIN_PRIORITY;
-        // Constant priority normal.
+        // Normal thread priority.
         public static final int PRIORITY_NORMAL = Thread.NORM_PRIORITY;
         // Largest value of the priority setting.
         public static final int PRIORITY_MAX = Thread.MAX_PRIORITY;
@@ -743,7 +792,7 @@ public final class ExtrasConfig {
         // Largest value of the depth setting.
         public static final int DEPTH_MAX = 4;
 
-        // Choice of the culling mode option.
+        // How leaves cull their faces.
         public LeafCulling cullingMode = LeafCulling.DEFAULT;
         // Value of the culling depth option.
         public int cullingDepth = DEPTH_DEFAULT;
@@ -765,7 +814,7 @@ public final class ExtrasConfig {
 
     // Settings of the zoom group.
     public static final class ZoomSettings {
-        // Constant level scale.
+        // Divisor that turns the zoom level into a fraction of the view width.
         public static final int LEVEL_SCALE = 100;
         // Smallest value of the level setting.
         public static final int LEVEL_MIN = 5;

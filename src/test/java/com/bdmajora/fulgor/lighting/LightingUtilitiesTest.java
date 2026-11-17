@@ -56,7 +56,7 @@ class LightingUtilitiesTest {
         when(chunk.getBlockStorageArray()).thenReturn(sections);
         assertSame(Blocks.STONE.getDefaultState(), LightUtil.posToState(new BlockPos(1, 2, 3), chunk));
         assertSame(Blocks.AIR.getDefaultState(), LightUtil.posToState(new BlockPos(1, 2, 3), Chunk.NULL_BLOCK_STORAGE));
-        // Coordinates are masked into the section, so a world position resolves to the same slot
+        // Checks masked coordinates.
         assertSame(Blocks.STONE.getDefaultState(), LightUtil.posToState(new BlockPos(17, 2, 19), section));
     }
 
@@ -69,7 +69,7 @@ class LightingUtilitiesTest {
         // With the cache off both answers come from the position-aware overloads
         assertEquals(15, LightUtil.getLightValue(glowstone, world, pos, chunk));
         assertEquals(255, LightUtil.getLightOpacity(glowstone, world, pos, chunk));
-        // With it on, a block that declares no position-aware override answers from the state alone
+        // Turns the light info cache on.
         Statics.set(Fulgor.class, "cachedBlockLightInfo", true);
         assertEquals(15, LightUtil.getLightValue(glowstone, world, pos, chunk));
         assertEquals(255, LightUtil.getLightOpacity(glowstone, world, pos, chunk));
@@ -96,7 +96,7 @@ class LightingUtilitiesTest {
         assertEquals(FaceLightRules.FACE_UP, FaceLightRules.openFaces(Blocks.WATER.getDefaultState()));
         assertEquals(0, FaceLightRules.openFaces(Blocks.STONE.getDefaultState()));
 
-        // Light folded through an open face still attenuates, except full skylight
+        // Checks the fold attenuation.
         assertEquals(9, FaceLightRules.fold(5, 10, EnumSkyBlock.BLOCK));
         assertEquals(5, FaceLightRules.fold(5, 3, EnumSkyBlock.BLOCK));
         assertEquals(15, FaceLightRules.fold(5, 15, EnumSkyBlock.SKY));
@@ -104,11 +104,11 @@ class LightingUtilitiesTest {
         BlockPos pos = new BlockPos(0, 64, 0);
         assertEquals(11, FaceLightRules.foldOpenFaces(FaceLightRules.FACE_UP, 0, EnumSkyBlock.BLOCK, pos,
                 (type, at) -> at.equals(pos.up()) ? 12 : 0));
-        // A closed face contributes nothing, and a level already at full stops the walk
+        // Checks closed faces and full levels.
         assertEquals(0, FaceLightRules.foldOpenFaces(0, 0, EnumSkyBlock.BLOCK, pos, (type, at) -> 12));
         assertEquals(15, FaceLightRules.foldOpenFaces(FaceLightRules.FACE_UP, 15, EnumSkyBlock.BLOCK, pos,
                 (type, at) -> 15));
-        // Ambient occlusion treats a level-one emitter as unlit so it keeps smooth lighting
+        // Checks a level one emitter.
         assertEquals(0, FaceLightRules.ambientOcclusionEmission(1));
         assertEquals(0, FaceLightRules.ambientOcclusionEmission(0));
         assertEquals(13, FaceLightRules.ambientOcclusionEmission(14));
@@ -142,7 +142,7 @@ class LightingUtilitiesTest {
         Mockito.verify(chunk).markDirty();
         Mockito.verify(data).fulgor$initNeighborLightChecks();
 
-        // Writing skips an all-zero table, and reading rejects one of the wrong length
+        // Checks the table read and write.
         NBTTagCompound compound = new NBTTagCompound();
         NeighborLightFlags.write(chunk, compound);
         assertTrue(compound.hasKey(NeighborLightFlags.NBT_KEY, 9));

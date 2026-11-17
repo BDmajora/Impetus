@@ -13,11 +13,11 @@ import java.util.concurrent.locks.StampedLock;
 // Mixin that changes BlockStateContainer.
 @Mixin(BlockStateContainer.class)
 public abstract class BlockStateContainerParallelMixin implements ParallelBlockStateContainer {
-    // Field lock added to the target.
+    // Lock of a section in a parallel world or null.
     @Unique
     private volatile StampedLock impetus$lock;
 
-    // Handles enable parallel lock.
+    // Turns the lock on for a section of a parallel world.
     @Override
     public void impetus$enableParallelLock() {
         if (this.impetus$lock == null) {
@@ -25,7 +25,7 @@ public abstract class BlockStateContainerParallelMixin implements ParallelBlockS
         }
     }
 
-    // Handles locked get.
+    // Reads a block optimistically and retries under the read lock when a write raced it.
     @WrapMethod(method = "get(III)Lnet/minecraft/block/state/IBlockState;")
     private IBlockState impetus$lockedGet(int x, int y, int z, Operation<IBlockState> original) {
         StampedLock lock = this.impetus$lock;
@@ -50,7 +50,7 @@ public abstract class BlockStateContainerParallelMixin implements ParallelBlockS
         }
     }
 
-    // Handles locked set.
+    // Writes a block under the write lock.
     @WrapMethod(method = "set(IIILnet/minecraft/block/state/IBlockState;)V")
     private void impetus$lockedSet(int x, int y, int z, IBlockState state, Operation<Void> original) {
         StampedLock lock = this.impetus$lock;

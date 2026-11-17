@@ -75,7 +75,7 @@ public class WorldSlice implements ImpetusBlockAccess {
     private final World world;
     // World type.
     private final WorldType worldType;
-    // Has sky light.
+    // Whether the dimension has sky light.
     private final boolean hasSkyLight;
     // Default sky light value.
     private final int defaultSkyLightValue;
@@ -297,7 +297,7 @@ public class WorldSlice implements ImpetusBlockAccess {
         return this.getBlockState(pos.getX(), pos.getY(), pos.getZ());
     }
 
-    // Returns whether air block.
+    // Returns whether the copied block at a position is air.
     @Override
     public boolean isAirBlock(BlockPos pos) {
         IBlockState state = this.getBlockState(pos);
@@ -493,7 +493,7 @@ public class WorldSlice implements ImpetusBlockAccess {
         return this.worldType;
     }
 
-    // Returns whether side solid.
+    // Returns whether a side of the copied block is solid or the default outside the slice.
     @Override
     public boolean isSideSolid(BlockPos pos, EnumFacing side, boolean _default) {
         return getBlockState(pos).isSideSolid(this, pos, side);

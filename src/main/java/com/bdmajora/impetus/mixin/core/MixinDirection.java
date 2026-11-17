@@ -10,13 +10,13 @@ public class MixinDirection {
     // Replaces the whole method getFacingFromVector.
     @Overwrite
     public static EnumFacing getFacingFromVector(float x, float y, float z) {
-        if (x == 0 && y == 0 && z == 0) {
-            return EnumFacing.NORTH;
-        }
-
         float yM = Math.abs(y);
         float zM = Math.abs(z);
         float xM = Math.abs(x);
+        // Keeps NORTH for a zero or NaN normal like vanilla does.
+        if (!(Math.max(yM, Math.max(zM, xM)) > Float.MIN_VALUE)) {
+            return EnumFacing.NORTH;
+        }
 
         if (yM >= zM && yM >= xM) {
             return y <= 0 ? EnumFacing.DOWN : EnumFacing.UP;

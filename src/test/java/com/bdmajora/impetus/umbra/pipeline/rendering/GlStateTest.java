@@ -65,7 +65,7 @@ class GlStateTest {
         this.gl.gl11.verify(GL11::glLoadIdentity, times(3));
         GlState.popFixedFunctionMatrices();
         this.gl.gl11.verify(GL11::glPopMatrix, times(3));
-        // Modelview is the mode left selected, as vanilla expects
+        // Checks modelview is left selected.
         this.gl.gl11.verify(() -> GL11.glMatrixMode(GlState.GL_MODELVIEW_MODE), times(2));
     }
 
@@ -105,7 +105,7 @@ class GlStateTest {
         verify(TestGl.gl()).glBlendFuncSeparatei(7, GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ZERO);
         verify(TestGl.gl(), never()).glEnablei(GL11.GL_BLEND, 8);
         Mockito.clearInvocations(TestGl.gl());
-        // depthMask is cached, so it is turned off first to see the opaque blend turn it back on
+        // Turns the depth mask off first.
         net.minecraft.client.renderer.GlStateManager.depthMask(false);
         GlState.opaqueGbufferBlend(3, 8);
         verify(TestGl.gl(), times(3)).glDisablei(Mockito.eq(GL11.GL_BLEND), anyInt());
@@ -166,7 +166,7 @@ class GlStateTest {
         GlState.drainGlError();
         verify(TestGl.gl(), times(3)).glGetError();
         Mockito.reset(TestGl.gl());
-        // A lost context reports forever; draining used to spin the render thread
+        // Checks a lost context.
         when(TestGl.gl().glGetError()).thenReturn(0x0507);
         GlState.drainGlError();
         verify(TestGl.gl(), times(64)).glGetError();

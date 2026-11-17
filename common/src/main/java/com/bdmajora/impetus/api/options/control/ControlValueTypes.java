@@ -27,13 +27,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 
-// Value types of control classes, read once per class from the type argument each one gives Control
+// Value types of control classes read once per class.
 final class ControlValueTypes {
-    // Object for a class that leaves the argument open or implements Control raw, since such a control may hold anything
+    // Value type of each control class or Object when the argument is open.
     private static final ClassValue<Class<?>> DECLARED = new ClassValue<>() {
         @Override
         protected Class<?> computeValue(Class<?> type) {
-            // Neither Control itself nor a class outside it binds the parameter, so their signatures are never read
+            // Finds the bound type for control classes only.
             Class<?> found = Control.class.isAssignableFrom(type) ? find(type, Map.of()) : null;
             return found != null ? found : Object.class;
         }
@@ -42,32 +42,32 @@ final class ControlValueTypes {
     private static final Map<Class<?>, Class<?>> WRAPPERS = Map.of(boolean.class, Boolean.class, byte.class, Byte.class, short.class, Short.class,
             char.class, Character.class, int.class, Integer.class, long.class, Long.class, float.class, Float.class, double.class, Double.class, void.class, Void.class);
 
-    // Marks a parameter whose bound is being erased, which no argument can erase to since arguments are never primitive
+    // Marks a parameter whose bound is being erased.
     private static final Class<?> ERASING = void.class;
 
     private ControlValueTypes() {
     }
 
-    // The boxed class the control class binds Control's type parameter to, or Object when it cannot tell
+    // Returns the boxed class a control class binds Control's type parameter to or Object.
     static Class<?> declared(Class<?> type) {
         return DECLARED.get(type);
     }
 
-    // Whether one value can be of both types, so only types no value shares count as a mismatch; null is unknown and matches anything
+    // Returns whether one value can be of both types with null matching anything.
     static boolean related(Class<?> a, Class<?> b) {
-        // Identity first, which is the usual case once both sides are boxed
+        // Returns true for the same class or a null side.
         if (a == b || a == null || b == null) {
             return true;
         }
         return shared(boxed(a), boxed(b));
     }
 
-    // The wrapper class of a primitive, else the class itself
+    // Returns the wrapper class of a primitive or the class itself.
     static Class<?> boxed(Class<?> type) {
         return type.isPrimitive() ? WRAPPERS.get(type) : type;
     }
 
-    // Whether some object is an instance of both reference types, by the rules of a legal cast between them
+    // Returns whether some object can be an instance of both reference types.
     private static boolean shared(Class<?> x, Class<?> y) {
         if (x.isAssignableFrom(y) || y.isAssignableFrom(x)) {
             return true;
@@ -75,10 +75,10 @@ final class ControlValueTypes {
         if (x.isArray() || y.isArray()) {
             Class<?> u = x.getComponentType();
             Class<?> v = y.getComponentType();
-            // Only arrays meet arrays, and unequal primitive components never do, so int[] and Integer[] stay apart
+            // Returns whether two array types share a component type.
             return u != null && v != null && !u.isPrimitive() && !v.isPrimitive() && shared(u, v);
         }
-        // Two classes meet only along one line of superclasses, and an enum's constants cannot add interfaces
+        // Returns whether two classes lie on one superclass line.
         if ((!x.isInterface() && !y.isInterface()) || closed(x) || closed(y)) {
             return false;
         }
@@ -101,12 +101,12 @@ final class ControlValueTypes {
         return Modifier.isFinal(type.getModifiers()) || type.isEnum();
     }
 
-    // What Control's parameter is bound to along the class's supertypes, given what its own parameters are bound to; null when no supertype leads to Control
+    // Returns what Control's parameter is bound to along the class's supertypes or null.
     private static Class<?> find(Class<?> type, Map<TypeVariable<?>, Class<?>> arguments) {
         Type[] interfaces = read(type::getGenericInterfaces, () -> rebuiltInterfaces(type, arguments));
         Type superclass = read(type::getGenericSuperclass, () -> rebuiltSuperclass(type, arguments));
         Class<?> found = walk(interfaces, superclass, arguments);
-        // The JVM never checks a signature against the class, so a stale one left by a transformer may miss Control where the erased supertypes cannot
+        // Falls back to the erased supertypes when the signature misses Control.
         return found != null ? found : walk(type.getInterfaces(), type.getSuperclass(), Map.of());
     }
 
@@ -121,7 +121,7 @@ final class ControlValueTypes {
         return superclass != null ? through(superclass, arguments) : null;
     }
 
-    // Follows one supertype, passing on what it binds its own parameters to
+    // Follows one supertype and passes on what it binds its own parameters to.
     private static Class<?> through(Type parent, Map<TypeVariable<?>, Class<?>> arguments) {
         if (parent instanceof ParameterizedType parameterized) {
             Class<?> raw = (Class<?>) parameterized.getRawType();
@@ -140,15 +140,15 @@ final class ControlValueTypes {
         if (raw == Control.class) {
             return Object.class;
         }
-        // A raw parent binds nothing of its own, so its answer is the one cached for it as a class
+        // Returns the cached answer for a raw parent.
         return Control.class.isAssignableFrom(raw) ? declared(raw) : null;
     }
 
-    // What a parameterized parent binds the parameters of its class and of each generic class around it to, as Outer<String>.Inner binds Outer's
+    // Returns what a parameterized parent binds the parameters of its class and outer classes to.
     private static Map<TypeVariable<?>, Class<?>> bind(ParameterizedType parent, Map<TypeVariable<?>, Class<?>> arguments) {
         Map<TypeVariable<?>, Class<?>> passed = new HashMap<>();
         for (Type level = parent; level instanceof ParameterizedType parameterized; level = parameterized.getOwnerType()) {
-            // A parent rebuilt over a class whose own signature is malformed has no parameters to bind, and was built with no arguments
+            // Reads the type parameters or none for a malformed signature.
             TypeVariable<?>[] parameters = read(((Class<?>) parameterized.getRawType())::getTypeParameters, () -> new TypeVariable<?>[0]);
             Type[] actual = parameterized.getActualTypeArguments();
             for (int i = 0; i < parameters.length; i++) {
@@ -162,7 +162,7 @@ final class ControlValueTypes {
         return passed;
     }
 
-    // The class an argument stands for, null where nothing is known, with a parameter nothing binds standing for its first bound
+    // Returns the class an argument stands for or null.
     private static Class<?> erase(Type type, Map<TypeVariable<?>, Class<?>> arguments) {
         if (type instanceof Class<?> plain) {
             return plain;
@@ -177,7 +177,7 @@ final class ControlValueTypes {
         if (type instanceof TypeVariable<?> variable) {
             Class<?> bound = arguments.get(variable);
             if (bound != null) {
-                // Met again while its own bound is erased, the parameter lies on a cycle only hand-made bytecode can hold, which says nothing
+                // Returns the bound unless the parameter is still being erased.
                 return bound != ERASING ? bound : null;
             }
             Map<TypeVariable<?>, Class<?>> erasing = new HashMap<>(arguments);
@@ -185,7 +185,7 @@ final class ControlValueTypes {
             Type[] bounds = read(variable::getBounds, () -> null);
             return bounds != null ? erase(bounds[0], erasing) : null;
         }
-        // A wildcard, which only bytecode javac did not write can put in a supertype's arguments, stands for its upper bound
+        // Reads a wildcard as its upper bound.
         if (type instanceof WildcardType wildcard) {
             Type[] upper = read(wildcard::getUpperBounds, () -> null);
             return upper != null ? erase(upper[0], arguments) : null;
@@ -193,12 +193,12 @@ final class ControlValueTypes {
         return null;
     }
 
-    // The array class of the component, null past the 255 dimensions the JVM allows
+    // Returns the array class of the component or null past 255 dimensions.
     private static Class<?> arrayOf(Class<?> component) {
         return read(component::arrayType, () -> null);
     }
 
-    // The class's interfaces rebuilt one by one from its class file, so an argument reflection cannot read costs that argument alone
+    // Rebuilds the class's interfaces one by one from its class file.
     private static Type[] rebuiltInterfaces(Class<?> type, Map<TypeVariable<?>, Class<?>> arguments) {
         ClassSignature signature = signature(type);
         List<Signature.ClassTypeSig> named = signature != null ? signature.superinterfaceSignatures() : List.of();
@@ -216,7 +216,7 @@ final class ControlValueTypes {
         return rebuild(type, type.getSuperclass(), signature != null ? List.of(signature.superclassSignature()) : List.of(), arguments);
     }
 
-    // The class's own signature from its class file; null without this very class's file or a signature in it that parses
+    // Returns the class's own signature from its class file or null.
     private static ClassSignature signature(Class<?> type) {
         String name = type.getName().replace('.', '/');
         byte[] bytes = classFile(type, name);
@@ -225,7 +225,7 @@ final class ControlValueTypes {
         }
         try {
             ClassModel model = ClassFile.of().parse(bytes);
-            // A loader may hand out other bytes than it defined the class from, so only a file of this class counts
+            // Rejects a class file of another class.
             if (!model.thisClass().asInternalName().equals(name)) {
                 return null;
             }
@@ -235,7 +235,7 @@ final class ControlValueTypes {
         }
     }
 
-    // The class file as the class's loader hands it out, null without one or when it cannot be read
+    // Returns the class file bytes from the class's loader or null.
     private static byte[] classFile(Class<?> type, String name) {
         try (InputStream file = type.getResourceAsStream("/" + name + ".class")) {
             return file != null ? file.readAllBytes() : null;
@@ -244,7 +244,7 @@ final class ControlValueTypes {
         }
     }
 
-    // The supertype among those a signature names that is this class, its arguments erased in the scope of the class reading it; the class itself when none is
+    // Returns the named supertype that is this class with its arguments erased.
     private static Type rebuild(Class<?> type, Class<?> raw, List<Signature.ClassTypeSig> named, Map<TypeVariable<?>, Class<?>> arguments) {
         for (Signature.ClassTypeSig signature : named) {
             if (raw != null && binaryName(signature).equals(raw.getName())) {
@@ -252,7 +252,7 @@ final class ControlValueTypes {
                 TypeVariable<?>[] parameters = read(raw::getTypeParameters, () -> new TypeVariable<?>[0]);
                 List<Signature.TypeArg> given = signature.typeArgs();
                 Type[] actual = new Type[parameters.length];
-                // Arguments that do not fit the parameters, as an older shape of the class gives, bind none of them
+                // Binds the arguments only when their count matches the parameters.
                 if (given.size() == parameters.length) {
                     for (int i = 0; i < parameters.length; i++) {
                         actual[i] = argument(type, given.get(i), arguments);
@@ -264,12 +264,12 @@ final class ControlValueTypes {
         return raw;
     }
 
-    // The binary name of the class a signature names, with an inner class joined to the classes around it
+    // Returns the binary name of the class a signature names.
     private static String binaryName(Signature.ClassTypeSig signature) {
         return signature.outerType().map(outer -> binaryName(outer) + "$" + signature.className()).orElse(signature.className().replace('/', '.'));
     }
 
-    // What one argument of a signature erases to, a wildcard reaching up to its bound and one reaching down saying no more than Object
+    // Returns what one signature argument erases to.
     private static Class<?> argument(Class<?> type, Signature.TypeArg given, Map<TypeVariable<?>, Class<?>> arguments) {
         if (given instanceof Signature.TypeArg.Bounded bounded && bounded.wildcardIndicator() != Signature.TypeArg.Bounded.WildcardIndicator.SUPER) {
             return resolve(type, bounded.boundType(), arguments);
@@ -277,7 +277,7 @@ final class ControlValueTypes {
         return Object.class;
     }
 
-    // The class a signature stands for in the class's scope, null where it names a class that will not load or a parameter nothing declares
+    // Returns the class a signature stands for in the class's scope or null.
     private static Class<?> resolve(Class<?> type, Signature signature, Map<TypeVariable<?>, Class<?>> arguments) {
         return switch (signature) {
             // A base type only ever stands as an array's component
@@ -294,7 +294,7 @@ final class ControlValueTypes {
         };
     }
 
-    // The class of that name, null when it is missing or will not link
+    // Returns the class of that name or null when it is missing or will not link.
     private static Class<?> load(String name, ClassLoader loader) {
         try {
             return Class.forName(name, false, loader);
@@ -303,9 +303,9 @@ final class ControlValueTypes {
         }
     }
 
-    // The parameter a class's signature names, looked up as reflection does in the class, the method or constructor around it and outwards from there
+    // Returns the type parameter a class signature names.
     private static TypeVariable<?> parameter(Class<?> type, String name) {
-        // Hand-made enclosing method attributes can point two classes at each other, so each scope is searched once
+        // Scopes already searched.
         Set<GenericDeclaration> searched = new HashSet<>();
         for (GenericDeclaration scope = type; scope != null && searched.add(scope); scope = enclosing(scope)) {
             for (TypeVariable<?> variable : read(scope::getTypeParameters, () -> new TypeVariable<?>[0])) {
@@ -317,7 +317,7 @@ final class ControlValueTypes {
         return null;
     }
 
-    // The method, constructor or class around a class, or the class that declares a method or constructor
+    // Returns the declaration around a class or the class that declares a method.
     private static GenericDeclaration enclosing(GenericDeclaration scope) {
         if (scope instanceof Executable executable) {
             return executable.getDeclaringClass();
@@ -331,7 +331,7 @@ final class ControlValueTypes {
         return constructor != null ? constructor : around(type::getEnclosingClass);
     }
 
-    // One lookup of what is around a class, null when its attributes name nothing real, which reflection reports as an InternalError
+    // Returns the result of one lookup or null when reflection throws.
     private static <T> T around(Supplier<T> lookup) {
         try {
             return lookup.get();
@@ -340,7 +340,7 @@ final class ControlValueTypes {
         }
     }
 
-    // Reads a signature, or falls back when it names a class that will not load, gives a class the wrong number of arguments, nests an array too deep or is malformed
+    // Reads a signature or returns the fallback when it cannot be read.
     private static <T> T read(Supplier<T> generic, Supplier<T> fallback) {
         try {
             return generic.get();
@@ -349,7 +349,7 @@ final class ControlValueTypes {
         }
     }
 
-    // A supertype rebuilt from a class file, its arguments erased already and null where unknown
+    // A supertype rebuilt from a class file.
     private record Rebuilt(Class<?> getRawType, Type[] getActualTypeArguments, Type getOwnerType) implements ParameterizedType {
     }
 }

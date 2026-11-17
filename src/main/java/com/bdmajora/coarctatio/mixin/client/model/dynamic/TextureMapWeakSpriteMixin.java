@@ -53,14 +53,14 @@ public abstract class TextureMapWeakSpriteMixin implements WeakSpriteTextureMap 
         this.coarctatio$forgetWeak(sprite.getIconName());
     }
 
-    // Handles forget weak.
+    // Drops a weakly registered sprite.
     private void coarctatio$forgetWeak(String name) {
         if (this.coarctatio$weakSprites.remove(name)) {
             this.mapRegisteredSprites.remove(name);
         }
     }
 
-    // Handles register sprite weak.
+    // Registers a sprite that may be dropped if nothing ends up using it.
     @Override
     public void coarctatio$registerSpriteWeak(ResourceLocation location) {
         String name = location.toString();

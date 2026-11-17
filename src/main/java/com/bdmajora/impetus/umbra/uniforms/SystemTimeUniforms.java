@@ -1,6 +1,5 @@
 package com.bdmajora.impetus.umbra.uniforms;
 
-import com.bdmajora.impetus.umbra.gl.program.ProgramUniforms;
 import com.bdmajora.impetus.umbra.gl.uniform.UniformCollector;
 import com.bdmajora.impetus.umbra.gl.uniform.UniformUpdateFrequency;
 import org.joml.Vector2i;

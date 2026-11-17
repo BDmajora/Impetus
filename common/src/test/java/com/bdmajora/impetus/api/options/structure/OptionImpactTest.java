@@ -26,7 +26,7 @@ class OptionImpactTest {
             OptionImpact.HIGH, TextFormattingStyle.GOLD,
             OptionImpact.VARIES, TextFormattingStyle.WHITE);
 
-    // The label an impact should hand out: its own lang key, untranslated, in its colour
+    // Returns the label an impact hands out.
     private static TextComponent expected(OptionImpact impact) {
         return new TextComponent.Styled(
                 new TextComponent.Translatable(List.of("impetus.option_impact." + impact.name().toLowerCase(Locale.ROOT)), List.of()),
@@ -49,11 +49,11 @@ class OptionImpactTest {
         for (OptionImpact impact : OptionImpact.values()) {
             TextComponent label = impact.getLocalizedName();
             assertEquals(expected(impact), label, impact.name());
-            // One colour and nothing else, so the tooltip's grey never wins over it
+            // Checks one colour style.
             TextComponent.Styled styled = assertInstanceOf(TextComponent.Styled.class, label);
             assertEquals(1, styled.styles().size());
             assertTrue(styled.styles().iterator().next().isColor());
-            // A key rather than resolved text, so a language switch reaches it
+            // Checks the translation key.
             TextComponent.Translatable key = assertInstanceOf(TextComponent.Translatable.class, styled.inner());
             assertTrue(key.args().isEmpty());
             assertEquals("impetus.option_impact." + impact.name().toLowerCase(Locale.ROOT) + "[styled]", label.toString());
@@ -69,7 +69,7 @@ class OptionImpactTest {
             TextComponent second = impact.getLocalizedName();
             assertEquals(first, second);
             assertEquals(first.hashCode(), second.hashCode());
-            // Through the interface too, as the cycler and the tooltip reach it
+            // Checks the interface view.
             TextProvider provider = impact;
             assertEquals(first, provider.getLocalizedName());
         }
@@ -80,7 +80,7 @@ class OptionImpactTest {
         for (OptionImpact impact : OptionImpact.values()) {
             TextComponent.Styled handed = (TextComponent.Styled) impact.getLocalizedName();
             int hash = handed.hashCode();
-            // Restyled, cleared and recoloured by whoever holds it
+            // Changes the handed label.
             handed.styles().add(TextFormattingStyle.STRIKETHROUGH);
             handed.styles().add(TextFormattingStyle.RED);
             assertEquals(expected(impact), impact.getLocalizedName(), impact.name());
@@ -106,7 +106,7 @@ class OptionImpactTest {
         }
         Set<String> statics = Arrays.stream(OptionImpact.class.getDeclaredFields()).filter(f -> !f.isSynthetic() && Modifier.isStatic(f.getModifiers())).map(Field::getName).collect(Collectors.toSet());
         assertEquals(Set.copyOf(NAMES), statics);
-        // Per constant: the shared key and the colour, both final
+        // Checks the fields.
         Map<String, Class<?>> fields = Arrays.stream(OptionImpact.class.getDeclaredFields()).filter(f -> !Modifier.isStatic(f.getModifiers())).collect(Collectors.toMap(Field::getName, Field::getType));
         assertEquals(Map.of("key", TextComponent.class, "colour", TextFormattingStyle.class), fields);
         for (Field field : OptionImpact.class.getDeclaredFields()) {

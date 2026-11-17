@@ -81,6 +81,7 @@ public abstract class RenderGlobalMixin implements SimpleWorldRenderer.Provider<
     @Final
     private Set<TileEntity> setTileEntities;
     // Impetus world renderer.
+    @Unique
     private ImpetusWorldRenderer renderer;
 
     // Replaces the field access GameSettings.renderDistanceChunks in loadRenderers.
@@ -107,7 +108,7 @@ public abstract class RenderGlobalMixin implements SimpleWorldRenderer.Provider<
         return this.renderer;
     }
 
-    // Field changing world added to the target.
+    // Whether the world is changing.
     @Unique
     private boolean impetus$changingWorld;
 
@@ -199,7 +200,7 @@ public abstract class RenderGlobalMixin implements SimpleWorldRenderer.Provider<
         }
     }
 
-    // Helper method unculled viewport added to the target.
+    // Returns the viewport with culling off.
     @Unique
     private static Viewport unculledViewport(
             Viewport source) {
@@ -276,12 +277,13 @@ public abstract class RenderGlobalMixin implements SimpleWorldRenderer.Provider<
         return getConfiguredCloudHeight(provider);
     }
 
-    // Returns the cloud height of a dimension.
+    // Returns the configured cloud height.
+    @Unique
     private float getConfiguredCloudHeight(WorldProvider provider) {
         return ImpetusVintage.options().quality.cloudHeight;
     }
 
-    // Helper method cloud radius cells added to the target.
+    // Returns the cloud radius in cells capped at four times the render distance.
     @Unique
     private int impetus$cloudRadiusCells(float cellSize) {
         int requested = Math.max(8, ImpetusVintage.options().quality.cloudDistance) * 16;
@@ -314,7 +316,8 @@ public abstract class RenderGlobalMixin implements SimpleWorldRenderer.Provider<
             if (!this.setTileEntities.isEmpty()) {
                 TileEntityRendererDispatcher.instance.preDrawBatch();
                 for (var te : this.setTileEntities) {
-                    if (te.shouldRenderInPass(pass)) {
+                    // Draws a global block entity when its box is in the frustum.
+                    if (te.shouldRenderInPass(pass) && camera.isBoundingBoxInFrustum(te.getRenderBoundingBox())) {
                         TileEntityRendererDispatcher.instance.render(te, partialTicks, -1);
                     }
                 }

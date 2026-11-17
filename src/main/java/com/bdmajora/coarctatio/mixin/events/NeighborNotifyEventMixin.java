@@ -25,7 +25,7 @@ public abstract class NeighborNotifyEventMixin implements RecyclableEvent {
     @Mutable
     private boolean forceRedstoneUpdate;
 
-    // Handles refresh neighbors.
+    // Points the reused event at new sides and redstone flag.
     @Override
     public void coarctatio$refreshNeighbors(EnumSet<EnumFacing> notifiedSides, boolean forceRedstoneUpdate) {
         this.notifiedSides = notifiedSides;

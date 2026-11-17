@@ -122,7 +122,7 @@ public final class IndirectMultiDrawBatch extends MultiDrawBatch {
         this.maxElementCount = Math.max(this.maxElementCount, mergedCount);
     }
 
-    // Returns the exception for a negative count or an invalid pointer and otherwise the state exception of a full batch
+    // Returns the exception for a negative count or an invalid pointer or a full batch.
     private RuntimeException appendError(int elementCount, long elementPointer) {
         if (elementCount >= 0 && (elementPointer & INVALID_POINTER_BITS) != 0L) {
             return new IllegalArgumentException("Element pointer must be a multiple of " + Integer.BYTES + " between 0 and "
@@ -131,7 +131,7 @@ public final class IndirectMultiDrawBatch extends MultiDrawBatch {
         return this.refusal(elementCount, "Batch is full");
     }
 
-    // Returns the exception for a negative count or a closed batch and otherwise the state exception with the message
+    // Returns the exception for a negative count or a closed batch or the state exception.
     private RuntimeException refusal(int elementCount, String stateMessage) {
         if (elementCount < 0) {
             return new IllegalArgumentException("Element count must not be negative: " + elementCount);

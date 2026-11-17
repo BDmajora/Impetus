@@ -14,7 +14,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 // Mixin that changes World.
 @Mixin(World.class)
 public abstract class WorldMixin implements InventoryEntityTracker {
-    // Field inventory entities added to the target.
+    // Number of inventory carrying entities in the world.
     @Unique
     private int equilibrium$inventoryEntities;
 
@@ -48,7 +48,7 @@ public abstract class WorldMixin implements InventoryEntityTracker {
         }
     }
 
-    // Handles may have inventory entities.
+    // Returns whether any inventory carrying entity is in the world.
     @Override
     public boolean equilibrium$mayHaveInventoryEntities() {
         return this.equilibrium$inventoryEntities > 0;

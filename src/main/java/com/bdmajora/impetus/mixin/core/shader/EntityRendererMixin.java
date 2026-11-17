@@ -37,10 +37,10 @@ public class EntityRendererMixin {
     private static final String PROFILER_END_START =
             "Lnet/minecraft/profiler/Profiler;endStartSection(Ljava/lang/String;)V";
 
-    // Field hand projection added to the target.
+    // Projection of the shader hand.
     @Unique
     private static final Matrix4f impetus$handProjection = new Matrix4f();
-    // Field hand projection buffer added to the target.
+    // Buffer the hand projection is uploaded from.
     @Unique
     private static final FloatBuffer impetus$handProjectionBuffer = BufferUtils.createFloatBuffer(16);
 
@@ -197,7 +197,7 @@ public class EntityRendererMixin {
         Umbra.setPhase(ProgramId.Particles);
     }
 
-    // Replaces the call of ParticleManager.renderParticles in renderWorldPass.
+    // Skips vanilla's particle draw when the pack draws particles before the deferred chain.
     @Redirect(method = "renderWorldPass",
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/client/particle/ParticleManager;renderParticles"
@@ -206,16 +206,17 @@ public class EntityRendererMixin {
     private void impetus$orderParticles(ParticleManager manager,
                                         // Entity of the view.
                                         Entity entity, float partialTicks) {
-        if (impetus$particlesDrawnEarly) {
-            impetus$particlesDrawnEarly = false;
+        if (impetus$drawsParticlesBeforeDeferred(Umbra.getRenderingPipeline())) {
             return;
         }
         manager.renderParticles(entity, partialTicks);
     }
 
-    // Field particles drawn early added to the target.
+    // Returns whether the pack draws particles at the translucent anchor.
     @Unique
-    private boolean impetus$particlesDrawnEarly;
+    private static boolean impetus$drawsParticlesBeforeDeferred(UmbraRenderingPipeline pipeline) {
+        return pipeline != null && "before".equals(pipeline.getParticleOrdering());
+    }
 
     // Runs inside renderWorldPass.
     @Inject(method = "renderWorldPass",
@@ -255,12 +256,12 @@ public class EntityRendererMixin {
                 }
                 this.mc.getTextureManager().bindTexture(TextureMap.LOCATION_BLOCKS_TEXTURE);
             }
-            if ("before".equals(pipeline.getParticleOrdering())) {
+            // Draws particles at the anchor outside debug views.
+            if (impetus$drawsParticlesBeforeDeferred(pipeline) && !this.debugView) {
                 Entity viewEntity = this.mc.getRenderViewEntity();
                 if (viewEntity != null) {
                     Umbra.setPhase(ProgramId.Particles);
                     this.mc.effectRenderer.renderParticles(viewEntity, partialTicks);
-                    this.impetus$particlesDrawnEarly = true;
                 }
             }
             pipeline.beginTranslucents();
@@ -355,7 +356,7 @@ public class EntityRendererMixin {
         }
     }
 
-    // Returns whether view entity sleeping.
+    // Returns whether the view entity is asleep.
     private boolean impetus$isViewEntitySleeping() {
         Entity viewEntity = this.mc.getRenderViewEntity();
         return viewEntity instanceof EntityLivingBase living && living.isPlayerSleeping();

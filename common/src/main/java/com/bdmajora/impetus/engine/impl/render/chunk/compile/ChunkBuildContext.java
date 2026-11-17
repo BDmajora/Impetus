@@ -9,7 +9,7 @@ public class ChunkBuildContext {
         this.buffers = new ChunkBuildBuffers(renderPassConfiguration);
     }
 
-    // Resets per-section state so the context can be reused for the next
+    // Resets the per section state for the next build.
     public void cleanup() {
         this.buffers.destroy();
     }

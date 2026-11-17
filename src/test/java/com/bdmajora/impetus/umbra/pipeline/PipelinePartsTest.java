@@ -69,7 +69,7 @@ class PipelinePartsTest {
     @BeforeAll
     static void bootstrap() {
         Mc.bootstrap();
-        // TextureUtil initialises under its own GL mock, so before this class installs one
+        // Initialises TextureUtil.
         Mc.textures();
     }
 
@@ -104,7 +104,7 @@ class PipelinePartsTest {
 
     @Test
     void vanillaFeaturesFollowThePackOnlyWhileItRenders() {
-        // No pack: everything vanilla draws
+        // Checks everything draws without a pack.
         assertTrue(VanillaFeatureToggles.shouldRenderSun());
         assertEquals(OptionalInt.empty(), VanillaFeatureToggles.getCloudMode());
         Mixins.set(Umbra.class, "currentPack", new ShaderPack(Map.of(ShaderPack.PROPERTIES_PATH, "sun = false")));
@@ -126,7 +126,7 @@ class PipelinePartsTest {
             installPack("clouds = " + mode[0]);
             assertEquals(OptionalInt.of(Integer.parseInt(mode[1])), VanillaFeatureToggles.getCloudMode());
         }
-        // An unknown mode is reported once and otherwise ignored
+        // Checks an unknown cloud mode.
         installPack("clouds = puffy");
         assertEquals(OptionalInt.empty(), VanillaFeatureToggles.getCloudMode());
         assertEquals(OptionalInt.empty(), VanillaFeatureToggles.getCloudMode());
@@ -164,7 +164,7 @@ class PipelinePartsTest {
         }
         sources.put(ShaderPack.PROPERTIES_PATH, "program.gbuffers_weather.enabled = false\nalphaTest.gbuffers_textured = GREATER 0.1");
         ShaderPack pack = new ShaderPack(sources);
-        // The first program linked (gbuffers_basic, for the sky) fails, so every phase resolving to it stays vanilla
+        // Checks a failing first program.
         when(TestGl.gl().glGetProgrami(anyInt(), eq(0x8B82))).thenReturn(0, 1);
         when(TestGl.gl().glGetUniformLocation(anyInt(), any(CharSequence.class))).thenAnswer(invocation -> {
             String name = invocation.getArgument(1).toString();
@@ -263,7 +263,7 @@ class PipelinePartsTest {
         verify(TestGl.gl(), never()).glReadPixels(anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), anyLong());
         assertEquals(1.0F, CenterDepthSampler.getCenterDepthSmooth());
         sampler.sample(5, 0, 600, 0.05F, 1.0F);
-        // Pixel-pack buffers: the first frame only issues, later frames map what the previous one read
+        // Checks the pixel pack sampling.
         sampler.sample(5, 800, 600, 0.05F, 1.0F);
         verify(TestGl.gl()).glReadPixels(400, 300, 1, 1, GL11.GL_DEPTH_COMPONENT, GL11.GL_FLOAT, 0L);
         assertEquals(1.0F, CenterDepthSampler.getCenterDepthSmooth());
@@ -330,7 +330,7 @@ class PipelinePartsTest {
         EntityPlayer player = mock(EntityPlayer.class);
         RayTraceResult hit = new RayTraceResult(Vec3d.ZERO, net.minecraft.util.EnumFacing.UP, net.minecraft.util.math.BlockPos.ORIGIN);
         for (boolean fail : new boolean[] {false, true}) {
-            // finishWorldRendering hands vanilla a depth-tested, writable framebuffer.
+            // Checks the framebuffer state handed back to vanilla.
             boolean[] depth = {true, true};
             RenderGlobal renderGlobal = mock(RenderGlobal.class);
             client.renderGlobal = renderGlobal;
@@ -386,7 +386,7 @@ class PipelinePartsTest {
         CustomImageManager images = new CustomImageManager(definitions, 30, 31, 800, 600);
         assertFalse(images.isEmpty());
         assertEquals(4, images.getHardwareImageUnits());
-        // The unsupported format is skipped, the last one runs out of image units, and "screen" and "extra" out of sampler units
+        // Checks the image and sampler units.
         assertEquals(4, images.getNextAvailableImageUnit());
         Map<String, Integer> overrides = images.getUniformOverrides();
         assertEquals(0, overrides.get("flat"));
@@ -407,7 +407,7 @@ class PipelinePartsTest {
         images.destroy();
         assertTrue(images.isEmpty());
         assertNull(images.getFirst3DImageSize());
-        // Fixed-size images only: nothing to resize or clear; a driver reporting no units gets the declared maximum
+        // Checks fixed size images.
         when(TestGl.gl().glGetInteger(0x8D57)).thenReturn(0);
         CustomImageManager fixed = new CustomImageManager(List.of(image("f", "f_sampler rgba rgba8 unsigned_byte false false 2 2")), 30, 31, 800, 600);
         assertEquals(16, fixed.getHardwareImageUnits());
@@ -493,7 +493,7 @@ class PipelinePartsTest {
         assertTrue(textures.isEmpty());
         assertTrue(textures.getOverrides(TextureStage.COMPOSITE_AND_FINAL).isEmpty());
 
-        // A noise texture that is not a pack PNG, or one that will not decode, keeps the generated noise
+        // Checks the noise texture fallbacks.
         when(pack.getCustomNoiseTexture()).thenReturn(new CustomTextureData.LightmapMarker());
         when(pack.getCustomTextureDataMap()).thenReturn(Map.of());
         when(pack.getUmbraCustomTextureDataMap()).thenReturn(Map.of());

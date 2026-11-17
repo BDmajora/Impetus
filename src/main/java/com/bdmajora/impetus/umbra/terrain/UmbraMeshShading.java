@@ -45,7 +45,7 @@ public final class UmbraMeshShading implements MeshTerrainShading {
 
     // GL enum of the active uniform block count.
     static final int ACTIVE_UNIFORM_BLOCKS = 0x8A36;
-    // Blocks the engine itself gives a ported program: its two scene blocks and the moving-light block.
+    // Uniform blocks the engine gives a ported program.
     static final int ENGINE_UNIFORM_BLOCKS = 3;
 
     // Pattern of the thread count define of a ported mesh shader.

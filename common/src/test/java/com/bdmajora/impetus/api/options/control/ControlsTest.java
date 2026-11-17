@@ -13,7 +13,7 @@ import org.mockito.Mockito;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ControlsTest {
-    // A mutable option whose value lives in a holder, with availability, change state and name all controllable
+    // Mutable option backed by a holder.
     private static <T> Option<T> option(T initial, boolean available, boolean changed) {
         @SuppressWarnings("unchecked")
         Option<T> option = Mockito.mock(Option.class);
@@ -41,7 +41,7 @@ class ControlsTest {
         assertTrue(draw.drew(Integer.toHexString(DefaultColors.getModAccentColor("coarctatio"))));
     }
 
-    // The strings a tick box row draws, which are only its name since the box itself is fills; the box takes 30, so the name gets the width less 42
+    // Returns the strings a tick box row draws.
     private static java.util.List<String> nameDrawnAt(int width, String name, boolean available, boolean changed) {
         Option<Boolean> option = option(true, available, changed);
         Mockito.when(option.getName()).thenReturn(TextComponent.literal(name));
@@ -54,9 +54,9 @@ class ControlsTest {
 
     @Test
     void aNameThatFitsExactlyIsDrawnWholeAndOnePixelLessCutsIt() {
-        // 15 characters, 90 pixels
+        // Name 90 pixels wide.
         assertEquals(java.util.List.of("Render distance"), nameDrawnAt(132, "Render distance", true, false));
-        // 89 less the 18 pixel ellipsis leaves 71, eleven characters
+        // Checks eleven characters.
         assertEquals(java.util.List.of("Render dist..."), nameDrawnAt(131, "Render distance", true, false));
         assertEquals(java.util.List.of("Name"), nameDrawnAt(66, "Name", true, false));
     }
@@ -64,9 +64,9 @@ class ControlsTest {
     @Test
     void thePendingChangeMarkerIsCountedInTheRoomAndKeptAfterTheEllipsis() {
         assertEquals(java.util.List.of("Name *"), nameDrawnAt(78, "Name", true, true));
-        // One pixel less and the name alone would still fit, but not with its marker, so the name gives way and the marker stays
+        // Checks the marker.
         assertEquals(java.util.List.of("... *"), nameDrawnAt(77, "Name", true, true));
-        // 90 less the 30 pixel "... *" leaves 60, ten characters
+        // Checks ten characters.
         assertEquals(java.util.List.of("Render dis... *"), nameDrawnAt(132, "Render distance", true, true));
     }
 
@@ -86,7 +86,7 @@ class ControlsTest {
 
     @Test
     void aCutNameDropsTheSpacesItEndsOn() {
-        // 48 less the ellipsis leaves 30, five characters: "Ab   "
+        // Checks five characters.
         assertEquals(java.util.List.of("Ab..."), nameDrawnAt(90, "Ab   cdefghijk", true, false));
         assertEquals(java.util.List.of("..."), nameDrawnAt(90, " ".repeat(20), true, false));
     }

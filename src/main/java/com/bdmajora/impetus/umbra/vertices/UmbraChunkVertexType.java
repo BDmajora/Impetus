@@ -8,7 +8,7 @@ import org.lwjgl.system.MemoryUtil;
 
 import java.util.Map;
 
-// Chunk vertex of pack terrain on the OpenGL path: the Nvidium pack layout plus the mid texture coordinate, in 36 bytes.
+// Chunk vertex of pack terrain on the OpenGL path in 36 bytes.
 public class UmbraChunkVertexType implements ChunkVertexType {
     // Shared instance.
     public static final UmbraChunkVertexType INSTANCE = new UmbraChunkVertexType();
@@ -19,7 +19,7 @@ public class UmbraChunkVertexType implements ChunkVertexType {
     // Define that switches the default chunk shader to this layout's decode.
     public static final String LAYOUT_DEFINE = "USE_PACKED_EXTENDED_VERTEX";
 
-    // Position steps over the range, sixteen bits per axis.
+    // Position steps over the range per axis.
     private static final int POSITION_MAX_VALUE = 65536;
     // Offset that makes section-local positions unsigned.
     private static final float MODEL_ORIGIN = 8.0f;
@@ -29,7 +29,7 @@ public class UmbraChunkVertexType implements ChunkVertexType {
     private static final float MODEL_SCALE = MODEL_RANGE / POSITION_MAX_VALUE;
     // Position steps per block.
     private static final float MODEL_SCALE_INV = POSITION_MAX_VALUE / MODEL_RANGE;
-    // Texture coordinate steps per unit, the same fixed point as the Nvidium pack vertex.
+    // Texture coordinate steps per unit.
     private static final int TEXTURE_SCALE = UmbraMeshVertex.TEXTURE_SCALE;
 
     // Byte offsets of the nine words.
@@ -43,7 +43,7 @@ public class UmbraChunkVertexType implements ChunkVertexType {
     private static final int OFFSET_BLOCK = 28;
     private static final int OFFSET_MID_BLOCK = 32;
 
-    // Vertex format: words 0-3, 4-7 and 8, all decoded in the shader.
+    // Vertex format of three packed words.
     public static final GlVertexFormat VERTEX_FORMAT = GlVertexFormat.builder(STRIDE)
             .addElement("a_PackedA", OFFSET_XY, GlVertexAttributeFormat.UNSIGNED_INT, 4, false, true)
             .addElement("a_PackedB", OFFSET_MID_UV, GlVertexAttributeFormat.UNSIGNED_INT, 4, false, true)
@@ -94,7 +94,7 @@ public class UmbraChunkVertexType implements ChunkVertexType {
             int skyLight = (vertex.light >> 16) & 0xFF;
 
             MemoryUtil.memPutInt(ptr + OFFSET_XY, encodePosition(vertex.x) | (encodePosition(vertex.y) << 16));
-            // Material fits four bits and emission is a light level, so both share the byte after the draw id
+            // Packs the material and emission into the byte after the draw id.
             MemoryUtil.memPutInt(ptr + OFFSET_Z_META, encodePosition(vertex.z) | ((sectionIndex & 0xFF) << 16)
                     | ((material.bits() & 0xF) << 24) | (Math.clamp(vertex.blockEmission, 0, 15) << 28));
             MemoryUtil.memPutInt(ptr + OFFSET_COLOR, vertex.color);
@@ -113,9 +113,9 @@ public class UmbraChunkVertexType implements ChunkVertexType {
         };
     }
 
-    // Returns a section-local position in sixteen bit fixed point, rounded and held inside the range.
+    // Returns a section local position in sixteen bit fixed point.
     static int encodePosition(float value) {
-        // Rounded, so a float a hair under a block edge lands on the edge; clamped, so a far vertex never wraps
+        // Rounds to the nearest step and clamps to the range.
         return Math.clamp(Math.round((MODEL_ORIGIN + value) * MODEL_SCALE_INV), 0, POSITION_MAX_VALUE - 1);
     }
 

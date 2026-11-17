@@ -17,7 +17,7 @@ public abstract class PlayerTickEventMixin implements RecyclableEvent {
     @Mutable
     public EntityPlayer player;
 
-    // Handles refresh player.
+    // Points the reused event at a new player.
     @Override
     public void coarctatio$refreshPlayer(EntityPlayer player) {
         this.player = player;

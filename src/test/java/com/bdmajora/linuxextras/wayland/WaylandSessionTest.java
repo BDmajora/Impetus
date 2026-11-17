@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class WaylandSessionTest {
     @Test
     void theSocketResolvesAsLibwaylandResolvesIt(@TempDir Path dir) {
-        // wayland-0 under the runtime directory when nothing names it, an absolute name as given, nothing without a runtime directory
+        // Checks the socket path rules.
         assertEquals(dir.resolve("wayland-0"), WaylandSession.socket(Map.of("XDG_RUNTIME_DIR", dir.toString())));
         assertEquals(Path.of("/run/elsewhere/sock"), WaylandSession.socket(Map.of("WAYLAND_DISPLAY", "/run/elsewhere/sock")));
         assertNull(WaylandSession.socket(Map.of("WAYLAND_DISPLAY", "wayland-1")));

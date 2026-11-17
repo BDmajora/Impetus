@@ -18,14 +18,14 @@ public final class NeighborLightFlags {
     private NeighborLightFlags() {
     }
 
-    // Choices of the boundary facing setting.
+    // Side of a chunk boundary a pending light check belongs to.
     public enum BoundaryFacing {
-        // Value that selects in.
+        // The check runs on this chunk's side of the boundary.
         IN,
-        // Value that selects out.
+        // The check runs on the neighbour's side.
         OUT;
 
-        // Returns the opposite.
+        // Returns the other side of the boundary.
         public BoundaryFacing getOpposite() {
             return this == IN ? OUT : IN;
         }

@@ -10,23 +10,23 @@ import java.util.Objects;
 
 // Settings of the shadow color group.
 public final class ShadowColorSettings {
-    // Choice of the logger option.
+    // Logger of Umbra.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/Umbra");
 
-    // Choice of the optifine buffers option.
+    // Shadow colour targets without the HIGHER_SHADOWCOLOR feature.
     public static final int OPTIFINE_BUFFERS = 2;
-    // Choice of the iris buffers option.
+    // Shadow colour targets with the HIGHER_SHADOWCOLOR feature.
     public static final int IRIS_BUFFERS = 8;
 
-    // Choice of the formats option.
+    // Internal format of each shadow colour target.
     private final InternalTextureFormat[] formats;
-    // Choice of the clear option.
+    // Whether each shadow colour target is cleared every frame.
     private final boolean[] clear;
-    // Choice of the clear colors option.
+    // Clear colour of each shadow colour target.
     private final float[][] clearColors;
-    // Choice of the mipmap option.
+    // Whether each shadow colour target gets mipmaps.
     private final boolean[] mipmap;
-    // Choice of the nearest option.
+    // Whether each shadow colour target samples with nearest filtering.
     private final boolean[] nearest;
 
     // Creates a shadow color settings from its count.

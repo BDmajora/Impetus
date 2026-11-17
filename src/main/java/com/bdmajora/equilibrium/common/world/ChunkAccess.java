@@ -1,6 +1,5 @@
 package com.bdmajora.equilibrium.common.world;
 
-import net.minecraft.world.World;
 import net.minecraft.world.chunk.Chunk;
 
 import javax.annotation.Nullable;

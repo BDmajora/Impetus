@@ -51,7 +51,7 @@ public abstract class WorldMixin implements UnloadedEntityRemover {
     @Shadow
     public abstract void onEntityRemoved(Entity entityIn);
 
-    // Handles remove unloaded.
+    // Removes entities queued for unload in one pass.
     @Override
     public void equilibrium$removeUnloaded() {
         if (!this.unloadedEntityList.isEmpty()) {

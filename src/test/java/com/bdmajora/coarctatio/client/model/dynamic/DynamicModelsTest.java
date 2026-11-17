@@ -83,7 +83,7 @@ class DynamicModelsTest {
         CoarctatioConfig config = Mc.uninitialized(CoarctatioConfig.class);
         config.dynamicModelsEagerNamespaces = new String[] {"eagermod"};
         Mixins.set(CoarctatioConfig.class, "instance", config);
-        // Guidebook's book model is drawn by a renderer that never asks for it, so it is always loaded up front
+        // Checks the Guidebook model.
         Mc.forge("gbook");
     }
 
@@ -97,7 +97,7 @@ class DynamicModelsTest {
         Mixins.set(DynamicModels.class, "reloadingAtlas", null);
         UnbakedModelProvider.textureCapture = null;
         DynamicModels.rememberWeakSprites(Set.of());
-        // The scan a reload started is drained so the next test starts from nothing
+        // Drains the reload scan.
         TextureDiscovery.take();
     }
 
@@ -112,7 +112,7 @@ class DynamicModelsTest {
         return model;
     }
 
-    // A custom loader answering from the map for the locations it holds, and failing for anything else it accepts
+    // Registers a custom loader.
     private ICustomModelLoader register(Map<ResourceLocation, IModel> models, String... failingNamespaces) throws Exception {
         Set<String> failing = Set.of(failingNamespaces);
         ICustomModelLoader loader = mock(ICustomModelLoader.class);
@@ -139,7 +139,7 @@ class DynamicModelsTest {
         return pack;
     }
 
-    // The resource manager a reload is handed: its packs are listed, and every file read is not found
+    // Returns the resource manager of a reload.
     private static SimpleReloadableResourceManager resources(IResourcePack pack) throws Exception {
         FallbackResourceManager domain = Mc.mock(FallbackResourceManager.class);
         when(((FallbackResourceManagerAccessor) domain).coarctatio$packs()).thenReturn(new ArrayList<>(List.of(pack)));
@@ -166,13 +166,13 @@ class DynamicModelsTest {
         Map<ResourceLocation, IModel> models = new HashMap<>();
         IModel gearModel = model("eagermod:items/gear");
         IBakedModel gearBaked = mock(IBakedModel.class);
-        // Baking asks for a sprite the scan never saw, which is reported
+        // Checks an unseen sprite is reported.
         when(gearModel.bake(any(), any(), any())).thenAnswer(invocation -> {
             invocation.<Function<ResourceLocation, TextureAtlasSprite>>getArgument(2).apply(new ResourceLocation("eagermod:items/unscanned"));
             return gearBaked;
         });
         models.put(gear, gearModel);
-        // A model whose parent chain only resolved the first time still loads; its textures are just not known
+        // Checks a flaky parent chain.
         IModel flakyModel = model();
         when(flakyModel.getTextures()).thenReturn(List.of()).thenThrow(new IllegalStateException("parent gone"));
         models.put(flaky, flakyModel);
@@ -189,7 +189,7 @@ class DynamicModelsTest {
                 "assets/tconstruct/models/item/parts/pick.tmat.json",
                 "assets/tconstruct/models/item/parts/pick_head.tcon.json",
                 "assets/tconstruct/models/item/parts/broken.tmat.json",
-                // Early-looking, but not shaped like a model location
+                // Location that is not a model.
                 "assets/tconstruct/loose.tcon.json",
                 "assets/tconstruct/textures/items/pick.png",
                 "a.json");
@@ -221,11 +221,11 @@ class DynamicModelsTest {
         UnbakedModelProvider unbaked = DynamicModels.unbaked();
         assertSame(baked, Mixins.get(manager, "modelRegistry"));
         assertSame(missingBaked, Mixins.get(manager, "defaultModel"));
-        // Eager namespaces are baked by the end of the reload, and TConstruct's material models are pinned
+        // Checks the eager namespaces.
         assertSame(gearBaked, baked.getIfBaked(gear));
         assertTrue(unbaked.getKeys().contains(new ResourceLocation("tconstruct:item/parts/pick.tmat")));
         assertFalse(unbaked.getKeys().contains(new ResourceLocation("tconstruct:item/parts/pick_head.tcon")));
-        // Every texture those models use, and the built-in ones, went to the atlas
+        // Checks the registered sprites.
         verify(populated).registerSprite(new ResourceLocation("eagermod:items/gear"));
         verify(populated).registerSprite(new ResourceLocation("tconstruct:items/pick"));
         verify(populated).registerSprite(new ResourceLocation("tconstruct:items/pick_head"));
@@ -250,10 +250,10 @@ class DynamicModelsTest {
         verify(weak, never()).coarctatio$registerSpriteWeak(any());
 
         Mixins.set(DynamicModels.class, "reloadingAtlas", atlas);
-        // The json crawl waits for the location tables, which a reload would have built
+        // Starts the json crawl.
         TextureDiscovery.start(resources(indexed("assets/examplemod/textures/blocks/ore.png")), List.of(indexed("assets/examplemod/textures/blocks/ore.png")));
         TextureDiscovery.tablesReady();
-        // Lava's still texture is not in the packs, and the atlas refuses water's flowing one
+        // Checks the lava and water sprites.
         IResourceManager clientResources = client.getResourceManager();
         when(clientResources.getResource(new ResourceLocation("minecraft:textures/blocks/lava_still.png"))).thenThrow(new FileNotFoundException());
         doThrow(new IllegalArgumentException("not a sprite")).when(weak).coarctatio$registerSpriteWeak(new ResourceLocation("minecraft:blocks/water_flow"));
@@ -268,7 +268,7 @@ class DynamicModelsTest {
     @SuppressWarnings("unchecked")
     @Test
     void anAtlasThatDoesNotFitDropsUnreferencedSpritesThenTheLargest() throws Exception {
-        // Loading a model checks it against Forge's missing model, which needs a loader in place
+        // Mocks Forge's model loader.
         ModelLoader forge = Mc.mock(ModelLoader.class);
         Mixins.stub(forge, "getMissingModel", invocation -> mock(IModel.class));
         Object vanillaLoader = Statics.get(Class.forName("net.minecraftforge.client.model.ModelLoader$VanillaLoader"), "INSTANCE");
@@ -306,16 +306,16 @@ class DynamicModelsTest {
         DynamicModels.rememberWeakSprites(Set.of("examplemod:blocks/unused"));
 
         DynamicModels.stitchWithFallback(stitcher);
-        // The first retry keeps only sprites some model references, gathered by loading every known model
+        // Checks the first retry.
         ArgumentCaptor<Set<String>> referenced = ArgumentCaptor.forClass(Set.class);
         verify(dropping).coarctatio$retainSprites(referenced.capture());
         assertTrue(referenced.getValue().containsAll(Set.of("examplemod:blocks/used", "examplemod:blocks/parent_used")));
-        // The second drops the largest, and the third fits
+        // Checks the second and third retries.
         verify(dropping).coarctatio$dropLargestSprite();
         assertNull(UnbakedModelProvider.textureCapture);
         assertFalse(DynamicModels.isDroppable("examplemod:blocks/unused", Set.of()));
 
-        // With nothing left to drop, the failure stands
+        // Checks the failure stands.
         Stitcher full = Mc.mock(Stitcher.class, DroppingStitcher.class);
         doThrow(new StitcherException(null, "too big")).when(full).doStitch();
         assertThrows(StitcherException.class, () -> DynamicModels.stitchWithFallback(full));

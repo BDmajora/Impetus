@@ -86,7 +86,7 @@ class MultipartMixinsTest {
         assertTrue(first.isCancelled());
         assertTrue(first.getReturnValue().apply(Blocks.OAK_FENCE.getDefaultState().withProperty(BlockFence.NORTH, true)));
 
-        // The same leaf asked for twice is one object, unlike vanilla's fresh closure per call
+        // Checks the same leaf.
         CallbackInfoReturnable<Predicate<IBlockState>> second = Mixins.cir();
         Mixins.call(condition, "coarctatio$canonicalize", container, second);
         assertSame(first.getReturnValue(), second.getReturnValue());

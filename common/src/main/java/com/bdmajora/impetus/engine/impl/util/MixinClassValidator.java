@@ -1,5 +1,7 @@
 package com.bdmajora.impetus.engine.impl.util;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.tree.ClassNode;
 
@@ -12,6 +14,8 @@ import java.util.stream.Stream;
 
 // Finds the mixin classes in a folder of compiled classes.
 public class MixinClassValidator {
+    // Logger of the scanner.
+    private static final Logger LOGGER = LogManager.getLogger(MixinClassValidator.class);
     // Descriptor of the mixin annotation.
     private static final String MIXIN_DESC = "Lorg/spongepowered/asm/mixin/Mixin;";
 
@@ -26,7 +30,7 @@ public class MixinClassValidator {
                     .map(path -> classifyMixin(packageRoot, path))
                     .forEach(mixins::add);
         } catch (IOException e) {
-            e.printStackTrace();
+            LOGGER.error("Could not scan {} for mixin classes", packageRoot, e);
         }
         return mixins;
     }
@@ -48,7 +52,7 @@ public class MixinClassValidator {
         try {
             bytecode = Files.readAllBytes(classPath);
         } catch (IOException e) {
-            e.printStackTrace();
+            LOGGER.error("Could not read class file {}", classPath, e);
             return false;
         }
 

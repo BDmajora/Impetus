@@ -35,7 +35,7 @@ public class FluidloggedUtilsMixin {
         }
     }
 
-    // Handles slice.
+    // Returns the Impetus chunk slice behind a block access or null.
     private static IBlockAccess impetus$slice(IBlockAccess world) {
         if (world instanceof ImpetusBlockAccess) {
             return world;

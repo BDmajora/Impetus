@@ -321,7 +321,7 @@ public class RenderRegionManager {
 
     // Upload of a sorted index buffer.
     private record PendingMeshSortUpload(RenderSection section, TerrainRenderPass pass, PendingUpload indexUpload) implements PendingSectionUpload {
-        // Returns null because a sort has no vertices.
+        // Returns null.
         @Override
         public PendingUpload vertexUpload() {
             return null;

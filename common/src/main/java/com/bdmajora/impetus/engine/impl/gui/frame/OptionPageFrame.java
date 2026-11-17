@@ -198,7 +198,10 @@ public class OptionPageFrame extends AbstractFrame {
 
     // Returns the mod id used to compare owners of a tooltip.
     private static String normalizeModForTooltip(@Nullable String mod) {
-        return "minecraft".equals(mod) ? "impetus" : mod;
+        return mod == null ? null : switch (mod) {
+            case "minecraft", "extras", "coarctatio", "fulgor", "equilibrium", "umbra", "dynamiclights", "linuxextras" -> "impetus";
+            default -> mod;
+        };
     }
 
     // Draws the tooltip after a hover delay and reports a failing tooltip once.

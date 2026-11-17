@@ -44,7 +44,7 @@ class GlyphBatchTest {
         List<ResourceLocation> bound = new ArrayList<>();
         try (MockedStatic<GL11> gl11 = Mockito.mockStatic(GL11.class);
              MockedStatic<GL13> gl13 = Mockito.mockStatic(GL13.class)) {
-            // Nothing open, nothing drawn
+            // Checks nothing is drawn.
             batch.flush(bound::add);
             assertFalse(batch.isOpen());
             batch.setColor(1.0F, 0.5F, 0.25F, 1.0F);
@@ -63,6 +63,8 @@ class GlyphBatchTest {
             assertFalse(batch.isOpen());
             gl11.verify(() -> GL11.glDrawArrays(GL11.GL_QUADS, 0, 8));
             gl11.verify(() -> GL11.glDrawArrays(GL11.GL_QUADS, 0, 4));
+            // Checks the colour is restored.
+            gl11.verify(() -> GL11.glColor4f(1.0F, 0.5F, 0.25F, 1.0F), Mockito.atLeastOnce());
         }
     }
 
@@ -86,7 +88,7 @@ class GlyphBatchTest {
         Mixins.set(font, "glyphWidth", glyphs);
         Mixins.set(font, "locationFontTexture", ASCII);
         Mixins.stub(font, "getUnicodePageLocation", invocation -> PAGE);
-        // Off, vanilla draws each glyph itself
+        // Checks the switch off.
         config.text.batchGlyphs = false;
         assertFalse(call(font, "impetus$batchDefaultChar", (int) 'A', false).isCancelled());
         assertFalse(call(font, "impetus$batchUnicodeChar", 'é', false).isCancelled());
@@ -99,7 +101,7 @@ class GlyphBatchTest {
             assertTrue(batch.isOpen());
             // An empty unicode glyph advances nothing and queues nothing
             assertEquals(0.0F, call(font, "impetus$batchUnicodeChar", '\u0001', false).getReturnValue());
-            // Start column 2, end 14: half of 13 pixels plus the one-pixel gap
+            // Checks the unicode width.
             assertEquals(7.5F, call(font, "impetus$batchUnicodeChar", 'é', false).getReturnValue());
             gl11.verify(() -> GL11.glDrawArrays(GL11.GL_QUADS, 0, 4));
             // Decorations flush first only when there are any and something is queued

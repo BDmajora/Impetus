@@ -68,7 +68,7 @@ class SectionRenderDataStorageTest {
         SectionRenderDataStorage storage = new SectionRenderDataStorage(QUADS, true, 1);
         assertTrue(storage.isEmpty());
         assertSame(QUADS, storage.getPrimitiveType());
-        // The row base is row zero, which hot loops index from themselves
+        // Checks the row base.
         assertEquals(storage.getDataPointer(0), storage.getRowBasePointer());
         segment(vertices, 16 * 20);
         GlBufferSegment vertexSeg = segment(vertices, 8 * 20);
@@ -79,7 +79,7 @@ class SectionRenderDataStorageTest {
         int base = vertexSeg.getOffset();
         int indexBase = indexSeg.getOffset() * 4;
         assertEquals((1 << ModelQuadFacing.POS_Y.ordinal()) | (1 << ModelQuadFacing.NEG_Y.ordinal()), storage.getSliceMask(5));
-        // Each facing starts where the previous ones end, in vertices and in index bytes
+        // Checks the facing starts.
         assertEquals(base, FULL.getVertexOffset(row, ModelQuadFacing.POS_X.ordinal()));
         assertEquals(0, FULL.getElementCount(row, ModelQuadFacing.POS_X.ordinal(), QUADS));
         assertEquals(6, FULL.getElementCount(row, ModelQuadFacing.POS_Y.ordinal(), QUADS));
@@ -89,7 +89,7 @@ class SectionRenderDataStorageTest {
         assertEquals(indexBase + 48, FULL.getIndexOffset(row, ModelQuadFacing.UNASSIGNED.ordinal()));
         assertEquals(base + 8, FULL.getRunVertexEnd(row, ModelQuadFacing.NEG_Y.ordinal(), QUADS));
 
-        // A resize rewrites the same offsets from the allocations, and a moved allocation shifts the whole row
+        // Checks a resize.
         storage.onBufferResized();
         assertEquals(base + 4, FULL.getVertexOffset(row, ModelQuadFacing.NEG_Y.ordinal()));
         FULL.rebase(row, base + 100, 400, QUADS);
@@ -127,7 +127,7 @@ class SectionRenderDataStorageTest {
     @Test
     void unsortedPassesStoreFencePostsAndAByteMaskHeader() {
         GlBufferArena vertices = new GlBufferArena(commands, 40, 4, new FallbackStagingBuffer(commands));
-        // The arena allocates in 40-byte elements, two 20-byte vertices each
+        // Checks the element size.
         SectionRenderDataStorage storage = new SectionRenderDataStorage(QUADS, false, 2);
         assertEquals(storage.getDataPointer(0), storage.getRowBasePointer());
         segment(vertices, 3 * 40);
@@ -140,13 +140,13 @@ class SectionRenderDataStorageTest {
         assertEquals(base + 4, COMPACT.getVertexOffset(row, ModelQuadFacing.POS_Y.ordinal()));
         assertEquals(6, COMPACT.getElementCount(row, ModelQuadFacing.POS_Y.ordinal(), QUADS));
         assertEquals(0, COMPACT.getElementCount(row, ModelQuadFacing.POS_Z.ordinal(), QUADS));
-        // Unsorted passes draw from the shared index buffer, so there is no per-facing offset
+        // Checks unsorted passes.
         assertEquals(0, COMPACT.getIndexOffset(row, ModelQuadFacing.POS_Y.ordinal()));
         assertEquals(base + 8, COMPACT.getRunVertexEnd(row, ModelQuadFacing.POS_Y.ordinal(), QUADS));
         assertEquals(base + 12, COMPACT.getRunVertexEnd(row, ModelQuadFacing.UNASSIGNED.ordinal(), QUADS));
         assertThrows(UnsupportedOperationException.class, () -> COMPACT.writeIndexOffsets(row, 0, QUADS));
 
-        // Rebasing moves every post by the same amount, and is free when nothing moved
+        // Checks rebasing.
         storage.onBufferResized();
         assertEquals(base, COMPACT.getVertexOffset(row, 0));
         COMPACT.rebase(row, base + 10, 0, QUADS);

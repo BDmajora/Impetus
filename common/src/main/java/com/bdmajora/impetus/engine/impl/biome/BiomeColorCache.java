@@ -126,7 +126,7 @@ public abstract class BiomeColorCache<BIOME, RESOLVER> {
         return this.resolveColor(resolver, this.biomeData.getAt(worldX, worldY, worldZ), worldX, worldY, worldZ);
     }
 
-    // Returns the colour of one cell and resolves it only when it has not been resolved since the region last moved
+    // Returns the colour of one cell and resolves it on first use.
     private int cellColor(RESOLVER resolver, Slice slice, int relX, int relY, int relZ) {
         var resolved = slice.resolved;
 
@@ -166,7 +166,7 @@ public abstract class BiomeColorCache<BIOME, RESOLVER> {
     // Colours of one layer for one resolver
     private static final class Slice {
         private final ColorBuffer buffer;
-        // One bit per cell resolved since the region last moved or null for a blended slice
+        // One bit per resolved cell or null for a blended slice.
         private final long[] resolved;
         // Populate stamp the slice was last filled for
         private long lastPopulateStamp;

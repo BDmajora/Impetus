@@ -137,7 +137,7 @@ class TerrainMixinsTest {
         return cir;
     }
 
-    // A position, colour, UV and lightmap layout: 7 ints a vertex, colour at 3, UV at 4, light at 6 and no normal
+    // Returns a block vertex format.
     private static VertexFormatMixin blockFormat() {
         VertexFormatMixin format = Mixins.instance(VertexFormatMixin.class);
         doReturn(7).when(format).getIntegerSize();
@@ -150,7 +150,7 @@ class TerrainMixinsTest {
         return format;
     }
 
-    // A flat quad at y = 1 facing up, each vertex with its own colour, UV and light
+    // Returns an upward quad at y 1.
     private static int[] upQuad() {
         float[][] corners = {{0, 1, 0}, {0, 1, 1}, {1, 1, 1}, {1, 1, 0}};
         int[] data = new int[28];
@@ -187,7 +187,7 @@ class TerrainMixinsTest {
         assertEquals(-1, layout.impetus$normalIndex());
         assertEquals(7, layout.impetus$intStride());
         verify(format, times(1)).getIntegerSize();
-        // Adding an element or clearing drops the cache, so a mutated format is re-derived
+        // Checks adding an element or clearing drops the cache.
         doReturn(8).when(format).getIntegerSize();
         doReturn(-1).when(format).getColorOffset();
         doReturn(false).when(format).hasUvOffset(0);
@@ -221,7 +221,7 @@ class TerrainMixinsTest {
         assertEquals(2, quad.getColorIndex());
         assertNull(quad.getTransparencyLevel());
         assertSame(Mixins.get(quad, "sprite"), quad.impetus$getSprite());
-        // The normal and its face are derived once from the positions, and the flags once from those
+        // Checks the normal and face and flags are derived once.
         assertEquals(ModelQuadFacing.POS_Y, quad.getNormalFace());
         assertEquals(ModelQuadFacing.POS_Y, quad.getNormalFace());
         int normal = quad.getComputedFaceNormal();
@@ -233,7 +233,7 @@ class TerrainMixinsTest {
         assertNotEquals(0, flags & ModelQuadFlags.IS_VANILLA_SHADED);
         assertEquals(flags, quad.getFlags());
 
-        // A format with no colour, lightmap or normal reads those as zero, and a mod's missing face lights as up
+        // Checks a format without colour or lightmap or normal.
         VertexFormatMixin bare = Mixins.instance(VertexFormatMixin.class);
         doReturn(3).when(bare).getIntegerSize();
         doReturn(-1).when(bare).getColorOffset();
@@ -254,7 +254,7 @@ class TerrainMixinsTest {
         assertSame(quad, Mixins.call(builder, "setVanillaShadingFlag", quad));
         assertEquals(ModelQuadFlags.IS_VANILLA_SHADED, (int) Mixins.get(quad, "flags"));
 
-        // A plain atlas sprite whose UVs stay inside it can be trusted; an animated or custom sprite, or UVs past the edge, cannot
+        // Checks which sprites keep their UVs trusted.
         BakedQuadFactoryMixin bakery = Mixins.instance(BakedQuadFactoryMixin.class);
         TextureAtlasSprite sprite = Mc.uninitialized(TextureAtlasSprite.class);
         BakedQuadMixin inside = quad(blockFormat(), upQuad(), EnumFacing.UP);
@@ -288,11 +288,11 @@ class TerrainMixinsTest {
     void fluidloggedReadsGoBackToTheChunkSlice() {
         FluidCacheMixin cache = Mixins.instanceWith(FluidCacheMixin.class, IBlockAccessWrapper.class);
         IBlockAccessWrapper wrapper = (IBlockAccessWrapper) cache;
-        // Wrapping the live world, the Fluidlogged reads stand
+        // Wraps the live world.
         when(wrapper.getWrapped()).thenReturn(mock(IBlockAccess.class));
         assertFalse(returned(cache, "impetus$sliceBlockState", 1, 2, 3).isCancelled());
         assertFalse(returned(cache, "impetus$sliceFluidState", 1, 2, 3).isCancelled());
-        // Wrapping a chunk slice, both come from the snapshot the mesh is built from
+        // Wraps a chunk slice.
         ImpetusBlockAccess slice = mock(ImpetusBlockAccess.class);
         IBlockState stone = Blocks.STONE.getDefaultState();
         when(slice.getBlockState(1, 2, 3)).thenReturn(stone);
@@ -307,7 +307,7 @@ class TerrainMixinsTest {
         BlockPos pos = new BlockPos(1, 2, 3);
         IBlockState fence = Blocks.OAK_FENCE.getDefaultState();
         IBlockState water = Blocks.WATER.getDefaultState();
-        // The live world, bare or wrapped, keeps Fluidlogged's own chunk reads
+        // Checks the live world bare and wrapped.
         IBlockAccess live = mock(IBlockAccess.class);
         IBlockAccessWrapper liveWrapper = mock(IBlockAccessWrapper.class);
         when(liveWrapper.getWrapped()).thenReturn(live);
@@ -315,19 +315,19 @@ class TerrainMixinsTest {
             assertFalse(returned(FluidloggedUtilsMixin.class, "impetus$sliceFluidState", world, pos).isCancelled());
             assertFalse(returned(FluidloggedUtilsMixin.class, "impetus$sliceFluidOrReal", world, pos).isCancelled());
         }
-        // A fence the server never fluidlogged, holding the guess the slice made for it
+        // Checks a fence with a guessed fluid.
         ImpetusBlockAccess slice = mock(ImpetusBlockAccess.class);
         when(slice.getBlockState(pos)).thenReturn(fence);
         when(slice.getFluidState(1, 2, 3)).thenReturn(FluidState.of(water));
         assertSame(water, sliceFluid(slice, pos).getState());
         assertSame(water, returned(FluidloggedUtilsMixin.class, "impetus$sliceFluidOrReal", slice, pos).getReturnValue());
-        // Through FluidCache's wrapper too, which is how the fluid renderer asks
+        // Checks reads through FluidCache's wrapper.
         IBlockAccessWrapper cache = mock(IBlockAccessWrapper.class);
         when(cache.getWrapped()).thenReturn(slice);
         when(cache.getBlockState(pos)).thenReturn(fence);
         assertSame(water, sliceFluid(cache, pos).getState());
         assertSame(water, returned(FluidloggedUtilsMixin.class, "impetus$sliceFluidOrReal", cache, pos).getReturnValue());
-        // A block with nothing in it stays itself, and a fluid block is its own fluid whatever the slice holds
+        // Checks an empty block and a fluid block.
         when(slice.getFluidState(1, 2, 3)).thenReturn(FluidState.EMPTY);
         assertTrue(sliceFluid(slice, pos).isEmpty());
         assertSame(fence, returned(FluidloggedUtilsMixin.class, "impetus$sliceFluidOrReal", slice, pos).getReturnValue());
@@ -377,7 +377,7 @@ class TerrainMixinsTest {
         @SuppressWarnings("unchecked")
         GlProgram<ChunkShaderInterface> shadow = mock(GlProgram.class);
         try (MockedStatic<UmbraTerrainProgramOverride> overrides = Mockito.mockStatic(UmbraTerrainProgramOverride.class)) {
-            // Shaders off: Impetus compiles its own
+            // Checks the program with shaders off.
             assertFalse(returned(renderer, "impetus$overrideTerrainProgram", solid).isCancelled());
             overrides.when(UmbraTerrainProgramOverride::areShadersActive).thenReturn(true);
             // A pack without a terrain program leaves Impetus's in place
@@ -429,7 +429,7 @@ class TerrainMixinsTest {
         Scene scene = new Scene(client);
         RenderGlobalMixin global = scene.global;
         ImpetusWorldRenderer renderer = scene.renderer;
-        // Vanilla allocates no chunk storage, and leaves follow the Impetus leaves option
+        // Checks the chunk storage and leaves settings.
         assertEquals(0, (int) Mixins.call(global, "nullifyBuiltChunkStorage", scene.settings));
         BlockLeaves leaves = mock(BlockLeaves.class);
         options.quality.leavesQuality = ImpetusGameOptions.GraphicsQuality.FAST;
@@ -441,7 +441,7 @@ class TerrainMixinsTest {
         assertSame(global.impetus$getWorldRenderer(), SimpleWorldRenderer.Provider.getWorldRenderer(global));
         Mixins.set(global, "renderer", renderer);
 
-        // A world change rebuilds once, skipping the reload vanilla does for the world being left; Umbra hears the dimension first, nothing for a world without a provider or no world at all
+        // Checks the world change hooks.
         cancels(global, "impetus$beginWorldChange", (Object) null);
         assertNull(Mixins.get(com.bdmajora.impetus.umbra.Umbra.class, "dimensionName"));
         WorldProvider nether = mock(WorldProvider.class);
@@ -492,7 +492,7 @@ class TerrainMixinsTest {
             verify(scene.entityRenderer).enableLightmap();
             verify(scene.entityRenderer).disableLightmap();
 
-            // Terrain setup takes the camera's viewport, or one that culls nothing when the pack turns frustum culling off
+            // Checks the terrain viewport.
             when(client.getRenderViewEntity()).thenReturn(camera);
             Viewport viewport = new Viewport((minX, minY, minZ, maxX, maxY, maxZ) -> false, new Vector3d(1, 2, 3));
             ICamera frustum = mock(ICamera.class, Mockito.withSettings().extraInterfaces(ViewportProvider.class));
@@ -526,7 +526,7 @@ class TerrainMixinsTest {
             // Clouds off
             assertTrue(cancels(global, "impetus$renderCloudsSodium", 0.5F, 2, 0.0, 0.0, 0.0));
             when(scene.settings.shouldRenderClouds()).thenReturn(2);
-            // The faster clouds option off, a non-surface world, a mod's own cloud renderer, or no cloud texture: vanilla draws them
+            // Checks the cases where vanilla draws the clouds.
             options.performance.useFasterClouds = false;
             assertFalse(cancels(global, "impetus$renderCloudsSodium", 0.5F, 2, 0.0, 0.0, 0.0));
             options.performance.useFasterClouds = true;
@@ -537,7 +537,7 @@ class TerrainMixinsTest {
             when(provider.getCloudRenderer()).thenReturn(null);
             assertFalse(cancels(global, "impetus$renderCloudsSodium", 0.5F, 2, 0.0, 0.0, 0.0));
             clouds.when(() -> SodiumCloudRenderer.isReady(client)).thenReturn(true);
-            // The mesh draws at the configured height and a radius no smaller than vanilla's, under gbuffers_clouds with a pack
+            // Checks the cloud height and radius.
             scene.settings.renderDistanceChunks = 12;
             clouds.when(() -> SodiumCloudRenderer.render(any(), any(), any(), anyInt(), anyFloat(), anyInt(), anyDouble(),
                     anyDouble(), anyDouble(), anyBoolean(), anyInt(), anyFloat(), anyFloat())).thenReturn(true);
@@ -554,7 +554,7 @@ class TerrainMixinsTest {
         } finally {
             Mixins.set(Extras.class, "config", null);
         }
-        // A far cloud distance reaches out past vanilla's extent, but never beyond the cloud projection
+        // Checks a far cloud distance.
         options.quality.cloudDistance = 64;
         assertEquals(64, (int) Mixins.call(global, "impetus$cloudRadiusCells", 12.0F));
         scene.settings.renderDistanceChunks = 2;
@@ -572,7 +572,7 @@ class TerrainMixinsTest {
         int renderPass = Statics.get(ForgeHooksClient.class, "renderPass");
         double distanceWeight = Statics.get(Entity.class, "renderDistanceWeight");
         try (MockedStatic<GL11> gl11 = Mockito.mockStatic(GL11.class); MockedStatic<GL13> gl13 = Mockito.mockStatic(GL13.class)) {
-            // Block entities come from the renderer, plus any a mod put straight into RenderGlobal's own set
+            // Gathers the block entities.
             CallbackInfo ci = Mixins.ci();
             Mixins.call(global, "impetus$renderTileEntities", null, null, 0.5F, ci, 0);
             assertTrue(ci.isCancelled());
@@ -582,12 +582,29 @@ class TerrainMixinsTest {
             modded.add(skipped);
             TileEntityRendererDispatcher dispatcher = TileEntityRendererDispatcher.instance;
             Mixins.set(dispatcher, "renderEngine", mock(TextureManager.class));
+            // Checks only block entities in the camera are drawn.
+            TileEntity culled = mock(TileEntity.class);
+            TileEntity drawn = mock(TileEntity.class);
+            net.minecraft.util.math.AxisAlignedBB outside = new net.minecraft.util.math.AxisAlignedBB(0, 0, 0, 1, 1, 1);
+            net.minecraft.util.math.AxisAlignedBB inside = new net.minecraft.util.math.AxisAlignedBB(2, 2, 2, 3, 3, 3);
+            when(culled.shouldRenderInPass(0)).thenReturn(true);
+            when(drawn.shouldRenderInPass(0)).thenReturn(true);
+            when(culled.getRenderBoundingBox()).thenReturn(outside);
+            when(drawn.getRenderBoundingBox()).thenReturn(inside);
+            modded.add(culled);
+            modded.add(drawn);
+            net.minecraft.client.renderer.culling.ICamera camera = mock(net.minecraft.client.renderer.culling.ICamera.class);
+            when(camera.isBoundingBoxInFrustum(inside)).thenReturn(true);
             try {
-                Mixins.call(global, "impetus$renderTileEntities", null, null, 0.5F, Mixins.ci(), 0);
+                Mixins.call(global, "impetus$renderTileEntities", null, camera, 0.5F, Mixins.ci(), 0);
             } finally {
                 Mixins.set(dispatcher, "renderEngine", null);
+                modded.remove(culled);
+                modded.remove(drawn);
             }
             verify(skipped).shouldRenderInPass(0);
+            verify(culled, Mockito.never()).getDistanceSq(anyDouble(), anyDouble(), anyDouble());
+            verify(drawn).getDistanceSq(anyDouble(), anyDouble(), anyDouble());
 
             // Entities are gathered once per frame at pass 0 and filtered by vanilla's checks and section visibility
             Statics.set(ForgeHooksClient.class, "renderPass", 0);
@@ -624,7 +641,7 @@ class TerrainMixinsTest {
             assertEquals(List.of(visible), multipass);
             assertEquals(2, (int) Mixins.get(global, "countEntitiesRendered"));
 
-            // The translucent pass reuses the gathered list, drawing in the pack's translucent entity phase
+            // Checks the translucent pass.
             Statics.set(ForgeHooksClient.class, "renderPass", 1);
             UmbraRenderingPipeline pipeline = mock(UmbraRenderingPipeline.class);
             Mixins.set(Umbra.class, "renderingPipeline", pipeline);
@@ -632,7 +649,7 @@ class TerrainMixinsTest {
             when(pipeline.getTranslucentEntityPhase()).thenReturn(ProgramId.EntitiesTrans);
             Mixins.call(global, "renderEntities", player, null, 0.5F, Mixins.ci(), outlines, multipass, 0.0, 64.0, 0.0);
             verify(pipeline).setPhase(ProgramId.EntitiesTrans, 11);
-            // In third person, or asleep, the player's own body draws too
+            // Checks the player's own body in third person.
             Statics.set(ForgeHooksClient.class, "renderPass", 0);
             scene.settings.thirdPersonView = 1;
             Mixins.call(global, "renderEntities", player, null, 0.5F, Mixins.ci(), outlines, multipass, 0.0, 64.0, 0.0);
@@ -647,7 +664,7 @@ class TerrainMixinsTest {
         }
     }
 
-    // A mob at the origin column and the given height, drawn in the opaque pass
+    // Returns a mob at the given height.
     private static Entity entity(double y) {
         Entity entity = mock(Entity.class);
         entity.posY = y;

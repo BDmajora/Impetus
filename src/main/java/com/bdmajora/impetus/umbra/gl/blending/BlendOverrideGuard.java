@@ -45,7 +45,7 @@ public final class BlendOverrideGuard {
         return shouldSuppressBlendEnable();
     }
 
-    // Returns whether suppress blend enable.
+    // Returns whether glEnable(GL_BLEND) must be dropped for a locked blend off state.
     private static boolean shouldSuppressBlendEnable() {
         return locked && lockedBlendOff;
     }

@@ -81,7 +81,7 @@ class LittleTilesCompatTest {
         return ints;
     }
 
-    // One baked quad in native layout plus some stray bytes past it, in a buffer flagged with the given order
+    // Returns one baked quad and stray bytes in a buffer of the given order.
     private static ByteBuffer baked(int[] quad, int extraBytes, ByteOrder flagged) {
         ByteBuffer buffer = ByteBuffer.allocateDirect(quad.length * 4 + extraBytes);
         buffer.duplicate().order(ByteOrder.nativeOrder()).asIntBuffer().put(quad);
@@ -133,10 +133,10 @@ class LittleTilesCompatTest {
         solid.position(7);
         // Five stray bytes past the quad are not a quad
         cache.put(BlockRenderLayer.SOLID.ordinal(), data(solid, solid.capacity()));
-        // A combined BufferLink is allocated without a byte order though its bytes are native, and a length past its end is held to its capacity
+        // Checks a buffer without a byte order.
         ByteOrder foreign = ByteOrder.nativeOrder() == ByteOrder.BIG_ENDIAN ? ByteOrder.LITTLE_ENDIAN : ByteOrder.BIG_ENDIAN;
         cache.put(BlockRenderLayer.CUTOUT_MIPPED.ordinal(), data(baked(mippedQuad, 0, foreign), 1000));
-        // Uploaded to a VBO elsewhere, and shorter than one quad
+        // Adds an uploaded and a short layer.
         cache.put(BlockRenderLayer.CUTOUT.ordinal(), data(null, 112));
         cache.put(BlockRenderLayer.TRANSLUCENT.ordinal(), data(ByteBuffer.allocateDirect(64), 64));
 
@@ -157,7 +157,7 @@ class LittleTilesCompatTest {
         TileEntityRenderManager render = tiles.render;
 
         LittleTilesCompat.renderTiles(tiles, slice, POS, state, context, section);
-        // Each layer that had whole quads is copied verbatim, the cache's own cursor untouched
+        // Checks each whole layer is copied.
         assertArrayEquals(solidQuad, contents(buffers.get(BlockRenderLayer.SOLID)));
         assertArrayEquals(mippedQuad, contents(buffers.get(BlockRenderLayer.CUTOUT_MIPPED)));
         assertEquals(0, buffers.get(BlockRenderLayer.CUTOUT).getVertexCount());
@@ -167,12 +167,12 @@ class LittleTilesCompatTest {
         verify(context).recordVanillaBlockAttribution(BlockRenderLayer.CUTOUT_MIPPED, state, POS);
         verify(context, never()).recordVanillaBlockAttribution(eq(BlockRenderLayer.CUTOUT), any(), any());
         verify(context, never()).recordVanillaBlockAttribution(eq(BlockRenderLayer.TRANSLUCENT), any(), any());
-        // A first sighting rebakes, since the bake may predate the section's first mesh
+        // Checks the first sighting rebakes.
         assertEquals(List.of(section), tiles.quadCacheUpdates);
         assertEquals(1, render.lightRebakes);
         assertFalse(render.hasLightChanged);
 
-        // Same light, no rebake; light moving at the block or beside it rebakes
+        // Checks the light fingerprint.
         LittleTilesCompat.renderTiles(tiles, slice, POS, state, context, section);
         assertEquals(1, render.lightRebakes);
         light.put(POS.up(), 0x00F00000);
@@ -208,18 +208,18 @@ class LittleTilesCompatTest {
         tiles.setPos(new BlockPos(-1, 70, -17));
         LittleTilesRenderManagerMixin manager = (LittleTilesRenderManagerMixin) (Object) tiles.render;
 
-        // Not in a world yet, then in an animation's sub-world
+        // Checks the bake outside a world and in a sub world.
         finish(manager, true, 5);
         tiles.setWorld(mock(WorldClient.class));
         finish(manager, true, 5);
         assertTrue(pending().isEmpty());
-        // A newer request still outstanding, or a failed bake, remeshes nothing
+        // Checks pending and failed bakes.
         tiles.setWorld(world);
         finish(manager, false, 5);
         finish(manager, true, -1);
         assertTrue(pending().isEmpty());
 
-        // Two bakes in one section share one entry, timed from the first
+        // Checks two bakes share one entry.
         finish(manager, true, 5);
         TileEntityLittleTiles neighbour = tiles();
         neighbour.setWorld(world);
@@ -230,7 +230,7 @@ class LittleTilesCompatTest {
         assertEquals(1, pending().size());
         assertEquals(first, pending().get(key));
 
-        // Too recent to flush, then old enough
+        // Checks the flush timing.
         LittleTilesCompat.flushRemeshes(renderer);
         verifyNoInteractions(renderer);
         pending().put(key, first - TimeUnit.SECONDS.toNanos(1));

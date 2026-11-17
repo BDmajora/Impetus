@@ -1,6 +1,6 @@
 package com.creativemd.littletiles.client.render.cache;
 
-// Test stand-in for LittleTiles' per-layer bake results, filled directly by the test
+// Test stand-in for LittleTiles' bake results.
 public class LayeredRenderBufferCache {
     private final IRenderDataCache[] layers = new IRenderDataCache[4];
 

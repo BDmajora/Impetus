@@ -8,9 +8,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -24,6 +28,40 @@ class EquilibriumConfigTest {
     void forgetSharedConfig() {
         Mixins.set(Equilibrium.class, "config", null);
         Mixins.set(EquilibriumMixinPlugin.class, "config", null);
+    }
+
+    // Checks that every mixin switch still gates a listed mixin and every listed mixin has a switch
+    @Test
+    void everyMixinSwitchGatesAListedMixin() throws Exception {
+        List<String> mixins = new ArrayList<>();
+        try (InputStream in = EquilibriumConfigTest.class.getResourceAsStream("/mixins.equilibrium.json")) {
+            assertNotNull(in);
+            com.google.gson.JsonObject json = com.google.gson.JsonParser
+                    .parseReader(new InputStreamReader(in, StandardCharsets.UTF_8)).getAsJsonObject();
+            for (String section : List.of("mixins", "client", "server")) {
+                if (json.has(section)) {
+                    json.getAsJsonArray(section).forEach(element -> mixins.add(element.getAsString()));
+                }
+            }
+        }
+        assertFalse(mixins.isEmpty());
+        EquilibriumConfig config = EquilibriumConfig.load(dir.resolve("switches.properties"));
+        for (String name : EquilibriumOptions.entries().keySet()) {
+            if (!name.startsWith("mixin.")) {
+                continue;
+            }
+            String prefix = name.substring("mixin.".length()) + ".";
+            assertTrue(mixins.stream().anyMatch(mixin -> mixin.startsWith(prefix)), name + " gates no mixin");
+        }
+        for (String mixin : mixins) {
+            assertNotNull(config.getEffectiveOptionForMixin(mixin), mixin + " has no switch");
+            // Checks each package has a switch.
+            String pack = mixin.substring(0, mixin.lastIndexOf('.'));
+            assertNotNull(EquilibriumOptions.get("mixin." + pack), mixin + " only inherits its category's switch");
+        }
+        // The non-vanilla look task removal is opt in
+        assertFalse(EquilibriumOptions.get("mixin.ai.remove_look_tasks").enabledByDefault());
+        assertTrue(EquilibriumOptions.get("mixin.ai.pathfinding_chunk_load").enabledByDefault());
     }
 
     @Test
@@ -49,7 +87,7 @@ class EquilibriumConfigTest {
                 assertEquals(category, entry.category());
             }
         }
-        // Every entry with vanilla-visible behaviour says so, and every dependency names a real option
+        // Checks the entries and dependencies.
         boolean anyNonVanilla = false;
         for (EquilibriumOptions.Entry entry : entries.values()) {
             anyNonVanilla |= entry.nonVanillaBehaviour() != null;
@@ -122,7 +160,7 @@ class EquilibriumConfigTest {
         assertTrue(config.getOption("mixin.chunk").isUserDefined());
         assertTrue(config.isOptionEnabled("mixin.world.explosions"));
         assertFalse(config.getOption("mixin.world.explosions").isUserDefined());
-        // The dependency sweep turns inline block access off because chunk access is off
+        // Checks the dependency sweep.
         assertFalse(config.isOptionEnabled("mixin.world.inline_block_access"));
         assertFalse(config.getOption("mixin.world.inline_block_access").isOverridden());
         // The BetterFps marker on the test classpath forces the sine table off
@@ -145,7 +183,7 @@ class EquilibriumConfigTest {
         assertSame(config.getOption("mixin.world.explosions.block_raycast"), config.getEffectiveOptionForMixin("world.explosions.block_raycast.ExplosionMixin"));
         assertSame(config.getOption("mixin.util.chunk_access"), config.getEffectiveOptionForMixin("util.chunk_access.WorldMixin"));
         assertNull(config.getEffectiveOptionForMixin("nowhere.Mixin"));
-        // A disabled ancestor short-circuits the walk, so it is the rule reported
+        // Checks a disabled ancestor.
         config.setOptionEnabled("mixin.world", false);
         config.setOptionEnabled("mixin.missing", false);
         assertSame(config.getOption("mixin.world"), config.getEffectiveOptionForMixin("world.explosions.block_raycast.ExplosionMixin"));
@@ -163,7 +201,7 @@ class EquilibriumConfigTest {
         Files.setPosixFilePermissions(unreadable, PosixFilePermissions.fromString("---------"));
         try {
             EquilibriumConfig locked = EquilibriumConfig.load(unreadable);
-            // Root can still read it; otherwise the read error falls back to defaults
+            // Checks an unreadable file.
             assertEquals(Files.isReadable(unreadable) ? false : true, locked.isOptionEnabled("mixin.world"));
         } finally {
             Files.setPosixFilePermissions(unreadable, PosixFilePermissions.fromString("rw-r--r--"));
@@ -176,7 +214,7 @@ class EquilibriumConfigTest {
         unwritable.save();
         assertTrue(Files.isDirectory(asDirectory));
 
-        // A null file only happens through reflection, and save is then a no-op
+        // Checks save without a file.
         Mixins.set(unwritable, "file", null);
         unwritable.save();
     }
@@ -268,7 +306,7 @@ class EquilibriumConfigTest {
         plugin.preApply(null, null, null, null);
         plugin.postApply(null, null, null, null);
 
-        // The kill switch is read once at class init, so it is flipped underneath the plugin here
+        // Flips the kill switch.
         Statics.set(EquilibriumMixinPlugin.class, "DISABLE_ALL_MIXINS", true);
         try {
             Mixins.set(EquilibriumMixinPlugin.class, "config", null);

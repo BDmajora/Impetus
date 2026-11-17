@@ -48,7 +48,7 @@ class UmbraMeshVertexTest {
         long base = MemoryUtil.memAddress(memory);
         assertEquals(base + 32, type.createEncoder().write(base, material, vertex, 9));
 
-        // Positions in MeshChunkVertex's own spots, so the packer and section bounds read them unchanged
+        // Checks the packed positions.
         assertEquals(1.5f, MeshChunkVertex.decodePosition(MeshChunkVertex.readPackedX(base)), 1.0e-3f);
         assertEquals(-0.25f, MeshChunkVertex.decodePosition(MeshChunkVertex.readPackedY(base)), 1.0e-3f);
         assertEquals(15.0f, MeshChunkVertex.decodePosition(MeshChunkVertex.readPackedZ(base)), 1.0e-3f);
@@ -56,16 +56,16 @@ class UmbraMeshVertexTest {
         assertEquals(0b101, MemoryUtil.memGetByte(base + 6));
         assertEquals((byte) 240, MemoryUtil.memGetByte(base + 7));
         assertEquals(0x80FF4020, MemoryUtil.memGetInt(base + 8));
-        // UV as 16-bit fractions, 1.0 held at the top value
+        // Checks the packed UV.
         assertEquals(0x8000 | (0xFFFF << 16), MemoryUtil.memGetInt(base + 12));
         // Sky light rides in the normal's padding byte
         assertEquals(NormI8.pack(0f, 1f, 0f) | (176 << 24), MemoryUtil.memGetInt(base + 16));
         assertEquals(NormI8.pack(1f, 0f, 0f, -1f), MemoryUtil.memGetInt(base + 20));
-        // mc_Entity: the id clamped to a short, render type and metadata as bytes
+        // Checks mc_Entity.
         assertEquals(Short.MAX_VALUE, MemoryUtil.memGetShort(base + 24));
         assertEquals((byte) -1, MemoryUtil.memGetByte(base + 26));
         assertEquals(7, MemoryUtil.memGetByte(base + 27));
-        // at_midBlock times 64 as signed bytes, emission on top
+        // Checks at_midBlock and emission.
         assertEquals(32, MemoryUtil.memGetByte(base + 28));
         assertEquals(-128, MemoryUtil.memGetByte(base + 29));
         assertEquals(0, MemoryUtil.memGetByte(base + 30));

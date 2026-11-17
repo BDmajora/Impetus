@@ -45,7 +45,7 @@ class ConfigStorageTest {
         List<String> data = new ArrayList<>();
         assertSame(data, ConfigStorage.of(data, () -> { }).getData());
         assertSame(data, ConfigStorage.of(data, (Consumer<Set<OptionFlag>>) flags -> { }).getData());
-        // Held, not copied, so later edits to the data show through
+        // Checks the data is held.
         ConfigStorage<List<String>> storage = ConfigStorage.of(data, () -> { });
         data.add("later");
         assertEquals(List.of("later"), storage.getData());
@@ -73,7 +73,7 @@ class ConfigStorageTest {
     void runnableFactoryChecksTheDataThenTheAction() {
         npe("Config data must not be null", () -> ConfigStorage.of(null, () -> { }));
         npe("Save action must not be null", () -> ConfigStorage.of("data", (Runnable) null));
-        // Same order as the Consumer overload, so both null reports the data
+        // Checks the null order.
         npe("Config data must not be null", () -> ConfigStorage.of(null, (Runnable) null));
     }
 
@@ -107,7 +107,7 @@ class ConfigStorageTest {
         ConfigStorage<String> flagged = ConfigStorage.of("data", (Consumer<Set<OptionFlag>>) flags -> runs.incrementAndGet());
         ConfigStorage<String> plain = ConfigStorage.of("data", runs::incrementAndGet);
         npe("Flags must not be null", () -> flagged.save(null));
-        // The Runnable never sees the flags, but null is still a caller bug
+        // Checks null flags.
         npe("Flags must not be null", () -> plain.save(null));
         assertEquals(0, runs.get());
         // A refused save leaves the storage usable

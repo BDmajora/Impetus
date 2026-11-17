@@ -19,7 +19,7 @@ public class FulgorMixinPlugin extends SimpleMixinPlugin {
     // Flag set when the module is on.
     private boolean enabled;
 
-    // Handles on load.
+    // Reads the Fulgor config and refuses to load beside Cubic Chunks.
     @Override
     public void onLoad(String mixinPackage) {
         this.config = FulgorConfig.get();
@@ -39,7 +39,7 @@ public class FulgorMixinPlugin extends SimpleMixinPlugin {
 
     }
 
-    // Returns whether apply mixin.
+    // Maps the mixin's simple name to the switch of its engine or fix and applies unknown names with a warning.
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
         if (!this.enabled) {

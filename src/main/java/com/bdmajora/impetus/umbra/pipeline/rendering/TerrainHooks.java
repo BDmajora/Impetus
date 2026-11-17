@@ -29,7 +29,7 @@ public final class TerrainHooks {
         this.phases = phases;
     }
 
-    // Handles the terrain draw.
+    // Binds the draw buffers and blending and alpha test of a terrain draw.
     public void onTerrainDraw(int[] drawBuffers, ProgramBlendState blendState, ProgramAlphaTest alphaTest,
                               boolean translucentPass) {
         if (!this.state.active) {
@@ -83,7 +83,7 @@ public final class TerrainHooks {
                 translucent ? this.state.schedule.translucentFlips : this.state.schedule.preTranslucentFlips);
     }
 
-    // Handles the dh lod draw.
+    // Binds the framebuffer and draw buffers and blending and alpha test of a DH LOD draw.
     public void onDhLodDraw(UmbraFramebuffer framebuffer, int[] drawBuffers, ProgramBlendState blendState,
                             boolean translucentPass) {
         if (!this.state.active) {

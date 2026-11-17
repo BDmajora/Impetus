@@ -56,7 +56,7 @@ class BakeEventDispatcherTest {
         return mod;
     }
 
-    // Runs as the given mod: the bus names the owner on the event, and Loader reports it as the active one
+    // Returns a listener that runs as the given mod.
     private static IEventListener as(ModContainer mod, LoadController controller, IEventListener body) {
         return event -> {
             ((IContextSetter) event).setModContainer(mod);
@@ -89,7 +89,7 @@ class BakeEventDispatcherTest {
         IBakedModel model = mock(IBakedModel.class);
         when(registry.getObject(MACHINE)).thenReturn(model);
 
-        // The dispatcher swallows whatever a listener throws, so what the listeners saw is checked afterwards
+        // Records what the listeners saw.
         Map<String, Set<ModelResourceLocation>> seen = new HashMap<>();
         List<Object> answers = new ArrayList<>();
         List<IEventListener> listeners = List.of(
@@ -97,7 +97,7 @@ class BakeEventDispatcherTest {
                     RegistrySimple<ModelResourceLocation, IBakedModel> view =
                             (RegistrySimple<ModelResourceLocation, IBakedModel>) ((ModelBakeEvent) event).getModelRegistry();
                     seen.put("examplemod", Set.copyOf(view.getKeys()));
-                    // Lookups, writes and iteration go to the dynamic registry; containment answers from the known set
+                    // Checks the dynamic registry view.
                     answers.add(view.getObject(MACHINE));
                     view.putObject(PINNED, model);
                     view.iterator();
@@ -147,7 +147,7 @@ class BakeEventDispatcherTest {
         Mixins.set(Loader.instance(), "modController", controller);
         Mixins.set(Loader.instance(), "namedMods", new HashMap<>());
         Mixins.set(Loader.instance(), "mods", null);
-        // Together past a second, each past the 50 ms a mod needs to be named
+        // Builds the slow listeners.
         List<IEventListener> listeners = List.of(
                 as(first, controller, event -> pause(450)),
                 as(second, controller, event -> pause(600)));

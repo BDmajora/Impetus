@@ -192,7 +192,7 @@ public class SectionRenderDataUnsafe {
             // Returns the byte offset of the indices of a facing.
             @Override
             public int getIndexOffset(long ptr, int facing) {
-                // Unsorted passes always draw through the shared index buffer, which starts at pointer zero.
+                // Returns zero for the shared index buffer of unsorted passes.
                 return 0;
             }
 
@@ -225,7 +225,7 @@ public class SectionRenderDataUnsafe {
                 return sliceMask;
             }
 
-            // Rejects the rewrite because the row stores no index offsets.
+            // Rejects the rewrite.
             @Override
             public void writeIndexOffsets(long ptr, int indexOffset, ChunkPrimitiveType primitiveType) {
                 throw new UnsupportedOperationException("Compact rows draw from the shared index buffer and store no index offsets");

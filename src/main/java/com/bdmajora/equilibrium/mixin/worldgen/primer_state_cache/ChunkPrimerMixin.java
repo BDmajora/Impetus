@@ -22,19 +22,19 @@ public abstract class ChunkPrimerMixin {
     @Final
     private static IBlockState DEFAULT_STATE;
 
-    // Field last set state added to the target.
+    // Last state written.
     @Unique
     private IBlockState equilibrium$lastSetState;
 
-    // Field last set id added to the target.
+    // Id of the last state written.
     @Unique
     private char equilibrium$lastSetId;
 
-    // Field last get id added to the target.
+    // Last id read.
     @Unique
     private char equilibrium$lastGetId;
 
-    // Field last get state added to the target.
+    // State of the last id read.
     @Unique
     private IBlockState equilibrium$lastGetState;
 

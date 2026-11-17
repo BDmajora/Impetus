@@ -33,17 +33,17 @@ public abstract class ChunkMixin {
     @Final
     private World world;
 
-    // Field debug world added to the target.
+    // Whether the chunk belongs to a debug world.
     @Unique
     private boolean equilibrium$debugWorld;
 
-    // Runs before every return of constructor.
+    // Reads the world type once per chunk and treats a chunk without a world as not debug.
     @Inject(method = "<init>", at = @At("RETURN"))
     private void equilibrium$resolveWorldType(CallbackInfo ci) {
-        this.equilibrium$debugWorld = this.world.getWorldType() == WorldType.DEBUG_ALL_BLOCK_STATES;
+        this.equilibrium$debugWorld = this.world != null && this.world.getWorldType() == WorldType.DEBUG_ALL_BLOCK_STATES;
     }
 
-    // Replaces the whole method getBlockState.
+    // Vanilla getBlockState with the world type read from the cached flag.
     @Overwrite
     public IBlockState getBlockState(final int x, final int y, final int z) {
         if (this.equilibrium$debugWorld) {

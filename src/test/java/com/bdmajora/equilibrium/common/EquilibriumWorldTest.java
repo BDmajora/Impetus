@@ -69,7 +69,7 @@ class EquilibriumWorldTest {
         World.MAX_ENTITY_RADIUS = 2.0D;
     }
 
-    // A world whose chunk (0,0) holds one real section with the given block at (x, y, z)
+    // Returns a world with one block in chunk 0 0.
     private static World worldWith(IBlockState state, int x, int y, int z, boolean withAccess) {
         World world = withAccess ? Mc.mock(World.class, ChunkAccess.class) : mock(World.class);
         when(world.getWorldType()).thenReturn(WorldType.DEFAULT);
@@ -102,7 +102,7 @@ class EquilibriumWorldTest {
         assertEquals(Blocks.AIR.getDefaultState(), loading.getBlockState(3, 40, 5));
         assertEquals(Blocks.AIR.getDefaultState(), loading.getBlockState(3, -1, 5));
         assertEquals(Blocks.AIR.getDefaultState(), loading.getBlockState(3, 256, 5));
-        // A neighbouring chunk is not loaded, and reading it never touches the world
+        // Checks an unloaded neighbour.
         assertEquals(Blocks.AIR.getDefaultState(), loading.getBlockState(30, 20, 5));
         Mockito.verify(world, Mockito.never()).getBlockState(any());
         ChunkSectionCursor nonLoading = new ChunkSectionCursor(world, false);
@@ -136,14 +136,14 @@ class EquilibriumWorldTest {
         RayTraceResult inside = FastRayCaster.rayTraceBlocks(world, new Vec3d(3.5, 5.5, 3.5), new Vec3d(6.5, 5.5, 6.5), false, false, false);
         assertNotNull(inside);
         assertEquals(new BlockPos(3, 5, 3), inside.getBlockPos());
-        // Empty space gives nothing, or the last air position when asked for it
+        // Checks empty space.
         assertNull(FastRayCaster.rayTraceBlocks(world, new Vec3d(0.5, 9.5, 0.5), new Vec3d(4.5, 9.5, 4.5), false, false, false));
         RayTraceResult miss = FastRayCaster.rayTraceBlocks(world, new Vec3d(0.5, 9.5, 0.5), new Vec3d(4.5, 9.5, 4.5), false, false, true);
         assertNotNull(miss);
         assertEquals(RayTraceResult.Type.MISS, miss.typeOfHit);
         assertEquals(new BlockPos(4, 9, 4), miss.getBlockPos());
         assertNull(FastRayCaster.rayTraceBlocks(world, new Vec3d(0.5, 9.5, 0.5), new Vec3d(0.5, 9.5, 0.5), false, false, true));
-        // Blocks without a collision box are skipped when asked, air included
+        // Checks blocks without collision.
         assertNull(FastRayCaster.rayTraceBlocks(world, new Vec3d(0.5, 9.5, 0.5), new Vec3d(4.5, 9.5, 4.5), false, true, false));
         assertNotNull(FastRayCaster.rayTraceBlocks(world, new Vec3d(0.5, 5.5, 0.5), new Vec3d(6.5, 5.5, 6.5), false, true, false));
         // Every axis direction steps correctly
@@ -174,7 +174,7 @@ class EquilibriumWorldTest {
         when(world.getTotalWorldTime()).thenReturn(2L);
         EntityZombie zombie = mock(EntityZombie.class);
         when(zombie.isNonBoss()).thenReturn(true);
-        // No server at all, or a server that is keeping up, means nothing is skipped
+        // Checks nothing is skipped.
         IFMLSidedHandler headless = mock(IFMLSidedHandler.class);
         Mixins.set(FMLCommonHandler.instance(), "sidedDelegate", headless);
         assertFalse(EntityTickBudget.shouldSkip(world, zombie));
@@ -194,7 +194,7 @@ class EquilibriumWorldTest {
         Mixins.set(world, "isRemote", true);
         assertFalse(EntityTickBudget.shouldSkip(world, zombie));
         Mixins.set(world, "isRemote", false);
-        // Players, mounts, bosses and non-living things are never throttled
+        // Checks the entities never throttled.
         assertFalse(EntityTickBudget.shouldSkip(world, mock(EntityPlayerMP.class)));
         EntityZombie ridden = mock(EntityZombie.class);
         when(ridden.isNonBoss()).thenReturn(true);
@@ -214,7 +214,7 @@ class EquilibriumWorldTest {
         EntityXPOrb orb = mock(EntityXPOrb.class);
         when(orb.isNonBoss()).thenReturn(true);
         assertTrue(EntityTickBudget.shouldSkip(world, orb));
-        // A nearby player spares the entity, a far one does not
+        // Checks the player distance.
         EntityPlayer near = mock(EntityPlayer.class);
         when(near.getDistanceSq(zombie)).thenReturn(50.0D);
         EntityPlayer far = mock(EntityPlayer.class);
@@ -227,7 +227,7 @@ class EquilibriumWorldTest {
 
     // A vanilla-looking entity type outside the vanilla package
     static final class ModdedItem extends EntityItem {
-        // Never called: instances come from Mc.uninitialized
+        // Unused constructor.
         ModdedItem() {
             super(null);
         }
@@ -238,7 +238,7 @@ class EquilibriumWorldTest {
         assertFalse(ReducedRadiusQuery.applies());
         World.MAX_ENTITY_RADIUS = 8.0D;
         assertTrue(ReducedRadiusQuery.applies());
-        // Classification is by exact type, so these are real instances with no constructor run
+        // Creates the real instances.
         EntityZombie zombie = Mc.uninitialized(EntityZombie.class);
         assertTrue(ReducedRadiusQuery.isEligible(zombie));
         assertTrue(ReducedRadiusQuery.isEligible(zombie));
@@ -263,7 +263,7 @@ class EquilibriumWorldTest {
             inv.<List<Entity>>getArgument(2).add(zombie);
             return null;
         }).when(chunk).getEntitiesWithinAABBForEntity(any(), any(), any(), any());
-        // The box spans chunks (0,0) to (1,1) once padded, but only (0,0) is loaded
+        // Checks only the loaded chunk is read.
         List<Entity> found = ReducedRadiusQuery.getEntitiesInAABBexcluding(world, null, new AxisAlignedBB(10, 0, 10, 15, 5, 15), e -> true);
         assertEquals(List.of(zombie), found);
         Mockito.verify(provider).getLoadedChunk(1, 1);
@@ -292,18 +292,18 @@ class EquilibriumWorldTest {
         assertSame(furnace, cache.get(world, 1.2, 2.9, 3.5));
         assertSame(furnace, cache.get(world, 1.2, 2.9, 3.5));
         Mockito.verify(access, Mockito.times(1)).equilibrium$getExistingTileEntity(furnacePos);
-        // An invalidated tile entity is looked up again, and a replacement is cached
+        // Checks an invalidated tile entity.
         when(furnace.isInvalid()).thenReturn(true);
         TileEntityFurnace replacement = mock(TileEntityFurnace.class);
         when(access.equilibrium$getExistingTileEntity(furnacePos)).thenReturn(replacement);
         assertSame(replacement, cache.get(world, 1.2, 2.9, 3.5));
-        // Chests are resolved every time through the block, never cached
+        // Checks chests are never cached.
         assertNotNull(cache.get(world, 1.5, 3.5, 3.5));
         assertNotNull(cache.get(world, 1.5, 3.5, 3.5));
         Mockito.verify(access, Mockito.times(2)).equilibrium$getExistingTileEntity(chestPos);
         when(access.equilibrium$getExistingTileEntity(chestPos)).thenReturn(null);
         assertNull(cache.get(world, 1.5, 3.5, 3.5));
-        // Blocks without tile entities, or with one that is not an inventory, yield nothing and remember it
+        // Checks blocks without an inventory.
         assertNull(cache.get(world, 1.5, 4.5, 3.5));
         assertNull(cache.get(world, 1.5, 4.5, 3.5));
         when(access.equilibrium$getExistingTileEntity(furnacePos)).thenReturn(null);
@@ -312,7 +312,7 @@ class EquilibriumWorldTest {
         assertNull(cache.get(world, 1.2, 2.9, 3.5));
         Mockito.verify(access, Mockito.times(3)).equilibrium$getExistingTileEntity(furnacePos);
         cache.clear();
-        // Air falls through to the entity search, which is skipped while the world says it has no inventory entities
+        // Checks the entity search.
         assertNull(cache.get(world, 1.5, 5.5, 3.5));
         Mockito.verify(world, Mockito.never()).getEntitiesInAABBexcluding(any(), any(), any());
         when(((InventoryEntityTracker) world).equilibrium$mayHaveInventoryEntities()).thenReturn(true);
@@ -331,5 +331,10 @@ class EquilibriumWorldTest {
         HopperInventoryCache plainCache = new HopperInventoryCache();
         assertSame(furnace, plainCache.get(plain, 0.5, 0.5, 0.5));
         assertSame(minecart, HopperEntityLookup.findInventoryEntity(plain, 0.5, 0.5, 0.5));
+        // Checks a rotated hopper.
+        TileEntityFurnace other = mock(TileEntityFurnace.class);
+        when(plain.getTileEntity(new BlockPos(1, 0, 0))).thenReturn(other);
+        assertSame(other, plainCache.get(plain, 1.5, 0.5, 0.5));
+        assertSame(furnace, plainCache.get(plain, 0.5, 0.5, 0.5));
     }
 }

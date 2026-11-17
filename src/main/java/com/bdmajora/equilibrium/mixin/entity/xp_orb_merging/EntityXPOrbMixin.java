@@ -42,11 +42,11 @@ public abstract class EntityXPOrbMixin {
             other.setDead();
         }
         this.xpValue = total;
-        self.xpOrbAge = Math.min(self.xpOrbAge, oldestAge(nearby, self.xpOrbAge));
+        self.xpOrbAge = Math.min(self.xpOrbAge, youngestAge(nearby, self.xpOrbAge));
     }
 
-    // Handles oldest age.
-    private static int oldestAge(List<EntityXPOrb> orbs, int own) {
+    // Returns the smallest age among the orbs.
+    private static int youngestAge(List<EntityXPOrb> orbs, int own) {
         int youngest = own;
         for (EntityXPOrb orb : orbs) {
             youngest = Math.min(youngest, orb.xpOrbAge);

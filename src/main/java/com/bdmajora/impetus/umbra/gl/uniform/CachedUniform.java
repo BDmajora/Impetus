@@ -29,7 +29,7 @@ abstract class CachedUniform<T> extends Uniform {
         }
     }
 
-    // Uploads into a program that need not be bound, under the same change test and retry as update.
+    // Uploads into a program that need not be bound.
     protected final void updateInProgram(int program) {
         T newValue = this.value.get();
 
@@ -50,7 +50,7 @@ abstract class CachedUniform<T> extends Uniform {
         this.initialized = true;
     }
 
-    // Uploads a value into a program that need not be bound; only types that write per object override it.
+    // Uploads a value into a program that need not be bound.
     protected void uploadIn(int program, T newValue) {
         throw new UnsupportedOperationException(getClass().getSimpleName() + " has no program targeted upload");
     }

@@ -33,7 +33,7 @@ class BiomeColorCacheTest {
         return slice;
     }
 
-    // Coordinates copied at call time, since the cursor is reused
+    // Returns a resolver that records each call.
     private static BiomeColorHelper.ColorResolver recording(List<Seen> seen) {
         return (biome, pos) -> {
             seen.add(new Seen(biome, pos, pos.getX(), pos.getY(), pos.getZ()));
@@ -61,7 +61,7 @@ class BiomeColorCacheTest {
         BiomeColorCache cache = new BiomeColorCache(forestAt37(), 1);
         cache.update(new SectionPos(2, 4, -1));
         cache.getColor(recording(seen), 37, 70, -9);
-        // 16 + (2 + 1) * 2 cells a side, all at the asked y
+        // Checks the cell count.
         assertEquals(22 * 22, seen.size());
         assertTrue(seen.stream().allMatch(s -> s.pos() == seen.get(0).pos() && s.y() == 70));
         assertEquals(29, seen.stream().mapToInt(Seen::x).min().orElseThrow());

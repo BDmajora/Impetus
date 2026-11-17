@@ -39,7 +39,7 @@ class TextureDiscoveryTest {
         Mc.bootstrap();
     }
 
-    // A manager holding the given json files and pngs; anything else is not found
+    // Returns a manager with the given files.
     private static IResourceManager resources(Map<ResourceLocation, String> json, Set<ResourceLocation> files) throws IOException {
         IResourceManager manager = mock(IResourceManager.class);
         when(manager.getResource(any())).thenAnswer(invocation -> {
@@ -75,7 +75,7 @@ class TextureDiscoveryTest {
         when(((IndexedResourcePack) pack).coarctatio$indexedPaths()).thenReturn(Set.of(
                 "assets/examplemod/textures/blocks/ore.png",
                 "assets/examplemod/textures/entity/chest/big.png",
-                // Outside the folders models draw from, so only found if a model names it
+                // Texture outside the model folders.
                 "assets/examplemod/textures/gui/button.png"));
 
         // What the location tables would hold once the reload has built them
@@ -92,10 +92,10 @@ class TextureDiscoveryTest {
         Map<ResourceLocation, String> json = new HashMap<>();
         json.put(new ResourceLocation("examplemod:blockstates/ore.json"), "{\"variants\":{\"normal\":{\"model\":\"examplemod:ore_block\"}}}");
         json.put(new ResourceLocation("examplemod:blockstates/broken.json"), "unreadable");
-        // A block model names its textures and its parent, which lives under models/block
+        // Adds a block model.
         json.put(new ResourceLocation("examplemod:models/block/ore_block.json"), "{\"parent\":\"examplemod:ore_base\",\"textures\":{\"all\":\"examplemod:blocks/ore_overlay\"}}");
         json.put(new ResourceLocation("examplemod:models/block/ore_base.json"), "{\"textures\":{\"particle\":\"gui/button\"}}");
-        // An item model's parent lives under models/, and one referring back to itself is only read once
+        // Adds an item model.
         json.put(new ResourceLocation("examplemod:models/item/gem.json"), "{\"parent\":\"examplemod:item/gem_base\"}");
         json.put(new ResourceLocation("examplemod:models/item/gem_base.json"), "{\"parent\":\"examplemod:item/gem_base\",\"textures\":{\"layer0\":\"examplemod:items/gem_shine\"}}");
         Set<ResourceLocation> files = Set.of(
@@ -118,13 +118,13 @@ class TextureDiscoveryTest {
             assertTrue(found.contains(new ResourceLocation("mekanism:entities/robit")));
             // The result is handed over once
             assertTrue(TextureDiscovery.take().isEmpty());
-            // A reload that dies before the tables exist fails its scan instead of parking a pool thread on them
+            // Checks a reload that dies early.
             TextureDiscovery.start(resources(json, files), List.of(pack));
             ForkJoinTask<Set<ResourceLocation>> abandoned = Mixins.get(TextureDiscovery.class, "pending");
             TextureDiscovery.abandon(new IllegalStateException("loader failed"));
             assertThrows(RuntimeException.class, abandoned::join);
             assertTrue(TextureDiscovery.take().isEmpty());
-            // With no scan running, both signals are no-ops
+            // Checks the signals without a scan.
             TextureDiscovery.tablesReady();
             TextureDiscovery.abandon(new IllegalStateException("nothing to abandon"));
         } finally {

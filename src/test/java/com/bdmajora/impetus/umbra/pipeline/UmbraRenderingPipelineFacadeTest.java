@@ -121,7 +121,7 @@ class UmbraRenderingPipelineFacadeTest {
         this.pipeline.beginArmorGlint();
         verify(this.pipeline).setPhase(ProgramId.ArmorGlint);
         this.pipeline.endArmorGlint();
-        // The ends restore through the two-argument switch, as before the split
+        // Checks the phase restore.
         verify(this.pipeline, Mockito.times(2)).setPhase(ArgumentMatchers.<ProgramId>any());
         this.pipeline.finishWorldRendering();
     }

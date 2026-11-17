@@ -43,7 +43,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
     protected static final long FLAG_WRITE_LEVEL = Long.MIN_VALUE >>> 2;
     // Flag of an entry whose level is rechecked on dequeue.
     protected static final long FLAG_RECHECK_LEVEL = Long.MIN_VALUE >>> 1;
-    // Flag has sided transparent blocks.
+    // Flag of an entry whose source block may close some faces.
     protected static final long FLAG_HAS_SIDED_TRANSPARENT_BLOCKS = Long.MIN_VALUE;
     // Starting capacity of the queues.
     protected static final int INITIAL_QUEUE_SIZE = 1 << 12;
@@ -119,7 +119,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
         return ret;
     }
 
-    // Returns whether empty of blocks.
+    // Returns whether a section is missing or holds no blocks.
     static boolean isEmptyOfBlocks(ExtendedBlockStorage section) {
         return section == null || FulgorRenderBridge.isEmptyOfBlocks(section);
     }
@@ -432,7 +432,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
         }
     }
 
-    // Returns whether queue overflowed.
+    // Returns whether a queue overflowed during the last task.
     public boolean wasQueueOverflowed() {
         return this.queueOverflowed;
     }
@@ -440,12 +440,8 @@ public abstract class BfsLightEngine extends LightEngineCache {
     // Returns the vanilla light array of a section.
     protected abstract NibbleArray vanillaLightArray(ExtendedBlockStorage section);
 
-    // Returns the brightest neighbour light minus the opacity.
-    protected final int attenuateFromNeighbours(int worldX, int worldY, int worldZ, int expect, int info, int level) {
-        int rawOpacity = LightInfo.opacity(info);
-        boolean sidedTransparent = rawOpacity > 1 && (info & LightInfo.REGISTRY) != 0;
-        int faceBits = LightInfo.faceBits(info);
-        int uniformAbsorption = !sidedTransparent ? Math.max(1, rawOpacity) : 0;
+    // Returns the brightest neighbour light that reaches a block through faces the BFS crosses.
+    protected final int attenuateFromNeighbours(int worldX, int worldY, int worldZ, int expect, IBlockState state, int info, int level) {
         int sectionOffset = this.chunkSectionIndexOffset;
 
         for (AxisDirection direction : AXIS_DIRECTIONS) {
@@ -457,15 +453,22 @@ public abstract class BfsLightEngine extends LightEngineCache {
             int localIndex = (offX & 15) | ((offZ & 15) << 4) | ((offY & 15) << 8);
 
             int neighbourLevel = getLightLevel(sectionIndex, localIndex);
-
-            int absorption = sidedTransparent
-                    ? ((faceBits & (1 << direction.ordinal())) != 0 ? rawOpacity : 1)
-                    : uniformAbsorption;
-            int attenuated = neighbourLevel - absorption;
-            if (attenuated > level) {
-                level = attenuated;
+            // Skips a neighbour that cannot raise the result.
+            if (neighbourLevel - 1 <= level) {
+                continue;
+            }
+            int attenuated = neighbourLevel - LightInfo.absorption(info, state, direction.ordinal());
+            if (attenuated <= level) {
+                continue;
+            }
+            // Skips a neighbour whose own face toward this block is closed.
+            IBlockState neighbourState = getBlockStateFast(sectionIndex, offX & 15, offY & 15, offZ & 15);
+            int neighbourInfo = lightInfoAt(neighbourState, offX, offY, offZ);
+            if ((LightInfo.blockedFaces(neighbourInfo, neighbourState) & (1 << direction.oppositeOrdinal)) != 0) {
+                continue;
             }
 
+            level = attenuated;
             if (level > expect) {
                 return level;
             }
@@ -481,7 +484,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
         }
         int srcIdx = (posX >> 4) + 5 * (posZ >> 4) + (5 * 5) * (posY >> 4) + this.chunkSectionIndexOffset;
         IBlockState srcState = getBlockStateFast(srcIdx, posX & 15, posY & 15, posZ & 15);
-        return LightInfo.faceBits(lightInfoAt(srcState, posX, posY, posZ));
+        return LightInfo.blockedFaces(lightInfoAt(srcState, posX, posY, posZ), srcState);
     }
 
     // Spreads queued light increases.
@@ -550,7 +553,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
                 if (targetLevel > 1) {
                     if (queueLength >= queue.length) {
                         if (queue.length >= MAX_QUEUE_SIZE) {
-                            this.queueOverflowed = true;
+                            warnQueueOverflow();
                             continue;
                         }
                         queue = resizeIncreaseQueue();
@@ -621,7 +624,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
                 if (currentLevel > targetLevel) {
                     if (increaseQueueLength >= increaseQueue.length) {
                         if (increaseQueue.length >= MAX_QUEUE_SIZE) {
-                            this.queueOverflowed = true;
+                            warnQueueOverflow();
                             continue;
                         }
                         increaseQueue = resizeIncreaseQueue();
@@ -642,7 +645,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
                     if (emission > 0) {
                         if (increaseQueueLength >= increaseQueue.length) {
                             if (increaseQueue.length >= MAX_QUEUE_SIZE) {
-                                this.queueOverflowed = true;
+                                warnQueueOverflow();
                                 continue;
                             }
                             increaseQueue = resizeIncreaseQueue();
@@ -660,7 +663,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
                 if (targetLevel > 0) {
                     if (queueLength >= queue.length) {
                         if (queue.length >= MAX_QUEUE_SIZE) {
-                            this.queueOverflowed = true;
+                            warnQueueOverflow();
                             continue;
                         }
                         queue = resizeDecreaseQueue();
@@ -678,7 +681,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
         performLightIncrease();
     }
 
-    // Handles the nibble visible.
+    // Copies a nibble the engine just published into the section's vanilla light array.
     @Override
     protected final void onNibbleVisible(int cacheIndex, SWMRNibbleArray nibble) {
         if (nibble == null) {
@@ -704,21 +707,23 @@ public abstract class BfsLightEngine extends LightEngineCache {
         if (dst != srcData) {
             System.arraycopy(srcData, 0, dst, 0, srcData.length);
         }
+        // Marks the section's light as changed.
+        FulgorRenderBridge.markLightChanged(section);
     }
 
-    // Choices of the axis direction setting.
+    // The six neighbour steps of the light BFS with each opposite at ordinal ^ 1.
     protected enum AxisDirection {
-        // Value that selects positive x.
+        // East.
         POSITIVE_X(1, 0, 0),
-        // Value that selects negative x.
+        // West.
         NEGATIVE_X(-1, 0, 0),
-        // Value that selects positive z.
+        // South.
         POSITIVE_Z(0, 0, 1),
-        // Value that selects negative z.
+        // North.
         NEGATIVE_Z(0, 0, -1),
-        // Value that selects positive y.
+        // Up.
         POSITIVE_Y(0, 1, 0),
-        // Value that selects negative y.
+        // Down.
         NEGATIVE_Y(0, -1, 0);
 
         // X step of the direction.
@@ -738,7 +743,7 @@ public abstract class BfsLightEngine extends LightEngineCache {
         // Z step along a chunk edge.
         protected final int edgeStepZ;
 
-        // Creates an axis direction from its x and y and z.
+        // Creates a direction from its step and works out the direction sets that exclude it or its opposite.
         AxisDirection(int x, int y, int z) {
             this.x = x;
             this.y = y;

@@ -39,10 +39,10 @@ class PlaceholderControlElementTest {
     private static final String KEY = "impetus.options.control_failed";
     private static final String FAILURE_LOG = "Control of option {} failed, showing a placeholder row";
     private static final String OPTION_LOG = "Option {} failed while {}";
-    // The label's text in the fake font, 30 characters at six pixels
+    // Label 180 pixels wide.
     private static final int LABEL_WIDTH = 180;
 
-    // A mock option with a plain name, available and unchanged
+    // Returns a mock option with a name.
     private static Option<Boolean> option(String name) {
         @SuppressWarnings("unchecked")
         Option<Boolean> option = Mockito.mock(Option.class);
@@ -69,7 +69,7 @@ class PlaceholderControlElementTest {
         return draw.strings;
     }
 
-    // A real option object, not a mock, so its identity, equality and reachability are its own
+    // Returns a real option.
     private static class Plain implements Option<Boolean> {
         final String name;
         int controlReads;
@@ -137,7 +137,7 @@ class PlaceholderControlElementTest {
         }
     }
 
-    // Equal to every other one, as an option comparing by its settings would be
+    // Equal to every other option.
     private static final class Alike extends Plain {
         Alike(String name) {
             super(name);
@@ -196,7 +196,7 @@ class PlaceholderControlElementTest {
         }
     }
 
-    // Counts the label's measures and the reads of the given name outside drawing, since the fake measures inside its own drawString
+    // Counts label measures and name reads.
     private static final class Counting extends Sized {
         final TextComponent name;
         int labelMeasures;
@@ -267,7 +267,7 @@ class PlaceholderControlElementTest {
 
     // Swaps the placeholder's logger for a mock while the body runs and clears the toasts around it
     private static void withLogger(Consumer<Logger> body) {
-        // Reading it first runs the class initialiser, which would otherwise overwrite the swap
+        // Loads the class before the swap.
         Logger original = Statics.get(PlaceholderControlElement.class, "LOGGER");
         Logger mock = Mockito.mock(Logger.class);
         Statics.set(PlaceholderControlElement.class, "LOGGER", mock);
@@ -284,7 +284,7 @@ class PlaceholderControlElementTest {
         Statics.<List<?>>get(ImpetusNotifications.class, "NOTIFICATIONS").clear();
     }
 
-    // The toasts placeholders raised, oldest first
+    // Returns the placeholder toasts.
     private static List<ImpetusNotification> toasts() {
         return ImpetusNotifications.getVisible().stream().filter(t -> t.title().startsWith("Option failed: ")).toList();
     }
@@ -299,7 +299,7 @@ class PlaceholderControlElementTest {
         FakeDrawContext draw = new FakeDrawContext();
         placeholder(option("Broken"), DIM).render(draw, -1, -1, 0f);
         assertEquals(List.of("Broken", KEY), draw.strings);
-        // The row's right edge, less the label and its inset, on the row's centre less four
+        // Checks the label position.
         assertTrue(draw.drew("text(" + KEY + "," + (10 + 400 - LABEL_WIDTH - 6) + ",25,ffff5555,false)"), draw.calls::toString);
         assertTrue(draw.drew("text(Broken,16,25,"), draw.calls::toString);
     }
@@ -311,7 +311,7 @@ class PlaceholderControlElementTest {
         assertEquals(100, placeholder(option("Column"), DIM.withWidth(100)).measureColumnWidth(draw));
         assertEquals(0, placeholder(option("Column"), DIM.withWidth(0)).measureColumnWidth(draw));
         assertEquals(0, placeholder(option("Column"), DIM.withWidth(-50)).measureColumnWidth(draw));
-        // A width that would wrap past the insets, and one below zero
+        // Checks extreme widths.
         assertEquals(400, placeholder(option("Column"), DIM).measureColumnWidth(new Sized(1) {
             @Override
             public int getStringWidth(TextComponent component) {
@@ -334,7 +334,7 @@ class PlaceholderControlElementTest {
         placeholder(blank, new Dim2i(0, 0, LABEL_WIDTH + 6, 18)).render(exact, -1, -1, 0f);
         assertTrue(exact.drew("text(" + KEY + ",0,5,"), exact.calls::toString);
         assertEquals(List.of(), drawn(placeholder(blank, new Dim2i(0, 0, LABEL_WIDTH + 5, 18))));
-        // A font source that measures the label at a huge or negative width draws no label, with no wrapped position
+        // Checks no label is drawn.
         for (int width : new int[]{Integer.MAX_VALUE, Integer.MIN_VALUE, -1}) {
             FakeDrawContext odd = new FakeDrawContext() {
                 @Override
@@ -354,7 +354,7 @@ class PlaceholderControlElementTest {
             placeholder(option("Flat"), dim).render(draw, -1, -1, 0f);
             assertEquals(List.of(), draw.calls, dim::toString);
         }
-        // Eight pixels cannot hold the nine of a line raised four above the centre: the background only
+        // Checks a short row.
         FakeDrawContext low = new FakeDrawContext();
         placeholder(option("Low"), DIM.withHeight(8)).render(low, -1, -1, 0f);
         assertEquals(List.of(), low.strings);
@@ -367,11 +367,11 @@ class PlaceholderControlElementTest {
         FakeDrawContext first = new FakeDrawContext();
         row.render(first, -1, -1, 0f);
         assertTrue(first.drew("text(" + KEY + ",214,"), first.calls::toString);
-        // Twice as wide: 360 for the label would start at 34, over the 72 pixel name that ends at 84
+        // Checks a wide label.
         Sized wide = new Sized(12);
         row.render(wide, -1, -1, 0f);
         assertEquals(List.of("Broken"), wide.strings);
-        // Half as wide: the 90 pixel label moves right to stay against the inset
+        // Checks a narrow label.
         Sized narrow = new Sized(3);
         row.render(narrow, -1, -1, 0f);
         assertEquals(List.of("Broken", KEY), narrow.strings);
@@ -404,13 +404,13 @@ class PlaceholderControlElementTest {
         }
         assertEquals(1, fonts.labelMeasures);
         assertEquals(1, fonts.nameReads);
-        // A new font source measures the label once more, the column kept as every row keeps it
+        // Checks a new font source.
         Counting other = new Counting(6, row.getDisplayName());
         row.render(other, -1, -1, 0f);
         row.render(other, -1, -1, 0f);
         assertEquals(1, other.labelMeasures);
         assertEquals(1, other.nameReads);
-        // A new text version of the same source measures the column again, which the label reuses
+        // Checks a new text version.
         other.version = 1;
         row.render(other, -1, -1, 0f);
         assertEquals(2, other.labelMeasures);
@@ -450,7 +450,7 @@ class PlaceholderControlElementTest {
         FakeDrawContext draw = new FakeDrawContext();
         row.render(draw, -1, -1, 0f);
         assertEquals(List.of("Focused", KEY), draw.strings);
-        // The background alone, no outline
+        // Checks the background.
         assertEquals(1, draw.calls.stream().filter(call -> call.startsWith("fill(")).count(), draw.calls::toString);
         row.setFocused(false);
         assertFalse(row.isFocused());
@@ -512,7 +512,7 @@ class PlaceholderControlElementTest {
         TextComponent name = new TextComponent.Styled(new TextComponent.Translatable(new ArrayList<>(List.of("impetus.test.key")), args), styles);
         PlaceholderControlElement<Boolean> row = placeholder(named(name), DIM);
         assertEquals("impetus.test.key[before]", drawn(row).getFirst());
-        // The option rewrites its argument, adds a style, and later adds an argument that cannot be turned to text
+        // Checks a changing option text.
         args.set(0, "after");
         styles.add(TextFormattingStyle.ITALIC);
         args.add(new Object() {
@@ -547,7 +547,7 @@ class PlaceholderControlElementTest {
             }
         };
         assertEquals(List.of("described", KEY), drawn(placeholder(named(foreign), DIM)));
-        // Inside a style, or as an argument
+        // Checks styles and arguments.
         assertEquals("described", drawn(placeholder(named(foreign.withStyle(TextFormattingStyle.UNDERLINE)), DIM)).getFirst());
         assertEquals("described", drawn(placeholder(named(TextComponent.translatable("impetus.test.key", foreign)), DIM)).getFirst());
     }
@@ -727,7 +727,7 @@ class PlaceholderControlElementTest {
             assertEquals(Unprintable.class.getName(), toastLine());
             PlaceholderControlElement.reportOption(option("Unprintable option"), "Unprintable option", "scanning", failure);
             assertEquals(Unprintable.class.getName(), toastLine());
-            // An interruption keeps its flag, and a virtual machine error is not held
+            // Checks interrupts and errors.
             Unprintable interrupted = new Unprintable(new InterruptedException("text"));
             try {
                 PlaceholderControlElement.report(option("Interrupted"), "Interrupted", interrupted);
@@ -738,7 +738,7 @@ class PlaceholderControlElementTest {
             assertEquals(Unprintable.class.getName(), toastLine());
             Option<Boolean> overflowing = option("Overflowing");
             assertThrows(StackOverflowError.class, () -> PlaceholderControlElement.report(overflowing, "Overflowing", new Unprintable(new StackOverflowError())));
-            // Marked before the text was asked for, so it is not reported a second time
+            // Checks a single report.
             assertTrue(PlaceholderControlElement.isBroken(overflowing));
         });
     }

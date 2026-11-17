@@ -28,7 +28,7 @@ import java.util.stream.Collectors;
 import static org.junit.jupiter.api.Assertions.*;
 
 class OptionPageConstructionEventTest {
-    // Ids are interned for the whole JVM, so this class keeps to its own mod id
+    // Page id of this class's own mod.
     private static final OptionIdentifier<Void> PAGE = OptionIdentifier.create("option_page_construction_event_test", "page");
     private static final OptionIdentifier<Void> OTHER = OptionIdentifier.create("option_page_construction_event_test", "other");
     private static final TextComponent NAME = TextComponent.literal("Page");
@@ -49,7 +49,7 @@ class OptionPageConstructionEventTest {
         return event;
     }
 
-    // Posts the event with listeners that only act on it, so other tests' posts pass through them untouched
+    // Posts the event with listeners that act on it only.
     @SafeVarargs
     private static boolean post(OptionPageConstructionEvent event, EventHandlerRegistrar.Handler<OptionPageConstructionEvent>... handlers) {
         List<EventHandlerRegistrar.Handler<OptionPageConstructionEvent>> filtered = new ArrayList<>();
@@ -71,7 +71,7 @@ class OptionPageConstructionEventTest {
         }
     }
 
-    // Runs a change that may or may not be refused, since an unmodifiable list may let a change that changes nothing through
+    // Runs a change that may be refused.
     private static void attempt(Executable change) {
         try {
             change.execute();
@@ -133,7 +133,7 @@ class OptionPageConstructionEventTest {
             OptionPageConstructionEvent event = new OptionPageConstructionEvent(PAGE, name);
             event.addGroup(group("unposted"));
             assertEquals(0, seen.get());
-            // The listener does see the event once it is posted, so the zero above means something
+            // Checks the listener sees the event.
             OptionPageConstructionEvent.BUS.post(event);
             assertEquals(1, seen.get());
         } finally {
@@ -148,7 +148,7 @@ class OptionPageConstructionEventTest {
         assertTrue(groups.isEmpty());
         assertEquals(0, groups.size());
         assertEquals(List.of(), groups);
-        // No read allocates a fresh wrapper, before or after groups are added
+        // Checks reads allocate nothing.
         assertSame(groups, event.getAdditionalGroups());
         event.addGroup(group("one"));
         assertSame(groups, event.getAdditionalGroups());
@@ -178,7 +178,7 @@ class OptionPageConstructionEventTest {
 
     @Test
     void addingAndReadingNeverAsksTheGroupAnything() {
-        // No equals, hashCode or getter is called, so an add stays O(1) whatever the groups hold
+        // Checks adds stay O(1).
         OptionGroup a = group("a"), b = group("b");
         OptionPageConstructionEvent event = event(a, b, a);
         assertSame(a, event.getAdditionalGroups().get(0));
@@ -330,7 +330,7 @@ class OptionPageConstructionEventTest {
         event.addGroup(b);
         assertThrows(ConcurrentModificationException.class, head::size);
 
-        // A listener that adds a group for every group it walks stops instead of looping forever
+        // Checks a self extending listener stops.
         OptionPageConstructionEvent walked = event(a);
         assertThrows(ConcurrentModificationException.class, () -> walked.getAdditionalGroups().forEach(g -> walked.addGroup(b)));
         assertEquals(List.of(a, b), walked.getAdditionalGroups());
@@ -346,7 +346,7 @@ class OptionPageConstructionEventTest {
         OptionGroup[] last = (OptionGroup[]) itemsField.get(store);
         int count = 1 << 17;
         OptionGroup[] added = new OptionGroup[count];
-        // One mock repeated, since 2^17 mocks are slow to make and the store never looks at its groups
+        // Repeats one mock group.
         OptionGroup shared = group("shared");
         for (int i = 0; i < count; i++) {
             event.addGroup(shared);
@@ -354,13 +354,13 @@ class OptionPageConstructionEventTest {
             OptionGroup[] now = (OptionGroup[]) itemsField.get(store);
             if (now != last) {
                 resizes++;
-                // Each resize at least doubles the room, and never leaves more than one spare slot per group
+                // Checks the growth factor.
                 assertTrue(now.length >= 2 * last.length, "grew from " + last.length + " to " + now.length);
                 assertTrue(now.length <= 2 * (i + 1), "grew to " + now.length + " for " + (i + 1));
                 last = now;
             }
         }
-        // 2^17 appends take at most 18 resizes, so the copies add up to O(n)
+        // Checks the resize count.
         assertTrue(resizes <= 18, "resizes " + resizes);
         assertEquals(count, event.getAdditionalGroups().size());
         assertEquals(Arrays.asList(added), event.getAdditionalGroups());
@@ -368,7 +368,7 @@ class OptionPageConstructionEventTest {
 
     @Test
     void smallPagesKeepSmallArrays() {
-        // Most pages get one or two groups, so the array is sized for that rather than for ten
+        // Checks the initial size.
         assertEquals(1, items(event(group("a"))).length);
         assertTrue(items(event(group("a"), group("b"))).length <= 3);
         assertTrue(items(event(group("a"), group("b"), group("c"), group("d"))).length <= 7);

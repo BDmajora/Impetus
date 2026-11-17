@@ -127,7 +127,7 @@ class UmbraPartsTest {
         ChunkVertexEncoder.Vertex vertex = new ChunkVertexEncoder.Vertex();
         vertex.x = 1.0F;
         vertex.y = -0.5F;
-        // A hair under the block edge rounds onto it instead of truncating a step short
+        // Places a vertex a hair under the block edge.
         vertex.z = 15.999999F;
         vertex.color = 0x80402010;
         vertex.u = 0.25F;
@@ -150,16 +150,16 @@ class UmbraPartsTest {
         long base = MemoryUtil.memAddress(memory);
         long next = UmbraChunkVertexType.INSTANCE.createEncoder().write(base, material, vertex, 0x1A2);
         assertEquals(base + UmbraChunkVertexType.STRIDE, next);
-        // Positions in 1/2048 steps from -8, the draw id, four material bits and the emission clamped to a light level
+        // Checks the packed position and draw id and material and emission.
         assertEquals((9 * 2048) | ((15 * 1024) << 16), MemoryUtil.memGetInt(base));
         assertEquals((24 * 2048) | (0xA2 << 16) | (0x5 << 24) | (15 << 28), MemoryUtil.memGetInt(base + 4));
         assertEquals(0x80402010, MemoryUtil.memGetInt(base + 8));
         assertEquals(16384 | (65535 << 16), MemoryUtil.memGetInt(base + 12));
         assertEquals(32768 | (8192 << 16), MemoryUtil.memGetInt(base + 16));
-        // Block light rides on the normal's spare byte, sky light on the mid-block's
+        // Checks the block and sky light bytes.
         assertEquals(0x00817F00 | (0xF0 << 24), MemoryUtil.memGetInt(base + 20));
         assertEquals(0x7F00FF81, MemoryUtil.memGetInt(base + 24));
-        // Ids clamp to a short, the render type to a byte
+        // Checks the clamped id and render type.
         assertEquals((Short.MAX_VALUE & 0xFFFF) | (0x80 << 16) | (3 << 24), MemoryUtil.memGetInt(base + 28));
         assertEquals(0x7F | (0x80 << 8) | (16 << 16) | (0xA0 << 24), MemoryUtil.memGetInt(base + 32));
         // Far geometry and negative values clamp rather than wrap
@@ -176,7 +176,7 @@ class UmbraPartsTest {
         assertEquals((Short.MIN_VALUE & 0xFFFF) | (0x80 << 16) | (0xFF << 24), MemoryUtil.memGetInt(next + 28));
         assertEquals((0x80 << 8) | (16 << 16) | (0xA0 << 24), MemoryUtil.memGetInt(next + 32));
 
-        // A flat quad's normal points out of it, and the tangent follows the U direction
+        // Checks the normal and tangent of a flat quad.
         Vector3f normal = new Vector3f();
         NormalHelper.computeFaceNormal(normal, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0);
         assertEquals(1.0F, Math.abs(normal.y), 1e-6F);
@@ -193,11 +193,11 @@ class UmbraPartsTest {
 
     @Test
     void pbrAtlasesMirrorTheBlockAtlasLayout(@org.junit.jupiter.api.io.TempDir java.nio.file.Path fml) throws IOException {
-        // Texture allocation synchronises on SplashProgress, whose initialiser locates the FML jar
+        // Sets the FML jar location.
         com.bdmajora.testing.Statics.set(net.minecraftforge.fml.common.asm.FMLSanityChecker.class, "fmlLocation", fml.toFile());
         IResourceManager resources = client.getResourceManager();
         when(resources.getResource(any())).thenThrow(new FileNotFoundException());
-        // Nothing but the neutral fill without companions, and the caller's fallback is bound
+        // Checks the neutral fill without companions.
         Map<String, TextureAtlasSprite> sprites = new LinkedHashMap<>();
         sprites.put("stone", sprite("minecraft:blocks/stone", 16, 16));
         sprites.put("empty", sprite("minecraft:blocks/empty", 0, 16));
@@ -205,7 +205,7 @@ class UmbraPartsTest {
         assertEquals(7, PBRAtlasManager.getNormalsAtlas(7));
         assertEquals(7, PBRAtlasManager.getSpecularAtlas(7));
 
-        // A normal map is scaled to the sprite and mipmapped with the atlas; a short animation strip clamps to its last row
+        // Checks a normal map and a short animation strip.
         IResource normals = resource(png(32, 32));
         IResource speculars = resource(png(2, 1));
         Mockito.reset(resources);
@@ -265,7 +265,7 @@ class UmbraPartsTest {
         WorldRenderingSettings.setAmbientOcclusionLevel(0.5F);
         assertEquals(0.7F, WorldRenderingSettings.applyAmbientOcclusionLevel(0.4F), 1e-6F);
 
-        // block.properties predicates match on the named property, and a property the block lacks is ignored
+        // Checks the block.properties predicates.
         Map<AbsolutePackPath, String> sources = Map.of(AbsolutePackPath.fromAbsolutePath("/block.properties"),
                 "block.5 = minecraft:wheat:age=7 minecraft:stone:nonexistent=1");
         int[] ids = BlockMaterialMapping.createBlockStateIdTable(new IdMap(sources, Map.of()));

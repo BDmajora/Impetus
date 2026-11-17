@@ -48,7 +48,7 @@ class ModelPartMixinsTest {
         Mixins.call(face, "coarctatio$poolUvs", new float[] {0f, 0f, 16f, 16f}, 0, Mixins.ci());
         assertSame(pooled, Mixins.get(face, "uvs"));
 
-        // The setter only fills in a missing array, so the pooled instance goes in its place
+        // Sets the uvs.
         Mixins.set(face, "uvs", new float[] {0f, 0f, 16f, 16f});
         Mixins.call(face, "coarctatio$poolSetUvs", new float[] {0f, 0f, 16f, 16f}, Mixins.ci());
         assertSame(pooled, Mixins.get(face, "uvs"));
@@ -66,7 +66,7 @@ class ModelPartMixinsTest {
         assertInstanceOf(EnumMap.class, compacted);
         assertEquals(faces.get(EnumFacing.UP), compacted.get(EnumFacing.UP));
 
-        // An element with no faces, or one already compacted, is left as it is
+        // Checks faceless and compacted elements.
         Mixins.call(part, "coarctatio$compactFaces", null, null, faces, null, true, Mixins.ci());
         assertSame(compacted, Mixins.get(part, "mapFaces"));
         Map<EnumFacing, BlockPartFace> empty = new HashMap<>();
@@ -91,7 +91,7 @@ class ModelPartMixinsTest {
         assertInstanceOf(CanonicalStringMap.class, interned);
         assertSame(pooled, interned.get("all"));
 
-        // Already interned, or nothing to intern
+        // Checks nothing to intern.
         Mixins.call(model, "coarctatio$internTextures", null, null, textures, true, true, null, null, Mixins.ci());
         assertSame(interned, Mixins.get(model, "textures"));
         Mixins.set(model, "textures", null);

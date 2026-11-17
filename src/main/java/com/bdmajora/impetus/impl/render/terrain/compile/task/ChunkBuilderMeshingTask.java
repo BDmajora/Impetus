@@ -45,7 +45,7 @@ import java.util.*;
 
 // Task that meshes one section.
 public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> {
-    // Use new block renderer.
+    // Whether meshing uses Impetus' block renderer instead of vanilla's.
     public static boolean USE_NEW_BLOCK_RENDERER = Boolean.TRUE.equals(Launch.blackboard.get("fml.deobfuscatedEnvironment")) || Boolean.getBoolean("impetus.useVintageFastBlockRenderer");
     private static final ProxyClassGenerator<WorldSlice, ImpetusBlockAccess> WORLD_SLICE_LOCAL_GENERATOR = new ProxyClassGenerator<>(WorldSlice.class, "WorldSliceLocal", ImpetusBlockAccess.class);
     // Section being meshed.

@@ -23,13 +23,13 @@ import static java.lang.foreign.MemoryLayout.PathElement.groupElement;
 import static java.lang.foreign.ValueLayout.ADDRESS;
 import static java.lang.foreign.ValueLayout.JAVA_INT;
 
-// A compositor written in Java behind libwayland-client's entry points: each symbol is an upcall stub into this class, so the code under test makes its real FFM downcalls, and events reach its listeners the way libwayland delivers them
+// Fake Wayland compositor behind libwayland-client's entry points.
 final class FakeWayland implements AutoCloseable {
     private static final FunctionDescriptor GLOBAL = FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, JAVA_INT, ADDRESS, JAVA_INT);
     private static final FunctionDescriptor OUTPUT = FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, ADDRESS);
     private static final FunctionDescriptor DONE = FunctionDescriptor.ofVoid(ADDRESS, ADDRESS);
 
-    // One request as the compositor read it: the target's interface, the opcode, the new proxy's interface (null for none), the flags, and the arguments (Integer, String, or Long for objects and new_ids)
+    // One request as the compositor read it.
     record Request(String target, int opcode, String created, int flags, List<Object> arguments) {
     }
 
@@ -38,20 +38,20 @@ final class FakeWayland implements AutoCloseable {
     private final Map<String, MemorySegment> symbols = new HashMap<>();
     // The temporary wl_display used for the output-order query
     final MemorySegment display;
-    // Interface name to registry name, in announcement order
+    // Interface name to registry name in announcement order.
     final Map<String, Integer> globals = new LinkedHashMap<>();
-    // What kde_output_order_v1 sends, primary first
+    // Outputs kde_output_order_v1 sends with the primary first.
     List<String> outputOrder = List.of();
-    // The roundtrip, counted from 1, that reports a lost connection; 0 for none
+    // Roundtrip that reports a lost connection or 0 for none.
     int failingRoundtrip;
-    // Constructor requests answer NULL, as libwayland does when it cannot make the proxy
+    // Whether constructor requests answer NULL.
     boolean refuseProxies;
     final List<Request> requests = new ArrayList<>();
-    // Queues, wrappers and proxies made and not yet freed, by address
+    // Live queues and wrappers and proxies by address.
     final Set<Long> live = new LinkedHashSet<>();
-    // The bytes behind the descriptor wl_shm.create_pool received, read while it was still open
+    // Bytes behind the wl_shm.create_pool descriptor.
     byte[] pool;
-    // Whatever went wrong inside an upcall, where a thrown exception would abort the JVM
+    // Failure caught inside an upcall.
     Throwable failure;
     boolean connected, disconnected;
 
@@ -91,13 +91,13 @@ final class FakeWayland implements AutoCloseable {
         disconnected = true;
     }
 
-    // The library WaylandClient.LIBRARY hands out, without the named symbols
+    // Returns the library without the named symbols.
     SymbolLookup lookup(String... missing) {
         Set<String> gone = Set.of(missing);
         return name -> gone.contains(name) ? Optional.empty() : Optional.ofNullable(this.symbols.get(name));
     }
 
-    // Each request as target.opcode, with ->created for a constructor
+    // Returns each request as target.opcode.
     List<String> summary() {
         return this.requests.stream().map(r -> r.target() + "." + r.opcode() + (r.created() == null ? "" : "->" + r.created())).toList();
     }
@@ -132,7 +132,7 @@ final class FakeWayland implements AutoCloseable {
                 .get(ADDRESS, WaylandClient.WL_INTERFACE.byteOffset(groupElement("name"))).reinterpret(Integer.MAX_VALUE).getString(0L);
     }
 
-    // A proxy laid out as libwayland's: a pointer to its wl_interface first
+    // Returns a proxy with its wl_interface pointer first.
     private MemorySegment proxy(MemorySegment wlInterface) {
         MemorySegment proxy = this.arena.allocate(16L, 8L);
         proxy.set(ADDRESS, 0L, wlInterface);
@@ -147,7 +147,7 @@ final class FakeWayland implements AutoCloseable {
         }
     }
 
-    // The signature of a request, read from the target proxy's own interface as libwayland does
+    // Returns the signature of a request from the target's interface.
     private static String signature(MemorySegment proxy, int opcode) {
         MemorySegment wlInterface = proxy.reinterpret(8L).get(ADDRESS, 0L).reinterpret(WaylandClient.WL_INTERFACE.byteSize());
         long size = WaylandClient.WL_MESSAGE.byteSize();
@@ -223,7 +223,7 @@ final class FakeWayland implements AutoCloseable {
         release(proxy);
     }
 
-    // Sends each newly listened-to proxy its events: the registry its globals, the output order its outputs and done
+    // Sends each newly listened proxy its events.
     private int roundtrip(MemorySegment display, MemorySegment queue) {
         try {
             if (++this.roundtrips == this.failingRoundtrip) {

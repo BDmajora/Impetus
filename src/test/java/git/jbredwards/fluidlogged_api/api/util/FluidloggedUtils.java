@@ -6,21 +6,21 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.IBlockAccess;
 import net.minecraftforge.fluids.IFluidBlock;
 
-// Test stand-in for Fluidlogged API, whose published jar is obfuscated and so cannot call into a deobfuscated world
+// Test stand-in for Fluidlogged API.
 public final class FluidloggedUtils {
     private FluidloggedUtils() {}
 
-    // The fluid sharing the position, which here is simply whatever block is there
+    // Returns the block at the position.
     public static IBlockState getFluidOrReal(IBlockAccess access, BlockPos pos) {
         return access.getBlockState(pos);
     }
 
-    // Always the chunkless path here, since the stand-in world holds no chunks of fluid data
+    // Returns the fluid state through the chunkless path.
     public static FluidState getFluidState(IBlockAccess world, BlockPos pos) {
         return getFluidState(world, pos, world.getBlockState(pos));
     }
 
-    // The chunkless fallbacks, as the real ones: a fluid block is its own fluid, anything else asks the access
+    // Returns the chunkless fluid state.
     public static FluidState getFluidState(IBlockAccess world, BlockPos pos, IBlockState state) {
         return isFluid(state) ? FluidState.of(state) : FluidState.get(world, pos);
     }

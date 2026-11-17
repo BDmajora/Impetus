@@ -19,7 +19,7 @@ class ChunkBuilderSortTaskTest {
     void resortsEachTranslucentPassFromTheCameraRelativeToTheSection() {
         SortState.Resortable tree = (SortState.Resortable) Quads.record(Quads.straddling(0)).getSortState();
         RenderSection section = new RenderSection(null, 1, 1, 1);
-        // The section starts at block 16, so a camera at z=16.5 is in front of the tree's cut at local z=1
+        // Places the camera.
         ChunkBuilderSortTask near = new ChunkBuilderSortTask(section, 16, 16, 16.5, 7, Map.of(Passes.TRANSLUCENT, tree), ChunkBuildBuffersTest.CONFIG);
         ChunkSortOutput output = near.execute(new ChunkBuildContext(ChunkBuildBuffersTest.CONFIG), null);
         assertSame(section, output.render);
@@ -39,7 +39,7 @@ class ChunkBuilderSortTaskTest {
     void aCancelledOrFailingSortFreesWhatItAlreadyBuilt() {
         SortState.Resortable tree = (SortState.Resortable) Quads.record(Quads.straddling(0)).getSortState();
         RenderSection section = new RenderSection(null, 1, 1, 1);
-        // Two passes, so the second one finds a buffer from the first to free
+        // Checks two passes.
         java.util.LinkedHashMap<com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass, SortState.Resortable> passes =
                 new java.util.LinkedHashMap<>();
         passes.put(Passes.TRANSLUCENT, tree);
@@ -62,7 +62,7 @@ class ChunkBuilderSortTaskTest {
         assertEquals(2, checks[0]);
         assertEquals(before, com.bdmajora.impetus.engine.impl.common.util.NativeBuffer.getTotalAllocated());
 
-        // A state that fails when asked its quad count makes the sort throw partway, freeing the finished pass's buffer
+        // Checks a failing sort.
         SortState.Dynamic broken = org.mockito.Mockito.mock(SortState.Dynamic.class);
         org.mockito.Mockito.when(broken.quadCount()).thenThrow(new IllegalStateException("broken state"));
         java.util.LinkedHashMap<com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass, SortState.Resortable> failing =

@@ -66,7 +66,7 @@ class DynamicLightsCoreTest {
     @BeforeEach
     void freshConfig() {
         client = Mc.client();
-        // The handler registry is static, so each test starts from an empty one
+        // Clears the static handler registry.
         for (String map : new String[] {"ENTITY_HANDLERS", "ENTITY_LOOKUP", "TILE_ENTITY_HANDLERS", "TILE_ENTITY_LOOKUP"}) {
             Mixins.<Map<?, ?>>get(DynamicLightHandlers.class, map).clear();
         }
@@ -125,7 +125,7 @@ class DynamicLightsCoreTest {
         config.creeperLighting = ExplosiveLightingMode.OFF;
         config.showDebugInfo = true;
         config.entitiesLightSource = false;
-        LightSourceSettings.getInstance().setEntityTypeEnabled("minecraft:creeper", false);
+        LightSourceSettings.getInstance().loadDisabledEntities(new String[] {"minecraft:creeper"});
         config.writeChanges();
         String written = Files.readString(file.toPath());
         assertTrue(written.contains("mode=1"));
@@ -136,8 +136,8 @@ class DynamicLightsCoreTest {
         assertEquals(ExplosiveLightingMode.OFF, reloaded.creeperLighting);
         assertTrue(reloaded.showDebugInfo);
         assertFalse(reloaded.entitiesLightSource);
-        assertTrue(LightSourceSettings.getInstance().isEntityTypeDisabled("minecraft:creeper"));
-        LightSourceSettings.getInstance().setEntityTypeEnabled("minecraft:creeper", true);
+        assertArrayEquals(new String[] {"minecraft:creeper"}, LightSourceSettings.getInstance().getDisabledEntitiesArray());
+        LightSourceSettings.getInstance().loadDisabledEntities(new String[0]);
 
         // An unreadable file falls back to defaults and does not overwrite what is there
         File directory = dir.resolve("as-a-directory").toFile();
@@ -148,7 +148,7 @@ class DynamicLightsCoreTest {
         DynamicLightsConfig detached = new DynamicLightsConfig();
         detached.writeChanges();
 
-        // The subsystem's own accessors: lazy load, replace, save
+        // Loads and replaces and saves the config.
         Mixins.set(DynamicLights.class, "config", null);
         DynamicLights.initialize();
         assertNotNull(DynamicLights.options());
@@ -158,7 +158,7 @@ class DynamicLightsCoreTest {
         assertNotNull(new DynamicLightsOptionsStorage().getData());
         new DynamicLightsOptionsStorage().save();
 
-        // Client init registers the handlers, the reload listener and the block entity ticker
+        // Registers the handlers and the reload listener and the block entity ticker.
         net.minecraft.client.resources.IReloadableResourceManager resources =
                 mock(net.minecraft.client.resources.IReloadableResourceManager.class);
         when(client.getResourceManager()).thenReturn(resources);
@@ -177,7 +177,7 @@ class DynamicLightsCoreTest {
         engine.addLightSource(torch);
         assertEquals(1, engine.getLightSourcesCount());
         assertTrue(engine.containsLightSource(torch));
-        // Adding twice is a no-op, and a source in a server world is never tracked
+        // Adds a torch twice and a server world source once.
         engine.addLightSource(torch);
         assertEquals(1, engine.getLightSourcesCount());
         World server = mock(World.class);
@@ -254,7 +254,7 @@ class DynamicLightsCoreTest {
         DynamicLightSource source = source(world, 0, 0, 0, 5);
         when(source.impetus$updateDynamicLight(renderer)).thenReturn(true);
 
-        // Nothing tracked, so the pass returns before taking the lock
+        // Runs a pass with nothing tracked.
         engine.updateAll(renderer);
         assertEquals(0, engine.getLastUpdateCount());
         engine.addLightSource(source);
@@ -306,7 +306,7 @@ class DynamicLightsCoreTest {
     @Test
     void litSectionsAreOnlyThoseTheLightReaches() {
         it.unimi.dsi.fastutil.longs.LongOpenHashSet lit = new it.unimi.dsi.fastutil.longs.LongOpenHashSet();
-        // A torch in the middle of a section lights nothing past its edges, so one section instead of eight
+        // Collects the one section a centred torch lights.
         DynamicLightsEngine.collectLitSections(24.0D, 72.0D, -8.0D, 14, lit);
         assertEquals(1, lit.size());
         assertTrue(lit.contains(DynamicLightsEngine.packSection(1, 4, -1)));
@@ -326,7 +326,7 @@ class DynamicLightsCoreTest {
         assertEquals(9, DynamicLightsEngine.unpackY(packed));
         assertEquals(7, DynamicLightsEngine.unpackZ(packed));
 
-        // Rebuild scheduling needs a world, and goes through the accessor Impetus overwrites
+        // Mocks the renderer with the rebuild accessor.
         RenderGlobal renderer = mock(RenderGlobal.class,
                 Mockito.withSettings().extraInterfaces(com.bdmajora.dynamiclights.mixin.RenderGlobalRebuildAccessor.class));
         DynamicLightsEngine.scheduleChunkRebuild(renderer, packed);
@@ -356,7 +356,7 @@ class DynamicLightsCoreTest {
         DynamicLightHandler<EntityCreeper> combined = DynamicLightHandler.makeCreeperEntityHandler(entity -> 4);
         assertEquals(4, combined.getLuminance(creeper));
 
-        // A plain handler, and the living-entity wrapper that also counts held items
+        // Builds a plain handler and a living entity handler.
         DynamicLightHandler<EntityZombie> plain = DynamicLightHandler.makeHandler(zombie -> 3, zombie -> true);
         EntityZombie zombie = mock(EntityZombie.class);
         assertEquals(3, plain.getLuminance(zombie));
@@ -371,7 +371,7 @@ class DynamicLightsCoreTest {
         assertEquals(14, living.getLuminance(zombie));
         assertFalse(living.isWaterSensitive(zombie));
 
-        // Lookup walks up the hierarchy and memoises, including negative results
+        // Looks handlers up through the hierarchy.
         assertNull(DynamicLightHandlers.getDynamicLightHandler(zombie));
         assertNull(DynamicLightHandlers.getDynamicLightHandler(zombie));
         EntityItem item = mock(EntityItem.class);
@@ -381,13 +381,13 @@ class DynamicLightsCoreTest {
         DynamicLightHandlers.registerEntityHandler(EntityItem.class, entity -> 2);
         assertEquals(14, DynamicLightHandlers.getLuminanceFrom((Entity) item));
 
-        // The gates: entity toggle, the self switch, the per-type switch and water sensitivity
+        // Checks the entity and self and per type and water gates.
         DynamicLights.options().entitiesLightSource = false;
         assertEquals(0, DynamicLightHandlers.getLuminanceFrom((Entity) item));
         DynamicLights.options().entitiesLightSource = true;
-        LightSourceSettings.getInstance().setEntityTypeEnabled("minecraft:item", false);
+        LightSourceSettings.getInstance().loadDisabledEntities(new String[] {"minecraft:item"});
         assertEquals(0, DynamicLightHandlers.getLuminanceFrom((Entity) item));
-        LightSourceSettings.getInstance().setEntityTypeEnabled("minecraft:item", true);
+        LightSourceSettings.getInstance().loadDisabledEntities(new String[0]);
         assertTrue(DynamicLightHandlers.canEntityLightUp(item));
         // The client's own player answers to the first-person switch rather than a per-type one
         net.minecraft.client.entity.EntityPlayerSP self = mock(net.minecraft.client.entity.EntityPlayerSP.class);
@@ -400,7 +400,7 @@ class DynamicLightsCoreTest {
         Mixins.set(client, "player", null);
         assertTrue(DynamicLightHandlers.canEntityLightUp(item));
 
-        // Block entity handlers are opt-in, and gated on their own toggle
+        // Checks the block entity handlers and their toggle.
         TileEntityChest chest = mock(TileEntityChest.class);
         assertFalse(DynamicLightHandlers.hasTileEntityHandlers());
         assertEquals(0, DynamicLightHandlers.getLuminanceFrom((TileEntity) chest));
@@ -459,7 +459,7 @@ class DynamicLightsCoreTest {
         assertEquals(14, torch.getLuminance(stack, true));
         DynamicLights.options().waterSensitiveCheck = true;
 
-        // "block" mirrors the block the item places, and a named block mirrors that one
+        // Reads item light sources from block and named block entries.
         ItemLightSource fromBlock = ItemLightSource.fromJson(id, JsonParser.parseString("{\"item\":\"minecraft:glowstone\",\"luminance\":\"block\"}").getAsJsonObject()).orElseThrow();
         assertEquals(15, fromBlock.getLuminance(new ItemStack(Blocks.GLOWSTONE)));
         ItemLightSource named = ItemLightSource.fromJson(id, JsonParser.parseString("{\"item\":\"minecraft:stick\",\"luminance\":\"minecraft:glowstone\"}").getAsJsonObject()).orElseThrow();
@@ -481,7 +481,7 @@ class DynamicLightsCoreTest {
         assertFalse(ItemLightSource.fromJson(id, JsonParser.parseString("{\"item\":\"minecraft:stick\",\"luminance\":\"not:ablock\"}").getAsJsonObject()).isPresent());
         assertFalse(ItemLightSource.fromJson(id, JsonParser.parseString("{\"item\":\"minecraft:stick\",\"luminance\":true}").getAsJsonObject()).isPresent());
 
-        // The registry: code registrations win over pack ones and are not replaced
+        // Checks code registrations against pack ones.
         assertEquals(0, ItemLightSources.getLuminance(ItemStack.EMPTY, false));
         assertEquals(15, ItemLightSources.getLuminance(new ItemStack(Blocks.GLOWSTONE), false));
         ItemLightSources.registerItemLightSource(torch);
@@ -506,7 +506,7 @@ class DynamicLightsCoreTest {
             return List.of(resource);
         }).when(manager).getAllResources(any());
         ItemLightSources.load(manager);
-        // The index is read and its files loaded; an item no mod provides is simply skipped
+        // Reads the index and skips items no mod provides.
         assertEquals(0, ItemLightSources.getLuminance(new ItemStack(Items.STICK), false));
 
         // A reload listener is registered when the manager supports it
@@ -515,7 +515,7 @@ class DynamicLightsCoreTest {
         when(client.getResourceManager()).thenReturn(reloadable);
         ItemLightSources.registerReloadListener();
         Mockito.verify(reloadable).registerReloadListener(any());
-        // Otherwise the definitions are loaded once, right away
+        // Loads the definitions once.
         when(client.getResourceManager()).thenReturn(manager);
         ItemLightSources.registerReloadListener();
 
@@ -533,33 +533,23 @@ class DynamicLightsCoreTest {
     }
 
     @Test
-    void theSettingsRegistryFiltersAndListsTypes() {
+    void theSettingsRegistryFiltersTypes() {
         LightSourceSettings settings = LightSourceSettings.getInstance();
         EntityZombie zombie = mock(EntityZombie.class);
         assertTrue(settings.isEntityEnabled(zombie));
         settings.loadDisabledEntities(new String[] {"minecraft:zombie", "", null});
-        assertTrue(settings.isEntityTypeDisabled("minecraft:zombie"));
+        assertFalse(settings.isEntityEnabled(zombie));
         assertArrayEquals(new String[] {"minecraft:zombie"}, settings.getDisabledEntitiesArray());
-        settings.setEntityTypeEnabled("minecraft:zombie", true);
-        assertFalse(settings.isEntityTypeDisabled("minecraft:zombie"));
 
         TileEntityChest chest = mock(TileEntityChest.class);
         assertTrue(settings.isBlockEntityEnabled(chest));
         settings.loadDisabledBlockEntities(new String[] {"minecraft:chest"});
-        assertTrue(settings.isBlockEntityTypeDisabled("minecraft:chest"));
         assertFalse(settings.isBlockEntityEnabled(chest));
         assertArrayEquals(new String[] {"minecraft:chest"}, settings.getDisabledBlockEntitiesArray());
-        settings.setBlockEntityTypeEnabled("minecraft:chest", true);
         settings.loadDisabledEntities(new String[0]);
         settings.loadDisabledBlockEntities(new String[0]);
-
-        // Listing types reads the registries; the block entity one is only reachable through the accessor mixin
-        assertNotNull(LightSourceSettings.listEntityTypes());
-        assertFalse(LightSourceSettings.listBlockEntityTypes().isEmpty());
-        assertTrue(LightSourceSettings.listBlockEntityTypes().containsKey("minecraft:chest"));
-        // The accessor's own body is the untransformed placeholder, which Mixin replaces in the game
-        assertThrows(AssertionError.class,
-                com.bdmajora.dynamiclights.mixin.TileEntityRegistryAccessor::impetus$getRegistry);
+        assertTrue(settings.isEntityEnabled(zombie));
+        assertTrue(settings.isBlockEntityEnabled(chest));
     }
 
     @Test
@@ -569,7 +559,7 @@ class DynamicLightsCoreTest {
         Object ticker = TileEntityLightTicker.instance();
         assertSame(ticker, TileEntityLightTicker.instance());
         TileEntityLightTicker instance = (TileEntityLightTicker) ticker;
-        // Only the end phase, and only with a block entity handler registered and a world loaded
+        // Ticks only at the end phase with a handler and a world.
         instance.onClientTick(start);
         instance.onClientTick(end);
         DynamicLightHandlers.registerTileEntityHandler(TileEntityChest.class, tile -> 5);

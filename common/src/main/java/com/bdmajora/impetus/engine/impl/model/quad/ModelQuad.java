@@ -39,7 +39,7 @@ public class ModelQuad implements ModelQuadViewMutable {
         this.normal = 0;
     }
 
-    // Vertex colour, ABGR
+    // Sets the ABGR vertex colour.
     @Override
     public void setColor(int idx, int color) {
         this.data[vertexOffset(idx) + COLOR_INDEX] = color;
@@ -69,13 +69,13 @@ public class ModelQuad implements ModelQuadViewMutable {
         this.flags = flags;
     }
 
-    // The atlas sprite, untyped to stay platform-free
+    // Sets the atlas sprite.
     @Override
     public void setSprite(Object sprite) {
         this.sprite = sprite;
     }
 
-    // Tint index, -1 for none
+    // Sets the tint index with -1 for none.
     @Override
     public void setColorIndex(int index) {
         this.colorIdx = index;
@@ -120,7 +120,7 @@ public class ModelQuad implements ModelQuadViewMutable {
         return Float.intBitsToFloat(this.data[vertexOffset(idx) + POSITION_INDEX + 2]);
     }
 
-    // Vertex colour, ABGR
+    // Returns the ABGR vertex colour.
     @Override
     public int getColor(int idx) {
         return this.data[vertexOffset(idx) + COLOR_INDEX];
@@ -144,7 +144,7 @@ public class ModelQuad implements ModelQuadViewMutable {
         return this.data[vertexOffset(idx) + LIGHT_INDEX];
     }
 
-    // Per-vertex packed normal, zero when absent
+    // Returns the packed normal of a vertex or zero when absent.
     @Override
     public int getForgeNormal(int idx) {
         return this.data[vertexOffset(idx) + NORMAL_INDEX];

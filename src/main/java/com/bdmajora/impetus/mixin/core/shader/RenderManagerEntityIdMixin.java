@@ -15,7 +15,7 @@ import com.bdmajora.impetus.umbra.uniforms.CapturedRenderingState;
 // Mixin that changes RenderManager.
 @Mixin(RenderManager.class)
 public class RenderManagerEntityIdMixin {
-    // Field entity id stack added to the target.
+    // Entity ids of nested entity draws.
     @Unique
     private final IntArrayList impetus$entityIdStack = new IntArrayList();
 

@@ -31,7 +31,7 @@ class OptionTest {
     private static final String MOD = "option_contract_test";
     private static final Dim2i DIM = new Dim2i(10, 20, 200, 18);
 
-    // An option that answers nothing, so a default method asking more than it should fails the test
+    // Option that answers nothing.
     private abstract static class Unasked<T> implements Option<T> {
         @Override
         public TextComponent getName() {
@@ -94,7 +94,7 @@ class OptionTest {
         }
     }
 
-    // An option with a fixed id and the control the test gives it, counting how often the id is read
+    // Option with a fixed id and control.
     private static final class Fixed<T> extends Unasked<T> {
         private final OptionIdentifier<T> id;
         Control<T> control;
@@ -120,7 +120,7 @@ class OptionTest {
         return new Fixed<>(OptionIdentifier.create(MOD, path, type));
     }
 
-    // The value type the default answers for an id of the given type, asking the id once and nothing else
+    // Returns the value type for an id of the given type.
     private static Class<?> valueTypeOf(String path, Class<?> type) {
         Fixed<?> option = typed(path, type);
         Class<?> answered = option.getValueType();
@@ -165,12 +165,12 @@ class OptionTest {
         Fixed<Void> empty = new Fixed<>(OptionIdentifier.EMPTY);
         assertSame(Object.class, empty.getValueType());
         assertEquals(1, empty.idReads);
-        // Untyped ids, as pages and groups carry, are typed void
+        // Checks untyped ids.
         Fixed<Void> untyped = new Fixed<>(OptionIdentifier.create(MOD, "untyped"));
         assertSame(Object.class, untyped.getValueType());
         assertSame(Object.class, valueTypeOf("void_typed", Void.class));
         assertSame(Object.class, valueTypeOf("void_primitive_typed", void.class));
-        // An id with no class at all cannot be made, so only a missing id reaches the null branch
+        // Checks a class less id.
         assertThrows(NullPointerException.class, () -> OptionIdentifier.create(MOD, "class_less", null));
     }
 
@@ -184,7 +184,7 @@ class OptionTest {
         Integer value = 7;
         assertTrue(number.getValueType().isInstance(value));
         assertSame(value, number.getValueType().cast(value));
-        // The same class an option built for the primitive answers, so both kinds of option meet a control the same way
+        // Checks the primitive option class.
         AtomicReference<Integer> data = new AtomicReference<>(0);
         OptionStorage<AtomicReference<Integer>> storage = () -> data;
         @SuppressWarnings("unchecked")
@@ -198,7 +198,7 @@ class OptionTest {
 
     @Test
     void referenceAndArrayIdsAreAnsweredAsGiven() {
-        // Arrays are reference types even of primitives, so int[] stays int[]
+        // Checks the array types.
         for (Class<?> type : List.of(String.class, Integer.class, Boolean.class, OptionImpact.class, Runnable.class, List.class, Object.class, int[].class, Integer[][].class)) {
             assertSame(type, valueTypeOf("reference_" + type.getName(), type), type::getName);
         }
@@ -213,7 +213,7 @@ class OptionTest {
                 throw failure;
             }
         };
-        // Left to the caller, which makes a placeholder of the row
+        // Checks the failure is left to the caller.
         assertSame(failure, assertThrows(IllegalStateException.class, broken::getValueType));
     }
 
@@ -233,7 +233,7 @@ class OptionTest {
 
     @Test
     void exactlyTheAnswersTheScreenToleratesAsNullAreMarkedNullable() throws IOException {
-        // The marks are kept in the class file only, so they are read from it
+        // Reads the class file.
         ClassModel model;
         try (InputStream in = Objects.requireNonNull(Option.class.getResourceAsStream("Option.class"))) {
             model = ClassFile.of().parse(in.readAllBytes());

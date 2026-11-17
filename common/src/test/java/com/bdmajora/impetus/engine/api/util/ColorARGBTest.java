@@ -15,12 +15,12 @@ class ColorARGBTest {
             0x80808080, 0x7F7F7F7F, 0x00FF00FF, 0xFF00FF00, 0x12345678, 0x87654321, 0xDEADBEEF, 0xFFFFFF00, 0x00FFFFFF
     };
 
-    // reference model: every component's low byte at its ARGB offset
+    // Expected pack.
     private static int expected(int r, int g, int b, int a) {
         return (a & 0xFF) << 24 | (r & 0xFF) << 16 | (g & 0xFF) << 8 | (b & 0xFF);
     }
 
-    // reference model of the GL repack: the same channels laid out by ColorABGR
+    // Expected GL repack.
     private static int expectedAbgr(int argb, int alpha) {
         return ColorABGR.pack(ColorARGB.unpackRed(argb), ColorARGB.unpackGreen(argb), ColorARGB.unpackBlue(argb), alpha);
     }
@@ -46,13 +46,13 @@ class ColorARGBTest {
         assertEquals(0xFF000000, ColorARGB.pack(0, 0, 0, 255));
         assertEquals(0xFF000000, ColorARGB.pack(0, 0, 0));
         assertEquals(-1, ColorARGB.pack(255, 255, 255));
-        // alpha 0x80 sets the sign bit; the packed word is negative
+        // Checks the sign bit.
         assertTrue(ColorARGB.pack(0, 0, 0, 0x80) < 0);
     }
 
     @Test
     void outOfRangeComponentsKeepOnlyTheirLowByteAndNeverBleed() {
-        // every channel alone, over values below, inside and above 0..255
+        // Checks every channel.
         for (int v = -1024; v <= 1024; v++) {
             assertEquals((v & 0xFF) << 16, ColorARGB.pack(v, 0, 0, 0), "red " + v);
             assertEquals((v & 0xFF) << 8, ColorARGB.pack(0, v, 0, 0), "green " + v);
@@ -68,7 +68,7 @@ class ColorARGBTest {
         }
         assertEquals(0xFFFFFFFF, ColorARGB.pack(-1, Integer.MAX_VALUE, 0x1FF, Integer.MIN_VALUE | 0xFF));
         assertEquals(0, ColorARGB.pack(256, Integer.MIN_VALUE, 0x100, 0x7FFFFF00));
-        // BoxBlur and ColorSRGB hand over sums and rounded floats; a 300 blue must not carry into green
+        // Checks a channel over 255.
         assertEquals(0xFF00002C, ColorARGB.pack(0, 0, 300, 255));
     }
 
@@ -113,7 +113,7 @@ class ColorARGBTest {
         assertEquals(255, ColorARGB.unpackRed(-1));
         assertEquals(255, ColorARGB.unpackGreen(-1));
         assertEquals(255, ColorARGB.unpackBlue(-1));
-        // sign bit alone: alpha is 0x80, not a negative sign-extended value
+        // Checks the sign bit alone.
         assertEquals(0x80, ColorARGB.unpackAlpha(Integer.MIN_VALUE));
         assertEquals(0, ColorARGB.unpackRed(Integer.MIN_VALUE));
         assertEquals(0, ColorARGB.unpackGreen(Integer.MIN_VALUE));
@@ -172,7 +172,7 @@ class ColorARGBTest {
 
     @Test
     void toABGRIsItsOwnInverse() {
-        // the R/B swap reads the same both ways, so applying it twice is the identity
+        // Checks the swap twice.
         for (int c : EDGE_INTS) {
             assertEquals(c, ColorARGB.toABGR(ColorARGB.toABGR(c)));
         }
@@ -201,7 +201,7 @@ class ColorARGBTest {
 
     @Test
     void outOfRangeAlphaInToABGRKeepsItsLowByteLikePack() {
-        // the alpha was ORed in unmasked, so its upper bits landed on blue, green and red
+        // Checks the alpha mask.
         assertEquals(0x00563412, ColorARGB.toABGR(0x78123456, 256));
         assertEquals(0xFF563412, ColorARGB.toABGR(0x78123456, -1));
         assertEquals(0x34563412, ColorARGB.toABGR(0x78123456, 0x1234));
@@ -227,7 +227,7 @@ class ColorARGBTest {
         assertEquals(0x00FFFFFF, ColorARGB.withAlpha(-1, 0));
         assertEquals(0xFF000000, ColorARGB.withAlpha(0, 255));
         assertEquals(0x80000000, ColorARGB.withAlpha(0, 0x80));
-        // the GUI's accent tint: an opaque accent comes back at 0xB8
+        // Checks the accent tint.
         assertEquals(0xB8E5A50A, ColorARGB.withAlpha(0xFFE5A50A, 0xB8));
         for (int rgb : EDGE_INTS) {
             for (int alpha = 0; alpha <= 255; alpha++) {
@@ -268,7 +268,7 @@ class ColorARGBTest {
         Constructor<?>[] constructors = ColorARGB.class.getDeclaredConstructors();
         assertEquals(1, constructors.length);
         assertTrue(Modifier.isPrivate(constructors[0].getModifiers()));
-        // still constructible reflectively, the body does nothing
+        // Checks the constructor.
         constructors[0].setAccessible(true);
         assertNotNull(constructors[0].newInstance());
     }

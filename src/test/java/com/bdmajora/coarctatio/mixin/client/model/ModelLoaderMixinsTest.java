@@ -77,10 +77,10 @@ class ModelLoaderMixinsTest {
         Mixins.call(bakery, "coarctatio$compactModelGraph", Mixins.ci());
         assertInstanceOf(Object2ObjectOpenHashMap.class, Mixins.get(bakery, "sprites"));
         assertInstanceOf(Object2ObjectOpenHashMap.class, Mixins.get(bakery, "blockDefinitions"));
-        // Items are canonical, so their variant names are keyed by identity
+        // Checks the identity keyed variants.
         assertInstanceOf(Reference2ObjectOpenHashMap.class, Mixins.get(bakery, "variantNames"));
 
-        // The multipart map is private to the bakery, so it is cleared from here
+        // Clears the multipart map.
         Map<ModelBlockDefinition, java.util.Collection<ModelResourceLocation>> multipart = new HashMap<>();
         multipart.put(mock(ModelBlockDefinition.class), new ArrayList<>());
         Mixins.set(bakery, "multipartVariantMap", multipart);
@@ -123,7 +123,7 @@ class ModelLoaderMixinsTest {
         Mockito.doReturn(2).when((BakeStateReleasable) loader).coarctatio$releaseBakeryState();
 
         Mixins.call(loader, "coarctatio$releaseBakeState", null, Mixins.ci());
-        // Mods read these during ModelBakeEvent, which has already fired by now
+        // Checks the cleared tables.
         assertTrue(stateModels.isEmpty());
         assertTrue(errors.isEmpty());
         assertTrue(definitions.isEmpty());
@@ -157,7 +157,7 @@ class ModelLoaderMixinsTest {
         domains.put("minecraft", domain);
         SimpleReloadableResourceManager manager = Mc.mock(SimpleReloadableResourceManager.class);
         when(((SimpleReloadableResourceManagerAccessor) manager).coarctatio$domainManagers()).thenReturn(domains);
-        // The model file reads as JSON; the armature beside it does not exist
+        // Stubs the model files.
         when(manager.getResource(any())).thenAnswer(invocation -> {
             ResourceLocation location = invocation.getArgument(0);
             if (!location.getPath().startsWith("models/")) {
@@ -198,7 +198,7 @@ class ModelLoaderMixinsTest {
         ResourceLocation armature = new ResourceLocation("minecraft", "armatures/item/teacup.json");
         ModelBakeryPrefetchMixin bakery = Mixins.instance(ModelBakeryPrefetchMixin.class);
 
-        // Nothing prefetched: both take the usual path
+        // Checks the usual path.
         CallbackInfoReturnable<ModelBlock> modelMiss = Mixins.cir();
         Mixins.call(bakery, "coarctatio$prefetchedModel", teacup, modelMiss);
         assertFalse(modelMiss.isCancelled());

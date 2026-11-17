@@ -4,10 +4,10 @@ import com.bdmajora.impetus.engine.impl.common.util.MathUtil;
 
 public class PositionUtil {
 
-    // MC's range is +-30,000,000; 26 bits covers [-33554432, 33554431]
+    // Bits of the packed x coordinate.
     private static final int SIZE_BITS_X = 26;
     private static final int SIZE_BITS_Z = SIZE_BITS_X;
-    // MC's range is [0, 255]; the 12 leftover bits cover [-2048, 2047]
+    // Bits of the packed y coordinate.
     private static final int SIZE_BITS_Y = 64 - SIZE_BITS_X - SIZE_BITS_Z;
 
     private static final long BITS_X = (1L << SIZE_BITS_X) - 1L;
@@ -18,7 +18,7 @@ public class PositionUtil {
     private static final int BIT_SHIFT_Z = SIZE_BITS_Y;
     private static final int BIT_SHIFT_Y = 0;
 
-    // Block position into one long, same layout as vanilla's BlockPos.toLong
+    // Packs a block position into one long like BlockPos.toLong.
     public static long packBlock(int x, int y, int z) {
         return ((long) x & BITS_X) << BIT_SHIFT_X | ((long) y & BITS_Y) << BIT_SHIFT_Y | ((long) z & BITS_Z) << BIT_SHIFT_Z;
     }
@@ -42,7 +42,7 @@ public class PositionUtil {
     private static final long SECTION_XZ_MASK = 4194303L;
     private static final long SECTION_Y_MASK = 1048575L;
 
-    // Chunk column into one long, same layout as vanilla's ChunkPos.asLong
+    // Packs a chunk column into one long like ChunkPos.asLong.
     public static long packChunk(int x, int z) {
         return (((long)z & MAX_UNSIGNED_32BIT_INT) << 32L) | ((long)x & MAX_UNSIGNED_32BIT_INT);
     }

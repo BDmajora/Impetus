@@ -5,14 +5,9 @@ import net.minecraft.client.gui.GuiScreen;
 import com.bdmajora.impetus.api.options.structure.OptionFlag;
 import com.bdmajora.impetus.api.options.structure.OptionPage;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusVideoOptionsController;
-import com.bdmajora.impetus.engine.impl.gui.options.CommonOptionPages;
 import com.bdmajora.impetus.engine.impl.render.ShaderModBridge;
-import com.bdmajora.impetus.impl.compat.fluidlogged.FluidloggedCompat;
-import com.bdmajora.coarctatio.gui.CoarctatioOptionPages;
-import com.bdmajora.equilibrium.gui.EquilibriumOptionPages;
 import com.bdmajora.dynamiclights.gui.DynamicLightsOptionPages;
 import com.bdmajora.extras.gui.ExtrasOptionPages;
-import com.bdmajora.fulgor.gui.FulgorOptionPages;
 import com.bdmajora.impetus.umbra.gui.modern.UmbraOptionPages;
 import org.lwjgl.input.Mouse;
 import com.bdmajora.impetus.ImpetusVintage;
@@ -74,27 +69,18 @@ public class ImpetusVideoOptionsScreen extends GuiScreen {
         resetDrag();
     }
 
-    // Returns every options page.
+    // Returns every options page in the order a new player reads them.
     private static List<OptionPage> createPages(GuiScreen parent) {
         List<OptionPage> pages = new ArrayList<>();
-        var graphicsApi = CommonOptionPages.graphicsApi(ImpetusVintage.options());
-        pages.add(ImpetusGameOptionPages.general(graphicsApi));
+        pages.add(ImpetusGameOptionPages.general());
         pages.add(ImpetusGameOptionPages.quality());
-        pages.add(CommonOptionPages.performance(ImpetusVintage.options()));
-        pages.add(CommonOptionPages.nvidium(ImpetusVintage.options(), graphicsApi));
-        if (FluidloggedCompat.IS_LOADED) {
-            pages.add(ImpetusGameOptionPages.fluidlogging());
-        }
-        pages.addAll(ExtrasOptionPages.pages());
-        pages.addAll(CoarctatioOptionPages.pages());
-        pages.add(FulgorOptionPages.lighting());
-        pages.addAll(EquilibriumOptionPages.pages());
-
+        pages.add(ExtrasOptionPages.detailsPage());
+        pages.add(ImpetusGameOptionPages.performance());
+        pages.add(ImpetusGameOptionPages.interfacePage());
         if (ShaderModBridge.isShaderModPresent()) {
             pages.add(UmbraOptionPages.shaderPacks(parent));
         }
-        pages.addAll(DynamicLightsOptionPages.pages());
-
+        pages.add(DynamicLightsOptionPages.page());
         return pages;
     }
 

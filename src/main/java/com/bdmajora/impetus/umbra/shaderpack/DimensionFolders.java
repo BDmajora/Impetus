@@ -37,7 +37,7 @@ public final class DimensionFolders {
         this.declared = declared;
     }
 
-    // Creates from.
+    // Reads dimension.properties or falls back to the world folders the pack ships.
     public static DimensionFolders from(Map<AbsolutePackPath, String> sources, Map<String, String> defines) {
         Set<String> present = new HashSet<>();
         for (AbsolutePackPath path : sources.keySet()) {
@@ -82,7 +82,7 @@ public final class DimensionFolders {
         return folders;
     }
 
-    // Defaults the to.
+    // Maps a dimension to a vanilla folder name unless the pack already mapped it.
     private void defaultTo(String folder, NamespacedId id) {
         if (this.present.contains(folder)) {
             this.byName.putIfAbsent(id, folder);
@@ -94,7 +94,7 @@ public final class DimensionFolders {
         return existing(this.byName.get(ANY));
     }
 
-    // Folders the for.
+    // Returns the pack folder for a dimension by name or folder number or the base folder.
     public String folderFor(int dimensionId, String dimensionName) {
         String mapped = this.byName.get(new NamespacedId(dimensionName));
         if (mapped != null) {

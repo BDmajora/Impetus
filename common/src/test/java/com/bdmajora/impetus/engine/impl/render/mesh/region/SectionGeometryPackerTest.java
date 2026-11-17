@@ -21,7 +21,7 @@ import org.lwjgl.system.MemoryUtil;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SectionGeometryPackerTest {
-    // x of a packed quad's first vertex, in blocks
+    // Returns the x of a quad.
     private static float firstX(SectionGeometry geometry, int quad) {
         long ptr = MemoryUtil.memAddress(geometry.geometry().getDirectBuffer()) + (long) quad * 4 * MeshChunkVertex.STRIDE;
         return MeshChunkVertex.decodePosition(MeshChunkVertex.readPackedX(ptr));
@@ -34,7 +34,7 @@ class SectionGeometryPackerTest {
         meshes.put(Passes.MESH_CUTOUT, MeshStoresTest.mesh(1, ModelQuadFacing.NEG_X));
         meshes.put(Passes.MESH_TRANSLUCENT, MeshStoresTest.mesh(3, ModelQuadFacing.UNASSIGNED));
 
-        // Camera well past x = 3, so the quad at x = 0 is the farthest
+        // Places the camera.
         SectionGeometry geometry = SectionGeometryPacker.pack(meshes, 10f, 0f, 0.5f);
         assertEquals(6, geometry.quadCount());
         assertEquals(3, geometry.baseQuad());
@@ -44,7 +44,7 @@ class SectionGeometryPackerTest {
         assertEquals(0f, firstX(geometry, 0), 0.01f);
         assertEquals(1f, firstX(geometry, 1), 0.01f);
         assertEquals(2f, firstX(geometry, 2), 0.01f);
-        // Opaque groups follow in facing order: +Y before -X
+        // Checks the facing order.
         assertEquals(0f, firstX(geometry, 3), 0.01f);
         assertEquals(1f, firstX(geometry, 4), 0.01f);
         assertEquals(0f, firstX(geometry, 5), 0.01f);
@@ -79,7 +79,7 @@ class SectionGeometryPackerTest {
         geometry.delete();
     }
 
-    // A 32-byte mesh layout like the shader pack one: MeshChunkVertex's sixteen bytes, then sixteen of extras
+    // Returns a 32 byte layout.
     private static final MeshVertexLayout WIDE = new MeshVertexLayout() {
         private final GlVertexFormat format = GlVertexFormat.builder(32)
                 .addElement("a_A", 0, GlVertexAttributeFormat.UNSIGNED_INT, 4, false, true)
@@ -146,7 +146,7 @@ class SectionGeometryPackerTest {
         assertEquals(4 * 4 * 32, geometry.geometry().getLength());
         assertEquals(2, geometry.minY());
         assertEquals(0, geometry.sizeY());
-        // The translucent quads still sort farthest first, read at the 32-byte stride, and carry their extras along
+        // Checks the 32 byte sort.
         long base = MemoryUtil.memAddress(geometry.geometry().getDirectBuffer());
         assertEquals(0f, MeshChunkVertex.decodePosition(MeshChunkVertex.readPackedX(base)), 0.01f);
         assertEquals(1f, MeshChunkVertex.decodePosition(MeshChunkVertex.readPackedX(base + 4 * 32)), 0.01f);
@@ -173,7 +173,7 @@ class SectionGeometryPackerTest {
     void quadDistanceIsMeasuredFromItsCentre() {
         var mesh = MeshStoresTest.mesh(1, ModelQuadFacing.POS_Y);
         long quad = MemoryUtil.memAddress(mesh.vertexBuffer().getDirectBuffer());
-        // The unit quad's centre is (0.5, 0, 0.5)
+        // Checks the quad centre.
         assertEquals(0f, SectionGeometryPacker.distanceSquared(quad, MeshChunkVertex.STRIDE, 0.5f, 0f, 0.5f), 0.01f);
         assertEquals(4f, SectionGeometryPacker.distanceSquared(quad, MeshChunkVertex.STRIDE, 0.5f, 2f, 0.5f), 0.01f);
     }

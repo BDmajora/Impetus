@@ -8,8 +8,6 @@ public final class ImpetusRuntimeOptions {
     private ImpetusRuntimeOptions() {
     }
 
-    // Whether translucent geometry is sorted more accurately.
-    public static boolean improvedTransparency = false;
     // Whether hidden fluid faces are culled.
     public static boolean hiddenFluidCulling = true;
     // Whether fluid shapes are improved.
@@ -35,7 +33,6 @@ public final class ImpetusRuntimeOptions {
     public static void apply(ImpetusGameOptions options) {
         java.util.Objects.requireNonNull(options, "options");
         var quality = options.quality;
-        improvedTransparency = quality.improvedTransparency;
         hiddenFluidCulling = quality.hiddenFluidCulling;
         improvedFluidShaping = quality.improvedFluidShaping;
         closestPointEntitySort = quality.closestPointEntitySort;

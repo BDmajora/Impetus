@@ -13,7 +13,7 @@ public final class FrameUpdateNotifier {
         this.listeners.add(listener);
     }
 
-    // Handles the new frame.
+    // Runs the per-frame listeners.
     public void onNewFrame() {
         for (Runnable listener : this.listeners) {
             listener.run();

@@ -54,7 +54,7 @@ class GlUniformFloat3vTest {
     // Shared GL mock that the reset extension clears before each test
     private final LWJGLService gl = TestGl.gl();
 
-    // Vector uniform that records every component upload instead of calling GL
+    // Vector uniform that records uploads.
     private static final class Recording extends GlUniformFloat3v {
         // Components in the order the component upload received them
         private final List<Float> values = new ArrayList<>();

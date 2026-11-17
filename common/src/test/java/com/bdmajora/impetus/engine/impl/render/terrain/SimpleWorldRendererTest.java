@@ -177,7 +177,7 @@ class SimpleWorldRendererTest {
         renderer.setupTerrain(viewport, camera(8, 8, 9), 4, false, false);
         assertTrue(renderer.getRenderSectionManager().builds.get() > built);
 
-        // A render distance change rebuilds the manager, a shadow pass only culls
+        // Checks the rebuild.
         renderer.renderDistance = 3;
         TestSectionManager before = renderer.getRenderSectionManager();
         renderer.setupTerrain(viewport, camera(8, 8, 9), 5, false, false);

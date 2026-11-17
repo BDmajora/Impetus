@@ -20,8 +20,7 @@ class SpliceSelfTest {
         // A mixin instance is an instance of the class it targets
         assertInstanceOf(World.class, Mixins.instance(WorldMixin.class));
 
-        // A @Shadow method with a placeholder body keeps that body, and calls to it from inside the mixin are
-        // answered from the stub table instead
+        // Builds the redstone wire mixin.
         var wire = Mixins.instance(com.bdmajora.equilibrium.mixin.block.redstone_wire.BlockRedstoneWireMixin.class);
         assertThrows(AssertionError.class, () -> Mixins.call(wire, "getMaxCurrentStrength", null, null, 0));
         ShadowStubs.clear();

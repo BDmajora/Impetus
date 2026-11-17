@@ -8,27 +8,27 @@ import net.minecraft.world.chunk.BlockStatePaletteLinear;
 import net.minecraft.world.chunk.IBlockStatePalette;
 import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 
-// Palette test for whether a section can hold a light source, the way Starlight skips sections before scanning them.
+// Palette test for whether a section can hold a light source.
 final class EmitterPalette {
-    // Ids a local palette can hand out: eight bits at most before the section switches to the global registry.
+    // Ids a local palette can hand out.
     static final int LOCAL_PALETTE_IDS = 1 << 8;
 
     // Prevents instantiation
     private EmitterPalette() {
     }
 
-    // Returns whether any state the section's palette lists may emit light; true whenever the palette cannot tell.
+    // Returns whether any state in the section's palette may emit light and true when the palette cannot tell.
     static boolean mayEmitLight(ExtendedBlockStorage section) {
         BlockStateContainer data = section.getData();
         if (!(data instanceof BlockStateContainerPaletteAccessor accessor)) {
             return true;
         }
         IBlockStatePalette palette = accessor.fulgor$getPalette();
-        // The global registry palette lists every state in the game, and a mod's own palette is unknown ground
+        // Returns true for the registry palette and for unknown palettes.
         if (!(palette instanceof BlockStatePaletteLinear) && !(palette instanceof BlockStatePaletteHashMap)) {
             return true;
         }
-        // Palettes never shrink, so a state that has since been replaced only costs a scan, never a missed light
+        // Checks every id of the local palette.
         for (int id = 0; id < LOCAL_PALETTE_IDS; id++) {
             IBlockState state = palette.getBlockState(id);
             if (state != null && mayEmit(LightInfo.of(state))) {

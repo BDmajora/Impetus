@@ -63,17 +63,10 @@ import java.util.function.Supplier;
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
 public abstract class RenderSectionManager {
-    /**
-     * When true, the section manager will continuously mark all sections as needing to be remeshed whenever the
-     * update queue empties.
-     */
+    // When true every section is marked for a remesh whenever the update queue empties.
     protected static final boolean CONTINUOUSLY_REMESH_WORLD = false;
 
-    /**
-     * How many frames' worth of dispatch the BFS may collect into the initial-build list. The list only needs to
-     * outlast the interval between graph updates, and an overflow re-marks the graph dirty as soon as results are
-     * uploaded, so a small multiple of the in-flight target is sufficient.
-     */
+    // Frames of dispatch the search may collect into the initial build list.
     private static final int REBUILD_LIST_FRAMES = 2;
 
     private final ChunkBuilder builder;
@@ -91,12 +84,12 @@ public abstract class RenderSectionManager {
 
     private final int renderDistance;
 
-    /** {@link #cameraPosition}, rounded down to block coordinates */
+    // Camera position rounded down to block coordinates.
     protected @Nullable Vector3ic cameraBlockPosition;
 
     protected Vector3d cameraPosition = new Vector3d();
 
-    /** last frame's exact camera position */
+    // Exact camera position of the last frame.
     protected @Nullable Vector3d previousCameraPosition;
 
     private final CutPlaneIndex<RenderSection> cutPlaneIndex = new CutPlaneIndex<>();
@@ -120,15 +113,13 @@ public abstract class RenderSectionManager {
     @Nullable
     protected final RenderListManager shadowRenderListManager;
 
-    // Set by the shadow pass, which precedes the terrain pass in a frame and submits both searches. The terrain
-    // pass of the same frame then skips re-running the search.
+    // Set by the shadow pass when it ran this frame.
     private boolean shadowPassRanThisFrame;
 
-    // The frame every search stamps, ours rather than the caller's: the lattice's visit gate and the build-result ordering need one increasing sequence, and the terrain pass (vanilla's frameCount) and Umbra's shadow pass (its own counter, reset on pipeline rebuild) count separately
+    // Frame number every search stamps.
     private int searchFrame;
 
-    // Shared by every section (one allocation, not one per section); installed on each RenderSection so its
-    // packedMetadata changes fan out to the list manager mirror(s).
+    // Sink shared by every section that mirrors packed metadata changes into the list managers.
     private final RenderSection.MetadataSink metadataSink = this::pushSectionMetadata;
 
     protected final ReferenceSet<RenderSection> sectionsWithGlobalEntities = new ReferenceOpenHashSet<>();
@@ -143,12 +134,12 @@ public abstract class RenderSectionManager {
     @Getter
     protected final RenderSectionMetricsTracker sectionMetricsTracker = new RenderSectionMetricsTracker();
 
-    // The Nvidium-style mesh-shader backend, when it replaces the multidraw renderer; it takes uploads and draws, the graph search still runs here
+    // Mesh shader backend or null.
     private final @Nullable MeshTerrainRenderer meshTerrain;
 
-    // The frame's main-pass viewport, which the mesh backend culls regions against on the GPU
+    // The frame's main pass viewport.
     private @Nullable Viewport frameViewport;
-    // The shadow pass's frustum, which the mesh backend picks shadow-casting regions with
+    // The shadow pass frustum.
     private @Nullable Viewport shadowViewport;
 
     public RenderSectionManager(RenderPassConfiguration<?> configuration, Supplier<ChunkBuildContext> contextSupplier,
@@ -167,7 +158,7 @@ public abstract class RenderSectionManager {
                 requestedThreads, hasShadowPass, meshTerrain, null);
     }
 
-    // A mesh config switches the mesh-shader backend on; mesh shading is an Nvidium-ported shader pack's programs, which the backend then owns, or null for Nvidium's own
+    // Creates the manager and the mesh backend when a mesh config is given.
     public RenderSectionManager(RenderPassConfiguration<?> configuration, Supplier<ChunkBuildContext> contextSupplier,
                                 BiFunction<RenderDevice, RenderPassConfiguration<?>, ChunkRenderer> chunkRenderer,
                                 int renderDistance, CommandList commandList, int minSection, int maxSection,
@@ -225,9 +216,7 @@ public abstract class RenderSectionManager {
         this.renderPassDrawTimers.values().forEach(TimerQueryManager::updateTime);
     }
 
-    /**
-     * Whether terrain is being rendered for shadows.
-     */
+    // Returns whether terrain is being drawn for shadows.
     public boolean isInShadowPass() {
         return false;
     }
@@ -236,18 +225,14 @@ public abstract class RenderSectionManager {
         return false;
     }
 
-    /**
-     * Terrain-pass update: run the terrain search (unless the shadow pass already ran it this frame) and the
-     * per-frame camera bookkeeping.
-     */
+    // Runs the terrain search unless the shadow pass already did and updates the camera.
     public void update(Viewport positionedViewport, int frame, boolean spectator) {
         if (!this.shadowPassRanThisFrame) {
             this.updateCameraPosition(positionedViewport);
         }
 
         if (this.shadowPassRanThisFrame) {
-            // The shadow pass searched for this frame if the graph was dirty then. Any needsUpdate raised by
-            // build results between the two passes carries over to the next frame.
+            // Clears the shadow pass flag.
             this.shadowPassRanThisFrame = false;
         } else {
             this.createTerrainRenderList(positionedViewport, null, ++this.searchFrame, spectator);
@@ -256,10 +241,7 @@ public abstract class RenderSectionManager {
         this.checkTranslucencyChange();
     }
 
-    /**
-     * Shadow-pass update. The shadow pass runs before the terrain pass in a frame, so this first runs the terrain
-     * search for the player viewport when one is due, then the shadow search.
-     */
+    // Runs a due terrain search for the player viewport and then the shadow search.
     public void updateForShadowPass(Viewport playerViewport, Viewport shadowViewport, int frame, boolean spectator) {
         if (this.shadowRenderListManager == null) {
             throw new IllegalStateException("No shadow pass configured");
@@ -269,7 +251,7 @@ public abstract class RenderSectionManager {
         this.shadowPassRanThisFrame = true;
         this.shadowViewport = shadowViewport;
 
-        // One stamp for both searches; they write separate visit-state arrays, so sharing it is safe
+        // Stamps both searches with one frame number.
         int searchFrame = ++this.searchFrame;
 
         if (this.renderListManager.isNeedsUpdate()) {
@@ -300,10 +282,7 @@ public abstract class RenderSectionManager {
         return this.shadowRenderListManager != null;
     }
 
-    /**
-     * Whether the shadow pass has already run this frame, in which case the terrain pass must not join the
-     * searches it submitted.
-     */
+    // Returns whether the shadow pass already ran this frame.
     public boolean didShadowPassRunThisFrame() {
         return this.shadowPassRanThisFrame;
     }
@@ -317,7 +296,7 @@ public abstract class RenderSectionManager {
             this.treeStatsWindowStart = now;
         }
 
-        // The mesh backend sorts translucent geometry itself, on the build workers and the GPU
+        // Skips translucency scheduling for the mesh backend.
         if (cameraBlockPosition == null || this.meshTerrain != null)
             return;
 
@@ -368,7 +347,7 @@ public abstract class RenderSectionManager {
                 double camDelta = (dx * dx) + (dy * dy) + (dz * dz);
 
                 if (camDelta < 1) {
-                    // Didn't move enough, ignore
+                    // Skips a section the camera did not move enough for.
                     continue;
                 }
 
@@ -391,7 +370,7 @@ public abstract class RenderSectionManager {
         }
     }
 
-    /** Resorts tree-sorted sections whose cut planes this frame's movement crossed, visible or not */
+    // Resorts tree sorted sections whose cut planes this frame's movement crossed.
     private void scheduleTreeSortedUpdates() {
         if (this.previousCameraPosition == null || this.cutPlaneIndex.size() == 0) {
             return;
@@ -420,10 +399,7 @@ public abstract class RenderSectionManager {
         this.getCurrentRenderListManager().getRebuildLists().byUpdateType().get(update).add(section);
     }
 
-    /**
-     * {@return true if the renderer should respect per-frame queue limits and not try to update as many chunks as
-     * possible per frame}
-     */
+    // Returns whether per frame queue limits apply.
     protected boolean shouldRespectUpdateTaskQueueSizeLimit() {
         return true;
     }
@@ -552,7 +528,7 @@ public abstract class RenderSectionManager {
         RenderDevice device = RenderDevice.INSTANCE;
         CommandList commandList = device.createCommandList();
 
-        // The shadow pass reuses the main pass's timers, so it is not timed separately
+        // Profiles the main pass only.
         boolean shouldProfile = isDebugInfoShown() && !isInShadowPass();
 
         TimerQueryManager timer = null;
@@ -571,7 +547,7 @@ public abstract class RenderSectionManager {
         commandList.flush();
     }
 
-    // The mesh backend draws every resident section at once: opaque from the solid pass, translucent from the sorted one, the shadow map from the same passes while the shadow pass drives them; the pass's own GL state (atlas filtering, blending) still applies
+    // Draws every resident mesh section for the pass.
     private void renderMeshLayer(ChunkRenderMatrices matrices, TerrainRenderPass pass, CameraTransform camera) {
         boolean opaque = pass == this.renderPassConfiguration.defaultSolidMaterial().pass;
 
@@ -603,7 +579,7 @@ public abstract class RenderSectionManager {
         this.frameViewport = viewport;
     }
 
-    // The framebuffer the mesh backend's hierarchical depth test samples; the platform knows it
+    // Returns the framebuffer width.
     protected int getFramebufferWidth() {
         return 1;
     }
@@ -629,9 +605,7 @@ public abstract class RenderSectionManager {
         return false;
     }
 
-    /**
-     * Inject sections that requested a rebuild between graph updates into the appropriate rebuild lists.
-     */
+    // Moves sections that asked for a rebuild between graph updates into their rebuild lists.
     private void promoteInterimRebuildList() {
         if (this.sectionsRequestingUpdate.isEmpty()) {
             return;
@@ -643,7 +617,7 @@ public abstract class RenderSectionManager {
         for (var section : this.sectionsRequestingUpdate) {
             var updateType = section.getPendingUpdate();
             if (updateType == null) {
-                // should never happen, but be defensive
+                // Skips a missing section.
                 continue;
             }
             if (!graphUpdatePending || updateType.isImportant()) {
@@ -658,10 +632,7 @@ public abstract class RenderSectionManager {
         this.regions.update();
         this.jobMetricsTracker.tick();
 
-        // Advance the scheduling controller once per frame, before any dispatch reads the budget. This runs only
-        // on the main terrain pass so that an additional shadow pass in the same frame does not double-tick the
-        // controller (which would halve its measured frame time); both passes share the same worker queue and
-        // in-flight target.
+        // Ticks the scheduler on the terrain pass only.
         if (!this.isInShadowPass()) {
             this.builder.tickSchedulingBudget(this.jobMetricsTracker);
         }
@@ -684,7 +655,7 @@ public abstract class RenderSectionManager {
         this.submitRebuildTasks(updateImmediately ? blockingRebuilds : deferredRebuilds, ChunkUpdateType.REBUILD);
         this.submitRebuildTasks(updateImmediately ? blockingRebuilds : deferredRebuilds, ChunkUpdateType.INITIAL_BUILD);
 
-        // Sorts fill whatever worker time the mesh dispatch left over, scaled by their measured relative cost
+        // Collects the sorts that fit in the leftover worker time.
         var deferredSorts = new ChunkJobCollector(this.builder.getSortSchedulingBudget(), this.buildResults::add);
         this.submitRebuildTasks(updateImmediately ? blockingRebuilds : deferredSorts, ChunkUpdateType.SORT);
 
@@ -701,7 +672,7 @@ public abstract class RenderSectionManager {
             return;
         }
 
-        // Ensure occlusion threads are stopped at this point, as we're about to mutate render section data.
+        // Stops the occlusion threads.
         this.finishAllGraphUpdates();
 
         this.processChunkBuildResults(results);
@@ -710,8 +681,7 @@ public abstract class RenderSectionManager {
             result.output().delete();
         }
 
-        // Forcefully mark the graph as needing updates if the previous render list detected an overflow of the
-        // update queue. This is necessary to queue those additional chunks.
+        // Marks the graph dirty after an update queue overflow.
         if (this.getCurrentRenderListManager().getRebuildLists().hasAdditionalUpdates()) {
             this.markGraphDirty();
         }
@@ -740,13 +710,11 @@ public abstract class RenderSectionManager {
                 boolean changed = this.updateSectionInfo(result.render, buildResult.info);
 
                 if (changed) {
-                    // The chunk graph must be rebuilt if the render section reports the info has changed. This
-                    // could indicate an occlusion data update, block entity addition/removal, animated texture
-                    // change, etc.
+                    // Marks the graph dirty when the section info changed.
                     this.markGraphDirty();
                 }
 
-                // We only change the translucency info on full rebuilds, as sorts can keep using the same data
+                // Updates the translucency info on full rebuilds.
                 this.updateTranslucencyInfo(result.render, buildResult.meshes, latest);
             }
 
@@ -761,7 +729,7 @@ public abstract class RenderSectionManager {
         }
     }
 
-    // Hands each rebuilt section's packed geometry to the mesh backend; sorts never reach it
+    // Uploads each rebuilt section's packed geometry to the mesh backend.
     private void uploadMeshTerrain(Collection<ChunkJobResult.Success<? extends ChunkTaskOutput>> results) {
         for (var holder : results) {
             if (holder.output() instanceof ChunkBuildOutput output) {
@@ -771,10 +739,7 @@ public abstract class RenderSectionManager {
         }
     }
 
-    /**
-     * @param latestBuild whether the meshes come from the most recent submission; a stale build keeps its planes
-     *                    indexed but leaves the camera bookkeeping to the build still in flight
-     */
+    // Stores the sort states of new meshes.
     private void updateTranslucencyInfo(RenderSection render, Map<TerrainRenderPass, BuiltSectionMeshParts> meshes, boolean latestBuild) {
         Map<TerrainRenderPass, SortState.Resortable> sortStates = new Reference2ObjectArrayMap<>();
         int highestIndex = RenderSection.NO_TRANSLUCENT_GEOMETRY;
@@ -788,7 +753,7 @@ public abstract class RenderSectionManager {
 
             highestIndex = Math.max(highestIndex, state.debugIndex());
 
-            // Only resortable states survive compaction; everything else is already in its final order.
+            // Keeps the resortable states.
             if(state.compactForStorage() instanceof SortState.Resortable resortable) {
                 sortStates.put(entry.getKey(), resortable);
             }
@@ -804,8 +769,7 @@ public abstract class RenderSectionManager {
 
             this.cutPlaneIndex.put(render, PartitionTree.mergeCutPlanes(trees), render.getOriginX(), render.getOriginY(), render.getOriginZ());
 
-            // The build sorted for the camera at submission (see submitRebuildTasks). A crossing since then happened
-            // before the planes were indexed, so it has to be caught here or the order stays stale until the next one.
+            // Schedules a tree sort when the camera crossed a cut plane since submission.
             int ox = render.getOriginX(), oy = render.getOriginY(), oz = render.getOriginZ();
             for (PartitionTree tree : trees) {
                 if (latestBuild && tree.crossesCutPlane(render.lastCameraX - ox, render.lastCameraY - oy, render.lastCameraZ - oz,
@@ -816,8 +780,7 @@ public abstract class RenderSectionManager {
                 }
             }
 
-            // any crossing up to now was just handled. Dynamic sections keep the submission camera so that
-            // scheduleTranslucencyUpdates still sees movement made during the build.
+            // Moves the stored camera to the current position for the latest build.
             if (latestBuild) {
                 render.lastCameraX = this.cameraPosition.x;
                 render.lastCameraY = this.cameraPosition.y;
@@ -829,8 +792,7 @@ public abstract class RenderSectionManager {
         }
     }
 
-    // Section MetadataSink: mirrors a section's packed metadata into the graph-search lattice on every
-    // packedMetadata mutation (visibility/visuals via setInfo, pending update, build-in-flight).
+    // Mirrors a section's packed metadata into the search lattice.
     private void pushSectionMetadata(RenderSection section) {
         this.sectionGraph.updateSectionMetadata(section.getChunkX(), section.getChunkY(), section.getChunkZ(),
                 section.getPackedMetadata(), this::markGraphDirty);
@@ -909,13 +871,7 @@ public abstract class RenderSectionManager {
                 continue;
             }
 
-            // The pending update type may have changed since this entry was queued. Cases:
-            //   - A SORT was promoted to REBUILD (e.g. a block changed while a sort was pending):
-            //     the section remains in the SORT queue but pendingUpdate is now REBUILD, so the
-            //     SORT pass skips it and the REBUILD pass picks it up correctly.
-            //   - The type was cleared by a prior pass in the same frame.
-            //   - The type was set to null after the async BFS generated the list (authoritative
-            //     guard against double submissions from a stale buildCancellationToken read).
+            // Skips entries whose pending type changed since queueing.
             if (section.getPendingUpdate() != type) {
                 continue;
             }
@@ -929,8 +885,7 @@ public abstract class RenderSectionManager {
             }
 
             if (task != null) {
-                // Prioritize by distance so sections that only became reachable (and thus schedulable) after their
-                // neighbors were built still run ahead of farther sections that were queued in earlier frames.
+                // Prioritizes by distance.
                 long priority = (long) section.getSquaredDistanceFromBlockCenter(cameraX, cameraY, cameraZ);
                 var job = this.builder.scheduleTask(task, type.isImportant(), priority, collector::onJobFinished);
                 collector.addSubmittedJob(job);
@@ -980,10 +935,7 @@ public abstract class RenderSectionManager {
         }
     }
 
-    /**
-     * Whether {@link #update} must run in the current pass. In the terrain pass this is also true when the shadow
-     * pass already ran the terrain search this frame, so that {@link #update} can consume that state.
-     */
+    // Returns whether update must run in this pass.
     public boolean needsUpdate() {
         if (this.isInShadowPass()) {
             return this.shadowRenderListManager.isNeedsUpdate();
@@ -998,7 +950,7 @@ public abstract class RenderSectionManager {
     public void destroy() {
         this.finishAllGraphUpdates();
 
-        this.builder.shutdown(); // stop all the workers, and cancel any tasks
+        this.builder.shutdown(); // stops the workers and cancels the tasks
 
         for (var result : this.collectChunkBuildResults()) {
             result.output().delete(); // delete resources for any pending tasks (including those that were cancelled)
@@ -1043,7 +995,7 @@ public abstract class RenderSectionManager {
 
     public final void scheduleAsyncTask(Runnable runnable) {
         if (Thread.currentThread() == this.renderThread) {
-            // Run immediately, otherwise the thread may deadlock waiting for itself
+            // Runs the task on this thread.
             runnable.run();
         } else {
             asyncSubmittedTasks.add(runnable);
@@ -1082,7 +1034,7 @@ public abstract class RenderSectionManager {
             }
 
             if (section.requestUpdate(pendingUpdate)) {
-                // Check importance using the section's new update type, as it may not be exactly what we requested
+                // Reads the importance from the section's new update type.
                 important = section.getPendingUpdate().isImportant();
 
                 if (important ||
@@ -1112,10 +1064,7 @@ public abstract class RenderSectionManager {
         return this.cameraBlockPosition != null && section.getSquaredDistanceFromBlockCenter(this.cameraBlockPosition.x(), this.cameraBlockPosition.y(), this.cameraBlockPosition.z()) < NEARBY_REBUILD_DISTANCE;
     }
 
-    /**
-     * {@return true if rebuilds of chunks near the player should block the main thread, reduces flickering but will
-     * potentially cause lag spikes}
-     */
+    // Returns whether rebuilds near the player block the main thread.
     protected boolean allowImportantRebuilds() {
         return false;
     }
@@ -1134,14 +1083,11 @@ public abstract class RenderSectionManager {
         }
 
         if (shape == FogService.FOG_SHAPE_PLANAR) {
-            // The cullers measure the cylindrical distance max(|xz|, |y|) from the camera, which for spherical and
-            // cylindrical fog is never larger than the distance the shader fogs by, so the cutoff can be used
-            // as-is. Planar fog instead measures depth along the view axis, which is *smaller* than that distance,
-            // so the cutoff has to be scaled up to the worst case before the cullers can use it.
+            // Scales the cutoff by the frustum secant for planar fog.
             var secant = getMaximumFrustumSecant(projectionMatrix);
 
             if (secant == 0.0f) {
-                // Not a projection we can bound the view cone of; assume fog can hide nothing.
+                // Returns the render distance for an unknown projection.
                 return renderDistance;
             }
 
@@ -1151,21 +1097,13 @@ public abstract class RenderSectionManager {
         return Math.min(renderDistance, distance + 0.5f);
     }
 
-    /**
-     * Computes the largest factor by which a point inside the view frustum can be farther from the camera than its
-     * depth along the view axis.
-     *
-     * <p>Computing from the projection rather than from the game's setting keeps this correct
-     * under dynamic FOV, spyglasses, aspect ratio changes, temporal jitter, and any mod which alters the
-     * projection.
-     */
+    // Returns the largest ratio of camera distance to view depth inside the frustum.
     private static float getMaximumFrustumSecant(@Nullable Matrix4fc projectionMatrix) {
         if (projectionMatrix == null) {
             return 0.0f;
         }
 
-        // A perspective projection divides by -z (m23 = -1 before any scaling). An orthographic one (used by the
-        // shadow pass) leaves w untouched, has no apex, and therefore no bounded view cone.
+        // Reads the perspective divide term.
         float w = Math.abs(projectionMatrix.m23());
 
         if (w == 0.0f) {
@@ -1177,8 +1115,7 @@ public abstract class RenderSectionManager {
 
         float secant = (float)Math.sqrt(1.0 + (tanX * tanX) + (tanY * tanY));
 
-        // Rejects a degenerate projection (a zero or NaN term anywhere above lands here) rather than letting it
-        // poison the search distance.
+        // Rejects a degenerate projection.
         if (!(secant >= 1.0f) || !Float.isFinite(secant)) {
             return 0.0f;
         }

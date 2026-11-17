@@ -16,7 +16,7 @@ import java.util.Collection;
 // Mixin that changes World.
 @Mixin(World.class)
 public abstract class WorldWriteLockMixin implements ParallelWorld {
-    // Handles locked set block state.
+    // Sets a block under the world lock.
     @WrapMethod(method = "setBlockState(Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/block/state/IBlockState;I)Z")
     private boolean impetus$lockedSetBlockState(BlockPos pos, IBlockState state, int flags, Operation<Boolean> original) {
         if (!this.impetus$isParallel()) {
@@ -27,7 +27,7 @@ public abstract class WorldWriteLockMixin implements ParallelWorld {
         }
     }
 
-    // Handles locked mark and notify.
+    // Runs the neighbour updates of a block change under the world lock.
     @WrapMethod(method = "markAndNotifyBlock", remap = false)
     private void impetus$lockedMarkAndNotify(BlockPos pos, Chunk chunk, IBlockState oldState, IBlockState newState, int flags, Operation<Void> original) {
         if (!this.impetus$isParallel()) {
@@ -39,7 +39,7 @@ public abstract class WorldWriteLockMixin implements ParallelWorld {
         }
     }
 
-    // Handles locked get entity by id.
+    // Looks an entity up by id under the world lock.
     @WrapMethod(method = "getEntityByID")
     private Entity impetus$lockedGetEntityByID(int id, Operation<Entity> original) {
         if (!this.impetus$isParallel()) {
@@ -50,7 +50,7 @@ public abstract class WorldWriteLockMixin implements ParallelWorld {
         }
     }
 
-    // Handles locked spawn entity.
+    // Spawns an entity under the world lock.
     @WrapMethod(method = "spawnEntity")
     private boolean impetus$lockedSpawnEntity(Entity entity, Operation<Boolean> original) {
         if (!this.impetus$isParallel()) {
@@ -61,7 +61,7 @@ public abstract class WorldWriteLockMixin implements ParallelWorld {
         }
     }
 
-    // Handles locked remove entity.
+    // Removes an entity under the world lock.
     @WrapMethod(method = "removeEntity")
     private void impetus$lockedRemoveEntity(Entity entity, Operation<Void> original) {
         if (!this.impetus$isParallel()) {
@@ -73,7 +73,7 @@ public abstract class WorldWriteLockMixin implements ParallelWorld {
         }
     }
 
-    // Handles locked remove entity dangerously.
+    // Removes an entity at once under the world lock.
     @WrapMethod(method = "removeEntityDangerously")
     private void impetus$lockedRemoveEntityDangerously(Entity entity, Operation<Void> original) {
         if (!this.impetus$isParallel()) {
@@ -85,7 +85,7 @@ public abstract class WorldWriteLockMixin implements ParallelWorld {
         }
     }
 
-    // Handles locked load entities.
+    // Adds loaded entities under the world lock.
     @WrapMethod(method = "loadEntities")
     private void impetus$lockedLoadEntities(Collection<Entity> entities, Operation<Void> original) {
         if (!this.impetus$isParallel()) {
@@ -97,7 +97,7 @@ public abstract class WorldWriteLockMixin implements ParallelWorld {
         }
     }
 
-    // Handles locked unload entities.
+    // Queues entities for unload under the world lock.
     @WrapMethod(method = "unloadEntities")
     private void impetus$lockedUnloadEntities(Collection<Entity> entities, Operation<Void> original) {
         if (!this.impetus$isParallel()) {
@@ -109,7 +109,7 @@ public abstract class WorldWriteLockMixin implements ParallelWorld {
         }
     }
 
-    // Handles locked add tile entity.
+    // Adds a block entity under the world lock.
     @WrapMethod(method = "addTileEntity")
     private boolean impetus$lockedAddTileEntity(TileEntity tile, Operation<Boolean> original) {
         if (!this.impetus$isParallel()) {
@@ -120,7 +120,7 @@ public abstract class WorldWriteLockMixin implements ParallelWorld {
         }
     }
 
-    // Handles locked add tile entities.
+    // Adds block entities under the world lock.
     @WrapMethod(method = "addTileEntities")
     private void impetus$lockedAddTileEntities(Collection<TileEntity> tiles, Operation<Void> original) {
         if (!this.impetus$isParallel()) {
@@ -132,7 +132,7 @@ public abstract class WorldWriteLockMixin implements ParallelWorld {
         }
     }
 
-    // Handles locked set tile entity.
+    // Places a block entity under the world lock.
     @WrapMethod(method = "setTileEntity")
     private void impetus$lockedSetTileEntity(BlockPos pos, TileEntity tile, Operation<Void> original) {
         if (!this.impetus$isParallel()) {
@@ -144,7 +144,7 @@ public abstract class WorldWriteLockMixin implements ParallelWorld {
         }
     }
 
-    // Handles locked remove tile entity.
+    // Removes a block entity under the world lock.
     @WrapMethod(method = "removeTileEntity")
     private void impetus$lockedRemoveTileEntity(BlockPos pos, Operation<Void> original) {
         if (!this.impetus$isParallel()) {

@@ -19,10 +19,10 @@ public abstract class BlockPosMixin extends Vec3i {
         return new BlockPos(this.getX(), this.getY() + 1, this.getZ());
     }
 
-    // Replaces the whole method up.
+    // Offsets up without the EnumFacing lookup and copies a mutable position for a zero offset.
     @Overwrite
     public BlockPos up(int n) {
-        return n == 0 ? (BlockPos) (Object) this : new BlockPos(this.getX(), this.getY() + n, this.getZ());
+        return n == 0 ? ((BlockPos) (Object) this).toImmutable() : new BlockPos(this.getX(), this.getY() + n, this.getZ());
     }
 
     // Replaces the whole method down.
@@ -34,7 +34,7 @@ public abstract class BlockPosMixin extends Vec3i {
     // Replaces the whole method down.
     @Overwrite
     public BlockPos down(int n) {
-        return n == 0 ? (BlockPos) (Object) this : new BlockPos(this.getX(), this.getY() - n, this.getZ());
+        return n == 0 ? ((BlockPos) (Object) this).toImmutable() : new BlockPos(this.getX(), this.getY() - n, this.getZ());
     }
 
     // Replaces the whole method north.
@@ -46,7 +46,7 @@ public abstract class BlockPosMixin extends Vec3i {
     // Replaces the whole method north.
     @Overwrite
     public BlockPos north(int n) {
-        return n == 0 ? (BlockPos) (Object) this : new BlockPos(this.getX(), this.getY(), this.getZ() - n);
+        return n == 0 ? ((BlockPos) (Object) this).toImmutable() : new BlockPos(this.getX(), this.getY(), this.getZ() - n);
     }
 
     // Replaces the whole method south.
@@ -58,7 +58,7 @@ public abstract class BlockPosMixin extends Vec3i {
     // Replaces the whole method south.
     @Overwrite
     public BlockPos south(int n) {
-        return n == 0 ? (BlockPos) (Object) this : new BlockPos(this.getX(), this.getY(), this.getZ() + n);
+        return n == 0 ? ((BlockPos) (Object) this).toImmutable() : new BlockPos(this.getX(), this.getY(), this.getZ() + n);
     }
 
     // Replaces the whole method west.
@@ -70,7 +70,7 @@ public abstract class BlockPosMixin extends Vec3i {
     // Replaces the whole method west.
     @Overwrite
     public BlockPos west(int n) {
-        return n == 0 ? (BlockPos) (Object) this : new BlockPos(this.getX() - n, this.getY(), this.getZ());
+        return n == 0 ? ((BlockPos) (Object) this).toImmutable() : new BlockPos(this.getX() - n, this.getY(), this.getZ());
     }
 
     // Replaces the whole method east.
@@ -82,6 +82,6 @@ public abstract class BlockPosMixin extends Vec3i {
     // Replaces the whole method east.
     @Overwrite
     public BlockPos east(int n) {
-        return n == 0 ? (BlockPos) (Object) this : new BlockPos(this.getX() + n, this.getY(), this.getZ());
+        return n == 0 ? ((BlockPos) (Object) this).toImmutable() : new BlockPos(this.getX() + n, this.getY(), this.getZ());
     }
 }

@@ -15,7 +15,7 @@ import com.bdmajora.impetus.impl.world.cloned.ImpetusBlockAccess;
 public class FluidloggedCompat {
     // Mod id of Fluidlogged API.
     public static final String MODID = "fluidlogged_api";
-    // Is loaded.
+    // Whether Fluidlogged API is installed.
     public static final boolean IS_LOADED = Loader.isModLoaded(MODID);
 
     // Returns the empty fluid state.

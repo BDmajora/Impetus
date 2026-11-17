@@ -19,7 +19,7 @@ class DeduplicatedLongQueueTest {
         assertEquals(5L, queue.dequeue());
         assertEquals(6L, queue.dequeue());
         assertTrue(queue.isEmpty());
-        // Still deduplicated after being drained, since the cycle has not ended
+        // Checks deduplication after a drain.
         assertFalse(queue.enqueue(5L));
         queue.resetDeduplication();
         assertTrue(queue.enqueue(5L));
@@ -30,7 +30,7 @@ class DeduplicatedLongQueueTest {
     void segmentsAreChainedAndReturnedToThePool() {
         DeduplicatedLongQueue.Pool pool = new DeduplicatedLongQueue.Pool();
         DeduplicatedLongQueue queue = new DeduplicatedLongQueue(pool, 16, false);
-        // Two full segments plus one entry, so the queue chains and then releases as it drains
+        // Fills two segments plus one entry.
         int count = (1 << 10) * 2 + 1;
         for (int i = 0; i < count; i++) {
             assertTrue(queue.enqueue(i));
@@ -43,7 +43,7 @@ class DeduplicatedLongQueueTest {
         // The freed segments are handed back out rather than reallocated
         queue.enqueue(1L);
         assertEquals(1L, queue.dequeue());
-        // Without deduplication the same value may be queued repeatedly, and resetting is a no-op
+        // Checks a queue without deduplication.
         queue.resetDeduplication();
         assertTrue(queue.enqueue(7L));
         assertTrue(queue.enqueue(7L));
@@ -70,7 +70,7 @@ class DeduplicatedLongQueueTest {
     void thePoolStopsRetainingSegmentsPastItsLimit() {
         DeduplicatedLongQueue.Pool pool = new DeduplicatedLongQueue.Pool();
         DeduplicatedLongQueue queue = new DeduplicatedLongQueue(pool, 16, false);
-        // More segments than the pool keeps, so the last releases are dropped instead of cached
+        // Fills more segments than the pool keeps.
         int count = (1 << 10) * ((1 << 10) + 2);
         for (int i = 0; i < count; i++) {
             queue.enqueue(i);

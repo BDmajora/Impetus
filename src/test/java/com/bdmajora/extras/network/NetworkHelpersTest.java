@@ -62,7 +62,7 @@ class NetworkHelpersTest {
         assertEquals(3, scratch.length);
         assertEquals(0, heap.readableBytes());
 
-        // A direct buffer is copied, growing the scratch when it is too small
+        // Checks a direct buffer copy.
         byte[] big = new byte[20_000];
         Arrays.fill(big, (byte) 7);
         ByteBuf direct = Unpooled.directBuffer(big.length).writeBytes(big);
@@ -114,7 +114,7 @@ class NetworkHelpersTest {
         Logger logger = LogManager.getLogger("test");
         List<String> ran = new ArrayList<>();
         AtomicBoolean networkParked = new AtomicBoolean(true);
-        // The network thread queues a packet while the first task runs, taking the monitor the way addScheduledTask does; vanilla's drain would park it until the task ended
+        // Queues a packet while the first task runs.
         queue.add(new FutureTask<>(() -> {
             Thread network = new Thread(() -> {
                 synchronized (queue) {

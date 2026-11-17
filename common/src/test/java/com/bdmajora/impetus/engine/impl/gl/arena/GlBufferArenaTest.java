@@ -576,7 +576,7 @@ class GlBufferArenaTest {
         check(arena);
     }
 
-    // Verifies that a request one past half the capacity grows instead of compacting
+    // Checks growth.
     @Test
     void requestPastHalfTheCapacityGrows() {
         GlBufferArena arena = arena(4, 0);
@@ -1414,7 +1414,7 @@ class GlBufferArenaTest {
             }
         }
 
-        // Compacts the model when the live and requested elements fill at most half of it and grows it otherwise
+        // Expected compact or grow.
         private void reserve(long count) {
             long required = used + count;
             int target = capacity;

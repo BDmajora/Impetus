@@ -38,7 +38,7 @@ class BfsLightEngineTest {
         Statics.set(Fulgor.class, "fluidloggedApi", false);
     }
 
-    // A 3x3 neighbourhood, which is the smallest the engine will work in
+    // Returns a 3x3 neighbourhood.
     private static AsyncWorld neighbourhood(boolean client) {
         AsyncWorld fixture = new AsyncWorld(client);
         for (int x = -1; x <= 1; x++) {
@@ -85,7 +85,7 @@ class BfsLightEngineTest {
         engine.light(chunk, BfsLightEngine.getEmptySectionsForChunk(chunk), false);
         assertEquals(15, fixture.blockLight(source));
         assertEquals(0, fixture.blockLight(new BlockPos(9, 64, 8)));
-        // Behind the wall the light has to go the long way round, so it is much dimmer than 13
+        // Checks the light behind the wall.
         assertTrue(fixture.blockLight(new BlockPos(10, 64, 8)) < 13);
     }
 
@@ -136,7 +136,7 @@ class BfsLightEngineTest {
         sections[5] = Boolean.FALSE;
         engine.blocksChangedInChunk(0, 0, null, sections);
         assertEquals(15, fixture.blockLight(second));
-        // Nothing at all queued is a no-op, as is a chunk the engine cannot see
+        // Checks empty queues and unseen chunks.
         engine.blocksChangedInChunk(0, 0, null, null);
         engine.blocksChangedInChunk(40, 40, changed, null);
     }
@@ -149,7 +149,7 @@ class BfsLightEngineTest {
     void skylightFallsDownOpenColumns() {
         AsyncWorld fixture = neighbourhood(false);
         Chunk chunk = fixture.chunks.get(AsyncWorld.key(0, 0));
-        // A floor at y=64, so everything above it is open to the sky
+        // Places a floor at y 64.
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
                 fixture.setBlock(new BlockPos(x, 64, z), Blocks.STONE.getDefaultState());
@@ -159,7 +159,7 @@ class BfsLightEngineTest {
         engine.light(chunk, BfsLightEngine.getEmptySectionsForChunk(chunk), false);
         assertEquals(15, fixture.skyLight(new BlockPos(8, 70, 8)));
         assertEquals(15, fixture.skyLight(new BlockPos(8, 65, 8)));
-        // The floor itself is dark, and under it only what creeps in from the open chunks around is left
+        // Checks the floor and below.
         assertEquals(0, fixture.skyLight(new BlockPos(8, 64, 8)));
         assertEquals(7, fixture.skyLight(new BlockPos(8, 63, 8)));
     }
@@ -171,7 +171,7 @@ class BfsLightEngineTest {
         fixture.setBlock(new BlockPos(8, 64, 8), Blocks.GLOWSTONE.getDefaultState());
         BlockLightEngine engine = new BlockLightEngine(fixture.world);
         engine.loadInChunk(chunk, BfsLightEngine.getEmptySectionsForChunk(chunk));
-        // No propagation ran, so nothing is lit, but the emptiness map is set up
+        // Checks the emptiness map.
         assertEquals(0, fixture.blockLight(new BlockPos(8, 64, 8)));
         assertNotNull(((AsyncLitChunk) chunk).fulgor$getBlockEmptinessMap());
         // A chunk the engine cannot see is skipped

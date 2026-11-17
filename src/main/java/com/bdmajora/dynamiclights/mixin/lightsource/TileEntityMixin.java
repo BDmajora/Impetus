@@ -32,16 +32,16 @@ public abstract class TileEntityMixin implements DynamicLightSource {
     @Shadow
     protected boolean tileEntityInvalid;
 
-    // Field luminance added to the target.
+    // Light level the block entity gives off now.
     @Unique
     private int impetus$luminance;
-    // Field last luminance added to the target.
+    // Light level at the last relight.
     @Unique
     private int impetus$lastLuminance;
-    // Field last update added to the target.
+    // Time of the last relight.
     @Unique
     private long impetus$lastUpdate;
-    // Field tracked lit chunk pos added to the target.
+    // Sections the light reached at the last relight.
     @Unique
     private LongOpenHashSet impetus$trackedLitChunkPos;
 
@@ -75,13 +75,13 @@ public abstract class TileEntityMixin implements DynamicLightSource {
         return this.world;
     }
 
-    // Handles reset dynamic light.
+    // Forgets the last light level.
     @Override
     public void impetus$resetDynamicLight() {
         this.impetus$lastLuminance = 0;
     }
 
-    // Handles dynamic light tick.
+    // Reads the block entity's light level and registers or drops it as a source.
     @Override
     public void impetus$dynamicLightTick() {
         if (this.world == null || !this.world.isRemote || this.tileEntityInvalid) {
@@ -102,7 +102,7 @@ public abstract class TileEntityMixin implements DynamicLightSource {
         return this.impetus$luminance;
     }
 
-    // Returns whether update dynamic light.
+    // Returns whether the rate limit allows an update now and stamps the time when it does.
     @Override
     public boolean impetus$shouldUpdateDynamicLight() {
         long stamp = DynamicLightsEngine.nextUpdateStamp(this.impetus$lastUpdate);
@@ -113,7 +113,7 @@ public abstract class TileEntityMixin implements DynamicLightSource {
         return true;
     }
 
-    // Handles update dynamic light.
+    // Relights the sections in reach when the level changed and returns whether it did.
     @Override
     public boolean impetus$updateDynamicLight(RenderGlobal renderer) {
         if (!this.impetus$shouldUpdateDynamicLight()) {
@@ -127,18 +127,18 @@ public abstract class TileEntityMixin implements DynamicLightSource {
 
         this.impetus$lastLuminance = luminance;
 
-        // The reach shrinks with luminance, so the old sections are rebuilt along with the new ones
+        // Relights the old sections together with the new ones.
         LongOpenHashSet reached = DynamicLightsEngine.relightSections(renderer, this.world,
                 this.impetus$trackedLitChunkPos, this.impetus$getDynamicLightX(), this.impetus$getDynamicLightY(),
                 this.impetus$getDynamicLightZ(), luminance);
-        // Kept when dark so the removal that follows still rebuilds what the light covered
+        // Keeps the reached sections when the light is dark.
         if (reached != null) {
             this.impetus$trackedLitChunkPos = reached;
         }
         return true;
     }
 
-    // Handles schedule tracked chunks rebuild.
+    // Rebuilds every section the light last reached.
     @Override
     public void impetus$scheduleTrackedChunksRebuild(RenderGlobal renderer) {
         if (this.impetus$trackedLitChunkPos == null || Minecraft.getMinecraft().world != this.world) {

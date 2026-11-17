@@ -1285,7 +1285,7 @@ class IndirectMultiDrawBatchTest {
             return StackWalker.getInstance().walk(frames -> frames.anyMatch(frame -> frame.getClassName().equals(batch)));
         }
 
-        // Returns the null address while failing and otherwise a fresh block between two guard zones
+        // Returns null or a guarded block.
         private long allocate(long alignment, long bytes) {
             if (failing) {
                 return MemoryUtil.NULL;

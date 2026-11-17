@@ -8,7 +8,7 @@ import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 
 import java.util.Objects;
 
-// Creates page, group, option and storage builders, validating every argument before an id is created
+// Creates page and group and option and storage builders after validating every argument.
 public final class ConfigBuilders {
     // Prevents instantiation
     private ConfigBuilders() {
@@ -40,7 +40,7 @@ public final class ConfigBuilders {
         return OptionGroup.createBuilder().setId(id);
     }
 
-    // Returns an option builder for the given value type and storage, with an id created from the mod id, path and type
+    // Returns an option builder with an id made from the mod id and path and type.
     public static <S, T> OptionImpl.Builder<S, T> option(String modId, String path, Class<T> type, OptionStorage<S> storage) {
         checkParts(modId, path);
         checkValueType(type);
@@ -49,11 +49,11 @@ public final class ConfigBuilders {
                 .setId(OptionIdentifier.create(modId, path, type));
     }
 
-    // Returns an option builder for the given value type and storage, using an existing option id
+    // Returns an option builder for an existing option id.
     public static <S, T> OptionImpl.Builder<S, T> option(OptionIdentifier<T> id, Class<T> type, OptionStorage<S> storage) {
         Objects.requireNonNull(id, "Option id must not be null");
         checkValueType(type);
-        // Rejects an id whose type differs from the option type, unless the id is untyped
+        // Rejects an id whose type differs from the option type.
         if (id.getType() != type && id.getType() != void.class) {
             throw new IllegalArgumentException("Option id '" + id + "' has type " + id.getType() + ", not " + type);
         }
@@ -85,7 +85,7 @@ public final class ConfigBuilders {
         }
     }
 
-    // Rejects a null, void or Void option type
+    // Rejects a null or void option type.
     private static void checkValueType(Class<?> type) {
         if (Objects.requireNonNull(type, "Option type must not be null") == void.class || type == Void.class) {
             throw new IllegalArgumentException("Option type must not be " + type);

@@ -49,9 +49,9 @@ class PackSourcesTest {
         PackSources sources = new PackSources(pack.getProgramSet(), pack.getEnvironmentDefines());
         assertEquals(List.of("begin", "prepare", "deferred1", "composite", "composite2", "final"), names(sources.fullscreen()));
         List<String> all = names(sources.all());
-        // gbuffers_textured answers for itself and for every id that falls back onto it, once per id
+        // Checks the fallback ids.
         assertTrue(all.stream().filter("gbuffers_textured"::equals).count() > 1, all.toString());
-        // Every family slot follows the gbuffer ids, final included once more from its family list order
+        // Checks the family order.
         assertEquals(List.of("begin", "prepare", "deferred1", "composite", "composite2"),
                 all.subList(all.size() - 5, all.size()));
         assertEquals(PackSources.collectAll(pack.getProgramSet()).size(), all.size());
@@ -69,14 +69,14 @@ class PackSourcesTest {
         assertEquals(2, stages.size());
         assertTrue(stages.get(0).contains("iris()") && !stages.get(0).contains("legacy()"), stages.get(0));
         assertTrue(stages.get(1).contains("const int a"), stages.get(1));
-        // Cached: the same resolved text comes back
+        // Checks the cached text.
         assertSame(sources.activeFragment(composite), sources.activeFragment(composite));
         assertSame(stages.get(0), sources.activeVertex(composite));
         // A compute program with a fragment but no vertex stage answers null for it and only lists its fragment
         ProgramSource fragmentOnly = pack.getProgramSet().get(ProgramArrayId.Composite, 1).orElseThrow();
         assertNull(sources.activeVertex(fragmentOnly));
         assertEquals(1, sources.activeStages(fragmentOnly).size());
-        // A legacy program compiles without IS_IRIS, so its directives resolve the other branch
+        // Checks a legacy program.
         ShaderMacros.setPackLegacyPrograms(Set.of("composite"));
         PackSources legacy = new PackSources(pack.getProgramSet(), pack.getEnvironmentDefines());
         assertTrue(legacy.activeVertex(composite).contains("legacy()"));

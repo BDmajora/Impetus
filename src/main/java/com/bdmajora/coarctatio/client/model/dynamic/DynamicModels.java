@@ -42,7 +42,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-// Loads and bakes models on demand instead of all at once.
+// Loads and bakes models on demand.
 public final class DynamicModels {
     // Listener classes that run after the tables are filled.
     private static final Set<String> DEFERRED_LISTENER_CLASSES = Collections.singleton("slimeknights.tconstruct.library.client.CustomTextureCreator");

@@ -15,7 +15,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-// A Cleanroom launch as Impetus' coremod sees it: Foundation's LaunchClassLoader over the given sources, the blackboard's tweaker lists, a scratch game directory, and a mock Mixin service so Mixin's statics initialise without CleanMix booting a transformer in the test JVM
+// Cleanroom launch environment as Impetus' coremod sees it.
 public final class LaunchEnvironment {
     private static LaunchClassLoader previousLoader;
     private static Map<String, Object> previousBlackboard;

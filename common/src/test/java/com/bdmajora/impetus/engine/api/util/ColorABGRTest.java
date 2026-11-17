@@ -15,18 +15,18 @@ class ColorABGRTest {
             0x80808080, 0x7F7F7F7F, 0x00FF00FF, 0xFF00FF00, 0x12345678, 0x87654321, 0xDEADBEEF, 0xFFFFFF00, 0x00FFFFFF
     };
 
-    // floats outside, on and just inside the 0..1 contract
+    // Floats around 0 to 1.
     private static final float[] EDGE_FLOATS = {
             0f, -0f, 1f, 0.5f, Float.MIN_VALUE, -Float.MIN_VALUE, Math.nextDown(1f), Math.nextUp(1f), 256 / 255f, 1.0039f,
             1.5f, 2f, -0.1f, -1f, Float.MAX_VALUE, -Float.MAX_VALUE, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY, Float.NaN
     };
 
-    // reference model: every component's low byte at its ABGR offset
+    // Expected pack.
     private static int expected(int r, int g, int b, int a) {
         return (r & 0xFF) | (g & 0xFF) << 8 | (b & 0xFF) << 16 | (a & 0xFF) << 24;
     }
 
-    // reference model of the float conversion: truncate, then clamp to 0..255 with NaN as 0
+    // Expected float conversion.
     private static int expectedByte(float value) {
         if (Float.isNaN(value)) {
             return 0;
@@ -53,13 +53,13 @@ class ColorABGRTest {
         assertEquals(0x0000FF00, ColorABGR.pack(0, 255, 0, 0));
         assertEquals(0x00FF0000, ColorABGR.pack(0, 0, 255, 0));
         assertEquals(0xFF000000, ColorABGR.pack(0, 0, 0, 255));
-        // alpha 0x80 sets the sign bit; the packed word is negative
+        // Checks the sign bit.
         assertTrue(ColorABGR.pack(0, 0, 0, 0x80) < 0);
     }
 
     @Test
     void outOfRangeIntComponentsKeepOnlyTheirLowByteAndNeverBleed() {
-        // every channel alone, over values below, inside and above 0..255
+        // Checks every channel.
         for (int v = -1024; v <= 1024; v++) {
             assertEquals(v & 0xFF, ColorABGR.pack(v, 0, 0, 0), "red " + v);
             assertEquals((v & 0xFF) << 8, ColorABGR.pack(0, v, 0, 0), "green " + v);
@@ -105,7 +105,7 @@ class ColorABGRTest {
         assertEquals(255, ColorABGR.unpackGreen(-1));
         assertEquals(255, ColorABGR.unpackBlue(-1));
         assertEquals(255, ColorABGR.unpackAlpha(-1));
-        // sign bit alone: alpha is 0x80, not a negative sign-extended value
+        // Checks the sign bit alone.
         assertEquals(0x80, ColorABGR.unpackAlpha(Integer.MIN_VALUE));
         assertEquals(0, ColorABGR.unpackRed(Integer.MIN_VALUE));
         assertEquals(0, ColorABGR.unpackGreen(Integer.MIN_VALUE));
@@ -229,7 +229,7 @@ class ColorABGRTest {
 
     @Test
     void floatWithAlphaClampsAndKeepsRgb() {
-        // SEPARATE_AO writes AO through here per vertex; an AO a hair over 1 made the vertex fully occluded
+        // Checks AO over 1.
         assertEquals(0xFF563412, ColorABGR.withAlpha(0x78563412, 256 / 255f));
         assertEquals(0xFF563412, ColorABGR.withAlpha(0x78563412, 2f));
         assertEquals(0x00563412, ColorABGR.withAlpha(0x78563412, -0.1f));
@@ -247,7 +247,7 @@ class ColorABGRTest {
         Constructor<?>[] constructors = ColorABGR.class.getDeclaredConstructors();
         assertEquals(1, constructors.length);
         assertTrue(Modifier.isPrivate(constructors[0].getModifiers()));
-        // still constructible reflectively, the body does nothing
+        // Checks the constructor.
         constructors[0].setAccessible(true);
         assertNotNull(constructors[0].newInstance());
     }

@@ -1,5 +1,6 @@
 package com.bdmajora.fulgor.async;
 
+import com.bdmajora.fulgor.FulgorRenderBridge;
 import net.minecraft.world.chunk.NibbleArray;
 import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 
@@ -97,6 +98,7 @@ public final class ChunkLightHelper {
                     Arrays.fill(vanillaData, (byte) 0);
                 }
             }
+            FulgorRenderBridge.markLightChanged(section);
         }
     }
 
@@ -123,6 +125,7 @@ public final class ChunkLightHelper {
                     Arrays.fill(vanillaData, (byte) 0);
                 }
             }
+            FulgorRenderBridge.markLightChanged(section);
         }
     }
 
@@ -145,6 +148,7 @@ public final class ChunkLightHelper {
                 }
             }
         }
+        FulgorRenderBridge.markLightChanged(section);
     }
 
     // Returns the block light.

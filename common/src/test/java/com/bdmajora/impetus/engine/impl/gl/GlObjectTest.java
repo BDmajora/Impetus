@@ -94,7 +94,7 @@ class GlObjectTest {
         assertFalse(probe.valid());
     }
 
-    // Keeps the handle when destruction fails so the delete can be retried.
+    // Checks a failed destroy.
     @Test
     void failedDestroyKeepsHandle() {
         Probe probe = new Probe(9);

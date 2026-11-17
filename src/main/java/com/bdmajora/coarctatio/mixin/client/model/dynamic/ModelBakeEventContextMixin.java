@@ -12,13 +12,13 @@ public abstract class ModelBakeEventContextMixin implements IContextSetter, Bake
     // Mod that was active before the event.
     private ModContainer coarctatio$lastMod;
 
-    // Handles set mod container.
+    // Remembers the mod whose bake listener runs.
     @Override
     public void setModContainer(ModContainer mod) {
         this.coarctatio$lastMod = mod;
     }
 
-    // Handles last mod.
+    // Returns the mod whose bake listener ran last.
     @Override
     public ModContainer coarctatio$lastMod() {
         return this.coarctatio$lastMod;

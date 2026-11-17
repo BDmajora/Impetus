@@ -78,7 +78,7 @@ class MeshShaderTranslatorTest {
     @Test
     void locationsComeFromTheFragmentDeclarationsInEveryBranch() {
         List<Varying> varyings = MeshShaderTranslator.assignLocations(MODERN_FRAGMENT);
-        // The bridge's alpha cutoff always leads; fog and texture coordinates only when the fragment stage reads them
+        // Checks the bridge varyings.
         assertEquals(new Varying("iris_AlphaCutoff", "float", "", 0, 1, "flat "), varyings.get(0));
         assertTrue(varyings.stream().noneMatch(varying -> varying.name().equals("iris_FogFragCoord")));
         assertTrue(varyings.stream().noneMatch(varying -> varying.name().equals("iris_TexCoordArr")));
@@ -131,10 +131,10 @@ class MeshShaderTranslatorTest {
         assertEquals(1, mesh.split("#version").length - 1);
         assertTrue(mesh.contains("#define UMBRA_MESH_THREADS 32\nlayout(local_size_x = UMBRA_MESH_THREADS) in;\n"
                 + "layout(triangles, max_vertices = UMBRA_MESH_THREADS, max_primitives = UMBRA_MESH_THREADS / 2) out;\n"));
-        // Declared once, ahead of every output, since the per-vertex arrays take their size from it
+        // Checks max_vertices is declared once.
         assertEquals(1, mesh.split("max_vertices").length - 1);
         assertTrue(mesh.contains("#ifdef UMBRA_TRANSLUCENT\n#define UMBRA_WRITABLE_TERRAIN 1\n#endif"));
-        // Every template is inlined, both mesh mains behind the translucency switch
+        // Checks the templates are inlined.
         assertFalse(mesh.contains("#import"));
         assertTrue(mesh.contains("uniform UmbraSceneData"));
         assertTrue(mesh.contains("void umbra_fetchVertex("));
@@ -142,11 +142,11 @@ class MeshShaderTranslatorTest {
         assertTrue(mesh.contains("void umbra_swapWithNext("));
         assertTrue(mesh.contains("uint umbra_resolveQuad("));
 
-        // The bridge's wrapper is a function now, and the pack's own main stays irisMain
+        // Checks the vertex main wrapper.
         assertTrue(mesh.contains("void umbra_vertexMain()"));
         assertTrue(mesh.contains("void irisMain()"));
 
-        // The only stage outputs left are the per-vertex blocks, each declared beside the global it copies, inside that global's own branch
+        // Checks the per vertex output blocks.
         for (Declaration declaration : GlslDeclarations.collect(mesh)) {
             if (declaration.storage().equals("out") && !declaration.declarators().isEmpty()) {
                 assertTrue(declaration.declarators().getFirst().name().startsWith("umbra_o"), declaration.text());
@@ -162,7 +162,7 @@ class MeshShaderTranslatorTest {
         // gl_Color always has its stand-in to read
         assertTrue(mesh.contains("layout(location = 1) out umbra_v1 { vec4 umbra_FrontColorIn; } umbra_o1[];\n"));
         assertTrue(mesh.contains("    umbra_o1[lane].umbra_FrontColorIn = umbra_FrontColor;\n"));
-        // Nothing reads the declared-only inputs from the vertex stage, so no array is declared for them
+        // Checks unread inputs get no array.
         assertFalse(mesh.contains("UMBRA_FED_6 1"));
         // The mipmap flag the fetch decodes from the material is always fed
         assertTrue(mesh.contains("float umbra_Mipped = 1.0;"));
@@ -185,7 +185,7 @@ class MeshShaderTranslatorTest {
         // The copy into the output array follows the rename
         assertTrue(port.mesh().contains("umbra_o7[lane].umbra_sample = umbra_sample;"));
         assertTrue(port.mesh().contains("umbra_o2[lane].iris_TexCoordArr = iris_TexCoordArr;"));
-        // Block members match by name, so the fragment stage renames them alike
+        // Checks the renamed block members.
         assertTrue(port.fragment().contains("layout(location = 7) in umbra_v7 { vec4 umbra_sample; };"));
         assertTrue(port.fragment().contains("gl_FragColor = umbra_sample *"));
 
@@ -193,7 +193,7 @@ class MeshShaderTranslatorTest {
         String ssbo = "#extension GL_ARB_shader_storage_buffer_object : enable\nbuffer Data { float x; };";
         assertEquals(ssbo, MeshShaderTranslator.renameLaterKeywords(ssbo));
 
-        // A pack already on 400 keeps its names, since they are its keywords too
+        // Checks a pack already on 400.
         String modern = "#version 430 core\nout vec4 sample;\nvoid main() { sample = vec4(1.0); }";
         assertTrue(MeshShaderTranslator.meshShader(modern, List.of(), 32).contains("vec4 sample;"));
     }
@@ -234,11 +234,11 @@ class MeshShaderTranslatorTest {
         assertTrue(fragment.contains("layout(location = 4) in umbra_v4 { flat int material; };"));
         // Both branches' declarations get the same location
         assertEquals(2, fragment.split("layout\\(location = 5\\) in umbra_v5 \\{ vec4 glcolor; \\};").length - 1);
-        // Atlas lookups key on the quad's mipmap flag, declared in the header
+        // Checks the mipmap flag input.
         assertTrue(fragment.contains("layout(location = 11) in umbra_v11 { flat float umbra_Mipped; };\n" + AtlasSampling.BIAS_DEFINE));
         assertTrue(fragment.contains("texture(gtexture, texcoord, UMBRA_ATLAS_BIAS)"));
 
-        // Without a version line the header goes on top; from 4.10 on locations need no extension
+        // Checks a source without a version line.
         String bare = MeshShaderTranslator.fragmentShader("varying vec4 c;", MeshShaderTranslator.assignLocations("varying vec4 c;"));
         assertTrue(bare.startsWith(MeshShaderTranslator.HEADER + "\n#extension GL_ARB_separate_shader_objects : enable\n"));
         assertTrue(bare.endsWith("layout(location = 1) in umbra_v1 { vec4 c; };"));
@@ -260,7 +260,7 @@ class MeshShaderTranslatorTest {
         // A fragment stage that never came from a port is left as it is
         assertEquals(transformed.replace("NVIDIUM_BRIDGE", "X"), MeshShaderTranslator.pinBridgeInputs(transformed.replace("NVIDIUM_BRIDGE", "X")));
         assertEquals("/* NVIDIUM_BRIDGE: bad */", MeshShaderTranslator.pinBridgeInputs("/* NVIDIUM_BRIDGE: bad */"));
-        // Input blocks need GLSL 1.50, so an older stage is lifted to it; a newer one and a bridge input that is not there are left alone
+        // Checks the version lift.
         assertEquals("#version 150 compatibility\n/* NVIDIUM_BRIDGE: iris_AlphaCutoff=0 */\nlayout(location = 0) in umbra_v0 { flat float iris_AlphaCutoff; };\n",
                 MeshShaderTranslator.pinBridgeInputs("#version 130\n/* NVIDIUM_BRIDGE: iris_AlphaCutoff=0 */\nflat in float iris_AlphaCutoff;\n"));
         String newer = "#version 330 core\n/* NVIDIUM_BRIDGE: iris_FogFragCoord=1 */\nvoid main() {}\n";
@@ -273,7 +273,7 @@ class MeshShaderTranslatorTest {
         String bridged = ImpetusTerrainTransformer.transformVertexShaderModern(vertex);
         assertTrue(bridged.contains("iris_ChunkAgesMs[drawId]"));
         String mesh = MeshShaderTranslator.meshShader(bridged, MeshShaderTranslator.assignLocations("in float fade;"), 32);
-        // The raster path's uniforms are gone, their reads now the lane's section age and the scene block's rate
+        // Checks the raster uniforms are gone.
         assertFalse(mesh.contains("iris_Chunk"));
         assertTrue(mesh.contains("clamp(umbra_SectionAgeMs * umbra_ChunkFadeInv, 0.0, 1.0)"));
         assertTrue(mesh.contains("float umbra_ChunkFadeInv;"));

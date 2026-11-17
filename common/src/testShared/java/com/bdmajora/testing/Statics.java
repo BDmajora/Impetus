@@ -9,8 +9,9 @@ import java.lang.reflect.InvocationTargetException;
 
 // Reflection helpers for the static state production code caches at class-init (final fields included) and for private static helpers
 public final class Statics {
-    // sun.misc.Unsafe is the only way to write a static final; it is reached by name, since naming the type in source draws javac's proprietary-API and removal warnings
-    private static final MethodHandle ALLOCATE_INSTANCE, STATIC_FIELD_BASE, STATIC_FIELD_OFFSET, PUT_BOOLEAN, PUT_INT, PUT_LONG, PUT_OBJECT;
+    // Unsafe instance.
+    private static final MethodHandle ALLOCATE_INSTANCE, STATIC_FIELD_BASE, STATIC_FIELD_OFFSET, PUT_BOOLEAN, PUT_BYTE, PUT_SHORT, PUT_CHAR, PUT_INT, PUT_LONG, PUT_FLOAT,
+            PUT_DOUBLE, PUT_OBJECT;
 
     static {
         try {
@@ -23,8 +24,13 @@ public final class Statics {
             STATIC_FIELD_BASE = lookup.findVirtual(type, "staticFieldBase", MethodType.methodType(Object.class, Field.class)).bindTo(unsafe);
             STATIC_FIELD_OFFSET = lookup.findVirtual(type, "staticFieldOffset", MethodType.methodType(long.class, Field.class)).bindTo(unsafe);
             PUT_BOOLEAN = lookup.findVirtual(type, "putBoolean", MethodType.methodType(void.class, Object.class, long.class, boolean.class)).bindTo(unsafe);
+            PUT_BYTE = lookup.findVirtual(type, "putByte", MethodType.methodType(void.class, Object.class, long.class, byte.class)).bindTo(unsafe);
+            PUT_SHORT = lookup.findVirtual(type, "putShort", MethodType.methodType(void.class, Object.class, long.class, short.class)).bindTo(unsafe);
+            PUT_CHAR = lookup.findVirtual(type, "putChar", MethodType.methodType(void.class, Object.class, long.class, char.class)).bindTo(unsafe);
             PUT_INT = lookup.findVirtual(type, "putInt", MethodType.methodType(void.class, Object.class, long.class, int.class)).bindTo(unsafe);
             PUT_LONG = lookup.findVirtual(type, "putLong", MethodType.methodType(void.class, Object.class, long.class, long.class)).bindTo(unsafe);
+            PUT_FLOAT = lookup.findVirtual(type, "putFloat", MethodType.methodType(void.class, Object.class, long.class, float.class)).bindTo(unsafe);
+            PUT_DOUBLE = lookup.findVirtual(type, "putDouble", MethodType.methodType(void.class, Object.class, long.class, double.class)).bindTo(unsafe);
             PUT_OBJECT = lookup.findVirtual(type, "putObject", MethodType.methodType(void.class, Object.class, long.class, Object.class)).bindTo(unsafe);
         } catch (ReflectiveOperationException e) {
             throw new ExceptionInInitializerError(e);
@@ -33,7 +39,7 @@ public final class Statics {
 
     private Statics() {}
 
-    // A bare instance, no constructor run, for classes whose constructors need a running game
+    // Returns a bare instance.
     public static <T> T allocate(Class<T> type) {
         try {
             return type.cast(ALLOCATE_INSTANCE.invoke(type));
@@ -42,19 +48,30 @@ public final class Statics {
         }
     }
 
-    // Writes even a static final field, through Unsafe, so cached environment facts can be swapped per test
+    // Writes a static field.
     public static void set(Class<?> owner, String name, Object value) {
         try {
             Field field = owner.getDeclaredField(name);
             field.setAccessible(true);
             Object base = STATIC_FIELD_BASE.invoke(field);
             long offset = (long) STATIC_FIELD_OFFSET.invoke(field);
+            // Writes one primitive.
             if (field.getType() == boolean.class) {
                 PUT_BOOLEAN.invoke(base, offset, (boolean) (Boolean) value);
+            } else if (field.getType() == byte.class) {
+                PUT_BYTE.invoke(base, offset, (byte) (Byte) value);
+            } else if (field.getType() == short.class) {
+                PUT_SHORT.invoke(base, offset, (short) (Short) value);
+            } else if (field.getType() == char.class) {
+                PUT_CHAR.invoke(base, offset, (char) (Character) value);
             } else if (field.getType() == int.class) {
                 PUT_INT.invoke(base, offset, (int) (Integer) value);
             } else if (field.getType() == long.class) {
                 PUT_LONG.invoke(base, offset, (long) (Long) value);
+            } else if (field.getType() == float.class) {
+                PUT_FLOAT.invoke(base, offset, (float) (Float) value);
+            } else if (field.getType() == double.class) {
+                PUT_DOUBLE.invoke(base, offset, (double) (Double) value);
             } else {
                 PUT_OBJECT.invoke(base, offset, value);
             }

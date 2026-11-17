@@ -30,12 +30,12 @@ class ColorMixerTest {
         return (color >>> (index * 8)) & 0xFF;
     }
 
-    // reference blend of one channel: a at weight w of 256, rounded half up
+    // Expected channel blend.
     private static int blend(int a, int b, int w) {
         return (a * w + b * (256 - w) + 128) >> 8;
     }
 
-    // reference product of one channel: round(a * b / 255), never a tie because 255 is odd
+    // Expected channel product.
     private static int product(int a, int b) {
         return (2 * a * b + 255) / 510;
     }
@@ -58,7 +58,7 @@ class ColorMixerTest {
         return c;
     }
 
-    // reference RGB scale: the factor clamped to 0..255, alpha copied
+    // Expected RGB scale.
     private static int expectedMulSingle(int a, int factor) {
         int f = Math.max(0, Math.min(factor, 255));
         int c = a & 0xFF000000;
@@ -70,7 +70,7 @@ class ColorMixerTest {
 
     @Test
     void mixAtEveryWeightMatchesTheRoundedBlendForEveryChannelPair() {
-        // every pair lands in every channel, the sign byte included
+        // Checks every channel.
         for (int w = 0; w <= 256; w++) {
             float ratio = w / 256f;
             for (int a = 0; a <= 255; a++) {
@@ -120,7 +120,7 @@ class ColorMixerTest {
     void mixHalfwayRoundsEachChannelUp() {
         assertEquals(0x80808080, ColorMixer.mix(-1, 0, 0.5f));
         assertEquals(0x80808080, ColorMixer.mix(0, -1, 0.5f));
-        // 1 and 0 average to 0.5, which rounds up
+        // Checks the half.
         assertEquals(0x01010101, ColorMixer.mix(0x01010101, 0, 0.5f));
         for (int a = 0; a <= 255; a++) {
             for (int b = 0; b <= 255; b++) {
@@ -136,14 +136,14 @@ class ColorMixerTest {
             float halfway = (k + 0.5f) / 256f;
             for (int a : EDGE_INTS) {
                 for (int b : EDGE_INTS) {
-                    // a tie between two weights takes the upper one, the float just below it the lower
+                    // Checks a tie.
                     assertEquals(expectedMix(a, b, k + 1), ColorMixer.mix(a, b, halfway));
                     assertEquals(expectedMix(a, b, k + 1), ColorMixer.mix(a, b, Math.nextUp(halfway)));
                     assertEquals(expectedMix(a, b, k), ColorMixer.mix(a, b, Math.nextDown(halfway)));
                 }
             }
         }
-        // 0.49999997 + 0.5 rounds to 1 in float, so a naive (int) (x + 0.5f) would pick weight 1 here
+        // Checks the float rounding.
         assertEquals(0, ColorMixer.mix(-1, 0, Math.nextDown(1f / 512f)));
         assertEquals(0x01010101, ColorMixer.mix(-1, 0, 1f / 512f));
     }
@@ -251,7 +251,7 @@ class ColorMixerTest {
 
     @Test
     void mulMatchesTheRoundedProductForEveryChannelPair() {
-        // every pair lands in every channel, the sign byte included
+        // Checks every channel.
         for (int x = 0; x <= 255; x++) {
             for (int y = 0; y <= 255; y++) {
                 int a = x | y << 8 | x << 16 | y << 24;
@@ -261,7 +261,7 @@ class ColorMixerTest {
                 assertEquals(product(x, y) * 0x01010101, alone);
             }
         }
-        // 1 * 1 / 255 is 0.004, the old +255 bias made it 1
+        // Checks 1 times 1.
         assertEquals(0, ColorMixer.mul(0x01010101, 0x01010101));
         assertEquals(0x40404040, ColorMixer.mul(0x80808080, 0x80808080));
         assertEquals(0x80808080, ColorMixer.mul(-1, 0x80808080));
@@ -373,7 +373,7 @@ class ColorMixerTest {
 
     @Test
     void mulSingleClampsOutOfRangeFactors() {
-        // the factor was masked, so 256 wrapped to black and -1 to full brightness
+        // Checks the factor clamp.
         assertEquals(0xFFFFFFFF, ColorMixer.mulSingleWithoutAlpha(-1, 256));
         assertEquals(0xFFFFFFFF, ColorMixer.mulSingleWithoutAlpha(-1, 0x180));
         assertEquals(0xFF000000, ColorMixer.mulSingleWithoutAlpha(-1, -1));
@@ -415,7 +415,7 @@ class ColorMixerTest {
         Constructor<?>[] constructors = ColorMixer.class.getDeclaredConstructors();
         assertEquals(1, constructors.length);
         assertTrue(Modifier.isPrivate(constructors[0].getModifiers()));
-        // still constructible reflectively, the body does nothing
+        // Checks the constructor.
         constructors[0].setAccessible(true);
         assertNotNull(constructors[0].newInstance());
     }

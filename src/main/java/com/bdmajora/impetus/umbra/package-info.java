@@ -1,2 +1,2 @@
-// Iris-style OptiFine shader-pack support on Cleanroom 1.12.2; Java 25 and LWJGL3 throughout, with GL calls through com.bdmajora.impetus.lwjgl.LWJGLService like the engine's
+// OptiFine shader pack support for Cleanroom 1.12.2.
 package com.bdmajora.impetus.umbra;

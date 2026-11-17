@@ -34,7 +34,7 @@ class LightingEngineTest {
         Statics.set(Fulgor.class, "dynamicLights", false);
         Statics.set(Fulgor.class, "fluidloggedApi", false);
         Statics.set(Fulgor.class, "cachedBlockLightInfo", false);
-        // Everything here is small enough to run on the calling thread unless a test says otherwise
+        // Runs on the calling thread.
         FulgorConfig.get().parallelLightUpdates = false;
     }
 
@@ -75,7 +75,7 @@ class LightingEngineTest {
         engine.scheduleLightUpdate(EnumSkyBlock.BLOCK, source);
         engine.processLightUpdates();
         assertEquals(15, fixture.blockLight(source));
-        // The wall itself takes no light, and what is behind it is only lit the long way round
+        // Checks the light around the wall.
         assertEquals(0, fixture.blockLight(source.east()));
         assertEquals(14, fixture.blockLight(source.up()));
         assertEquals(13, fixture.blockLight(source.up().east()));
@@ -173,7 +173,7 @@ class LightingEngineTest {
         // The notifications the workers deferred are replayed by the calling thread
         assertFalse(fixture.notified.isEmpty());
 
-        // Two chunks is below the spread threshold, so the same batch runs inline
+        // Checks a small batch runs inline.
         LightWorld small = new LightWorld();
         small.chunk(0, 0);
         small.chunk(30, 0);

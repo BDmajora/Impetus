@@ -61,25 +61,25 @@ public abstract class EntityMixin implements DynamicLightSource {
     @Shadow
     public abstract float getEyeHeight();
 
-    // Field luminance added to the target.
+    // Light level the entity gives off now.
     @Unique
     private int impetus$luminance;
-    // Field last luminance added to the target.
+    // Light level at the last relight.
     @Unique
     private int impetus$lastLuminance;
-    // Field last update added to the target.
+    // Time of the last relight.
     @Unique
     private long impetus$lastUpdate;
-    // Field prev x added to the target.
+    // X of the last relight.
     @Unique
     private double impetus$prevX;
-    // Field prev y added to the target.
+    // Y of the last relight.
     @Unique
     private double impetus$prevY;
-    // Field prev z added to the target.
+    // Z of the last relight.
     @Unique
     private double impetus$prevZ;
-    // Field tracked lit chunk pos added to the target.
+    // Sections the light reached at the last relight.
     @Unique
     private LongOpenHashSet impetus$trackedLitChunkPos;
 
@@ -154,13 +154,13 @@ public abstract class EntityMixin implements DynamicLightSource {
         return this.world;
     }
 
-    // Handles reset dynamic light.
+    // Forgets the last light level.
     @Override
     public void impetus$resetDynamicLight() {
         this.impetus$lastLuminance = 0;
     }
 
-    // Handles dynamic light tick.
+    // Updates the entity's light to 14 while burning and to its handlers' level otherwise.
     @Override
     public void impetus$dynamicLightTick() {
         Entity self = (Entity) (Object) this;
@@ -180,7 +180,7 @@ public abstract class EntityMixin implements DynamicLightSource {
         return this.impetus$luminance;
     }
 
-    // Returns whether update dynamic light.
+    // Returns whether the rate limit allows an update now and stamps the time when it does.
     @Override
     public boolean impetus$shouldUpdateDynamicLight() {
         long stamp = DynamicLightsEngine.nextUpdateStamp(this.impetus$lastUpdate);
@@ -191,7 +191,7 @@ public abstract class EntityMixin implements DynamicLightSource {
         return true;
     }
 
-    // Handles update dynamic light.
+    // Relights the sections in reach after a move of a tenth of a block or a level change.
     @Override
     public boolean impetus$updateDynamicLight(RenderGlobal renderer) {
         if (!this.impetus$shouldUpdateDynamicLight()) {
@@ -213,13 +213,13 @@ public abstract class EntityMixin implements DynamicLightSource {
         this.impetus$prevZ = this.posZ;
         this.impetus$lastLuminance = luminance;
 
-        // Only sections the light reaches now or reached before, rather than the eight around it
+        // Relights the sections the light reaches now and the ones it reached before.
         this.impetus$trackedLitChunkPos = DynamicLightsEngine.relightSections(renderer, this.world,
                 this.impetus$trackedLitChunkPos, this.posX, this.posY + this.getEyeHeight(), this.posZ, luminance);
         return true;
     }
 
-    // Handles schedule tracked chunks rebuild.
+    // Rebuilds every section the light last reached.
     @Override
     public void impetus$scheduleTrackedChunksRebuild(RenderGlobal renderer) {
         if (this.impetus$trackedLitChunkPos == null || Minecraft.getMinecraft().world != this.world) {

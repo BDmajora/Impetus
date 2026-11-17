@@ -61,7 +61,7 @@ class ResourceLookupCachesTest {
         StacklessFileNotFoundException thrown = new StacklessFileNotFoundException("minecraft:models/block/stone.json");
         assertInstanceOf(FileNotFoundException.class, thrown);
         assertEquals("minecraft:models/block/stone.json", thrown.getMessage());
-        // Callers only ever catch these by type, and filling the trace was nearly the whole cost
+        // Checks the empty stack trace.
         assertEquals(0, thrown.getStackTrace().length);
         assertSame(thrown, thrown.fillInStackTrace());
     }

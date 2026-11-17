@@ -69,7 +69,7 @@ public abstract class EntityRendererLightmapMixin {
         this.impetus$lightmapKey = key;
     }
 
-    // Handles key.
+    // Packs every input of the lightmap into one key.
     private static long impetus$key(World world, EntityPlayerSP player) {
         long sun = (long) (world.getSunBrightness(1.0F) * 255.0F) & 0xFF;
         long gamma = (long) (Minecraft.getMinecraft().gameSettings.gammaSetting * 255.0F) & 0x1FF;

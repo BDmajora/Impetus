@@ -5,7 +5,7 @@ import com.bdmajora.impetus.engine.impl.model.light.data.LightDataAccess;
 import java.util.HashMap;
 import java.util.Map;
 
-// A light cache over a sparse map: air everywhere except the words a test plants, so every position still packs to a non-zero word
+// Light cache over a sparse map.
 public final class FakeLightData extends LightDataAccess {
     private final Map<Long, Integer> words = new HashMap<>();
     public int computes;
@@ -24,7 +24,7 @@ public final class FakeLightData extends LightDataAccess {
         return this;
     }
 
-    // A lit, non-opaque block: full sky, some block light, AO one
+    // Lit non opaque block.
     public static int air(int blockLight) {
         return packBL(blockLight) | packSL(15) | packAO(1.0f);
     }

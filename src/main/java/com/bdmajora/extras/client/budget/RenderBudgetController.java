@@ -57,10 +57,12 @@ public final class RenderBudgetController {
     private static final double HYSTERESIS_DISTANCE = 12.0;
     // Pressure at which adaptive limits start.
     private static final double ADAPTIVE_PRESSURE_THRESHOLD = 0.2;
-    // Pressure at which limits apply.
-    private static final double ARM_PRESSURE = 0.03;
     // Extra block entity distance while a shader pack runs.
     private static final int SHADER_BLOCK_ENTITY_BONUS = 32;
+    // Distance past which vanilla stops drawing most block entities.
+    private static final int VANILLA_BLOCK_ENTITY_DISTANCE = 64;
+    // Mob distance the Quality profile never goes below.
+    private static final int QUALITY_ENTITY_DISTANCE = 128;
 
     // Time of the previous frame.
     private static long lastFrameNanos;
@@ -68,8 +70,6 @@ public final class RenderBudgetController {
     private static double emaFrameMillis;
     // Number of frames seen.
     private static long frameIndex;
-    // Whether limits applied in the previous tick.
-    private static boolean armedLastTick;
     // Current budget.
     private static volatile RenderBudget budget = RenderBudget.NEUTRAL;
 
@@ -267,7 +267,6 @@ public final class RenderBudgetController {
 
         decisions.clear();
         particleCarry = 0.0;
-        armedLastTick = false;
         if (lastProfile != null && settings.profile.ordinal() < lastProfile.ordinal() && emaFrameMillis > 0.0) {
             emaFrameMillis = Math.min(emaFrameMillis, settings.profile.targetFrameMillis);
         }
@@ -283,7 +282,6 @@ public final class RenderBudgetController {
     // Returns the budget for the settings and the frame time.
     private static RenderBudget calculate(ExtrasConfig.RenderBudgetSettings settings) {
         if (!settings.enabled) {
-            armedLastTick = false;
             return RenderBudget.NEUTRAL;
         }
 
@@ -296,12 +294,13 @@ public final class RenderBudgetController {
         int entityDistance = settings.entityCullDistance;
         boolean particlesUnlimited = particleScale >= 1.0;
 
+        boolean quality = profile == ExtrasConfig.BudgetProfile.QUALITY;
         switch (profile) {
             case QUALITY -> {
-                if (!particlesUnlimited) {
-                    particleScale = Math.max(particleScale, 0.85);
-                }
-                entityDistance = Math.max(entityDistance, 128);
+                // Keeps every particle and only far idle mobs may go
+                particleScale = 1.0;
+                particlesUnlimited = true;
+                entityDistance = Math.max(entityDistance, QUALITY_ENTITY_DISTANCE);
             }
             case PERFORMANCE -> {
                 if (!particlesUnlimited) {
@@ -313,7 +312,7 @@ public final class RenderBudgetController {
         }
 
         BottleneckDetector.State bound = bottleneck.state();
-        boolean adaptive = settings.adaptive && pressure >= ADAPTIVE_PRESSURE_THRESHOLD && bound != BottleneckDetector.State.HEADROOM;
+        boolean adaptive = settings.adaptive && !quality && pressure >= ADAPTIVE_PRESSURE_THRESHOLD && bound != BottleneckDetector.State.HEADROOM;
         if (adaptive) {
             switch (bound) {
                 case CPU_BOUND -> entityDistance = Math.max(48, entityDistance - 16);
@@ -340,21 +339,18 @@ public final class RenderBudgetController {
             entityDistance = Math.max(entityDistance, 64);
         }
 
-        boolean armed = profile == ExtrasConfig.BudgetProfile.PERFORMANCE
-                || pressure >= ARM_PRESSURE
-                || (armedLastTick && pressure > 0.0);
-        armedLastTick = armed;
-
         int blockEntityDistance = settings.blockEntities
                 ? settings.blockEntityDistance + (shaderPack ? SHADER_BLOCK_ENTITY_BONUS : 0)
                 : Integer.MAX_VALUE;
+        if (quality) {
+            blockEntityDistance = Math.max(blockEntityDistance, VANILLA_BLOCK_ENTITY_DISTANCE);
+        }
 
         return new RenderBudget(
                 Math.round(particleScale * 100.0) / 100.0,
                 settings.smartEntityCulling ? entityDistance : Integer.MAX_VALUE,
                 blockEntityDistance,
                 settings.itemFrames,
-                armed,
                 target,
                 Math.round(ema * 100.0) / 100.0,
                 Math.round(pressure * 100.0) / 100.0,
@@ -370,7 +366,7 @@ public final class RenderBudgetController {
     // Returns whether the entity is skipped.
     public static boolean shouldCullLivingEntity(EntityLivingBase entity) {
         RenderBudget current = budget;
-        if (!current.armed || !current.limitsEntities() || entity instanceof EntityPlayer) {
+        if (!current.limitsEntities() || entity instanceof EntityPlayer) {
             return false;
         }
 
@@ -476,7 +472,7 @@ public final class RenderBudgetController {
     // Returns whether the block entity is skipped.
     public static boolean shouldCullBlockEntity(TileEntity blockEntity) {
         RenderBudget current = budget;
-        if (!current.armed || !current.limitsBlockEntities()) {
+        if (!current.limitsBlockEntities()) {
             return false;
         }
 
@@ -526,7 +522,7 @@ public final class RenderBudgetController {
     // Returns whether the item frame is skipped.
     public static boolean shouldCullItemFrame(EntityItemFrame frame) {
         RenderBudget current = budget;
-        if (!current.armed || !current.itemFramesLimited || !current.limitsBlockEntities()) {
+        if (!current.itemFramesLimited || !current.limitsBlockEntities()) {
             return false;
         }
 

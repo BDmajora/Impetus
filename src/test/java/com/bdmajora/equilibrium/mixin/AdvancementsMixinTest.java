@@ -52,10 +52,19 @@ class AdvancementsMixinTest {
         return stack;
     }
 
-    // A predicate that answers a fixed crossing result, standing in for the mixin on ItemPredicate
+    // Returns a predicate with a fixed crossing result.
     private static ItemPredicate predicate(boolean crossing) {
         ItemPredicate predicate = Mc.mock(ItemPredicate.class, SizeCheckedPredicate.class);
         when(((SizeCheckedPredicate) predicate).equilibrium$matchesCrossing(Mockito.any())).thenReturn(crossing);
+        when(predicate.test(Mockito.any())).thenReturn(crossing);
+        return predicate;
+    }
+
+    // A predicate a held stack meets with vanilla's test although it did not just cross its threshold
+    private static ItemPredicate held() {
+        ItemPredicate predicate = Mc.mock(ItemPredicate.class, SizeCheckedPredicate.class);
+        when(((SizeCheckedPredicate) predicate).equilibrium$matchesCrossing(Mockito.any())).thenReturn(false);
+        when(predicate.test(Mockito.any())).thenReturn(true);
         return predicate;
     }
 
@@ -115,7 +124,7 @@ class AdvancementsMixinTest {
         when(playerSlot.getHasStack()).thenReturn(true);
         ItemStack held = new ItemStack(Items.APPLE, 5);
         when(playerSlot.getStack()).thenReturn(held);
-        // The mirror is seeded with a copy so a later in-place count change still compares unequal
+        // Seeds the mirror with a copy.
         Object seeded = Mixins.call(container, "equilibrium$seedKnownContents", empty, playerSlot);
         assertNotSame(held, seeded);
         assertEquals(5, ((ItemStack) seeded).getCount());
@@ -153,7 +162,7 @@ class AdvancementsMixinTest {
         when(inventory.getStackInSlot(2)).thenReturn(ItemStack.EMPTY);
         when(inventory.getStackInSlot(3)).thenReturn(ItemStack.EMPTY);
 
-        // Without a changed stack the tallies are still shared, and the trigger proceeds
+        // Checks the trigger without a changed stack.
         var ci = Mixins.ci();
         Mixins.call(trigger, "equilibrium$gateOnChangedStack", null, inventory, ci);
         assertFalse(ci.isCancelled());
@@ -162,7 +171,7 @@ class AdvancementsMixinTest {
         assertEquals(2, counts.empty);
         assertEquals(2, counts.occupied);
 
-        // A stack that emptied, shrank, or grew without crossing a threshold cancels the trigger
+        // Checks the stacks that cancel the trigger.
         context.equilibrium$setChangedStack(counted(0, 3));
         var emptied = Mixins.ci();
         Mixins.call(trigger, "equilibrium$gateOnChangedStack", null, inventory, emptied);
@@ -198,7 +207,7 @@ class AdvancementsMixinTest {
         InventoryPlayerMixin context = Mixins.instance(InventoryPlayerMixin.class);
         InventoryPlayer inventory = Mc.backed(InventoryPlayer.class, context);
 
-        // Nothing prepared: vanilla's own test runs
+        // Checks nothing prepared.
         var untouched = Mixins.<Boolean>cir();
         Mixins.call(instance, "equilibrium$fastTest", inventory, untouched);
         assertFalse(untouched.isCancelled());
@@ -212,7 +221,7 @@ class AdvancementsMixinTest {
         assertFalse(tooFewFull.getReturnValue());
         Mixins.set(instance, "full", MinMaxBounds.UNBOUNDED);
 
-        // Tallies matched but no stack context: vanilla's scan again
+        // Checks the tallies without a stack.
         var noStack = Mixins.<Boolean>cir();
         Mixins.call(instance, "equilibrium$fastTest", inventory, noStack);
         assertFalse(noStack.isCancelled());
@@ -238,7 +247,7 @@ class AdvancementsMixinTest {
         assertFalse(emptyChange.getReturnValue());
         context.equilibrium$setChangedStack(counted(3, 1));
 
-        // Several predicates: the changed stack must match one, then the walk fills the rest
+        // Checks several predicates.
         ItemPredicate matchingAll = predicate(true);
         Mixins.set(instance, "items", new ItemPredicate[] {matchingAll, predicate(false)});
         when(inventory.getSizeInventory()).thenReturn(2);
@@ -251,6 +260,11 @@ class AdvancementsMixinTest {
         var completed = Mixins.<Boolean>cir();
         Mixins.call(instance, "equilibrium$fastTest", inventory, completed);
         assertTrue(completed.getReturnValue());
+        // Checks a held item.
+        Mixins.set(instance, "items", new ItemPredicate[] {matchingAll, held()});
+        var alreadyHeld = Mixins.<Boolean>cir();
+        Mixins.call(instance, "equilibrium$fastTest", inventory, alreadyHeld);
+        assertTrue(alreadyHeld.getReturnValue());
         Mixins.set(instance, "items", new ItemPredicate[] {predicate(false), predicate(false)});
         var noneMatch = Mixins.<Boolean>cir();
         Mixins.call(instance, "equilibrium$fastTest", inventory, noneMatch);

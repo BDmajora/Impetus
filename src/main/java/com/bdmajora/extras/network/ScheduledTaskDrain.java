@@ -12,7 +12,7 @@ public final class ScheduledTaskDrain {
     private ScheduledTaskDrain() {
     }
 
-    // Handles the drain.
+    // Runs the queued server tasks and logs any that fail.
     public static void drain(Queue<FutureTask<?>> queue, Logger logger) {
         int pending;
         synchronized (queue) {

@@ -21,6 +21,7 @@ import com.bdmajora.impetus.engine.impl.notification.ImpetusNotifications;
 import com.bdmajora.impetus.impl.command.TogglePassCommand;
 import com.bdmajora.impetus.impl.compat.ResourcePackScanner;
 import com.bdmajora.impetus.impl.compat.modernui.MuiGuiScaleHook;
+import com.bdmajora.impetus.impl.gui.overlay.AutosaveIndicator;
 import com.bdmajora.impetus.impl.gui.overlay.ImpetusToastRenderer;
 import com.bdmajora.impetus.impl.render.terrain.ImpetusWorldRenderer;
 import com.bdmajora.impetus.mixin.core.terrain.RenderGlobalMixin;
@@ -138,14 +139,16 @@ class ImpetusVintageTest {
              MockedStatic<GlContextInfo> glInfo = Mockito.mockStatic(GlContextInfo.class);
              MockedStatic<RenderBudgetKeys> keys = Mockito.mockStatic(RenderBudgetKeys.class);
              MockedStatic<LogicalZoom> zoom = Mockito.mockStatic(LogicalZoom.class);
+             MockedStatic<com.bdmajora.impetus.umbra.gui.ShaderToggleKey> shaderKey = Mockito.mockStatic(com.bdmajora.impetus.umbra.gui.ShaderToggleKey.class);
              MockedStatic<DhCompat> dh = Mockito.mockStatic(DhCompat.class);
              MockedStatic<Umbra> umbra = Mockito.mockStatic(Umbra.class);
              MockedStatic<ResourcePackScanner> scanner = Mockito.mockStatic(ResourcePackScanner.class);
              MockedStatic<ClassLoaderCleaner> cleaner = Mockito.mockStatic(ClassLoaderCleaner.class);
              MockedStatic<Coarctatio> coarctatioHooks = Mockito.mockStatic(Coarctatio.class);
-             MockedStatic<ImpetusToastRenderer> toasts = Mockito.mockStatic(ImpetusToastRenderer.class)) {
+             MockedStatic<ImpetusToastRenderer> toasts = Mockito.mockStatic(ImpetusToastRenderer.class);
+             MockedStatic<AutosaveIndicator> autosave = Mockito.mockStatic(AutosaveIndicator.class)) {
             ImpetusVintage mod = new ImpetusVintage();
-            // Construction: event handlers, the other modules' early hooks and the startup checks
+            // Constructs the mod.
             mod.onConstruct(mock(FMLConstructionEvent.class));
             assertEquals("1.2.3", ImpetusVintage.VERSION);
             verify(bus).register(mod);
@@ -161,7 +164,7 @@ class ImpetusVintageTest {
             mod.onConstruct(mock(FMLConstructionEvent.class));
             ctm.verify(CtmModelWrapping::register, times(1));
 
-            // Init: commands (the pass toggle only in a dev environment), key bindings and the shader pack
+            // Initialises the mod.
             Launch.blackboard.put("fml.deobfuscatedEnvironment", true);
             mod.onInit(mock(FMLInitializationEvent.class));
             verify(commands).registerCommand(any(TogglePassCommand.class));
@@ -171,6 +174,7 @@ class ImpetusVintageTest {
             lights.verify(DynamicLights::onClientInit);
             keys.verify(RenderBudgetKeys::register);
             zoom.verify(LogicalZoom::register);
+            shaderKey.verify(com.bdmajora.impetus.umbra.gui.ShaderToggleKey::register);
             dh.verify(DhCompat::run);
             umbra.verify(() -> Umbra.initialize(home));
             scanner.verify(() -> ResourcePackScanner.scanIfChanged(client));
@@ -199,11 +203,22 @@ class ImpetusVintageTest {
             when(all.getType()).thenReturn(RenderGameOverlayEvent.ElementType.ALL);
             RenderGameOverlayEvent.Post hotbar = mock(RenderGameOverlayEvent.Post.class);
             when(hotbar.getType()).thenReturn(RenderGameOverlayEvent.ElementType.HOTBAR);
+            when(all.getPartialTicks()).thenReturn(0.25F);
             mod.onRenderOverlay(all);
             mod.onRenderOverlay(hotbar);
             toasts.verify(() -> ImpetusToastRenderer.render(client, null), times(1));
+            autosave.verify(() -> AutosaveIndicator.render(client, null, 0.25F), times(1));
 
-            // The F3 screen gains the renderer's lines, the off-heap figure after vanilla's memory line, and each module's summary
+            // Ticks the autosave fade.
+            mod.onClientTick(new TickEvent.ClientTickEvent(TickEvent.Phase.START));
+            mod.onClientTick(new TickEvent.ClientTickEvent(TickEvent.Phase.END));
+            autosave.verify(() -> AutosaveIndicator.tick(false), times(1));
+            when(client.getIntegratedServer()).thenReturn(mock(net.minecraft.server.integrated.IntegratedServer.class));
+            mod.onClientTick(new TickEvent.ClientTickEvent(TickEvent.Phase.END));
+            autosave.verify(() -> AutosaveIndicator.tick(true), times(1));
+            when(client.getIntegratedServer()).thenReturn(null);
+
+            // Checks the F3 lines.
             coarctatioHooks.when(Coarctatio::debugOverlayLine).thenReturn("Coarctatio: pools");
             fulgorHooks.when(Fulgor::debugOverlayLine).thenReturn("Fulgor: lighting");
             RenderGameOverlayEvent.Text text = mock(RenderGameOverlayEvent.Text.class);
@@ -229,7 +244,7 @@ class ImpetusVintageTest {
             assertTrue(right.contains("Viewport: 1 2 3"));
             assertEquals("Coarctatio: pools", right.get(right.size() - 2));
             assertEquals("Fulgor: lighting", right.get(right.size() - 1));
-            // Without renderer, memory line or module overlays only the header is added
+            // Checks the F3 lines without a renderer.
             Mixins.set(global, "renderer", null);
             coarctatio.showDebugOverlay = false;
             fulgor.showDebugOverlay = false;
@@ -244,7 +259,7 @@ class ImpetusVintageTest {
         }
     }
 
-    // A pack serving the minecraft domain, or another, holding the given paths
+    // Returns a pack with the given domain and paths.
     private static IResourcePack pack(String domain, String... paths) {
         IResourcePack pack = mock(IResourcePack.class);
         when(pack.getResourceDomains()).thenReturn(Set.of(domain));
@@ -281,7 +296,7 @@ class ImpetusVintageTest {
                 entry(null, null));
         when(repository.getRepositoryEntries()).thenReturn(entries);
         try (MockedStatic<ImpetusNotifications> notifications = Mockito.mockStatic(ImpetusNotifications.class)) {
-            // No client, no pack list, or warnings turned off: nothing to scan
+            // Checks the cases with nothing to scan.
             ResourcePackScanner.scanIfChanged(null);
             ResourcePackScanner.scanIfChanged(client);
             when(client.getResourcePackRepository()).thenReturn(repository);
@@ -292,11 +307,11 @@ class ImpetusVintageTest {
             ResourcePackScanner.tick(client);
             notifications.verify(() -> ImpetusNotifications.warn("Resource pack compatibility",
                     "- Blur", "- Art", "- Notch", "...and 1 more", "Check the game log for details."));
-            // The same list is not scanned again, and ticks between scans only count down
+            // Checks the same list is not scanned again.
             ResourcePackScanner.scanIfChanged(client);
             ResourcePackScanner.tick(client);
             notifications.verify(() -> ImpetusNotifications.warn(anyString(), any(String[].class)), times(1));
-            // A changed list with nothing risky, then one with a single risky pack
+            // Scans a plain list and then a risky one.
             List<ResourcePackRepository.Entry> plain = List.of(entry("Plain", pack("minecraft")));
             when(repository.getRepositoryEntries()).thenReturn(plain);
             ResourcePackScanner.scanIfChanged(client);
@@ -310,7 +325,7 @@ class ImpetusVintageTest {
         }
     }
 
-    // Stands in for Modern UI's API class, which the hook finds by name when that mod is installed
+    // Stand-in for Modern UI's API class.
     private static final class ModernUiApi {
         private static int calcGuiScales() {
             return 0x23;
@@ -320,7 +335,7 @@ class ImpetusVintageTest {
     @Test
     void modernUisScaleMethodIsFoundByReflection() throws ReflectiveOperationException {
         new MuiGuiScaleHook();
-        // The lookup's second stage: a candidate class answers with its calcGuiScales method, made callable, or with nothing
+        // Checks the second lookup stage.
         Method lookup = MuiGuiScaleHook.class.getDeclaredMethod("lambda$static$1", Class.class);
         lookup.setAccessible(true);
         @SuppressWarnings("unchecked")
@@ -340,7 +355,7 @@ class ImpetusVintageTest {
         } finally {
             Statics.set(UmbraShadowRenderer.class, "shadowPassActive", false);
         }
-        // The pack screen returns to the given screen, or to whatever is open when the caller's parent is not a screen
+        // Checks the screen the pack screen returns to.
         GuiScreen parent = mock(GuiScreen.class);
         assertSame(parent, Mixins.get(api.openMainIrisScreenObj(parent), "parent"));
         GuiScreen open = mock(GuiScreen.class);

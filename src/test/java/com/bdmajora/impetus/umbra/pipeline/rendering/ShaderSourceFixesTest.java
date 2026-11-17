@@ -9,7 +9,7 @@ class ShaderSourceFixesTest {
     void floatConditionalsTheDriverRejectsAreFolded() {
         assertEquals("#if 0\n#endif", ShaderSourceFixes.foldUncompilableConditionals("#if 1.5 > 2.0\n#endif"));
         assertEquals("#if 1\n#endif", ShaderSourceFixes.foldUncompilableConditionals("#if 3.5 > 2.0\n#endif"));
-        // Literals truncate toward zero like Iris's JCPP, which packs rely on (Clarity's MOTION_BLUR > 0.0)
+        // Checks literal truncation.
         assertEquals("#if 0\n#endif", ShaderSourceFixes.foldUncompilableConditionals("#if 2.5 > 2.0\n#endif"));
         // Integer conditionals stay for the driver
         assertEquals("#if 3 > 2\n#endif", ShaderSourceFixes.foldUncompilableConditionals("#if 3 > 2\n#endif"));
@@ -39,7 +39,7 @@ class ShaderSourceFixesTest {
     @Test
     void onlyWholeCallsAreRenamed() {
         String source = String.join("\n", "#version 330",
-                // A longer identifier, a non-call use and a define without parentheses all stay
+                // Checks the names left alone.
                 "vec4 mytexture2DLodARB(sampler2D t) { return vec4(0); }",
                 "float texture2DLodARBScale = 1.0;",
                 "#define LOOKUP texture2DLodARB",
@@ -60,7 +60,7 @@ class ShaderSourceFixesTest {
         // A version no driver accepts leaves the source alone rather than throwing
         String absurd = "#version 99999999999999\nx = texture2DLodARB(t, uv, 0.0);";
         assertSame(absurd, ShaderSourceFixes.normalizeArbTextureLookups(absurd));
-        // Only the first #version counts, as for the driver
+        // Checks only the first version counts.
         assertFalse(ShaderSourceFixes.usesCoreLookups("#version 120\n#version 430\n"));
         assertTrue(ShaderSourceFixes.usesCoreLookups("  #version 150 compatibility\n"));
         assertTrue(ShaderSourceFixes.usesCoreLookups("#version 999999999\n"));

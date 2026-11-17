@@ -37,6 +37,11 @@ public class RenderGlobalMixin {
     // Name of the sun texture field.
     private static final String SUN_TEXTURES_FIELD =
             "Lnet/minecraft/client/renderer/RenderGlobal;SUN_TEXTURES:Lnet/minecraft/util/ResourceLocation;";
+    // Star VBO field read by the star suppression slice.
+    private static final String STAR_VBO_FIELD =
+            "Lnet/minecraft/client/renderer/RenderGlobal;starVBO:Lnet/minecraft/client/renderer/vertex/VertexBuffer;";
+    // Display list of the stars.
+    private static final String STAR_LIST_FIELD = "Lnet/minecraft/client/renderer/RenderGlobal;starGLCallList:I";
     // Name of the moon texture field.
     private static final String MOON_TEXTURES_FIELD =
             "Lnet/minecraft/client/renderer/RenderGlobal;MOON_PHASES_TEXTURES:Lnet/minecraft/util/ResourceLocation;";
@@ -206,7 +211,7 @@ public class RenderGlobalMixin {
         }
     }
 
-    // Field restore cull added to the target.
+    // Whether this layer turned culling off.
     @Unique
     private boolean impetus$restoreCull;
 
@@ -241,10 +246,11 @@ public class RenderGlobalMixin {
         manager.bindTexture(location);
     }
 
-    // Replaces the call of VertexBuffer.drawArrays in renderSky.
+    // Skips the star VBO draw when the pack turns stars off.
     @Redirect(method = "renderSky(FI)V",
+            slice = @Slice(from = @At(value = "FIELD", target = STAR_VBO_FIELD, opcode = Opcodes.GETFIELD)),
             at = @At(value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/vertex/VertexBuffer;drawArrays(I)V"),
+                    target = "Lnet/minecraft/client/renderer/vertex/VertexBuffer;drawArrays(I)V", ordinal = 0),
             require = 0)
     private void impetus$suppressStarVbo(VertexBuffer buffer, int mode) {
         if (VanillaFeatureToggles.shouldRenderStars()) {
@@ -252,10 +258,11 @@ public class RenderGlobalMixin {
         }
     }
 
-    // Replaces the call of GlStateManager.callList in renderSky.
+    // Skips the star display list on the non VBO path.
     @Redirect(method = "renderSky(FI)V",
+            slice = @Slice(from = @At(value = "FIELD", target = STAR_LIST_FIELD, opcode = Opcodes.GETFIELD)),
             at = @At(value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/GlStateManager;callList(I)V"),
+                    target = "Lnet/minecraft/client/renderer/GlStateManager;callList(I)V", ordinal = 0),
             require = 0)
     private void impetus$suppressStarList(int list) {
         if (VanillaFeatureToggles.shouldRenderStars()) {
@@ -263,7 +270,7 @@ public class RenderGlobalMixin {
         }
     }
 
-    // Helper method transparent texture added to the target.
+    // Returns a one pixel clear texture bound in place of a hidden celestial body.
     @Unique
     private static ResourceLocation impetus$transparentTexture() {
         if (impetus$transparent == null) {
@@ -276,7 +283,7 @@ public class RenderGlobalMixin {
         return impetus$transparent;
     }
 
-    // Field transparent added to the target.
+    // Location of the clear texture once made.
     @Unique
     private static ResourceLocation impetus$transparent;
 

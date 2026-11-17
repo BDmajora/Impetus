@@ -15,17 +15,17 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.when;
 
 class ControlValueFormatterTest {
-    // The plain text of a literal, failing for any other kind of component
+    // Returns the text of a literal.
     private static String literal(TextComponent component) {
         return assertInstanceOf(TextComponent.Literal.class, component).text();
     }
 
-    // A translation of the key with exactly these arguments, which an Integer argument only equals when the formatter also passed an Integer
+    // Returns a translation with these arguments.
     private static TextComponent translated(String key, Object... args) {
         return new TextComponent.Translatable(List.of(key), List.of(args));
     }
 
-    // A quantity's singular form, which falls back to the plain key in a language without one
+    // Returns the singular form.
     private static TextComponent singular(String key, int value) {
         return new TextComponent.Translatable(List.of(key + ".one", key), List.of(value));
     }
@@ -38,7 +38,7 @@ class ControlValueFormatterTest {
         assertEquals(message, assertThrows(NullPointerException.class, call).getMessage());
     }
 
-    // One of every formatter, the capturing ones over short text
+    // Returns one of every formatter.
     private static List<ControlValueFormatter> everyFormatter() {
         return List.of(ControlValueFormatter.guiScale(), ControlValueFormatter.fpsLimit(), ControlValueFormatter.brightness(),
                 ControlValueFormatter.biomeBlend(), ControlValueFormatter.translateVariable("key"), ControlValueFormatter.translateQuantity("key"),
@@ -71,7 +71,7 @@ class ControlValueFormatterTest {
     @Test
     void theFrameRateLimitReadsUnlimitedForEveryValueTheGameDoesNotLimitAt() {
         ControlValueFormatter fps = ControlValueFormatter.fpsLimit();
-        // Vanilla limits only below 260, loads maxFps from options.txt unclamped, and its sync skips zero or less
+        // Checks the frame rate limits.
         for (int unlimited : new int[]{260, 261, 270, 300, 1000, Integer.MAX_VALUE, 0, -1, -260, Integer.MIN_VALUE}) {
             assertEquals(translated("options.framerateLimit.max"), fps.format(unlimited), "maxFps " + unlimited);
         }
@@ -86,7 +86,7 @@ class ControlValueFormatterTest {
         ControlValueFormatter quantity = ControlValueFormatter.translateQuantity("impetus.test.blocks");
         assertEquals(singular("impetus.test.blocks", 1), quantity.format(1));
         assertEquals(singular("impetus.test.blocks", -1), quantity.format(-1));
-        // English plural rules go by the whole number, so 11, 21 and 0 stay plural
+        // Checks the English plurals.
         for (int plural : new int[]{0, 2, -2, 11, 21, 101, Integer.MAX_VALUE, Integer.MIN_VALUE}) {
             assertEquals(translated("impetus.test.blocks", plural), quantity.format(plural), "value " + plural);
         }
@@ -104,7 +104,7 @@ class ControlValueFormatterTest {
         assertEquals(singular("impetus.test.blocks", -1), quantity.format(-1));
         assertEquals(translated("impetus.test.blocks", 2), quantity.format(2));
         assertEquals(translated("impetus.test.blocks", Integer.MIN_VALUE), quantity.format(Integer.MIN_VALUE));
-        // Biome blend is one of these, with the none label at zero
+        // Checks biome blend.
         ControlValueFormatter blend = ControlValueFormatter.biomeBlend();
         assertEquals(translated("gui.none"), blend.format(0));
         assertEquals(singular("impetus.options.biome_blend.value", -1), blend.format(-1));
@@ -125,7 +125,7 @@ class ControlValueFormatterTest {
         assertEquals(translated("impetus.options.biome_blend.value", -2), ControlValueFormatter.biomeBlend().format(-2));
         assertEquals("1 ms", literal(ControlValueFormatter.quantityOrDisabled("ms", "Off").format(1)));
         assertEquals("-1 ms", literal(ControlValueFormatter.quantityOrDisabled("ms", "Off").format(-1)));
-        // Zero is nothing special to the plain formatters, and one is nothing special to the untranslated ones
+        // Checks zero and one.
         assertEquals("0%", literal(ControlValueFormatter.percentage().format(0)));
         assertEquals("0x", literal(ControlValueFormatter.multiplier().format(0)));
         assertEquals("0", literal(ControlValueFormatter.number().format(0)));
@@ -177,7 +177,7 @@ class ControlValueFormatterTest {
         for (ControlValueFormatter formatter : everyFormatter()) {
             for (int value : new int[]{5, 1, -1}) {
                 TextComponent first = formatter.format(value);
-                // Other values in between change nothing, which the draw context's caches keyed on equal components rely on
+                // Checks equal components.
                 for (int other : new int[]{0, 100, 260, -1, 1, Integer.MIN_VALUE}) {
                     formatter.format(other);
                 }
@@ -192,13 +192,13 @@ class ControlValueFormatterTest {
 
     @Test
     void factoriesWithNothingToCaptureHandBackOneSharedFormatter() {
-        // A lambda capturing nothing is made once at its call site, so these factories allocate nothing after their first call
+        // Checks the factories allocate nothing.
         List<Supplier<ControlValueFormatter>> shared = List.of(ControlValueFormatter::guiScale, ControlValueFormatter::fpsLimit,
                 ControlValueFormatter::brightness, ControlValueFormatter::percentage, ControlValueFormatter::multiplier, ControlValueFormatter::number);
         for (Supplier<ControlValueFormatter> factory : shared) {
             assertSame(factory.get(), factory.get());
         }
-        // Those capturing their text keep their own, so formatters made from different text never mix
+        // Checks captured text.
         ControlValueFormatter first = ControlValueFormatter.translateVariable("first");
         ControlValueFormatter second = ControlValueFormatter.translateVariable("second");
         assertEquals(translated("first", 1), first.format(1));
@@ -232,7 +232,7 @@ class ControlValueFormatterTest {
 
     @Test
     void anIdleSliderShowsAFrameRateTheGameDoesNotLimitAtAsUnlimited() {
-        // options.txt holding 300 or 0 runs unlimited, so the row says so rather than 300 fps or 0 fps
+        // Checks the unlimited values.
         for (int stored : new int[]{300, 0, -5}) {
             @SuppressWarnings("unchecked")
             Option<Integer> option = Mockito.mock(Option.class);

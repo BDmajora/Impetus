@@ -19,7 +19,7 @@ public class ImpetusVintageMixinPlugin implements IMixinConfigPlugin {
     // Logger of the mixin plugin.
     public static final Logger LOGGER = LogManager.getLogger("ImpetusMixins");
 
-    // Handles on load.
+    // Does nothing on load.
     @Override
     public void onLoad(String mixinPackage) {
     }
@@ -30,13 +30,13 @@ public class ImpetusVintageMixinPlugin implements IMixinConfigPlugin {
         return null;
     }
 
-    // Returns whether apply mixin.
+    // Returns false.
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
         return false;
     }
 
-    // Handles accept targets.
+    // Nothing to negotiate with other configs.
     @Override
     public void acceptTargets(Set<String> myTargets, Set<String> otherTargets) {
     }
@@ -86,13 +86,13 @@ public class ImpetusVintageMixinPlugin implements IMixinConfigPlugin {
         return new ArrayList<>(possibleMixinClasses);
     }
 
-    // Handles pre apply.
+    // No rewriting before a mixin applies.
     @Override
     public void preApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) {
 
     }
 
-    // Handles post apply.
+    // No rewriting after a mixin applies.
     @Override
     public void postApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) {
 

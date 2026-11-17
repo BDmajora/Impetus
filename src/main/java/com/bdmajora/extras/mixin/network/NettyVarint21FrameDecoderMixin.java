@@ -22,7 +22,7 @@ import java.util.List;
 // Mixin that changes NettyVarint21FrameDecoder.
 @Mixin(NettyVarint21FrameDecoder.class)
 public abstract class NettyVarint21FrameDecoderMixin {
-    // Field impetus bad length added to the target.
+    // Shared exception without a stack trace for a frame length that does not fit.
     @Unique
     private static final DecoderException IMPETUS_BAD_LENGTH = new QuietDecoderException("Bad packet length");
 

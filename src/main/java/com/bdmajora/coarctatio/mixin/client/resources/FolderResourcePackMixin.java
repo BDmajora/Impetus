@@ -31,7 +31,7 @@ public abstract class FolderResourcePackMixin extends AbstractResourcePack imple
         cir.setReturnValue(this.coarctatio$indexedPaths().contains(name) ? new File(this.resourcePackFile, name) : null);
     }
 
-    // Handles indexed paths.
+    // Returns every file path of the folder and walks it again after a resource reload.
     @Override
     public Set<String> coarctatio$indexedPaths() {
         int generation = ResourceLookupCaches.generation();

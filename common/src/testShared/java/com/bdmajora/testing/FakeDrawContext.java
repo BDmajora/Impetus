@@ -6,7 +6,7 @@ import com.bdmajora.impetus.engine.impl.gui.framework.TextComponent;
 import java.util.ArrayList;
 import java.util.List;
 
-// Records every draw call; strings measure six pixels per character so layout maths is checkable
+// Records draw calls.
 public class FakeDrawContext implements DrawContext {
     public final List<String> calls = new ArrayList<>();
     public final List<String> strings = new ArrayList<>();
@@ -94,7 +94,7 @@ public class FakeDrawContext implements DrawContext {
         return lines;
     }
 
-    // Literal text, translation keys and styled wrappers flatten to their plain text
+    // Flattens components to text.
     @Override
     public String extractString(TextComponent component) {
         if (component instanceof TextComponent.Literal literal) {

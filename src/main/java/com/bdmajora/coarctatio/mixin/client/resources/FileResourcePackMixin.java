@@ -45,7 +45,7 @@ public abstract class FileResourcePackMixin implements IndexedResourcePack {
         cir.setReturnValue(entries.contains(name));
     }
 
-    // Handles indexed paths.
+    // Returns every entry name of the zip or null when it cannot be read.
     @Override
     public Set<String> coarctatio$indexedPaths() {
         if (this.coarctatio$entries == null && !this.coarctatio$entriesFailed) {
@@ -55,7 +55,7 @@ public abstract class FileResourcePackMixin implements IndexedResourcePack {
         return this.coarctatio$entries;
     }
 
-    // Handles index.
+    // Lists the entry names of the zip or null when it cannot be read.
     private Set<String> coarctatio$index() {
         try {
             ZipFile zip = this.getResourcePackZipFile();

@@ -26,7 +26,7 @@ public class OpenGlHelperLightmapClampMixin {
         return impetus$clamp(skyLight);
     }
 
-    // Handles clamp.
+    // Returns a lightmap coordinate clamped to the lightmap's range.
     private static float impetus$clamp(float coord) {
         if (coord <= MAX_LIGHTMAP_COORD || Umbra.getRenderingPipeline() == null) {
             return coord;

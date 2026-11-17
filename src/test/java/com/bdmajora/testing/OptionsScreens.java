@@ -24,16 +24,14 @@ import org.mockito.Mockito;
 
 import java.nio.file.Path;
 
-// What the Impetus video settings screen reaches for while it gathers every module's pages and draws them: each
-// module's config under a scratch game directory, Impetus's own options, a font and texture manager on the client,
-// and a lang table
+// Prepares what the Impetus video settings screen reads.
 public final class OptionsScreens {
-    // The options ImpetusVintage loaded for itself, handed back by forget
+    // Options ImpetusVintage loaded for itself.
     private static ImpetusGameOptions previous;
 
     private OptionsScreens() {}
 
-    // The Impetus options now in place, whose config file lives under home
+    // Returns the Impetus options now in place.
     public static ImpetusGameOptions prepare(Minecraft client, Path home) {
         Statics.set(FMLInjectionData.class, "minecraftHome", home.toFile());
         Statics.set(Launch.class, "minecraftHome", home.toFile());
@@ -45,7 +43,7 @@ public final class OptionsScreens {
         Mixins.set(Equilibrium.class, "config", null);
         Mixins.set(DynamicLights.class, "config", new DynamicLightsConfig());
         Mixins.set(client, "effectRenderer", Mc.mock(ParticleManager.class, ParticleManagerAccessor.class));
-        // Six pixels a character, trimming and wrapping to nothing shorter than the text itself
+        // Mocks a font of six pixels a character.
         FontRenderer font = Mockito.mock(FontRenderer.class);
         font.FONT_HEIGHT = 9;
         Mockito.when(font.getStringWidth(Mockito.anyString())).thenAnswer(invocation -> invocation.<String>getArgument(0).length() * 6);
@@ -59,7 +57,7 @@ public final class OptionsScreens {
         framebuffer.framebufferWidth = client.displayWidth;
         framebuffer.framebufferHeight = client.displayHeight;
         Mockito.when(client.getFramebuffer()).thenReturn(framebuffer);
-        // ImpetusVintage loads its own options as it initialises, so it has to have done so before they are swapped
+        // Initialises ImpetusVintage.
         try {
             Class.forName(ImpetusVintage.class.getName());
         } catch (ClassNotFoundException e) {
@@ -72,7 +70,7 @@ public final class OptionsScreens {
         return options;
     }
 
-    // Drops the configs prepare left behind, so the next test loads its own
+    // Drops the configs prepare left behind.
     public static void forget() {
         Mixins.set(Extras.class, "config", null);
         Mixins.set(CoarctatioConfig.class, "instance", null);

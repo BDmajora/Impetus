@@ -81,14 +81,9 @@ public final class LightInfo {
             info |= DYNAMIC;
         }
         if (FaceOcclusion.hasSidedTransparency(block)) {
-            info |= REGISTRY;
-            if (opacity > 1) {
-                info |= SIDED;
-            }
-            int faceBits;
-            if (dynamic) {
-                faceBits = FACE_MASK;
-            } else {
+            // Marks every face closed.
+            int faceBits = FACE_MASK;
+            if (!dynamic) {
                 int meta;
                 try {
                     meta = block.getMetaFromState(state);
@@ -98,14 +93,14 @@ public final class LightInfo {
                     // Reads a block whose metadata fails as having no known metadata
                     meta = 16;
                 }
-                faceBits = 0;
-                for (int dir = 0; dir < 6; ++dir) {
-                    if (FaceOcclusion.isFaceSolid(block, meta, dir)) {
-                        faceBits |= 1 << dir;
-                    }
+                faceBits = FaceOcclusion.sidedFaces(block, meta);
+            }
+            if (faceBits >= 0) {
+                info |= REGISTRY | (faceBits << FACE_SHIFT);
+                if (opacity > 1) {
+                    info |= SIDED;
                 }
             }
-            info |= faceBits << FACE_SHIFT;
         }
         return info;
     }
@@ -171,6 +166,25 @@ public final class LightInfo {
     // Returns the solid face bits of the info.
     public static int faceBits(int info) {
         return (info >>> FACE_SHIFT) & FACE_MASK;
+    }
+
+    // Returns the faces light cannot leave a block through.
+    public static int blockedFaces(int info, IBlockState state) {
+        if ((info & REGISTRY) == 0) {
+            return 0;
+        }
+        if ((info & DYNAMIC) != 0) {
+            // Collects the closed faces.
+            int faces = 0;
+            for (int dir = 0; dir < 6; ++dir) {
+                if (FaceOcclusion.resolveScalarAbsorption(state, dir) >= 15) {
+                    faces |= 1 << dir;
+                }
+            }
+            return faces;
+        }
+        // Returns the face bits of a sided block and none otherwise.
+        return (info & SIDED) != 0 ? faceBits(info) : 0;
     }
 
     // Returns the light absorbed through a face.

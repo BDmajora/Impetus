@@ -140,7 +140,7 @@ class SmoothLightPipelineTest {
         assertTrue(unlit.hasLightData());
     }
 
-    // Clears every cached face on reset so a block at any packed position reads fresh light.
+    // Checks reset clears every face.
     @Test
     void resetClearsEveryCachedFace() throws ReflectiveOperationException {
         SmoothLightPipeline pipeline = new SmoothLightPipeline(world(), DiffuseProvider.NONE, false);

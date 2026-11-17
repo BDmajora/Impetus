@@ -48,7 +48,7 @@ class CustomUniformsTest {
     void declarationsEvaluateInOrderAndOnlyUniformsUpload() {
         CustomUniforms uniforms = declarations().build();
         assertFalse(uniforms.isEmpty());
-        // The unparseable one is dropped, everything else is kept
+        // Checks the unparseable uniform is dropped.
         assertEquals(12, uniforms.size());
         uniforms.update();
         // A failing expression keeps its last value and warns only once
@@ -61,7 +61,7 @@ class CustomUniformsTest {
         assertEquals("2.0, 2.0", snapshot.get("uniform.pair"));
         assertEquals("1.0, 2.0, 3.0", snapshot.get("uniform.triple"));
         assertEquals("1.0, 2.0, 0.0, 0.0", snapshot.get("uniform.quad"));
-        // A name that is its own expression reads the built-in table, which has nothing by that name
+        // Checks a self named uniform.
         assertEquals("1.0", snapshot.get("uniform.self"));
         assertEquals("0.0, 0.0", snapshot.get("uniform.mismatch"));
         assertEquals("1.0, 1.0, 1.0, 1.0", snapshot.get("variable.iquad"));
@@ -132,7 +132,7 @@ class CustomUniformsTest {
         assertEquals("vec3(4.0, 5.0, 6.0)", inputs.resolve("iv3").toString());
         assertEquals("vec4(1.0, 2.0, 3.0, 4.0)", inputs.resolve("v4").toString());
         assertEquals("vec4(5.0, 6.0, 7.0, 8.0)", inputs.resolve("iv4").toString());
-        // Matrices are read one cell at a time, column then row
+        // Checks matrix cells.
         assertEquals(9.0F, inputs.resolve("m3.1.0").x());
         assertEquals(1.0F, inputs.resolve("m3.2.2").x());
         assertEquals(0.0F, inputs.resolve("noM3.0.0").x());

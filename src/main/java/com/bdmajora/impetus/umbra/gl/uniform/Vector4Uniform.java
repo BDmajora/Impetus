@@ -25,7 +25,7 @@ public class Vector4Uniform extends CachedUniform<Vector4f> implements ProgramTa
         LWJGL.glUniform4f(this.location, v.x, v.y, v.z, v.w);
     }
 
-    // Uploads the vector into the program when it changed, whatever is bound.
+    // Uploads the vector into the program when it changed.
     @Override
     public void updateIn(int program) {
         this.updateInProgram(program);

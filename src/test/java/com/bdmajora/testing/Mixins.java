@@ -10,11 +10,11 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
 
-// Drives mixin classes as plain Java: a subclass instance whose @Shadow members are stubbable, plus reflective access to the private handlers
+// Drives mixin classes as plain Java.
 public final class Mixins {
     private Mixins() {}
 
-    // Runs the mixin's own constructor so @Unique field initialisers apply; abstract @Shadow methods answer defaults until stubbed with doReturn
+    // Returns a mixin instance with its constructor run.
     public static <T> T instance(Class<T> mixin) {
         try {
             return Mockito.mock(mixin, Mockito.withSettings().useConstructor().defaultAnswer(Mockito.CALLS_REAL_METHODS));
@@ -23,7 +23,7 @@ public final class Mixins {
         }
     }
 
-    // Same as instance, but the mock also carries interfaces another mixin adds to the same target
+    // Returns a mixin instance carrying extra interfaces.
     public static <T> T instanceWith(Class<T> mixin, Class<?>... interfaces) {
         try {
             return Mockito.mock(mixin, Mockito.withSettings().extraInterfaces(interfaces).useConstructor()
@@ -34,7 +34,7 @@ public final class Mixins {
         }
     }
 
-    // Verifies a call Mockito cannot see from the calling package, such as a protected shadow
+    // Verifies a call Mockito cannot see.
     public static void verifyCall(Object mock, String name, Object... args) {
         Method method = find(mock.getClass(), name, args);
         method.setAccessible(true);
@@ -45,13 +45,12 @@ public final class Mixins {
         }
     }
 
-    // Same as instance, handing the given arguments to the mixin's constructor
+    // Returns a mixin instance built with the given arguments.
     public static <T> T instance(Class<T> mixin, Object... constructorArgs) {
         return Mockito.mock(mixin, Mockito.withSettings().useConstructor(constructorArgs).defaultAnswer(Mockito.CALLS_REAL_METHODS));
     }
 
-    // Stubs a method Mockito cannot see from the calling package, such as a protected @Shadow; matchers are pushed
-    // for every parameter so the answer applies to any arguments
+    // Stubs a method Mockito cannot see for any arguments.
     public static void stub(Object mock, String name, org.mockito.stubbing.Answer<?> answer) {
         Method method = null;
         for (Class<?> c = mock.getClass(); c != null && method == null; c = c.getSuperclass()) {
@@ -103,7 +102,7 @@ public final class Mixins {
         return new CallbackInfoReturnable<>("test", true, initial);
     }
 
-    // Invokes a handler by name and argument count on an instance, or statically when target is the Class itself
+    // Invokes a handler by name on an instance or class.
     @SuppressWarnings("unchecked")
     public static <R> R call(Object target, String name, Object... args) {
         Class<?> type = target instanceof Class<?> c ? c : target.getClass();
@@ -119,11 +118,10 @@ public final class Mixins {
         }
     }
 
-    // An allocated instance of a mixin whose target Mockito cannot instrument (a spliced game class): a generated
-    // concrete subclass, created without running any constructor, so the mixin's own methods still run for real
+    // Returns an allocated instance of a mixin whose target Mockito cannot instrument.
     public static <T> T concrete(Class<T> mixin) {
         Class<? extends T> made = concreteClass(mixin);
-        // The mixin's own constructor if it can run, since that is a method like any other; otherwise a bare instance
+        // Runs the mixin's constructor when it can.
         try {
             java.lang.reflect.Constructor<?> constructor = made.getDeclaredConstructor();
             constructor.setAccessible(true);
@@ -133,7 +131,7 @@ public final class Mixins {
         }
     }
 
-    // Same as concrete, running the mixin's constructor that takes these arguments; whatever it throws reaches the caller
+    // Returns a concrete instance built with these arguments.
     public static <T> T concrete(Class<T> mixin, Object... args) {
         Class<? extends T> made = concreteClass(mixin);
         for (java.lang.reflect.Constructor<?> constructor : made.getDeclaredConstructors()) {
@@ -155,14 +153,14 @@ public final class Mixins {
     private static <T> Class<? extends T> concreteClass(Class<T> mixin) {
         Class<? extends T> made;
         try {
-            // Defined in the mixin's own loader and package, so the subclass can call its package-private constructor
+            // Defines the subclass in the mixin's own package.
             java.lang.invoke.MethodHandles.Lookup lookup =
                     java.lang.invoke.MethodHandles.privateLookupIn(mixin, java.lang.invoke.MethodHandles.lookup());
             made = subclass(mixin, net.bytebuddy.dynamic.scaffold.subclass.ConstructorStrategy.Default.IMITATE_SUPER_CLASS, lookup);
         } catch (IllegalAccessException e) {
             throw new AssertionError(e);
         } catch (RuntimeException e) {
-            // A generic signature ByteBuddy cannot copy a constructor from; the instance is then allocated bare
+            // Allocates the instance bare when the constructor cannot be copied.
             try {
                 made = subclass(mixin, net.bytebuddy.dynamic.scaffold.subclass.ConstructorStrategy.Default.NO_CONSTRUCTORS,
                         java.lang.invoke.MethodHandles.privateLookupIn(mixin, java.lang.invoke.MethodHandles.lookup()));
@@ -185,7 +183,7 @@ public final class Mixins {
                 .getLoaded();
     }
 
-    // Runs a private constructor, which is how static-only helper classes get their <init> covered
+    // Runs a private constructor.
     @SuppressWarnings("unchecked")
     public static <T> T construct(Class<T> type, Object... args) {
         for (java.lang.reflect.Constructor<?> c : type.getDeclaredConstructors()) {
@@ -235,7 +233,7 @@ public final class Mixins {
         throw new AssertionError("no field " + name + " on " + type.getName());
     }
 
-    // Prefers a declared method on the nearest class; Mockito subclasses add nothing named like a handler, so the walk lands on the mixin
+    // Finds a declared method on the nearest class.
     private static Method find(Class<?> type, String name, Object[] args) {
         Method fallback = null;
         for (Class<?> c = type; c != null; c = c.getSuperclass()) {

@@ -159,7 +159,7 @@ class SWMRNibbleArrayTest {
         // Extruding again writes into the storage it already owns
         below.extrudeLower(above);
         assertEquals(15, below.getUpdating(8, 8, 8));
-        // An empty section above leaves the one below uninitialised, and a null one is refused
+        // Checks an empty section above.
         SWMRNibbleArray emptyAbove = new SWMRNibbleArray();
         SWMRNibbleArray target = new SWMRNibbleArray();
         target.extrudeLower(emptyAbove);

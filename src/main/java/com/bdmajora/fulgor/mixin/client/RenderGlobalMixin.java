@@ -19,7 +19,7 @@ import java.util.Set;
 @SideOnly(Side.CLIENT)
 @Mixin(RenderGlobal.class)
 public abstract class RenderGlobalMixin implements LightUpdateProcessor {
-    // Field light updates added to the target.
+    // Positions whose light changed this frame.
     @Unique
     private final DeduplicatedLongQueue fulgor$lightUpdates =
             new DeduplicatedLongQueue(new DeduplicatedLongQueue.Pool(), 1024, true);
@@ -43,7 +43,7 @@ public abstract class RenderGlobalMixin implements LightUpdateProcessor {
         return true;
     }
 
-    // Handles process light updates.
+    // Marks the area around every changed position for a rerender.
     @Override
     public void fulgor$processLightUpdates() {
         while (!this.fulgor$lightUpdates.isEmpty()) {

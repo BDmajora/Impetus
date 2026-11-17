@@ -4,7 +4,6 @@ import com.bdmajora.dynamiclights.DynamicLights;
 import com.bdmajora.dynamiclights.ExplosiveLightingMode;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.monster.EntityCreeper;
-import net.minecraft.item.ItemStack;
 
 import java.util.function.Function;
 

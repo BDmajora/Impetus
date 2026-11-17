@@ -71,7 +71,7 @@ class TimerQueryManagerTest {
         return null;
     }
 
-    // Returns 1 when the last timestamp written to the name has completed and 0 otherwise
+    // Returns 1 when the timestamp is done.
     private Object available(InvocationOnMock invocation) {
         int name = invocation.getArgument(0);
         int pname = invocation.getArgument(1);

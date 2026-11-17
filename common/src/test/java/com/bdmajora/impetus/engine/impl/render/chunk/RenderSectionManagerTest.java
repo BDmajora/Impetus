@@ -24,7 +24,7 @@ import java.util.Collection;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-// A hang here would otherwise stall the whole run, so each test is cut off with its stack
+// Cuts off a hung test.
 @Timeout(value = 30, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
 class RenderSectionManagerTest {
     private static final ChunkRenderMatrices MATRICES = new ChunkRenderMatrices(new Matrix4f(), new Matrix4f());
@@ -38,7 +38,7 @@ class RenderSectionManagerTest {
         commands = device.createCommandList();
         Mockito.when(TestGl.gl().glGetUniformLocation(Mockito.anyInt(), Mockito.any())).thenReturn(1);
         TestFogService.cutoff = 1_000_000f;
-        // These tests assert on client-array multi-draws; another test applying the default config would otherwise switch them to indirect
+        // Fixes the multi draw mode.
         com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions.multiDrawIndirect = false;
     }
 
@@ -51,7 +51,7 @@ class RenderSectionManagerTest {
         device.makeInactive();
     }
 
-    // One full frame the way SimpleWorldRenderer drives it: the walk runs last, so builds it queues dispatch on the following frame
+    // Runs one full frame.
     private void frame(Viewport viewport, int number, boolean immediately) {
         manager.runAsyncTasks();
         manager.updateChunks(immediately);
@@ -90,7 +90,7 @@ class RenderSectionManagerTest {
         assertEquals(3, manager.getVisibleChunkCount());
         assertNotNull(manager.getRenderLists());
         assertSame(Passes.CONFIG, manager.getRenderPassConfiguration());
-        // Every section shares the one sprite, and the ticker counts distinct sprites
+        // Checks the sprite count.
         assertEquals("A: 1", manager.getTickerDebugString());
 
         CameraTransform camera = viewport.getTransform();
@@ -109,7 +109,7 @@ class RenderSectionManagerTest {
         assertTrue(debug.stream().anyMatch(s -> s.startsWith("Chunk Queues")));
         assertTrue(debug.stream().anyMatch(s -> s.startsWith("solid - 3 sections")));
 
-        // A block change schedules a rebuild; from another thread it is marshalled through the async queue
+        // Checks the rebuild.
         manager.scheduleRebuild(0, 0, 0, false);
         Thread other = new Thread(() -> manager.scheduleRebuild(1, 0, 0, true));
         other.start();
@@ -139,7 +139,7 @@ class RenderSectionManagerTest {
         assertFalse(manager.getSectionMetricsTracker().getSlowestSections().isEmpty());
     }
 
-    // A camera move from the previous viewport to this one, with a fresh search so the move is seen
+    // Moves the camera.
     private void moveTo(double x, double y, double z, int number) {
         manager.markGraphDirty();
         frames(Sections.viewport(x, y, z), number, true);
@@ -161,19 +161,19 @@ class RenderSectionManagerTest {
         int built = manager.builds.get();
         assertEquals(0, manager.sorts.get());
 
-        // Crossing the tree's cut plane at z=5 re-sorts it; the distance-sorted section re-sorts on any whole block of movement
+        // Checks the re-sort.
         moveTo(8, 8, 6, 3);
         assertEquals(2, manager.sorts.get());
-        // Less than a block, and no plane crossed: nothing to do
+        // Checks a small move.
         moveTo(8, 8, 6.5, 5);
         assertEquals(2, manager.sorts.get());
         // Back across the plane re-sorts both again
         moveTo(8, 8, 4, 7);
         assertEquals(4, manager.sorts.get());
-        // Into another section: both again
+        // Checks another section.
         moveTo(8, 24, 24, 9);
         assertEquals(6, manager.sorts.get());
-        // Moving within a section that shares no grid line with the distance-sorted one, and crossing no plane, sorts nothing
+        // Checks a move within a section.
         moveTo(10, 26, 26, 11);
         assertEquals(6, manager.sorts.get());
         assertEquals(built, manager.builds.get());
@@ -182,7 +182,7 @@ class RenderSectionManagerTest {
         manager.importantRebuilds = true;
         moveTo(8, 8, 4, 13);
         assertEquals(8, manager.sorts.get());
-        // A pending rebuild takes over from a sort, and a rebuilt section re-indexes its planes
+        // Checks a pending rebuild.
         manager.scheduleRebuild(0, 0, 0, false);
         frames(Sections.viewport(8, 8, 4), 15, true);
         assertEquals(built + 1, manager.builds.get());
@@ -193,7 +193,7 @@ class RenderSectionManagerTest {
         assertTrue(debug.stream().anyMatch(s -> s.startsWith("Sorting:")));
         assertTrue(debug.stream().anyMatch(s -> s.startsWith("Tree Sort: 1 planes")));
 
-        // Fog that hides everything past it shortens the search; translucent fog does not
+        // Checks fog.
         manager.fogOcclusion = true;
         manager.respectQueueLimit = false;
         moveTo(8, 8, 4, 19);
@@ -249,7 +249,7 @@ class RenderSectionManagerTest {
         plain.destroy();
     }
 
-    // The terrain pass hands in vanilla's frameCount and Umbra's shadow pass its own counter from zero; the walks used to stamp those, so one under the smaller number reached only the camera section
+    // Checks the frame counters.
     @Test
     void walksStampTheirOwnFramesWhateverTheCallerCounts() {
         manager = new TestSectionManager(commands, 4, 0, 1, true, AsyncOcclusionMode.NONE, -1);
@@ -268,7 +268,7 @@ class RenderSectionManagerTest {
         assertEquals(3, manager.getVisibleChunkCount());
         assertTrue(manager.isSectionVisible(2, 0, 0));
 
-        // The shadow pass's own entry walks both lists, and the terrain pass after it reuses the player walk
+        // Checks the shadow pass entry.
         manager.shadowPass = true;
         manager.markGraphDirty();
         manager.updateForShadowPass(viewport, viewport, 2, false);
@@ -280,7 +280,7 @@ class RenderSectionManagerTest {
         assertFalse(manager.didShadowPassRunThisFrame());
         assertEquals(3, manager.getVisibleChunkCount());
 
-        // A rebuild submitted after the mixed numbers is applied, not dropped as older than the last build
+        // Checks a later rebuild.
         RenderSection far = manager.section(2, 0, 0);
         int lastBuilt = far.getLastBuiltFrame();
         int built = manager.builds.get();
@@ -290,7 +290,7 @@ class RenderSectionManagerTest {
         assertTrue(far.getLastBuiltFrame() > lastBuilt);
     }
 
-    // Only the abstract hooks, so every base default runs
+    // Renderer with only the abstract hooks.
     private static final class Bare extends RenderSectionManager {
         Bare(CommandList commands) {
             super(Passes.CONFIG, () -> new com.bdmajora.impetus.engine.impl.render.chunk.compile.ChunkBuildContext(Passes.CONFIG),
@@ -362,7 +362,7 @@ class RenderSectionManagerTest {
     @Test
     void workerThreadsRunBuildsOffTheRenderThread() {
         manager = new TestSectionManager(commands, 4, 0, 1, false, AsyncOcclusionMode.NONE, 1);
-        // Neighbours, since the walk only reaches sections through loaded ones
+        // Adds neighbours.
         manager.onChunkAdded(0, 0);
         manager.onChunkAdded(1, 0);
         Viewport viewport = Sections.viewport(8, 8, 8);

@@ -21,7 +21,7 @@ public class BakedQuadFactoryMixin {
         return quad;
     }
 
-    // Handles handle material classifications.
+    // Marks quads whose UVs cover the whole sprite.
     private static void handleMaterialClassifications(BakedQuad quad, TextureAtlasSprite sprite, BlockPartFace face) {
         if (sprite.getClass() == TextureAtlasSprite.class) {
             float minUV = Float.MAX_VALUE, maxUV = -Float.MAX_VALUE;

@@ -19,7 +19,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 
-// Cache split into one small cache per parent so a parent and its entries can be reclaimed together.
+// Cache split into one small cache per parent.
 public final class ParentPartitionedCache<P, K, V> extends AbstractCache<K, V> {
     // Partition of each parent matched by identity and held by weak keys.
     private final LoadingCache<P, Cache<K, V>> byParent;
@@ -91,7 +91,7 @@ public final class ParentPartitionedCache<P, K, V> extends AbstractCache<K, V> {
     @Override
     public ImmutableMap<K, V> getAllPresent(Iterable<?> keys) {
         ImmutableMap.Builder<K, V> present = ImmutableMap.builder();
-        // Keys already added so a repeated key is added once
+        // Keys already added.
         Set<Object> seen = new HashSet<>();
         for (Object key : keys) {
             V value = getIfPresent(key);

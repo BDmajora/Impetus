@@ -29,7 +29,7 @@ class ShadowSamplersTest {
         verify(TestGl.gl(), times(8)).glGenSamplers();
         int[][] filters = {{GL11.GL_LINEAR, GL11.GL_LINEAR}, {GL11.GL_NEAREST, GL11.GL_NEAREST},
                 {GL11.GL_LINEAR, GL11.GL_LINEAR_MIPMAP_LINEAR}, {GL11.GL_NEAREST, GL11.GL_NEAREST_MIPMAP_NEAREST}};
-        // Names come out 1..8 as compare, raw per flavour
+        // Checks the compare names.
         for (int flavour = 0; flavour < 4; flavour++) {
             for (int compare = 0; compare < 2; compare++) {
                 int sampler = flavour * 2 + compare + 1;
@@ -56,12 +56,12 @@ class ShadowSamplersTest {
         assertArrayEquals(new boolean[]{true, false}, samplers.hardwareFiltering());
         assertArrayEquals(new boolean[]{true, false}, samplers.mipmap());
         assertArrayEquals(new boolean[]{true, false}, samplers.nearest());
-        // shadowtex0: mipmapped + nearest = flavour 3; shadowtex1: plain linear = flavour 0
+        // Checks the shadow sampler flavours.
         assertEquals(7, samplers.compareFor(0));
         assertEquals(8, samplers.rawFor(0));
         assertEquals(1, samplers.compareFor(1));
         assertEquals(2, samplers.rawFor(1));
-        // A later parse starts from all-false; the unsuffixed and MinMag spellings both reach a texture
+        // Checks a later parse.
         samplers.parse(new ConstDirectives(String.join("\n",
                 "const bool shadowtexMipmap = true;",
                 "const bool shadowtexNearest = true;",

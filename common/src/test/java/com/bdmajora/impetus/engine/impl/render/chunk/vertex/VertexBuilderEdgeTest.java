@@ -64,7 +64,7 @@ class VertexBuilderEdgeTest {
         new ChunkMeshBufferBuilder(encoder, 16, 0, true).destroy();
     }
 
-    // Keeps the count when the encoder fails and records sorting data otherwise.
+    // Checks the encoder failure.
     @Test
     void encoderFailureKeepsState() {
         ChunkMeshBufferBuilder failing = new ChunkMeshBufferBuilder(encoder(16, true), 16, 64, true);

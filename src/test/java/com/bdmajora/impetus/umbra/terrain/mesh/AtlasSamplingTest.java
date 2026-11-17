@@ -33,7 +33,7 @@ class AtlasSamplingTest {
         assertFalse(AtlasSampling.samplesAtlas(other));
         assertFalse(AtlasSampling.samplesAtlas("uniform sampler2D texture; float x = texture;"));
 
-        // A lookup inside another's arguments is rewritten too, and indexing brackets do not end an argument
+        // Checks nested lookups.
         assertEquals("textureLod(tex, uv[0], (texture(tex, uv[1], UMBRA_ATLAS_BIAS).r) * umbra_Mipped)",
                 AtlasSampling.rewrite("textureLod(tex, uv[0], texture(tex, uv[1]).r)"));
         assertTrue(AtlasSampling.samplesAtlas("vec4 c = texture2D(texture, texcoord);"));

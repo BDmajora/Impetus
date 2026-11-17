@@ -67,7 +67,7 @@ class OreDictionaryMixinTest {
         assertEquals(Arrays.asList("ingotIron", "ingotGold"), names);
         List<NonNullList<ItemStack>> stacks = Statics.get(OreDictionaryMixin.class, "idToStack");
         assertEquals(2, stacks.size());
-        // The mutable and unmodifiable views are the same list, as vanilla has them
+        // Checks the shared views.
         List<NonNullList<ItemStack>> unmodifiable = Statics.get(OreDictionaryMixin.class, "idToStackUn");
         assertSame(stacks.get(0), unmodifiable.get(0));
     }
@@ -80,7 +80,7 @@ class OreDictionaryMixinTest {
         NonNullList<ItemStack> created = OreDictionaryMixin.getOres("ingotIron", true);
         assertNotNull(created);
         assertEquals(1, Statics.<List<String>>get(OreDictionaryMixin.class, "idToName").size());
-        // Now that it exists, the non-creating lookup finds it
+        // Checks the lookup finds it.
         assertSame(created, OreDictionaryMixin.getOres("ingotIron", false));
     }
 
@@ -93,13 +93,26 @@ class OreDictionaryMixinTest {
         // Nothing registered for the item at all
         assertArrayEquals(new int[0], OreDictionaryMixin.getOreIDs(iron));
 
-        // Registered against the item, then against this exact damage value as well
+        // Registers against the item and the damage value.
         stacks.put(itemId, new IntArrayList(new int[] {3}));
         assertArrayEquals(new int[] {3}, OreDictionaryMixin.getOreIDs(iron));
         stacks.put(itemId | ((iron.getItemDamage() + 1) << 16), new IntArrayList(new int[] {4}));
         int[] both = OreDictionaryMixin.getOreIDs(iron);
         Arrays.sort(both);
         assertArrayEquals(new int[] {3, 4}, both);
+
+        // Checks the id order.
+        stacks.put(itemId, new IntArrayList(new int[] {50, 10, 3}));
+        java.util.Set<Integer> forge = new java.util.HashSet<>();
+        forge.addAll(List.of(50, 10, 3, 4));
+        assertArrayEquals(forge.stream().mapToInt(Integer::intValue).toArray(), OreDictionaryMixin.getOreIDs(iron));
+        assertEquals((int) forge.iterator().next(), OreDictionaryMixin.getOreIDs(iron)[0]);
+        // Checks a single list's order.
+        stacks.remove(itemId | ((iron.getItemDamage() + 1) << 16));
+        java.util.Set<Integer> single = new java.util.HashSet<>();
+        single.addAll(List.of(50, 10, 3));
+        assertArrayEquals(single.stream().mapToInt(Integer::intValue).toArray(), OreDictionaryMixin.getOreIDs(iron));
+        stacks.put(itemId | ((iron.getItemDamage() + 1) << 16), new IntArrayList(new int[] {4}));
 
         // Only the damage-specific entry
         stacks.remove(itemId);
@@ -115,7 +128,7 @@ class OreDictionaryMixinTest {
         raw.put(7, new ArrayList<>(Arrays.asList(1, 2)));
         IntList converted = Mixins.call(OreDictionaryMixin.class, "coarctatio$ids", 7);
         assertEquals(new IntArrayList(new int[] {1, 2}), converted);
-        // Stored back, so the conversion happens once
+        // Checks the conversion is stored.
         assertSame(converted, raw.get(7));
         assertNull(Mixins.call(OreDictionaryMixin.class, "coarctatio$ids", 9));
     }
@@ -128,7 +141,7 @@ class OreDictionaryMixinTest {
         int id = OreDictionaryMixin.getOreID("ingotIron");
         List<NonNullList<ItemStack>> stacks = Statics.get(OreDictionaryMixin.class, "idToStack");
         assertEquals(1, stacks.get(id).size());
-        // The stack is copied, so a later edit by the caller cannot reach the registry
+        // Checks the stack is copied.
         assertNotSame(iron, stacks.get(id).get(0));
         assertArrayEquals(new int[] {id}, OreDictionaryMixin.getOreIDs(iron));
 
@@ -136,7 +149,7 @@ class OreDictionaryMixinTest {
         Mixins.call(OreDictionaryMixin.class, "registerOreImpl", "ingotIron", iron);
         assertEquals(1, stacks.get(id).size());
 
-        // The two refusals: the placeholder name and an empty stack
+        // Checks the two refusals.
         Mixins.call(OreDictionaryMixin.class, "registerOreImpl", "Unknown", iron);
         Mixins.call(OreDictionaryMixin.class, "registerOreImpl", "ingotTin", ItemStack.EMPTY);
         assertFalse(OreDictionaryMixin.doesOreNameExist("Unknown"));
@@ -160,7 +173,7 @@ class OreDictionaryMixinTest {
     @Test
     void theShadowedLookupIsAMixinPlaceholder() {
         assertNotNull(Mixins.instance(OreDictionaryMixin.class));
-        // The body Mixin replaces with the real lookup; calls from the mixin are answered by the shadow stubs instead
+        // Checks the placeholder body.
         assertThrows(AssertionError.class, () -> Mixins.call(OreDictionaryMixin.class, "getOres", 0));
     }
 }

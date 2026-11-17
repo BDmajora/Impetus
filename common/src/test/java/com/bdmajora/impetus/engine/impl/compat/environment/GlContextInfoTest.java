@@ -40,7 +40,7 @@ class GlContextInfoTest {
     // Length of the long driver strings in characters
     private static final int LONG_LENGTH = 1 << 20;
 
-    // Stubs the vendor, renderer and version strings on the test GL
+    // Stubs the GL strings.
     private static void driver(String vendor, String renderer, String version) {
         LWJGLService gl = TestGl.gl();
         Mockito.doReturn(vendor).when(gl).glGetString(GL_VENDOR);
@@ -311,7 +311,7 @@ class GlContextInfoTest {
         assertSame(GlContextInfo.class, capture.getReturnType());
     }
 
-    // Verifies safe returns the shared empty string for null and the same instance otherwise
+    // Checks safe.
     @Test
     void safeReturnsValueOrEmpty() {
         assertSame("", Statics.call(GlContextInfo.class, "safe", new Object[]{null}));

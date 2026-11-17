@@ -40,7 +40,7 @@ class ResourcePackMixinsTest {
         Mixins.set(pack, "coarctatio$knownGeneration", -1);
         ResourceLocation stone = new ResourceLocation("minecraft:textures/blocks/stone.png");
 
-        // Nothing known yet, so vanilla's own lookup runs and the answer is remembered
+        // Checks the first lookup.
         CallbackInfoReturnable<Boolean> first = Mixins.cir();
         Mixins.call(pack, "coarctatio$answerFromCache", stone, first);
         assertFalse(first.isCancelled());
@@ -51,7 +51,7 @@ class ResourcePackMixinsTest {
         assertTrue(second.isCancelled());
         assertTrue(second.getReturnValue());
 
-        // A reload drops what was known, since a pack may have been added underneath
+        // Checks a reload clears the cache.
         ResourceLookupCaches.onReload();
         CallbackInfoReturnable<Boolean> afterReload = Mixins.cir();
         Mixins.call(pack, "coarctatio$answerFromCache", stone, afterReload);
@@ -86,7 +86,7 @@ class ResourcePackMixinsTest {
 
         Set<String> paths = pack.coarctatio$indexedPaths();
         assertTrue(paths.contains("pack.mcmeta"));
-        // Class files are never asked for, so they stay out of the set
+        // Checks class files stay out.
         assertFalse(paths.contains("com/example/Mod.class"));
         assertSame(paths, pack.coarctatio$indexedPaths());
         zip.close();
@@ -103,7 +103,7 @@ class ResourcePackMixinsTest {
         Mixins.call(pack, "coarctatio$lookupInIndex", "pack.mcmeta", cir);
         assertFalse(cir.isCancelled());
         assertNull(pack.coarctatio$indexedPaths());
-        // Having failed once, it does not try again per lookup
+        // Checks the failure is remembered.
         CallbackInfoReturnable<Boolean> again = Mixins.cir();
         Mixins.call(pack, "coarctatio$lookupInIndex", "pack.mcmeta", again);
         assertFalse(again.isCancelled());
@@ -122,14 +122,14 @@ class ResourcePackMixinsTest {
         assertTrue(found.isCancelled());
         assertEquals(dir.resolve("assets/minecraft/sounds.json").toFile(), found.getReturnValue());
 
-        // A wrong-case or missing name is not in the index, which is the answer vanilla's canonical-path check gave
+        // Checks a missing name.
         CallbackInfoReturnable<File> missing = Mixins.cir();
         Mixins.call(pack, "coarctatio$lookupInIndex", "assets/minecraft/Sounds.json", missing);
         assertNull(missing.getReturnValue());
 
         Set<String> first = pack.coarctatio$indexedPaths();
         assertSame(first, pack.coarctatio$indexedPaths());
-        // An edited development pack is picked up after a reload, exactly as before
+        // Checks an edited pack after a reload.
         Files.writeString(dir.resolve("assets/minecraft/new.json"), "{}");
         ResourceLookupCaches.onReload();
         Set<String> rebuilt = pack.coarctatio$indexedPaths();
@@ -142,7 +142,7 @@ class ResourcePackMixinsTest {
         FallbackResourceManagerMixin fallback = Mixins.concrete(FallbackResourceManagerMixin.class);
         assertInstanceOf(StacklessFileNotFoundException.class,
                 Mixins.call(fallback, "coarctatio$stackless", "minecraft:models/block/stone.json"));
-        // Streams are opened without the debug leak tracker, whatever the logger's level
+        // Checks the streams skip the leak tracker.
         Mc.Recorded<Boolean> debugEnabled = Mc.operation(true);
         assertFalse((boolean) Mixins.call(fallback, "coarctatio$untrackedStreams", mock(Logger.class), debugEnabled));
         assertTrue(debugEnabled.calls.isEmpty());

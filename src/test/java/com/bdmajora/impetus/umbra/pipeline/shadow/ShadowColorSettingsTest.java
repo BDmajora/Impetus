@@ -46,7 +46,7 @@ class ShadowColorSettingsTest {
         assertEquals(InternalTextureFormat.RGBA, defaults.format(1));
     }
 
-    // Checks that the later spellings win and an integer format filters nearest even when told otherwise
+    // Checks later spellings and integer formats.
     @Test
     void laterSpellingsWinAndIntegerFormatsAlwaysFilterNearest() {
         ShadowColorSettings settings = ShadowColorSettings.parse(new ConstDirectives(String.join("\n",

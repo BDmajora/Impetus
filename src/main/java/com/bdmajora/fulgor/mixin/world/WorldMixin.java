@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 // Mixin that changes World.
 @Mixin(World.class)
 public abstract class WorldMixin implements LightingEngineProvider {
-    // Field lighting engine added to the target.
+    // Deferred light engine of the world.
     @Unique
     private LightingEngine fulgor$lightingEngine;
 

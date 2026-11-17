@@ -6,7 +6,6 @@ import com.bdmajora.impetus.engine.impl.render.chunk.terrain.material.Material;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexEncoder;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexType;
 
-import java.util.List;
 import java.util.Map;
 import org.lwjgl.system.MemoryUtil;
 

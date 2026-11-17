@@ -39,7 +39,7 @@ class AllocatorsTest {
         assertThrows(IllegalArgumentException.class, () -> allocator.getSize(999));
         assertThrows(IllegalStateException.class, () -> allocator.getSize(5));
 
-        // Freeing the middle leaves a hole that the next fitting request reuses, split in two
+        // Checks the reused hole.
         assertEquals(20, allocator.free(b));
         assertFalse(allocator.didResize());
         long d = allocator.alloc(5);
@@ -49,7 +49,7 @@ class AllocatorsTest {
         assertEquals(15, e);
         assertEquals(60, allocator.getTotalSize());
 
-        // Freeing the tail shrinks the space; freeing neighbours merges holes on both sides
+        // Checks shrinking and merging.
         allocator.free(c);
         assertEquals(30, allocator.getTotalSize());
         allocator.free(d);
@@ -85,7 +85,7 @@ class AllocatorsTest {
         assertFalse(allocator.expand(p, 10));
         long q = allocator.alloc(5);
         allocator.free(p);
-        // The freed 20 at address 0 is first-fit split, so the new allocation lands at the front of it
+        // Checks the first fit.
         assertEquals(0, allocator.alloc(5));
         allocator.free(q);
         assertEquals(5, allocator.getTotalSize());

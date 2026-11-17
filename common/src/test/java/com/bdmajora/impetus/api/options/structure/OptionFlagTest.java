@@ -37,21 +37,21 @@ class OptionFlagTest {
 
     @Test
     void theEnumCarriesNoStateOrMethodsOfItsOwn() {
-        // No constant has a body, so the type is final and every flag is exactly an OptionFlag
+        // Checks the enum shape.
         assertTrue(Modifier.isPublic(OptionFlag.class.getModifiers()));
         assertTrue(Modifier.isFinal(OptionFlag.class.getModifiers()));
         for (OptionFlag flag : OptionFlag.values()) {
             assertSame(OptionFlag.class, flag.getClass());
             assertSame(OptionFlag.class, flag.getDeclaringClass());
         }
-        // Fields: the constants and javac's own values array, nothing per flag
+        // Checks the fields.
         Set<String> fields = Arrays.stream(OptionFlag.class.getDeclaredFields()).filter(f -> !f.isSynthetic()).map(Field::getName).collect(Collectors.toSet());
         assertEquals(Set.copyOf(NAMES), fields);
         for (Field field : OptionFlag.class.getDeclaredFields()) {
             assertTrue(Modifier.isStatic(field.getModifiers()), field.getName());
             assertTrue(Modifier.isFinal(field.getModifiers()), field.getName());
         }
-        // Methods: only the two the compiler writes
+        // Checks the methods.
         Set<String> methods = Arrays.stream(OptionFlag.class.getDeclaredMethods()).filter(m -> !m.isSynthetic()).map(Method::getName).collect(Collectors.toSet());
         assertEquals(Set.of("values", "valueOf"), methods);
         Constructor<?>[] constructors = OptionFlag.class.getDeclaredConstructors();

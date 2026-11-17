@@ -94,7 +94,7 @@ public interface Control<T> {
         if (element instanceof PlaceholderControlElement<T>) {
             return element;
         }
-        // Reads the option and bounds from the fields instead of the getters
+        // Builds a placeholder from the element's fields.
         return placeholder(element.option, element.dim, failure);
     }
 

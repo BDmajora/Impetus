@@ -11,7 +11,7 @@ import javax.annotation.Nullable;
 // Mixin that changes Entity.
 @Mixin(Entity.class)
 public abstract class EntityMixin implements CountedInventoryEntity {
-    // Field counted world added to the target.
+    // World whose inventory entity count includes this entity.
     @Unique
     private World equilibrium$countedWorld;
 
@@ -22,7 +22,7 @@ public abstract class EntityMixin implements CountedInventoryEntity {
         return this.equilibrium$countedWorld;
     }
 
-    // Handles set counted world.
+    // Records which world counts this entity.
     @Override
     public void equilibrium$setCountedWorld(@Nullable World world) {
         this.equilibrium$countedWorld = world;

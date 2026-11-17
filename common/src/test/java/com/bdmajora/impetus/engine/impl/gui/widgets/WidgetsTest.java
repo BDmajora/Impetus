@@ -85,7 +85,7 @@ class WidgetsTest {
         assertTrue(bar.isFocused());
         assertTrue(bar.keyTyped(ctx, '\0', 1));
         assertFalse(bar.isFocused());
-        // A GLFW key code is not what vanilla screens pass on, so it is just swallowed
+        // Checks a GLFW key code.
         assertTrue(bar.mouseClicked(ctx, 5, 5, 0));
         assertTrue(bar.keyTyped(ctx, '\0', 256));
         assertTrue(bar.isFocused());
@@ -126,7 +126,7 @@ class WidgetsTest {
         assertEquals(3, runs.get());
         assertEquals(3, ctx.clicks);
 
-        // Far from the cursor it is drawn hovered, label over it, and outlined last in the style's accent
+        // Checks the focused look.
         FakeDrawContext draw = new FakeDrawContext();
         button.render(draw, 500, 500, 0f);
         String accent = Integer.toHexString(DefaultColors.ELEMENT_ACTIVATED);
@@ -135,7 +135,7 @@ class WidgetsTest {
         assertEquals(List.of("fill(0,0,100,1," + accent + ")", "fill(0,19,100,20," + accent + ")", "fill(0,0,1,20," + accent + ")", "fill(99,0,100,20," + accent + ")"), draw.calls.subList(2, 6));
         assertEquals(6, draw.calls.size());
 
-        // Greyed out or hidden, Tab passes it over and keys leave it alone, though it keeps the flag until its container moves the focus
+        // Checks a greyed control.
         button.setEnabled(false);
         assertFalse(button.canFocus());
         assertFalse(button.keyTyped(ctx, ' ', Keys.SPACE));
@@ -161,12 +161,12 @@ class WidgetsTest {
         assertTrue(bar.canFocus());
         bar.setFocused(true);
         assertTrue(bar.isFocused());
-        // Tab, by character or key code, is not typing, so the container can move the focus on
+        // Checks Tab.
         assertFalse(bar.keyTyped(ctx, '\t', Keys.TAB));
         assertFalse(bar.keyTyped(ctx, '\0', Keys.TAB));
         assertFalse(bar.keyTyped(ctx, '\t', 0));
         assertTrue(bar.isFocused());
-        // Space and Enter still are: Space joins the query and Enter is swallowed
+        // Checks Space and Enter.
         assertTrue(bar.keyTyped(ctx, ' ', Keys.SPACE));
         assertTrue(bar.keyTyped(ctx, '\r', Keys.RETURN));
         assertTrue(bar.keyTyped(ctx, '\0', Keys.NUMPAD_ENTER));

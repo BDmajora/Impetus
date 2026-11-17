@@ -17,11 +17,11 @@ public abstract class EntityPlayerMixin extends EntityLivingBase implements Dyna
     @Shadow
     public abstract boolean isSpectator();
 
-    // Field player luminance added to the target.
+    // Light level the player gives off now.
     @Unique
     private int impetus$playerLuminance;
 
-    // Field last world added to the target.
+    // World of the last tick.
     @Unique
     private World impetus$lastWorld;
 
@@ -30,7 +30,7 @@ public abstract class EntityPlayerMixin extends EntityLivingBase implements Dyna
         super(world);
     }
 
-    // Handles dynamic light tick.
+    // Updates the player's light from fire and glowing and held items and gives none to spectators.
     @Override
     public void impetus$dynamicLightTick() {
         EntityPlayer self = (EntityPlayer) (Object) this;

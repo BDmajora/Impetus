@@ -11,11 +11,11 @@ import com.bdmajora.impetus.engine.impl.render.viewport.Viewport;
 import com.bdmajora.impetus.engine.impl.render.viewport.frustum.Frustum;
 import org.joml.Vector3d;
 
-// Builds small loaded worlds of sections, and runs the lattice search over them, for the culling and list tests
+// Builds small worlds of sections.
 public final class Sections {
     public static final Frustum EVERYTHING = (a, b, c, d, e, f) -> true;
     public static final Frustum NOTHING = (a, b, c, d, e, f) -> false;
-    // Far enough for every fixture world, small enough to keep the lattice window cheap
+    // Fixture render distance.
     public static final float DISTANCE = 1000f;
 
     private Sections() {}
@@ -24,7 +24,7 @@ public final class Sections {
         return new Viewport(EVERYTHING, new Vector3d(x, y, z));
     }
 
-    // A section registered with its region, built with geometry and see-through visibility
+    // Returns a built section.
     public static RenderSection section(RenderRegionManager regions, int x, int y, int z) {
         RenderSection section = new RenderSection(regions.createForChunk(x, y, z), x, y, z);
         section.getRegion().addSection(section);
@@ -35,7 +35,7 @@ public final class Sections {
         return section;
     }
 
-    // The sections attached to a lattice spanning their heights, its window placed around the viewport
+    // Returns the attached sections.
     public static SectionLattice lattice(Viewport viewport, RenderSection... sections) {
         int minY = Integer.MAX_VALUE, maxY = Integer.MIN_VALUE;
         for (RenderSection section : sections) {
@@ -50,7 +50,7 @@ public final class Sections {
         return lattice;
     }
 
-    // One unoccluded search over the sections, collected the way RenderListManager collects it
+    // Runs one search.
     public static VisibleChunkCollector collect(RenderRegionManager regions, Viewport viewport, int frame, RenderSection... sections) {
         SectionLattice lattice = lattice(viewport, sections);
         VisibleChunkCollector collector = new VisibleChunkCollector(lattice, frame, regions.getRegionIdsLength(), 64, viewport.getBlockCoord());

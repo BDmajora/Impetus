@@ -324,7 +324,6 @@ public final class OptionImpl<S, T> implements Option<T> {
                 @SuppressWarnings("unchecked")
                 OptionIdentifier<T> empty = (OptionIdentifier<T>) OptionIdentifier.EMPTY;
                 id = empty;
-                //Impetus.logger().warn("Id must be specified in option '{}', this might throw a exception on a future release", this.name.getString());
             } else if (name == null || tooltip == null) {
                 // Builds the translation key prefix from the mod id and path
                 String key = id.getModId() + ".options." + id.getPath();

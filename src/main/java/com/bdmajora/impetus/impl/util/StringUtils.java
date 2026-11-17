@@ -38,7 +38,7 @@ public class StringUtils {
         return previous[n];
     }
 
-    // Fuzzies the search.
+    // Returns the options whose text holds every word of the input within the edit distance.
     public static <T> List<T> fuzzySearch(Iterable<T> options, String userInput, int maxDistance, Function<T, String> toStringFn) {
         List<T> result = new ArrayList<>();
         String[] targetWords = WHITESPACE.split(userInput.toLowerCase(Locale.ROOT));

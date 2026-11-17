@@ -104,7 +104,7 @@ public final class DirectMultiDrawBatch extends MultiDrawBatch {
         this.maxElementCount = Math.max(this.maxElementCount, mergedCount);
     }
 
-    // Returns the exception for a negative count or a deleted batch and otherwise the state exception with the message
+    // Returns the exception for a negative count or a deleted batch or the state exception.
     private RuntimeException refusal(int elementCount, String stateMessage) {
         if (elementCount < 0) {
             return new IllegalArgumentException("Element count must not be negative: " + elementCount);

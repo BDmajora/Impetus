@@ -14,9 +14,9 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-// No GLSL compiler runs in the suite, so the two mistakes a driver rejects outright and a reading misses are checked by hand: preprocessor conditionals that never close, and names GLSL keeps for itself
+// Checks the GLSL mistakes.
 class ShaderSourceLintTest {
-    // Keywords and words reserved for future use in GLSL 4.60, which NVIDIA enforces in every version
+    // Reserved GLSL words.
     private static final String RESERVED = String.join("|", "packed", "active", "common", "partition", "asm", "class", "union", "enum",
             "typedef", "template", "this", "resource", "goto", "inline", "noinline", "public", "static", "extern", "external", "interface",
             "long", "short", "half", "fixed", "unsigned", "superp", "input", "output", "filter", "sizeof", "cast", "namespace", "using",
@@ -36,7 +36,7 @@ class ShaderSourceLintTest {
         return files;
     }
 
-    // Conditionals that open and close in one file, never closing more than they opened
+    // Checks the conditionals.
     static String unbalanced(String source) {
         int depth = 0;
         Matcher directive = DIRECTIVE.matcher(COMMENT.matcher(source).replaceAll(""));
@@ -49,7 +49,7 @@ class ShaderSourceLintTest {
         return depth == 0 ? null : depth + " #if left open";
     }
 
-    // The first variable or parameter named with a reserved word, or null
+    // Returns the first reserved name or null.
     static String reservedName(String source) {
         Matcher declared = DECLARED_RESERVED.matcher(COMMENT.matcher(source).replaceAll(""));
         return declared.find() ? declared.group(1) : null;

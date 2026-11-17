@@ -16,23 +16,21 @@ import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-// Gives a game class the accessor interface a mixin would have added to it, so production code that casts to that
-// interface runs against real instances; only needed for final classes, since Mockito can add interfaces to the rest.
-// Runs as a launcher session listener because the transformation has to be installed before anything loads the target
+// Splices mixin accessor interfaces onto final game classes for tests.
 public final class Splice implements LauncherSessionListener {
-    // Target class name -> the interface spliced onto it; every method of the interface must be a plain accessor
+    // Interface spliced onto each target class.
     private static final Map<String, Class<?>> TARGETS = new LinkedHashMap<>();
 
     // Interfaces whose methods are answered by a helper rather than by a generated field
     private static final Map<Class<?>, Class<?>> DELEGATES = new LinkedHashMap<>();
 
-    // Interfaces whose default methods are the point of the splice: only the abstract ones get a body, and it does nothing
+    // Interfaces whose default methods are kept.
     private static final java.util.Set<Class<?>> DEFAULTS_KEPT = new java.util.LinkedHashSet<>();
 
-    // Setters whose field is named by a getter of another name, so the pair shares one field
+    // Setters that share a field with a getter of another name.
     private static final Map<String, String> FIELD_ALIASES = new LinkedHashMap<>();
 
-    // Getters a mixin implements by hand over a field the target already has, answered from that field
+    // Getters answered from a field the target already has.
     private static final Map<String, String> REAL_FIELDS = new LinkedHashMap<>();
 
     static {
@@ -42,12 +40,12 @@ public final class Splice implements LauncherSessionListener {
         TARGETS.put("net.minecraft.item.ItemStack", com.bdmajora.equilibrium.common.advancements.PreviousStackSize.class);
         TARGETS.put("net.minecraft.world.chunk.storage.ExtendedBlockStorage",
                 com.bdmajora.equilibrium.mixin.worldgen.chunk_copy.ExtendedBlockStorageAccessor.class);
-        // A section's palette, which Fulgor's block light reads to skip sections that hold no light source
+        // Splices the section palette accessor.
         TARGETS.put("net.minecraft.world.chunk.BlockStateContainer",
                 com.bdmajora.fulgor.mixin.async.world.BlockStateContainerPaletteAccessor.class);
         REAL_FIELDS.put("fulgor$getPalette", "palette");
 
-        // The recycled Forge events; every refresh is a default method the real mixins override per event class
+        // Keeps the recycled event defaults.
         DEFAULTS_KEPT.add(com.bdmajora.coarctatio.events.RecyclableEvent.class);
         TARGETS.put("net.minecraftforge.fml.common.gameevent.TickEvent",
                 com.bdmajora.coarctatio.events.RecyclableEvent.class);
@@ -68,22 +66,22 @@ public final class Splice implements LauncherSessionListener {
         TARGETS.put("net.minecraft.client.resources.FileResourcePack",
                 com.bdmajora.coarctatio.mixin.client.model.dynamic.FileResourcePackAccessor.class);
 
-        // The model bakery's item variant table, read by the dynamic loader without running a bake
+        // Splices the bakery's item variant table.
         TARGETS.put("net.minecraft.client.renderer.block.model.ModelBakery",
                 com.bdmajora.coarctatio.mixin.client.model.dynamic.ModelBakeryAccessor.class);
 
-        // The bus id the bake dispatcher selects listeners by, and the owning mod the bus names on each bake event
+        // Splices the event bus id and owner.
         TARGETS.put("net.minecraftforge.fml.common.eventhandler.EventBus",
                 com.bdmajora.coarctatio.mixin.client.model.dynamic.EventBusAccessor.class);
         TARGETS.put("net.minecraftforge.client.event.ModelBakeEvent", BakeEventContext.class);
         FIELD_ALIASES.put("setModContainer", "splice$lastMod");
 
-        // A model box's quads, which the block entity baker walks
+        // Splices the model box quads.
         TARGETS.put("net.minecraft.client.model.ModelBox", com.bdmajora.extras.client.bakedentities.ModelBoxAccess.class);
         REAL_FIELDS.put("impetus$getQuads", "quadList");
     }
 
-    // The two interfaces ModelBakeEvent's context mixin adds, as one so the registry keeps one interface per target
+    // The two interfaces of the ModelBakeEvent context mixin.
     public interface BakeEventContext extends net.minecraftforge.fml.common.eventhandler.IContextSetter,
             com.bdmajora.coarctatio.client.model.dynamic.BakeEventDispatcher.ContextAwareBakeEvent {}
 
@@ -100,10 +98,10 @@ public final class Splice implements LauncherSessionListener {
         }
         installed = true;
         GlResetExtension.onReset(org.lwjgl.opengl.Display::reset);
-        // Cleanroom's launcher records the side before anything asks; FMLLaunchHandler's initialiser reads it, and the client is the side every suite runs as
+        // Records the client side.
         com.cleanroommc.common.CleanroomEnvironment.setSide(net.minecraftforge.fml.relauncher.Side.CLIENT);
         ByteBuddyAgent.install();
-        // The interfaces are spliced first, since preparing the constructors below loads some of the same classes
+        // Splices the interfaces first.
         AgentBuilder agent = new AgentBuilder.Default();
         for (Map.Entry<String, Class<?>> target : TARGETS.entrySet()) {
             Class<?> added = target.getValue();
@@ -113,19 +111,15 @@ public final class Splice implements LauncherSessionListener {
         agent.installOn(ByteBuddyAgent.getInstrumentation());
         MixinSubclassing subclassing = new MixinSubclassing();
         ByteBuddyAgent.getInstrumentation().addTransformer(subclassing);
-        // Every spliced interface's signature is resolved here, on this thread: the splice reads it while
-        // transforming its target, and a class first loaded from inside a transformer is handed to no transformer
-        // at all, so it would miss both the splice and the constructors added below
+        // Resolves every spliced interface's signature on this thread.
         for (Class<?> added : new java.util.LinkedHashSet<>(TARGETS.values())) {
             for (Method method : added.getMethods()) {
-                // The generic signatures too: ByteBuddy reads them while transforming, and a type first loaded
-                // from inside a transformer is handed to no transformer at all
+                // Resolves the generic signatures too.
                 method.getGenericReturnType();
                 method.getGenericParameterTypes();
             }
         }
-        // The targets themselves for the same reason: one first loaded from inside a transformer would never be
-        // handed to this agent, and would quietly not implement the interface production code casts it to
+        // Loads the targets on this thread.
         for (String target : TARGETS.keySet()) {
             try {
                 Class.forName(target, false, Splice.class.getClassLoader());
@@ -136,8 +130,7 @@ public final class Splice implements LauncherSessionListener {
         subclassing.prepare();
     }
 
-    // An @Accessor names a field the target already has; everything else gets one generated field per getter/setter
-    // pair, and anything that is not a plain accessor throws if it is ever called
+    // Implements accessors with fields and throws for anything else.
     private static <T> DynamicType.Builder<T> implement(DynamicType.Builder<T> builder, Class<?> added) {
         DynamicType.Builder<T> result = builder.implement(added);
         if (DEFAULTS_KEPT.contains(added)) {
@@ -163,7 +156,7 @@ public final class Splice implements LauncherSessionListener {
             result = result.defineField(field.getKey(), field.getValue());
         }
         for (Method method : added.getMethods()) {
-            // A static accessor is rewritten at its call sites by MixinSubclassing; there is nothing to override here
+            // Skips static accessors.
             if (java.lang.reflect.Modifier.isStatic(method.getModifiers())) {
                 continue;
             }
@@ -178,7 +171,7 @@ public final class Splice implements LauncherSessionListener {
             } else if (REAL_FIELDS.containsKey(method.getName())) {
                 result = result.method(ElementMatchers.is(method)).intercept(FieldAccessor.ofField(REAL_FIELDS.get(method.getName())));
             } else if (method.getAnnotation(org.spongepowered.asm.mixin.gen.Invoker.class) != null) {
-                // An @Invoker names a method the target already has, so the splice just forwards to it
+                // Forwards an invoker to the target's method.
                 result = result.method(ElementMatchers.is(method)).intercept(net.bytebuddy.implementation.MethodCall
                         .invoke(ElementMatchers.named(method.getAnnotation(org.spongepowered.asm.mixin.gen.Invoker.class).value())
                                 .and(ElementMatchers.takesArguments(method.getParameterTypes())))

@@ -1,6 +1,7 @@
 package com.bdmajora.testing;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.sugar.ref.LocalBooleanRef;
 import com.llamalad7.mixinextras.sugar.ref.LocalRef;
 import net.minecraft.init.Bootstrap;
 import org.mockito.Mockito;
@@ -11,11 +12,11 @@ import java.util.Map;
 import java.util.Arrays;
 import java.util.List;
 
-// Minecraft-side fixtures for the root tests: registries, mocks that also wear the interfaces mixins add, and MixinExtras stand-ins
+// Minecraft fixtures for the root tests.
 public final class Mc {
     private Mc() {}
 
-    // Registers vanilla blocks, items and the rest once; idempotent so every test can call it
+    // Registers vanilla content once.
     public static void bootstrap() {
         Bootstrap.register();
     }
@@ -26,24 +27,23 @@ public final class Mc {
         return added.length == 0 ? Mockito.mock(type) : Mockito.mock(type, Mockito.withSettings().extraInterfaces(added));
     }
 
-    // Same as mock but calls through to real methods, for partial stubbing of concrete game classes
+    // Returns a spy with the added interfaces.
     public static <T> T spy(Class<T> type, Class<?>... added) {
         return added.length == 0 ? Mockito.mock(type, Mockito.CALLS_REAL_METHODS)
                 : Mockito.mock(type, Mockito.withSettings().extraInterfaces(added).defaultAnswer(Mockito.CALLS_REAL_METHODS));
     }
 
-    // Installs a mock client as Minecraft.getMinecraft(), which client code reaches for constantly
+    // Installs a mock client.
     public static net.minecraft.client.Minecraft client() {
         net.minecraft.client.Minecraft client = Mockito.mock(net.minecraft.client.Minecraft.class);
-        // Forge registers reload listeners against this as its classes initialise, and a null one kills them for good
+        // Stubs the resource manager.
         Mockito.when(client.getResourceManager())
                 .thenReturn(Mockito.mock(net.minecraft.client.resources.IReloadableResourceManager.class));
         Statics.set(net.minecraft.client.Minecraft.class, "instance", client);
         return client;
     }
 
-    // TextureUtil's static initialiser uploads a texture through GL and reads the client's settings, so both are
-    // stood in for while it runs; every later upload reads the current client's settings too, so those are checked on each call
+    // Stubs GL and the client settings for TextureUtil.
     public static void textures() {
         net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getMinecraft() == null ? client() : net.minecraft.client.Minecraft.getMinecraft();
         if (Mixins.get(client, "gameSettings") == null) {
@@ -62,25 +62,24 @@ public final class Mc {
 
     private static boolean texturesReady;
 
-    // Makes Loader.isModLoaded answerable: without a running game the mod table is null and any call throws
+    // Makes Loader.isModLoaded answerable.
     public static void forge(String... loaded) {
         Map<String, net.minecraftforge.fml.common.ModContainer> mods = new HashMap<>();
         for (String id : loaded) {
             mods.put(id, Mockito.mock(net.minecraftforge.fml.common.ModContainer.class));
         }
         Mixins.set(net.minecraftforge.fml.common.Loader.instance(), "namedMods", mods);
-        // isModLoaded also asks the controller for the mod's state, which is null (i.e. not disabled) here
+        // Sets a mock mod controller.
         Mixins.set(net.minecraftforge.fml.common.Loader.instance(), "modController",
                 Mockito.mock(net.minecraftforge.fml.common.LoadController.class));
     }
 
-    // A mock of a game class whose mixin-added interface methods run against real instances of those mixins,
-    // so production code can drive the mixin through the interface while the rest of the class stays a mock
+    // Returns a mock whose mixin interface methods run on real mixin instances.
     @SuppressWarnings("unchecked")
     public static <T> T backed(Class<T> type, Object... mixins) {
         List<Class<?>> interfaces = new ArrayList<>();
         for (Object mixin : mixins) {
-            // The instance is a Mockito subclass of the mixin, so the interfaces sit further up the hierarchy
+            // Walks the mixin's class hierarchy.
             for (Class<?> c = mixin.getClass(); c != null; c = c.getSuperclass()) {
                 for (Class<?> added : c.getInterfaces()) {
                     if (added.getName().startsWith("com.bdmajora.") && !interfaces.contains(added)) {
@@ -102,7 +101,7 @@ public final class Mc {
                 }));
     }
 
-    // A real instance of a game class with no constructor run, for code that only looks at its type
+    // Returns an instance created without a constructor.
     public static <T> T uninitialized(Class<T> type) {
         return Statics.allocate(type);
     }
@@ -119,6 +118,23 @@ public final class Mc {
 
             @Override
             public void set(T value) {
+                this.value = value;
+            }
+        };
+    }
+
+    // A @Share/@Local boolean reference
+    public static LocalBooleanRef booleanRef(boolean initial) {
+        return new LocalBooleanRef() {
+            private boolean value = initial;
+
+            @Override
+            public boolean get() {
+                return value;
+            }
+
+            @Override
+            public void set(boolean value) {
                 this.value = value;
             }
         };

@@ -75,7 +75,7 @@ class GlUniformFloatArrayTest {
     // Upload with its location and argument and the raw bits GL read and the thread stack state during the call
     private record Upload(int location, Object argument, int[] bits, long stackPointer, int stackFrame) {}
 
-    // Array uniform that records every array it receives instead of calling GL
+    // Array uniform that records arrays.
     private static final class Recording extends GlUniformFloatArray {
         // Arrays in the order the array upload received them
         private final List<float[]> values = new ArrayList<>();

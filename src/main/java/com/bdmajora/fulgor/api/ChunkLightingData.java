@@ -14,7 +14,7 @@ public interface ChunkLightingData {
     // Initializes the neighbor light checks.
     void fulgor$initNeighborLightChecks();
 
-    // Returns whether light initialized.
+    // Returns whether the chunk's light was computed once.
     boolean fulgor$isLightInitialized();
 
     // Stores the light initialized.

@@ -8,7 +8,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ExpressionParserTest {
-    // A context over a plain name table, with one smoothing slot per call site and a fixed frame time
+    // Context over a plain name table.
     private static final class Context implements CustomUniformContext {
         final Map<String, CustomUniformValue> values = new HashMap<>();
         final SmoothState[] smooth = {new SmoothState(), new SmoothState(), new SmoothState()};
@@ -86,7 +86,7 @@ class ExpressionParserTest {
         assertEquals("vec2(1.0, 3.0)", vec("color.xz", context));
         assertEquals("vec4(4.0, 3.0, 2.0, 1.0)", vec("color.abgr", context));
         assertEquals("vec4(1.0, 2.0, 3.0, 4.0)", vec("color.stpq", context));
-        // A component past the value's width reads zero, as does a swizzle of nothing
+        // Checks components past the width.
         assertEquals("vec2(240.0, 0.0)", vec("eyeBrightness.yz", context));
         assertEquals(0.0F, eval("nothing.x", context).x());
         // A name the table has whole wins over decomposing it
@@ -152,7 +152,7 @@ class ExpressionParserTest {
         float falling = optifine.evaluate(context).x();
         assertTrue(falling < rising, String.valueOf(falling));
 
-        // A zero half-life snaps, and the short forms default their fades
+        // Checks the smoothing forms.
         ExpressionParser.Result three = ExpressionParser.parse("smooth(target, 0) + smooth(target, 0, 0) + smooth(target)");
         assertEquals(3, three.smoothCallCount);
         Context fresh = new Context();

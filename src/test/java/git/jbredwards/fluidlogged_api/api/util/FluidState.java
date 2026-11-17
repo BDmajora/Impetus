@@ -8,12 +8,11 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.IBlockAccess;
 import net.minecraftforge.common.capabilities.ICapabilityProvider;
 
-// Test stand-in for Fluidlogged API's fluid state: the published jar is obfuscated and cannot call into a
-// deobfuscated world, so the few members Fulgor and the chunk mesher use are provided here instead
+// Test stand-in for Fluidlogged API's fluid state.
 public class FluidState {
     public static final FluidState EMPTY = new FluidState(null);
 
-    // What the next getFromProvider call answers with, so a test can put a fluid at a position
+    // Answer of the next getFromProvider call.
     public static FluidState next = EMPTY;
 
     private final IBlockState state;
@@ -26,12 +25,12 @@ public class FluidState {
         return next;
     }
 
-    // Whatever the access stores at the position, when it stores fluid states at all
+    // Returns the stored fluid state at the position.
     public static FluidState get(IBlockAccess world, BlockPos pos) {
         return world instanceof IFluidStateProvider ? ((IFluidStateProvider) world).getFluidState(pos.getX(), pos.getY(), pos.getZ()) : EMPTY;
     }
 
-    // The fluid a block state is, or none for anything that is not a fluid
+    // Returns the fluid of a block state or none.
     public static FluidState of(IBlockState state) {
         return state != null && FluidloggedUtils.isFluid(state) ? new FluidState(state) : EMPTY;
     }
@@ -44,12 +43,12 @@ public class FluidState {
         return this.state == null ? Blocks.AIR.getDefaultState() : this.state;
     }
 
-    // A fluid block, which here is any vanilla liquid
+    // Returns whether the state is a fluid.
     public boolean isValid() {
         return this.state != null && this.state.getBlock() instanceof BlockLiquid;
     }
 
-    // The liquid's level property, 8 and up meaning it falls
+    // Returns the liquid's level.
     public int getLevel() {
         return this.state.getValue(BlockLiquid.LEVEL);
     }

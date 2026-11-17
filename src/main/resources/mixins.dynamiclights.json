@@ -14,7 +14,6 @@
     "RenderGlobalMixin",
     "RenderGlobalRebuildAccessor",
     "StateImplementationMixin",
-    "TileEntityRegistryAccessor",
     "TileEntityRendererDispatcherMixin",
     "WorldClientMixin",
     "lightsource.EntityHangingMixin",

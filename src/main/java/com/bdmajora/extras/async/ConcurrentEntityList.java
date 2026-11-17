@@ -320,7 +320,7 @@ public final class ConcurrentEntityList extends AbstractList<Entity> {
         return this == o || (o instanceof List && Objects.equals(copy(), o));
     }
 
-    // Returns the identity hash because the contents change.
+    // Returns the identity hash.
     @Override
     public int hashCode() {
         return System.identityHashCode(this);

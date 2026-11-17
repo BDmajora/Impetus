@@ -13,14 +13,14 @@ public abstract class BlockStateBaseModelCacheMixin implements ModelHoldingState
     // Softly held baked model of the state.
     private volatile SoftReference<IBakedModel> coarctatio$model;
 
-    // Handles cached model.
+    // Returns the state's model while the soft reference holds it.
     @Override
     public IBakedModel coarctatio$cachedModel() {
         SoftReference<IBakedModel> reference = this.coarctatio$model;
         return reference != null ? reference.get() : null;
     }
 
-    // Handles cache model.
+    // Remembers the state's model behind a soft reference.
     @Override
     public void coarctatio$cacheModel(IBakedModel model) {
         this.coarctatio$model = model != null ? new SoftReference<>(model) : null;

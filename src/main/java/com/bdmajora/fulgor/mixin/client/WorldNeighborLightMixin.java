@@ -49,6 +49,8 @@ public abstract class WorldNeighborLightMixin {
             return;
         }
         int faces = FaceLightRules.openFaces(getBlockState(pos));
-        cir.setReturnValue(FaceLightRules.foldOpenFaces(faces, getLightFor(type, pos), type, pos, this::getLightFor));
+        int level = getLightFor(type, pos);
+        // Returns the block's own light when no face is open and the brightest open neighbour otherwise.
+        cir.setReturnValue(faces == 0 ? level : FaceLightRules.foldOpenFaces(faces, level, type, pos, this::getLightFor));
     }
 }

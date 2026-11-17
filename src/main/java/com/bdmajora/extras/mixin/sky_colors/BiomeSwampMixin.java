@@ -36,13 +36,13 @@ public class BiomeSwampMixin {
         }
     }
 
-    // Helper method temperature added to the target.
+    // Returns the temperature the swamp colour uses.
     @Unique
     private static double impetus$temperature(Biome biome, BlockPos pos) {
         return MathHelper.clamp(biome.getTemperature(pos), 0.0F, 1.0F);
     }
 
-    // Helper method rainfall added to the target.
+    // Returns the rainfall the swamp colour uses.
     @Unique
     private static double impetus$rainfall(Biome biome) {
         return MathHelper.clamp(biome.getRainfall(), 0.0F, 1.0F);

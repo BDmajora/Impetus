@@ -17,7 +17,7 @@ public abstract class WorldMixin implements ChunkAccess {
     @Shadow
     protected IChunkProvider chunkProvider;
 
-    // Field last chunk added to the target.
+    // Last chunk looked up.
     @Unique
     private Chunk equilibrium$lastChunk;
 

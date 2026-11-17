@@ -55,20 +55,20 @@ public final class Fulgor {
         }
     }
 
-    // Handles the post init.
+    // Builds the async engine's face table once every block is registered.
     public static void onPostInit() {
         if (isAsync()) {
             FaceOcclusion.registerDefaults();
         }
     }
 
-    // Returns whether async.
+    // Returns whether the async Starlight style engine is selected.
     public static boolean isAsync() {
         FulgorConfig config = FulgorConfig.get();
         return config.enabled && config.asyncLightUpdates;
     }
 
-    // Processes the client light updates.
+    // Applies the client world's finished light.
     public static void processClientLightUpdates(World world) {
         if (world instanceof LightingEngineProvider) {
             ((LightingEngineProvider) world).fulgor$getLightingEngine().processLightUpdates();
@@ -80,12 +80,12 @@ public final class Fulgor {
         }
     }
 
-    // Returns whether dynamic lights.
+    // Returns whether a dynamic lights mod is installed.
     public static boolean hasDynamicLights() {
         return dynamicLights;
     }
 
-    // Returns whether fluidlogged api.
+    // Returns whether Fluidlogged API is installed.
     public static boolean hasFluidloggedApi() {
         return fluidloggedApi;
     }

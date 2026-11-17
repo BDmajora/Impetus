@@ -124,7 +124,7 @@ class GbufferTargetsTest {
         assertArrayEquals(new int[]{4, 1}, GbufferTargets.programDrawBuffers(pack, ProgramId.Water, "gbuffers_water", pack.getEnvironmentDefines()));
         ShaderMacros.setPackLegacyPrograms(Set.of("gbuffers_water"));
         assertArrayEquals(new int[]{4, 1, 2}, GbufferTargets.programDrawBuffers(pack, ProgramId.Water, "gbuffers_water", pack.getEnvironmentDefines()));
-        // No program at all writes colortex0, and an out-of-range target is dropped
+        // Checks the draw buffer defaults.
         assertArrayEquals(new int[]{0}, GbufferTargets.programDrawBuffers(pack, ProgramId.Terrain, "gbuffers_terrain", Map.of()));
         assertArrayEquals(new int[]{0, 3}, GbufferTargets.sanitize(new int[]{0, 3, 99, -1, 3}));
     }
@@ -136,14 +136,14 @@ class GbufferTargetsTest {
         flipper.flip(4);
         UmbraFramebuffer framebuffer = gbuffers.create(flipper);
         assertNotNull(framebuffer);
-        // Attached, then kept live by the colour-only mask
+        // Checks the attachment.
         verify(TestGl.gl(), times(2)).glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D,
                 this.targets.get(0).getMainTexture(), 0);
         verify(TestGl.gl()).glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0 + 1, GL11.GL_TEXTURE_2D,
                 this.targets.get(4).getAltTexture(), 0);
         verify(TestGl.gl()).glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D,
                 this.targets.getDepthTexture().getTextureId(), 0);
-        // Colour-only to start: colortex0 alone
+        // Checks the colour only start.
         assertArrayEquals(new int[]{GL30.GL_COLOR_ATTACHMENT0}, lastDrawBuffers());
     }
 
@@ -162,7 +162,7 @@ class GbufferTargetsTest {
         UmbraFramebuffer framebuffer = gbuffers.create(new BufferFlipper());
         gbuffers.drawBuffers(framebuffer, new int[]{4, 9, 0});
         assertArrayEquals(new int[]{GL30.GL_COLOR_ATTACHMENT0 + 2, GL11.GL_NONE, GL30.GL_COLOR_ATTACHMENT0}, lastDrawBuffers());
-        // Only the written attachments stay live: colortex2 (point 1) is detached for this program
+        // Checks the unwritten attachment is detached.
         verify(TestGl.gl(), Mockito.atLeastOnce()).glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0 + 1, GL11.GL_TEXTURE_2D, 0, 0);
         // Every phase switch used to log the unattached target again
         gbuffers.drawBuffers(framebuffer, new int[]{9});
@@ -248,7 +248,7 @@ class GbufferTargetsTest {
         assertEquals(GL30.GL_COLOR_ATTACHMENT0, drawn[0]);
         assertEquals(GL11.GL_NONE, drawn[1]);
         assertEquals(GL11.GL_NONE, drawn[2]);
-        // 20 is past the attachment table but has a warned bit of its own; 40 is past the bit mask and so is reported every time
+        // Checks out of range targets.
         gbuffers.drawBuffers(framebuffer, new int[]{20, 40});
         verify(this.logger, times(1)).warn(anyString(), eq(20), anyInt());
         verify(this.logger, times(2)).warn(anyString(), eq(40), anyInt());

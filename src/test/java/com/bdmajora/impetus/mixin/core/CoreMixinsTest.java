@@ -97,7 +97,7 @@ class CoreMixinsTest {
         Mixins.set(frustum, "x", 10.0);
         Mixins.set(frustum, "y", 20.0);
         Mixins.set(frustum, "z", 30.0);
-        // Boxes are tested relative to the frustum's position, and unbounded ones always pass
+        // Checks boxes relative to the frustum position.
         assertTrue(frustum.isBoxInFrustum(9.5, 19.5, 29.5, 10.5, 20.5, 30.5));
         assertFalse(frustum.isBoxInFrustum(0, 0, 0, 1, 1, 1));
         assertTrue(frustum.isBoxInFrustum(Double.NEGATIVE_INFINITY, 0, 0, 1, 1, 1));
@@ -106,7 +106,7 @@ class CoreMixinsTest {
         assertTrue(frustum.isBoxInFrustum(0, 0, 0, Double.POSITIVE_INFINITY, 1, 1));
         assertTrue(frustum.isBoxInFrustum(0, 0, 0, 1, Double.POSITIVE_INFINITY, 1));
         assertTrue(frustum.isBoxInFrustum(0, 0, 0, 1, 1, Double.POSITIVE_INFINITY));
-        // The viewport sits at the frustum's position, moved by the third-person offset (none, with an identity view)
+        // Checks the viewport position.
         FloatBuffer modelView = Statics.get(ActiveRenderInfo.class, "MODELVIEW");
         modelView.clear();
         modelView.put(IDENTITY).flip();
@@ -114,6 +114,23 @@ class CoreMixinsTest {
         assertEquals(10.0, viewport.getTransform().x, 1e-6);
         assertEquals(20.0, viewport.getTransform().y, 1e-6);
         assertEquals(30.0, viewport.getTransform().z, 1e-6);
+
+        // Checks a mod's own ClippingHelper.
+        List<double[]> asked = new ArrayList<>();
+        net.minecraft.client.renderer.culling.ClippingHelper plain = new net.minecraft.client.renderer.culling.ClippingHelper() {
+            @Override
+            public boolean isBoxInFrustum(double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {
+                asked.add(new double[] {minX, minY, minZ, maxX, maxY, maxZ});
+                return minX < 0;
+            }
+        };
+        Mixins.set(frustum, "clippingHelper", plain);
+        assertTrue(frustum.isBoxInFrustum(9.5, 19.5, 29.5, 10.5, 20.5, 30.5));
+        assertArrayEquals(new double[] {-0.5, -0.5, -0.5, 0.5, 0.5, 0.5}, asked.get(0), 1e-9);
+        assertFalse(frustum.isBoxInFrustum(11, 20, 30, 12, 21, 31));
+        Viewport fallback = frustum.impetus$createViewport();
+        assertEquals(10.0, fallback.getTransform().x, 1e-6);
+        assertEquals(2, asked.size());
     }
 
     @Test
@@ -146,7 +163,7 @@ class CoreMixinsTest {
             gl.when(() -> GlStateManager.depthFunc(anyInt())).thenAnswer(call -> record(calls, "depthFunc " + call.getArgument(0)));
             Mixins.call(GuiInventoryDepthMixin.class, "impetus$restoreDepthState", 51, 75, 30, 0.0F, 0.0F, null, Mixins.ci());
         }
-        // Every final value is vanilla's, each reached from the opposite one so a stale cache cannot swallow it
+        // Checks every final GL state matches vanilla.
         assertEquals(List.of("disableDepth", "enableDepth", "depthMask false", "depthMask true",
                 "depthFunc " + GL11.GL_ALWAYS, "depthFunc " + GL11.GL_LEQUAL), calls);
         verify(TestGl.gl()).glDepthRange(0.0, 1.0);
@@ -173,19 +190,47 @@ class CoreMixinsTest {
         assertEquals(EnumFacing.NORTH, MixinDirection.getFacingFromVector(0, 0, 0));
         assertEquals(EnumFacing.UP, MixinDirection.getFacingFromVector(0.1F, 1, 0.1F));
         assertEquals(EnumFacing.DOWN, MixinDirection.getFacingFromVector(0, -1, 0));
-        // Ties go to Y, then Z, then X
+        // Checks ties go to Y then Z then X.
         assertEquals(EnumFacing.UP, MixinDirection.getFacingFromVector(1, 1, 1));
         assertEquals(EnumFacing.SOUTH, MixinDirection.getFacingFromVector(0.5F, 0, 0.5F));
         assertEquals(EnumFacing.NORTH, MixinDirection.getFacingFromVector(0.2F, 0.1F, -0.5F));
         assertEquals(EnumFacing.EAST, MixinDirection.getFacingFromVector(1, 0.5F, 0.5F));
         assertEquals(EnumFacing.WEST, MixinDirection.getFacingFromVector(-1, 0.5F, 0.5F));
+        // Checks a NaN normal answers NORTH.
+        assertEquals(EnumFacing.NORTH, MixinDirection.getFacingFromVector(Float.NaN, Float.NaN, Float.NaN));
+        assertEquals(EnumFacing.NORTH, MixinDirection.getFacingFromVector(Float.NaN, 1, 0));
+        assertEquals(EnumFacing.NORTH, MixinDirection.getFacingFromVector(Float.MIN_VALUE, 0, -Float.MIN_VALUE));
+        // Checks every finite vector against vanilla's loop.
+        float[] values = {0.0F, -0.0F, Float.MIN_VALUE, -Float.MIN_VALUE, 2 * Float.MIN_VALUE, 1e-30F, -1e-30F, 0.25F, -0.25F, 0.5F, -0.5F,
+                1.0F, -1.0F, 3.0F, -3.0F, Float.MAX_VALUE, -Float.MAX_VALUE, Float.NaN};
+        for (float x : values) {
+            for (float y : values) {
+                for (float z : values) {
+                    assertEquals(vanillaFacing(x, y, z), MixinDirection.getFacingFromVector(x, y, z), x + ", " + y + ", " + z);
+                }
+            }
+        }
+    }
+
+    // EnumFacing.getFacingFromVector as 1.12 ships it
+    private static EnumFacing vanillaFacing(float x, float y, float z) {
+        EnumFacing best = EnumFacing.NORTH;
+        float most = Float.MIN_VALUE;
+        for (EnumFacing facing : EnumFacing.values()) {
+            float dot = x * facing.getDirectionVec().getX() + y * facing.getDirectionVec().getY() + z * facing.getDirectionVec().getZ();
+            if (dot > most) {
+                most = dot;
+                best = facing;
+            }
+        }
+        return best;
     }
 
     @Test
     void theGameLoopIsFencedAndThrottled() {
         MinecraftMixin minecraft = Mixins.instance(MinecraftMixin.class);
         when(TestGl.gl().glFenceSync(anyInt(), anyInt())).thenReturn(11L, 12L, 0L);
-        // Each frame leaves a fence; once more are queued than the limit allows the oldest is waited on
+        // Queues frames past the limit.
         options.advanced.cpuRenderAheadLimit = 1;
         Mixins.call(minecraft, "preRender", Mixins.ci());
         Mixins.call(minecraft, "postRender", Mixins.ci());
@@ -200,7 +245,7 @@ class CoreMixinsTest {
         // A driver that cannot make a fence is an error
         assertThrows(RuntimeException.class, () -> Mixins.call(minecraft, "postRender", Mixins.ci()));
 
-        // Inactivity caps the frame rate: hard when minimised, softer when merely unfocused in AFK mode
+        // Checks the inactivity caps.
         try (MockedStatic<GameWindow> window = Mockito.mockStatic(GameWindow.class)) {
             ImpetusRuntimeOptions.inactivityFpsLimit = ImpetusGameOptions.InactivityFpsLimit.NO_LIMIT;
             window.when(GameWindow::isMinimized).thenReturn(true);
@@ -210,7 +255,7 @@ class CoreMixinsTest {
             assertEquals(10, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 144));
             assertEquals(5, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 5));
             assertEquals(1, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 1));
-            // Sync skips a limit of zero or less, so the game runs unlimited there and the cap still applies
+            // Checks a limit of zero or less.
             assertEquals(10, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", 0));
             assertEquals(10, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", -1));
             assertEquals(10, (int) Mixins.call(minecraft, "impetus$applyInactivityFpsLimit", Integer.MIN_VALUE));
@@ -228,7 +273,7 @@ class CoreMixinsTest {
         }
     }
 
-    // The plugin defined from the main classes alone, as it is inside the mod jar; on the test classpath its package scan would otherwise find the test classes of the same package first
+    // Returns the plugin defined from the main classes alone.
     private static IMixinConfigPlugin jarPlugin() throws ReflectiveOperationException {
         URL main = ImpetusVintageMixinPlugin.class.getProtectionDomain().getCodeSource().getLocation();
         ClassLoader app = CoreMixinsTest.class.getClassLoader();
@@ -246,7 +291,7 @@ class CoreMixinsTest {
                     }
                     try (InputStream in = app.getResourceAsStream(className.replace('.', '/') + ".class")) {
                         byte[] bytes = in.readAllBytes();
-                        // With a code source, as a jar class has; JaCoCo leaves classes without one uninstrumented
+                        // Defines the class with a code source.
                         return defineClass(className, bytes, 0, bytes.length, new ProtectionDomain(new CodeSource(main, (Certificate[]) null), null));
                     } catch (IOException e) {
                         throw new ClassNotFoundException(className, e);

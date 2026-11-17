@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 class WeakIdentitySetTest {
-    // Equal to every other one, as a value compared by its contents would be
+    // Equal to every other value.
     private static final class Alike {
         @Override
         public boolean equals(Object other) {
@@ -42,7 +42,7 @@ class WeakIdentitySetTest {
         }
     }
 
-    // The set's entries, copied under its own lock without comparing them
+    // Returns the set entries.
     private static List<?> entries(WeakIdentitySet<?> set) {
         try {
             Field field = WeakIdentitySet.class.getDeclaredField("entries");
@@ -55,7 +55,7 @@ class WeakIdentitySetTest {
         }
     }
 
-    // The set's entry for the element, found by identity
+    // Returns the entry for an element.
     private static Reference<?> entryOf(WeakIdentitySet<?> set, Object element) {
         return entries(set).stream().map(entry -> (Reference<?>) entry).filter(entry -> entry.get() == element).findFirst().orElseThrow();
     }
@@ -117,11 +117,11 @@ class WeakIdentitySetTest {
         set.add(element);
         Reference<?> entry = entryOf(set, element);
         assertTrue(holds(set, entry));
-        // What the collector does once the element is unreachable: clear the entry and queue it
+        // Collects an element.
         entry.enqueue();
         assertFalse(set.contains(element));
         assertFalse(holds(set, entry));
-        // Added afresh afterwards, and an add drops queued entries too
+        // Checks a fresh add.
         assertTrue(set.add(element));
         Reference<?> again = entryOf(set, element);
         again.enqueue();
@@ -153,7 +153,7 @@ class WeakIdentitySetTest {
         assertFalse(holds(set, entry));
     }
 
-    // Adds an element from a frame that then returns, leaving it reachable only through the set
+    // Adds an element from a returning frame.
     private static Reference<?>[] addedAndDropped(WeakIdentitySet<Object> set) {
         Object element = new Object();
         assertTrue(set.add(element));
@@ -172,11 +172,11 @@ class WeakIdentitySetTest {
         assertEquals(entry, same);
         assertEquals(entry.hashCode(), same.hashCode());
         assertEquals(System.identityHashCode(element), entry.hashCode());
-        // Never by the element's own equality, which calls these two equal
+        // Checks identity.
         assertNotEquals(entry, other);
         assertNotEquals(entry, new WeakReference<>(element));
         assertNotEquals(entry, null);
-        // Once collected it matches nothing else, not even another collected entry, but stays equal to itself
+        // Checks a collected entry.
         entry.clear();
         assertEquals(entry, entry);
         assertNotEquals(entry, same);

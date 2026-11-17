@@ -119,7 +119,7 @@ public class SectionVisibilityBuilder {
     // Returns the encoding found by filling the open cells from the surface.
     private long computeWithFloodFill() {
         long resultEncoding = 0;
-        // Fills on a copy so the opaque cells stay unchanged
+        // Fills a copy of the opaque cells.
         BitSet visited = (BitSet) this.blocks.clone();
         BitSet escapedFaces = new BitSet(GraphDirection.COUNT);
         IntArrayFIFOQueue queue = new IntArrayFIFOQueue();

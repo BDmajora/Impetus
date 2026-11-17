@@ -47,7 +47,7 @@ public abstract class ItemLayerModelQuadMixin {
         cir.setReturnValue(new BakedQuad(data, tint, side, sprite, true, DefaultVertexFormats.ITEM));
     }
 
-    // Handles vertex.
+    // Writes one vertex of the item quad into the packed vertex data.
     private static void coarctatio$vertex(int[] data, int vertex, float x, float y, float z, float u, float v, TRSRTransformation transformation) {
         int offset = vertex * 7;
         if (transformation != null) {

@@ -99,7 +99,7 @@ public enum BufferMapRangeFunctions {
     // Maps the given number of bytes from the offset of the buffer bound to the array binding point and returns null when GL fails
     public abstract ByteBuffer mapBufferRange(GlBuffer buffer, long offset, long length, EnumBitField<GlBufferMapFlags> flags);
 
-    // Returns the range strategy when the context has GL 3.0 or ARB_map_buffer_range and the whole buffer strategy otherwise
+    // Returns the range strategy when supported and the whole buffer strategy otherwise.
     public static BufferMapRangeFunctions pickBest(RenderDevice device) {
         return LWJGL.isOpenGLVersionSupported(3, 0) || LWJGL.isExtensionSupported(GLExtension.ARB_map_buffer_range) ? CORE : MAP_FULL_AND_SLICE;
     }

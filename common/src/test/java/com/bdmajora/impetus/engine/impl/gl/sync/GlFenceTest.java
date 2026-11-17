@@ -43,7 +43,7 @@ class GlFenceTest {
         assertThrows(IllegalStateException.class, fence::isCompleted);
     }
 
-    // Keeps the fence live when GL fails to delete it so the delete can be retried.
+    // Checks a failed fence delete.
     @Test
     void failedDeleteKeepsFenceLive() {
         GlFence fence = new GlFence(9);

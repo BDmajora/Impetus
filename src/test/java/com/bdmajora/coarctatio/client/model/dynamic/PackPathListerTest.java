@@ -84,7 +84,7 @@ class PackPathListerTest {
         }
 
         FileResourcePackMixin pack = Mixins.instance(FileResourcePackMixin.class);
-        // No index built, and none possible, so the zip itself is listed
+        // Checks the zip fallback.
         Mixins.set(pack, "coarctatio$entriesFailed", true);
         Mixins.set(pack, "resourcePackFile", zipPath.toFile());
 
@@ -117,7 +117,7 @@ class PackPathListerTest {
 
     @Test
     void theVanillaPackIsReadFromTheClasspathAndAnUnknownKindIsSkipped() {
-        // In a workspace the vanilla assets are a plain folder rather than a jar, which is refused and logged
+        // Checks a folder of vanilla assets.
         Collection<String> vanilla = PackPathLister.paths(Mc.mock(DefaultResourcePack.class));
         assertTrue(vanilla.stream().allMatch(path -> path.startsWith("assets/")));
 
@@ -139,7 +139,7 @@ class PackPathListerTest {
 
         Set<String> paths = new java.util.HashSet<>();
         Mixins.call(PackPathLister.class, "walkZipUri", new java.net.URI("jar:" + jar.toUri()), paths);
-        // Only what lives under assets, spelled with forward slashes relative to the pack root
+        // Checks the listed paths.
         assertEquals(Set.of("assets/minecraft/lang/en_us.lang"), paths);
 
         // A jar with no assets folder at all contributes nothing

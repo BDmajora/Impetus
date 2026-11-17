@@ -11,7 +11,7 @@ public final class FulgorRenderBridge {
     private FulgorRenderBridge() {
     }
 
-    // Flushes the pending light updates.
+    // Runs the deferred engine's pending light updates of a world.
     public static void flushPendingLightUpdates(World world) {
         if (world instanceof LightingEngineProvider) {
             ((LightingEngineProvider) world).fulgor$getLightingEngine().processLightUpdates();
@@ -24,7 +24,14 @@ public final class FulgorRenderBridge {
         return config.enabled && config.fixRenderLighting;
     }
 
-    // Returns whether empty of blocks.
+    // Drops a section's cached light emptiness after its light arrays were written in place
+    public static void markLightChanged(ExtendedBlockStorage section) {
+        if (section instanceof SectionLightInfo) {
+            ((SectionLightInfo) section).fulgor$markLightChanged();
+        }
+    }
+
+    // Returns whether a section holds no blocks.
     public static boolean isEmptyOfBlocks(ExtendedBlockStorage section) {
         if (section instanceof SectionLightInfo) {
             return ((SectionLightInfo) section).fulgor$hasNoBlocks();

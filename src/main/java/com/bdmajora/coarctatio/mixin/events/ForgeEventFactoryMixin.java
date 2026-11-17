@@ -27,7 +27,7 @@ import java.util.EnumSet;
 // Mixin that changes ForgeEventFactory.
 @Mixin(value = ForgeEventFactory.class, remap = false)
 public abstract class ForgeEventFactoryMixin {
-    // Field coarctatio neighbor notify added to the target.
+    // Reused neighbour notify event of each thread.
     @Unique
     private static final ThreadLocal<BlockEvent.NeighborNotifyEvent> COARCTATIO_NEIGHBOR_NOTIFY = new ThreadLocal<>();
 

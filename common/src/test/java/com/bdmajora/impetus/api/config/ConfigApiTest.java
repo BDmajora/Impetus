@@ -49,11 +49,11 @@ class ConfigApiTest {
     private static final OptionIdentifier<Void> GROUP_A = OptionIdentifier.create("config_api_test", "group_a");
     private static final OptionIdentifier<Void> GROUP_B = OptionIdentifier.create("config_api_test", "group_b");
 
-    // The bucket's private fields, so tests can read the registry and put it back to its starting state
+    // Private fields of the bucket.
     private static final Field SUPPLIERS = bucketField("suppliers");
     private static final Field SIZE = bucketField("size");
 
-    // The registries are static and the suite shares one JVM, so every test starts empty and leaves nothing for the screen tests
+    // Resets the registries around each test.
     @BeforeEach
     void startEmpty() {
         clearRegistries();
@@ -114,7 +114,7 @@ class ConfigApiTest {
         OptionPage builtIn = page();
         assertEquals(List.of(builtIn), screen(builtIn));
         assertEquals(List.of(), screen());
-        // Nothing registered means the list is never touched, so even an unmodifiable one is fine
+        // Checks an unmodifiable list.
         assertDoesNotThrow(() -> OptionGUIConstructionEvent.BUS.post(new OptionGUIConstructionEvent(List.of(builtIn))));
     }
 
@@ -157,7 +157,7 @@ class ConfigApiTest {
         ConfigApi.registerPage(() -> builds.getAndIncrement() == 0 ? first : second);
         assertSame(first, screen().get(0));
         assertSame(second, screen().get(0));
-        // A supplier that hands back one instance gets that instance every time, nothing is copied
+        // Checks the same instance.
         OptionPage shared = page();
         clearRegistries();
         ConfigApi.registerPage(() -> shared);
@@ -183,14 +183,14 @@ class ConfigApiTest {
         ConfigApi.registerPage(() -> after);
         List<OptionPage> pages = new ArrayList<>();
         assertEquals("Page supplier returned null", npe(() -> OptionGUIConstructionEvent.BUS.post(new OptionGUIConstructionEvent(pages))));
-        // Pages ahead of the bad one are already in; no null and nothing after it
+        // Checks the pages before the bad one.
         assertEquals(List.of(before), pages);
     }
 
     @Test
     @SuppressWarnings({"unchecked", "rawtypes"})
     void aPageOfTheWrongTypeFailsTheBuildInsteadOfJoiningTheList() {
-        // Only reachable through an unchecked cast, which is exactly what a mod compiled against a different API might do
+        // Checks an unchecked cast.
         ConfigApi.registerPage((Supplier) () -> "not a page");
         List<OptionPage> pages = new ArrayList<>();
         assertThrows(ClassCastException.class, () -> OptionGUIConstructionEvent.BUS.post(new OptionGUIConstructionEvent(pages)));
@@ -216,7 +216,7 @@ class ConfigApiTest {
         // The exception reaches the poster unwrapped
         assertSame(failure, assertThrows(IllegalStateException.class, () -> OptionGUIConstructionEvent.BUS.post(new OptionGUIConstructionEvent(pages))));
         assertEquals(List.of(before), pages);
-        // Nothing was dropped and the lock was released, so registering and building both still work
+        // Checks the lock.
         failing.set(false);
         OptionPage extra = page();
         ConfigApi.registerPage(() -> extra);
@@ -245,7 +245,7 @@ class ConfigApiTest {
             return first;
         });
         ConfigApi.registerPage(() -> second);
-        // Two of two slots are full, so the registration inside the build moves the bucket to a new array while the build walks the old one
+        // Checks growth during a build.
         assertEquals(2, slots(pages()).length);
         assertEquals(List.of(first, second), screen());
         assertEquals(4, slots(pages()).length);
@@ -289,7 +289,7 @@ class ConfigApiTest {
             ConfigApi.registerPage(() -> page);
             Object bucket = pages();
             assertEquals(n, size(bucket));
-            // Capacity is the smallest power of two that fits, so an append copies only when the array is full
+            // Checks the capacity.
             Supplier<?>[] slots = slots(bucket);
             assertEquals(Math.max(1, Integer.highestOneBit(n - 1) << 1), slots.length, "after " + n);
             for (int i = n; i < slots.length; i++) {
@@ -355,10 +355,10 @@ class ConfigApiTest {
         OptionGroup group = group();
         OptionIdentifier<Void> split = OptionIdentifier.create("config_api_test", "x:y");
         ConfigApi.registerGroup(split, () -> group);
-        // Creating the same id again hands back the interned instance, so it matches
+        // Checks the interned id.
         assertSame(split, OptionIdentifier.create("config_api_test", "x:y"));
         assertEquals(List.of(group), groupsOf(OptionIdentifier.create("config_api_test", "x:y")));
-        // Same text when printed, other case, padding or an empty half are all other ids
+        // Checks lookalike ids.
         OptionIdentifier<Void> sameText = OptionIdentifier.create("config_api_test:x", "y");
         assertEquals(split.toString(), sameText.toString());
         for (OptionIdentifier<Void> other : List.of(sameText, OptionIdentifier.create("CONFIG_API_TEST", "x:y"), OptionIdentifier.create("config_api_test", "X:Y"),
@@ -394,7 +394,7 @@ class ConfigApiTest {
     @Test
     void aPageEventWithoutAnIdCannotReachTheApi() {
         ConfigApi.registerGroup(PAGE_A, ConfigApiTest::group);
-        // The event refuses a null id itself, so addGroups never looks one up
+        // Checks a null id.
         assertEquals("Page id must not be null", npe(() -> groupsOf(null)));
         assertEquals(Set.of(PAGE_A), keys("GROUPS"));
     }
@@ -466,7 +466,7 @@ class ConfigApiTest {
         AtomicBoolean registered = new AtomicBoolean();
         ConfigApi.registerGroup(PAGE_A, () -> {
             if (registered.compareAndSet(false, true)) {
-                // Grows the full one-slot bucket under the running build, and opens a bucket for a page that had none
+                // Checks growth under a build.
                 ConfigApi.registerGroup(PAGE_A, () -> late);
                 ConfigApi.registerGroup(PAGE_B, () -> elsewhere);
             }
@@ -497,7 +497,7 @@ class ConfigApiTest {
         assertEquals(List.of(own), optionsOf(GROUP_A, own));
         ConfigApi.registerOption(GROUP_B, ConfigApiTest::option);
         assertEquals(List.of(own), optionsOf(GROUP_A, own));
-        // Nothing registered for this group means its list is never touched, so even an unmodifiable one is fine
+        // Checks an unmodifiable list.
         assertDoesNotThrow(() -> OptionGroupConstructionEvent.BUS.post(new OptionGroupConstructionEvent(GROUP_A, List.of(own))));
     }
 
@@ -557,7 +557,7 @@ class ConfigApiTest {
     void aGroupEventWithoutAnIdCannotReachTheApi() {
         Option<?> own = option();
         ConfigApi.registerOption(GROUP_A, ConfigApiTest::option);
-        // The event refuses a null id itself, so addOptions never looks one up
+        // Checks a null id.
         assertEquals("Group id must not be null", assertThrows(NullPointerException.class, () -> optionsOf(null, own)).getMessage());
         assertEquals(Set.of(GROUP_A), keys("OPTIONS"));
     }
@@ -583,7 +583,7 @@ class ConfigApiTest {
     @Test
     @SuppressWarnings({"unchecked", "rawtypes"})
     void anOptionOfTheWrongTypeFailsTheGroupBuildInsteadOfJoiningTheList() {
-        // List.add takes Object after erasure, so without ConfigApi's own cast this would slip in silently
+        // Checks the cast.
         ConfigApi.registerOption(GROUP_A, (Supplier) () -> "not an option");
         List<Option<?>> options = new ArrayList<>();
         assertThrows(ClassCastException.class, () -> OptionGroupConstructionEvent.BUS.post(new OptionGroupConstructionEvent(GROUP_A, options)));
@@ -643,7 +643,7 @@ class ConfigApiTest {
         ConfigApi.registerOption(OptionGroup.DEFAULT_ID, () -> forUnnamed);
         OptionGroup built = OptionGroup.createBuilder().setId(GROUP_A).add(own).build();
         assertEquals(List.of(own, added), built.getOptions());
-        // A group built without an id falls back to DEFAULT_ID and gets what was registered there, and only that
+        // Checks the default id.
         assertEquals(List.of(forUnnamed), OptionGroup.createBuilder().build().getOptions());
 
         OptionGroup extra = group();
@@ -689,7 +689,7 @@ class ConfigApiTest {
             ConfigApi.registerGroup((i & 1) == 0 ? PAGE_A : PAGE_B, ConfigApiTest::group);
             ConfigApi.registerOption((i & 1) == 0 ? GROUP_A : GROUP_B, ConfigApiTest::option);
         }
-        // Registering grows the registry only; the buses, and what every post walks, stay the same length
+        // Checks the bus length.
         for (int i = 0; i < buses.size(); i++) {
             assertEquals(1, ownListeners(buses.get(i)), "bus " + i);
             assertEquals(before[i], BusListeners.of(buses.get(i)).size(), "bus " + i);
@@ -732,13 +732,13 @@ class ConfigApiTest {
         OptionPageConstructionEvent.BUS.addListener(groupHandler);
         OptionGroupConstructionEvent.BUS.addListener(optionHandler);
         try {
-            // ConfigApi's listeners went on when the class initialised, ahead of these
+            // Checks the listener order.
             assertEquals(List.of(registeredPage, directPage), screen());
             assertEquals(List.of(registeredGroup, directGroup), groupsOf(PAGE_A));
             assertEquals(List.of(registeredOption, directOption), optionsOf(GROUP_A));
             assertEquals(List.of(directGroup), groupsOf(PAGE_B));
         } finally {
-            // The bus has no way to unsubscribe, so the handlers come off its list directly
+            // Removes the handlers.
             BusListeners.remove(OptionGUIConstructionEvent.BUS, pageHandler);
             BusListeners.remove(OptionPageConstructionEvent.BUS, groupHandler);
             BusListeners.remove(OptionGroupConstructionEvent.BUS, optionHandler);
@@ -754,7 +754,7 @@ class ConfigApiTest {
         Supplier<OptionPage> pageSupplier = () -> page;
         Supplier<OptionGroup> groupSupplier = () -> group;
         Supplier<Option<?>> optionSupplier = () -> option;
-        // A listener per registration on a copy-on-write bus made both loops quadratic, minutes at this size; buckets keep them linear
+        // Checks many registrations.
         assertTimeoutPreemptively(Duration.ofSeconds(30), () -> {
             for (int i = 0; i < count; i++) {
                 ConfigApi.registerPage(pageSupplier);
@@ -780,7 +780,7 @@ class ConfigApiTest {
         OptionPage page = page();
         OptionGroup group = group();
         Option<?> option = option();
-        // Suppliers run only on whichever thread builds, and record their tag into the list that build swapped in
+        // Records tags on the building thread.
         AtomicReference<List<Integer>> sink = new AtomicReference<>();
         ExecutorService pool = Executors.newFixedThreadPool(writers + 1);
         CountDownLatch start = new CountDownLatch(1);
@@ -810,7 +810,7 @@ class ConfigApiTest {
                     return null;
                 }));
             }
-            // Buckets only ever append, so each build sees a prefix of the next one and every writer's tags in the order it registered them
+            // Checks the prefixes.
             Future<List<List<Integer>>> read = pool.submit(() -> {
                 start.await();
                 List<List<Integer>> previous = List.of(List.of(), List.of(), List.of());
@@ -838,7 +838,7 @@ class ConfigApiTest {
         } finally {
             pool.shutdownNow();
         }
-        // Nothing lost, nothing doubled, and the reader's final build already had everything
+        // Checks nothing is lost.
         List<List<Integer>> all = traces(sink);
         for (int k = 0; k < all.size(); k++) {
             assertWriterOrder(all.get(k), writers, perWriter, true);
@@ -898,7 +898,7 @@ class ConfigApiTest {
         try {
             ConfigApi.registerGroup(PAGE_B, () -> inner);
             ConfigApi.registerGroup(PAGE_A, () -> {
-                // Another thread registers and builds while this supplier is still running, which a held lock would deadlock
+                // Checks no lock is held.
                 try {
                     join(other.submit(() -> {
                         ConfigApi.registerPage(() -> page);
@@ -924,7 +924,7 @@ class ConfigApiTest {
     void publicShapeStaysTheApiOtherModsCompileAgainst() throws ReflectiveOperationException {
         Class<ConfigApi> type = ConfigApi.class;
         assertTrue(Modifier.isPublic(type.getModifiers()) && Modifier.isFinal(type.getModifiers()));
-        // Erased descriptors are what compiled mods link against, and the generic ones are what their sources compile against
+        // Checks the descriptors.
         Map<String, List<String>> expected = Map.of(
                 "registerPage", List.of("java.util.function.Supplier<com.bdmajora.impetus.api.options.structure.OptionPage>"),
                 "registerGroup", List.of("com.bdmajora.impetus.api.options.OptionIdentifier<java.lang.Void>",
@@ -952,7 +952,7 @@ class ConfigApiTest {
         Class<?> bucket = SUPPLIERS.getDeclaringClass();
         assertTrue(Modifier.isPrivate(bucket.getModifiers()) && Modifier.isStatic(bucket.getModifiers()) && Modifier.isFinal(bucket.getModifiers()));
         assertSame(type, bucket.getEnclosingClass());
-        // One private no-argument constructor, so nothing outside can make an instance
+        // Checks the private constructor.
         Constructor<?>[] constructors = type.getDeclaredConstructors();
         assertEquals(1, constructors.length);
         assertEquals(0, constructors[0].getParameterCount());
@@ -990,28 +990,28 @@ class ConfigApiTest {
         return Mockito.mock(Option.class);
     }
 
-    // Builds the screen's page list the way ImpetusVideoOptionsController does, starting from its built-in pages
+    // Builds the page list.
     private static List<OptionPage> screen(OptionPage... builtIn) {
         List<OptionPage> pages = new ArrayList<>(List.of(builtIn));
         OptionGUIConstructionEvent.BUS.post(new OptionGUIConstructionEvent(pages));
         return pages;
     }
 
-    // The groups other mods add to a page with this id, the way OptionPage asks for them
+    // Returns the added page groups.
     private static List<OptionGroup> groupsOf(OptionIdentifier<Void> pageId) {
         OptionPageConstructionEvent event = new OptionPageConstructionEvent(pageId, TextComponent.literal("page"));
         OptionPageConstructionEvent.BUS.post(event);
         return event.getAdditionalGroups();
     }
 
-    // A group's option list after other mods add to it, the way OptionGroup.Builder asks for them
+    // Returns the added group options.
     private static List<Option<?>> optionsOf(OptionIdentifier<Void> groupId, Option<?>... own) {
         List<Option<?>> options = new ArrayList<>(List.of(own));
         OptionGroupConstructionEvent.BUS.post(new OptionGroupConstructionEvent(groupId, options));
         return options;
     }
 
-    // One build of each kind, returning the tags their suppliers recorded in call order
+    // Runs one build of each kind.
     private static List<List<Integer>> traces(AtomicReference<List<Integer>> sink) {
         List<Integer> pages = new ArrayList<>();
         sink.set(pages);
@@ -1030,7 +1030,7 @@ class ConfigApiTest {
         assertEquals(earlier, later.subList(0, earlier.size()));
     }
 
-    // Each writer's tags appear once each, from its first in the order it registered them, with nothing missing in between
+    // Checks each writer's tags.
     private static void assertWriterOrder(List<Integer> tags, int writers, int perWriter, boolean complete) {
         int[] next = new int[writers];
         for (int tag : tags) {
@@ -1076,7 +1076,7 @@ class ConfigApiTest {
         }
     }
 
-    // Puts the registries back to how class init left them, keeping the bus listeners it installed
+    // Resets the registries.
     private static void clearRegistries() {
         Object pages = pages();
         try {
@@ -1099,7 +1099,7 @@ class ConfigApiTest {
         }
     }
 
-    // ConfigApi's dispatchers are method references, so they show up as its own lambda classes
+    // Returns the dispatcher classes.
     private static long ownListeners(EventHandlerRegistrar<?> bus) {
         String prefix = ConfigApi.class.getName() + "$$Lambda";
         return BusListeners.of(bus).stream().filter(handler -> handler.getClass().getName().startsWith(prefix)).count();
@@ -1109,7 +1109,7 @@ class ConfigApiTest {
         return join(task, 60);
     }
 
-    // Waits for a task and rethrows what failed inside it, so a broken assertion in a thread reads like any other
+    // Waits for a task and rethrows its failure.
     private static <T> T join(Future<T> task, int seconds) throws Exception {
         try {
             return task.get(seconds, TimeUnit.SECONDS);

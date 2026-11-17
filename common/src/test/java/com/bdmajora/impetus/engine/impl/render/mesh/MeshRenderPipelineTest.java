@@ -69,7 +69,7 @@ class MeshRenderPipelineTest {
         assertNotNull(pipeline.getUploadStream());
         assertEquals(64, pipeline.getMaxRegions());
 
-        // Nothing stored: no draw at all, and the translucent pass has nothing either
+        // Checks nothing stored.
         pipeline.renderFrame(Sections.viewport(8, 8, 8), MATRICES, FOG, 8, 8, 8, 800, 600);
         pipeline.renderTranslucent();
         pipeline.endFrame();
@@ -80,7 +80,7 @@ class MeshRenderPipelineTest {
         pipeline.renderFrame(new Viewport(Sections.NOTHING, new Vector3d(8, 8, 8)), MATRICES, FOG, 8, 8, 8, 800, 600);
         Mockito.verify(TestGl.gl(), Mockito.never()).glDrawMeshTasksNV(Mockito.anyInt(), Mockito.anyInt());
 
-        // First visible frame: region and section boxes, the temporal draw of this frame's commands, and the section sort for the freshly uploaded regions
+        // Checks the first frame.
         pipeline.renderFrame(Sections.viewport(8.5, 8.5, 8.5), MATRICES, FOG, 8.5, 8.5, 8.5, 800, 600);
         Mockito.verify(TestGl.gl(), Mockito.times(2)).glDrawMeshTasksNV(0, 2);
         Mockito.verify(TestGl.gl(), Mockito.times(1)).glMultiDrawMeshTasksIndirectNV(0L, 2, 0);
@@ -90,7 +90,7 @@ class MeshRenderPipelineTest {
         Mockito.verify(TestGl.gl(), Mockito.times(2)).glMultiDrawMeshTasksIndirectNV(0L, 2, 0);
         pipeline.endFrame();
 
-        // Second frame: the main draw replays last frame's commands too; the camera sits in both regions' x slab, so they sort again
+        // Checks the second frame.
         pipeline.renderFrame(Sections.viewport(8, 8, 8), MATRICES, FOG, 8, 8, 8, 800, 600);
         Mockito.verify(TestGl.gl(), Mockito.times(4)).glMultiDrawMeshTasksIndirectNV(0L, 2, 0);
         pipeline.renderTranslucent();
@@ -119,13 +119,13 @@ class MeshRenderPipelineTest {
     void plainConfigurationsSkipTheOptionalPhases() {
         MeshRenderPipeline pipeline = pipeline(config(false, MeshTranslucencySorting.NONE, MeshStatistics.NONE, 0, 8));
         pipeline.getSections().upload(0, 0, 0, geometry());
-        // A chunk fade-in duration goes into the scene as its inverse, for the task stages to fade new sections by
+        // Checks the fade.
         ImpetusRuntimeOptions.chunkFadeInDuration = 250;
         pipeline.renderFrame(Sections.viewport(8, 8, 8), MATRICES, MeshFog.NONE, 8, 8, 8, 800, 600);
         pipeline.renderTranslucent();
         pipeline.endFrame();
         Mockito.verify(TestGl.gl(), Mockito.never()).glDispatchCompute(Mockito.anyInt(), Mockito.anyInt(), Mockito.anyInt());
-        // No temporal pass: the first frame has no command to replay, so only the translucent pass multi-draws
+        // Checks no temporal pass.
         Mockito.verify(TestGl.gl(), Mockito.times(1)).glMultiDrawMeshTasksIndirectNV(0L, 1, 0);
         List<String> lines = new ArrayList<>();
         pipeline.addDebugStrings(lines);
@@ -161,7 +161,7 @@ class MeshRenderPipelineTest {
     void aProgramTheDriverRejectsFreesTheOnesAlreadyBuilt() {
         Mockito.when(TestGl.gl().glGetProgrami(Mockito.anyInt(), Mockito.eq(0x8B82))).thenReturn(1, 1, 0);
         assertThrows(RuntimeException.class, () -> pipeline(config(true, MeshTranslucencySorting.QUADS, MeshStatistics.NONE, 0, 8)));
-        // Two linked programs freed, plus the one that failed to link
+        // Checks the freed programs.
         Mockito.verify(TestGl.gl(), Mockito.times(3)).glDeleteProgram(Mockito.anyInt());
         Mockito.verify(TestGl.gl(), Mockito.never()).glCreateBuffers();
 
@@ -184,7 +184,7 @@ class MeshRenderPipelineTest {
         pipeline.renderShadowTranslucent(Passes.TRANSLUCENT);
         Mockito.verify(TestGl.gl(), Mockito.times(2)).glMultiDrawMeshTasksIndirectNV(0L, 1, 0);
         assertEquals(List.of("opaque SHADOW", "finish", "translucent SHADOW", "finish"), shading.calls);
-        // Unified uniform buffers only see address bindings, so the moving-light block gets one beside the scene
+        // Checks unified uniform buffers.
         Mockito.verify(TestGl.gl(), Mockito.times(2)).glBufferAddressRangeNV(Mockito.anyInt(), Mockito.eq(TerrainDynamicLights.BINDING),
                 Mockito.anyLong(), Mockito.eq((long) TerrainDynamicLights.BYTES));
 
@@ -196,7 +196,7 @@ class MeshRenderPipelineTest {
         // Every phase leaves no program bound for the fixed-function draws that follow terrain
         Mockito.verify(TestGl.gl(), Mockito.atLeast(4)).glUseProgram(0);
 
-        // Shading with nothing to draw with issues no draw at all, and no shadow programs means no shadow pass
+        // Checks nothing to draw.
         Mockito.clearInvocations(TestGl.gl());
         shading.bound = false;
         pipeline.renderShadow(Sections.viewport(8, 8, 8), MATRICES, camera, Passes.SOLID, 1024, 1024);
@@ -221,7 +221,7 @@ class MeshRenderPipelineTest {
         MeshRenderPipeline pipeline = new MeshRenderPipeline(config(false, MeshTranslucencySorting.NONE, MeshStatistics.NONE, 0, 8),
                 64, 1 << 20, 1 << 16, 1 << 20, shading);
         MeshCamera camera = MeshCamera.at(8, 8, 8);
-        // Nothing stored, then nothing inside the frustum
+        // Checks nothing visible.
         pipeline.renderShadow(Sections.viewport(8, 8, 8), MATRICES, camera, Passes.SOLID, 512, 512);
         pipeline.getSections().upload(0, 0, 0, geometry());
         pipeline.renderShadow(new Viewport(Sections.NOTHING, new Vector3d(8, 8, 8)), MATRICES, camera, Passes.SOLID, 512, 512);
@@ -241,7 +241,7 @@ class MeshRenderPipelineTest {
 
     @Test
     void sceneBlockMatchesTheShaderLayout() {
-        // 128 bytes of matrix and vectors, eleven pointers, then 39 bytes of scalars, rounded to 16
+        // Checks the block size.
         assertEquals(256, MeshRenderPipeline.SCENE_BYTES);
         assertEquals(16, MeshRenderPipeline.align(16, 16));
         assertEquals(32, MeshRenderPipeline.align(17, 16));

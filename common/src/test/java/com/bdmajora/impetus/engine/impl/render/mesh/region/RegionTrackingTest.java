@@ -23,7 +23,7 @@ class RegionTrackingTest {
         long address = MemoryUtil.memAddress(bytes.getDirectBuffer());
         short[] ids = {3, 5};
 
-        // Region 3 is seen every frame, region 5 only in the first
+        // Checks the visible regions.
         for (int frame = 0; frame <= RegionVisibilityTracker.MIN_SAMPLES; frame++) {
             MemoryUtil.memPutByte(address, (byte) 1);
             MemoryUtil.memPutByte(address + 1, (byte) (frame == 0 ? 1 : 0));
@@ -58,13 +58,13 @@ class RegionTrackingTest {
         assertEquals(1, uploaded.size());
 
         int regionId = section >>> 8;
-        // The second region spans blocks 128..256 on x, 0..64 on y and 0..128 on z
+        // Checks the region bounds.
         assertTrue(store.isRegionInCameraAxis(regionId, 200, 500, 500));
         assertTrue(store.isRegionInCameraAxis(regionId, -5, 32, -5));
         assertTrue(store.isRegionInCameraAxis(regionId, -5, 500, 64));
         assertFalse(store.isRegionInCameraAxis(regionId, -5, 500, 500));
 
-        // Its centre sits at section (12, 2, 4)
+        // Checks the centre.
         assertTrue(store.isWithinChunks(regionId, 4, 8, 0, 0));
         assertFalse(store.isWithinChunks(regionId, 4, 0, 0, 0));
         assertFalse(store.isWithinChunks(regionId, 4, 12, 10, 4));

@@ -1,6 +1,7 @@
 package com.bdmajora.extras.client.text;
 
 import net.minecraft.client.renderer.BufferBuilder;
+import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.WorldVertexBufferUploader;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.util.ResourceLocation;
@@ -66,6 +67,8 @@ public final class GlyphBatch {
         binder.accept(this.texture);
         this.buffer.finishDrawing();
         UPLOADER.draw(this.buffer);
+        // Restores the text colour after the draw.
+        GlStateManager.color(this.red, this.green, this.blue, this.alpha);
     }
 
     // Returns whether the batch holds a drawing.

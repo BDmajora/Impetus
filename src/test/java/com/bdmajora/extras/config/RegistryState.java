@@ -17,7 +17,6 @@ public final class RegistryState {
         ParticleClassRegistry registry = ParticleClassRegistry.getInstance();
         registry.loadDisabledClasses(new String[0]);
         Mixins.<Map<?, ?>>get(registry, "discoveredClasses").clear();
-        Mixins.<Map<?, ?>>get(registry, "classModIds").clear();
         Mixins.<Collection<?>>get(registry, "seenClasses").clear();
         registry.markClean();
     }

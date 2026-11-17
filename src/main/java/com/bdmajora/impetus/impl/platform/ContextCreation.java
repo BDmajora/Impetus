@@ -5,6 +5,7 @@ import com.bdmajora.impetus.engine.impl.compat.environment.OsKind;
 import com.bdmajora.impetus.engine.impl.compat.probe.GraphicsAdapterInfo;
 import com.bdmajora.impetus.engine.impl.compat.probe.GraphicsAdapterProbe;
 import com.bdmajora.impetus.engine.impl.compat.workarounds.ContextCreationHints;
+import com.bdmajora.impetus.engine.impl.gl.debug.GLDebug;
 import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions;
 import com.cleanroommc.client.sdl.SDLException;
 import net.minecraftforge.common.ForgeEarlyConfig;
@@ -51,6 +52,8 @@ public final class ContextCreation {
         if (ContextCreationHints.applyContextMitigations(GlContextInfo.capture(), OsKind.current())) {
             LOGGER.info("[Impetus] Enabled synchronous debug output to keep NVIDIA threaded optimizations off");
         }
+        // Reads the impetus.enableGLDebug switch and the label and group limits of the new context
+        GLDebug.reloadDebugState();
         return window;
     }
 

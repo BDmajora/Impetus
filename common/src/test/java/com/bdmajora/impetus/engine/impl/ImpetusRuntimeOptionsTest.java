@@ -9,7 +9,6 @@ class ImpetusRuntimeOptionsTest {
     @Test
     void applyCopiesTheHotPathSubset() {
         ImpetusGameOptions options = new ImpetusGameOptions();
-        options.quality.improvedTransparency = true;
         options.quality.hiddenFluidCulling = false;
         options.quality.improvedFluidShaping = true;
         options.quality.closestPointEntitySort = true;
@@ -21,7 +20,6 @@ class ImpetusRuntimeOptionsTest {
         options.performance.useMultiDrawIndirect = false;
         ImpetusRuntimeOptions.apply(options);
         assertFalse(ImpetusRuntimeOptions.multiDrawIndirect);
-        assertTrue(ImpetusRuntimeOptions.improvedTransparency);
         assertFalse(ImpetusRuntimeOptions.hiddenFluidCulling);
         assertTrue(ImpetusRuntimeOptions.improvedFluidShaping);
         assertTrue(ImpetusRuntimeOptions.closestPointEntitySort);

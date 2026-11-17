@@ -33,7 +33,7 @@ class TerrainDynamicLightsTest {
         assertThrows(IllegalArgumentException.class, () -> TerrainDynamicLights.setLights(new double[4], -1));
         assertThrows(IllegalArgumentException.class, () -> TerrainDynamicLights.setLights(new double[7], 2));
         assertThrows(IllegalArgumentException.class, () -> TerrainDynamicLights.setLights(new double[4], Integer.MAX_VALUE));
-        // More lights than the block holds keep the first MAX_LIGHTS, which the caller sorted nearest first
+        // Checks too many lights.
         double[] many = new double[(TerrainDynamicLights.MAX_LIGHTS + 3) * TerrainDynamicLights.STRIDE];
         TerrainDynamicLights.setLights(many, TerrainDynamicLights.MAX_LIGHTS + 3);
         assertEquals(TerrainDynamicLights.MAX_LIGHTS, TerrainDynamicLights.lightCount());
@@ -47,10 +47,10 @@ class TerrainDynamicLightsTest {
         ByteBuffer block = MemoryUtil.memCalloc(TerrainDynamicLights.BYTES);
         try {
             long ptr = MemoryUtil.memAddress(block);
-            // Garbage left from an earlier frame is overwritten, including the unused slots
+            // Checks the overwrite.
             MemoryUtil.memSet(ptr, 0x7F, TerrainDynamicLights.BYTES);
             TerrainDynamicLights.write(ptr, 30_000_000.0, 60.0, -30_000_001.0);
-            // Far from the world origin the subtraction happens in double, so the fraction survives
+            // Checks far from the origin.
             assertEquals(0.25f, block.getFloat(0));
             assertEquals(4.5f, block.getFloat(4));
             assertEquals(0.25f, block.getFloat(8));
@@ -75,11 +75,11 @@ class TerrainDynamicLightsTest {
         TerrainDynamicLights.prepare(1, 2, 3);
         Mockito.verify(TestGl.gl()).glBufferData(eq(GL31.GL_UNIFORM_BUFFER), any(ByteBuffer.class), eq(GL15.GL_DYNAMIC_DRAW));
         Mockito.verify(TestGl.gl()).glBindBufferBase(GL31.GL_UNIFORM_BUFFER, TerrainDynamicLights.BINDING, 77);
-        // The same frame again only rebinds, since a pack could have used the binding point in between
+        // Checks the same frame.
         TerrainDynamicLights.prepare(1, 2, 3);
         Mockito.verify(TestGl.gl(), Mockito.times(1)).glBufferData(anyInt(), any(ByteBuffer.class), anyInt());
         Mockito.verify(TestGl.gl(), Mockito.times(2)).glBindBufferBase(GL31.GL_UNIFORM_BUFFER, TerrainDynamicLights.BINDING, 77);
-        // A shadow pass from another origin, or freshly published lights, upload again
+        // Checks another origin.
         TerrainDynamicLights.prepare(1, 2, 4);
         TerrainDynamicLights.prepare(1, 3, 4);
         TerrainDynamicLights.prepare(2, 3, 4);
@@ -88,7 +88,7 @@ class TerrainDynamicLightsTest {
         Mockito.verify(TestGl.gl(), Mockito.times(5)).glBufferData(anyInt(), any(ByteBuffer.class), anyInt());
         Mockito.verify(TestGl.gl(), Mockito.times(1)).glGenBuffers();
 
-        // Released, the next draw makes a fresh buffer and uploads into it; a second release is harmless
+        // Checks release.
         TerrainDynamicLights.delete();
         Mockito.verify(TestGl.gl()).glDeleteBuffers(77);
         TerrainDynamicLights.delete();
@@ -112,7 +112,7 @@ class TerrainDynamicLightsTest {
         assertTrue(include.contains("uniform " + TerrainDynamicLights.BLOCK_NAME + " {"));
         assertTrue(TerrainDynamicLights.UNBOUND_DECLARATIONS.startsWith("layout(std140) uniform " + TerrainDynamicLights.BLOCK_NAME));
         assertTrue(TerrainDynamicLights.UNBOUND_DECLARATIONS.endsWith(TerrainDynamicLights.LEVEL_FUNCTION));
-        // 7.75 squared, the engine's fade radius
+        // Fade radius squared.
         assertTrue(TerrainDynamicLights.LEVEL_FUNCTION.contains(String.valueOf(7.75 * 7.75)));
         assertNotNull(Statics.get(TerrainDynamicLights.class, "LIGHTS"));
     }

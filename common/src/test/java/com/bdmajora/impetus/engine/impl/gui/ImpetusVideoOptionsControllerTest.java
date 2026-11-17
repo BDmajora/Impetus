@@ -146,7 +146,7 @@ class ImpetusVideoOptionsControllerTest {
         assertTrue(clickCentre(button(controller, "gui.done"), ctx));
         assertTrue(closed.get());
 
-        // Typing in the search bar swaps in a synthetic results tab, clearing it restores the previous one; the bar sits at x 606..796, y 38..56 for this size
+        // Checks the results tab.
         assertFalse(controller.getFrame().mouseDragged(ctx, 1, 1, 0, 0, 0));
         assertTrue(controller.getFrame().mouseClicked(ctx, 700, 45, 0));
         assertTrue(controller.getFrame().dispatchKeyTyped(ctx, 'f', 0));
@@ -177,7 +177,7 @@ class ImpetusVideoOptionsControllerTest {
         assertTrue(controller.getFrame().dispatchKeyTyped(ctx, 'f', 0));
         controller.render(draw, 0, 0, 0f);
         assertTrue(draw.strings.contains("impetus.search_results"));
-        // The base class hooks are no-ops; a plain apply through the button exercises them
+        // Checks the base hooks.
         OptionImpl<Holder, Boolean> fog = (OptionImpl<Holder, Boolean>) controller.getFrame().interactableChildren()
                 .filter(c -> c instanceof com.bdmajora.impetus.engine.impl.gui.frame.tab.TabFrame)
                 .findFirst().map(c -> (OptionImpl<Holder, Boolean>) storageOption(storage)).orElseThrow();
@@ -187,7 +187,7 @@ class ImpetusVideoOptionsControllerTest {
         assertTrue(storage.data.flag);
     }
 
-    // What the screen's focused control is, by kind and label
+    // Returns the focused control.
     private static String focus(ImpetusVideoOptionsController controller) {
         Focusable focused = controller.getFrame().getFocusedControl();
         if (focused instanceof SearchBarWidget) {
@@ -202,7 +202,7 @@ class ImpetusVideoOptionsControllerTest {
         return focused instanceof ControlElement<?> row ? row.getOption().getName().toString() : String.valueOf(focused);
     }
 
-    // Presses Tab n times, noting where the focus lands after each
+    // Presses Tab and records the focus.
     private static List<String> tab(ImpetusVideoOptionsController controller, FakeInteractionContext ctx, int times) {
         List<String> landed = new ArrayList<>();
         for (int i = 0; i < times; i++) {
@@ -227,14 +227,14 @@ class ImpetusVideoOptionsControllerTest {
         OptionImpl<Holder, Boolean> fog = storageOption(storage);
         FakeInteractionContext ctx = new FakeInteractionContext();
 
-        // Search bar, the sidebar's header and page, the page's row, then Done, and round to the search bar; the title, Undo and Apply are passed over
+        // Checks the Tab order.
         assertEquals("null", focus(controller));
         assertEquals(List.of("search", "header", "Extras", "Fancy fog", "gui.done", "search"), tab(controller, ctx, 6));
         ctx.held.add(InteractionContext.SpecialKey.SHIFT);
         assertEquals(List.of("gui.done", "Fancy fog"), tab(controller, ctx, 2));
         ctx.held.clear();
 
-        // Space ticks the focused row; with a change pending Undo and Apply join the order and Done drops out
+        // Checks Space and the pending buttons.
         assertTrue(controller.getFrame().dispatchKeyTyped(ctx, ' ', Keys.SPACE));
         assertTrue(fog.getValue());
         assertEquals(1, ctx.clicks);
@@ -245,24 +245,24 @@ class ImpetusVideoOptionsControllerTest {
         assertTrue(storage.data.flag);
         controller.render(draw, 0, 0, 0f);
         assertFalse(controller.isHasPendingChanges());
-        // Apply has greyed itself out under the focus, which still steps on from it to Done
+        // Checks the greyed Apply.
         assertEquals(List.of("gui.done", "search"), tab(controller, ctx, 2));
 
-        // While the search bar has the focus it gets the typing, Space and Enter included
+        // Checks typing in the search bar.
         for (char typed : "fog ".toCharArray()) {
             assertTrue(controller.getFrame().dispatchKeyTyped(ctx, typed, 0));
         }
         assertTrue(controller.getFrame().dispatchKeyTyped(ctx, '\r', Keys.RETURN));
         assertEquals("fog ", searchBar(controller).getQuery());
         assertTrue(searchBar(controller).isFocused());
-        // Tab leaves it for the sidebar, which now also holds the search results page, and typing reaches nothing
+        // Checks Tab into the sidebar.
         assertEquals(List.of("header", "Extras", "header", "impetus.search_results", "Fancy fog"), tab(controller, ctx, 5));
         assertFalse(controller.getFrame().dispatchKeyTyped(ctx, 'x', 45));
         // So Space at the result row ticks it rather than typing
         assertTrue(controller.getFrame().dispatchKeyTyped(ctx, ' ', Keys.SPACE));
         assertFalse(fog.getValue());
         assertEquals("fog ", searchBar(controller).getQuery());
-        // A click back in the search bar takes the focus off the row, and Space is typing again
+        // Checks a click on the search bar.
         assertTrue(controller.getFrame().mouseClicked(ctx, 700, 45, 0));
         assertEquals("search", focus(controller));
         assertTrue(controller.getFrame().dispatchKeyTyped(ctx, ' ', Keys.SPACE));
@@ -323,7 +323,7 @@ class ImpetusVideoOptionsControllerTest {
         return ImpetusNotifications.getVisible().stream().map(ImpetusNotification::title).toList();
     }
 
-    // Swaps the static final loggers of the controller, for storages, and of the placeholder reporter, for options, for one mock while the body runs, with no toasts either side
+    // Swaps the loggers.
     private static void withLogger(Consumer<Logger> body) {
         Class<?> reporter;
         try {
@@ -331,7 +331,7 @@ class ImpetusVideoOptionsControllerTest {
         } catch (ClassNotFoundException missing) {
             throw new AssertionError(missing);
         }
-        // Reading them first runs the class initialisers, which would otherwise overwrite the swap
+        // Loads the classes before the swap.
         Logger controllerLogger = Statics.get(ImpetusVideoOptionsController.class, "LOGGER");
         Logger reporterLogger = Statics.get(reporter, "LOGGER");
         Logger mock = Mockito.mock(Logger.class);
@@ -393,7 +393,7 @@ class ImpetusVideoOptionsControllerTest {
             assertEquals(prefix + "first", saveToastLine(new IllegalStateException("first\r\nsecond")));
             IllegalStateException huge = new IllegalStateException("x".repeat(100_000));
             assertEquals((prefix + "x".repeat(256)).substring(0, 256), saveToastLine(huge));
-            // A surrogate pair across the limit is left out whole, and one ending at it stays
+            // Checks surrogate pairs.
             String across = "x".repeat(255 - prefix.length()) + "\uD83D\uDE00tail";
             assertEquals(prefix + "x".repeat(255 - prefix.length()), saveToastLine(new IllegalStateException(across)));
             String ending = "x".repeat(254 - prefix.length()) + "\uD83D\uDE00tail";
@@ -428,10 +428,10 @@ class ImpetusVideoOptionsControllerTest {
             controller.render(draw, 0, 0, 0f);
             Mockito.verify(logger).error(eq(BROKEN_LOG), eq("broken_mod:broken"), eq("checking for changes"), same(failure));
             assertTrue(toastTitles().contains("Option failed: broken_mod:broken"));
-            // Dropped in the first frame and its row rebuilt as a placeholder before drawing, so the row never asked it
+            // Checks the first frame drop.
             assertEquals(1, asked(broken, "hasChanged"));
             assertTrue(draw.strings.contains("impetus.options.control_failed"), draw.strings::toString);
-            // Later frames never ask it again, and the healthy option still drives Apply
+            // Checks later frames.
             long calls = asked(broken, "hasChanged");
             for (int frame = 0; frame < 5; frame++) {
                 controller.render(draw, 0, 0, 0f);
@@ -476,7 +476,7 @@ class ImpetusVideoOptionsControllerTest {
             clouds.setValue(true);
             controller.render(draw, 0, 0, 0f);
             assertTrue(clickCentre(button(controller, "impetus.options.buttons.apply"), new FakeInteractionContext()));
-            // Both healthy options are written, the storage that can save does, and the side effects still run
+            // Checks the healthy options.
             assertTrue(storage.data.flag);
             assertTrue(failing.data.flag);
             assertEquals(Set.of(OptionFlag.REQUIRES_RENDERER_RELOAD), storage.savedFlags);
@@ -484,7 +484,7 @@ class ImpetusVideoOptionsControllerTest {
             Mockito.verify(logger).error(eq(BROKEN_LOG), eq("Broken"), eq("applying"), same(failure));
             Mockito.verify(logger).error(eq("Saving options to {} failed"), eq(failing.getClass().getName()), same(full));
             assertTrue(toastTitles().containsAll(List.of("Option failed: Broken", "Saving options failed")), toastTitles()::toString);
-            // The broken option is out of every later scan, so nothing is pending once the rest applied, and its row is rebuilt as a placeholder that asks it nothing
+            // Checks the later scans.
             long calls = asked(broken, "hasChanged");
             draw.strings.clear();
             controller.render(draw, 0, 0, 0f);
@@ -517,7 +517,7 @@ class ImpetusVideoOptionsControllerTest {
         });
     }
 
-    // Applies through the button on a controller over one page of the given options, handing back the side effects it ran
+    // Applies through the button.
     private static Set<OptionFlag> applyAll(Option<?>... options) {
         AtomicReference<Set<OptionFlag>> sideEffects = new AtomicReference<>();
         FakeDrawContext draw = new FakeDrawContext();
@@ -548,7 +548,7 @@ class ImpetusVideoOptionsControllerTest {
     void anOptionWithNoStorageOrNoFlagsIsLeftUnwrittenAndTheRestStillApply() {
         withLogger(logger -> {
             Storage storage = new Storage();
-            // No storage at all, which used to be saved as null and fail out of the save loop's own report
+            // Checks no storage.
             Option<Boolean> storeless = mockOption("Storeless");
             Mockito.when(storeless.hasChanged()).thenReturn(true);
             Mockito.doReturn(null).when(storeless).getStorage();
@@ -556,7 +556,7 @@ class ImpetusVideoOptionsControllerTest {
             Mockito.when(flagless.hasChanged()).thenReturn(true);
             Mockito.doReturn(storage).when(flagless).getStorage();
             Mockito.when(flagless.getFlags()).thenReturn(null);
-            // Flags that fail partway through being read, after one has been seen
+            // Flags that fail partway.
             Option<Boolean> halfway = mockOption("Halfway");
             Mockito.when(halfway.hasChanged()).thenReturn(true);
             Mockito.doReturn(storage).when(halfway).getStorage();
@@ -564,7 +564,7 @@ class ImpetusVideoOptionsControllerTest {
             OptionImpl<Holder, Boolean> fog = option(storage, "impetus", "Fog", "about fog");
             fog.setValue(true);
             Set<OptionFlag> sideEffects = applyAll(storeless, flagless, halfway, fog);
-            // None of the three is written, and the flag seen before the failure reaches nothing
+            // Checks nothing is written.
             for (Option<Boolean> unwritten : List.of(storeless, flagless, halfway)) {
                 Mockito.verify(unwritten, Mockito.never()).applyChanges();
             }
@@ -600,7 +600,7 @@ class ImpetusVideoOptionsControllerTest {
     @Test
     void everyStorageObjectIsSavedOnceWhateverItsOwnEqualityAnswers() {
         withLogger(logger -> {
-            // Two storages that claim to equal every storage, and one whose equality throws
+            // Storages with odd equality.
             Counting first = new Counting() {
                 @Override
                 public boolean equals(Object other) {
@@ -646,7 +646,7 @@ class ImpetusVideoOptionsControllerTest {
             assertEquals(1, second.saves);
             assertEquals(1, hostile.saves);
             assertTrue(first.data.flag && second.data.flag && hostile.data.flag);
-            // Nothing failed, so nothing was dropped or reported
+            // Checks nothing was dropped.
             Mockito.verifyNoInteractions(logger);
             assertFalse(rain.hasChanged());
         });
@@ -722,7 +722,7 @@ class ImpetusVideoOptionsControllerTest {
             OptionImpl<Holder, Boolean> clouds = option(failing, "impetus", "Clouds", "about clouds");
             clouds.setValue(true);
             assertSame(full, assertThrows(OutOfMemoryError.class, () -> applyAll(clouds)));
-            // Written before the save failed, and nothing is reported on the way out
+            // Checks the earlier writes.
             assertTrue(failing.data.flag);
             Mockito.verifyNoInteractions(logger);
         });
@@ -745,7 +745,7 @@ class ImpetusVideoOptionsControllerTest {
             assertTrue(clickCentre(button(controller, "impetus.options.buttons.undo"), new FakeInteractionContext()));
             assertFalse(fog.hasChanged());
             Mockito.verify(logger).error(eq(BROKEN_LOG), eq("Broken"), eq("undoing changes"), same(failure));
-            // With the broken one out and the rest undone, nothing is pending
+            // Checks nothing is pending.
             controller.render(draw, 0, 0, 0f);
             assertFalse(controller.isHasPendingChanges());
         });
@@ -775,10 +775,10 @@ class ImpetusVideoOptionsControllerTest {
             controller.render(draw, 0, 0, 0f);
             assertTrue(draw.strings.contains("impetus.search_results"));
             assertTrue(draw.strings.contains("Fog"), draw.strings::toString);
-            // Asked on every keystroke, reported only the first time
+            // Checks a single report.
             Mockito.verify(logger, Mockito.times(1)).error(eq(BROKEN_LOG), eq("Tipless"), eq("searching"), same(failure));
             Mockito.verify(logger, Mockito.times(1)).error(eq(BROKEN_LOG), eq(unreadable.getClass().getName()), eq("searching"), any(Throwable.class));
-            // Dropped like any broken option, so it is never asked for changes again
+            // Checks the drop.
             long calls = asked(tipless, "hasChanged");
             controller.render(draw, 0, 0, 0f);
             controller.render(draw, 0, 0, 0f);
@@ -839,19 +839,19 @@ class ImpetusVideoOptionsControllerTest {
                     .setFlags(OptionFlag.REQUIRES_GAME_RESTART)
                     .build();
             FakeDrawContext draw = new FakeDrawContext();
-            // No override, so the controller's own side effects run
+            // Checks the side effects.
             ImpetusVideoOptionsController controller = new ImpetusVideoOptionsController(() -> { }, List.of(pageOf("impetus", "General", fog, threads)), draw);
             controller.init(1000, 500);
             FakeInteractionContext ctx = new FakeInteractionContext();
 
-            // A reload-only change is the platform's to act on, so the controller says nothing
+            // Checks a reload change.
             fog.setValue(true);
             controller.render(draw, 0, 0, 0f);
             assertTrue(clickCentre(button(controller, "impetus.options.buttons.apply"), ctx));
             assertEquals(Set.of(OptionFlag.REQUIRES_RENDERER_RELOAD), storage.savedFlags);
             assertEquals(List.of(), toastTitles());
 
-            // Nothing can reload a restart change in place, so Apply has to say so
+            // Checks a restart change.
             threads.setValue(true);
             controller.render(draw, 0, 0, 0f);
             assertTrue(clickCentre(button(controller, "impetus.options.buttons.apply"), ctx));

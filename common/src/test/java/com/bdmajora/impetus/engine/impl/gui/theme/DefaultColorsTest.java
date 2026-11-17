@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 class DefaultColorsTest {
-    // Registered themes are global, so they are dropped after every test that adds one
+    // Drops registered themes.
     @AfterEach
     void clearRegistry() {
         Statics.set(ConfigThemeRegistry.class, "table", Statics.get(ConfigThemeRegistry.class, "EMPTY"));
@@ -24,11 +24,10 @@ class DefaultColorsTest {
         assertEquals(DefaultColors.ELEMENT_ACTIVATED, DefaultColors.getModAccentColor("minecraft"));
         assertEquals(DefaultColors.ELEMENT_ACTIVATED, DefaultColors.getModAccentColor("impetus"));
         assertEquals(DefaultColors.ELEMENT_ACTIVATED, DefaultColors.getModAccentColor("sodium"));
-        assertEquals(0xFF5FD0A8, DefaultColors.getModAccentColor("extras"));
-        assertEquals(0xFF80CBC4, DefaultColors.getModAccentColor("coarctatio"));
-        assertEquals(0xFFEBCB8B, DefaultColors.getModAccentColor("fulgor"));
-        assertEquals(0xFF88C0D0, DefaultColors.getModAccentColor("equilibrium"));
-        assertEquals(0xFFD86AFF, DefaultColors.getModAccentColor("umbra"));
+        // Checks every Impetus module shares the Impetus accent.
+        for (String module : new String[] {"extras", "coarctatio", "fulgor", "equilibrium", "umbra", "dynamiclights", "linuxextras"}) {
+            assertEquals(DefaultColors.ELEMENT_ACTIVATED, DefaultColors.getModAccentColor(module), module);
+        }
         int hashed = DefaultColors.getModAccentColor("somebodys_mod");
         assertEquals(hashed, DefaultColors.getModAccentColor("somebodys_mod"));
         assertNotEquals(0, hashed);
@@ -39,27 +38,28 @@ class DefaultColorsTest {
     @Test
     void activatedColoursFollowTheApiDefault() {
         assertEquals(ConfigTheme.DEFAULT_ACCENT_COLOR, DefaultColors.ELEMENT_ACTIVATED);
-        // Same RGB, alpha dropped to 0xB0
+        // Checks the alpha.
         assertEquals(0xB000CBCB, DefaultColors.ELEMENT_ACTIVATED_DIM);
     }
 
     @Test
     void registeredThemesOverrideBuiltInAccents() {
-        // The registry is asked before the fixed table, so a mod can restyle even the built-in ids
+        // Checks the registry first.
         ConfigThemeRegistry.register(new ConfigTheme("umbra", 0xFF010203));
         ConfigThemeRegistry.register(new ConfigTheme("minecraft", 0xFF040506));
         assertEquals(0xFF010203, DefaultColors.getModAccentColor("umbra"));
         assertEquals(0xFF040506, DefaultColors.getModAccentColor("minecraft"));
-        // Mods without a theme keep their fixed accents
-        assertEquals(0xFFEBCB8B, DefaultColors.getModAccentColor("fulgor"));
+        // Checks a module without a theme keeps the Impetus accent.
+        assertEquals(DefaultColors.ELEMENT_ACTIVATED, DefaultColors.getModAccentColor("fulgor"));
     }
 
     @Test
     void idsAreMatchedWhateverTheirCaseOrPadding() {
-        assertEquals(0xFFD86AFF, DefaultColors.getModAccentColor("UMBRA"));
-        assertEquals(0xFFD86AFF, DefaultColors.getModAccentColor(" Umbra\t"));
+        assertEquals(DefaultColors.ELEMENT_ACTIVATED, DefaultColors.getModAccentColor("UMBRA"));
+        assertEquals(DefaultColors.ELEMENT_ACTIVATED, DefaultColors.getModAccentColor(" Umbra\t"));
+        assertEquals(DefaultColors.getModAccentColor("somebodys_mod"), DefaultColors.getModAccentColor("SOMEBODYS_MOD"));
         assertEquals(DefaultColors.ELEMENT_ACTIVATED, DefaultColors.getModAccentColor("Minecraft"));
-        // Unknown mods hash the canonical id, so every spelling lands on one palette entry
+        // Checks unknown mods.
         assertEquals(DefaultColors.getModAccentColor("somebodys_mod"), DefaultColors.getModAccentColor(" Somebodys_Mod "));
         ConfigThemeRegistry.register(new ConfigTheme("MyMod", 0xFF010203));
         assertEquals(0xFF010203, DefaultColors.getModAccentColor("mymod"));

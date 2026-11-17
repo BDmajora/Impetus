@@ -137,7 +137,7 @@ public enum BufferCopyFunctions {
     // Copies the given number of bytes from the read offset of the source to the write offset of the destination
     public abstract void copyBufferSubData(CommandList commandList, GlBuffer src, GlBuffer dst, long readOffset, long writeOffset, long bytes);
 
-    // Returns the GPU strategy when the context has GL 3.1 or ARB_copy_buffer and the mapping strategy otherwise
+    // Returns the GPU copy strategy when supported and the mapping strategy otherwise.
     public static BufferCopyFunctions pickBest(RenderDevice device) {
         return LWJGL.isOpenGLVersionSupported(3, 1) || LWJGL.isExtensionSupported(GLExtension.ARB_copy_buffer) ? CORE : PIXEL_PACK;
     }

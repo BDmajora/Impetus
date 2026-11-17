@@ -47,7 +47,7 @@ public final class ShaderMacros {
         return names;
     }
 
-    // Fors the program.
+    // Returns the macros a program compiles against.
     public static Map<String, String> forProgram(Map<String, String> macros, String programName) {
         if (programName == null) {
             return macros;

@@ -65,12 +65,12 @@ class StagingBuffersTest {
         Mockito.verify(commands).flushMappedRange(Mockito.any(), Mockito.eq(0), Mockito.eq(24));
         staging.flush(commands);
 
-        // Only 8 bytes of the ring are unfenced, so a larger copy takes the fallback path
+        // Checks the fallback.
         ByteBuffer big = MemoryUtil.memCalloc(64);
         staging.enqueueCopy(commands, big, dst, 0);
         Mockito.verify(commands).uploadData(Mockito.any(GlMutableBuffer.class), Mockito.eq(big), Mockito.eq(GlBufferUsage.STREAM_COPY));
 
-        // Once the fence signals the region is reclaimed; the next copy then wraps around the end of the ring
+        // Checks the reclaim.
         Mockito.doAnswer(inv -> {
             inv.<IntBuffer>getArgument(2).put(0, 1);
             return 0x9119;
@@ -130,7 +130,7 @@ class StagingBuffersTest {
         assertFalse(MappedStagingBuffer.isSupported(device));
         Mockito.when(device.getDeviceFunctions()).thenReturn(new DeviceFunctions(BufferCopyFunctions.CORE, BufferMapRangeFunctions.MAP_FULL_AND_SLICE));
         assertFalse(MappedStagingBuffer.isSupported(device));
-        // Buffer storage is a version or extension check now, not a function table entry
+        // Checks buffer storage.
         Mockito.when(TestGl.gl().isOpenGLVersionSupported(4, 4)).thenReturn(false);
         Mockito.when(TestGl.gl().isExtensionSupported(Mockito.any())).thenReturn(false);
         Mockito.when(device.getDeviceFunctions()).thenReturn(new DeviceFunctions(BufferCopyFunctions.CORE, BufferMapRangeFunctions.CORE));

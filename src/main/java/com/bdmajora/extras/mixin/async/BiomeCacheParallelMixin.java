@@ -9,7 +9,7 @@ import org.spongepowered.asm.mixin.Mixin;
 // Mixin that changes BiomeCache.
 @Mixin(BiomeCache.class)
 public abstract class BiomeCacheParallelMixin {
-    // Handles locked get entry.
+    // Reads a biome cache entry under the cache lock.
     @WrapMethod(method = "getEntry")
     private BiomeCache.Block impetus$lockedGetEntry(int x, int z, Operation<BiomeCache.Block> original) {
         if (!ParallelProcessor.INSTALLED) {
@@ -20,7 +20,7 @@ public abstract class BiomeCacheParallelMixin {
         }
     }
 
-    // Handles locked cleanup.
+    // Drops stale biome cache entries under the cache lock.
     @WrapMethod(method = "cleanupCache")
     private void impetus$lockedCleanup(Operation<Void> original) {
         if (!ParallelProcessor.INSTALLED) {

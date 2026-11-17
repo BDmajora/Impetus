@@ -43,12 +43,12 @@ public final class ProgramBlendState {
         return EMPTY;
     }
 
-    // Creates from.
+    // Reads the blend directives of a program on top of vanilla's blending.
     public static ProgramBlendState from(ShaderProperties properties, String programName) {
         return from(properties, programName, null);
     }
 
-    // Creates from.
+    // Reads the blend directives of a program over the given base mode.
     public static ProgramBlendState from(ShaderProperties properties, String programName, BlendMode defaultBase) {
         boolean baseSpecified = false;
         BlendMode baseMode = null;
@@ -79,7 +79,7 @@ public final class ProgramBlendState {
         return new ProgramBlendState(baseSpecified, baseMode, perTargetModes);
     }
 
-    // Returns whether directives.
+    // Returns whether the pack set any blend directive for the program.
     public boolean hasDirectives() {
         return this.baseSpecified || !this.perTargetModes.isEmpty();
     }

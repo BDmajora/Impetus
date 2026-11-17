@@ -26,7 +26,7 @@ public class FloatUniform extends Uniform implements ProgramTargetedUniform {
         }
     }
 
-    // Uploads the value into the program when it changed, whatever is bound.
+    // Uploads the value into the program when it changed.
     @Override
     public void updateIn(int program) {
         float newValue = this.value.getAsFloat();
@@ -37,7 +37,7 @@ public class FloatUniform extends Uniform implements ProgramTargetedUniform {
 
     // Records the value and returns whether it differs from the last upload.
     private boolean take(float newValue) {
-        // Compared with != like before, so a NaN value uploads every time
+        // Skips the upload when the value is unchanged.
         if (this.initialized && newValue == this.cachedValue) {
             return false;
         }

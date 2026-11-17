@@ -981,7 +981,7 @@ class StagingBufferTest {
         private final Map<GlBufferMapping, MappedRange> mappings = new IdentityHashMap<>();
         // Fences the model handed out in creation order
         private final List<ModelFence> fences = new ArrayList<>();
-        // Number of calls since the last reset
+        // Number of calls since the reset.
         private int calls;
         // Index of the call that throws the injected failure and negative when none is armed
         private int failAt = -1;
@@ -997,7 +997,7 @@ class StagingBufferTest {
             }
         }
 
-        // Returns the number of calls since the last reset
+        // Returns the calls since the reset.
         private int calls() {
             return this.calls;
         }

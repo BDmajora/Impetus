@@ -49,7 +49,7 @@ public class RenderGlobalSunMoonMixin {
         impetus$drawOrDiscard(tessellator, original, Extras.options().detail.moon);
     }
 
-    // Helper method draw or discard added to the target.
+    // Draws the celestial quad or finishes the buffer without drawing.
     @Unique
     private static void impetus$drawOrDiscard(Tessellator tessellator, Operation<Void> original, boolean enabled) {
         if (enabled) {

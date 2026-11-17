@@ -5,6 +5,8 @@ import com.bdmajora.fulgor.async.AsyncLitWorld;
 import com.bdmajora.fulgor.async.ChunkLightHelper;
 import com.bdmajora.fulgor.async.SWMRNibbleArray;
 import com.bdmajora.fulgor.async.WorldLightManager;
+import com.llamalad7.mixinextras.sugar.Share;
+import com.llamalad7.mixinextras.sugar.ref.LocalBooleanRef;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
@@ -14,7 +16,6 @@ import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
@@ -41,22 +42,20 @@ public abstract class ChunkSectionMixin {
     @Shadow
     public abstract ExtendedBlockStorage[] getBlockStorageArray();
 
-    // Field section was empty added to the target.
-    @Unique
-    private boolean fulgor$sectionWasEmpty;
-
-    // Runs at the start of setBlockState.
+    // Records whether the section a placement lands in is missing.
     @Inject(method = "setBlockState", at = @At("HEAD"))
-    private void fulgor$preSetBlockState(BlockPos pos, IBlockState state, CallbackInfoReturnable<IBlockState> cir) {
+    private void fulgor$preSetBlockState(BlockPos pos, IBlockState state, CallbackInfoReturnable<IBlockState> cir,
+                                         @Share("sectionWasEmpty") LocalBooleanRef sectionWasEmpty) {
         int sectionY = pos.getY() >> 4;
         ExtendedBlockStorage[] storage = getBlockStorageArray();
-        this.fulgor$sectionWasEmpty = sectionY >= 0 && sectionY < storage.length && storage[sectionY] == Chunk.NULL_BLOCK_STORAGE;
+        sectionWasEmpty.set(sectionY >= 0 && sectionY < storage.length && storage[sectionY] == Chunk.NULL_BLOCK_STORAGE);
     }
 
-    // Runs before every return of setBlockState.
+    // Fills a section vanilla just created from the engine's light and tells the engine it now holds blocks
     @Inject(method = "setBlockState", at = @At("RETURN"))
-    private void fulgor$postSetBlockState(BlockPos pos, IBlockState state, CallbackInfoReturnable<IBlockState> cir) {
-        if (!this.fulgor$sectionWasEmpty || cir.getReturnValue() == null) {
+    private void fulgor$postSetBlockState(BlockPos pos, IBlockState state, CallbackInfoReturnable<IBlockState> cir,
+                                          @Share("sectionWasEmpty") LocalBooleanRef sectionWasEmpty) {
+        if (!sectionWasEmpty.get() || cir.getReturnValue() == null) {
             return;
         }
 
@@ -70,7 +69,6 @@ public abstract class ChunkSectionMixin {
             return;
         }
 
-        this.fulgor$sectionWasEmpty = false;
         AsyncLitChunk lit = (AsyncLitChunk) (Object) this;
         ChunkLightHelper.fillVanillaFromEngine(lit.fulgor$getSkyNibbles(), lit.fulgor$getBlockNibbles(), section, sectionY,
                 this.world.provider.hasSkyLight());

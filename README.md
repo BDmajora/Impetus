@@ -1,63 +1,137 @@
+<!--
+  Placeholders to fill in once the project pages exist:
+    CURSEFORGE_PROJECT_ID  numeric id from the "About Project" sidebar on the CurseForge page
+    MODRINTH_SLUG          the project slug (or id) from the Modrinth page URL
+  The page links below also assume the slug "impetus" on both sites.
+-->
+
 <img src="icons/impetus400.png" width="128">
 
 # Impetus
 
-Impetus is a free and open-source performance and shaders mod for the Minecraft 1.12.2 client. It is a hard
-fork of Celeritas by embeddedt (itself a fork of Embeddium and Oculus 1.7, which in turn descend from the
-last FOSS-licensed version of Sodium and from Iris 1.7).
+[![Available on CurseForge](https://cdn.jsdelivr.net/npm/@intergrav/devins-badges@3/assets/cozy/available/curseforge_vector.svg)](https://www.curseforge.com/minecraft/mc-mods/impetus)
+[![Available on Modrinth](https://cdn.jsdelivr.net/npm/@intergrav/devins-badges@3/assets/cozy/available/modrinth_vector.svg)](https://modrinth.com/mod/impetus)
 
-Impetus takes the project in a new direction: closing the feature gap with the modern Sodium renderer,
-dynamic translucency sorting, tree-based occlusion culling, and GPU driver workarounds, through independent,
-original implementations, while keeping first-class support for legacy Minecraft versions and the bundled
-shader pipeline.
+[![CurseForge downloads](https://img.shields.io/curseforge/dt/CURSEFORGE_PROJECT_ID?style=for-the-badge&logo=curseforge&label=CurseForge&color=F16436)](https://www.curseforge.com/minecraft/mc-mods/impetus)
+[![Modrinth downloads](https://img.shields.io/modrinth/dt/MODRINTH_SLUG?style=for-the-badge&logo=modrinth&label=Modrinth&color=1BD96A)](https://modrinth.com/mod/impetus)
+
+**Impetus makes Minecraft 1.12.2 run faster and look better.** It replaces the game's renderer with a modern one,
+runs shader packs, fixes lighting lag, and cuts down on stutter and memory use, all in a single mod for
+[Cleanroom](https://github.com/CleanroomMC/Cleanroom).
+
+Under the hood, Impetus is a high-performance rendering and optimization project that modernizes the 1.12.2
+graphics pipeline and takes CPU and GPU overhead out of it. It brings its own rendering infrastructure,
+asynchronous chunk meshing and lighting, GPU-driven and mesh-shader terrain paths, and broad shader pack
+compatibility. Beyond rendering, it also goes after world generation, memory management and server tick
+bottlenecks.
+
+Impetus is a hard fork of Celeritas by embeddedt, which descends from Embeddium and Oculus, and before them from
+the last free-licensed releases of [Sodium](https://github.com/CaffeineMC/sodium) and
+[Iris](https://github.com/IrisShaders/Iris). If you play on modern versions of the game, those are the mods you
+want.
 
 ---
 
-### Downloads
+### ⚙️ What it does
 
-**There are currently no official Impetus binary releases.** If you download a precompiled Impetus `.jar`
-from any third-party source, we cannot provide support for it and you do so at your own risk. Expect bugs
-and rough edges: the mod is under active development and has seen limited testing.
+- **A custom rendering architecture.** Terrain is drawn through Impetus's own chunk renderer, with dynamic
+  translucency sorting, tree-based occlusion culling and a VAO cache, not vanilla's display lists.
+- **GPU and CPU performance work.** Multi-draw indirect terrain on OpenGL 4.3, compact vertex formats,
+  allocation-free hot paths, block state and model deduplication, and caches across vanilla systems that were
+  doing the same work every tick.
+- **Asynchronous chunk and lighting pipelines.** Chunks mesh on worker threads, and the Fulgor lighting engine
+  lights them off the main thread, either with parallel Phosphor-style passes or a Starlight-style engine that
+  persists its light.
+- **Modern graphics API paths.** On NVIDIA Turing and newer, an opt-in mesh-shader terrain backend after Nvidium
+  draws the world almost entirely on the GPU.
+- **Shader pack compatibility.** The bundled Umbra pipeline loads OptiFine/Iris format shader packs, ports them
+  to the mesh-shader backend on the fly, and shades Distant Horizons LODs the way Iris does.
+- **Server-side optimizations.** World generation fast paths, crafting and furnace caches, cheaper advancement
+  triggers and an opt-in tick budget.
+- **Hardware compatibility.** Driver workarounds and probes for known bad GPU and driver combinations.
 
-To use Impetus today, build it from source using the instructions below.
+### 📥 Downloads
 
-### Installation
+#### Stable builds
 
-Impetus targets **Minecraft 1.12.2** on **[Cleanroom](https://github.com/CleanroomMC/Cleanroom)**
-**0.7.9-alpha**, running on **Java 25** with LWJGL 3.4.3 and SDL3. This build no longer supports 0.6.x.
-Drop the jar into your `mods` folder.
+Releases of Impetus are published on our official [Modrinth](https://modrinth.com/mod/impetus) and
+[CurseForge](https://www.curseforge.com/minecraft/mc-mods/impetus) pages. If you download an Impetus `.jar` from
+anywhere else, we can't support it and you do so at your own risk.
+
+#### Development builds
+
+The very latest changes can be built from source using the instructions below. These builds are mostly useful for
+testing and come with no support or warranty. Expect rough edges: the mod is under active development and has
+seen limited testing.
+
+### 🖥️ Installation
+
+Impetus targets **Minecraft 1.12.2** on **[Cleanroom](https://github.com/CleanroomMC/Cleanroom) 0.7.9-alpha**,
+running on **Java 25** with LWJGL 3.4.3 and SDL3. Cleanroom 0.6.x is no longer supported. Drop the jar into your
+`mods` folder and that's it.
 
 Cleanroom ships Mixin (CleanMix) and MixinExtras itself, so Impetus bundles neither. It also ships its Kirino
-render engine switched on; Impetus turns Kirino off at startup, since both would otherwise do terrain work
-every frame.
+render engine switched on; Impetus turns Kirino off at startup, since both would otherwise do terrain work every
+frame.
+
+Remove Phosphor and Alfheim if you have them. Impetus has its own lighting engine and suppresses theirs when it
+finds them, because two lighting engines at once corrupt world lighting, but don't rely on that.
 
 The last Forge / Java 8 / LWJGL 2 version of Impetus lives on the `legacy` branch.
 
-### Reporting Issues
+### 📬 Reporting Issues
 
-Please open an issue on the [project issue tracker](https://github.com/bdmajora/impetus/issues). Crash
-reports and the full launcher log are far more useful than a description alone.
+Please open an issue on the [project issue tracker](https://github.com/BDmajora/Impetus/issues). Crash reports and
+the full launcher log are far more useful than a description on its own.
 
-## What's included
+## Why Impetus?
+
+1.12.2 is still one of the most played versions of Minecraft because of its modpacks, but it never got the
+rendering work that modern versions did. Sodium and Iris moved on to newer versions, OptiFine is closed source and
+fights with half the mods in a typical pack, and the forks that kept the old renderer alive each covered only part
+of the problem.
+
+Impetus is an attempt to close that gap: to bring the ideas behind the modern Sodium renderer, a working shader
+pipeline and the best of the 1.12.2 performance mods together in one place, built to work with each other instead
+of around each other.
+
+## Goals
+
+- **Performance.** Keep the GPU busy and the main thread free, on both low-end and high-end machines.
+- **Correctness.** Look the same as vanilla unless you asked for something different.
+- **Mod compatibility.** Work in large modpacks, not just in a clean instance.
+- **Shader pack compatibility.** Existing OptiFine and Iris shader packs should load without changes.
+- **Original implementations.** Features inspired by modern, non-free Sodium are written from scratch.
+- **A codebase worth reading.** Tested, commented, and pleasant to work on.
+
+## 🧩 What's included
 
 Impetus ships as a single jar containing several subsystems, each with its own mixin configuration:
 
-| Module | Purpose |
-| :----- | :------ |
-| `impetus` | The core rendering engine and chunk pipeline, with GL 4.3 multi-draw indirect terrain and, on NVIDIA Turing and newer, a mesh-shader terrain backend after Nvidium, picked with the Graphics API option (OpenGL or Nvidium), which also runs shader packs: a pack loaded under Nvidium is ported automatically into `nvidium_shaderpacks/` with mesh-shader terrain, water and shadow programs, and re-ported whenever the pack changes |
-| `umbra` | The bundled shader pipeline, descended from Iris / Oculus |
-| `fulgor` | Lighting engine, superseding Phosphor and Alfheim: a deferred Phosphor-style engine with parallel light passes in the manner of ScalableLux, and a Starlight-style asynchronous engine after Pulsar that lights chunks on worker threads and persists their light |
-| `coarctatio` | Memory and allocation reductions across vanilla systems, including FerriteCore's block-state and model deduplication techniques, lazy item capabilities, resource lookup caches, a between-launch mod scan cache, parallel texture decoding and model reading, a primitive ore dictionary, compacted remapper caches and opt-in on-demand model loading with a pack-scan atlas |
-| `equilibrium` | Chunk and world access caching, world generation fast paths, and the server-side tick optimizations: advancement triggers, crafting and furnace caches, ghost-chunk guards, spawn preload skipping and the opt-in tick budget |
-| `dynamiclights` | Dynamic light sources for held and dropped items |
-| `extras` | Optional feature toggles: the Render Budget and GPU Booster pair for weaker machines, parallel server ticking, parallel particles, baked block entities, ray-cast occlusion culling, HUD caching, text batching, network flush consolidation, wire limits, thread scheduling and a hold-to-zoom key |
-| `linuxextras` | Linux desktop fixes: starts the SDL window on the primary monitor (KDE's display order, or outputs named in `impetus-linuxextras.cfg`) and opens links and folders with `xdg-open`. Cleanroom/SDL now handle native Wayland selection and window icons |
+| | Module | Purpose |
+| :-: | :----- | :------ |
+| <img src="icons/impetus400.png" width="32"> | `impetus` | The core rendering engine and chunk pipeline, with GL 4.3 multi-draw indirect terrain and, on NVIDIA Turing and newer, a mesh-shader terrain backend after Nvidium, picked with the Graphics API option (OpenGL or Nvidium), which also runs shader packs: a pack loaded under Nvidium is ported automatically into `nvidium_shaderpacks/` with mesh-shader terrain, water and shadow programs, and re-ported whenever the pack changes |
+| <img src="icons/umbra400.png" width="32"> | `umbra` | The bundled shader pipeline, descended from Iris / Oculus |
+| <img src="icons/fulgor400.png" width="32"> | `fulgor` | Lighting engine, superseding Phosphor and Alfheim: a deferred Phosphor-style engine with parallel light passes in the manner of ScalableLux, and a Starlight-style asynchronous engine after Pulsar that lights chunks on worker threads and persists their light |
+| <img src="icons/coarctatio400.png" width="32"> | `coarctatio` | Memory and allocation reductions across vanilla systems, including FerriteCore's block-state and model deduplication techniques, lazy item capabilities, resource lookup caches, a between-launch mod scan cache, parallel texture decoding and model reading, a primitive ore dictionary, compacted remapper caches and opt-in on-demand model loading with a pack-scan atlas |
+| <img src="icons/equilibrium400.png" width="32"> | `equilibrium` | Chunk and world access caching, world generation fast paths, and the server-side tick optimizations: advancement triggers, crafting and furnace caches, ghost-chunk guards, spawn preload skipping and the opt-in tick budget |
+| | `dynamiclights` | Dynamic light sources for held and dropped items |
+| | `extras` | Optional feature toggles: the Render Budget and GPU Booster pair for weaker machines, parallel server ticking, parallel particles, baked block entities, ray-cast occlusion culling, HUD caching, text batching, network flush consolidation, wire limits, thread scheduling and a hold-to-zoom key |
+| | `linuxextras` | Linux desktop fixes: starts the SDL window on the primary monitor (KDE's display order, or outputs named in `impetus-linuxextras.cfg`) and opens links and folders with `xdg-open`. Cleanroom/SDL now handle native Wayland selection and window icons |
 
-Impetus suppresses the mixin configurations of superseded lighting mods (Phosphor, Alfheim) when it detects
-them, since running two lighting engines at once corrupts world lighting. Remove those mods rather than
-relying on the suppression.
+## ✅ Hardware Compatibility
 
-## Building from sources
+Impetus runs on any graphics card that can run Minecraft on Cleanroom. Some rendering paths need more:
+
+- **Multi-draw indirect terrain** needs OpenGL 4.3 or `ARB_multi_draw_indirect`. Older cards fall back to the
+  regular path automatically.
+- **The Nvidium mesh-shader backend** needs an NVIDIA GeForce RTX 20 series (Turing) or newer card. It is opt-in
+  through the Graphics API option.
+
+Keep your graphics drivers up to date. Impetus works around a number of known driver bugs, but it can't work around
+all of them. OpenGL translation layers (GL4ES, ANGLE and similar) are not supported.
+
+## 🛠️ Building from sources
 
 Impetus uses the [Gradle build tool](https://gradle.org/) with
 [Unimined](https://github.com/unimined/unimined) (Cleanroom's fork) to set up Cleanroom's patched Minecraft.
@@ -113,7 +187,7 @@ The old Linux Extras `forceWayland` and `waylandWindowIcon` switches are obsolet
 | `gradle/libs.versions.toml` | Every dependency version; the libraries Cleanroom ships are pinned to its versions |
 | `gradle/wrapper/` | The Gradle wrapper; required by `gradlew` and intentionally committed |
 
-## Shader pack compatibility
+## 🎨 Shader pack compatibility
 
 The bundled shader pipeline originates from Oculus 1.7 / Iris. Iris-protocol identifiers (such as the
 `IRIS_VERSION` define and `iris`-namespaced shader-format identifiers) are intentionally preserved so that
@@ -129,7 +203,7 @@ uniforms are live, the `DISTANT_HORIZONS` and `DH_BLOCK_*` defines are set, and 
 1.12.2 Cleanroom branch registers an Impetus accessor); without it DH renders its LODs with its own shaders
 in front of the pack.
 
-## For mod developers
+## 🔌 For mod developers
 
 ### Accent colour in the video settings screen
 
@@ -148,7 +222,7 @@ colours when it opens, so a theme registered while it is open only fully applies
 - The colour is ARGB. A plain `0xRRGGBB` value (alpha 0) is treated as fully opaque.
 - Registering again for the same mod replaces the earlier theme.
 
-## License
+## 📜 License
 
 Impetus is licensed under the [GNU Lesser General Public License version 3](LICENSE), as it only uses code
 from Iris 1.7, Sodium 0.5.11 and earlier, Celeritas, and other FOSS projects.
@@ -157,11 +231,25 @@ This project does not include, and has no plans to include, any code from Sodium
 versions are not available under a free and open-source license. Features inspired by modern Sodium are
 independent, original implementations.
 
-## Credits
+## 🙏 Credits
 
+Impetus stands on a lot of other people's work. This list is where the code and ideas came from; if a feature
+reminds you of another mod, it is probably named here.
+
+### Upstream projects
+
+* **The CaffeineMC team and JellySquid**, for developing [Sodium](https://github.com/CaffeineMC/sodium) 0.5.11 and older, and making it open source
+* **coderbot, IMS and the Iris contributors**, for [Iris](https://github.com/IrisShaders/Iris), and the **Oculus** port, the origin of the bundled shader pipeline
 * **embeddedt**, for developing Celeritas and Embeddium, from which Impetus is forked
-* **The CaffeineMC team**, for developing Sodium 0.5.11 and older, and making it open source
-* **The Iris project and the Oculus port**, the origin of the bundled shader pipeline
+* **Asek3**, for developing Rubidium, the original port of Sodium 0.5 to Forge
+
+### Art
+
+* **ProprietaryCable** ([proprietarycables@gmail.com](mailto:proprietarycables@gmail.com)), for creating the Impetus icons, the module icons, and the designs that didn't make it in
+* **CelestialAbyss**, for developing the Embeddium logo, and **input-Here** for visual touchups
+
+### Code and ideas
+
 * **MCRcortex**, for Nvidium (LGPL-3), whose mesh-shader terrain renderer the `impetus` module's Mesh Terrain backend is ported from
 * **Rongmario**, for MixinBooter
 * **Mumfrey**, for creating the Mixin bytecode patching system, and **CleanroomMC** for Cleanroom and CleanMix
@@ -194,7 +282,8 @@ independent, original implementations.
 * **jaredlll08**, for Clumps (MIT), the model for experience orb merging
 * **decce6** for Gnetum and **Moulberry** for HUDCaching, the family the HUD cache belongs to
 * **LogicalGeekBoy** and the Logical Zoom contributors, for Logical Zoom (MIT), ported as the Extras page's Zoom group with its defaults
-* **Asek3**, for developing Rubidium, the original port of Sodium 0.5 to Forge
-* **CelestialAbyss**, for developing the Embeddium logo, and **input-Here** for visual touchups
+
+### Help along the way
+
 * **Ven ([@basdxz](https://github.com/basdxz))**, for help with translucency sorting, suggesting the general approach for async occlusion culling, and other suggestions during development
 * **XFactHD**, **Pepper**, and anyone else omitted here, for valuable code insights

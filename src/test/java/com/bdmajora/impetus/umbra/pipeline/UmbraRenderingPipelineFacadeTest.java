@@ -1,5 +1,8 @@
 package com.bdmajora.impetus.umbra.pipeline;
 
+import com.bdmajora.impetus.umbra.compat.dh.DhCompat;
+import com.bdmajora.impetus.umbra.compat.dh.DhCompatInternal;
+import com.bdmajora.impetus.umbra.compat.dh.LodRendererEvents;
 import com.bdmajora.impetus.umbra.gl.blending.ProgramAlphaTest;
 import com.bdmajora.impetus.umbra.gl.blending.ProgramBlendState;
 import com.bdmajora.impetus.umbra.shaderpack.ShaderPack;
@@ -8,7 +11,11 @@ import com.bdmajora.impetus.umbra.shaderpack.loading.ProgramId;
 import com.bdmajora.testing.Devices;
 import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
+import com.bdmajora.testing.Statics;
 import com.bdmajora.testing.TestGl;
+import com.seibel.distanthorizons.api.DhApi;
+import com.seibel.distanthorizons.api.interfaces.config.IDhApiConfig;
+import com.seibel.distanthorizons.coreapi.DependencyInjection.ApiEventInjector;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.renderer.texture.ITextureObject;
@@ -190,6 +197,68 @@ class UmbraRenderingPipelineFacadeTest {
         this.pipeline.finishWorldRendering();
         assertFalse(this.pipeline.isWorldRenderingActive());
         verify(TestGl.gl(), Mockito.atLeastOnce()).glMultiTexCoord2f(anyInt(), Mockito.anyFloat(), Mockito.anyFloat());
+    }
+
+    // Arms the DH bridge with rendering on and returns a pack that ships dh_terrain.
+    private static ShaderPack armDh(IDhApiConfig configs) {
+        when(TestGl.gl().glGetUniformLocation(anyInt(), any(CharSequence.class))).thenReturn(-1);
+        DhApi.Delayed.configs = configs;
+        Mc.forge("distanthorizons");
+        DhCompat.run();
+        Map<AbsolutePackPath, String> sources = new HashMap<>();
+        sources.put(ShaderPack.PROPERTIES_PATH, "");
+        sources.put(AbsolutePackPath.fromAbsolutePath("/dh_terrain.vsh"), VERTEX);
+        sources.put(AbsolutePackPath.fromAbsolutePath("/dh_terrain.fsh"),
+                "#version 120\n/* DRAWBUFFERS:0 */\nvoid main() { gl_FragData[0] = vec4(1.0); }");
+        return new ShaderPack(sources);
+    }
+
+    private static void disarmDh() {
+        DhApi.Delayed.configs = null;
+        ApiEventInjector.INSTANCE.clear();
+        Statics.set(DhCompat.class, "dhPresent", false);
+        Statics.set(DhCompat.class, "lastIncompatible", false);
+        Statics.set(LodRendererEvents.class, "eventHandlersBound", false);
+        Mc.forge();
+    }
+
+    @Test
+    void aDhPackBuildsItsLodProgramsAgainstTheFinishedPipeline() {
+        // The bridge used to be built inside PipelineState, before the facade's terrain hooks existed: createDhFramebuffer NPE'd and every pack fell back to DH's own shaders
+        IDhApiConfig configs = mock(IDhApiConfig.class, Mockito.RETURNS_DEEP_STUBS);
+        when(configs.graphics().renderingEnabled().getValue()).thenReturn(true);
+        UmbraRenderingPipeline dh = null;
+        try {
+            dh = new UmbraRenderingPipeline(armDh(configs));
+            DhCompatInternal internal = (DhCompatInternal) dh.getDhCompat().getInstance();
+            assertFalse(internal.incompatiblePack());
+            assertFalse(DhCompat.lastPackIncompatible());
+            assertTrue(internal.shouldOverride());
+            assertSame(dh, internal.getPipeline());
+            assertNotNull(internal.getSolidFB());
+            assertEquals("dh_terrain", internal.getSolidShader().getName());
+        } finally {
+            if (dh != null) {
+                dh.destroy();
+            }
+            disarmDh();
+        }
+    }
+
+    @Test
+    void aDhBridgeThatThrowsReleasesTheWholePipeline() {
+        IDhApiConfig configs = mock(IDhApiConfig.class, Mockito.RETURNS_DEEP_STUBS);
+        when(configs.graphics().renderingEnabled().getValue()).thenThrow(new IllegalStateException("dh config gone"));
+        try {
+            ShaderPack pack = armDh(configs);
+            Mockito.clearInvocations(TestGl.gl());
+            RuntimeException thrown = assertThrows(RuntimeException.class, () -> new UmbraRenderingPipeline(pack));
+            // Wrapped by DhCompat, so it came from the bridge rather than an earlier stage
+            assertEquals("dh config gone", thrown.getCause().getMessage());
+            verify(TestGl.gl(), Mockito.atLeastOnce()).glDeleteSamplers(anyInt());
+        } finally {
+            disarmDh();
+        }
     }
 
     @Test

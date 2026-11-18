@@ -35,7 +35,7 @@ public class UmbraRenderingPipeline {
 
     // Loads a pack and releases its resources when loading fails.
     public UmbraRenderingPipeline(ShaderPack pack) {
-        this.state = new PipelineState(this, pack);
+        this.state = new PipelineState(pack);
         // Releases the state when a later part fails
         try {
             this.view = new PipelineView(this.state);
@@ -43,6 +43,8 @@ public class UmbraRenderingPipeline {
             this.frame = new FrameLifecycle(this.state, new PassRunner(this.state), this.phases);
             this.hand = new HandPass(this.state, this.phases);
             this.terrain = new TerrainHooks(this.state, this.phases);
+            // Last: the DH bridge calls createDhFramebuffer and getShadowRenderer, which read the parts above
+            this.state.attachDistantHorizons(this, pack);
         } catch (RuntimeException | Error e) {
             try {
                 this.state.destroy();

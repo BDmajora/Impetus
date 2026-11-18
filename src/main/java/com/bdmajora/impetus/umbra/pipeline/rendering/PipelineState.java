@@ -112,8 +112,8 @@ public final class PipelineState {
     // Gbuffer flips of the current frame.
     BitSet activeGbufferFlips = new BitSet();
 
-    // Creates every resource of a pack and releases them all when one fails.
-    public PipelineState(UmbraRenderingPipeline owner, ShaderPack pack) {
+    // Creates every resource of a pack and releases them all when one fails; attachDistantHorizons finishes the setup.
+    public PipelineState(ShaderPack pack) {
         Minecraft mc = Minecraft.getMinecraft();
         this.targets = new UmbraRenderTargets(mc.displayWidth, mc.displayHeight);
         this.defines = pack.getEnvironmentDefines();
@@ -174,15 +174,20 @@ public final class PipelineState {
             this.schedule.build(pack.getProgramSet(), properties, factory, computes, this.gbuffers, this.targets.getBufferFlipper());
             this.copies.build(this.targets, targetDirectives, this.targets.getBufferFlipper(),
                     Math.min(this.maxDrawBuffers, LWJGL.glGetInteger(GL30.GL_MAX_COLOR_ATTACHMENTS)));
-            this.dhCompat = new DhCompat(owner, pack, properties.getDhShadowEnabled().orElse(Boolean.TRUE));
-            LWJGL.glUseProgram(0);
-            GlState.bindMainRenderTarget(mc);
-            GlState.restoreMainDrawReadBuffers();
-            this.binder.restoreUnits();
         } catch (RuntimeException | Error e) {
             destroy();
             throw e;
         }
+    }
+
+    // Builds the Distant Horizons bridge and leaves GL as vanilla expects; the owner releases the state on a throw.
+    public void attachDistantHorizons(UmbraRenderingPipeline owner, ShaderPack pack) {
+        // The bridge calls back into the owner (createDhFramebuffer, getShadowRenderer), so the owner must be fully built
+        this.dhCompat = new DhCompat(owner, pack, pack.getProperties().getDhShadowEnabled().orElse(Boolean.TRUE));
+        LWJGL.glUseProgram(0);
+        GlState.bindMainRenderTarget(Minecraft.getMinecraft());
+        GlState.restoreMainDrawReadBuffers();
+        this.binder.restoreUnits();
     }
 
     // Returns the active stages of every program source.

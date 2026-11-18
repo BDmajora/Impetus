@@ -172,12 +172,13 @@ find it here.
 
 * **MCRcortex**, for [Nvidium](https://github.com/MCRcortex/nvidium) (LGPL-3). The mesh-shader terrain backend is
   ported from it.
-* **orf**, for [GpuShift](https://modrinth.com/mod/gpushift) (MIT). The Render Budget group reimplements its adaptive
-  render budget for 1.12.2, CPU/GPU bottleneck detector included.
-* **Mr.Toad**, for [GPUBooster](https://github.com/ITsMrToad/GPUBooster), ported to 1.12.2 with permission as the GPU
-  Booster group
+* **orf**, for the ideas behind [GpuShift](https://modrinth.com/mod/gpushift) (All Rights Reserved). The Render Budget
+  group is a clean-room 1.12.2 implementation of its adaptive render budget, CPU/GPU bottleneck detector included: the
+  idea comes from GpuShift, the code is my own.
+* **Mr.Toad**, for [GPUBooster](https://github.com/ITsMrToad/GPUBooster) (GPL-3), ported to 1.12.2 as the GPU Booster
+  group
 * **AxalotL**, for [Async](https://github.com/AxalotLDev/Async) (GPL-3), and the authors of MCMT and
-  [JMT-MCMT](https://github.com/jediminer543/JMT-MCMT) it builds on. The Parallel Ticking group reimplements its
+  [JMT-MCMT](https://github.com/jediminer543/JMT-MCMT) (BSD-2-Clause) it builds on. The Parallel Ticking group reimplements its
   parallel entity ticking for 1.12.2.
 * **Harvey_Husky**, for [AsyncParticles](https://github.com/Harveykang/AsyncParticles) (LGPL-3). Parallel particle
   ticking, the particle light cache and off-screen particle culling are based on it.
@@ -192,56 +193,51 @@ find it here.
   world generation fast paths
 * **TonimatasDEV**, for [Packet Fixer](https://github.com/TonimatasDEV/PacketFixer) (MIT), the basis for the Network
   group
-* **Spottedleaf**, for [Starlight](https://github.com/PaperMC/Starlight), and **ishland**, for
+* **Spottedleaf**, for [Starlight](https://github.com/PaperMC/Starlight) (LGPL-3), and **ishland**, for
   [ScalableLux](https://github.com/RelativityMC/ScalableLux) (LGPL-3). Fulgor schedules its light passes the way they
   do.
 * **Sumire Labs**, for [Pulsar](https://github.com/Sumire-Labs/Pulsar) (LGPL-3). Fulgor's async mode is ported from
-  it. Pulsar itself grew out of [SuperNova](https://github.com/GTNewHorizons/SuperNova) by GTNewHorizons.
+  it. Pulsar itself grew out of [SuperNova](https://github.com/GTNewHorizons/SuperNova) (LGPL-3) by GTNewHorizons.
 * **wisecase2**, for [StutterFix](https://github.com/wisecase2/StutterFix) (MIT), the basis for the Thread Scheduling
   group
-* **asie**, for [FoamFix](https://github.com/asiekierka/FoamFix) (MIT). Equilibrium carries its ghost-chunk guards,
+* **asie**, for [FoamFix](https://github.com/asiekierka/FoamFix) (LGPL-3). Equilibrium carries its ghost-chunk guards,
   spawner check cache and idle entity cleanup.
-* **Rongmario**, again, for Chibi and [LoliASM](https://github.com/LoliKingdom/LoliASM) (LGPL-3). The lazy item
+* **Rongmario**, again, for Chibi and [LoliASM](https://web.archive.org/web/20260714065606/https://github.com/LoliKingdom/LoliASM) (LGPL-2.1). The lazy item
   capabilities, furnace recipe index, entity factory, loader string interning, remapper cache compaction, recycled
   events and the world load and screenshot tweaks are based on them.
 * **Kasumi_Nova** and **Circulate233**, for [StellarCore](https://github.com/NovaEngineering-Source/StellarCore)
-  (MIT). The numeric tag pool, hash caches, long-keyed tile entity map, HUD caching approach, parallel texture
+  (LGPL-3). The numeric tag pool, hash caches, long-keyed tile entity map, HUD caching approach, parallel texture
   decoding, primitive ore dictionary and model part pooling all started there.
 * **embeddedt**, again, for [VintageFix](https://github.com/embeddedt/VintageFix) (LGPL-3). The mod scan cache,
   resource existence caches, stackless resource exceptions, shelf stitching, soft structure templates, fast item
   baking and dynamic model loading are based on it. Dynamic model loading goes back further, to **Runemoro**'s
-  dynamic resources in [VanillaFix](https://github.com/DimensionalDevelopment/VanillaFix).
+  dynamic resources in [VanillaFix](https://github.com/DimensionalDevelopment/VanillaFix) (MIT).
 * **ACGaming** and the [Universal Tweaks](https://github.com/ACGaming/UniversalTweaks) contributors (jchung01,
-  Darkhax, EverNife, Barteks2x) (MIT), for the advancement trigger, crafting cache, pathfinding chunk guard, entity
+  Darkhax, EverNife, Barteks2x) (LGPL-3), for the advancement trigger, crafting cache, pathfinding chunk guard, entity
   radius check, chunk generation limit, sound debug skip, quiet prefix check and plain missing models
-* **Mephodio**, for [Icterine](https://github.com/Mephodio/Icterine) (MIT), where the advancement trigger
+* **Mephodio**, for [Icterine](https://github.com/Mephodio/Icterine) (GPL-3), where the advancement trigger
   optimisation first appeared
 * **VidTu**, for [Ksyxis](https://github.com/VidTu/Ksyxis) (MIT), which showed how to skip the spawn chunk preload
-* **tr7zw**, for [Entity Culling](https://github.com/tr7zw/EntityCulling) and
-  [Exordium](https://github.com/tr7zw/Exordium), and **Meldexun**, for the 1.12.2
-  [Entity Culling](https://github.com/Meldexun/EntityCulling) (MIT). Ray-cast occlusion culling of entities and block
-  entities is based on their work.
+* **tr7zw**, for [Entity Culling](https://github.com/tr7zw/EntityCulling) (tr7zw Protective License)
+  and [Exordium](https://github.com/tr7zw/Exordium) (LGPL-3), and **Meldexun**, for the 1.12.2
+  [Entity Culling](https://github.com/Meldexun/EntityCulling) (All Rights Reserved). Ray-cast occlusion culling of
+  entities and block entities is a clean-room implementation: the idea comes from their work, the code is my own.
 * **Luna Lage (Desoroxxx)** and Red Studio, for [Valkyrie](https://github.com/Red-Studio-Ragnarok/Valkyrie)
-  (LGPL-3), the basis for the ModelRenderer matrix path
+  (MIT), the basis for the ModelRenderer matrix path
 * **Andrew Steinborn (astei)**, for [Krypton](https://github.com/astei/krypton) (LGPL-3). Flush consolidation and the
   varint, frame decoder and compression paths come from it.
 * **RaphiMC**, for [ImmediatelyFast](https://github.com/RaphiMC/ImmediatelyFast) (LGPL-3), the basis for text glyph
   batching
-* **imthosea**, for [BadOptimizations](https://github.com/imthosea/BadOptimizations) (LGPL-3), the basis for
+* **imthosea**, for [BadOptimizations](https://github.com/imthosea/BadOptimizations) (ISC), the basis for
   lightmap and entity flag caching
-* **fxmorin**, for [More Culling](https://github.com/fxmorin/MoreCulling) (LGPL-3), the basis for item frame LOD and
-  leaf face culling, and **isXander** for [Cull Less Leaves](https://github.com/isXander/CullLessLeaves) (MIT)
+* **fxmorin**, for [More Culling](https://github.com/fxmorin/MoreCulling) (GPL-3), the basis for item frame LOD and
+  leaf face culling, and **isXander** for [Cull Less Leaves](https://github.com/isXander/CullLessLeaves) (LGPL-3)
 * **jaredlll08**, for [Clumps](https://github.com/jaredlll08/Clumps) (MIT), the basis for experience orb merging
-* **decce6**, for [Gnetum](https://github.com/decce6/Gnetum), and **Moulberry**, for
-  [HUDCaching](https://github.com/Moulberry/MCHUDCaching). The HUD cache follows the same idea.
+* **decce6**, for [Gnetum](https://github.com/decce6/Gnetum) (LGPL-3), and **Moulberry**, for
+  [HUDCaching](https://github.com/Moulberry/MCHUDCaching) (CC BY-NC 3.0). The HUD cache is a clean-room
+  implementation of the same idea, with no code taken from either.
 * **LogicalGeekBoy** and the Logical Zoom contributors, for [Logical Zoom](https://github.com/LogicalGeekBoy/logical_zoom)
   (MIT), ported with its defaults as the Zoom group
-
-### Help along the way
-
-* **Ven ([@basdxz](https://github.com/basdxz))**, for help with translucency sorting, for suggesting the general
-  approach behind async occlusion culling, and for plenty of other suggestions during development
-* **XFactHD**, **Pepper**, and anyone else I've missed, for valuable code insights
 
 ## License
 

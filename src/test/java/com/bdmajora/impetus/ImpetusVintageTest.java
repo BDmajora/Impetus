@@ -9,6 +9,8 @@ import com.bdmajora.coarctatio.launch.RemapperCompactor;
 import com.bdmajora.dynamiclights.DynamicLights;
 import com.bdmajora.equilibrium.gui.EquilibriumStatsCommand;
 import com.bdmajora.extras.Extras;
+import com.bdmajora.extras.ExtrasConfig;
+import com.bdmajora.extras.client.culling.OcclusionCulling;
 import com.bdmajora.extras.client.budget.RenderBudgetKeys;
 import com.bdmajora.extras.client.zoom.LogicalZoom;
 import com.bdmajora.fulgor.Fulgor;
@@ -146,7 +148,8 @@ class ImpetusVintageTest {
              MockedStatic<ClassLoaderCleaner> cleaner = Mockito.mockStatic(ClassLoaderCleaner.class);
              MockedStatic<Coarctatio> coarctatioHooks = Mockito.mockStatic(Coarctatio.class);
              MockedStatic<ImpetusToastRenderer> toasts = Mockito.mockStatic(ImpetusToastRenderer.class);
-             MockedStatic<AutosaveIndicator> autosave = Mockito.mockStatic(AutosaveIndicator.class)) {
+             MockedStatic<AutosaveIndicator> autosave = Mockito.mockStatic(AutosaveIndicator.class);
+             MockedStatic<OcclusionCulling> occlusion = Mockito.mockStatic(OcclusionCulling.class)) {
             ImpetusVintage mod = new ImpetusVintage();
             // Constructs the mod.
             mod.onConstruct(mock(FMLConstructionEvent.class));
@@ -216,11 +219,15 @@ class ImpetusVintageTest {
             when(client.getIntegratedServer()).thenReturn(mock(net.minecraft.server.integrated.IntegratedServer.class));
             mod.onClientTick(new TickEvent.ClientTickEvent(TickEvent.Phase.END));
             autosave.verify(() -> AutosaveIndicator.tick(true), times(1));
+            occlusion.verify(() -> OcclusionCulling.tick(client), times(2));
             when(client.getIntegratedServer()).thenReturn(null);
 
             // Checks the F3 lines.
             coarctatioHooks.when(Coarctatio::debugOverlayLine).thenReturn("Coarctatio: pools");
             fulgorHooks.when(Fulgor::debugOverlayLine).thenReturn("Fulgor: lighting");
+            ExtrasConfig extrasConfig = new ExtrasConfig();
+            extras.when(Extras::options).thenReturn(extrasConfig);
+            occlusion.when(OcclusionCulling::status).thenReturn("Occlusion: hidden");
             RenderGameOverlayEvent.Text text = mock(RenderGameOverlayEvent.Text.class);
             ArrayList<String> right = new ArrayList<>(List.of("Allocated: 10%"));
             when(text.getRight()).thenReturn(right);
@@ -242,12 +249,14 @@ class ImpetusVintageTest {
             mod.onF3Text(text);
             assertTrue(right.get(1).startsWith("Off-Heap: +"), right.toString());
             assertTrue(right.contains("Viewport: 1 2 3"));
-            assertEquals("Coarctatio: pools", right.get(right.size() - 2));
-            assertEquals("Fulgor: lighting", right.get(right.size() - 1));
+            assertEquals("Coarctatio: pools", right.get(right.size() - 3));
+            assertEquals("Fulgor: lighting", right.get(right.size() - 2));
+            assertEquals("Occlusion: hidden", right.get(right.size() - 1));
             // Checks the F3 lines without a renderer.
             Mixins.set(global, "renderer", null);
             coarctatio.showDebugOverlay = false;
             fulgor.showDebugOverlay = false;
+            extrasConfig.occlusion.enabled = false;
             right.clear();
             mod.onF3Text(text);
             assertEquals(2, right.size());

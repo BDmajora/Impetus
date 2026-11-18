@@ -32,6 +32,7 @@ import com.bdmajora.coarctatio.launch.ClassLoaderCleaner;
 import com.bdmajora.dynamiclights.DynamicLights;
 import com.bdmajora.equilibrium.gui.EquilibriumStatsCommand;
 import com.bdmajora.extras.Extras;
+import com.bdmajora.extras.client.culling.OcclusionCulling;
 import com.bdmajora.fulgor.Fulgor;
 import com.bdmajora.fulgor.FulgorConfig;
 import com.bdmajora.fulgor.gui.FulgorStatsCommand;
@@ -131,6 +132,7 @@ public class ImpetusVintage {
     public void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase == TickEvent.Phase.END) {
             AutosaveIndicator.tick(Minecraft.getMinecraft().getIntegratedServer() != null);
+            OcclusionCulling.tick(Minecraft.getMinecraft());
         }
     }
 
@@ -188,6 +190,10 @@ public class ImpetusVintage {
 
         if (FulgorConfig.get().showDebugOverlay) {
             strings.add(Fulgor.debugOverlayLine());
+        }
+
+        if (Extras.options().occlusion.enabled) {
+            strings.add(OcclusionCulling.status());
         }
     }
 

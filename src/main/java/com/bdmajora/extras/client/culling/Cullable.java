@@ -10,4 +10,10 @@ public interface Cullable {
 
     // Returns the time of the last test.
     long impetus$occlusionStamp();
+
+    // Returns when the worker first saw the object hidden or zero while it is seen.
+    long impetus$hiddenSince();
+
+    // Stores when the worker first saw the object hidden.
+    void impetus$setHiddenSince(long nanos);
 }

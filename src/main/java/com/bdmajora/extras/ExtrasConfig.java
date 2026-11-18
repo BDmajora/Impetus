@@ -730,11 +730,15 @@ public final class ExtrasConfig {
     // Settings of the occlusion group.
     public static final class OcclusionSettings {
         // Default value of the max entity size setting.
-        public static final int MAX_ENTITY_SIZE_DEFAULT = 4;
+        public static final int MAX_ENTITY_SIZE_DEFAULT = 16;
         // Default value of the max block entity size setting.
         public static final int MAX_BLOCK_ENTITY_SIZE_DEFAULT = 4;
         // Default value of the slack setting.
         public static final int SLACK_DEFAULT = 100;
+        // Default value of the max distance setting in blocks.
+        public static final int MAX_DISTANCE_DEFAULT = 256;
+        // Default value of the hide delay setting in milliseconds.
+        public static final int HIDE_DELAY_DEFAULT = 100;
 
         // Switch of the enabled option.
         public boolean enabled = true;
@@ -748,6 +752,14 @@ public final class ExtrasConfig {
         public int maxBlockEntitySize = MAX_BLOCK_ENTITY_SIZE_DEFAULT;
         // Value of the raycast slack option.
         public int raycastSlack = SLACK_DEFAULT;
+        // Value of the max distance option.
+        public int maxDistance = MAX_DISTANCE_DEFAULT;
+        // Value of the hide delay option.
+        public int hideDelay = HIDE_DELAY_DEFAULT;
+        // Switch of the pause hidden armor stands option.
+        public boolean pauseHidden = true;
+        // Switch of the name tags through walls option.
+        public boolean nameTagsThroughWalls = true;
     }
 
     // Settings of the hud group.

@@ -102,8 +102,16 @@ final class RenderSchema {
     static final SettingGroup<OcclusionSettings> OCCLUSION = SettingGroup.builder("occlusion_culling", c -> c.occlusion, OcclusionSettings::new)
             .bool("enabled", "Master switch: skip drawing entities and block entities a worker thread has ray-cast as hidden behind blocks",
                     s -> s.enabled, (s, v) -> s.enabled = v)
-            .bool("entities", "Cull hidden entities", s -> s.entities, (s, v) -> s.entities = v)
+            .bool("entities", "Cull hidden entities (armor stands and their item models, mobs, players, ...)", s -> s.entities, (s, v) -> s.entities = v)
             .bool("blockEntities", "Cull hidden block entities (chests, signs, ...)", s -> s.blockEntities, (s, v) -> s.blockEntities = v)
+            .bool("pauseHidden", "Skip the client tick of hidden armor stands; they still follow the server's moves and poses",
+                    s -> s.pauseHidden, (s, v) -> s.pauseHidden = v)
+            .bool("nameTagsThroughWalls", "Hidden entities with an always-shown name still draw the name, like vanilla does through walls",
+                    s -> s.nameTagsThroughWalls, (s, v) -> s.nameTagsThroughWalls = v)
+            .integer("maxDistance", 32, 1024, "Targets farther than this many blocks are never ray-cast and always drawn",
+                    s -> s.maxDistance, (s, v) -> s.maxDistance = v)
+            .integer("hideDelay", 0, 2000, "Milliseconds a target must stay hidden before it is culled, so things seen through a doorway edge do not flicker",
+                    s -> s.hideDelay, (s, v) -> s.hideDelay = v)
             .integer("maxEntitySize", 1, 32, "Entities wider or taller than this many blocks are never culled",
                     s -> s.maxEntitySize, (s, v) -> s.maxEntitySize = v)
             .integer("maxBlockEntitySize", 1, 32, "Block entities whose render box exceeds this many blocks on any axis are never culled",

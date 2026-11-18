@@ -283,7 +283,9 @@ impetus.options.extras.baked.enabled.tooltip=Draws chests, ender chests, signs, 
 
 
 impetus.options.extras.occlusion.enabled.name=Hide Entities Behind Walls
-impetus.options.extras.occlusion.enabled.tooltip=Skips drawing mobs, chests and other objects that are hidden behind walls. Large and glowing entities are always drawn.
+impetus.options.extras.occlusion.enabled.tooltip=Skips drawing armor stands, mobs, chests and other objects that are hidden behind walls. Glowing entities are always drawn.
+impetus.options.extras.occlusion.pause_hidden.name=Pause Hidden Armor Stands
+impetus.options.extras.occlusion.pause_hidden.tooltip=Armor stands hidden behind walls skip their client tick but still follow the server's moves.
 impetus.options.extras.leaves.culling_mode.name=Leaf Culling
 impetus.options.extras.leaves.culling_mode.tooltip=Skips leaf faces that cannot be seen. Default draws every face. Check Surrounding hides only fully enclosed faces and looks the same. Depth also thins the inside of thick canopies for more speed.
 impetus.options.extras.leaf_culling.default=Default

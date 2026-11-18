@@ -427,6 +427,8 @@ class ExtrasConfigTest {
         assertRange(1, OcclusionSettings.MAX_ENTITY_SIZE_DEFAULT, 32);
         assertRange(1, OcclusionSettings.MAX_BLOCK_ENTITY_SIZE_DEFAULT, 32);
         assertRange(0, OcclusionSettings.SLACK_DEFAULT, 300);
+        assertRange(32, OcclusionSettings.MAX_DISTANCE_DEFAULT, 1024);
+        assertRange(0, OcclusionSettings.HIDE_DELAY_DEFAULT, 2000);
         assertRange(HudSettings.CACHE_FPS_MIN, HudSettings.CACHE_FPS_DEFAULT, HudSettings.CACHE_FPS_MAX);
         assertRange(LeafSettings.DEPTH_MIN, LeafSettings.DEPTH_DEFAULT, LeafSettings.DEPTH_MAX);
         assertRange(ZoomSettings.LEVEL_MIN, ZoomSettings.LEVEL_DEFAULT, ZoomSettings.LEVEL_MAX);
@@ -466,6 +468,8 @@ class ExtrasConfigTest {
         assertEquals(OcclusionSettings.MAX_ENTITY_SIZE_DEFAULT, options.occlusion.maxEntitySize);
         assertEquals(OcclusionSettings.MAX_BLOCK_ENTITY_SIZE_DEFAULT, options.occlusion.maxBlockEntitySize);
         assertEquals(OcclusionSettings.SLACK_DEFAULT, options.occlusion.raycastSlack);
+        assertEquals(OcclusionSettings.MAX_DISTANCE_DEFAULT, options.occlusion.maxDistance);
+        assertEquals(OcclusionSettings.HIDE_DELAY_DEFAULT, options.occlusion.hideDelay);
         assertEquals(HudSettings.CACHE_FPS_DEFAULT, options.hud.cacheFps);
         assertEquals(LeafSettings.DEPTH_DEFAULT, options.leaves.cullingDepth);
         assertEquals(LeafCulling.DEFAULT, options.leaves.cullingMode);

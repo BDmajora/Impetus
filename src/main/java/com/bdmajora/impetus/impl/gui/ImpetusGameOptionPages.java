@@ -342,11 +342,13 @@ public class ImpetusGameOptionPages {
                 .add(CommonOptionPages.deferChunkUpdates(sodiumOpts))
                 .build());
 
+        var occlusion = ExtrasOptionPages.occlusionCulling();
         groups.add(OptionGroup.createBuilder()
                 .setId(OptionIdentifier.create(IMPETUS, "culling"))
                 .setName(TextComponent.translatable("impetus.options.group.culling"))
                 .add(CommonOptionPages.entityCulling(sodiumOpts))
-                .add(ExtrasOptionPages.occlusionCulling())
+                .add(occlusion)
+                .add(ExtrasOptionPages.pauseHiddenArmorStands(occlusion::getValue))
                 .add(ExtrasOptionPages.leafCulling())
                 .add(CommonOptionPages.animateVisibleTextures(sodiumOpts))
                 .build());

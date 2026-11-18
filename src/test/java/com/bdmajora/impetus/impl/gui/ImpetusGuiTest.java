@@ -262,7 +262,8 @@ class ImpetusGuiTest {
         // Checks the engine switches.
         assertEquals(3, performance.getGroups().size());
         assertEquals(6, performance.getGroups().get(2).getOptions().size());
-        assertEquals(14, OptionPages.exercise(List.of(performance)));
+        assertEquals(15, OptionPages.exercise(List.of(performance)));
+        assertEquals(5, performance.getGroups().get(1).getOptions().size());
         assertEquals(22, OptionPages.exercise(List.of(details)));
         assertEquals(16, OptionPages.exercise(List.of(interfacePage)));
         // The Impetus warning switches join the Extras notification group

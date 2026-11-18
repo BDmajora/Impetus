@@ -226,6 +226,12 @@ public final class ExtrasOptionPages {
                 config -> config.occlusion.enabled, OptionImpact.HIGH, null, null);
     }
 
+    // Returns the switch that pauses the client tick of hidden armor stands.
+    public static OptionImpl<ExtrasConfig, Boolean> pauseHiddenArmorStands(BooleanSupplier occlusionOn) {
+        return OPTIONS.toggle("occlusion.pause_hidden", (config, value) -> config.occlusion.pauseHidden = value,
+                config -> config.occlusion.pauseHidden, OptionImpact.MEDIUM, null, occlusionOn);
+    }
+
     // Returns the leaf culling mode.
     public static OptionImpl<ExtrasConfig, ExtrasConfig.LeafCulling> leafCulling() {
         return OPTIONS.cycling("leaves.culling_mode", ExtrasConfig.LeafCulling.class, ExtrasConfig.LeafCulling.values(),

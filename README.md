@@ -1,24 +1,20 @@
 <!--
-  Placeholders to fill in once the project pages exist:
-    CURSEFORGE_PROJECT_ID  numeric id from the "About Project" sidebar on the CurseForge page
-    MODRINTH_SLUG          the project slug (or id) from the Modrinth page URL
-  The page links below also assume the slug "impetus" on both sites.
-  The total downloads badge is filled in by .github/workflows/download-badge.yaml, which needs the same two values
-  as the repository variables MODRINTH_PROJECT and CURSEFORGE_PROJECT_ID.
+  The total downloads badge is filled in by .github/workflows/download-badge.yaml, which needs the repository
+  variables MODRINTH_PROJECT (impetus_cleanroom) and CURSEFORGE_PROJECT_ID (1814628).
 -->
 
 <img src="icons/impetus400.png" width="128">
 
 # Impetus
 
-[![Available on CurseForge](https://cdn.jsdelivr.net/npm/@intergrav/devins-badges@3/assets/cozy/available/curseforge_vector.svg)](https://www.curseforge.com/minecraft/mc-mods/impetus)
-[![Available on Modrinth](https://cdn.jsdelivr.net/npm/@intergrav/devins-badges@3/assets/cozy/available/modrinth_vector.svg)](https://modrinth.com/mod/impetus)
+[![Available on CurseForge](https://cdn.jsdelivr.net/npm/@intergrav/devins-badges@3/assets/cozy/available/curseforge_vector.svg)](https://www.curseforge.com/minecraft/mc-mods/impetus-cleanroom)
+[![Available on Modrinth](https://cdn.jsdelivr.net/npm/@intergrav/devins-badges@3/assets/cozy/available/modrinth_vector.svg)](https://modrinth.com/mod/impetus_cleanroom)
 [![Available on GitHub](https://cdn.jsdelivr.net/npm/@intergrav/devins-badges@3/assets/cozy/available/github_vector.svg)](https://github.com/BDmajora/Impetus/releases/latest)
 
 [![Total downloads](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FBDmajora%2FImpetus%2Fbadges%2Fdownloads.json&style=for-the-badge&label=Total%20downloads)](https://github.com/BDmajora/Impetus/releases)
 [![GitHub downloads](https://img.shields.io/github/downloads/BDmajora/Impetus/total?style=for-the-badge&logo=github&label=GitHub&color=24292F)](https://github.com/BDmajora/Impetus/releases)
-[![CurseForge downloads](https://img.shields.io/curseforge/dt/CURSEFORGE_PROJECT_ID?style=for-the-badge&logo=curseforge&label=CurseForge&color=F16436)](https://www.curseforge.com/minecraft/mc-mods/impetus)
-[![Modrinth downloads](https://img.shields.io/modrinth/dt/MODRINTH_SLUG?style=for-the-badge&logo=modrinth&label=Modrinth&color=1BD96A)](https://modrinth.com/mod/impetus)
+[![CurseForge downloads](https://img.shields.io/curseforge/dt/1814628?style=for-the-badge&logo=curseforge&label=CurseForge&color=F16436)](https://www.curseforge.com/minecraft/mc-mods/impetus-cleanroom)
+[![Modrinth downloads](https://img.shields.io/modrinth/dt/impetus_cleanroom?style=for-the-badge&logo=modrinth&label=Modrinth&color=1BD96A)](https://modrinth.com/mod/impetus_cleanroom)
 [![GitHub stars](https://img.shields.io/github/stars/BDmajora/Impetus?style=for-the-badge&logo=github&label=Stars)](https://github.com/BDmajora/Impetus/stargazers)
 
 Impetus is a rendering engine and performance mod for Minecraft 1.12.2. It replaces the vanilla chunk renderer with
@@ -53,8 +49,8 @@ versions of [Sodium](https://github.com/CaffeineMC/sodium) and [Iris](https://gi
 
 ### Downloads
 
-Releases are published on [Modrinth](https://modrinth.com/mod/impetus),
-[CurseForge](https://www.curseforge.com/minecraft/mc-mods/impetus) and
+Releases are published on [Modrinth](https://modrinth.com/mod/impetus_cleanroom),
+[CurseForge](https://www.curseforge.com/minecraft/mc-mods/impetus-cleanroom) and
 [GitHub Releases](https://github.com/BDmajora/Impetus/releases/latest).
 
 You can also build the latest code yourself by following the [build instructions](#building-from-source).

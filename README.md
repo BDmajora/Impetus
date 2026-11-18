@@ -21,22 +21,33 @@
 [![Modrinth downloads](https://img.shields.io/modrinth/dt/MODRINTH_SLUG?style=for-the-badge&logo=modrinth&label=Modrinth&color=1BD96A)](https://modrinth.com/mod/impetus)
 [![GitHub stars](https://img.shields.io/github/stars/BDmajora/Impetus?style=for-the-badge&logo=github&label=Stars)](https://github.com/BDmajora/Impetus/stargazers)
 
-Impetus is a rendering engine and optimization mod for Minecraft 1.12.2 which improves frame rates, cuts down on
-stutter and lets you run OptiFine shader packs, while staying compatible with large modpacks.
+Impetus is a rendering engine and performance mod for Minecraft 1.12.2. It replaces the vanilla chunk renderer with
+a multithreaded pipeline that draws terrain through multi-draw indirect, with an optional mesh-shader backend for
+NVIDIA GPUs, and runs OptiFine and Iris shader packs, including the coloured lighting that OptiFine does not
+support. Lighting is computed off the main thread, and further modules reduce memory use, load times and server
+tick cost while staying compatible with large modpacks.
 
-Most of the work happens in the renderer. Impetus replaces vanilla's chunk rendering with its own pipeline. Chunks
-are meshed on worker threads and drawn in large batches with multi-draw indirect, and on recent NVIDIA cards the
-terrain can be drawn with mesh shaders instead. Lighting is calculated off the main thread by a separate engine.
-The rest of the mod deals with the slow parts of 1.12.2 that have nothing to do with graphics: memory use, model
-loading, world generation and server ticks.
+Impetus is a hard fork of [Celeritas](https://git.taumc.org/embeddedt/celeritas), built on the last free-licensed
+versions of [Sodium](https://github.com/CaffeineMC/sodium) and [Iris](https://github.com/IrisShaders/Iris).
 
-Impetus is a hard fork of [Celeritas](https://git.taumc.org/embeddedt/celeritas), and through it a descendant of
-the last free-licensed versions of [Sodium](https://github.com/CaffeineMC/sodium) and
-[Iris](https://github.com/IrisShaders/Iris). If you play on a modern version of the game, those are the mods you
-should be using.
+### Screenshots
 
-**If Impetus helps your game run better, please consider starring this repository.** It takes one click, and it's
-the easiest way to help other players find the mod.
+<img src="docs/screenshots/water-reflections.webp" alt="Water reflections on a river with a red buoy">
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/castle-night.webp" alt="Castle at night with starry sky"></td>
+    <td><img src="docs/screenshots/savanna-overlook.webp" alt="Savanna and mountains seen from above"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/warped-forest.webp" alt="Teal Nether forest with coloured fog"></td>
+    <td><img src="docs/screenshots/crimson-fog.webp" alt="Magenta Nether biome with coloured fog"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/nether-cavern.webp" alt="Nether cavern lit by glowstone"></td>
+    <td><img src="docs/screenshots/river.webp" alt="River running under a monorail track"></td>
+  </tr>
+</table>
 
 ---
 
@@ -46,8 +57,7 @@ the easiest way to help other players find the mod.
 
 Official releases of Impetus are published only on our [Modrinth](https://modrinth.com/mod/impetus) and
 [CurseForge](https://www.curseforge.com/minecraft/mc-mods/impetus) pages and on
-[GitHub Releases](https://github.com/BDmajora/Impetus/releases/latest). If you got your copy from anywhere else, we
-can't help you with it.
+[GitHub Releases](https://github.com/BDmajora/Impetus/releases/latest).
 
 #### Development builds
 
@@ -62,9 +72,9 @@ Impetus needs **Minecraft 1.12.2** running on **[Cleanroom](https://github.com/C
 You don't need to install Mixin or MixinExtras, since Cleanroom provides both. Cleanroom also turns on its own
 Kirino render engine by default. Impetus switches Kirino off at startup so the two don't both draw terrain.
 
-If you have Phosphor or Alfheim installed, remove them. Impetus brings its own lighting engine. It does try to
-disable theirs when it finds them, because two lighting engines running at once will corrupt your world's lighting,
-but please don't count on that.
+Remove Phosphor and Alfheim if you have them installed, since Impetus includes its own lighting engine. Impetus
+disables them when it detects them, because two lighting engines running at once will corrupt a world's lighting,
+but removing them is the reliable option.
 
 Looking for the old Forge / Java 8 / LWJGL 2 version? It lives on the `legacy` branch.
 
@@ -90,7 +100,6 @@ Impetus is fully open source, and anyone is free to fork it or contribute.
 
 ## How can I help?
 
-* Star the repository. It really does help people find Impetus.
 * Report bugs, with logs. Crash reports from big modpacks are especially useful.
 * Pull requests are welcome. If you're planning something large, open an issue first so we can talk it through
   before you put the time in.

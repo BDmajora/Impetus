@@ -15,6 +15,7 @@
 [![Available on Modrinth](https://cdn.jsdelivr.net/npm/@intergrav/devins-badges@3/assets/cozy/available/modrinth_vector.svg)](https://modrinth.com/mod/impetus)
 
 [![Total downloads](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FBDmajora%2FImpetus%2Fbadges%2Fdownloads.json&style=for-the-badge&label=Total%20downloads)](https://github.com/BDmajora/Impetus/releases)
+[![GitHub downloads](https://img.shields.io/github/downloads/BDmajora/Impetus/total?style=for-the-badge&logo=github&label=GitHub&color=24292F)](https://github.com/BDmajora/Impetus/releases)
 [![CurseForge downloads](https://img.shields.io/curseforge/dt/CURSEFORGE_PROJECT_ID?style=for-the-badge&logo=curseforge&label=CurseForge&color=F16436)](https://www.curseforge.com/minecraft/mc-mods/impetus)
 [![Modrinth downloads](https://img.shields.io/modrinth/dt/MODRINTH_SLUG?style=for-the-badge&logo=modrinth&label=Modrinth&color=1BD96A)](https://modrinth.com/mod/impetus)
 [![GitHub stars](https://img.shields.io/github/stars/BDmajora/Impetus?style=for-the-badge&logo=github&label=Stars)](https://github.com/BDmajora/Impetus/stargazers)

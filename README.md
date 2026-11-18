@@ -163,73 +163,53 @@ uses LWJGL 2 names where a vanilla method signature requires them.
 
 ### Code and ideas
 
+Impetus uses code or ideas from the following projects.
+
 * **MCRcortex**, [Nvidium](https://github.com/MCRcortex/nvidium) (LGPL-3). The mesh-shader terrain backend is ported
   from it.
-* **orf**, [GpuShift](https://modrinth.com/mod/gpushift) (All Rights Reserved). The Render Budget group, including
-  its CPU/GPU bottleneck detector, is a clean-room implementation of its idea. No code was taken from it.
-* **Mr.Toad**, [GPUBooster](https://github.com/ITsMrToad/GPUBooster) (GPL-3). It is ported to 1.12.2 as the GPU
-  Booster group.
-* **AxalotL**, [Async](https://github.com/AxalotLDev/Async) (GPL-3), and the authors of MCMT and
-  [JMT-MCMT](https://github.com/jediminer543/JMT-MCMT) (BSD-2-Clause) that it builds on. The Parallel Ticking group
-  reimplements its parallel entity ticking for 1.12.2.
-* **Harvey_Husky**, [AsyncParticles](https://github.com/Harveykang/AsyncParticles) (LGPL-3). Parallel particle
-  ticking, the particle light cache and off-screen particle culling are based on it.
-* **fzzyhmstrs**, [Particle Core](https://github.com/fzzyhmstrs/pc) (MIT). The particle collision cache comes from it.
-* **FoundationGames**, [Enhanced Block Entities](https://github.com/FoundationGames/EnhancedBlockEntities) (LGPL-3),
-  and **Ceeden**, [Better Block Entities](https://github.com/EdeenMC/betterblockentities) (LGPL-3). The Baked Block
-  Entities group rebuilds their approach from the vanilla entity models.
-* **malte0811**, [FerriteCore](https://github.com/malte0811/FerriteCore) (MIT). Coarctatio uses its block state and
-  model deduplication techniques.
-* **Steveplays28**, [Noisium](https://github.com/Steveplays28/noisium) (LGPL-3). Equilibrium's world generation fast
-  paths are based on it.
-* **TonimatasDEV**, [Packet Fixer](https://github.com/TonimatasDEV/PacketFixer) (MIT). The Network group is based on
-  it.
-* **Spottedleaf**, [Starlight](https://github.com/PaperMC/Starlight) (LGPL-3), and **ishland**,
-  [ScalableLux](https://github.com/RelativityMC/ScalableLux) (LGPL-3). Fulgor schedules its light passes the same way.
 * **Sumire Labs**, [Pulsar](https://github.com/Sumire-Labs/Pulsar) (LGPL-3), which grew out of
   [SuperNova](https://github.com/GTNewHorizons/SuperNova) (LGPL-3) by GTNewHorizons. Fulgor's async mode is ported
   from it.
-* **wisecase2**, [StutterFix](https://github.com/wisecase2/StutterFix) (MIT). The Thread Scheduling group is based on
-  it.
-* **asie**, [FoamFix](https://github.com/asiekierka/FoamFix) (LGPL-3). Equilibrium carries its ghost-chunk guards,
-  spawner check cache and idle entity cleanup.
+* **orf**, [GpuShift](https://modrinth.com/mod/gpushift) (All Rights Reserved). The render budget is a clean-room
+  implementation of its idea. No code was taken from it.
+* **tr7zw**, [Entity Culling](https://github.com/tr7zw/EntityCulling) (tr7zw Protective License), and **Meldexun**,
+  the 1.12.2 [Entity Culling](https://github.com/Meldexun/EntityCulling) (All Rights Reserved). Ray-cast entity
+  culling is a clean-room implementation of their idea. No code was taken from either.
+* **Moulberry**, [HUDCaching](https://github.com/Moulberry/MCHUDCaching) (CC BY-NC 3.0). The HUD cache is a
+  clean-room implementation of its idea. No code was taken from it.
+* **Mr.Toad**, [GPUBooster](https://github.com/ITsMrToad/GPUBooster) (GPL-3)
+* **AxalotL**, [Async](https://github.com/AxalotLDev/Async) (GPL-3), and the authors of MCMT and
+  [JMT-MCMT](https://github.com/jediminer543/JMT-MCMT) (BSD-2-Clause)
+* **Harvey_Husky**, [AsyncParticles](https://github.com/Harveykang/AsyncParticles) (LGPL-3)
+* **fzzyhmstrs**, [Particle Core](https://github.com/fzzyhmstrs/pc) (MIT)
+* **FoundationGames**, [Enhanced Block Entities](https://github.com/FoundationGames/EnhancedBlockEntities) (LGPL-3)
+* **Ceeden**, [Better Block Entities](https://github.com/EdeenMC/betterblockentities) (LGPL-3)
+* **malte0811**, [FerriteCore](https://github.com/malte0811/FerriteCore) (MIT)
+* **Steveplays28**, [Noisium](https://github.com/Steveplays28/noisium) (LGPL-3)
+* **TonimatasDEV**, [Packet Fixer](https://github.com/TonimatasDEV/PacketFixer) (MIT)
+* **Spottedleaf**, [Starlight](https://github.com/PaperMC/Starlight) (LGPL-3)
+* **ishland**, [ScalableLux](https://github.com/RelativityMC/ScalableLux) (LGPL-3)
+* **wisecase2**, [StutterFix](https://github.com/wisecase2/StutterFix) (MIT)
+* **asie**, [FoamFix](https://github.com/asiekierka/FoamFix) (LGPL-3)
 * **Rongmario**, Chibi and [LoliASM](https://web.archive.org/web/20260714065606/https://github.com/LoliKingdom/LoliASM)
-  (LGPL-2.1). The lazy item capabilities, furnace recipe index, entity factory, loader string interning, remapper
-  cache compaction, recycled events and the world load and screenshot tweaks are based on them.
-* **Kasumi_Nova** and **Circulate233**, [StellarCore](https://github.com/NovaEngineering-Source/StellarCore)
-  (LGPL-3). The numeric tag pool, hash caches, long-keyed tile entity map, HUD caching approach, parallel texture
-  decoding, primitive ore dictionary and model part pooling started there.
-* **embeddedt**, [VintageFix](https://github.com/embeddedt/VintageFix) (LGPL-3). The mod scan cache, resource
-  existence caches, stackless resource exceptions, shelf stitching, soft structure templates, fast item baking and
-  dynamic model loading are based on it. Dynamic model loading goes back to **Runemoro**'s dynamic resources in
-  [VanillaFix](https://github.com/DimensionalDevelopment/VanillaFix) (MIT).
-* **ACGaming** and the [Universal Tweaks](https://github.com/ACGaming/UniversalTweaks) contributors (jchung01,
-  Darkhax, EverNife, Barteks2x) (LGPL-3). The advancement trigger, crafting cache, pathfinding chunk guard, entity
-  radius check, chunk generation limit, sound debug skip, quiet prefix check and plain missing models come from it.
-* **Mephodio**, [Icterine](https://github.com/Mephodio/Icterine) (GPL-3), where the advancement trigger optimisation
-  first appeared.
-* **VidTu**, [Ksyxis](https://github.com/VidTu/Ksyxis) (MIT), which showed how to skip the spawn chunk preload.
-* **tr7zw**, [Entity Culling](https://github.com/tr7zw/EntityCulling) (tr7zw Protective License) and
-  [Exordium](https://github.com/tr7zw/Exordium) (LGPL-3), and **Meldexun**, the 1.12.2
-  [Entity Culling](https://github.com/Meldexun/EntityCulling) (All Rights Reserved). Ray-cast occlusion culling of
-  entities and block entities is a clean-room implementation of their idea. No code was taken from them.
-* **Luna Lage (Desoroxxx)** and Red Studio, [Valkyrie](https://github.com/Red-Studio-Ragnarok/Valkyrie) (MIT). The
-  ModelRenderer matrix path is based on it.
-* **Andrew Steinborn (astei)**, [Krypton](https://github.com/astei/krypton) (LGPL-3). Flush consolidation and the
-  varint, frame decoder and compression paths come from it.
-* **RaphiMC**, [ImmediatelyFast](https://github.com/RaphiMC/ImmediatelyFast) (LGPL-3). Text glyph batching is based
-  on it.
-* **imthosea**, [BadOptimizations](https://github.com/imthosea/BadOptimizations) (ISC). Lightmap and entity flag
-  caching are based on it.
-* **fxmorin**, [More Culling](https://github.com/fxmorin/MoreCulling) (GPL-3), and **isXander**,
-  [Cull Less Leaves](https://github.com/isXander/CullLessLeaves) (LGPL-3). Item frame LOD and leaf face culling are
-  based on them.
-* **jaredlll08**, [Clumps](https://github.com/jaredlll08/Clumps) (MIT). Experience orb merging is based on it.
-* **decce6**, [Gnetum](https://github.com/decce6/Gnetum) (LGPL-3), and **Moulberry**,
-  [HUDCaching](https://github.com/Moulberry/MCHUDCaching) (CC BY-NC 3.0). The HUD cache is a clean-room
-  implementation of the same idea. No code was taken from either.
+  (LGPL-2.1)
+* **Kasumi_Nova** and **Circulate233**, [StellarCore](https://github.com/NovaEngineering-Source/StellarCore) (LGPL-3)
+* **embeddedt**, [VintageFix](https://github.com/embeddedt/VintageFix) (LGPL-3)
+* **Runemoro**, [VanillaFix](https://github.com/DimensionalDevelopment/VanillaFix) (MIT)
+* **ACGaming** and the [Universal Tweaks](https://github.com/ACGaming/UniversalTweaks) contributors (LGPL-3)
+* **Mephodio**, [Icterine](https://github.com/Mephodio/Icterine) (GPL-3)
+* **VidTu**, [Ksyxis](https://github.com/VidTu/Ksyxis) (MIT)
+* **tr7zw**, [Exordium](https://github.com/tr7zw/Exordium) (LGPL-3)
+* **Luna Lage (Desoroxxx)** and Red Studio, [Valkyrie](https://github.com/Red-Studio-Ragnarok/Valkyrie) (MIT)
+* **Andrew Steinborn (astei)**, [Krypton](https://github.com/astei/krypton) (LGPL-3)
+* **RaphiMC**, [ImmediatelyFast](https://github.com/RaphiMC/ImmediatelyFast) (LGPL-3)
+* **imthosea**, [BadOptimizations](https://github.com/imthosea/BadOptimizations) (ISC)
+* **fxmorin**, [More Culling](https://github.com/fxmorin/MoreCulling) (GPL-3)
+* **isXander**, [Cull Less Leaves](https://github.com/isXander/CullLessLeaves) (LGPL-3)
+* **jaredlll08**, [Clumps](https://github.com/jaredlll08/Clumps) (MIT)
+* **decce6**, [Gnetum](https://github.com/decce6/Gnetum) (LGPL-3)
 * **LogicalGeekBoy** and the Logical Zoom contributors, [Logical Zoom](https://github.com/LogicalGeekBoy/logical_zoom)
-  (MIT). It is ported with its defaults as the Zoom group.
+  (MIT)
 
 ## License
 

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# ./run.sh opens the menu; ./run.sh build | test [--all] | clean runs one task and exits with its status
+# ./run.sh opens the menu
+# ./run.sh build | test [--all] | clean runs that one task and exits with its status
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-# The wrapper loses its exec bit on some checkouts (notably fresh Windows clones); Gradle provisions JDK 25 itself
+# gradlew can lose its exec bit, for example in a clone made on Windows
 [ -x ./gradlew ] || chmod +x gradlew
 
 build() {
@@ -16,14 +17,15 @@ build() {
     echo -e "\nJar written to build/libs/$version/"
 }
 
-# JUnit + JaCoCo over both modules; --continue keeps the second module running when the first fails, so the summary is complete
+# Runs the tests and coverage for both modules, then prints a summary
+# --continue keeps the second module's tests running when the first module fails
 test_all() {
     ./gradlew --continue test jacocoTestReport || true
     echo
     python3 tools/test-summary.py "$@"
 }
 
-# Every build output, not just build/: `gradlew clean` leaves run/, the Unimined caches and common/ behind
+# Deletes every build output. `gradlew clean` alone leaves run/, the Unimined caches and common/ behind
 clean() {
     local dirs=(build bin run .gradle common/build common/.gradle)
     if [ "${1:-}" != "--force" ]; then
@@ -36,7 +38,7 @@ clean() {
     echo "Done."
 }
 
-# Non-interactive callers have already stated their intent, so clean skips its confirmation there
+# With an argument, run that task and exit. clean skips its prompt here since the task was asked for by name
 if [ $# -gt 0 ]; then
     task=$1
     shift
@@ -49,7 +51,8 @@ if [ $# -gt 0 ]; then
     exit
 fi
 
-# Tasks run inside `||` here, where bash ignores set -e, so a failure is reported and the menu stays up
+# Interactive menu. Each task runs inside `||`, where bash ignores set -e, so a failed task prints its error
+# and the menu stays open
 while true; do
     echo -e "\n  Impetus - Cleanroom 1.12.2 (Java 25, LWJGL3)\n\n    1) Build\n    2) Test\n    3) Clean\n    4) Quit\n"
     read -r -p "  Select: " choice

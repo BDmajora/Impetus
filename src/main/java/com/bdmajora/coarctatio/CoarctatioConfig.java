@@ -213,7 +213,7 @@ public final class CoarctatioConfig {
         this.softStructureTemplates = props.bool("softStructureTemplates", true);
         this.internLoaderStrings = props.bool("internLoaderStrings", true);
         this.modScanCache = props.bool("modScanCache", true);
-        this.dynamicModels = props.bool("dynamicModels", false);
+        this.dynamicModels = props.bool("dynamicModels", true);
         this.dynamicModelsPrebakeItems = props.bool("dynamicModelsPrebakeItems", true);
         this.dynamicModelsEagerNamespaces = props.list("dynamicModelsEagerNamespaces", DEFAULT_EAGER_NAMESPACES);
         this.fastItemLayerBaking = props.bool("fastItemLayerBaking", true);

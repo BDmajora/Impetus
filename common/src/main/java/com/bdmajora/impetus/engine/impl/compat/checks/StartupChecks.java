@@ -48,22 +48,24 @@ public final class StartupChecks {
     private StartupChecks() {
     }
 
-    // Installs a default uncaught exception handler that shows one crash dialog and delegates to the previous handler
+    // Logs uncaught exceptions and shows a dialog only if the client thread terminates
     public static void installCrashDialog() {
         if (!CRASH_DIALOG_INSTALLED.compareAndSet(false, true)) {
             return;
         }
 
+        Thread clientThread = Thread.currentThread();
         Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
 
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
-            // Claims the single dialog only for a crash that has a throwable
-            if (throwable != null && CRASH_DIALOG_SHOWN.compareAndSet(false, true)) {
+            LOGGER.error("Unhandled exception in thread {}", thread == null ? null : thread.getName(), throwable);
+
+            if (thread == clientThread && throwable != null && CRASH_DIALOG_SHOWN.compareAndSet(false, true)) {
                 try {
-                    MessageBoxUtil.showError("Impetus — Minecraft crashed",
-                            "Minecraft encountered an unrecoverable error while Impetus was loaded.\n\n" +
+                    MessageBoxUtil.showError("Minecraft client stopped",
+                            "The Minecraft client thread stopped after an uncaught exception.\n\n" +
                             "Error: " + throwable.getClass().getSimpleName() + ": " + throwable.getMessage() + "\n\n" +
-                            "The full crash details are still written to the game log/crash report.");
+                            "See the launcher console or logs/latest.log for the stack trace.");
                 } catch (Throwable dialogFailure) {
                     // Ignores a dialog that fails to build or open
                 }
@@ -71,8 +73,6 @@ public final class StartupChecks {
 
             if (previous != null) {
                 previous.uncaughtException(thread, throwable);
-            } else {
-                LOGGER.error("Unhandled exception in thread {}", thread == null ? null : thread.getName(), throwable);
             }
         });
     }

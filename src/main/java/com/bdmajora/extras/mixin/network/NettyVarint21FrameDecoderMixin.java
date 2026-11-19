@@ -3,6 +3,8 @@ package com.bdmajora.extras.mixin.network;
 import com.bdmajora.extras.Extras;
 import com.bdmajora.extras.network.NetworkLimits;
 import com.bdmajora.extras.network.QuietDecoderException;
+import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
+import com.llamalad7.mixinextras.sugar.Cancellable;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.CorruptedFrameException;
@@ -12,9 +14,6 @@ import net.minecraft.network.NettyVarint21FrameDecoder;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Constant;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.ModifyConstant;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.List;
@@ -26,20 +25,24 @@ public abstract class NettyVarint21FrameDecoderMixin {
     @Unique
     private static final DecoderException IMPETUS_BAD_LENGTH = new QuietDecoderException("Bad packet length");
 
-    // Changes a constant in decode.
-    @ModifyConstant(method = "decode", constant = @Constant(intValue = 3))
-    private int impetus$frameLengthBytes(int vanilla) {
-        return NetworkLimits.frameLengthBytes();
+    // The fast path uses the same limit as the original path and yields when the check changes.
+    @ModifyExpressionValue(method = "decode",
+            at = @At(value = "CONSTANT", args = "intValue=" + NetworkLimits.VANILLA_FRAME_LENGTH_BYTES), require = 0)
+    private int impetus$decodeFrameLimit(int limit, ChannelHandlerContext ctx, ByteBuf in, List<Object> out,
+                                         @Cancellable CallbackInfo ci) {
+        if (limit != NetworkLimits.VANILLA_FRAME_LENGTH_BYTES) {
+            return limit;
+        }
+        int maxBytes = NetworkLimits.frameLengthBytes();
+        if (Extras.options().network.fastVarInts) {
+            this.impetus$fastDecode(ctx, in, out, maxBytes);
+            ci.cancel();
+        }
+        return maxBytes;
     }
 
-    // Runs at the start of decode and can cancel it.
-    @Inject(method = "decode", at = @At("HEAD"), cancellable = true)
-    private void impetus$fastDecode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out, CallbackInfo ci) {
-        if (!Extras.options().network.fastVarInts) {
-            return;
-        }
-        ci.cancel();
-
+    @Unique
+    private void impetus$fastDecode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out, int maxBytes) {
         if (!ctx.channel().isActive()) {
             in.clear();
             return;
@@ -52,7 +55,6 @@ public abstract class NettyVarint21FrameDecoderMixin {
         }
         in.readerIndex(packetStart);
 
-        int maxBytes = NetworkLimits.frameLengthBytes();
         int start = in.readerIndex();
         int readable = in.readableBytes();
         int length = 0;

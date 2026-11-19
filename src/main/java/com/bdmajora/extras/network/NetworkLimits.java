@@ -5,6 +5,7 @@ import com.bdmajora.extras.ExtrasConfig;
 import net.minecraftforge.fml.common.Loader;
 
 // Size limits of network packets.
+// Keep mixin hooks for vanilla limits optional. Coremods can replace those checks before Mixin runs.
 public final class NetworkLimits {
     // Bytes of the vanilla frame length prefix.
     public static final int VANILLA_FRAME_LENGTH_BYTES = 3;

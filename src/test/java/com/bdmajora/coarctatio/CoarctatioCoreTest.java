@@ -41,7 +41,7 @@ class CoarctatioCoreTest {
         // Checks the config is cached.
         assertSame(config, CoarctatioConfig.get());
         assertTrue(config.deduplicateResourceLocations);
-        assertFalse(config.dynamicModels);
+        assertTrue(config.dynamicModels);
         assertEquals(12, config.nbtArrayMapThreshold);
         assertArrayEquals(new String[] {"jds.bibliocraft"}, config.blockStateBlacklist);
 
@@ -53,11 +53,14 @@ class CoarctatioCoreTest {
         assertTrue(written.contains("dynamicModelsEagerNamespaces=thebetweenlands,dynamictrees"));
 
         // A value set in the file is read back verbatim
-        Files.writeString(file, written.replace("stripChunkNbt=true", "stripChunkNbt=false"));
+        Files.writeString(file, written.replace("stripChunkNbt=true", "stripChunkNbt=false")
+                .replace("dynamicModels=true", "dynamicModels=false"));
         Mixins.set(CoarctatioConfig.class, "instance", null);
         assertFalse(CoarctatioConfig.get().stripChunkNbt);
+        assertFalse(CoarctatioConfig.get().dynamicModels);
         CoarctatioConfig.get().save();
         assertTrue(Files.readString(file).contains("stripChunkNbt=false"));
+        assertTrue(Files.readString(file).contains("dynamicModels=false"));
     }
 
     @Test

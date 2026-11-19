@@ -10,6 +10,7 @@ import com.bdmajora.impetus.engine.impl.compat.workarounds.Workarounds;
 import com.bdmajora.impetus.engine.impl.notification.ImpetusNotification;
 import com.bdmajora.impetus.engine.impl.notification.ImpetusNotifications;
 import com.bdmajora.testing.Statics;
+import com.google.gson.JsonSyntaxException;
 import org.apache.logging.log4j.Logger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -65,8 +66,8 @@ import static org.mockito.Mockito.verify;
 // Tests the startup compatibility checks
 class StartupChecksTest {
     // Title of the crash dialog
-    private static final String CRASH_TITLE = "Impetus — Minecraft crashed";
-    // Log message for a crash without a previous handler
+    private static final String CRASH_TITLE = "Minecraft client stopped";
+    // Log message for an uncaught exception
     private static final String UNHANDLED = "Unhandled exception in thread {}";
     // Log message for missing context strings
     private static final String INCOMPLETE = "OpenGL context strings were incomplete; compatibility checks may be less accurate.";
@@ -218,6 +219,26 @@ class StartupChecksTest {
         }
     }
 
+    @Test
+    void backgroundJsonFailureIsLoggedWithoutClaimingTheClientDialog() {
+        Logger logger = mockLogger();
+        List<Throwable> forwarded = new ArrayList<>();
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> forwarded.add(throwable));
+        try (MockedStatic<MessageBoxUtil> boxes = mockStatic(MessageBoxUtil.class)) {
+            StartupChecks.installCrashDialog();
+            Thread.UncaughtExceptionHandler installed = Thread.getDefaultUncaughtExceptionHandler();
+            Thread worker = new Thread(() -> { }, "mod update worker");
+            JsonSyntaxException invalidJson = new JsonSyntaxException("Expected BEGIN_OBJECT but was STRING");
+            installed.uncaughtException(worker, invalidJson);
+            verify(logger).error(UNHANDLED, (Object) worker.getName(), (Object) invalidJson);
+            assertEquals(List.of(invalidJson), forwarded);
+            boxes.verifyNoInteractions();
+
+            installed.uncaughtException(Thread.currentThread(), new IllegalStateException("boom"));
+            boxes.verify(() -> MessageBoxUtil.showError(CRASH_TITLE, crashMessage("IllegalStateException", "boom")));
+        }
+    }
+
     // Checks that a throwable without a message shows the word null
     @Test
     void crashDialogShowsNullMessage() {
@@ -300,7 +321,7 @@ class StartupChecksTest {
         verify(logger).error(UNHANDLED, (Object) null, (Object) null);
     }
 
-    // Checks that simultaneous crashes all reach the previous handler and claim the dialog once
+    // Checks that simultaneous worker failures all reach the previous handler
     @Test
     @Timeout(30)
     void concurrentCrashesAllForward() throws InterruptedException {
@@ -327,7 +348,7 @@ class StartupChecksTest {
             thread.join();
         }
         assertEquals(8, forwarded.get());
-        assertTrue(((AtomicBoolean) Statics.get(StartupChecks.class, "CRASH_DIALOG_SHOWN")).get());
+        assertFalse(((AtomicBoolean) Statics.get(StartupChecks.class, "CRASH_DIALOG_SHOWN")).get());
     }
 
     // Checks that the asynchronous run returns at once and then runs every check
@@ -917,9 +938,9 @@ class StartupChecksTest {
 
     // Returns the crash dialog text for a throwable class name and message
     private static String crashMessage(String simpleName, String message) {
-        return "Minecraft encountered an unrecoverable error while Impetus was loaded.\n\n" +
+        return "The Minecraft client thread stopped after an uncaught exception.\n\n" +
                 "Error: " + simpleName + ": " + message + "\n\n" +
-                "The full crash details are still written to the game log/crash report.";
+                "See the launcher console or logs/latest.log for the stack trace.";
     }
 
     // Replaces the logger of the checks with a mock

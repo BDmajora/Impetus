@@ -1,17 +1,16 @@
 package com.bdmajora.extras.mixin.network;
 
 import com.bdmajora.extras.network.NetworkLimits;
+import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import net.minecraft.server.network.NetHandlerLoginServer;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.injection.Constant;
-import org.spongepowered.asm.mixin.injection.ModifyConstant;
+import org.spongepowered.asm.mixin.injection.At;
 
 // Mixin that changes NetHandlerLoginServer.
 @Mixin(NetHandlerLoginServer.class)
 public abstract class NetHandlerLoginServerMixin {
-    // Changes a constant in update.
-    @ModifyConstant(method = "update", constant = @Constant(intValue = 600))
-    private int impetus$loginTimeout(int vanilla) {
-        return NetworkLimits.loginTimeoutTicks();
+    @ModifyExpressionValue(method = "update", at = @At(value = "CONSTANT", args = "intValue=600"), require = 0)
+    private int impetus$loginTimeout(int timeout) {
+        return timeout == 600 ? NetworkLimits.loginTimeoutTicks() : timeout;
     }
 }

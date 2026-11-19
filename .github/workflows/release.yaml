@@ -38,8 +38,8 @@ jobs:
           key: unimined-v5-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
           restore-keys: |
             unimined-v5-${{ runner.os }}-
-      - name: Build the release jar and the legacy engine jar
-        run: ./gradlew packageJar :common:legacyJar --stacktrace
+      - name: Build the release jar and the engine jar
+        run: ./gradlew packageJar :common:jar --stacktrace
       - name: Publish the engine module
         if: ${{ inputs.publish_engine }}
         run: ./gradlew :common:publish --stacktrace

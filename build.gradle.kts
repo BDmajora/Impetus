@@ -195,7 +195,11 @@ tasks.test {
     maxHeapSize = "2G"
     // Config code writes relative "config/" paths, so tests run from a scratch directory under build
     workingDir = layout.buildDirectory.dir("test-work").get().asFile
-    doFirst { workingDir.mkdirs() }
+    doFirst {
+        workingDir.mkdirs()
+        // The packet integration test launches CleanMix in a separate JVM.
+        systemProperty("impetus.test.classpath", classpath.asPath)
+    }
     // Mockito's inline mock maker self-attaches a ByteBuddy agent; JDK 25 also wants native and Unsafe access granted up front
     // Mockito's agent appends to the boot class path, which turns class-data sharing off with a VM warning; -Xshare:off skips both
     jvmArgs(

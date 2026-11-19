@@ -499,7 +499,7 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
             } catch (IOException e) {
                 throw new RuntimeException("Could not parse config", e);
             } catch (JsonParseException e) {
-                LOGGER.error("Could not parse config, will fallback to default settings", e);
+                LOGGER.error("Could not parse {}. Using default settings.", path, e);
                 resaveConfig = false;
             }
         }

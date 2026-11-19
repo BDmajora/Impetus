@@ -47,7 +47,7 @@ public final class DynamicModels {
     // Listener classes that run after the tables are filled.
     private static final Set<String> DEFERRED_LISTENER_CLASSES = Collections.singleton("slimeknights.tconstruct.library.client.CustomTextureCreator");
     // Pattern of model asset paths.
-    private static final Pattern MODEL_PATH = Pattern.compile("^/?assets/(.+?(?=/))/(?:.+?(?=/))/(.*)\\.(?:[A-Za-z]*)$");
+    private static final Pattern MODEL_PATH = Pattern.compile("^/?assets/([^/]+)/models/(.+)\\.json$");
     // Listeners that were deferred.
     @SuppressWarnings("deprecation")
     private static final List<IResourceManagerReloadListener> DEFERRED = new ArrayList<>();
@@ -95,26 +95,47 @@ public final class DynamicModels {
 
     // Replaces the model registry with on demand providers and loads the atlas.
     public static void reload(ModelManager manager, IResourceManager resourceManager, TextureMap atlas, BlockModelShapes shapes) {
+        ItemModelPrebake.stopAndJoin();
         Coarctatio.onResourceReloadStart();
         reloadingAtlas = atlas;
-        List<IResourcePack> packs = resourceManager instanceof SimpleReloadableResourceManager
-                ? PackPathLister.packsOf((SimpleReloadableResourceManager) resourceManager)
-                : Collections.emptyList();
-        TextureDiscovery.start(resourceManager, packs);
-        ModelLoader loader;
-        ProgressManager.ProgressBar bar;
         try {
-            ItemModelPrebake.stopAndJoin();
-            TconTextureExistence.clear();
-            runDeferredListeners(resourceManager);
-            loader = new ModelLoader(resourceManager, atlas, shapes);
-            bar = ProgressManager.push("Setting up dynamic models", 5);
-            bar.step("Model locations");
-            ModelLocations.init(loader, shapes.getBlockStateMapper());
+            reloadModels(manager, resourceManager, atlas, shapes);
         } catch (RuntimeException | Error e) {
             TextureDiscovery.abandon(e);
             throw e;
+        } finally {
+            reloadingAtlas = null;
+            weaklyRegisteredSprites = Collections.emptySet();
+            Coarctatio.onResourceReloadFinish();
         }
+    }
+
+    private static void reloadModels(ModelManager manager, IResourceManager resourceManager, TextureMap atlas, BlockModelShapes shapes) {
+        List<IResourcePack> packs = resourceManager instanceof SimpleReloadableResourceManager reloadable
+                ? PackPathLister.packsOf(reloadable)
+                : Collections.emptyList();
+        TextureDiscovery.start(resourceManager, packs);
+        TconTextureExistence.clear();
+        runDeferredListeners(resourceManager);
+        ModelLoader loader = new ModelLoader(resourceManager, atlas, shapes);
+        ProgressManager.ProgressBar bar = ProgressManager.push("Setting up dynamic models", 5);
+        try {
+            loadModelRegistry(manager, resourceManager, atlas, shapes, packs, loader, bar);
+        } finally {
+            // Forge only lets a completed bar be popped, even if a reload failed.
+            while (bar.getStep() < bar.getSteps()) {
+                bar.step("");
+            }
+            ProgressManager.pop(bar);
+        }
+        shapes.reloadModels();
+    }
+
+    private static void loadModelRegistry(ModelManager manager, IResourceManager resourceManager, TextureMap atlas,
+                                          BlockModelShapes shapes, List<IResourcePack> packs, ModelLoader loader,
+                                          ProgressManager.ProgressBar bar) {
+        bar.step("Model locations");
+        ModelLocations.init(loader, shapes.getBlockStateMapper());
         TextureDiscovery.tablesReady();
         UnbakedModelProvider models = new UnbakedModelProvider(ModelLoaderRegistryAccessor.coarctatio$loaders());
         BakedModelProvider bakedModels = new BakedModelProvider(models);
@@ -148,8 +169,6 @@ public final class DynamicModels {
         }
         bar.step("Bake events");
         BakeEventDispatcher.post(manager, bakedModels, loader);
-        ProgressManager.pop(bar);
-        shapes.reloadModels();
     }
 
     // Access to the model manager fields.
@@ -200,11 +219,9 @@ public final class DynamicModels {
 
     // Returns whether the path names an early model.
     private static boolean isEarlyModelPath(String path) {
-        if (path.length() < 6 || !path.endsWith(".json")) {
-            return false;
-        }
-        String name = path.substring(0, path.length() - 5);
-        return name.endsWith("tmat") || name.endsWith("tcon") || name.endsWith(".mod") || name.endsWith("conarm");
+        return MODEL_PATH.matcher(path).matches()
+                && (path.endsWith("tmat.json") || path.endsWith("tcon.json")
+                || path.endsWith(".mod.json") || path.endsWith("conarm.json"));
     }
 
     // Returns the models of the eager namespaces and collects their textures.

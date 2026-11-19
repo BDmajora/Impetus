@@ -67,6 +67,9 @@ GTX 16 series (Turing) card or newer.
 Put the jar in your `mods` folder. Cleanroom already provides Mixin and MixinExtras, so you do not need to install
 them separately. Impetus turns off Cleanroom's Kirino renderer at startup so that the two do not both draw terrain.
 
+Coarctatio uses VintageFix's on-demand model loading by default to cut startup work. If you are upgrading and
+`config/impetus-coarctatio.cfg` contains `dynamicModels=false`, set it to `true` to enable the feature.
+
 Remove Phosphor and Alfheim if you have them installed. Impetus has its own lighting engine, and running two
 lighting engines at once corrupts world lighting. Impetus tries to disable them when it finds them, but you should
 not rely on that.
@@ -116,7 +119,7 @@ Impetus ships as a single jar made up of several modules, each with its own mixi
 | <img src="icons/impetus400.png" width="32"> | `impetus` | The chunk renderer. It meshes chunks on worker threads and draws terrain with multi-draw indirect. It also includes an optional mesh-shader backend ported from Nvidium, which converts shader packs into `nvidium_shaderpacks/`. |
 | <img src="icons/umbra400.png" width="32"> | `umbra` | The shader pipeline, based on Iris and Oculus. It loads OptiFine and Iris shader packs. |
 | <img src="icons/fulgor400.png" width="32"> | `fulgor` | The lighting engine, which replaces Phosphor and Alfheim. It runs either a Phosphor-style engine with parallel light passes or an asynchronous engine ported from Pulsar. |
-| <img src="icons/coarctatio400.png" width="32"> | `coarctatio` | Reduces memory use and load times with block state and model deduplication, lazy item capabilities, resource lookup caches, a persistent mod scan cache, parallel texture decoding and optional on-demand model loading. |
+| <img src="icons/coarctatio400.png" width="32"> | `coarctatio` | Reduces memory use and load times with on-demand model loading, parallel texture decoding, resource lookup caches, a persistent mod scan cache, lazy item capabilities and block state and model deduplication. |
 | <img src="icons/equilibrium400.png" width="32"> | `equilibrium` | Speeds up world and server ticks with chunk access caching, world generation fast paths, advancement, crafting and furnace caches, ghost-chunk guards and an optional tick budget. |
 | | `dynamiclights` | Adds dynamic light from held and dropped items. |
 | | `extras` | Contains optional features: render budget, GPU Booster, parallel entity ticking, parallel particles, baked block entities, ray-cast entity culling, HUD caching, text batching, network optimizations and a zoom key. |
@@ -190,8 +193,9 @@ Impetus uses code or ideas from the following projects.
 * **Rongmario**, Chibi and [LoliASM](https://web.archive.org/web/20260714065606/https://github.com/LoliKingdom/LoliASM)
   (LGPL-2.1)
 * **Kasumi_Nova** and **Circulate233**, [StellarCore](https://github.com/NovaEngineering-Source/StellarCore) (LGPL-3)
-* **embeddedt**, [VintageFix](https://github.com/embeddedt/VintageFix) (LGPL-3)
-* **Runemoro**, [VanillaFix](https://github.com/DimensionalDevelopment/VanillaFix) (MIT)
+* **embeddedt** and the [VintageFix](https://github.com/embeddedt/VintageFix) contributors (LGPL-3), for
+  Coarctatio's on-demand model loading and texture discovery.
+* **Runemoro**, for the original dynamic resources work in [VanillaFix](https://github.com/DimensionalDevelopment/VanillaFix) (MIT).
 * **ACGaming** and the [Universal Tweaks](https://github.com/ACGaming/UniversalTweaks) contributors (LGPL-3)
 * **Mephodio**, [Icterine](https://github.com/Mephodio/Icterine) (GPL-3)
 * **VidTu**, [Ksyxis](https://github.com/VidTu/Ksyxis) (MIT)

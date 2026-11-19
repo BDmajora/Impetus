@@ -108,6 +108,28 @@ class CoarctatioMixinPluginTest {
     }
 
     @Test
+    void freshConfigEnablesTheOnDemandPipelineWithoutFreeingItsSpritePixels() {
+        CoarctatioMixinPlugin plugin = new CoarctatioMixinPlugin();
+        plugin.onLoad("com.bdmajora.coarctatio.mixin");
+        assertTrue(applies(plugin, "client.model.dynamic.ModelManagerDynamicMixin"));
+        assertTrue(applies(plugin, "client.model.dynamic.ItemModelMesherForgeDynamicMixin"));
+        assertTrue(applies(plugin, "client.model.dynamic.TextureMapWeakSpriteMixin"));
+        assertTrue(applies(plugin, "client.model.dynamic.StitcherDropMixin"));
+        assertTrue(applies(plugin, "client.model.dynamic.RenderItemPrebakeMixin"));
+        assertFalse(applies(plugin, "client.texture.TextureMapMixin"));
+        assertFalse(applies(plugin, "client.model.ModelBakeryPrefetchMixin"));
+
+        CoarctatioConfig.get().dynamicModels = false;
+        assertFalse(applies(plugin, "client.model.dynamic.ModelManagerDynamicMixin"));
+        assertFalse(applies(plugin, "client.model.dynamic.ItemModelMesherForgeDynamicMixin"));
+        assertFalse(applies(plugin, "client.model.dynamic.TextureMapWeakSpriteMixin"));
+        assertFalse(applies(plugin, "client.model.dynamic.StitcherDropMixin"));
+        assertFalse(applies(plugin, "client.model.dynamic.RenderItemPrebakeMixin"));
+        assertTrue(applies(plugin, "client.texture.TextureMapMixin"));
+        assertTrue(applies(plugin, "client.model.ModelBakeryPrefetchMixin"));
+    }
+
+    @Test
     void guardedMixinsAreListedWhenWantedAndBackOutAloneWhenTheirTargetIsAlreadyLoaded() {
         CoarctatioMixinPlugin plugin = new CoarctatioMixinPlugin();
         plugin.onLoad("com.bdmajora.coarctatio.mixin");

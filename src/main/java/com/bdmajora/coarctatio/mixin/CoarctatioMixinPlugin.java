@@ -79,7 +79,8 @@ public class CoarctatioMixinPlugin extends SimpleMixinPlugin {
             case "world.ChunkMixin":
                 return this.config.dropEmptyChunkSections;
             case "client.texture.TextureMapMixin":
-                return this.config.releaseSpriteData;
+                // Lazy item bakes and custom model loaders can still read sprite pixels.
+                return this.config.releaseSpriteData && !this.config.dynamicModels;
             case "client.model.ModelLoaderCleanupMixin":
                 return this.config.releaseBakeState;
             case "client.SearchTreeMixin":

@@ -91,7 +91,7 @@ class CoarctatioGuiTest {
         String text = Files.readString(dir.resolve("config/impetus-coarctatio.cfg"));
         assertTrue(text.startsWith("# Impetus memory features."));
         assertTrue(text.contains("# Turns every memory feature on."));
-        assertTrue(text.contains("# Default: false\ndynamicModels=false\n"));
+        assertTrue(text.contains("# Default: true\ndynamicModels=true\n"));
         assertTrue(text.contains("# Default: jds.bibliocraft\nblockStateBlacklist=jds.bibliocraft\n"));
         String[] lines = text.split("\n");
         for (int i = 0; i < lines.length; i++) {

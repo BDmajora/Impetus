@@ -60,6 +60,9 @@ class ImpetusGameOptionsFileTest {
         assertEquals("{\"quality\":{\"cloud_height\":\"high\"}}", Files.readString(this.path));
         Files.writeString(this.path, "[1,2,3]");
         assertEquals(128, ImpetusGameOptions.load(this.name).quality.cloudHeight);
+        Files.writeString(this.path, "\"not an options object\"");
+        assertEquals(128, ImpetusGameOptions.load(this.name).quality.cloudHeight);
+        assertEquals("\"not an options object\"", Files.readString(this.path));
     }
 
     // Reads a file with a byte order free utf 8 text and invalid bytes.

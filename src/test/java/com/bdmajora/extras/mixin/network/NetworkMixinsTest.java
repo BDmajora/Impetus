@@ -92,7 +92,8 @@ class NetworkMixinsTest {
         assertEquals(NetworkLimits.VANILLA_CHUNK_DATA,
                 (int) Mixins.call(Mixins.instance(SPacketChunkDataMixin.class), "impetus$chunkDataLimit", 2097152));
         assertEquals(3, (int) Mixins.call(Mixins.instance(NettyVarint21FrameEncoderMixin.class), "impetus$frameLengthBytes", 3));
-        assertEquals(3, (int) Mixins.call(Mixins.instance(NettyVarint21FrameDecoderMixin.class), "impetus$frameLengthBytes", 3));
+        assertEquals(3, (int) Mixins.call(Mixins.instance(NettyVarint21FrameDecoderMixin.class),
+                "impetus$decodeFrameLimit", 3, activeContext(false), Unpooled.EMPTY_BUFFER, new ArrayList<>(), Mixins.ci()));
 
         config.network.largePackets = true;
         config.network.loginTimeoutSeconds = 30;
@@ -103,9 +104,35 @@ class NetworkMixinsTest {
         PacketBufferMixin buffer = Mixins.instance(PacketBufferMixin.class);
         assertEquals(Long.MAX_VALUE, (long) Mixins.call(buffer, "impetus$nbtLimit", 2097152L));
         assertEquals(Integer.MAX_VALUE / 8, (int) Mixins.call(buffer, "impetus$writeStringLimit", 32767));
+        assertEquals(Integer.MAX_VALUE, (int) Mixins.call(buffer, "impetus$writeStringLimit", Integer.MAX_VALUE));
         // Checks the widened cap.
         assertEquals(Integer.MAX_VALUE / 8, (int) Mixins.call(buffer, "impetus$readStringLimit", NetworkLimits.VANILLA_STRING));
         assertEquals(16, (int) Mixins.call(buffer, "impetus$readStringLimit", 16));
+
+        config.network.largePackets = false;
+        assertEquals(32767, (int) Mixins.call(buffer, "impetus$writeStringLimit", 32767));
+        assertEquals(65535, (int) Mixins.call(buffer, "impetus$writeStringLimit", 65535));
+    }
+
+    @Test
+    void packetLimitsPreserveValuesFromOtherTransformers() {
+        CPacketCustomPayloadMixin packet = Mixins.instance(CPacketCustomPayloadMixin.class);
+        SPacketCustomPayloadMixin reply = Mixins.instance(SPacketCustomPayloadMixin.class);
+        SPacketChunkDataMixin chunk = Mixins.instance(SPacketChunkDataMixin.class);
+        PacketBufferMixin buffer = Mixins.instance(PacketBufferMixin.class);
+        NettyVarint21FrameEncoderMixin encoder = Mixins.instance(NettyVarint21FrameEncoderMixin.class);
+        for (boolean largePackets : new boolean[]{false, true}) {
+            config.network.largePackets = largePackets;
+            int vanilla = NetworkLimits.VANILLA_SERVERBOUND_PAYLOAD;
+            assertEquals(largePackets ? Integer.MAX_VALUE : vanilla,
+                    (int) Mixins.call(packet, "impetus$payloadLimit", vanilla));
+            assertEquals(65535, (int) Mixins.call(packet, "impetus$payloadLimit", 65535));
+            assertEquals(65535, (int) Mixins.call(reply, "impetus$payloadLimit", 65535));
+            assertEquals(65535, (int) Mixins.call(chunk, "impetus$chunkDataLimit", 65535));
+            assertEquals(65535, (int) Mixins.call(buffer, "impetus$writeStringLimit", 65535));
+            assertEquals(65535L, (long) Mixins.call(buffer, "impetus$nbtLimit", 65535L));
+            assertEquals(4, (int) Mixins.call(encoder, "impetus$frameLengthBytes", 4));
+        }
     }
 
     @Test
@@ -237,41 +264,51 @@ class NetworkMixinsTest {
         // Checks the switch off.
         config.network.fastVarInts = false;
         CallbackInfo off = Mixins.ci();
-        Mixins.call(decoder, "impetus$fastDecode", activeContext(true), Unpooled.buffer(), new ArrayList<>(), off);
+        assertEquals(5, (int) Mixins.call(decoder, "impetus$decodeFrameLimit", 3,
+                activeContext(true), Unpooled.EMPTY_BUFFER, new ArrayList<>(), off));
         assertFalse(off.isCancelled());
         config.network.fastVarInts = true;
 
         // A closed channel or a run of padding is dropped
         ByteBuf closed = Unpooled.wrappedBuffer(new byte[] {1, 5});
-        Mixins.call(decoder, "impetus$fastDecode", activeContext(false), closed, new ArrayList<>(), Mixins.ci());
+        Mixins.call(decoder, "impetus$decodeFrameLimit", 3, activeContext(false), closed, new ArrayList<>(), Mixins.ci());
         assertEquals(0, closed.readableBytes());
         ByteBuf padding = Unpooled.wrappedBuffer(new byte[] {0, 0, 0});
-        Mixins.call(decoder, "impetus$fastDecode", activeContext(true), padding, new ArrayList<>(), Mixins.ci());
+        Mixins.call(decoder, "impetus$decodeFrameLimit", 3, activeContext(true), padding, new ArrayList<>(), Mixins.ci());
         assertEquals(0, padding.readableBytes());
 
         // A whole frame after leading padding comes out as a slice
         List<Object> out = new ArrayList<>();
         ByteBuf frame = Unpooled.wrappedBuffer(new byte[] {0, 3, 7, 8, 9});
         CallbackInfo ci = Mixins.ci();
-        Mixins.call(decoder, "impetus$fastDecode", activeContext(true), frame, out, ci);
+        Mixins.call(decoder, "impetus$decodeFrameLimit", 3, activeContext(true), frame, out, ci);
         assertTrue(ci.isCancelled());
         assertEquals(3, ((ByteBuf) out.get(0)).readableBytes());
 
         // Checks a partial frame.
         ByteBuf shortBody = Unpooled.wrappedBuffer(new byte[] {5, 1});
-        Mixins.call(decoder, "impetus$fastDecode", activeContext(true), shortBody, new ArrayList<>(), Mixins.ci());
+        Mixins.call(decoder, "impetus$decodeFrameLimit", 3, activeContext(true), shortBody, new ArrayList<>(), Mixins.ci());
         assertEquals(2, shortBody.readableBytes());
         ByteBuf shortPrefix = Unpooled.wrappedBuffer(new byte[] {(byte) 0x80});
-        Mixins.call(decoder, "impetus$fastDecode", activeContext(true), shortPrefix, new ArrayList<>(), Mixins.ci());
+        Mixins.call(decoder, "impetus$decodeFrameLimit", 3, activeContext(true), shortPrefix, new ArrayList<>(), Mixins.ci());
         assertEquals(1, shortPrefix.readableBytes());
 
         // Checks the refused lengths.
         ByteBuf negative = Unpooled.wrappedBuffer(new byte[] {(byte) 0x80, (byte) 0x80, (byte) 0x80, (byte) 0x80, 0x0F});
         assertThrows(DecoderException.class,
-                () -> Mixins.call(decoder, "impetus$fastDecode", activeContext(true), negative, new ArrayList<>(), Mixins.ci()));
+                () -> Mixins.call(decoder, "impetus$decodeFrameLimit", 3, activeContext(true), negative, new ArrayList<>(), Mixins.ci()));
         ByteBuf wide = Unpooled.wrappedBuffer(new byte[] {(byte) 0x80, (byte) 0x80, (byte) 0x80, (byte) 0x80, (byte) 0x80, 1});
         assertThrows(CorruptedFrameException.class,
-                () -> Mixins.call(decoder, "impetus$fastDecode", activeContext(true), wide, new ArrayList<>(), Mixins.ci()));
+                () -> Mixins.call(decoder, "impetus$decodeFrameLimit", 3, activeContext(true), wide, new ArrayList<>(), Mixins.ci()));
+    }
+
+    @Test
+    void fastFrameDecoderYieldsToAnAlreadyModifiedLimit() {
+        NettyVarint21FrameDecoderMixin decoder = Mixins.instance(NettyVarint21FrameDecoderMixin.class);
+        CallbackInfo ci = Mixins.ci();
+        assertEquals(4, (int) Mixins.call(decoder, "impetus$decodeFrameLimit", 4,
+                activeContext(true), Unpooled.EMPTY_BUFFER, new ArrayList<>(), ci));
+        assertFalse(ci.isCancelled());
     }
 
     @SuppressWarnings("unchecked")

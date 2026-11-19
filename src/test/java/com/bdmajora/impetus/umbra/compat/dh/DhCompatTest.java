@@ -45,10 +45,7 @@ import com.seibel.distanthorizons.api.objects.DhApiResult;
 import com.seibel.distanthorizons.api.objects.math.DhApiMat4f;
 import com.seibel.distanthorizons.api.objects.math.DhApiVec3d;
 import com.seibel.distanthorizons.api.objects.math.DhApiVec3f;
-import com.seibel.distanthorizons.common.commonMixins.IFramebufferDepthTexture;
 import com.seibel.distanthorizons.core.api.internal.ClientApi;
-import com.seibel.distanthorizons.core.dependencyInjection.ModAccessorInjector;
-import com.seibel.distanthorizons.core.wrapperInterfaces.modAccessor.IIrisAccessor;
 import com.seibel.distanthorizons.coreapi.DependencyInjection.ApiEventInjector;
 import com.seibel.distanthorizons.coreapi.DependencyInjection.OverrideInjector;
 import net.minecraft.client.Minecraft;
@@ -168,7 +165,6 @@ class DhCompatTest {
         DhApi.Delayed.renderProxy = null;
         ApiEventInjector.INSTANCE.clear();
         OverrideInjector.INSTANCE.clear();
-        ModAccessorInjector.INSTANCE.clear();
         Statics.set(DhCompat.class, "dhPresent", false);
         Statics.set(DhCompat.class, "lastIncompatible", false);
         Statics.set(LodRendererEvents.class, "eventHandlersBound", false);
@@ -264,6 +260,8 @@ class DhCompatTest {
         Mc.forge("distanthorizons");
         DhCompat.run();
         assertTrue(DhCompat.isPresent());
+        // DH registers its own native mod accessor; Impetus only listens to its public render events.
+        assertNull(ApiEventInjector.INSTANCE.get(DhApiBeforeDhInitEvent.class));
         // Checks the queued handler.
         LodRendererEvents.setupEventHandlers();
         assertEquals(1, ApiEventInjector.INSTANCE.getAll(DhApiAfterDhInitEvent.class).size());
@@ -321,49 +319,6 @@ class DhCompatTest {
         ClientApi.fail = true;
         assertThrows(RuntimeException.class, DhCompat::renderShadowSolid);
         assertThrows(RuntimeException.class, DhCompat::renderDeferredLods);
-    }
-
-    @Test
-    void impetusRegistersAsDhsShaderModWhenDhInitialises() {
-        // Without DH nothing is queued
-        Mc.forge();
-        DhCompat.registerIrisAccessor();
-        assertNull(ApiEventInjector.INSTANCE.get(DhApiBeforeDhInitEvent.class));
-
-        // Checks the accessor is bound at DH init.
-        Mc.forge("distanthorizons");
-        DhCompat.registerIrisAccessor();
-        assertNull(ModAccessorInjector.INSTANCE.get(IIrisAccessor.class));
-        ApiEventInjector.INSTANCE.fireAllEvents(DhApiBeforeDhInitEvent.class, null);
-        IIrisAccessor accessor = ModAccessorInjector.INSTANCE.get(IIrisAccessor.class);
-        assertNotNull(accessor);
-        assertEquals("Impetus", accessor.getModName());
-        assertTrue(accessor.getDelayedSetupComplete());
-        accessor.finishDelayedSetup();
-        assertFalse(accessor.isReverseZDuringShaders());
-        // Checks an accessor in place is kept.
-        ApiEventInjector.INSTANCE.fireAllEvents(DhApiBeforeDhInitEvent.class, null);
-        assertEquals(1, ModAccessorInjector.INSTANCE.getAll(IIrisAccessor.class).size());
-
-        // It answers from Umbra's live state
-        assertFalse(accessor.isShaderPackInUse());
-        Mixins.set(Umbra.class, "currentPack", pack(""));
-        assertTrue(accessor.isShaderPackInUse());
-        assertFalse(accessor.isRenderingShadowPass());
-        Statics.set(UmbraShadowRenderer.class, "shadowPassActive", true);
-        assertTrue(accessor.isRenderingShadowPass());
-
-        // Checks the depth texture lookup.
-        IFramebufferDepthTexture patched = mock(IFramebufferDepthTexture.class);
-        when(patched.distantHorizons$getDistantHorizonsDepthTexture()).thenReturn(42);
-        assertEquals(42, accessor.getFramebufferDepthTextureId(patched));
-        assertEquals(-1, accessor.getFramebufferDepthTextureId(new Object()));
-
-        // It is its own identity
-        assertEquals(accessor, accessor);
-        assertNotEquals(accessor, new Object());
-        assertEquals(System.identityHashCode(accessor), accessor.hashCode());
-        assertEquals("Impetus IIrisAccessor", accessor.toString());
     }
 
     @Test

@@ -69,8 +69,7 @@
     "world.tick_scheduler.WorldServerMixin",
     "worldgen.chunk_copy.ChunkMixin",
     "worldgen.chunk_copy.ExtendedBlockStorageAccessor",
-    "worldgen.int_cache.IntCacheMixin",
-    "worldgen.primer_state_cache.ChunkPrimerMixin"
+    "worldgen.int_cache.IntCacheMixin"
   ],
   "injectors": {
     "defaultRequire": 1

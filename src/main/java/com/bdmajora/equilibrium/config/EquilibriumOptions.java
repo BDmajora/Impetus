@@ -365,10 +365,6 @@ public final class EquilibriumOptions {
                 "World generation optimizations, after Noisium's approach of bypassing the abstractions "
                         + "between the generator and the storage it fills; every rule keeps generation "
                         + "bit-for-bit identical");
-        builder.add("mixin.worldgen.primer_state_cache", true,
-                "The chunk primer remembers the last state it encoded and the last id it decoded, so the "
-                        + "long runs of stone and water terrain writes, and the column scans surface "
-                        + "replacement reads back, skip the identity-map lookup per block.");
         builder.add("mixin.worldgen.chunk_copy", true,
                 "Copying a finished primer into a chunk no longer reads back the slot it is about to "
                         + "write: every slot of a new section is air, so the counters are updated "

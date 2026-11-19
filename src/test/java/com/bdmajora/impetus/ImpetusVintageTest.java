@@ -157,7 +157,7 @@ class ImpetusVintageTest {
             verify(bus).register(mod);
             ctm.verify(CtmModelWrapping::register);
             fulgorHooks.verify(Fulgor::detectCompatibility);
-            dh.verify(DhCompat::registerIrisAccessor);
+            dh.verifyNoInteractions();
             remapper.verify(RemapperCompactor::run);
             extras.verify(Extras::initialize);
             lights.verify(DynamicLights::initialize);
@@ -355,7 +355,11 @@ class ImpetusVintageTest {
 
     @Test
     void theIrisApiAnswersFromUmbra() {
+        assertTrue(IrisApi.class.isInterface(), "Mods compiled against Iris use invokeinterface");
         IrisApi api = IrisApi.getInstance();
+        assertSame(api, IrisApi.getInstance());
+        assertEquals(0, api.getMinorApiRevision());
+        assertEquals("options.umbra.shaderPackSelection", api.getMainScreenLanguageKey());
         assertFalse(api.isShaderPackInUse());
         assertFalse(api.isRenderingShadowPass());
         Statics.set(UmbraShadowRenderer.class, "shadowPassActive", true);
@@ -372,5 +376,20 @@ class ImpetusVintageTest {
         Object screen = api.openMainIrisScreenObj("not a screen");
         assertInstanceOf(ShaderPackSelectScreen.class, screen);
         assertSame(open, Mixins.get(screen, "parent"));
+    }
+
+    @Test
+    void theIrisApiConfigAppliesChangesThroughUmbra() {
+        var config = IrisApi.getInstance().getConfig();
+        assertSame(config, IrisApi.getInstance().getConfig());
+        try (MockedStatic<Umbra> umbra = Mockito.mockStatic(Umbra.class)) {
+            assertFalse(config.areShadersEnabled());
+            umbra.when(Umbra::areShadersEnabled).thenReturn(true);
+            assertTrue(config.areShadersEnabled());
+            config.setShadersEnabledAndApply(false);
+            config.setShadersEnabledAndApply(true);
+            umbra.verify(() -> Umbra.setShadersEnabled(false));
+            umbra.verify(() -> Umbra.setShadersEnabled(true));
+        }
     }
 }

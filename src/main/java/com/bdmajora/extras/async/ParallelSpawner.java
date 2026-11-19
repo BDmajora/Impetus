@@ -1,5 +1,6 @@
 package com.bdmajora.extras.async;
 
+import com.bdmajora.impetus.impl.world.SimulationDistance;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.EntitySpawnPlacementRegistry;
@@ -64,7 +65,7 @@ public final class ParallelSpawner {
                         if (!edge && world.getWorldBorder().contains(pos)) {
                             PlayerChunkMapEntry entry = world.getPlayerChunkMap().getEntry(pos.x, pos.z);
 
-                            if (entry != null && entry.isSentToPlayers()) {
+                            if (entry != null && entry.isSentToPlayers() && SimulationDistance.shouldTick(world, pos.x, pos.z)) {
                                 eligible.add(pos);
                             }
                         }

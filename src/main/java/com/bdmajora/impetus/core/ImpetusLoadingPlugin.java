@@ -19,9 +19,7 @@ public class ImpetusLoadingPlugin implements IFMLLoadingPlugin {
 
     // Receives the loader data.
     @Override
-    public void injectData(Map<String, Object> data) {
-        ImpetusMixinRegistrar.restoreDistantHorizonsDepthTexture();
-    }
+    public void injectData(Map<String, Object> data) { }
 
     // Returns the asm transformer class.
     @Override

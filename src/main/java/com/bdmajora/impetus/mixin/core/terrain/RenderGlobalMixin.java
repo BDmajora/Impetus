@@ -16,7 +16,6 @@ import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.BlockRenderLayer;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.MathHelper;
 import net.minecraft.world.WorldProvider;
 import com.bdmajora.impetus.ImpetusVintage;
 import com.bdmajora.impetus.engine.impl.gl.device.RenderDevice;
@@ -336,11 +335,13 @@ public abstract class RenderGlobalMixin implements SimpleWorldRenderer.Provider<
         return this.renderer.getChunksDebugString();
     }
 
-    // Entity gatherer.
+    @Unique
     private final EntityGatherer impetus$entityGatherer = new EntityGatherer();
 
-    // Entities collected this frame.
-    private List<Entity>[] impetus$collectedEntities;
+    @Inject(method = "renderEntities", at = @At("HEAD"))
+    private void impetus$applyEntityDistance(CallbackInfo ci) {
+        Entity.setRenderDistanceWeight(ImpetusVintage.options().quality.entityDistance / 100.0D);
+    }
 
     // Runs inside renderEntities.
     @Inject(method = "renderEntities", at = @At(value = "FIELD", target = "Lnet/minecraft/client/renderer/RenderGlobal;renderInfos:Ljava/util/List;", ordinal = 0))
@@ -351,22 +352,18 @@ public abstract class RenderGlobalMixin implements SimpleWorldRenderer.Provider<
                                 @Local(ordinal = 1) double renderViewY,
                                 @Local(ordinal = 2) double renderViewZ) {
         int pass = MinecraftForgeClient.getRenderPass();
-        if (pass == 0 || impetus$collectedEntities == null) {
-            impetus$entityGatherer.clear();
-            impetus$collectedEntities = impetus$entityGatherer.getLoadedEntityList(world);
-        }
         UmbraRenderingPipeline pipeline = Umbra.getRenderingPipeline();
         if (pipeline != null && pass == 1 && pipeline.isRenderingPostDeferredTranslucents()) {
             pipeline.setPhase(pipeline.getTranslucentEntityPhase(), 11);
         }
         EntityPlayerSP player = this.mc.player;
         BlockPos.MutableBlockPos entityBlockPos = new BlockPos.MutableBlockPos();
-        Entity.setRenderDistanceWeight(MathHelper.clamp((double)this.mc.gameSettings.renderDistanceChunks / 8.0D, 1.0D, 2.5D)
-                * (ImpetusVintage.options().quality.entityDistance / 100.0D));
-
         boolean isSleeping = renderViewEntity instanceof EntityLivingBase && ((EntityLivingBase) renderViewEntity).isPlayerSleeping();
 
-        for(Entity entity : impetus$collectedEntities[pass]) {
+        for (Entity entity : this.impetus$entityGatherer.collect(world)) {
+            if (!entity.shouldRenderInPass(pass)) {
+                continue;
+            }
             boolean isPlayerAttachedEntity = player != null && entity.isRidingOrBeingRiddenBy(player);
             boolean isLocalPlayerBody = player != null && entity == player
                     && (this.mc.gameSettings.thirdPersonView != 0 || isSleeping);

@@ -1,0 +1,272 @@
+diff --git a/forge112/build.gradle b/forge112/build.gradle
+index 41e096f63..2a838f14d 100644
+--- a/forge112/build.gradle
++++ b/forge112/build.gradle
+@@ -37,6 +37,12 @@ dependencies {
+     addMod('curse.maven:lumenized-1234162:6734060', rootProject.enable_lumenized)
+ 	
+     implementation("zone.rong:mixinbooter:11.8")
++
++    testImplementation("org.junit.jupiter:junit-jupiter:5.8.2")
++}
++
++test {
++    useJUnitPlatform()
+ }
+ 
+ // ==================== Tasks ====================
+diff --git a/forge112/src/main/java/com/seibel/distanthorizons/forge112/DistantHorizonsMixinConnector.java b/forge112/src/main/java/com/seibel/distanthorizons/forge112/DistantHorizonsMixinConnector.java
+index c7a1b392c..fd2cb8329 100644
+--- a/forge112/src/main/java/com/seibel/distanthorizons/forge112/DistantHorizonsMixinConnector.java
++++ b/forge112/src/main/java/com/seibel/distanthorizons/forge112/DistantHorizonsMixinConnector.java
+@@ -22,25 +22,19 @@ public class DistantHorizonsMixinConnector implements IMixinConnector
+ 		{
+ 			Mixins.addConfiguration("DistantHorizons.lumenized.mixins.json");
+ 		}
+-		if (!isIrisLoaded())
++		if (!isIrisLoaded(DistantHorizonsMixinConnector.class.getClassLoader()))
+ 		{
+ 			Mixins.addConfiguration("DistantHorizons.iris.mixins.json");
+ 		}
+ 	}
+ 	
+-	private boolean isIrisLoaded()
++	static boolean isIrisLoaded(ClassLoader loader)
+ 	{
+-		try
+-		{
+-			Class.forName("net.irisshaders.iris.api.v0.IrisApi", false, DistantHorizonsMixinConnector.class.getClassLoader());
+-			LOGGER.info("DistantHorizonsMixins: Iris is detected.");
+-			return true;
+-		}
+-		catch (ClassNotFoundException e)
+-		{
+-			LOGGER.info("DistantHorizonsMixins: Iris is not detected.");
+-			return false;
+-		}
++		// Impetus implements the Iris API but leaves vanilla framebuffer depth allocation to DH.
++		// Detect the actual Iris framebuffer contract without loading shader classes during mixin setup.
++		boolean irisFramebufferPresent = loader.getResource("net/coderbot/iris/rendertarget/IRenderTargetExt.class") != null;
++		LOGGER.info("DistantHorizonsMixins: Iris framebuffer integration detected: {}", irisFramebufferPresent);
++		return irisFramebufferPresent;
+ 	}
+ 	
+ }
+diff --git a/forge112/src/main/java/com/seibel/distanthorizons/forge112/ForgeMain.java b/forge112/src/main/java/com/seibel/distanthorizons/forge112/ForgeMain.java
+index 473bbfa1f..dd380df7f 100644
+--- a/forge112/src/main/java/com/seibel/distanthorizons/forge112/ForgeMain.java
++++ b/forge112/src/main/java/com/seibel/distanthorizons/forge112/ForgeMain.java
+@@ -27,6 +27,7 @@ import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBlockTe
+ import com.seibel.distanthorizons.api.methods.events.sharedParameterObjects.DhApiEventParam;
+ import com.seibel.distanthorizons.core.wrapperInterfaces.modLoader.IForgeMain;
+ import com.seibel.distanthorizons.forge112.modAccessor.IrisAccessor;
++import com.seibel.distanthorizons.forge112.modAccessor.ImpetusAccessor;
+ import com.seibel.distanthorizons.forge112.modAccessor.ModChecker;
+ import com.seibel.distanthorizons.forge112.modCompat.quark.Quark;
+ import com.seibel.distanthorizons.forge112.modCompat.sereneseasons.SereneSeasons;
+@@ -153,8 +154,11 @@ public class ForgeMain extends AbstractModInitializer implements IForgeMain
+ 	@Override
+ 	protected void initializeModCompat()
+ 	{
+-		this.tryCreateModCompatAccessor("actinium", IIrisAccessor.class, IrisAccessor::new);
+-		this.tryCreateModCompatAccessor("demonica", IIrisAccessor.class, IrisAccessor::new);
++		this.tryCreateModCompatAccessor("impetus", IIrisAccessor.class, ImpetusAccessor::new);
++		if (ModAccessorInjector.INSTANCE.get(IIrisAccessor.class) == null)
++		{
++			this.tryCreateModCompatAccessor(new String[] { "actinium", "demonica" }, IIrisAccessor.class, IrisAccessor::new);
++		}
+ 		IRIS_ACCESSOR = ModAccessorInjector.INSTANCE.get(IIrisAccessor.class);
+ 	}
+ 	
+diff --git a/forge112/src/main/java/com/seibel/distanthorizons/forge112/modAccessor/ImpetusAccessor.java b/forge112/src/main/java/com/seibel/distanthorizons/forge112/modAccessor/ImpetusAccessor.java
+new file mode 100644
+index 000000000..fe2dc5465
+--- /dev/null
++++ b/forge112/src/main/java/com/seibel/distanthorizons/forge112/modAccessor/ImpetusAccessor.java
+@@ -0,0 +1,54 @@
++/*
++ * This file is part of Distant Horizons, licensed under the GNU LGPL v3 License.
++ * Copyright (C) 2026 Distant Horizons contributors
++ */
++
++package com.seibel.distanthorizons.forge112.modAccessor;
++
++import com.seibel.distanthorizons.common.commonMixins.IFramebufferDepthTexture;
++import com.seibel.distanthorizons.core.wrapperInterfaces.modAccessor.IIrisAccessor;
++import net.irisshaders.iris.api.v0.IrisApi;
++
++/** Uses Impetus's public Iris API and the depth texture owned by DH's framebuffer mixin. */
++public final class ImpetusAccessor implements IIrisAccessor
++{
++	@Override
++	public String getModName()
++	{
++		return "Impetus";
++	}
++
++	@Override
++	public boolean isShaderPackInUse()
++	{
++		return IrisApi.getInstance().isShaderPackInUse();
++	}
++
++	@Override
++	public boolean isRenderingShadowPass()
++	{
++		return IrisApi.getInstance().isRenderingShadowPass();
++	}
++
++	@Override
++	public boolean isReverseZDuringShaders()
++	{
++		return false;
++	}
++
++	@Override
++	public boolean supportsMultiBackend()
++	{
++		return false;
++	}
++
++	@Override
++	public int getFramebufferDepthTextureId(Object framebuffer)
++	{
++		if (framebuffer instanceof IFramebufferDepthTexture)
++		{
++			return ((IFramebufferDepthTexture) framebuffer).distantHorizons$getDistantHorizonsDepthTexture();
++		}
++		return -1;
++	}
++}
+diff --git a/forge112/src/test/java/com/seibel/distanthorizons/forge112/DistantHorizonsMixinConnectorTest.java b/forge112/src/test/java/com/seibel/distanthorizons/forge112/DistantHorizonsMixinConnectorTest.java
+new file mode 100644
+index 000000000..6b11b6566
+--- /dev/null
++++ b/forge112/src/test/java/com/seibel/distanthorizons/forge112/DistantHorizonsMixinConnectorTest.java
+@@ -0,0 +1,41 @@
++package com.seibel.distanthorizons.forge112;
++
++import org.junit.jupiter.api.Test;
++
++import java.net.URL;
++import java.util.Set;
++
++import static org.junit.jupiter.api.Assertions.*;
++
++class DistantHorizonsMixinConnectorTest
++{
++	@Test
++	void irisApiFacadeDoesNotSuppressDhsDepthTexture()
++	{
++		assertFalse(DistantHorizonsMixinConnector.isIrisLoaded(resources(
++			"net/irisshaders/iris/api/v0/IrisApi.class")));
++		assertFalse(DistantHorizonsMixinConnector.isIrisLoaded(resources()));
++	}
++
++	@Test
++	void actualIrisFramebufferLeavesDepthAllocationToIris()
++	{
++		assertTrue(DistantHorizonsMixinConnector.isIrisLoaded(resources(
++			"net/irisshaders/iris/api/v0/IrisApi.class",
++			"net/coderbot/iris/rendertarget/IRenderTargetExt.class")));
++	}
++
++	private static ClassLoader resources(String... names)
++	{
++		Set<String> available = Set.of(names);
++		return new ClassLoader(null)
++		{
++			@Override
++			public URL getResource(String name)
++			{
++				return available.contains(name) ? DistantHorizonsMixinConnectorTest.class.getResource(
++					"DistantHorizonsMixinConnectorTest.class") : null;
++			}
++		};
++	}
++}
+diff --git a/forge112/src/test/java/com/seibel/distanthorizons/forge112/modAccessor/ImpetusAccessorTest.java b/forge112/src/test/java/com/seibel/distanthorizons/forge112/modAccessor/ImpetusAccessorTest.java
+new file mode 100644
+index 000000000..32e0605a8
+--- /dev/null
++++ b/forge112/src/test/java/com/seibel/distanthorizons/forge112/modAccessor/ImpetusAccessorTest.java
+@@ -0,0 +1,48 @@
++package com.seibel.distanthorizons.forge112.modAccessor;
++
++import com.seibel.distanthorizons.common.commonMixins.IFramebufferDepthTexture;
++import net.irisshaders.iris.api.v0.IrisApi;
++import org.junit.jupiter.api.AfterEach;
++import org.junit.jupiter.api.Test;
++
++import static org.junit.jupiter.api.Assertions.*;
++
++class ImpetusAccessorTest
++{
++	@AfterEach
++	void resetShaderState()
++	{
++		IrisApi.State.shaders = false;
++		IrisApi.State.shadow = false;
++	}
++
++	@Test
++	void shaderStateIsReadLiveThroughThePublicApi()
++	{
++		ImpetusAccessor accessor = new ImpetusAccessor();
++		assertEquals("Impetus", accessor.getModName());
++		assertFalse(accessor.isShaderPackInUse());
++		assertFalse(accessor.isRenderingShadowPass());
++		IrisApi.State.shaders = true;
++		assertTrue(accessor.isShaderPackInUse());
++		IrisApi.State.shadow = true;
++		assertTrue(accessor.isRenderingShadowPass());
++		IrisApi.State.shaders = false;
++		IrisApi.State.shadow = false;
++		assertFalse(accessor.isShaderPackInUse());
++		assertFalse(accessor.isRenderingShadowPass());
++		assertFalse(accessor.isReverseZDuringShaders());
++		assertFalse(accessor.supportsMultiBackend());
++		assertTrue(accessor.getDelayedSetupComplete());
++	}
++
++	@Test
++	void readsDepthFromDhsFramebufferWithoutIrisInternals()
++	{
++		ImpetusAccessor accessor = new ImpetusAccessor();
++		IFramebufferDepthTexture framebuffer = () -> 42;
++		assertEquals(42, accessor.getFramebufferDepthTextureId(framebuffer));
++		assertEquals(-1, accessor.getFramebufferDepthTextureId(new Object()));
++		assertEquals(-1, accessor.getFramebufferDepthTextureId(null));
++	}
++}
+diff --git a/forge112/src/test/java/net/irisshaders/iris/api/v0/IrisApi.java b/forge112/src/test/java/net/irisshaders/iris/api/v0/IrisApi.java
+new file mode 100644
+index 000000000..1458f7c67
+--- /dev/null
++++ b/forge112/src/test/java/net/irisshaders/iris/api/v0/IrisApi.java
+@@ -0,0 +1,25 @@
++package net.irisshaders.iris.api.v0;
++
++// Test-only API contract; no shader implementation or OpenGL context is needed.
++public interface IrisApi
++{
++	static IrisApi getInstance()
++	{
++		return State.INSTANCE;
++	}
++
++	boolean isShaderPackInUse();
++	boolean isRenderingShadowPass();
++
++	final class State
++	{
++		public static boolean shaders;
++		public static boolean shadow;
++		private static final IrisApi INSTANCE = new IrisApi()
++		{
++			@Override public boolean isShaderPackInUse() { return shaders; }
++			@Override public boolean isRenderingShadowPass() { return shadow; }
++		};
++		private State() { }
++	}
++}

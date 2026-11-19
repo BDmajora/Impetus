@@ -14,62 +14,32 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 
-// Collector of the entities to draw this frame.
+// Collector of the entities available for a render pass.
 public class EntityGatherer {
-    // Number of entity passes.
-    public static final int NUM_PASSES = 2;
-
-    // Entities of each pass.
-    private final List<Entity>[] entityLists;
-    // Entities already added this frame by identity.
+    private final List<Entity> entities = new ArrayList<>();
     private final Set<Entity> seenEntities = Collections.newSetFromMap(new IdentityHashMap<>());
-    // Adder of an entity to its pass.
-    private final Consumer<Entity> addEntity;
-
-    // Creates empty pass lists.
-    @SuppressWarnings("unchecked")
-    public EntityGatherer() {
-        this.entityLists = new List[NUM_PASSES];
-        for (int i = 0; i < NUM_PASSES; i++) {
-            this.entityLists[i] = new ArrayList<>();
+    private final Consumer<Entity> addEntity = entity -> {
+        if (this.seenEntities.add(entity)) {
+            this.entities.add(entity);
         }
-        var entityLists = this.entityLists;
-        this.addEntity = entity -> {
-            if (!this.seenEntities.add(entity)) {
-                return;
-            }
-            for (int i = 0; i < NUM_PASSES; i++) {
-                if (entity.shouldRenderInPass(i)) {
-                    entityLists[i].add(entity);
-                }
-            }
-        };
-    }
+    };
 
-    // Empties the collected entities.
-    public void clear() {
-        for (int i = 0; i < NUM_PASSES; i++) {
-            entityLists[i].clear();
-        }
+    public List<Entity> collect(WorldClient world) {
+        this.entities.clear();
         this.seenEntities.clear();
-    }
-
-    // Returns the entities of each pass.
-    public List<Entity>[] getLoadedEntityList(WorldClient world) {
-        Consumer<Entity> addEntity = this.addEntity;
         if (world.getChunkProvider() instanceof ChunkProviderClientAccessor provider) {
             var loadedChunks = provider.impetus$getLoadedChunks();
             for (Chunk chunk : loadedChunks.values()) {
-                if (!((ChunkAccessor)chunk).impetus$getHasEntities()) {
+                if (chunk instanceof ChunkAccessor accessor && !accessor.impetus$getHasEntities()) {
                     continue;
                 }
                 ClassInheritanceMultiMap<Entity>[] entityMaps = chunk.getEntityLists();
                 for (ClassInheritanceMultiMap<Entity> map : entityMaps) {
-                    map.forEach(addEntity);
+                    map.forEach(this.addEntity);
                 }
             }
         }
-        world.loadedEntityList.forEach(addEntity);
-        return this.entityLists;
+        world.getLoadedEntityList().forEach(this.addEntity);
+        return this.entities;
     }
 }

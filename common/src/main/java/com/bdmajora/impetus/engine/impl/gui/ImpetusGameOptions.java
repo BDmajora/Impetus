@@ -54,6 +54,20 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
     // Terrain backend in use.
     public GraphicsApi graphicsApi = GraphicsApi.OPENGL;
 
+    public static final int MIN_SIMULATION_DISTANCE = 5;
+    public static final int MAX_SIMULATION_DISTANCE = 32;
+
+    // Read by the integrated server while the client can change it.
+    public volatile int simulationDistance = 10;
+
+    public int getSimulationDistance() {
+        return Math.clamp(this.simulationDistance, MIN_SIMULATION_DISTANCE, MAX_SIMULATION_DISTANCE);
+    }
+
+    public void setSimulationDistance(int distance) {
+        this.simulationDistance = Math.clamp(distance, MIN_SIMULATION_DISTANCE, MAX_SIMULATION_DISTANCE);
+    }
+
     // Read only state of the config.
     private boolean readOnly;
 
@@ -464,7 +478,7 @@ public class ImpetusGameOptions implements OptionStorage<ImpetusGameOptions> {
     private static final Gson GSON = new GsonBuilder()
             .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
             .setPrettyPrinting()
-            .excludeFieldsWithModifiers(Modifier.PRIVATE)
+            .excludeFieldsWithModifiers(Modifier.PRIVATE, Modifier.STATIC)
             .create();
 
     // Loads the options from the default file.

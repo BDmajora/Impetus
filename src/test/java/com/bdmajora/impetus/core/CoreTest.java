@@ -62,28 +62,7 @@ class CoreTest {
     }
 
     @Test
-    void theRegistrarRestoresDistantHorizonsDepthTextureOnlyWhenPresent(@TempDir Path home, @TempDir Path classpath) throws IOException {
-        // Without Distant Horizons on the classpath its depth-texture config is left alone
-        LaunchEnvironment.install(home, classpath.toUri().toURL());
-        try (MockedStatic<Mixins> mixins = Mockito.mockStatic(Mixins.class)) {
-            ImpetusMixinRegistrar.restoreDistantHorizonsDepthTexture();
-            mixins.verify(() -> Mixins.addConfiguration("DistantHorizons.iris.mixins.json"), never());
-        } finally {
-            LaunchEnvironment.restore();
-        }
-        // Adds DH's depth texture config.
-        Files.writeString(classpath.resolve("DistantHorizons.iris.mixins.json"), "{}");
-        LaunchEnvironment.install(home, classpath.toUri().toURL());
-        try (MockedStatic<Mixins> mixins = Mockito.mockStatic(Mixins.class)) {
-            ImpetusMixinRegistrar.restoreDistantHorizonsDepthTexture();
-            mixins.verify(() -> Mixins.addConfiguration("DistantHorizons.iris.mixins.json"));
-        } finally {
-            LaunchEnvironment.restore();
-        }
-    }
-
-    @Test
-    void theLoadingPluginRegistersFromItsConstructorAndDhFromInjectData() {
+    void theLoadingPluginOnlyRegistersItsOwnMixins() {
         try (MockedStatic<ImpetusMixinRegistrar> registrar = Mockito.mockStatic(ImpetusMixinRegistrar.class);
              MockedStatic<TransformerChain> chain = Mockito.mockStatic(TransformerChain.class);
              MockedStatic<LinuxExtras> linux = Mockito.mockStatic(LinuxExtras.class)) {
@@ -92,9 +71,8 @@ class CoreTest {
             registrar.verify(ImpetusMixinRegistrar::hijackSupersededLighting);
             registrar.verify(ImpetusMixinRegistrar::queueImpetusConfigs);
             linux.verifyNoInteractions();
-            registrar.verify(ImpetusMixinRegistrar::restoreDistantHorizonsDepthTexture, never());
             plugin.injectData(Map.of());
-            registrar.verify(ImpetusMixinRegistrar::restoreDistantHorizonsDepthTexture);
+            registrar.verifyNoMoreInteractions();
 
             assertEquals(0, plugin.getASMTransformerClass().length);
             assertNull(plugin.getModContainerClass());

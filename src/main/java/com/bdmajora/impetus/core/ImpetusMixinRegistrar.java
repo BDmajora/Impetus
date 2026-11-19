@@ -1,6 +1,5 @@
 package com.bdmajora.impetus.core;
 
-import net.minecraft.launchwrapper.Launch;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.spongepowered.asm.mixin.Mixins;
@@ -20,9 +19,6 @@ final class ImpetusMixinRegistrar {
     private static final Logger FULGOR_LOGGER = LogManager.getLogger("Fulgor");
 
     private static final Map<String, String> SUPERSEDED_LIGHTING_MODS = supersededLightingMods();
-
-    // Mixin config of the Distant Horizons depth texture.
-    private static final String DH_DEPTH_TEXTURE_CONFIG = "DistantHorizons.iris.mixins.json";
 
     // Creates an impetus mixin registrar with default state.
     private ImpetusMixinRegistrar() { }
@@ -50,13 +46,6 @@ final class ImpetusMixinRegistrar {
         return Arrays.asList("mixins.impetus.json", "mixins.umbra.json", "mixins.coarctatio.json",
                 "mixins.fulgor.json", "mixins.equilibrium.json", "mixins.extras.json",
                 "mixins.dynamiclights.json", "mixins.linuxextras.json");
-    }
-
-    // Restores the distant horizons depth texture.
-    static void restoreDistantHorizonsDepthTexture() {
-        if (Launch.classLoader.getResource(DH_DEPTH_TEXTURE_CONFIG) != null) {
-            Mixins.addConfiguration(DH_DEPTH_TEXTURE_CONFIG);
-        }
     }
 
     // Disables the lighting mods that Fulgor replaces.

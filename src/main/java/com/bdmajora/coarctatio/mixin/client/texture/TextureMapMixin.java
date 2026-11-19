@@ -24,7 +24,8 @@ public abstract class TextureMapMixin {
     // Runs before every return of loadTextureAtlas.
     @Inject(method = "loadTextureAtlas", at = @At("RETURN"))
     private void coarctatio$releaseStaticSpriteData(IResourceManager resourceManager, CallbackInfo ci) {
-        if (Loader.isModLoaded("distanthorizons")) {
+        // The Betweenlands bakes bucket models after stitching and reads the atlas pixels.
+        if (Loader.isModLoaded("distanthorizons") || Loader.isModLoaded("thebetweenlands")) {
             return;
         }
 

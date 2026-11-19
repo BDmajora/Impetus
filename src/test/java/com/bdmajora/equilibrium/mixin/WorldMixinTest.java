@@ -14,13 +14,11 @@ import com.bdmajora.equilibrium.mixin.world.ghost_chunks.BlockFluidFiniteMixin;
 import com.bdmajora.equilibrium.mixin.world.spawn_chunks.MinecraftServerMixin;
 import com.bdmajora.equilibrium.mixin.worldgen.chunk_copy.ExtendedBlockStorageAccessor;
 import com.bdmajora.equilibrium.mixin.worldgen.int_cache.IntCacheMixin;
-import com.bdmajora.equilibrium.mixin.worldgen.primer_state_cache.ChunkPrimerMixin;
 import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
 import com.bdmajora.testing.ShadowStubs;
 import com.bdmajora.testing.Statics;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
-import net.minecraft.block.Block;
 import net.minecraft.block.BlockBed;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.Entity;
@@ -335,23 +333,8 @@ class WorldMixinTest {
     }
 
     @Test
-    void worldgenCachesIdsAndPoolsScratchArrays() {
-        ChunkPrimerMixin primer = Mixins.instance(ChunkPrimerMixin.class);
-        Mixins.set(primer, "data", new char[65536]);
-        Mixins.set(ChunkPrimerMixin.class, "DEFAULT_STATE", Blocks.AIR.getDefaultState());
+    void worldgenCopiesPrimerAndPoolsScratchArrays() {
         IBlockState stone = Blocks.STONE.getDefaultState();
-        primer.setBlockState(1, 2, 3, stone);
-        // The second write of the same state reuses the resolved id
-        primer.setBlockState(1, 3, 3, stone);
-        assertSame(stone, primer.getBlockState(1, 2, 3));
-        assertSame(stone, primer.getBlockState(1, 3, 3));
-        assertSame(Blocks.AIR.getDefaultState(), primer.getBlockState(0, 0, 0));
-        primer.setBlockState(2, 2, 3, Blocks.WATER.getDefaultState());
-        assertSame(Blocks.WATER.getDefaultState(), primer.getBlockState(2, 2, 3));
-        // An id with no state behind it falls back to the primer's default
-        Mixins.<char[]>get(primer, "data")[0] = (char) 60000;
-        Mixins.set(primer, "equilibrium$lastGetState", null);
-        assertSame(Blocks.AIR.getDefaultState(), primer.getBlockState(0, 0, 0));
 
         // Copying a primer into a chunk updates the counters without reading the slot back
         var copy = Mixins.instance(com.bdmajora.equilibrium.mixin.worldgen.chunk_copy.ChunkMixin.class);

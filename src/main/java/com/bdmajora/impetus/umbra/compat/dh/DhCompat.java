@@ -23,8 +23,6 @@ public final class DhCompat {
     private static final String INTERNAL = "com.bdmajora.impetus.umbra.compat.dh.DhCompatInternal";
     // Class of the render event handlers.
     private static final String EVENTS = "com.bdmajora.impetus.umbra.compat.dh.LodRendererEvents";
-    // Class of the shader accessor.
-    private static final String ACCESSOR = "com.bdmajora.impetus.umbra.compat.dh.DhIrisAccessor";
 
     // Loaded state of the bridge.
     private static boolean dhPresent;
@@ -124,18 +122,6 @@ public final class DhCompat {
             } else {
                 LOGGER.error("[Umbra] Distant Horizons found, but one or more API methods are missing; Impetus needs DH API 7.0.0 or newer. LOD shader support disabled", e);
             }
-        }
-    }
-
-    // Registers the shader accessor with Distant Horizons.
-    public static void registerIrisAccessor() {
-        if (!Loader.isModLoaded("distanthorizons")) {
-            return;
-        }
-        try {
-            MethodHandles.lookup().findStatic(Class.forName(ACCESSOR), "register", MethodType.methodType(void.class)).invoke();
-        } catch (Throwable e) {
-            LOGGER.error("[Umbra] Could not queue Impetus's Distant Horizons shader accessor; LODs will draw as though no pack were active", e);
         }
     }
 

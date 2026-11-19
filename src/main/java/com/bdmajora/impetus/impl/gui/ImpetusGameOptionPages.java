@@ -60,14 +60,18 @@ public class ImpetusGameOptionPages {
                         .setImpact(OptionImpact.HIGH)
                         .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .build())
-                .add(OptionImpl.createBuilder(int.class, vanillaOpts)
+                .add(OptionImpl.createBuilder(int.class, sodiumOpts)
                         .setId(StandardOptions.Option.SIMULATION_DISTANCE.cast())
                         .setName(TextComponent.translatable("options.simulationDistance"))
                         .setTooltip(TextComponent.translatable("impetus.options.simulation_distance.tooltip"))
-                        .setControl(option -> new SliderControl(option, 5, 32, 1, ControlValueFormatter.translateVariable("options.chunks")))
-                        .setBinding((options, value) -> options.renderDistanceChunks = value, options -> options.renderDistanceChunks)
+                        .setControl(option -> new SliderControl(option, ImpetusGameOptions.MIN_SIMULATION_DISTANCE,
+                                ImpetusGameOptions.MAX_SIMULATION_DISTANCE, 1, ControlValueFormatter.translateVariable("options.chunks")))
+                        .setBinding(ImpetusGameOptions::setSimulationDistance, ImpetusGameOptions::getSimulationDistance)
+                        .setEnabledPredicate(() -> {
+                            Minecraft client = Minecraft.getMinecraft();
+                            return client.world == null || client.isIntegratedServerRunning();
+                        })
                         .setImpact(OptionImpact.HIGH)
-                        .setFlags(OptionFlag.REQUIRES_RENDERER_RELOAD)
                         .build())
                 .add(OptionImpl.createBuilder(int.class, vanillaOpts)
                         .setId(StandardOptions.Option.BRIGHTNESS.cast())

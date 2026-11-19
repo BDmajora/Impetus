@@ -56,7 +56,7 @@ public class ImpetusVintage {
     // Game options loaded at startup.
     private static final ImpetusGameOptions CONFIG = loadConfig();
 
-    // Sets up the config and compatibility probes and the DH accessor and startup checks.
+    // Sets up the config, compatibility probes and startup checks.
     @EventHandler
     public void onConstruct(FMLConstructionEvent event) {
         VERSION = Loader.instance().getIndexedModList().get(MODID).getVersion();
@@ -67,8 +67,6 @@ public class ImpetusVintage {
         }
 
         Fulgor.detectCompatibility();
-
-        com.bdmajora.impetus.umbra.compat.dh.DhCompat.registerIrisAccessor();
 
         com.bdmajora.coarctatio.launch.RemapperCompactor.run();
 

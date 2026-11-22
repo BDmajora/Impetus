@@ -15,6 +15,8 @@ import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexTy
 import com.bdmajora.impetus.ImpetusVintage;
 
 import java.util.HashMap;
+
+import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 import java.util.Locale;
 import java.util.Map;
 
@@ -60,6 +62,44 @@ public class VintageRenderPassConfigurationBuilder {
         }
     }
 
+    // Translucent pass state that writes depth like modern Sodium, so out of order faces hide what is behind them.
+    static final class TranslucentDepthState implements TerrainRenderPass.PipelineState {
+        // GL query of the depth write mask.
+        private static final int GL_DEPTH_WRITEMASK = 0x0B72;
+        // Mipmap state of the pass.
+        private final TerrainRenderPass.PipelineState atlas;
+        // Set while depth writes were turned on here and must be turned off again.
+        private boolean writing;
+
+        TranslucentDepthState(TerrainRenderPass.PipelineState atlas) {
+            this.atlas = atlas;
+        }
+
+        // Turns depth writes on unless a shader pack drives the water state itself.
+        // Raw GL on both ends keeps GlStateManager's cached mask matching GL afterwards.
+        @Override
+        public void setup() {
+            this.atlas.setup();
+            if (!com.bdmajora.impetus.umbra.Umbra.isShaderPackInUse() && !LWJGL.glGetBoolean(GL_DEPTH_WRITEMASK)) {
+                this.writing = true;
+                LWJGL.glDepthMask(true);
+            }
+        }
+
+        // Turns depth writes back off for the pass one entities vanilla draws next.
+        @Override
+        public void clear() {
+            try {
+                if (this.writing) {
+                    this.writing = false;
+                    LWJGL.glDepthMask(false);
+                }
+            } finally {
+                this.atlas.clear();
+            }
+        }
+    }
+
     // State of a mipped pass.
     private static final TerrainRenderPass.PipelineState MIPMAPPED_STATE = new AtlasMipmapState(true);
     // State of an unmipped pass.
@@ -80,6 +120,10 @@ public class VintageRenderPassConfigurationBuilder {
 
     // Returns the passes of every block layer.
     public static RenderPassConfiguration<BlockRenderLayer> build(ChunkVertexType vertexType) {
+        return build(vertexType, ImpetusVintage.options().performance.useTranslucentFaceSorting);
+    }
+
+    static RenderPassConfiguration<BlockRenderLayer> build(ChunkVertexType vertexType, boolean sortTranslucentFaces) {
         TerrainRenderPass solidPass, cutoutMippedPass, translucentPass;
 
         solidPass = builderForRenderType(BlockRenderLayer.SOLID, vertexType)
@@ -92,18 +136,20 @@ public class VintageRenderPassConfigurationBuilder {
                 .fragmentDiscard(true)
                 .useReverseOrder(false)
                 .build();
+        // Discards what vanilla's alpha test drops so invisible texels write no depth
         translucentPass = builderForRenderType(BlockRenderLayer.TRANSLUCENT, vertexType)
+                .pipelineState(new TranslucentDepthState(MIPMAPPED_STATE))
                 .name("translucent")
-                .fragmentDiscard(false)
+                .fragmentDiscard(true)
                 .useReverseOrder(true)
-                .useTranslucencySorting(ImpetusVintage.options().performance.useTranslucentFaceSorting)
+                .useTranslucencySorting(sortTranslucentFaces)
                 .build();
 
         ImmutableListMultimap.Builder<BlockRenderLayer, TerrainRenderPass> vanillaRenderStages = ImmutableListMultimap.builder();
 
         Material solidMaterial, cutoutMaterial, cutoutMippedMaterial, translucentMaterial;
         solidMaterial = new Material(solidPass, AlphaCutoffParameter.ZERO, true);
-        translucentMaterial = new Material(translucentPass, AlphaCutoffParameter.ZERO, true);
+        translucentMaterial = new Material(translucentPass, AlphaCutoffParameter.ONE_TENTH, true);
         cutoutMippedMaterial = new Material(cutoutMippedPass, AlphaCutoffParameter.ONE_TENTH, true);
 
         vanillaRenderStages.put(BlockRenderLayer.SOLID, solidPass);

@@ -138,6 +138,9 @@ public class RenderListManager {
 
             // Sorts the rebuild lists on the search thread
             visitor.finishRebuildLists();
+            if (!this.shadow) {
+                visitor.sortGeometry();
+            }
 
             // Notifies the ticker from the search thread
             if (this.sectionTicker != null) {
@@ -232,8 +235,6 @@ public class RenderListManager {
 
         int[] sectionCounts = new int[SortState.DEBUG_NAMES.length];
 
-        boolean isSorting = renderLists.getPasses().stream().anyMatch(TerrainRenderPass::isSorted);
-
         while (iterator.hasNext()) {
             var renderList = iterator.next();
 
@@ -261,18 +262,10 @@ public class RenderListManager {
                 }
             }
 
-            if (isSorting) {
-                var iter = Objects.requireNonNull(renderList.sectionsWithGeometryIterator());
-
-                while (iter.hasNext()) {
-                    int sectionIndex = iter.nextByteAsInt();
-                    var section = region.getSection(sectionIndex);
-
-                    // Skips sections without translucent data
-                    if(section == null || section.getHighestSortingIndex() == RenderSection.NO_TRANSLUCENT_GEOMETRY) {
-                        continue;
-                    }
-
+            var iter = Objects.requireNonNull(renderList.sectionsWithGeometryIterator());
+            while (iter.hasNext()) {
+                var section = region.getSection(iter.nextByteAsInt());
+                if (section != null && section.getHighestSortingIndex() != RenderSection.NO_TRANSLUCENT_GEOMETRY) {
                     sectionCounts[section.getHighestSortingIndex()]++;
                 }
             }

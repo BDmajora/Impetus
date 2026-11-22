@@ -1,6 +1,8 @@
 package com.bdmajora.impetus.engine.impl.render.mesh;
 
+import com.bdmajora.impetus.engine.impl.common.util.NativeBuffer;
 import com.bdmajora.impetus.engine.impl.render.chunk.ChunkRenderMatrices;
+import com.bdmajora.impetus.engine.impl.render.chunk.compile.sorting.ChunkPrimitiveType;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 import com.bdmajora.impetus.engine.impl.render.mesh.region.MeshRegionStore;
 import com.bdmajora.impetus.engine.impl.render.mesh.region.SectionGeometry;
@@ -125,6 +127,11 @@ public class MeshTerrainRenderer {
 
     // Uploads a finished build and evicts a region first when the table is full.
     public void upload(int sectionX, int sectionY, int sectionZ, SectionGeometry geometry) {
+        this.upload(sectionX, sectionY, sectionZ, geometry, null, null);
+    }
+
+    public void upload(int sectionX, int sectionY, int sectionZ, @Nullable SectionGeometry geometry,
+                       @Nullable ChunkPrimitiveType primitiveType, @Nullable NativeBuffer indices) {
         MeshRegionStore regions = this.pipeline.getSections().getRegions();
 
         if (geometry != null && !regions.hasRegionFor(sectionX, sectionY, sectionZ)
@@ -132,7 +139,11 @@ public class MeshTerrainRenderer {
             evictOne();
         }
 
-        this.pipeline.getSections().upload(sectionX, sectionY, sectionZ, geometry);
+        this.pipeline.getSections().upload(sectionX, sectionY, sectionZ, geometry, primitiveType, indices);
+    }
+
+    public void uploadTranslucentOrder(int sectionX, int sectionY, int sectionZ, ChunkPrimitiveType primitiveType, NativeBuffer indices) {
+        this.pipeline.getSections().uploadTranslucentOrder(sectionX, sectionY, sectionZ, primitiveType, indices);
     }
 
     // Removes a section unless geometry is kept past the render distance.

@@ -5,7 +5,6 @@ import com.bdmajora.impetus.engine.impl.compat.environment.OsKind;
 import com.bdmajora.impetus.engine.impl.compat.platform.MessageBoxUtil;
 import com.bdmajora.impetus.engine.impl.compat.probe.GraphicsAdapterInfo;
 import com.bdmajora.impetus.engine.impl.compat.probe.GraphicsAdapterProbe;
-import com.bdmajora.impetus.engine.impl.compat.probe.GraphicsVendor;
 import com.bdmajora.impetus.engine.impl.compat.workarounds.Workarounds;
 import com.bdmajora.impetus.engine.impl.notification.ImpetusNotifications;
 import org.apache.logging.log4j.LogManager;
@@ -33,10 +32,6 @@ public final class StartupChecks {
     private static final long OVERLAY_SCAN_TIMEOUT_SECONDS = 10;
     // Command that lists running processes as CSV without a header on Windows
     private static final String[] TASKLIST_COMMAND = {"tasklist", "/fo", "csv", "/nh"};
-    // Oldest Windows NVIDIA driver without the terrain corruption bug
-    private static final DriverVersion MINIMUM_NVIDIA_WINDOWS_DRIVER = new DriverVersion(536, 23);
-    // Oldest NVIDIA driver of the same branch on Linux and the BSD family
-    private static final DriverVersion MINIMUM_NVIDIA_LINUX_DRIVER = new DriverVersion(535, 54);
     // Runtime name fragment reported by Android Java runtimes
     private static final LowerCaseNeedle ANDROID = new LowerCaseNeedle("android");
     // Virtual machine name fragment reported by Dalvik
@@ -98,7 +93,7 @@ public final class StartupChecks {
         }
 
         try {
-            runBugChecks(context, adapters);
+            runBugChecks(context);
         } catch (Throwable t) {
             // Skips the remaining driver and launcher checks
         }
@@ -111,9 +106,8 @@ public final class StartupChecks {
     }
 
     // Warns about known bad launchers and drivers and logs incomplete context strings
-    private static void runBugChecks(GlContextInfo context, List<GraphicsAdapterInfo> adapters) {
+    private static void runBugChecks(GlContextInfo context) {
         warnIfPojavLauncher();
-        warnIfOutdatedNvidiaDriver(adapters);
 
         if (Workarounds.isActive(Workarounds.Issue.NO_ERROR_CONTEXT_UNSAFE)) {
             ImpetusNotifications.warn("Driver workaround active",
@@ -168,118 +162,6 @@ public final class StartupChecks {
     // Returns whether the lower case form of the system property contains the needle
     private static boolean propertyContains(String key, LowerCaseNeedle needle) {
         return needle.occursIn(System.getProperty(key, ""));
-    }
-
-    // Warns about the first NVIDIA adapter whose driver is older than the minimum of the running system
-    private static void warnIfOutdatedNvidiaDriver(List<GraphicsAdapterInfo> adapters) {
-        var minimum = OsKind.current() == OsKind.LINUX ? MINIMUM_NVIDIA_LINUX_DRIVER : MINIMUM_NVIDIA_WINDOWS_DRIVER;
-
-        for (var adapter : adapters) {
-            if (adapter.vendor() != GraphicsVendor.NVIDIA) {
-                continue;
-            }
-
-            String driver = adapter.driverVersion();
-            DriverVersion version = DriverVersion.parseNvidia(driver);
-            if (version != null && version.compareTo(minimum) < 0) {
-                String recommended = minimum.major() + "." + minimum.minor();
-                ImpetusNotifications.warn("Outdated NVIDIA driver",
-                        "Detected driver: " + driver,
-                        "Recommended: " + recommended + " or newer.");
-                MessageBoxUtil.showWarning("Impetus — Outdated NVIDIA driver",
-                        "Your NVIDIA graphics driver appears to be out of date.\n\n" +
-                        "Detected driver: " + driver + "\n" +
-                        "Recommended driver: " + recommended + " or newer\n\n" +
-                        "Older NVIDIA drivers are known to cause severe performance issues and crashes\n" +
-                        "with modern chunk renderers. Please update your graphics driver.");
-                return;
-            }
-        }
-    }
-
-    // Major and minor parts of an NVIDIA driver version
-    private record DriverVersion(int major, int minor) implements Comparable<DriverVersion> {
-        // Marker for a segment that is not a valid int
-        private static final long INVALID = Long.MIN_VALUE;
-
-        // Returns the version read from the packed Windows form or the dotted major and minor form or null when neither parses
-        static DriverVersion parseNvidia(String raw) {
-            if (raw == null) {
-                return null;
-            }
-
-            int begin = 0;
-            int end = raw.length();
-            // Skips spaces and control characters at both ends
-            while (begin < end && raw.charAt(begin) <= ' ') {
-                begin++;
-            }
-            while (end > begin && raw.charAt(end - 1) <= ' ') {
-                end--;
-            }
-
-            int firstDot = raw.indexOf('.', begin);
-            if (firstDot < 0) {
-                return null;
-            }
-
-            int secondDot = raw.indexOf('.', firstDot + 1);
-            if (secondDot >= 0) {
-                int thirdDot = raw.indexOf('.', secondDot + 1);
-                // Reads the packed Windows form whose third segment is 15
-                if (thirdDot == secondDot + 3 && raw.charAt(secondDot + 1) == '1' && raw.charAt(secondDot + 2) == '5') {
-                    int fourthDot = raw.indexOf('.', thirdDot + 1);
-                    long packed = parseInt(raw, thirdDot + 1, fourthDot < 0 ? end : fourthDot);
-                    if (packed >= 1000) {
-                        return new DriverVersion(500 + (int) (packed / 100), (int) (packed % 100));
-                    }
-                }
-            }
-
-            long major = parseInt(raw, begin, firstDot);
-            if (major == INVALID) {
-                return null;
-            }
-
-            long minor = parseInt(raw, firstDot + 1, secondDot < 0 ? end : secondDot);
-            return minor == INVALID ? null : new DriverVersion((int) major, (int) minor);
-        }
-
-        // Returns the signed decimal int between begin and end or INVALID for text that Integer.parseInt rejects
-        private static long parseInt(String text, int begin, int end) {
-            boolean negative = false;
-            if (begin < end) {
-                char sign = text.charAt(begin);
-                if (sign == '-' || sign == '+') {
-                    negative = sign == '-';
-                    begin++;
-                }
-            }
-
-            if (begin == end) {
-                return INVALID;
-            }
-
-            long magnitude = 0;
-            for (int i = begin; i < end; i++) {
-                int digit = Character.digit(text.charAt(i), 10);
-                if (digit < 0 || (magnitude = magnitude * 10 + digit) > 1L << 31) {
-                    return INVALID;
-                }
-            }
-
-            if (negative) {
-                return -magnitude;
-            }
-            return magnitude <= Integer.MAX_VALUE ? magnitude : INVALID;
-        }
-
-        // Compares the major parts and then the minor parts
-        @Override
-        public int compareTo(DriverVersion other) {
-            int majorCmp = Integer.compare(this.major, other.major);
-            return majorCmp != 0 ? majorCmp : Integer.compare(this.minor, other.minor);
-        }
     }
 
     // Marks the overlay workaround and warns when the Windows task list names RTSS

@@ -4,7 +4,6 @@ import com.bdmajora.equilibrium.common.entity.EntityTickBudget;
 import com.bdmajora.equilibrium.mixin.block.crafting_cache.CraftingManagerMixin;
 import com.bdmajora.equilibrium.mixin.block.furnace_recipes.FurnaceRecipesMixin;
 import com.bdmajora.equilibrium.mixin.entity.collisions.movement.WorldMixin;
-import com.bdmajora.equilibrium.mixin.entity.xp_orb_merging.EntityXPOrbMixin;
 import com.bdmajora.equilibrium.mixin.math.sine_lut.MathHelperMixin;
 import com.bdmajora.equilibrium.mixin.world.block_entity_ticking.sleeping.brewing_stand.TileEntityBrewingStandMixin;
 import com.bdmajora.equilibrium.mixin.world.block_entity_ticking.sleeping.furnace.TileEntityFurnaceMixin;
@@ -327,34 +326,4 @@ class HeavyRewriteMixinTest {
         assertEquals(0.0F, world.getBlockDensity(new Vec3d(0.5, 5.5, 0.5), new AxisAlignedBB(0, 0, 0, -1, -1, -1)));
     }
 
-    @Test
-    void orbMergingFiltersTheOrbsItAbsorbs() {
-        EntityXPOrbMixin orb = Mixins.instance(EntityXPOrbMixin.class);
-        EntityXPOrb self = (EntityXPOrb) (Object) orb;
-        World world = mock(World.class);
-        Mixins.set(world, "isRemote", false);
-        Mixins.set(orb, "world", world);
-        Mixins.set(orb, "xpValue", 1);
-        self.ticksExisted = 20;
-        Mockito.doReturn(new AxisAlignedBB(0, 0, 0, 1, 1, 1)).when(self).getEntityBoundingBox();
-        EntityXPOrbMixin neighbour = Mixins.instance(EntityXPOrbMixin.class);
-        EntityXPOrb other = (EntityXPOrb) (Object) neighbour;
-        EntityXPOrb dead = (EntityXPOrb) (Object) Mixins.instance(EntityXPOrbMixin.class);
-        dead.isDead = true;
-        // The predicate handed to the world is what rejects the orb itself and anything already dead
-        when(world.getEntitiesWithinAABB(Mockito.eq(EntityXPOrb.class), any(), any())).thenAnswer(invocation -> {
-            com.google.common.base.Predicate<EntityXPOrb> filter = invocation.getArgument(2);
-            List<EntityXPOrb> candidates = new ArrayList<>();
-            for (EntityXPOrb candidate : List.of(self, other, dead)) {
-                if (filter.apply(candidate)) {
-                    candidates.add(candidate);
-                }
-            }
-            return candidates;
-        });
-        Mixins.call(orb, "equilibrium$absorbNeighbours", Mixins.ci());
-        assertEquals(1, (int) Mixins.get(orb, "xpValue"));
-        Mockito.verify(other).setDead();
-        Mockito.verify(dead, Mockito.never()).setDead();
-    }
 }

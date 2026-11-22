@@ -183,7 +183,11 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
 
         buildContext.convertVanillaDataToImpetusData(buffers);
 
-        Reference2ReferenceMap<TerrainRenderPass, BuiltSectionMeshParts> meshes = BuiltSectionMeshParts.groupFromBuildBuffers(buffers,(float)camera.x - minX, (float)camera.y - minY, (float)camera.z - minZ);
+        float cameraX = (float) (camera.x - minX);
+        float cameraY = (float) (camera.y - minY);
+        float cameraZ = (float) (camera.z - minZ);
+        Reference2ReferenceMap<TerrainRenderPass, BuiltSectionMeshParts> meshes =
+                BuiltSectionMeshParts.groupFromBuildBuffers(buffers, cameraX, cameraY, cameraZ);
 
         if (!meshes.isEmpty()) {
             renderData.hasBlockGeometry = true;
@@ -191,8 +195,7 @@ public class ChunkBuilderMeshingTask extends ChunkBuilderTask<ChunkBuildOutput> 
 
         encodeVisibilityData(occluder, renderData);
 
-        SectionGeometry meshGeometry = SectionGeometryPacker.packForMeshBackend(meshes,
-                (float) camera.x - minX, (float) camera.y - minY, (float) camera.z - minZ);
+        SectionGeometry meshGeometry = SectionGeometryPacker.packForMeshBackend(meshes);
 
         return new ChunkBuildOutput(this.render, renderData, meshes, meshGeometry, this.buildTime);
     }

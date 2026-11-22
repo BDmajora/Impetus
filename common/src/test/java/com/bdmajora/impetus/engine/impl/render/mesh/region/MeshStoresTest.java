@@ -4,13 +4,16 @@ import com.bdmajora.impetus.engine.impl.common.util.NativeBuffer;
 import com.bdmajora.impetus.engine.impl.compat.environment.OsKind;
 import com.bdmajora.impetus.engine.impl.gl.util.VertexRange;
 import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFacing;
+import com.bdmajora.impetus.engine.impl.render.chunk.compile.sorting.QuadPrimitiveType;
 import com.bdmajora.impetus.engine.impl.render.chunk.data.BuiltSectionMeshParts;
+import com.bdmajora.impetus.engine.impl.render.chunk.sorting.SortState;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.impl.MeshChunkVertex;
 import com.bdmajora.impetus.engine.impl.render.mesh.MeshShaderSupport;
 import com.bdmajora.impetus.engine.impl.render.mesh.util.QuadArena;
 import com.bdmajora.impetus.engine.impl.render.mesh.util.SegmentedAllocator;
 import com.bdmajora.impetus.engine.impl.render.mesh.util.UploadStream;
 import com.bdmajora.testing.Sections;
+import com.bdmajora.testing.Passes;
 import com.bdmajora.testing.Statics;
 import com.bdmajora.testing.TestGl;
 import org.junit.jupiter.api.AfterEach;
@@ -168,6 +171,59 @@ public class MeshStoresTest {
         var field = owner.getClass().getDeclaredField(name);
         field.setAccessible(true);
         return field.get(owner);
+    }
+
+    @Test
+    void residentTranslucentOrderUsesTheSectionIndicesAndCanBeReplacedOnItsOwn() throws Exception {
+        var stream = new UploadStream(1 << 20);
+        var regions = new MeshRegionStore(4, stream);
+        var arena = new QuadArena(1 << 20, MeshChunkVertex.STRIDE);
+        var store = new MeshSectionStore(regions, arena, stream);
+        var primitive = QuadPrimitiveType.TRIANGULATED;
+        var mesh = mesh(3, ModelQuadFacing.UNASSIGNED);
+        var geometry = SectionGeometryPacker.pack(Map.of(Passes.MESH_TRANSLUCENT, mesh));
+        var indices = new NativeBuffer(primitive.getIndexBufferSize(3));
+        try {
+            primitive.generateSortedIndexBuffer(indices.getDirectBuffer(), 3, new SortState.Static(new int[]{2, 0, 1}), 0, 0, 0);
+            store.upload(0, 0, 0, geometry, primitive, indices);
+            var staging = (com.bdmajora.impetus.engine.impl.render.mesh.gl.MappedUploadBuffer) field(stream, "staging");
+            long header = regions.beginSectionUpdate(0);
+            int base = MemoryUtil.memGetInt(header + 12);
+            int vertexOffset = base * arena.bytesPerQuad();
+            int orderOffset = vertexOffset - 3 * Short.BYTES;
+            int buffer = arena.getBuffer().getId();
+            assertTrue((MemoryUtil.memGetInt(header + 4) & (1 << 26)) != 0);
+            stream.commit();
+            long orderSource = Mockito.mockingDetails(TestGl.gl()).getInvocations().stream()
+                    .filter(call -> call.getMethod().getName().equals("glCopyNamedBufferSubData"))
+                    .filter(call -> call.<Integer>getArgument(1) == buffer && call.<Long>getArgument(3) == orderOffset)
+                    .findFirst().orElseThrow().getArgument(2);
+            assertEquals(2, MemoryUtil.memGetShort(staging.getClientAddress() + orderSource));
+            assertEquals(0, MemoryUtil.memGetShort(staging.getClientAddress() + orderSource + 2));
+            assertEquals(1, MemoryUtil.memGetShort(staging.getClientAddress() + orderSource + 4));
+            Mockito.verify(TestGl.gl()).glCopyNamedBufferSubData(Mockito.eq(staging.getId()), Mockito.eq(buffer),
+                    Mockito.anyLong(), Mockito.eq((long) vertexOffset), Mockito.eq((long) geometry.geometry().getLength()));
+
+            Mockito.clearInvocations(TestGl.gl());
+            primitive.generateSimpleIndexBuffer(indices.getDirectBuffer(), 3);
+            store.uploadTranslucentOrder(0, 0, 0, primitive, indices);
+            stream.commit();
+            Mockito.verify(TestGl.gl()).glCopyNamedBufferSubData(Mockito.eq(staging.getId()), Mockito.eq(buffer),
+                    Mockito.anyLong(), Mockito.eq((long) orderOffset), Mockito.eq(6L));
+            Mockito.verify(TestGl.gl(), Mockito.never()).glCopyNamedBufferSubData(Mockito.eq(staging.getId()), Mockito.eq(buffer),
+                    Mockito.anyLong(), Mockito.eq((long) vertexOffset), Mockito.anyLong());
+            assertEquals(base, MemoryUtil.memGetInt(header + 12));
+
+            store.upload(0, 0, 0, geometry);
+            assertEquals(0, MemoryUtil.memGetInt(header + 4) & (1 << 26));
+        } finally {
+            indices.free();
+            geometry.delete();
+            mesh.free();
+            regions.delete();
+            arena.delete();
+            stream.delete();
+        }
     }
 
     @Test

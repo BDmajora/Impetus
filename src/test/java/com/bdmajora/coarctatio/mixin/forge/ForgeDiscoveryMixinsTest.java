@@ -1,7 +1,6 @@
 package com.bdmajora.coarctatio.mixin.forge;
 
 import com.bdmajora.coarctatio.dedup.StringPool;
-import com.bdmajora.coarctatio.launch.discovery.ModScanCache;
 import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
 import com.bdmajora.testing.Statics;
@@ -84,66 +83,6 @@ class ForgeDiscoveryMixinsTest {
         // The second class in the same package does not append it again
         assertFalse((boolean) Mixins.call(candidate, "coarctatio$addPackageOnce", packages, new String("com.example"), addPackage));
         assertEquals(1, addPackage.count());
-    }
-
-    @Test
-    void aRegistryNameThatCarriesItsNamespaceIsReturnedAsGiven() {
-        CallbackInfoReturnable<ResourceLocation> cir = Mixins.cir();
-        assertNotNull(Mixins.instance(GameDataMixin.class));
-        Mixins.call(GameDataMixin.class, "coarctatio$quietPrefixCheck", "example:thing", true, cir);
-        assertTrue(cir.isCancelled());
-        assertEquals(new ResourceLocation("example", "thing"), cir.getReturnValue());
-
-        // Checks a bare name.
-        CallbackInfoReturnable<ResourceLocation> bare = Mixins.cir();
-        Mixins.call(GameDataMixin.class, "coarctatio$quietPrefixCheck", "thing", true, bare);
-        assertEquals(new ResourceLocation("minecraft", "thing"), bare.getReturnValue());
-
-        // Checks the namespace case.
-        CallbackInfoReturnable<ResourceLocation> upper = Mixins.cir();
-        Mixins.call(GameDataMixin.class, "coarctatio$quietPrefixCheck", "Example:Thing", false, upper);
-        assertEquals("example", upper.getReturnValue().getNamespace());
-        // Checks the path case.
-        assertEquals("thing", upper.getReturnValue().getPath());
-    }
-
-    @Test
-    void aScannedJarIsServedFromTheCacheOnTheNextLaunch() throws Exception {
-        File jar = Files.createFile(dir.resolve("example.jar")).toFile();
-        ModCandidate candidate = mock(ModCandidate.class);
-        when(candidate.getModContainer()).thenReturn(jar);
-
-        JarDiscovererMixin discoverer = Mixins.instance(JarDiscovererMixin.class);
-        Mixins.call(discoverer, "coarctatio$openRecord", candidate, mock(ASMDataTable.class), Mixins.cir());
-        Map<String, byte[]> record = Mixins.get(discoverer, "coarctatio$record");
-        assertNotNull(record);
-
-        // Mocks the jar file.
-        JarFile jarFile = mock(JarFile.class);
-        ZipEntry entry = new ZipEntry("com/example/ExampleMod.class");
-        InputStream classBytes = new ByteArrayInputStream(classFile());
-        when(jarFile.getInputStream(entry)).thenReturn(classBytes);
-        assertSame(classBytes, Mixins.call(discoverer, "coarctatio$rememberEntry", jarFile, entry));
-        assertEquals("com/example/ExampleMod.class", Mixins.get(discoverer, "coarctatio$entryName"));
-
-        // Parses the class.
-        ASMModParser scanned = Mixins.call(discoverer, "coarctatio$parserFromCache", new ByteArrayInputStream(classFile()));
-        assertNotNull(scanned);
-        assertNotNull(ModScanCache.encode(scanned), "the scan result has to be encodable");
-        assertTrue(record.containsKey("com/example/ExampleMod.class"));
-
-        // Rebuilds the recorded result.
-        InputStream untouched = new ByteArrayInputStream(classFile());
-        ASMModParser served = Mixins.call(discoverer, "coarctatio$parserFromCache", untouched);
-        assertNotNull(served);
-        assertEquals(classFile().length, untouched.available());
-
-        // Checks the uncached path.
-        Mixins.set(discoverer, "coarctatio$record", null);
-        assertNotNull(Mixins.call(discoverer, "coarctatio$parserFromCache", new ByteArrayInputStream(classFile())));
-        Mixins.set(discoverer, "coarctatio$record", new HashMap<String, byte[]>());
-        Mixins.set(discoverer, "coarctatio$entryName", null);
-        assertNotNull(Mixins.call(discoverer, "coarctatio$parserFromCache", new ByteArrayInputStream(classFile())));
     }
 
     // Returns a minimal class file.

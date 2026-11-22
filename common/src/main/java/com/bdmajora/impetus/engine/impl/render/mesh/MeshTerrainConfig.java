@@ -25,8 +25,16 @@ public record MeshTerrainConfig(boolean temporalCoherence,
 
     // Copies the settings and limits negative numbers to zero.
     public static MeshTerrainConfig from(ImpetusGameOptions.MeshTerrainSettings settings, int renderDistance) {
+        return from(settings, renderDistance, true);
+    }
+
+    public static MeshTerrainConfig from(ImpetusGameOptions.MeshTerrainSettings settings, int renderDistance, boolean sortTranslucentFaces) {
         java.util.Objects.requireNonNull(settings, "settings");
-        return new MeshTerrainConfig(settings.temporalCoherence, settings.translucencySorting, settings.statistics,
+        var sorting = settings.translucencySorting;
+        if (!sortTranslucentFaces && sorting == MeshTranslucencySorting.QUADS) {
+            sorting = MeshTranslucencySorting.SECTIONS;
+        }
+        return new MeshTerrainConfig(settings.temporalCoherence, sorting, settings.statistics,
                 settings.automaticMemory, Math.max(0, settings.maxGeometryMemory), Math.max(0, settings.regionKeepDistance), Math.max(0, renderDistance));
     }
 

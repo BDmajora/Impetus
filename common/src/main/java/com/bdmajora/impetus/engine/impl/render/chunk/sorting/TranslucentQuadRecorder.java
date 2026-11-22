@@ -23,6 +23,8 @@ public class TranslucentQuadRecorder {
     private final FloatArrayList quadDots = new FloatArrayList(EXPECTED_QUADS);
     // Facings of the quads.
     private final ByteArrayList quadFacings = new ByteArrayList(EXPECTED_QUADS);
+    // Corner positions used for half-space tests against sloped faces.
+    private final FloatArrayList quadVertices = new FloatArrayList(EXPECTED_QUADS * 12);
 
     // Vertices of the quad being read.
     private final Vector3f[] vertexPositions = new Vector3f[4];
@@ -50,6 +52,7 @@ public class TranslucentQuadRecorder {
         quadNormals.clear();
         quadDots.clear();
         quadFacings.clear();
+        quadVertices.clear();
         currentVertex = 0;
     }
 
@@ -108,6 +111,9 @@ public class TranslucentQuadRecorder {
         float maxX = Float.NEGATIVE_INFINITY, maxY = Float.NEGATIVE_INFINITY, maxZ = Float.NEGATIVE_INFINITY;
 
         for (Vector3f vertex : vertexPositions) {
+            quadVertices.add(vertex.x);
+            quadVertices.add(vertex.y);
+            quadVertices.add(vertex.z);
             totalX += vertex.x;
             totalY += vertex.y;
             totalZ += vertex.z;
@@ -160,6 +166,6 @@ public class TranslucentQuadRecorder {
     // Returns the recorded quads.
     public QuadSet toQuadSet() {
         return new QuadSet(quadCenters.size() / 3, quadCenters.toFloatArray(), quadBounds.toFloatArray(),
-                quadNormals.toFloatArray(), quadDots.toFloatArray(), quadFacings.toByteArray());
+                quadNormals.toFloatArray(), quadDots.toFloatArray(), quadFacings.toByteArray(), quadVertices.toFloatArray());
     }
 }

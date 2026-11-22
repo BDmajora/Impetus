@@ -147,10 +147,6 @@ public final class EquilibriumOptions {
                 "The AI goal selector holds its task sets in fastutil linked open hash sets rather than "
                         + "java.util.LinkedHashSet. Both sets are walked every tick for every mob in "
                         + "range, and the vanilla ones put every task behind its own node.");
-        builder.add("mixin.ai.pathfinding_chunk_load", true,
-                "A path search snapshots the blocks around the mob into a ChunkCache, and building that cache "
-                        + "loads, and if need be generates, every chunk the box touches. Unloaded chunks are now "
-                        + "left out of the snapshot; the path finder sees them as empty (Universal Tweaks).");
         builder.add("mixin.ai.remove_look_tasks", false,
                 "Drops the two cosmetic look tasks when a mob registers its AI (Universal Tweaks, AI "
                         + "Improvements). Watching the nearest player runs an entity search around every idle "
@@ -206,10 +202,6 @@ public final class EquilibriumOptions {
 
         builder.add("mixin.chunk", true,
                 "Various world chunk optimizations");
-        builder.add("mixin.chunk.no_validation", true,
-                "Block reads no longer ask the world what type it is on every access in order to find "
-                        + "out whether it is the debug world. The answer is fixed when the world is "
-                        + "constructed, so it is resolved once.");
         builder.add("mixin.chunk.tile_entity_map", true,
                 "A chunk's tile entity map is keyed by the packed long of the position rather than "
                         + "the BlockPos object, dropping the hash and equals dispatch and the node per "
@@ -257,12 +249,6 @@ public final class EquilibriumOptions {
                         + "range is applied vertically as well.",
                 "Entities more than their tracking range above or below a player are not sent to them, "
                         + "which shows on tall builds.");
-        builder.add("mixin.entity.xp_orb_merging", false,
-                "Once a second an experience orb absorbs every orb within a block and the survivor "
-                        + "hands its whole value over in one pickup. A mob farm otherwise leaves dozens "
-                        + "of orbs per kill, each a ticking, tracked entity that costs the player a "
-                        + "two-tick pickup cooldown.",
-                "One merged orb repairs Mending gear all at once and pickup sounds play once per merged orb.");
         builder.add("mixin.entity.fast_hand_swing", true,
                 "Skip the hand swing progress and animation maths when the hand is not swinging. The "
                         + "division vanilla performs there needs the swing duration, and working that out "

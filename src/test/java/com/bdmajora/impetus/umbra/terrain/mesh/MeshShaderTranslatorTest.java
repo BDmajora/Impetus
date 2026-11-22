@@ -133,13 +133,13 @@ class MeshShaderTranslatorTest {
                 + "layout(triangles, max_vertices = UMBRA_MESH_THREADS, max_primitives = UMBRA_MESH_THREADS / 2) out;\n"));
         // Checks max_vertices is declared once.
         assertEquals(1, mesh.split("max_vertices").length - 1);
-        assertTrue(mesh.contains("#ifdef UMBRA_TRANSLUCENT\n#define UMBRA_WRITABLE_TERRAIN 1\n#endif"));
+        assertTrue(mesh.contains("readonly ImpetusTranslucentOrderBlock *umbra_TranslucentOrder;"));
         // Checks the templates are inlined.
         assertFalse(mesh.contains("#import"));
         assertTrue(mesh.contains("uniform UmbraSceneData"));
         assertTrue(mesh.contains("void umbra_fetchVertex("));
         assertTrue(mesh.contains("void umbra_emitQuad("));
-        assertTrue(mesh.contains("void umbra_swapWithNext("));
+        assertTrue(mesh.contains("impetus_translucentQuad(umbra_TranslucentOrder[address.x], address.y)"));
         assertTrue(mesh.contains("uint umbra_resolveQuad("));
 
         // Checks the vertex main wrapper.

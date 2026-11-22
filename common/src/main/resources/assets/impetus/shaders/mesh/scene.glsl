@@ -1,12 +1,7 @@
 // The one uniform block every mesh phase shares, bound by GPU address so it survives program changes; mostly a table of raw device pointers
 #define Vertex uvec4
 
-// The translucent rasterizer swaps quads in place, so only it gets a writable view of the geometry arena
-#ifdef WRITABLE_TERRAIN
-#define TERRAIN_ACCESS restrict
-#else
-#define TERRAIN_ACCESS readonly restrict
-#endif
+#import <impetus:mesh/translucent_order.glsl>
 
 // 32 bytes per section so the section rasterizer touches one cache line each
 struct Section {
@@ -75,11 +70,12 @@ layout(std140, binding = 0) uniform SceneData {
     writeonly restrict uvec2 *translucencyCommandBuffer;
     // Regions the section sorter reorders this frame
     readonly restrict uint16_t *sortingRegionList;
-    TERRAIN_ACCESS Vertex *terrainData;
+    readonly Vertex *terrainData;
     // Regions, sections, quads; only touched when a STATISTICS_* define is set
     uint32_t *statisticsBuffer;
     // When each section was placed, in timeMs's clock, indexed like sectionData; what the chunk fade-in counts from
     readonly restrict uint32_t *sectionLoadTimes;
+    readonly ImpetusTranslucentOrderBlock *translucentOrder;
 
     // Half the framebuffer size, so clip space maps to pixels with one multiply
     vec2 screenSize;
@@ -97,7 +93,6 @@ layout(std140, binding = 0) uniform SceneData {
     float chunkFadeInv;
 
     uint16_t regionCount;
-    uint8_t frameId;
 };
 
 // How far a section has faded in, 0 to 1; terrain mixes towards the fog colour by what is left, as the raster path does

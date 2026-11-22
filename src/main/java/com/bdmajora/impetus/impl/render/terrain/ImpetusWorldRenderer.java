@@ -85,7 +85,8 @@ public class ImpetusWorldRenderer extends SimpleWorldRenderer<WorldClient, Vinta
         this.meshShading = null;
 
         if (shouldUseMeshTerrain()) {
-            var config = MeshTerrainConfig.from(ImpetusVintage.options().meshTerrain, renderDistance);
+            var options = ImpetusVintage.options();
+            var config = MeshTerrainConfig.from(options.meshTerrain, renderDistance, options.performance.useTranslucentFaceSorting);
             boolean shaders = UmbraTerrainProgramOverride.areShadersActive();
             UmbraMeshShading shading = shaders ? new UmbraMeshShading(Umbra.getCurrentPack(), config) : null;
 

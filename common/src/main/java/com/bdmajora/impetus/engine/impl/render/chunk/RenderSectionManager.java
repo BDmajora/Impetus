@@ -92,6 +92,9 @@ public abstract class RenderSectionManager {
     // Exact camera position of the last frame.
     protected @Nullable Vector3d previousCameraPosition;
 
+    // Orders build results independently of when a visibility search finishes.
+    private int submissionFrame;
+
     private final CutPlaneIndex<RenderSection> cutPlaneIndex = new CutPlaneIndex<>();
 
     private final ChunkJobMetricsTracker.MetricsData treeSortMetrics = new ChunkJobMetricsTracker.MetricsData();
@@ -227,9 +230,7 @@ public abstract class RenderSectionManager {
 
     // Runs the terrain search unless the shadow pass already did and updates the camera.
     public void update(Viewport positionedViewport, int frame, boolean spectator) {
-        if (!this.shadowPassRanThisFrame) {
-            this.updateCameraPosition(positionedViewport);
-        }
+        this.updateTranslucency(positionedViewport);
 
         if (this.shadowPassRanThisFrame) {
             // Clears the shadow pass flag.
@@ -237,7 +238,13 @@ public abstract class RenderSectionManager {
         } else {
             this.createTerrainRenderList(positionedViewport, null, ++this.searchFrame, spectator);
         }
+    }
 
+    // Tracks sort movement even in frames that did not need a visibility search.
+    public void updateTranslucency(Viewport playerViewport) {
+        if (!this.shadowPassRanThisFrame) {
+            this.updateCameraPosition(playerViewport);
+        }
         this.checkTranslucencyChange();
     }
 
@@ -296,30 +303,24 @@ public abstract class RenderSectionManager {
             this.treeStatsWindowStart = now;
         }
 
-        // Skips translucency scheduling for the mesh backend.
-        if (cameraBlockPosition == null || this.meshTerrain != null)
+        if (cameraBlockPosition == null || !this.renderPassConfiguration.defaultTranslucentMaterial().pass.isSorted()) {
             return;
+        }
 
-        int camSectionX = PositionUtil.posToSectionCoord(cameraPosition.x);
-        int camSectionY = PositionUtil.posToSectionCoord(cameraPosition.y);
-        int camSectionZ = PositionUtil.posToSectionCoord(cameraPosition.z);
-
-        this.scheduleTranslucencyUpdates(camSectionX, camSectionY, camSectionZ);
+        this.scheduleTranslucencyUpdates();
         this.scheduleTreeSortedUpdates();
     }
 
-    private void scheduleTranslucencyUpdates(int camSectionX, int camSectionY, int camSectionZ) {
+    private void scheduleTranslucencyUpdates() {
         var renderListManager = this.getCurrentRenderListManager();
-        var rebuildLists = renderListManager.getRebuildLists().byUpdateType();
-        var allowImportant = allowImportantRebuilds();
         var translucentPass = this.renderPassConfiguration.defaultTranslucentMaterial().pass;
-        if (!this.hasTranslucencySortedSections()) {
+        if (this.meshTerrain == null && !this.hasTranslucencySortedSections()) {
             return;
         }
         for (Iterator<ChunkRenderList> it = renderListManager.getRenderLists().iterator(); it.hasNext(); ) {
             ChunkRenderList entry = it.next();
             var region = entry.getRegion();
-            if (!region.hasSectionsInPass(translucentPass)) {
+            if (this.meshTerrain == null && !region.hasSectionsInPass(translucentPass)) {
                 continue;
             }
             ByteIterator sectionIterator = entry.sectionsNeedingDynamicSortIterator();
@@ -334,38 +335,12 @@ public abstract class RenderSectionManager {
                     continue;
                 }
 
-                ChunkUpdateType update = ChunkUpdateType.getPromotionUpdateType(section.getPendingUpdate(), (allowImportant && this.shouldPrioritizeRebuild(section)) ? ChunkUpdateType.IMPORTANT_SORT : ChunkUpdateType.SORT);
-
-                if (update == null) {
-                    // We wouldn't be able to resort this section anyway
-                    continue;
-                }
-
                 double dx = cameraPosition.x - section.lastCameraX;
                 double dy = cameraPosition.y - section.lastCameraY;
                 double dz = cameraPosition.z - section.lastCameraZ;
-                double camDelta = (dx * dx) + (dy * dy) + (dz * dz);
-
-                if (camDelta < 1) {
-                    // Skips a section the camera did not move enough for.
-                    continue;
+                if (dx * dx + dy * dy + dz * dz >= 1) {
+                    this.scheduleSort(section);
                 }
-
-                boolean cameraChangedSection = camSectionX != PositionUtil.posToSectionCoord(section.lastCameraX) ||
-                        camSectionY != PositionUtil.posToSectionCoord(section.lastCameraY) ||
-                        camSectionZ != PositionUtil.posToSectionCoord(section.lastCameraZ);
-
-                if (!cameraChangedSection && !section.isAlignedWithSectionOnGrid(camSectionX, camSectionY, camSectionZ)) {
-                    continue;
-                }
-
-                section.setPendingUpdate(update);
-                // Inject it into the appropriate list
-                rebuildLists.get(update).add(section);
-
-                section.lastCameraX = cameraPosition.x;
-                section.lastCameraY = cameraPosition.y;
-                section.lastCameraZ = cameraPosition.z;
             }
         }
     }
@@ -381,12 +356,12 @@ public abstract class RenderSectionManager {
                 this.cameraPosition.x, this.cameraPosition.y, this.cameraPosition.z,
                 section -> {
                     this.treeTriggersThisSecond++;
-                    this.scheduleTreeSort(section);
+                    this.scheduleSort(section);
                 }
         );
     }
 
-    private void scheduleTreeSort(RenderSection section) {
+    private void scheduleSort(RenderSection section) {
         ChunkUpdateType update = ChunkUpdateType.getPromotionUpdateType(section.getPendingUpdate(),
                 (allowImportantRebuilds() && this.shouldPrioritizeRebuild(section)) ? ChunkUpdateType.IMPORTANT_SORT : ChunkUpdateType.SORT);
 
@@ -396,7 +371,8 @@ public abstract class RenderSectionManager {
         }
 
         section.setPendingUpdate(update);
-        this.getCurrentRenderListManager().getRebuildLists().byUpdateType().get(update).add(section);
+        // A visibility search may replace the current rebuild lists before the next upload.
+        this.sectionsRequestingUpdate.add(section);
     }
 
     // Returns whether per frame queue limits apply.
@@ -549,23 +525,24 @@ public abstract class RenderSectionManager {
 
     // Draws every resident mesh section for the pass.
     private void renderMeshLayer(ChunkRenderMatrices matrices, TerrainRenderPass pass, CameraTransform camera) {
+        boolean translucent = pass == this.renderPassConfiguration.defaultTranslucentMaterial().pass;
         boolean opaque = pass == this.renderPassConfiguration.defaultSolidMaterial().pass;
 
-        if (!pass.isSorted() && !opaque) {
+        if (!translucent && !opaque) {
             return;
         }
 
         pass.startDrawing();
 
         if (this.isInShadowPass()) {
-            if (pass.isSorted()) {
+            if (translucent) {
                 this.meshTerrain.renderShadowTranslucent(pass);
             } else if (this.shadowViewport != null) {
                 int[] viewport = new int[4];
                 LWJGL.glGetIntegerv(GL11.GL_VIEWPORT, viewport);
                 this.meshTerrain.renderShadow(this.shadowViewport, matrices, pass, camera.x, camera.y, camera.z, viewport[2], viewport[3]);
             }
-        } else if (pass.isSorted()) {
+        } else if (translucent) {
             this.meshTerrain.renderTranslucent(pass);
         } else if (this.frameViewport != null) {
             this.meshTerrain.renderOpaque(this.frameViewport, matrices, MeshFog.from(this.getFogService()), pass,
@@ -620,7 +597,7 @@ public abstract class RenderSectionManager {
                 // Skips a missing section.
                 continue;
             }
-            if (!graphUpdatePending || updateType.isImportant()) {
+            if (!graphUpdatePending || updateType.isImportant() || updateType.isSort()) {
                 rebuildLists.get(updateType).add(section);
             }
         }
@@ -715,7 +692,9 @@ public abstract class RenderSectionManager {
                 }
 
                 // Updates the translucency info on full rebuilds.
-                this.updateTranslucencyInfo(result.render, buildResult.meshes, latest);
+                if (latest) {
+                    this.updateTranslucencyInfo(result.render, buildResult.meshes);
+                }
             }
 
             var job = result.render.getBuildCancellationToken();
@@ -729,18 +708,29 @@ public abstract class RenderSectionManager {
         }
     }
 
-    // Uploads each rebuilt section's packed geometry to the mesh backend.
+    // Uploads rebuilt geometry or updates the draw order of the resident translucent faces.
     private void uploadMeshTerrain(Collection<ChunkJobResult.Success<? extends ChunkTaskOutput>> results) {
+        var translucentPass = this.renderPassConfiguration.defaultTranslucentMaterial().pass;
         for (var holder : results) {
-            if (holder.output() instanceof ChunkBuildOutput output) {
-                var render = output.render;
-                this.meshTerrain.upload(render.getChunkX(), render.getChunkY(), render.getChunkZ(), output.meshGeometry);
+            var result = holder.output();
+            var render = result.render;
+            int x = render.getChunkX(), y = render.getChunkY(), z = render.getChunkZ();
+
+            if (result instanceof ChunkBuildOutput output) {
+                var mesh = output.meshes.get(translucentPass);
+                this.meshTerrain.upload(x, y, z, output.meshGeometry, translucentPass.primitiveType(),
+                        mesh == null || mesh.sortState() == SortState.NONE ? null : mesh.indexBuffer());
+            } else if (result instanceof ChunkSortOutput output) {
+                var mesh = output.meshes.get(translucentPass);
+                if (mesh != null) {
+                    this.meshTerrain.uploadTranslucentOrder(x, y, z, translucentPass.primitiveType(), mesh.indexData());
+                }
             }
         }
     }
 
     // Stores the sort states of new meshes.
-    private void updateTranslucencyInfo(RenderSection render, Map<TerrainRenderPass, BuiltSectionMeshParts> meshes, boolean latestBuild) {
+    private void updateTranslucencyInfo(RenderSection render, Map<TerrainRenderPass, BuiltSectionMeshParts> meshes) {
         Map<TerrainRenderPass, SortState.Resortable> sortStates = new Reference2ObjectArrayMap<>();
         int highestIndex = RenderSection.NO_TRANSLUCENT_GEOMETRY;
 
@@ -772,19 +762,12 @@ public abstract class RenderSectionManager {
             // Schedules a tree sort when the camera crossed a cut plane since submission.
             int ox = render.getOriginX(), oy = render.getOriginY(), oz = render.getOriginZ();
             for (PartitionTree tree : trees) {
-                if (latestBuild && tree.crossesCutPlane(render.lastCameraX - ox, render.lastCameraY - oy, render.lastCameraZ - oz,
+                if (tree.crossesCutPlane(render.lastCameraX - ox, render.lastCameraY - oy, render.lastCameraZ - oz,
                         this.cameraPosition.x - ox, this.cameraPosition.y - oy, this.cameraPosition.z - oz)) {
                     this.treeTriggersThisSecond++;
-                    this.scheduleTreeSort(render);
+                    this.scheduleSort(render);
                     break;
                 }
-            }
-
-            // Moves the stored camera to the current position for the latest build.
-            if (latestBuild) {
-                render.lastCameraX = this.cameraPosition.x;
-                render.lastCameraY = this.cameraPosition.y;
-                render.lastCameraZ = this.cameraPosition.z;
             }
         } else {
             // a rebuild that is no longer tree-sorted must drop its stale planes
@@ -858,7 +841,7 @@ public abstract class RenderSectionManager {
     private void submitRebuildTasks(ChunkJobCollector collector, ChunkUpdateType type) {
         var queue = this.getCurrentRenderListManager().getRebuildLists().byUpdateType().get(type);
 
-        int frame = this.getCurrentRenderListManager().getLastUpdatedFrame();
+        int frame = ++this.submissionFrame;
 
         int cameraX = (int) Math.floor(this.cameraPosition.x);
         int cameraY = (int) Math.floor(this.cameraPosition.y);
@@ -895,12 +878,12 @@ public abstract class RenderSectionManager {
                 if (!type.isSort()) {
                     // Prevent further sorts from being performed on this section
                     section.clearTranslucencySortStates();
-
-                    // the meshing task sorts its translucent geometry for this camera
-                    section.lastCameraX = this.cameraPosition.x;
-                    section.lastCameraY = this.cameraPosition.y;
-                    section.lastCameraZ = this.cameraPosition.z;
+                    this.cutPlaneIndex.remove(section);
                 }
+                // Both meshing and sorting use the camera at submission.
+                section.lastCameraX = this.cameraPosition.x;
+                section.lastCameraY = this.cameraPosition.y;
+                section.lastCameraZ = this.cameraPosition.z;
             } else {
                 var result = new ChunkJobResult.Success<>(new ChunkBuildOutput(section, RenderSection.EMPTY_DATA, Reference2ReferenceMaps.emptyMap(), frame), -1);
                 this.buildResults.add(result);
@@ -1224,7 +1207,9 @@ public abstract class RenderSectionManager {
             list.add(entry.getKey().name() + " - " + entry.getIntValue() + " sections, " + time);
         }
 
-        if (renderListManager.getRenderLists().getPasses().stream().anyMatch(TerrainRenderPass::isSorted)) {
+        boolean sortFaces = this.renderPassConfiguration.defaultTranslucentMaterial().pass.isSorted();
+        list.add(sortFaces ? "Translucency sorting: On" : "Translucency sorting: Off");
+        if (sortFaces) {
             list.add(debugStats.getSortingString());
             list.add(String.format("Tree Sort: %d planes, %d trig/s, %d sorts/s, %s avg",
                     this.cutPlaneIndex.planeCount(), this.treeTriggersLastSecond,

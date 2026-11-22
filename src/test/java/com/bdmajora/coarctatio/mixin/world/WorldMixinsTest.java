@@ -115,18 +115,4 @@ class WorldMixinsTest {
         assertTrue((boolean) Mixins.call(ChunkMixin.class, "coarctatio$isUniform", (NibbleArray) null, 0));
     }
 
-    @Test
-    void structureTemplatesAreHeldSoftly() {
-        TemplateManagerMixin manager = Mixins.instance(TemplateManagerMixin.class);
-        Map<String, Template> templates = new HashMap<>();
-        Mixins.set(manager, "templates", templates);
-        Mixins.call(manager, "coarctatio$softTemplates", Mixins.ci());
-
-        Map<String, Template> soft = Mixins.get(manager, "templates");
-        assertNotSame(templates, soft);
-        // Checks a template still works.
-        Template template = new Template();
-        soft.put("village/house", template);
-        assertSame(template, soft.get("village/house"));
-    }
 }

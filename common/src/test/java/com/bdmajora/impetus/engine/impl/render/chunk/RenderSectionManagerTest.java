@@ -173,22 +173,22 @@ class RenderSectionManagerTest {
         // Checks another section.
         moveTo(8, 24, 24, 9);
         assertEquals(6, manager.sorts.get());
-        // Checks a move within a section.
+        // Distance-sorted sections still update when they share no grid axis with the camera.
         moveTo(10, 26, 26, 11);
-        assertEquals(6, manager.sorts.get());
+        assertEquals(7, manager.sorts.get());
         assertEquals(built, manager.builds.get());
 
         // Near sections sort before the frame continues when important rebuilds are allowed
         manager.importantRebuilds = true;
         moveTo(8, 8, 4, 13);
-        assertEquals(8, manager.sorts.get());
+        assertEquals(9, manager.sorts.get());
         // Checks a pending rebuild.
         manager.scheduleRebuild(0, 0, 0, false);
         frames(Sections.viewport(8, 8, 4), 15, true);
         assertEquals(built + 1, manager.builds.get());
         assertTrue(tree.isTreeSorted());
         moveTo(8, 8, 6, 17);
-        assertEquals(10, manager.sorts.get());
+        assertEquals(11, manager.sorts.get());
         Collection<String> debug = manager.getDebugStrings();
         assertTrue(debug.stream().anyMatch(s -> s.startsWith("Sorting:")));
         assertTrue(debug.stream().anyMatch(s -> s.startsWith("Tree Sort: 1 planes")));

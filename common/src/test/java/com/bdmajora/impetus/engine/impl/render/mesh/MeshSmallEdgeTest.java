@@ -80,6 +80,19 @@ class MeshSmallEdgeTest {
         assertNotNull(config.shaderConstants().build());
     }
 
+    @Test
+    void improvedTransparencyControlsMeshQuadSorting() {
+        var settings = new ImpetusGameOptions.MeshTerrainSettings();
+        var disabled = MeshTerrainConfig.from(settings, 12, false);
+        assertEquals(ImpetusGameOptions.MeshTranslucencySorting.SECTIONS, disabled.sorting());
+        assertTrue(disabled.shaderConstants().build().getDefineStrings().contains("#define SORT_SECTIONS"));
+        assertFalse(disabled.shaderConstants().build().getDefineStrings().contains("#define SORT_QUADS"));
+
+        var enabled = MeshTerrainConfig.from(settings, 12, true);
+        assertEquals(ImpetusGameOptions.MeshTranslucencySorting.QUADS, enabled.sorting());
+        assertTrue(enabled.shaderConstants().build().getDefineStrings().contains("#define SORT_QUADS"));
+    }
+
     // Rejects a null name and an empty link.
     @Test
     void programBuilder() {

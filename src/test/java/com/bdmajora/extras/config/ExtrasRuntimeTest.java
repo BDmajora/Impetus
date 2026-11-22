@@ -92,7 +92,6 @@ class ExtrasRuntimeTest {
         ExtrasRuntime.apply(new ExtrasConfig());
         assertTrue(ParallelProcessor.entities);
         assertTrue(ParallelProcessor.randomTicks);
-        assertTrue(ParallelProcessor.spawning);
     }
 
     // Checks that repeated applies of the same config leave the same state

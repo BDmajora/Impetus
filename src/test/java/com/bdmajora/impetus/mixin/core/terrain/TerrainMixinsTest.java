@@ -565,6 +565,70 @@ class TerrainMixinsTest {
     }
 
     @Test
+    void entityReachScalesWithRenderDistanceAndTheSliderLikeVanilla() {
+        Scene scene = new Scene(client);
+        double distanceWeight = Statics.get(Entity.class, "renderDistanceWeight");
+        // Edits whatever options object is live, since the handler reads it through ImpetusVintage.options()
+        var quality = ImpetusVintage.options().quality;
+        int previous = quality.entityDistance;
+        try {
+            // {render distance, slider %, expected weight}: vanilla's clamp(rd / 8, 1, 2.5) times the slider
+            double[][] cases = {
+                    {2, 100, 1.0}, {8, 100, 1.0}, {12, 100, 1.5}, {16, 100, 2.0}, {20, 100, 2.5}, {32, 100, 2.5},
+                    {16, 50, 1.0}, {16, 500, 10.0}, {2, 50, 0.5}, {32, 500, 12.5},
+                    // A hand-edited percentage is held to the slider's ends, never 0 or negative
+                    {16, 0, 1.0}, {16, -100, 1.0}, {16, 10_000, 10.0}, {0, 100, 1.0}};
+            for (double[] c : cases) {
+                scene.settings.renderDistanceChunks = (int) c[0];
+                quality.entityDistance = (int) c[1];
+                Mixins.call(scene.global, "impetus$applyEntityDistance", Mixins.ci());
+                assertEquals(c[2], Entity.getRenderDistanceWeight(), 1e-9, () -> java.util.Arrays.toString(c));
+            }
+        } finally {
+            quality.entityDistance = previous;
+            Statics.set(Entity.class, "renderDistanceWeight", distanceWeight);
+        }
+    }
+
+    @Test
+    void entitiesDrawOnlyInThePassesTheyAskFor() {
+        Scene scene = new Scene(client);
+        RenderGlobalMixin global = scene.global;
+        int renderPass = Statics.get(ForgeHooksClient.class, "renderPass");
+        try {
+            EntityPlayerSP player = mock(EntityPlayerSP.class);
+            client.player = player;
+            Entity solidOnly = entity(64);
+            Entity translucentOnly = mock(Entity.class);
+            translucentOnly.posY = 64;
+            when(translucentOnly.shouldRenderInPass(1)).thenReturn(true);
+            Entity both = entity(64);
+            when(both.shouldRenderInPass(1)).thenReturn(true);
+            for (Entity entity : List.of(solidOnly, translucentOnly, both)) {
+                when(scene.renderManager.shouldRender(eq(entity), any(), anyDouble(), anyDouble(), anyDouble())).thenReturn(true);
+                when(scene.renderer.isEntityVisible(entity)).thenReturn(true);
+            }
+            when(scene.world.isBlockLoaded(any())).thenReturn(true);
+            when(scene.world.getLoadedEntityList()).thenReturn(new ArrayList<>(List.of(solidOnly, translucentOnly, both)));
+            Statics.set(ForgeHooksClient.class, "renderPass", 0);
+            Mixins.call(global, "renderEntities", player, null, 0.5F, Mixins.ci(), new ArrayList<Entity>(), new ArrayList<Entity>(), 0.0, 64.0, 0.0);
+            verify(scene.renderManager).renderEntityStatic(solidOnly, 0.5F, false);
+            verify(scene.renderManager).renderEntityStatic(both, 0.5F, false);
+            verify(scene.renderManager, never()).renderEntityStatic(translucentOnly, 0.5F, false);
+            Statics.set(ForgeHooksClient.class, "renderPass", 1);
+            Mixins.call(global, "renderEntities", player, null, 0.5F, Mixins.ci(), new ArrayList<Entity>(), new ArrayList<Entity>(), 0.0, 64.0, 0.0);
+            verify(scene.renderManager).renderEntityStatic(translucentOnly, 0.5F, false);
+            verify(scene.renderManager, times(2)).renderEntityStatic(both, 0.5F, false);
+            verify(scene.renderManager, times(1)).renderEntityStatic(solidOnly, 0.5F, false);
+            // The world list is read again for each pass, so an entity spawned between passes still draws in the second
+            verify(scene.world, times(2)).getLoadedEntityList();
+        } finally {
+            Statics.set(ForgeHooksClient.class, "renderPass", renderPass);
+            client.player = null;
+        }
+    }
+
+    @Test
     void blockEntitiesAndEntitiesDrawFromTheVisibleSections() {
         Scene scene = new Scene(client);
         RenderGlobalMixin global = scene.global;
@@ -627,7 +691,7 @@ class TerrainMixinsTest {
             when(scene.renderManager.isRenderMultipass(visible)).thenReturn(true);
             Mixins.stub(global, "isOutlineActive", invocation -> invocation.getArgument(0) == visible);
             List<Entity> loaded = new ArrayList<>(List.of(visible, hidden, occluded, riding, unloaded, player));
-            Mixins.set(scene.world, "loadedEntityList", loaded);
+            when(scene.world.getLoadedEntityList()).thenReturn(loaded);
             List<Entity> outlines = new ArrayList<>();
             List<Entity> multipass = new ArrayList<>();
             Mixins.call(global, "renderEntities", player, null, 0.5F, Mixins.ci(), outlines, multipass, 0.0, 64.0, 0.0);

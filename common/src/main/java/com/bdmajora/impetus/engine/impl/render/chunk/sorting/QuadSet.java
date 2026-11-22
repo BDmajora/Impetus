@@ -1,13 +1,19 @@
 package com.bdmajora.impetus.engine.impl.render.chunk.sorting;
 
 import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFacing;
+import org.jetbrains.annotations.Nullable;
 
 // Quads of a section with their centers and bounds and normals.
-public record QuadSet(int count, float[] centers, float[] bounds, float[] normals, float[] dots, byte[] facings) {
+public record QuadSet(int count, float[] centers, float[] bounds, float[] normals, float[] dots, byte[] facings,
+                      float @Nullable [] vertices) {
     // Tolerance of plane comparisons.
     static final float EPSILON = 1e-4f;
     // Tolerance of overlap comparisons.
     static final float OVERLAP_EPSILON = 0.008f;
+
+    public QuadSet(int count, float[] centers, float[] bounds, float[] normals, float[] dots, byte[] facings) {
+        this(count, centers, bounds, normals, dots, facings, null);
+    }
 
     // Rejects a negative count or arrays whose lengths do not match the count.
     public QuadSet {
@@ -34,6 +40,10 @@ public record QuadSet(int count, float[] centers, float[] bounds, float[] normal
         if (facings.length != count) {
             throw new IllegalArgumentException("facings length must be count");
         }
+
+        if (vertices != null && vertices.length != count * 12L) {
+            throw new IllegalArgumentException("vertices length must be count * 12");
+        }
     }
 
     // Returns the smallest projection of the bounds of a quad onto a direction.
@@ -58,12 +68,21 @@ public record QuadSet(int count, float[] centers, float[] bounds, float[] normal
     public boolean isCoplanar(int a, int b) {
         float normalDot = normalDot(a, b);
 
-        if (Math.abs(Math.abs(normalDot) - 1.0f) > EPSILON) {
+        if (!hasParallelNormal(a, b, normalDot)) {
             return false;
         }
 
         float offsetB = normalDot < 0 ? -dots[b] : dots[b];
         return Math.abs(dots[a] - offsetB) < EPSILON;
+    }
+
+    // Compares the normals directly so shallow slopes do not collapse into one plane.
+    boolean hasParallelNormal(int a, int b, float normalDot) {
+        float sign = normalDot < 0 ? -1 : 1;
+        float x = normalX(a) - sign * normalX(b);
+        float y = normalY(a) - sign * normalY(b);
+        float z = normalZ(a) - sign * normalZ(b);
+        return normalDot != 0 && x * x + y * y + z * z <= EPSILON * EPSILON;
     }
 
     // Returns the dot product of two normals.
@@ -138,12 +157,29 @@ public record QuadSet(int count, float[] centers, float[] bounds, float[] normal
 
         float qnx = normalX(q), qny = normalY(q), qnz = normalZ(q);
         float pnx = normalX(p), pny = normalY(p), pnz = normalZ(p);
+
+        // For sloping faces, projecting the bounding box can invent a visibility dependency.
+        if (this.vertices != null && (!facing(p).isDirection() || !facing(q).isDirection())) {
+            return anyVertexBeyondPlane(p, -qnx, -qny, -qnz, -dots[q])
+                    && anyVertexBeyondPlane(q, pnx, pny, pnz, dots[p]);
+        }
+
         float pMin = minDot(p, qnx, qny, qnz), qMax = maxDot(q, pnx, pny, pnz);
 
         float pTol = maxDot(p, qnx, qny, qnz) - pMin > EPSILON ? OVERLAP_EPSILON : EPSILON;
         float qTol = qMax - minDot(q, pnx, pny, pnz) > EPSILON ? OVERLAP_EPSILON : EPSILON;
 
         return pMin < dots[q] - pTol && qMax > dots[p] + qTol;
+    }
+
+    private boolean anyVertexBeyondPlane(int quad, float nx, float ny, float nz, float plane) {
+        int start = quad * 12;
+        for (int i = start; i < start + 12; i += 3) {
+            if (nx * vertices[i] + ny * vertices[i + 1] + nz * vertices[i + 2] > plane + 0.001f) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // Returns the lower bound of a quad on an axis.

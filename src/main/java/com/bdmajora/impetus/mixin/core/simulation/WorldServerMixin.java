@@ -6,34 +6,20 @@ import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.llamalad7.mixinextras.sugar.Share;
 import com.llamalad7.mixinextras.sugar.ref.LocalRef;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.NextTickListEntry;
 import net.minecraft.world.WorldProvider;
 import net.minecraft.world.WorldServer;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
-import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
 import java.util.TreeSet;
 
 @Mixin(WorldServer.class)
 public abstract class WorldServerMixin {
-    @Shadow
-    @Final
-    private Set<NextTickListEntry> pendingTickListEntriesHashSet;
-
-    @Shadow
-    @Final
-    private TreeSet<NextTickListEntry> pendingTickListEntriesTreeSet;
-
     @Unique
     private static final ExtendedBlockStorage[] impetus$NO_RANDOM_TICK_SECTIONS = new ExtendedBlockStorage[0];
 
@@ -53,29 +39,29 @@ public abstract class WorldServerMixin {
                 && original.call(provider, chunk);
     }
 
-    // Hold out of range entries until this batch is selected, keeping their time and priority.
-    @WrapOperation(method = "tickUpdates", at = @At(value = "INVOKE",
-            target = "Ljava/util/List;add(Ljava/lang/Object;)Z", remap = false))
-    private boolean impetus$deferScheduledTick(List<NextTickListEntry> batch, Object value, Operation<Boolean> original,
-                                              @Local(argsOnly = true) boolean runAllPending,
-                                              @Share("deferredTicks") LocalRef<List<NextTickListEntry>> deferredTicks) {
-        NextTickListEntry entry = (NextTickListEntry) value;
-        if (runAllPending || SimulationDistance.shouldTick((WorldServer) (Object) this, entry.position)) {
-            return original.call(batch, entry);
-        }
-        if (deferredTicks.get() == null) {
-            deferredTicks.set(new ArrayList<>());
-        }
-        return deferredTicks.get().add(entry);
-    }
+    // Returned once no due, in-range entry is left: its far-future time trips vanilla's "not due yet" break.
+    @Unique
+    private static final NextTickListEntry impetus$NO_DUE_TICK = new NextTickListEntry(BlockPos.ORIGIN, null).setScheduledTime(Long.MAX_VALUE);
 
-    @Inject(method = "tickUpdates", at = @At(value = "INVOKE", target = "Ljava/util/List;iterator()Ljava/util/Iterator;", remap = false))
-    private void impetus$restoreDeferredTicks(boolean runAllPending, CallbackInfoReturnable<Boolean> cir,
-                                             @Share("deferredTicks") LocalRef<List<NextTickListEntry>> deferredTicks) {
-        List<NextTickListEntry> deferred = deferredTicks.get();
-        if (deferred != null) {
-            this.pendingTickListEntriesHashSet.addAll(deferred);
-            this.pendingTickListEntriesTreeSet.addAll(deferred);
+    // Hands vanilla's cleaning loop the next due entry that is inside the simulation distance, stepping past the others with a
+    // cursor that lives for this call. Skipped entries stay in both sets untouched, so they keep their time and priority, are still
+    // saved with their chunk, and never use up the 65536-per-tick budget; taking them out and putting them back every tick would
+    // let a backlog of out-of-range ticks (always the oldest, so always first) crowd out every in-range one.
+    @WrapOperation(method = "tickUpdates", at = @At(value = "INVOKE", target = "Ljava/util/TreeSet;first()Ljava/lang/Object;", remap = false))
+    private Object impetus$nextSimulatedTick(TreeSet<NextTickListEntry> pending, Operation<Object> original,
+                                             @Local(argsOnly = true) boolean runAllPending,
+                                             @Share("tickCursor") LocalRef<NextTickListEntry> cursor) {
+        if (runAllPending) {
+            return original.call(pending);
         }
+        WorldServer world = (WorldServer) (Object) this;
+        long now = world.getTotalWorldTime();
+        NextTickListEntry skipped = cursor.get();
+        NextTickListEntry entry = skipped == null ? (NextTickListEntry) original.call(pending) : pending.higher(skipped);
+        while (entry != null && entry.scheduledTime <= now && !SimulationDistance.shouldTick(world, entry.position)) {
+            cursor.set(entry);
+            entry = pending.higher(entry);
+        }
+        return entry == null ? impetus$NO_DUE_TICK : entry;
     }
 }

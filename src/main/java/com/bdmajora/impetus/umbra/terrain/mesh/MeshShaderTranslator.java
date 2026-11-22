@@ -304,7 +304,6 @@ public final class MeshShaderTranslator {
         out.append(EXTENSIONS);
         out.append("#define UMBRA_MESH_THREADS ").append(threads).append('\n');
         out.append(MESH_LAYOUT);
-        out.append("#ifdef UMBRA_TRANSLUCENT\n#define UMBRA_WRITABLE_TERRAIN 1\n#endif\n");
         out.append("#import <impetus:mesh/pack/scene.glsl>\n");
         out.append("#import <impetus:mesh/cull.glsl>\n");
         out.append(BUILTINS);

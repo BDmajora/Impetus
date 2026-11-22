@@ -41,7 +41,7 @@ import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 // Draws the terrain with mesh shaders from regions and sections in bindless buffers.
 public class MeshRenderPipeline {
     // Bytes of the scene uniform block.
-    static final int SCENE_BYTES = align(16 * 4 + 16 + 16 + 16 + 16 + 11 * 8 + 8 + 4 * 5 + 4 * 2 + 2 + 1, 16);
+    static final int SCENE_BYTES = align(16 * 4 + 16 + 16 + 16 + 16 + 12 * 8 + 8 + 4 * 5 + 4 * 2 + 2, 16);
 
     // Bytes of the statistics block.
     private static final int STATISTICS_BYTES = 16;
@@ -112,9 +112,6 @@ public class MeshRenderPipeline {
     private int translucentRegionCount;
     // Number of regions of the shadow pass.
     private int shadowRegionCount;
-    // Counter of frames.
-    private int frameId;
-
     // Matrices of the frame.
     private @Nullable ChunkRenderMatrices frameMatrices;
     // Matrices of the shadow pass.
@@ -614,9 +611,11 @@ public class MeshRenderPipeline {
         ptr = putPointer(ptr, this.terrainCommands.getDeviceAddress());
         ptr = putPointer(ptr, this.translucentCommands.getDeviceAddress());
         ptr = putPointer(ptr, this.sortingRegions.getDeviceAddress());
-        ptr = putPointer(ptr, this.sections.getArena().getBuffer().getDeviceAddress());
+        long arena = this.sections.getArena().getBuffer().getDeviceAddress();
+        ptr = putPointer(ptr, arena);
         ptr = putPointer(ptr, this.statistics.getDeviceAddress());
         ptr = putPointer(ptr, regions.getSectionTimeBufferAddress());
+        ptr = putPointer(ptr, arena);
 
         MemoryUtil.memPutFloat(ptr, screenWidth / 2.0f);
         MemoryUtil.memPutFloat(ptr + 4, screenHeight / 2.0f);
@@ -635,7 +634,6 @@ public class MeshRenderPipeline {
         ptr += 8;
 
         MemoryUtil.memPutShort(ptr, (short) visibleCount);
-        MemoryUtil.memPutByte(ptr + 2, (byte) (target == this.sceneUniform ? this.frameId++ : this.frameId));
     }
 
     // Writes a vector and returns the next address.

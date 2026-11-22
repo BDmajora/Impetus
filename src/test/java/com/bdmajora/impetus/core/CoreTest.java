@@ -72,6 +72,17 @@ class CoreTest {
             registrar.verify(ImpetusMixinRegistrar::queueImpetusConfigs);
             linux.verifyNoInteractions();
             plugin.injectData(Map.of());
+            // FML's real data, a null map, and a Distant Horizons install all leave every config alone now that DH ships its own
+            java.util.Map<String, Object> fml = new java.util.HashMap<>();
+            fml.put("mcLocation", new java.io.File("."));
+            fml.put("coremodLocation", null);
+            fml.put("runtimeDeobfuscationEnabled", true);
+            plugin.injectData(fml);
+            plugin.injectData(null);
+            try (MockedStatic<org.spongepowered.asm.mixin.Mixins> mixins = Mockito.mockStatic(org.spongepowered.asm.mixin.Mixins.class)) {
+                plugin.injectData(Map.of("distanthorizons", true));
+                mixins.verifyNoInteractions();
+            }
             registrar.verifyNoMoreInteractions();
 
             assertEquals(0, plugin.getASMTransformerClass().length);

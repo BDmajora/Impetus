@@ -349,22 +349,6 @@ class AsyncMixinsTest {
         assertEquals(List.of(true, true, true, true, true), onWorker);
     }
 
-    @Test
-    void spawningTakesTheParallelPathOnlyWhenActive() {
-        WorldEntitySpawnerParallelMixin spawner = Mixins.instance(WorldEntitySpawnerParallelMixin.class);
-        WorldServer world = Mc.mock(WorldServer.class, ParallelWorld.class);
-        CallbackInfoReturnable<Integer> serial = Mixins.cir();
-        Mixins.call(spawner, "impetus$parallelSpawn", world, false, false, false, serial);
-        assertFalse(serial.isCancelled());
-
-        parallel();
-        when(((ParallelWorld) world).impetus$isParallel()).thenReturn(true);
-        CallbackInfoReturnable<Integer> active = Mixins.cir();
-        Mixins.call(spawner, "impetus$parallelSpawn", world, false, false, false, active);
-        assertTrue(active.isCancelled());
-        assertEquals(0, active.getReturnValue());
-    }
-
     private static EntityPig pig(World world, boolean dead) {
         EntityPig pig = Mc.mock(EntityPig.class, PortalAccessor.class);
         Mixins.set(pig, "world", world);

@@ -147,6 +147,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.times;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyFloat;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -1310,6 +1313,88 @@ class TerrainMeshingTest {
         cache.cleanup();
         assertNotSame(stale, cache.acquire(1, 0, 0));
         assertThrows(RuntimeException.class, () -> cache.acquire(40, 0, 40));
+    }
+
+    @Test
+    void improvedTransparencyChangesTheOpenGlDrawOrderForOverlappingFaces() {
+        var terrain = new Terrain().build();
+        options.performance.useRenderPassOptimization = false;
+        // Emit the near face first, as a modded fluid renderer could.
+        doAnswer(invocation -> {
+            var buffer = invocation.<BufferBuilder>getArgument(3);
+            writeQuad(buffer, WATER.up(), 0.25F);
+            writeQuad(buffer, WATER, 0.25F);
+            return true;
+        }).when(terrain.dispatcher).renderBlock(eq(Blocks.WATER.getDefaultState()), eq(WATER), any(), any());
+
+        for (boolean enabled : new boolean[]{false, true}) {
+            options.performance.useTranslucentFaceSorting = enabled;
+            var config = passes();
+            var material = config.defaultTranslucentMaterial();
+            assertTrue(material.pass.isReverseOrder());
+            var context = new VintageChunkBuildContext(terrain.world, config);
+            var output = mesh(terrain, context);
+            try {
+                var mesh = output.meshes.get(material.pass);
+                assertNotNull(mesh);
+                if (enabled) {
+                    assertNotNull(mesh.indexBuffer());
+                    assertEquals(4, mesh.indexBuffer().getDirectBuffer().getInt(0));
+                } else {
+                    assertNull(mesh.indexBuffer());
+                    assertNull(mesh.sortState());
+                }
+            } finally {
+                output.delete();
+                context.buffers.destroy();
+            }
+        }
+    }
+
+    @Test
+    void translucentTerrainWritesDepthAndRestoresTheMask() {
+        new Terrain();
+        var config = passes();
+        var material = config.defaultTranslucentMaterial();
+        var gl = TestGl.gl();
+        // Vanilla's 0.1 alpha test keeps invisible texels out of the depth buffer
+        assertTrue(material.pass.supportsFragmentDiscard());
+        assertEquals(com.bdmajora.impetus.engine.impl.render.chunk.terrain.material.parameters.AlphaCutoffParameter.ONE_TENTH, material.alphaCutoff);
+        // Solid passes keep the plain mipmap state
+        var solid = config.defaultSolidMaterial().pass;
+        solid.startDrawing();
+        solid.endDrawing();
+        verify(gl, never()).glDepthMask(anyBoolean());
+
+        // Vanilla leaves depth writes off before translucent terrain
+        when(gl.glGetBoolean(0x0B72)).thenReturn(false);
+        material.pass.startDrawing();
+        verify(gl).glDepthMask(true);
+        verify(gl, never()).glDepthMask(false);
+        material.pass.endDrawing();
+        verify(gl).glDepthMask(false);
+        // A second clear does not touch the mask again
+        material.pass.endDrawing();
+        verify(gl, times(1)).glDepthMask(false);
+
+        // A mask that was already on is left alone
+        clearInvocations(gl);
+        when(gl.glGetBoolean(0x0B72)).thenReturn(true);
+        material.pass.startDrawing();
+        material.pass.endDrawing();
+        verify(gl, never()).glDepthMask(anyBoolean());
+
+        // A shader pack keeps its own water depth state
+        when(gl.glGetBoolean(0x0B72)).thenReturn(false);
+        Object pack = Statics.get(com.bdmajora.impetus.umbra.Umbra.class, "currentPack");
+        Statics.set(com.bdmajora.impetus.umbra.Umbra.class, "currentPack", Statics.allocate(com.bdmajora.impetus.umbra.shaderpack.ShaderPack.class));
+        try {
+            material.pass.startDrawing();
+            material.pass.endDrawing();
+            verify(gl, never()).glDepthMask(anyBoolean());
+        } finally {
+            Statics.set(com.bdmajora.impetus.umbra.Umbra.class, "currentPack", pack);
+        }
     }
 
     @Test

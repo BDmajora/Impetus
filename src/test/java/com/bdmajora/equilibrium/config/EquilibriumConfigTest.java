@@ -61,7 +61,6 @@ class EquilibriumConfigTest {
         }
         // The non-vanilla look task removal is opt in
         assertFalse(EquilibriumOptions.get("mixin.ai.remove_look_tasks").enabledByDefault());
-        assertTrue(EquilibriumOptions.get("mixin.ai.pathfinding_chunk_load").enabledByDefault());
     }
 
     @Test
@@ -187,6 +186,32 @@ class EquilibriumConfigTest {
         config.setOptionEnabled("mixin.world", false);
         config.setOptionEnabled("mixin.missing", false);
         assertSame(config.getOption("mixin.world"), config.getEffectiveOptionForMixin("world.explosions.block_raycast.ExplosionMixin"));
+    }
+
+    @Test
+    void aConfigFromBeforeThePrimerCacheWasRemovedStillLoads() throws Exception {
+        // A 1.0.2 file still carries mixin.worldgen.primer_state_cache; it is ignored and its neighbours keep their values
+        Path old = dir.resolve("old.properties");
+        Files.writeString(old, String.join("\n",
+                "mixin.worldgen.primer_state_cache=false",
+                "mixin.worldgen.chunk_copy=false",
+                "mixin.worldgen.int_cache=true",
+                "mixin.worldgen.primer_state_cache.extra=true",
+                "") );
+        EquilibriumConfig config = EquilibriumConfig.load(old);
+        assertNull(config.getOption("mixin.worldgen.primer_state_cache"));
+        assertFalse(config.isOptionEnabled("mixin.worldgen.chunk_copy"));
+        assertTrue(config.isOptionEnabled("mixin.worldgen.int_cache"));
+        assertTrue(config.isOptionEnabled("mixin.worldgen"));
+        // Loading never rewrites an existing file, so the stale line stays until the user saves from the GUI
+        assertTrue(Files.readString(old).contains("primer_state_cache"));
+        config.save();
+        String saved = Files.readString(old);
+        assertFalse(saved.contains("primer_state_cache"), saved);
+        assertTrue(saved.contains("mixin.worldgen.chunk_copy=false"), saved);
+        // A mod override naming the removed switch is ignored rather than throwing
+        config.applyModOverride(new ModCompatibility.Override("somemod", "worldgen.primer_state_cache", false));
+        assertNull(config.getOption("mixin.worldgen.primer_state_cache"));
     }
 
     @Test

@@ -1,10 +1,6 @@
 // scene.glsl's block under names no pack can collide with, for mesh shaders that carry a pack's own vertex code (packs declare fogStart, screenSize and Vertex themselves); field for field the same layout
 
-#ifdef UMBRA_WRITABLE_TERRAIN
-#define UMBRA_TERRAIN_ACCESS restrict
-#else
-#define UMBRA_TERRAIN_ACCESS readonly restrict
-#endif
+#import <impetus:mesh/translucent_order.glsl>
 
 struct UmbraSection {
     ivec4 header;
@@ -37,9 +33,10 @@ layout(std140, binding = 0) uniform UmbraSceneData {
     writeonly restrict uvec2 *umbra_TerrainCommands;
     writeonly restrict uvec2 *umbra_TranslucentCommands;
     readonly restrict uint16_t *umbra_SortingRegions;
-    UMBRA_TERRAIN_ACCESS UmbraVertex *umbra_TerrainData;
+    readonly UmbraVertex *umbra_TerrainData;
     uint32_t *umbra_Statistics;
     readonly restrict uint32_t *umbra_SectionLoadTimes;
+    readonly ImpetusTranslucentOrderBlock *umbra_TranslucentOrder;
 
     vec2 umbra_ScreenSize;
 
@@ -53,5 +50,4 @@ layout(std140, binding = 0) uniform UmbraSceneData {
     float umbra_ChunkFadeInv;
 
     uint16_t umbra_RegionCount;
-    uint8_t umbra_FrameId;
 };

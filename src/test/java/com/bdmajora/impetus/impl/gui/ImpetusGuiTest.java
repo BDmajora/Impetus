@@ -200,9 +200,28 @@ class ImpetusGuiTest {
             GameSettings vanilla = ImpetusGameOptionPages.getVanillaOpts().getData();
             assertNotNull(new ImpetusGameOptionPages());
 
-            // Checks simulation distance moves render distance.
+            // Render distance writes the vanilla setting; simulation distance is Impetus's own and leaves it alone
+            set(general, 0, 16);
+            assertEquals(16, vanilla.renderDistanceChunks);
             set(general, 1, 12);
-            assertEquals(12, vanilla.renderDistanceChunks);
+            assertEquals(12, sodium.getSimulationDistance());
+            assertEquals(16, vanilla.renderDistanceChunks);
+            // Out of range values are clamped to the slider's ends, not stored raw
+            set(general, 1, 99);
+            assertEquals(ImpetusGameOptions.MAX_SIMULATION_DISTANCE, sodium.getSimulationDistance());
+            set(general, 1, 0);
+            assertEquals(ImpetusGameOptions.MIN_SIMULATION_DISTANCE, sodium.getSimulationDistance());
+            // Editable from the title screen and in singleplayer, locked on a remote server it cannot reach
+            Option<?> simulation = general.getOptions().get(1);
+            assertEquals(StandardOptions.Option.SIMULATION_DISTANCE.toString(), simulation.getId().toString());
+            assertTrue(simulation.isAvailable());
+            client.world = mock(WorldClient.class);
+            when(client.isIntegratedServerRunning()).thenReturn(true);
+            assertTrue(simulation.isAvailable());
+            when(client.isIntegratedServerRunning()).thenReturn(false);
+            assertFalse(simulation.isAvailable());
+            client.world = null;
+            set(general, 1, 10);
             set(general, 2, 30);
             assertEquals(0.3F, vanilla.gammaSetting, 1e-6F);
             set(general, 3, 2);

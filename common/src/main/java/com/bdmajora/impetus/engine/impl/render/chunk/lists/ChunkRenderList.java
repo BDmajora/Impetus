@@ -6,6 +6,8 @@ import com.bdmajora.impetus.engine.impl.util.iterator.ByteArrayIterator;
 import com.bdmajora.impetus.engine.impl.render.chunk.region.RenderRegion;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Arrays;
+
 // Visible sections of one region grouped by what they contain.
 public class ChunkRenderList {
     // Region of the sections.
@@ -104,6 +106,26 @@ public class ChunkRenderList {
     // Returns the number of sections with geometry.
     public int getSectionsWithGeometryCount() {
         return this.sectionsWithGeometryCount;
+    }
+
+    // Orders sections near to far so translucent passes can traverse them in reverse.
+    void sortGeometry(int sectionX, int sectionY, int sectionZ, int[] keys) {
+        if (this.sectionsWithGeometryCount < 2) {
+            return;
+        }
+        int x = Math.clamp(sectionX - this.region.getChunkX(), 0, RenderRegion.REGION_WIDTH - 1);
+        int y = Math.clamp(sectionY - this.region.getChunkY(), 0, RenderRegion.REGION_HEIGHT - 1);
+        int z = Math.clamp(sectionZ - this.region.getChunkZ(), 0, RenderRegion.REGION_LENGTH - 1);
+        for (int i = 0; i < this.sectionsWithGeometryCount; i++) {
+            int index = Byte.toUnsignedInt(this.sectionsWithGeometry[i]);
+            int distance = Math.abs(x - LocalSectionIndex.unpackX(index)) + Math.abs(y - LocalSectionIndex.unpackY(index))
+                    + Math.abs(z - LocalSectionIndex.unpackZ(index));
+            keys[i] = (distance << 16) | (i << 8) | index;
+        }
+        Arrays.sort(keys, 0, this.sectionsWithGeometryCount);
+        for (int i = 0; i < this.sectionsWithGeometryCount; i++) {
+            this.sectionsWithGeometry[i] = (byte) keys[i];
+        }
     }
 
     // Returns the number of sections with sprites.

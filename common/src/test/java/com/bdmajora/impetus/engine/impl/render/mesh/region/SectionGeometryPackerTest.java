@@ -11,7 +11,6 @@ import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.ChunkVertexEn
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.impl.MeshChunkVertex;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.impl.MeshVertexLayout;
 import com.bdmajora.testing.Passes;
-import com.bdmajora.testing.TestGl;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -28,14 +27,34 @@ class SectionGeometryPackerTest {
     }
 
     @Test
-    void translucentQuadsComeFirstFarthestFirstThenOpaqueByFacing() {
+    void unsortedTranslucentQuadsKeepTheirBlendPassAndVertexOrder() {
+        var pass = TerrainRenderPass.builder()
+                .name("translucent")
+                .useReverseOrder(true)
+                .vertexType(MeshChunkVertex.INSTANCE)
+                .primitiveType(Passes.MESH_TRANSLUCENT.primitiveType())
+                .build();
+        var mesh = MeshStoresTest.mesh(3, ModelQuadFacing.POS_Y);
+        var geometry = SectionGeometryPacker.packForMeshBackend(Map.of(pass, mesh));
+        try {
+            assertEquals(3, geometry.baseQuad());
+            assertEquals(0, geometry.quadsPerFacing()[ModelQuadFacing.POS_Y.ordinal()]);
+            assertEquals(0f, firstX(geometry, 0), 0.01f);
+            assertEquals(2f, firstX(geometry, 2), 0.01f);
+        } finally {
+            geometry.delete();
+            mesh.free();
+        }
+    }
+
+    @Test
+    void translucentQuadsComeFirstInSourceOrderThenOpaqueByFacing() {
         Map<TerrainRenderPass, BuiltSectionMeshParts> meshes = new LinkedHashMap<>();
         meshes.put(Passes.MESH_SOLID, MeshStoresTest.mesh(2, ModelQuadFacing.POS_Y));
         meshes.put(Passes.MESH_CUTOUT, MeshStoresTest.mesh(1, ModelQuadFacing.NEG_X));
         meshes.put(Passes.MESH_TRANSLUCENT, MeshStoresTest.mesh(3, ModelQuadFacing.UNASSIGNED));
 
-        // Places the camera.
-        SectionGeometry geometry = SectionGeometryPacker.pack(meshes, 10f, 0f, 0.5f);
+        SectionGeometry geometry = SectionGeometryPacker.pack(meshes);
         assertEquals(6, geometry.quadCount());
         assertEquals(3, geometry.baseQuad());
         assertEquals(2, geometry.quadsPerFacing()[ModelQuadFacing.POS_Y.ordinal()]);
@@ -54,15 +73,15 @@ class SectionGeometryPackerTest {
 
     @Test
     void emptyBuildsPackToNothing() {
-        assertNull(SectionGeometryPacker.pack(Map.of(), 0f, 0f, 0f));
+        assertNull(SectionGeometryPacker.pack(Map.of()));
         var emptyRange = new BuiltSectionMeshParts(new NativeBuffer(64), null, null, Map.of(ModelQuadFacing.POS_X, new VertexRange(0, 0)));
-        assertNull(SectionGeometryPacker.pack(Map.of(Passes.MESH_SOLID, emptyRange), 0f, 0f, 0f));
+        assertNull(SectionGeometryPacker.pack(Map.of(Passes.MESH_SOLID, emptyRange)));
     }
 
     @Test
     void passesBuiltInAnotherLayoutAreRefused() {
         var mesh = MeshStoresTest.mesh(1, ModelQuadFacing.POS_Y);
-        assertThrows(IllegalStateException.class, () -> SectionGeometryPacker.pack(Map.of(Passes.SOLID, mesh), 0f, 0f, 0f));
+        assertThrows(IllegalStateException.class, () -> SectionGeometryPacker.pack(Map.of(Passes.SOLID, mesh)));
     }
 
     @Test
@@ -72,7 +91,7 @@ class SectionGeometryPackerTest {
                 Map.of(ModelQuadFacing.POS_Z, new VertexRange(0, quads * 4)));
         var translucent = new BuiltSectionMeshParts(new NativeBuffer(quads * 4 * MeshChunkVertex.STRIDE), null, null,
                 Map.of(ModelQuadFacing.UNASSIGNED, new VertexRange(0, quads * 4)));
-        SectionGeometry geometry = SectionGeometryPacker.pack(Map.of(Passes.MESH_SOLID, opaque, Passes.MESH_TRANSLUCENT, translucent), 0f, 0f, 0f);
+        SectionGeometry geometry = SectionGeometryPacker.pack(Map.of(Passes.MESH_SOLID, opaque, Passes.MESH_TRANSLUCENT, translucent));
         assertEquals(0xFFFF * 2, geometry.quadCount());
         assertEquals((short) 0xFFFF, geometry.baseQuad());
         assertEquals((short) 0xFFFF, geometry.quadsPerFacing()[ModelQuadFacing.POS_Z.ordinal()]);
@@ -141,12 +160,12 @@ class SectionGeometryPackerTest {
         meshes.put(solid, wideMesh(2, ModelQuadFacing.POS_Y));
         meshes.put(translucent, wideMesh(2, ModelQuadFacing.UNASSIGNED));
 
-        SectionGeometry geometry = SectionGeometryPacker.packForMeshBackend(meshes, 10f, 2f, 0.5f);
+        SectionGeometry geometry = SectionGeometryPacker.packForMeshBackend(meshes);
         assertEquals(4, geometry.quadCount());
         assertEquals(4 * 4 * 32, geometry.geometry().getLength());
         assertEquals(2, geometry.minY());
         assertEquals(0, geometry.sizeY());
-        // Checks the 32 byte sort.
+        // Checks the 32 byte layout.
         long base = MemoryUtil.memAddress(geometry.geometry().getDirectBuffer());
         assertEquals(0f, MeshChunkVertex.decodePosition(MeshChunkVertex.readPackedX(base)), 0.01f);
         assertEquals(1f, MeshChunkVertex.decodePosition(MeshChunkVertex.readPackedX(base + 4 * 32)), 0.01f);
@@ -157,24 +176,16 @@ class SectionGeometryPackerTest {
         Map<TerrainRenderPass, BuiltSectionMeshParts> mixed = new LinkedHashMap<>();
         mixed.put(solid, wideMesh(1, ModelQuadFacing.POS_Y));
         mixed.put(Passes.MESH_CUTOUT, MeshStoresTest.mesh(1, ModelQuadFacing.POS_Y));
-        assertThrows(IllegalStateException.class, () -> SectionGeometryPacker.pack(mixed, 0f, 0f, 0f));
+        assertThrows(IllegalStateException.class, () -> SectionGeometryPacker.pack(mixed));
     }
 
     @Test
     void buildsForTheRasterRendererAreNotPacked() {
-        assertNull(SectionGeometryPacker.packForMeshBackend(Map.of(Passes.SOLID, MeshStoresTest.mesh(1, ModelQuadFacing.POS_Y)), 0f, 0f, 0f));
-        assertNull(SectionGeometryPacker.packForMeshBackend(Map.of(), 0f, 0f, 0f));
-        SectionGeometry packed = SectionGeometryPacker.packForMeshBackend(Map.of(Passes.MESH_SOLID, MeshStoresTest.mesh(1, ModelQuadFacing.POS_Y)), 0f, 0f, 0f);
+        assertNull(SectionGeometryPacker.packForMeshBackend(Map.of(Passes.SOLID, MeshStoresTest.mesh(1, ModelQuadFacing.POS_Y))));
+        assertNull(SectionGeometryPacker.packForMeshBackend(Map.of()));
+        SectionGeometry packed = SectionGeometryPacker.packForMeshBackend(Map.of(Passes.MESH_SOLID, MeshStoresTest.mesh(1, ModelQuadFacing.POS_Y)));
         assertEquals(1, packed.quadCount());
         packed.delete();
     }
 
-    @Test
-    void quadDistanceIsMeasuredFromItsCentre() {
-        var mesh = MeshStoresTest.mesh(1, ModelQuadFacing.POS_Y);
-        long quad = MemoryUtil.memAddress(mesh.vertexBuffer().getDirectBuffer());
-        // Checks the quad centre.
-        assertEquals(0f, SectionGeometryPacker.distanceSquared(quad, MeshChunkVertex.STRIDE, 0.5f, 0f, 0.5f), 0.01f);
-        assertEquals(4f, SectionGeometryPacker.distanceSquared(quad, MeshChunkVertex.STRIDE, 0.5f, 2f, 0.5f), 0.01f);
-    }
 }

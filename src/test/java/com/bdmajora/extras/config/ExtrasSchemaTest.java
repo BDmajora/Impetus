@@ -179,7 +179,7 @@ class ExtrasSchemaTest {
                 golden.add(category + "." + trimmed.substring(2, end));
             }
         }
-        assertEquals(146, golden.size());
+        assertEquals(145, golden.size());
         assertEquals(golden, schema);
     }
 

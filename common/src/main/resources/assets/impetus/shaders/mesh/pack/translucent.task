@@ -2,6 +2,7 @@
 #extension GL_ARB_shading_language_include : enable
 #extension GL_NV_mesh_shader : require
 #extension GL_NV_gpu_shader5 : require
+#extension GL_NV_shader_buffer_load : require
 
 #import <impetus:mesh/scene.glsl>
 #import <impetus:mesh/pack/box.glsl>
@@ -16,8 +17,7 @@ taskNV out UmbraTask {
     vec3 origin;
     uint baseOffset;
     uint quadCount;
-    // 0 or 1, alternating per frame so the in-place pair swaps cover both pairings over two frames
-    uint jiggle;
+    uint useSortedOrder;
     // Milliseconds since the section was placed, for the pack's mc_chunkFade
     float ageMs;
 };
@@ -54,15 +54,11 @@ void main() {
 
     origin = vec3(chunk << 4);
     baseOffset = uint(header.w);
-    jiggle = 0u;
+    useSortedOrder = 0u;
     ageMs = float(timeMs - sectionLoadTimes[sectionId]);
 
 #ifdef SORT_QUADS
-    if (!shadow) {
-        jiggle = min(quadCount >> 1, uint(frameId) & 1u);
-        quadCount += jiggle;
-        baseOffset -= jiggle;
-    }
+    useSortedOrder = uint(!shadow && (header.y & (1 << 26)) != 0);
 #endif
 
     gl_TaskCountNV = (quadCount + UMBRA_MESH_QUADS - 1u) / UMBRA_MESH_QUADS;

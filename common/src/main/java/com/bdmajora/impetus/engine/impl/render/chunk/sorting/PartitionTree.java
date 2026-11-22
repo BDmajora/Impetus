@@ -4,9 +4,9 @@ import it.unimi.dsi.fastutil.floats.FloatArrayList;
 import it.unimi.dsi.fastutil.floats.FloatArrays;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntArrays;
-import com.bdmajora.impetus.engine.impl.util.sorting.MergeSort;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.BitSet;
 import java.util.Collection;
 
 // Tree of cut planes that orders translucent quads for any camera position.
@@ -193,7 +193,7 @@ public final class PartitionTree implements SortState.Resortable {
                 int quad = slab.getInt(i);
                 if (reference < 0) {
                     reference = quad;
-                } else if (Math.abs(quads.normalDot(quad, reference)) < 1 - QuadSet.EPSILON) {
+                } else if (!quads.hasParallelNormal(quad, reference, quads.normalDot(quad, reference))) {
                     return false;
                 }
             }
@@ -255,24 +255,18 @@ public final class PartitionTree implements SortState.Resortable {
     private static int @Nullable [] parallelOrder(QuadSet quads, int[] group) {
         int reference = group[0];
         float nx = quads.normalX(reference), ny = quads.normalY(reference), nz = quads.normalZ(reference);
-        float[] centers = quads.centers();
-        int far = TranslucentSorter.FAKE_STATIC_CAMERA_OFFSET;
-        float camX = centers[reference * 3] + nx * far, camY = centers[reference * 3 + 1] + ny * far, camZ = centers[reference * 3 + 2] + nz * far;
-
-        float[] keys = new float[group.length];
+        BitSet flipped = new BitSet(group.length);
         for (int i = 0; i < group.length; i++) {
             int quad = group[i];
             float dot = quads.normalDot(quad, reference);
-            if (Math.abs(dot) < 1 - QuadSet.EPSILON) return null;
+            if (!quads.hasParallelNormal(quad, reference, dot)) return null;
 
-            int c = quad * 3;
-            keys[i] = (nx * (centers[c] - camX) + ny * (centers[c + 1] - camY) + nz * (centers[c + 2] - camZ)) * (dot < 0 ? 1 : -1);
+            if (dot < 0) {
+                flipped.set(i);
+            }
         }
 
-        int[] byKey = MergeSort.mergeSort(keys);
-        int[] order = new int[group.length];
-        for (int i = 0; i < order.length; i++) order[i] = group[byKey[i]];
-        return order;
+        return TranslucentSorter.sortNormalRelative(quads.centers(), group, nx, ny, nz, flipped);
     }
 
     // Returns the free cut planes of a group on an axis.
@@ -388,7 +382,7 @@ public final class PartitionTree implements SortState.Resortable {
         };
 
         int slab = 0;
-        while (slab < split.planes.length && split.planes[slab] <= camCoord + QuadSet.EPSILON) slab++;
+        while (slab < split.planes.length && split.planes[slab] <= camCoord) slab++;
 
         for (int i = 0; i < slab; i++) {
             write(split.slabs[i], camX, camY, camZ, sink);

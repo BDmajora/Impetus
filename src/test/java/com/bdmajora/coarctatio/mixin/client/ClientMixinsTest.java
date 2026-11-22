@@ -42,34 +42,6 @@ class ClientMixinsTest {
     }
 
     @Test
-    void theCreativeSearchIndexIsBuiltOnTheFirstSearch() {
-        // Builds a concrete search tree.
-        @SuppressWarnings("unchecked")
-        SearchTreeMixin<String> tree = Mixins.concrete(SearchTreeMixin.class);
-        // Sets the starting state.
-        Mixins.set(tree, "coarctatio$stale", true);
-        // Checks the swallowed rebuilds.
-        var eager = Mixins.ci();
-        Mixins.call(tree, "coarctatio$deferRecalculate", eager);
-        assertTrue(eager.isCancelled());
-
-        // The first search clears the flag and asks for the build itself
-        Mixins.call(tree, "coarctatio$buildOnDemand", "stone", Mixins.cir(List.of()));
-        assertFalse(Mixins.<Boolean>get(tree, "coarctatio$stale"));
-
-        // Checks a rebuild after the first build.
-        var built = Mixins.ci();
-        Mixins.call(tree, "coarctatio$deferRecalculate", built);
-        assertFalse(built.isCancelled());
-        // A second search does not rebuild
-        Mixins.call(tree, "coarctatio$buildOnDemand", "stone", Mixins.cir(List.of()));
-
-        // Adding an item re-arms the deferral
-        Mixins.call(tree, "coarctatio$invalidate", "item", Mixins.ci());
-        assertTrue(Mixins.<Boolean>get(tree, "coarctatio$stale"));
-    }
-
-    @Test
     void theSoundRegistryGetsACompactMapAndItsDebugWalksAreSkipped() {
         SoundRegistryMixin registry = Mixins.instance(SoundRegistryMixin.class);
         CallbackInfoReturnable<Map<ResourceLocation, SoundEventAccessor>> cir = Mixins.cir(new java.util.HashMap<>());
@@ -90,12 +62,13 @@ class ClientMixinsTest {
         IResourceManager resources = mock(IResourceManager.class);
 
         Mixins.call(manager, "coarctatio$openPools", resources, Mixins.ci());
-        int[] quad = {1, 2, 3};
-        assertSame(quad, ModelCaches.QUADS.deduplicate(quad));
-        assertSame(quad, ModelCaches.QUADS.deduplicate(new int[] {1, 2, 3}));
+        String name = new String("minecraft:blocks/stone");
+        assertSame(name, ModelCaches.MODEL_TEXTURES.deduplicate(name));
+        assertSame(name, ModelCaches.MODEL_TEXTURES.deduplicate(new String("minecraft:blocks/stone")));
 
         Mixins.call(manager, "coarctatio$closePools", resources, Mixins.ci());
         // Checks the pool is closed.
-        assertSame(quad, ModelCaches.QUADS.deduplicate(quad));
+        String other = new String("minecraft:blocks/dirt");
+        assertSame(other, ModelCaches.MODEL_TEXTURES.deduplicate(other));
     }
 }

@@ -10,14 +10,13 @@ import com.bdmajora.extras.ExtrasConfig.ThreadSettings;
 final class SystemSchema {
     // Schema of the async settings.
     static final SettingGroup<AsyncSettings> ASYNC = SettingGroup.builder("parallel_ticking", c -> c.async, AsyncSettings::new)
-            .bool("enabled", "Master switch for parallel server ticking (entities, random ticks, mob spawning across the worker pool); takes effect on the next launch",
+            .bool("enabled", "Master switch for parallel server ticking (entities and random ticks across the worker pool); takes effect on the next launch",
                     s -> s.enabled, (s, v) -> s.enabled = v)
             .bool("entities", "Tick vanilla entities in parallel across the worker pool", s -> s.entities, (s, v) -> s.entities = v)
             .bool("moddedEntities", "Also tick modded entities in parallel; off keeps them on the main thread",
                     s -> s.moddedEntities, (s, v) -> s.moddedEntities = v)
             .bool("randomTicks", "Run block random ticks (crop growth, fire spread, ...) in parallel",
                     s -> s.randomTicks, (s, v) -> s.randomTicks = v)
-            .bool("spawning", "Evaluate natural mob spawn attempts in parallel per chunk", s -> s.spawning, (s, v) -> s.spawning = v)
             .integer("threads", 0, AsyncSettings.THREADS_MAX,
                     "Worker threads for parallel ticking (0 = automatic, about three quarters of the cores)",
                     s -> s.threads, (s, v) -> s.threads = v)

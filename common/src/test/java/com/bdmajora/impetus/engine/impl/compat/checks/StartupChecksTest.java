@@ -42,7 +42,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -55,7 +54,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -86,25 +84,8 @@ class StartupChecksTest {
             'a', 'b', 'i', 'k', 's', 'A', 'B', 'I', 'K', 'S', '\u0130', '\u0131', '\u212A', '\u017F',
             '\u0307', '\u03A3', '\u1E9E', '\n', '.', '\uD801', '\uDC00'
     };
-    // Characters that exercise trimming and digit parsing of driver versions
-    private static final char[] VERSION_ALPHABET = {
-            '0', '1', '2', '5', '9', '.', '.', '.', '+', '-', ' ', '\t', '\u0000', 'x', '\u0663', '\uFF15', '\u00A0'
-    };
-
-    // Record type of a parsed driver version
-    private static final Class<?> DRIVER_VERSION = nested("DriverVersion");
     // Class type of a lower case needle
     private static final Class<?> NEEDLE = nested("LowerCaseNeedle");
-    // Parser of driver version text
-    private static final Method PARSE = method(DRIVER_VERSION, "parseNvidia", String.class);
-    // Accessor of the major version part
-    private static final Method MAJOR = method(DRIVER_VERSION, "major");
-    // Accessor of the minor version part
-    private static final Method MINOR = method(DRIVER_VERSION, "minor");
-    // Comparison of two driver versions
-    private static final Method COMPARE = method(DRIVER_VERSION, "compareTo", DRIVER_VERSION);
-    // Canonical constructor of a driver version
-    private static final Constructor<?> VERSION = constructor(DRIVER_VERSION, int.class, int.class);
     // Constructor of a lower case needle
     private static final Constructor<?> NEEDLE_OF = constructor(NEEDLE, String.class);
     // Search of a needle in a string
@@ -377,9 +358,9 @@ class StartupChecksTest {
         assertTrue(overlayFlagged());
     }
 
-    // Checks that run waits ten seconds for the probe and hands its adapters to the driver check
+    // Checks that an NVIDIA adapter version no longer triggers a warning
     @Test
-    void runUsesProbedAdapters() {
+    void runSkipsNvidiaDriverVersionWarning() {
         assumeShell();
         windows();
         fakeTaskList("echo rtss", "tasklist");
@@ -389,7 +370,7 @@ class StartupChecksTest {
             Statics.call(StartupChecks.class, "run", new GlContextInfo("NVIDIA Corporation", "GeForce", "4.6"));
             probe.verify(() -> GraphicsAdapterProbe.adapters(10_000L));
         }
-        assertEquals(1, count(NVIDIA_TITLE));
+        assertEquals(0, count(NVIDIA_TITLE));
         assertTrue(Workarounds.isActive(Workarounds.Issue.NVIDIA_THREADED_OPTIMIZATIONS));
         assertTrue(overlayFlagged());
     }
@@ -432,12 +413,12 @@ class StartupChecksTest {
         try (MockedStatic<GraphicsAdapterProbe> probe = mockStatic(GraphicsAdapterProbe.class);
              MockedStatic<MessageBoxUtil> boxes = mockStatic(MessageBoxUtil.class)) {
             probe.when(() -> GraphicsAdapterProbe.adapters(anyLong()))
-                    .thenReturn(List.of(new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, "GTX", "471.11")));
+                    .thenReturn(List.of(new GraphicsAdapterInfo(GraphicsVendor.INTEL, "HD Graphics", "10.18.10.3496")));
             boxes.when(() -> MessageBoxUtil.showWarning(anyString(), anyString())).thenThrow(new LinkageError("no dialog"));
-            assertDoesNotThrow(() -> Statics.call(StartupChecks.class, "run", new GlContextInfo("NVIDIA Corporation", "GeForce", "4.6")));
+            assertDoesNotThrow(() -> Statics.call(StartupChecks.class, "run", new GlContextInfo("Intel", "HD Graphics", "4.6")));
+            boxes.verify(() -> MessageBoxUtil.showWarning(eq("Impetus — Driver workaround active"), anyString()));
             boxes.verify(() -> MessageBoxUtil.showWarning(eq("Impetus — Incompatible software detected"), anyString()));
         }
-        assertEquals(1, count(NVIDIA_TITLE));
         assertTrue(overlayFlagged());
         assertEquals(1, count(OVERLAY_TITLE));
     }
@@ -447,7 +428,7 @@ class StartupChecksTest {
     void bugChecksStayQuietForHealthySetup() {
         assumeDesktop();
         Logger logger = mockLogger();
-        Statics.call(StartupChecks.class, "runBugChecks", new GlContextInfo("NVIDIA", "RTX", "4.6"), List.of());
+        Statics.call(StartupChecks.class, "runBugChecks", new GlContextInfo("NVIDIA", "RTX", "4.6"));
         verify(logger, never()).warn(anyString());
         assertTrue(ImpetusNotifications.getVisible().isEmpty());
     }
@@ -456,7 +437,7 @@ class StartupChecksTest {
     @Test
     void bugChecksAnnounceNoErrorContextWorkaround() {
         Workarounds.markActive(Workarounds.Issue.NO_ERROR_CONTEXT_UNSAFE);
-        Statics.call(StartupChecks.class, "runBugChecks", new GlContextInfo("Intel", "HD", "4.6"), List.of());
+        Statics.call(StartupChecks.class, "runBugChecks", new GlContextInfo("Intel", "HD", "4.6"));
         assertEquals(1, count("Driver workaround active"));
     }
 
@@ -474,7 +455,7 @@ class StartupChecksTest {
                 null
         };
         for (GlContextInfo context : incomplete) {
-            assertDoesNotThrow(() -> Statics.call(StartupChecks.class, "runBugChecks", context, List.of()), String.valueOf(context));
+            assertDoesNotThrow(() -> Statics.call(StartupChecks.class, "runBugChecks", context), String.valueOf(context));
         }
         verify(logger, times(incomplete.length)).warn(INCOMPLETE);
     }
@@ -483,17 +464,9 @@ class StartupChecksTest {
     @Test
     void bugChecksAcceptBlankVendorAndMissingVersion() {
         Logger logger = mockLogger();
-        Statics.call(StartupChecks.class, "runBugChecks", new GlContextInfo(" ", " ", ""), List.of());
-        Statics.call(StartupChecks.class, "runBugChecks", new GlContextInfo("NVIDIA", "RTX", null), List.of());
+        Statics.call(StartupChecks.class, "runBugChecks", new GlContextInfo(" ", " ", ""));
+        Statics.call(StartupChecks.class, "runBugChecks", new GlContextInfo("NVIDIA", "RTX", null));
         verify(logger, never()).warn(INCOMPLETE);
-    }
-
-    // Checks that the bug checks pass the adapters to the driver check
-    @Test
-    void bugChecksWarnAboutOutdatedDriver() {
-        Statics.call(StartupChecks.class, "runBugChecks", new GlContextInfo("NVIDIA", "GTX", "4.6"),
-                List.of(new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, "GTX", "471.11")));
-        assertEquals(1, count(NVIDIA_TITLE));
     }
 
     // Checks that an Android runtime name marks PojavLauncher and warns
@@ -668,171 +641,6 @@ class StartupChecksTest {
         TrickleReader failing = new TrickleReader("rtss and more", 2);
         failing.failAt = 6;
         assertThrows(IOException.class, () -> occursInStream(needle("rtss"), failing));
-    }
-
-    // Checks driver versions on the trimming and segment and int boundaries against the split reference
-    @Test
-    void parseAgreesWithSplitReferenceOnEdgeCases() {
-        String[] samples = {
-                null, "", " ", "\t\n", "\u0000536.23\u001F", "536.23", " 536.23 ", "536", "536.", ".23", ".", "..", "....",
-                "536..23", "536.23.", "536.23.1.2.3", "a.b", "536.23abc", "536 .23", "536.2 3", "\u00A0536.23",
-                "31.0.15.5222", "31.0.15.3623", "31.0.15.3622", "31.0.15.999", "31.0.15.1000", "31.0.15.99999",
-                "31.0.015.5222", "31.0.15.+5222", "31.0.15.-5222", "31.0.15.", "31.0.15", "31.0.15..5222",
-                "31.0.15.5222.1", "31.0.15.5222.", "31.0.15.5222x", "31.0.16.5222", "31.0.1.5", "31.0.150.5222",
-                "x.y.15.5222", "..15.5222", "1.2.15.2147483647", "1.2.15.2147483648", "1.2.15.-2147483648",
-                "2147483647.2147483647", "2147483648.0", "0.2147483648", "-2147483648.-2147483648", "-2147483649.0",
-                "99999999999999999999.1", "1.99999999999999999999", "+536.+23", "-536.-23", "+.5", "-.5", "+-1.2", "--1.2",
-                "0.0", "000536.00023", "\uFF15\uFF13\uFF16.\uFF12\uFF13", "\u0665\u0663\u0666.\u0662\u0663",
-                "536.23 ", "536.23\t\t", "536\t.23", "15.15.15.1500", "1.1.15.1000.15.1000"
-        };
-        for (String sample : samples) {
-            assertArrayEquals(referenceParse(sample), parse(sample), () -> "sample " + escape(sample));
-        }
-    }
-
-    // Checks random driver version text against the split reference
-    @Test
-    void parseAgreesWithSplitReferenceOnRandomText() {
-        SplittableRandom random = new SplittableRandom(0xD21BEL);
-        for (int round = 0; round < 200_000; round++) {
-            String sample = randomText(random, VERSION_ALPHABET, 0, 14);
-            assertArrayEquals(referenceParse(sample), parse(sample), () -> "sample " + escape(sample));
-        }
-        for (int round = 0; round < 50_000; round++) {
-            String sample = random.nextInt(1000) + "." + random.nextInt(100) + "." + (random.nextBoolean() ? "15" : random.nextInt(20))
-                    + "." + random.nextLong(-100_000L, 10_000_000_000L) + (random.nextBoolean() ? "" : "." + random.nextInt(9));
-            assertArrayEquals(referenceParse(sample), parse(sample), () -> "sample " + sample);
-        }
-    }
-
-    // Checks the known driver forms and the int limits
-    @Test
-    void parseReadsKnownForms() {
-        assertArrayEquals(new int[]{536, 23}, parse("536.23"));
-        assertArrayEquals(new int[]{552, 22}, parse("31.0.15.5222"));
-        assertArrayEquals(new int[]{536, 23}, parse("31.0.15.3623"));
-        assertArrayEquals(new int[]{510, 0}, parse("31.0.15.1000"));
-        assertArrayEquals(new int[]{31, 0}, parse("31.0.15.999"));
-        assertArrayEquals(new int[]{500 + Integer.MAX_VALUE / 100, Integer.MAX_VALUE % 100}, parse("1.2.15.2147483647"));
-        assertArrayEquals(new int[]{1, 2}, parse("1.2.15.2147483648"));
-        assertArrayEquals(new int[]{Integer.MAX_VALUE, Integer.MAX_VALUE}, parse("2147483647.2147483647"));
-        assertArrayEquals(new int[]{Integer.MIN_VALUE, Integer.MIN_VALUE}, parse("-2147483648.-2147483648"));
-        assertArrayEquals(new int[]{536, 23}, parse("\u0665\u0663\u0666.\u0662\u0663"));
-        assertNull(parse("2147483648.0"));
-        assertNull(parse("-2147483649.0"));
-        assertNull(parse(null));
-        assertNull(parse("nvidia"));
-        assertNull(parse(""));
-    }
-
-    // Checks that versions order by major part and then minor part across the int range
-    @Test
-    void compareOrdersMajorThenMinor() {
-        assertEquals(0, compare(version(536, 23), version(536, 23)));
-        assertTrue(compare(version(536, 22), version(536, 23)) < 0);
-        assertTrue(compare(version(536, 24), version(536, 23)) > 0);
-        assertTrue(compare(version(535, 99), version(536, 0)) < 0);
-        assertTrue(compare(version(537, 0), version(536, 99)) > 0);
-        assertTrue(compare(version(Integer.MIN_VALUE, 0), version(Integer.MAX_VALUE, 0)) < 0);
-        assertTrue(compare(version(0, Integer.MAX_VALUE), version(0, Integer.MIN_VALUE)) > 0);
-        assertTrue(compare(version(-1, 0), version(0, 0)) < 0);
-        assertThrows(NullPointerException.class, () -> compare(version(1, 1), null));
-        assertEquals(0, compare(Statics.get(StartupChecks.class, "MINIMUM_NVIDIA_WINDOWS_DRIVER"), version(536, 23)));
-        assertEquals(0, compare(Statics.get(StartupChecks.class, "MINIMUM_NVIDIA_LINUX_DRIVER"), version(535, 54)));
-    }
-
-    // Checks that only the first outdated NVIDIA adapter is reported
-    @Test
-    void driverCheckWarnsOnceForFirstOutdatedAdapter() {
-        windows();
-        Statics.call(StartupChecks.class, "warnIfOutdatedNvidiaDriver", List.of(
-                new GraphicsAdapterInfo(GraphicsVendor.AMD, "Radeon", "1.0"),
-                new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, "GTX", "471.11"),
-                new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, "GTX", "31.0.15.3622")));
-        List<ImpetusNotification> warnings = ImpetusNotifications.getVisible().stream().filter(n -> n.title().equals(NVIDIA_TITLE)).toList();
-        assertEquals(1, warnings.size());
-        assertEquals(List.of("Detected driver: 471.11", "Recommended: 536.23 or newer."), warnings.get(0).lines());
-    }
-
-    // Checks the driver versions on both sides of the Windows minimum
-    @Test
-    void driverCheckRespectsWindowsMinimumBoundary() {
-        windows();
-        for (String outdated : List.of("536.22", "535.99", "31.0.15.3622", "0.0", "-1.0")) {
-            clearNotifications();
-            Statics.call(StartupChecks.class, "warnIfOutdatedNvidiaDriver", List.of(new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, "GPU", outdated)));
-            assertEquals(1, count(NVIDIA_TITLE), outdated);
-        }
-        for (String current : List.of("536.23", "536.24", "537.0", "31.0.15.3623", "31.0.15.5222", "2147483647.0")) {
-            clearNotifications();
-            Statics.call(StartupChecks.class, "warnIfOutdatedNvidiaDriver", List.of(new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, "GPU", current)));
-            assertEquals(0, count(NVIDIA_TITLE), current);
-        }
-    }
-
-    // Checks the driver versions on both sides of the Linux minimum
-    @Test
-    void driverCheckRespectsLinuxMinimumBoundary() {
-        Statics.set(OsKind.class, "detected", OsKind.LINUX);
-        for (String outdated : List.of("535.53", "535.53.99", "530.41.03", "470.256.02", "0.0", "-1.0")) {
-            clearNotifications();
-            Statics.call(StartupChecks.class, "warnIfOutdatedNvidiaDriver", List.of(new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, "GPU", outdated)));
-            assertEquals(1, count(NVIDIA_TITLE), outdated);
-        }
-        for (String current : List.of("535.54", "535.54.03", "535.104.05", "535.274.02", "536.22", "550.163.01", "615.71.09", "2147483647.0")) {
-            clearNotifications();
-            Statics.call(StartupChecks.class, "warnIfOutdatedNvidiaDriver", List.of(new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, "GPU", current)));
-            assertEquals(0, count(NVIDIA_TITLE), current);
-        }
-    }
-
-    // Checks that the Linux warning and dialog name the Linux minimum
-    @Test
-    void driverCheckNamesTheLinuxMinimum() {
-        Statics.set(OsKind.class, "detected", OsKind.LINUX);
-        try (MockedStatic<MessageBoxUtil> boxes = mockStatic(MessageBoxUtil.class)) {
-            Statics.call(StartupChecks.class, "warnIfOutdatedNvidiaDriver", List.of(new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, "GPU", "470.256.02")));
-            boxes.verify(() -> MessageBoxUtil.showWarning(eq("Impetus — Outdated NVIDIA driver"), contains("Recommended driver: 535.54 or newer")));
-        }
-        List<ImpetusNotification> warnings = ImpetusNotifications.getVisible().stream().filter(n -> n.title().equals(NVIDIA_TITLE)).toList();
-        assertEquals(1, warnings.size());
-        assertEquals(List.of("Detected driver: 470.256.02", "Recommended: 535.54 or newer."), warnings.get(0).lines());
-    }
-
-    // Checks that systems other than Linux keep the Windows minimum
-    @Test
-    void driverCheckKeepsTheWindowsMinimumElsewhere() {
-        for (OsKind kind : List.of(OsKind.WINDOWS, OsKind.MACOS, OsKind.UNKNOWN)) {
-            Statics.set(OsKind.class, "detected", kind);
-            clearNotifications();
-            try (MockedStatic<MessageBoxUtil> boxes = mockStatic(MessageBoxUtil.class)) {
-                Statics.call(StartupChecks.class, "warnIfOutdatedNvidiaDriver", List.of(new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, "GPU", "535.99")));
-                boxes.verify(() -> MessageBoxUtil.showWarning(eq("Impetus — Outdated NVIDIA driver"), contains("Recommended driver: 536.23 or newer")));
-            }
-            assertEquals(1, count(NVIDIA_TITLE), kind.name());
-        }
-    }
-
-    // Checks adapters that are not NVIDIA or have unreadable versions
-    @Test
-    void driverCheckIgnoresOtherVendorsAndUnreadableVersions() {
-        Statics.call(StartupChecks.class, "warnIfOutdatedNvidiaDriver", List.of(
-                new GraphicsAdapterInfo(GraphicsVendor.AMD, "Radeon", "1.0"),
-                new GraphicsAdapterInfo(GraphicsVendor.INTEL, "HD", "10.18.1.1"),
-                new GraphicsAdapterInfo(null, "Unknown", "1.0"),
-                new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, "GTX", null),
-                new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, "GTX", ""),
-                new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, "GTX", "nvidia"),
-                new GraphicsAdapterInfo(GraphicsVendor.NVIDIA, "GTX", "x.y")));
-        Statics.call(StartupChecks.class, "warnIfOutdatedNvidiaDriver", List.of());
-        assertEquals(0, count(NVIDIA_TITLE));
-    }
-
-    // Checks that a null adapter list or a null adapter is rejected
-    @Test
-    void driverCheckRejectsNullAdapters() {
-        assertThrows(NullPointerException.class, () -> Statics.call(StartupChecks.class, "warnIfOutdatedNvidiaDriver", (Object) null));
-        assertThrows(NullPointerException.class, () -> Statics.call(StartupChecks.class, "warnIfOutdatedNvidiaDriver", Arrays.asList((Object) null)));
     }
 
     // Checks that the scan runs nothing outside Windows
@@ -1063,37 +871,6 @@ class StartupChecksTest {
         return text.toLowerCase(Locale.ROOT).contains(word);
     }
 
-    // Returns the split based reading of a driver version as major and minor or null
-    private static int[] referenceParse(String raw) {
-        if (raw == null || raw.trim().isEmpty()) {
-            return null;
-        }
-        String[] parts = raw.trim().split("\\.");
-        if (parts.length >= 4 && "15".equals(parts[2])) {
-            Integer packed = referenceInt(parts[3]);
-            if (packed != null && packed >= 1000) {
-                return new int[]{500 + packed / 100, packed % 100};
-            }
-        }
-        if (parts.length >= 2) {
-            Integer major = referenceInt(parts[0]);
-            Integer minor = referenceInt(parts[1]);
-            if (major != null && minor != null) {
-                return new int[]{major, minor};
-            }
-        }
-        return null;
-    }
-
-    // Returns the int that Integer.parseInt reads or null when it throws
-    private static Integer referenceInt(String value) {
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
     // Returns random text from the alphabet with a length between the bounds
     private static String randomText(SplittableRandom random, char[] alphabet, int minLength, int maxLength) {
         char[] text = new char[random.nextInt(minLength, maxLength + 1)];
@@ -1117,22 +894,6 @@ class StartupChecksTest {
             }
         }
         return escaped.toString();
-    }
-
-    // Returns the parsed version as major and minor or null
-    private static int[] parse(String raw) {
-        Object version = invoke(PARSE, null, raw);
-        return version == null ? null : new int[]{(int) invoke(MAJOR, version), (int) invoke(MINOR, version)};
-    }
-
-    // Creates a driver version
-    private static Object version(int major, int minor) {
-        return construct(VERSION, major, minor);
-    }
-
-    // Returns the comparison of two driver versions
-    private static int compare(Object left, Object right) {
-        return (int) invoke(COMPARE, left, right);
     }
 
     // Creates a lower case needle

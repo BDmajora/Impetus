@@ -49,26 +49,26 @@ class CoarctatioGuiTest {
         Path file = dir.resolve("config/impetus-coarctatio.cfg");
 
         // Off writes only the master key and leaves the feature keys as they were.
-        config.dynamicModels = true;
+        config.stripChunkNbt = true;
         memory.setValue(false);
         assertTrue(memory.hasChanged());
         memory.applyChanges();
         assertFalse(config.enabled);
-        assertTrue(config.optimizeBlockStates);
+        assertTrue(config.canonicalizeModelParts);
         memory.getStorage().save();
         String text = Files.readString(file);
         assertTrue(text.contains("\nenabled=false\n"));
-        assertTrue(text.contains("\noptimizeBlockStates=true\n"));
-        assertTrue(text.contains("\ndynamicModels=true\n"));
+        assertTrue(text.contains("\ncanonicalizeModelParts=true\n"));
+        assertTrue(text.contains("\nstripChunkNbt=true\n"));
 
         // The next launch runs no feature but keeps the file values.
         Mixins.set(CoarctatioConfig.class, "instance", null);
         CoarctatioConfig held = CoarctatioConfig.get();
         assertFalse(held.enabled);
-        assertFalse(held.optimizeBlockStates);
-        assertFalse(held.dynamicModels);
+        assertFalse(held.canonicalizeModelParts);
+        assertFalse(held.stripChunkNbt);
         assertTrue(held.showDebugOverlay);
-        assertTrue(Files.readString(file).contains("\ndynamicModels=true\n"));
+        assertTrue(Files.readString(file).contains("\nstripChunkNbt=true\n"));
 
         // On again restores the file values on the launch after.
         Option<Boolean> again = CoarctatioOptionPages.memory();
@@ -79,8 +79,8 @@ class CoarctatioGuiTest {
         Mixins.set(CoarctatioConfig.class, "instance", null);
         CoarctatioConfig restored = CoarctatioConfig.get();
         assertTrue(restored.enabled);
-        assertTrue(restored.optimizeBlockStates);
-        assertTrue(restored.dynamicModels);
+        assertTrue(restored.canonicalizeModelParts);
+        assertTrue(restored.stripChunkNbt);
         assertFalse(restored.recycleEvents);
         assertNotNull(Mixins.construct(CoarctatioOptionPages.class));
     }
@@ -91,8 +91,8 @@ class CoarctatioGuiTest {
         String text = Files.readString(dir.resolve("config/impetus-coarctatio.cfg"));
         assertTrue(text.startsWith("# Impetus memory features."));
         assertTrue(text.contains("# Turns every memory feature on."));
-        assertTrue(text.contains("# Default: true\ndynamicModels=true\n"));
-        assertTrue(text.contains("# Default: jds.bibliocraft\nblockStateBlacklist=jds.bibliocraft\n"));
+        assertTrue(text.contains("# Default: true\nstripChunkNbt=true\n"));
+        assertTrue(text.contains("# Default: 262144\npoolSizeLimit=262144\n"));
         String[] lines = text.split("\n");
         for (int i = 0; i < lines.length; i++) {
             if (!lines[i].isEmpty() && !lines[i].startsWith("#")) {

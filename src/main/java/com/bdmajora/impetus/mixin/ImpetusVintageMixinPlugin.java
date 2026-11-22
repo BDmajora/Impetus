@@ -2,6 +2,7 @@ package com.bdmajora.impetus.mixin;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import com.bdmajora.impetus.core.VintageFixCompat;
 import com.bdmajora.impetus.engine.impl.util.MixinClassValidator;
 import org.objectweb.asm.tree.ClassNode;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
@@ -19,9 +20,10 @@ public class ImpetusVintageMixinPlugin implements IMixinConfigPlugin {
     // Logger of the mixin plugin.
     public static final Logger LOGGER = LogManager.getLogger("ImpetusMixins");
 
-    // Does nothing on load.
+    // Claims the chunk renderer for VintageFix before any config, VintageFix's included, lists its mixins.
     @Override
     public void onLoad(String mixinPackage) {
+        VintageFixCompat.claimChunkRenderer();
     }
 
     // Returns the ref mapper config.

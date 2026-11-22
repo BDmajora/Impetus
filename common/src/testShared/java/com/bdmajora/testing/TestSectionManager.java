@@ -191,7 +191,7 @@ public class TestSectionManager extends RenderSectionManager {
                     }
                 }
                 var meshes = BuiltSectionMeshParts.groupFromBuildBuffers(buffers, 0, 0, 0);
-                var geometry = meshTerrain ? SectionGeometryPacker.pack(meshes, 0, 0, 0) : null;
+                var geometry = meshTerrain ? SectionGeometryPacker.pack(meshes) : null;
                 return new ChunkBuildOutput(render, data, meshes, geometry, frame);
             }
         };

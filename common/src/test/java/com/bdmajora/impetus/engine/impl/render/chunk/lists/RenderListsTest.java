@@ -63,6 +63,28 @@ class RenderListsTest {
     }
 
     @Test
+    void translucentDrawOrderDoesNotDependOnVisibilityTraversal() {
+        RenderSection farRegion = section(15, 0, 0);
+        RenderSection nearSection = section(-1, 0, 0);
+        RenderSection farSection = section(-8, 0, 0);
+        Viewport viewport = Sections.viewport(-0.25, 8, 8);
+        var lattice = Sections.lattice(viewport, farRegion, farSection, nearSection);
+        var collector = new VisibleChunkCollector(lattice, 1, regions.getRegionIdsLength(), 16, viewport.getBlockCoord());
+        collector.getSortedRenderLists().add(new ChunkRenderList(farRegion.getRegion()));
+        var nearRegion = new ChunkRenderList(nearSection.getRegion());
+        nearRegion.add(farSection.getSectionIndex(), 1 << RenderVisualsService.HAS_BLOCK_GEOMETRY);
+        nearRegion.add(nearSection.getSectionIndex(), 1 << RenderVisualsService.HAS_BLOCK_GEOMETRY);
+        collector.getSortedRenderLists().add(nearRegion);
+
+        collector.sortGeometry();
+        var order = collector.createRenderLists().iterator(true);
+        assertSame(farRegion.getRegion(), order.next().getRegion());
+        assertSame(nearRegion, order.next());
+        assertEquals((byte) nearSection.getSectionIndex(), nearRegion.getSectionsWithGeometry()[0]);
+        assertEquals((byte) farSection.getSectionIndex(), nearRegion.getSectionsWithGeometry()[1]);
+    }
+
+    @Test
     void renderListsBucketSectionsByWhatTheyHold() {
         RenderSection geometry = section(0, 0, 0);
         RenderSection sprites = section(1, 0, 0);

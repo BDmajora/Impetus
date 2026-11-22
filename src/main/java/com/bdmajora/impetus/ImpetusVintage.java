@@ -28,7 +28,6 @@ import com.bdmajora.impetus.engine.impl.render.chunk.region.RenderRegionManager;
 import com.bdmajora.coarctatio.Coarctatio;
 import com.bdmajora.coarctatio.CoarctatioConfig;
 import com.bdmajora.coarctatio.gui.CoarctatioStatsCommand;
-import com.bdmajora.coarctatio.launch.ClassLoaderCleaner;
 import com.bdmajora.dynamiclights.DynamicLights;
 import com.bdmajora.equilibrium.gui.EquilibriumStatsCommand;
 import com.bdmajora.extras.Extras;
@@ -62,15 +61,9 @@ public class ImpetusVintage {
         VERSION = Loader.instance().getIndexedModList().get(MODID).getVersion();
         MinecraftForge.EVENT_BUS.register(this);
 
-        if (CoarctatioConfig.get().dynamicModels) {
-            com.bdmajora.coarctatio.client.model.dynamic.compat.CtmModelWrapping.register();
-        }
-
         Fulgor.detectCompatibility();
 
         com.bdmajora.coarctatio.launch.RemapperCompactor.run();
-
-        com.bdmajora.coarctatio.launch.discovery.ModScanCache.save();
 
         com.bdmajora.impetus.engine.impl.ImpetusRuntimeOptions.apply(CONFIG);
 
@@ -105,8 +98,6 @@ public class ImpetusVintage {
         com.bdmajora.impetus.umbra.compat.dh.DhCompat.run();
         Umbra.initialize(PlatformUtil.getGameDir().toPath());
         ResourcePackScanner.scanIfChanged(Minecraft.getMinecraft());
-
-        ClassLoaderCleaner.run();
     }
 
     // Lets Fulgor build its face table once every block is registered.

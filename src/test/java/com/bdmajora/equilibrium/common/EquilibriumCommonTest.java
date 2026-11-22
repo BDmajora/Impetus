@@ -3,7 +3,6 @@ package com.bdmajora.equilibrium.common;
 import com.bdmajora.equilibrium.common.advancements.PreviousStackSize;
 import com.bdmajora.equilibrium.common.advancements.SlotChangeContext;
 import com.bdmajora.equilibrium.common.advancements.StackSizeThresholds;
-import com.bdmajora.equilibrium.common.ai.NavigationChunkGuard;
 import com.bdmajora.equilibrium.common.collections.BlockPosLongMap;
 import com.bdmajora.equilibrium.common.crafting.CraftMatrixKey;
 import com.bdmajora.equilibrium.common.crafting.CraftingCache;
@@ -76,22 +75,6 @@ class EquilibriumCommonTest {
         assertEquals(2, counts.full);
         assertEquals(3, counts.empty);
         assertEquals(4, counts.occupied);
-    }
-
-    @Test
-    void navigationGuardIsPerThread() throws Exception {
-        assertFalse(NavigationChunkGuard.isNavigating());
-        NavigationChunkGuard.set(true);
-        assertTrue(NavigationChunkGuard.isNavigating());
-        boolean[] other = new boolean[1];
-        Thread thread = new Thread(() -> other[0] = NavigationChunkGuard.isNavigating());
-        thread.start();
-        thread.join();
-        assertFalse(other[0]);
-        NavigationChunkGuard.set(false);
-        IntCachePool pool = new IntCachePool();
-        assertEquals(256, pool.largeSize);
-        assertTrue(pool.freeSmall.isEmpty() && pool.inUseSmall.isEmpty() && pool.freeLarge.isEmpty() && pool.inUseLarge.isEmpty());
     }
 
     @Test

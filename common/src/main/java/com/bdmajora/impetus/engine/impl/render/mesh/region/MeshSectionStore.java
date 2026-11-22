@@ -1,5 +1,7 @@
 package com.bdmajora.impetus.engine.impl.render.mesh.region;
 
+import com.bdmajora.impetus.engine.impl.common.util.NativeBuffer;
+import com.bdmajora.impetus.engine.impl.render.chunk.compile.sorting.ChunkPrimitiveType;
 import com.bdmajora.impetus.engine.impl.model.quad.properties.ModelQuadFacing;
 import com.bdmajora.impetus.engine.impl.render.mesh.util.QuadArena;
 import com.bdmajora.impetus.engine.impl.render.mesh.util.SegmentedAllocator;
@@ -8,10 +10,13 @@ import com.bdmajora.impetus.engine.impl.util.PositionUtil;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.Nullable;
 import org.lwjgl.system.MemoryUtil;
 
 // Stores the geometry and the header of each section.
 public class MeshSectionStore {
+    // Header bit set when the translucent draw order precedes the vertices.
+    private static final int HAS_TRANSLUCENT_ORDER = 1 << 26;
     // Logger of the backend.
     private static final Logger LOGGER = LogManager.getLogger("Impetus/MeshBackend");
 
@@ -26,6 +31,8 @@ public class MeshSectionStore {
     private final Long2IntOpenHashMap sectionIds = new Long2IntOpenHashMap();
     // First quad of each section.
     private final Long2IntOpenHashMap sectionQuads = new Long2IntOpenHashMap();
+    // Number of translucent quads with a draw order in the arena.
+    private final Long2IntOpenHashMap translucentCounts = new Long2IntOpenHashMap();
 
     // Creates the store and rejects null parts.
     public MeshSectionStore(MeshRegionStore regions, QuadArena arena, UploadStream uploadStream) {
@@ -48,6 +55,11 @@ public class MeshSectionStore {
 
     // Uploads the geometry and header of a section and removes the section for null geometry and rejects geometry larger than its allocation.
     public void upload(int sectionX, int sectionY, int sectionZ, SectionGeometry geometry) {
+        this.upload(sectionX, sectionY, sectionZ, geometry, null, null);
+    }
+
+    public void upload(int sectionX, int sectionY, int sectionZ, @Nullable SectionGeometry geometry,
+                       @Nullable ChunkPrimitiveType primitiveType, @Nullable NativeBuffer indices) {
         long key = PositionUtil.packSection(sectionX, sectionY, sectionZ);
 
         if (geometry == null || geometry.quadCount() == 0) {
@@ -59,16 +71,21 @@ public class MeshSectionStore {
             throw new IllegalArgumentException("Geometry of " + geometry.quadCount() + " quads has " + geometry.geometry().getLength() + " bytes which exceeds its allocation");
         }
 
+        int translucentCount = indices == null ? 0 : Short.toUnsignedInt(geometry.baseQuad());
+        int orderBytes = translucentCount * Short.BYTES;
+        int prefixQuads = Math.ceilDiv(orderBytes, this.arena.bytesPerQuad());
+        int prefixBytes = prefixQuads * this.arena.bytesPerQuad();
+        int allocationQuads = geometry.quadCount() + prefixQuads;
         int quadAddress = this.sectionQuads.get(key);
 
-        if (quadAddress != -1 && !this.arena.canReuse(quadAddress, geometry.quadCount())) {
+        if (quadAddress != -1 && !this.arena.canReuse(quadAddress, allocationQuads)) {
             this.sectionQuads.remove(key);
             this.arena.free(quadAddress);
             quadAddress = -1;
         }
 
         if (quadAddress == -1) {
-            quadAddress = this.arena.alloc(geometry.quadCount());
+            quadAddress = this.arena.alloc(allocationQuads);
 
             if (quadAddress == (int) SegmentedAllocator.OUT_OF_SPACE) {
                 LOGGER.error("Terrain arena is full ({} MB resident); dropping section {} {} {}",
@@ -80,7 +97,14 @@ public class MeshSectionStore {
 
         this.sectionQuads.put(key, quadAddress);
 
-        long staging = this.arena.beginUpload(this.uploadStream, quadAddress);
+        if (translucentCount > 0) {
+            this.translucentCounts.put(key, translucentCount);
+            this.uploadOrder(quadAddress, translucentCount, primitiveType, indices);
+        } else {
+            this.translucentCounts.remove(key);
+        }
+
+        long staging = this.arena.beginUpload(this.uploadStream, quadAddress, prefixBytes, geometry.geometry().getLength());
         MemoryUtil.memCopy(MemoryUtil.memAddress(geometry.geometry().getDirectBuffer()), staging, geometry.geometry().getLength());
 
         int sectionId = this.sectionIds.get(key);
@@ -90,7 +114,38 @@ public class MeshSectionStore {
             this.sectionIds.put(key, sectionId);
         }
 
-        writeHeader(sectionId, sectionX, sectionY, sectionZ, quadAddress, geometry);
+        writeHeader(sectionId, sectionX, sectionY, sectionZ, quadAddress + prefixQuads, geometry, translucentCount != 0);
+    }
+
+    public void uploadTranslucentOrder(int sectionX, int sectionY, int sectionZ, ChunkPrimitiveType primitiveType, NativeBuffer indices) {
+        long key = PositionUtil.packSection(sectionX, sectionY, sectionZ);
+        int count = this.translucentCounts.get(key);
+        if (count != 0) {
+            this.uploadOrder(this.sectionQuads.get(key), count, primitiveType, indices);
+        }
+    }
+
+    // Stores one unsigned short per quad immediately before the geometry.
+    private void uploadOrder(int quadAddress, int count, ChunkPrimitiveType primitiveType, NativeBuffer indices) {
+        int indexBytes = primitiveType.getIndexBufferSize(1);
+        if (indices.getLength() < indexBytes * count || indices.getLength() % indexBytes != 0) {
+            throw new IllegalArgumentException("Index buffer does not match the resident translucent geometry");
+        }
+        int orderBytes = count * Short.BYTES;
+        int prefixBytes = Math.ceilDiv(orderBytes, this.arena.bytesPerQuad()) * this.arena.bytesPerQuad();
+        long destination = this.arena.beginUpload(this.uploadStream, quadAddress, prefixBytes - orderBytes, orderBytes);
+        long source = MemoryUtil.memAddress(indices.getDirectBuffer());
+        int written = 0;
+        for (int offset = 0; offset < indices.getLength(); offset += indexBytes) {
+            int quad = MemoryUtil.memGetInt(source + offset) / primitiveType.getVerticesPerPrimitive();
+            // The mesh header can count only the first 65,535 source quads.
+            if (quad >= 0 && quad < count && written < count) {
+                MemoryUtil.memPutShort(destination + (long) written++ * Short.BYTES, (short) quad);
+            }
+        }
+        if (written != count) {
+            throw new IllegalStateException("Translucent draw order contains " + written + " of " + count + " quads");
+        }
     }
 
     // Frees the geometry of a section and clears its table entry.
@@ -99,6 +154,7 @@ public class MeshSectionStore {
 
         int sectionId = this.sectionIds.remove(key);
         int quadAddress = this.sectionQuads.remove(key);
+        this.translucentCounts.remove(key);
 
         if (quadAddress != -1) {
             this.arena.free(quadAddress);
@@ -136,13 +192,13 @@ public class MeshSectionStore {
 
     // Writes the header of a section into the region table.
     private void writeHeader(int sectionId, int sectionX, int sectionY, int sectionZ, int quadAddress,
-                             SectionGeometry geometry) {
+                             SectionGeometry geometry, boolean hasTranslucentOrder) {
         long ptr = this.regions.beginSectionUpdate(sectionId);
         int sectionIndex = this.regions.getSectionIndex(sectionId);
 
         MemoryUtil.memPutInt(ptr, (sectionX << 8) | (geometry.sizeX() << 4) | geometry.minX());
         MemoryUtil.memPutInt(ptr + 4, ((sectionY & 0x1FF) << 8) | (geometry.sizeY() << 4) | geometry.minY()
-                | (sectionIndex << 18));
+                | (sectionIndex << 18) | (hasTranslucentOrder ? HAS_TRANSLUCENT_ORDER : 0));
         MemoryUtil.memPutInt(ptr + 8, (sectionZ << 8) | (geometry.sizeZ() << 4) | geometry.minZ());
         MemoryUtil.memPutInt(ptr + 12, quadAddress);
 

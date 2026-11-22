@@ -219,13 +219,11 @@ class AsyncTest {
         settings.enabled = true;
         settings.entities = true;
         settings.randomTicks = true;
-        settings.spawning = true;
         ParallelProcessor.install(settings);
         ParallelProcessor.apply(settings);
         WorldServer world = world(true);
         assertTrue(ParallelProcessor.isEntityTickingActive(world));
         assertTrue(ParallelProcessor.isRandomTickingActive(world));
-        assertTrue(ParallelProcessor.isSpawningActive(world));
         assertFalse(ParallelProcessor.isEntityTickingActive(world(false)));
 
         // Once the server is stopping nothing batches
@@ -235,7 +233,6 @@ class AsyncTest {
         settings.enabled = false;
         ParallelProcessor.install(settings);
         ParallelProcessor.apply(settings);
-        assertFalse(ParallelProcessor.isSpawningActive(world));
         assertFalse(ParallelProcessor.isRandomTickingActive(world));
     }
 
@@ -391,37 +388,4 @@ class AsyncTest {
         assertNotNull(new ParallelWorkerThread(() -> { }, "worker"));
     }
 
-    @Test
-    void spawningWalksTheChunksAroundEachPlayer() {
-        WorldServer world = world(true);
-        // Neither kind of mob wanted means nothing to do
-        assertEquals(0, ParallelSpawner.findChunksForSpawning(world, false, false, true));
-
-        EntityPlayer player = mock(EntityPlayer.class);
-        EntityPlayer spectator = mock(EntityPlayer.class);
-        when(spectator.isSpectator()).thenReturn(true);
-        Mixins.set(world, "playerEntities", new ArrayList<>(List.of(player, spectator)));
-        WorldBorder border = mock(WorldBorder.class);
-        when(border.contains(any(net.minecraft.util.math.ChunkPos.class))).thenReturn(true);
-        when(world.getWorldBorder()).thenReturn(border);
-        PlayerChunkMap chunkMap = mock(PlayerChunkMap.class);
-        PlayerChunkMapEntry sent = mock(PlayerChunkMapEntry.class);
-        when(sent.isSentToPlayers()).thenReturn(true);
-        when(chunkMap.getEntry(anyInt(), anyInt())).thenReturn(sent);
-        when(world.getPlayerChunkMap()).thenReturn(chunkMap);
-        when(world.getSpawnPoint()).thenReturn(new BlockPos(10_000, 64, 10_000));
-        Chunk chunk = mock(Chunk.class);
-        when(chunk.getHeight(any())).thenReturn(63);
-        when(world.getChunk(anyInt(), anyInt())).thenReturn(chunk);
-        // Stubs every block as stone.
-        when(world.getBlockState(any())).thenReturn(Blocks.STONE.getDefaultState());
-        // Animals are over their cap already
-        when(world.countEntities(any(), anyBoolean())).thenAnswer(invocation ->
-                invocation.<net.minecraft.entity.EnumCreatureType>getArgument(0).getAnimal() ? 1000 : 0);
-
-        assertEquals(0, ParallelSpawner.findChunksForSpawning(world, true, true, true));
-        // Without the tick-rate flag animals are skipped outright
-        assertEquals(0, ParallelSpawner.findChunksForSpawning(world, true, false, false));
-        verify(world, org.mockito.Mockito.atLeastOnce()).getChunk(anyInt(), anyInt());
-    }
 }

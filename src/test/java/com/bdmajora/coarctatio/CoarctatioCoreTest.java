@@ -3,11 +3,9 @@ package com.bdmajora.coarctatio;
 import com.bdmajora.coarctatio.dedup.ModelCaches;
 import com.bdmajora.coarctatio.dedup.ResourceLocationCaches;
 import com.bdmajora.coarctatio.dedup.StringPool;
-import com.bdmajora.coarctatio.util.ClassDefineTool;
 import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
 import com.bdmajora.testing.Statics;
-import com.google.common.collect.ImmutableMap;
 import net.minecraft.launchwrapper.Launch;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,36 +39,36 @@ class CoarctatioCoreTest {
         // Checks the config is cached.
         assertSame(config, CoarctatioConfig.get());
         assertTrue(config.deduplicateResourceLocations);
-        assertTrue(config.dynamicModels);
         assertEquals(12, config.nbtArrayMapThreshold);
-        assertArrayEquals(new String[] {"jds.bibliocraft"}, config.blockStateBlacklist);
 
         // Checks a fresh file lists every switch.
         Path file = dir.resolve("config/impetus-coarctatio.cfg");
         assertTrue(Files.isRegularFile(file));
         String written = Files.readString(file);
         assertTrue(written.contains("poolSizeLimit=262144"));
-        assertTrue(written.contains("dynamicModelsEagerNamespaces=thebetweenlands,dynamictrees"));
+        assertTrue(written.contains("canonicalizeModelParts=true"));
 
         // A value set in the file is read back verbatim
         Files.writeString(file, written.replace("stripChunkNbt=true", "stripChunkNbt=false")
-                .replace("dynamicModels=true", "dynamicModels=false"));
+                .replace("canonicalizeModelParts=true", "canonicalizeModelParts=false"));
         Mixins.set(CoarctatioConfig.class, "instance", null);
         assertFalse(CoarctatioConfig.get().stripChunkNbt);
-        assertFalse(CoarctatioConfig.get().dynamicModels);
+        assertFalse(CoarctatioConfig.get().canonicalizeModelParts);
         CoarctatioConfig.get().save();
         assertTrue(Files.readString(file).contains("stripChunkNbt=false"));
-        assertTrue(Files.readString(file).contains("dynamicModels=false"));
+        assertTrue(Files.readString(file).contains("canonicalizeModelParts=false"));
     }
 
     @Test
     void theReloadHooksReopenTheBakeScopedPools() {
         Coarctatio.onResourceReloadStart();
-        int[] quad = {1, 2, 3};
-        assertSame(quad, ModelCaches.QUADS.deduplicate(quad));
+        float[] uvs = {0, 0, 16, 16};
+        assertSame(uvs, ModelCaches.FACE_UVS.deduplicate(uvs));
+        assertSame(uvs, ModelCaches.FACE_UVS.deduplicate(new float[] {0, 0, 16, 16}));
         Coarctatio.onResourceReloadFinish();
         // Closed pools hand their argument straight back
-        assertSame(quad, ModelCaches.QUADS.deduplicate(quad));
+        float[] other = {1, 1, 2, 2};
+        assertSame(other, ModelCaches.FACE_UVS.deduplicate(other));
 
         // Leaving a world drops the pools that grow with play
         StringPool.NBT_KEYS.deduplicate("Damage");
@@ -82,36 +80,23 @@ class CoarctatioCoreTest {
     }
 
     @Test
-    void theStatisticsCoverEveryPoolAndTheOptionalFeatures() {
-        CoarctatioConfig.get().optimizeBlockStates = false;
-        CoarctatioConfig.get().dynamicModels = false;
-        List<String> plain = Coarctatio.statistics();
-        assertEquals("Coarctatio memory statistics", plain.get(0));
-        assertTrue(plain.stream().anyMatch(line -> line.contains("NBT keys")));
-        assertTrue(plain.stream().noneMatch(line -> line.contains("Block states")));
-
-        // Turns the state and model features on.
-        CoarctatioConfig.get().optimizeBlockStates = true;
-        CoarctatioConfig.get().dynamicModels = true;
-        List<String> full = Coarctatio.statistics();
-        assertTrue(full.stream().anyMatch(line -> line.contains("Block states")));
-        assertTrue(full.stream().anyMatch(line -> line.contains("Property maps")));
-        assertTrue(full.size() >= plain.size() + 2);
+    void theStatisticsCoverEveryPool() {
+        List<String> lines = Coarctatio.statistics();
+        assertEquals("Coarctatio memory statistics", lines.get(0));
+        assertTrue(lines.stream().anyMatch(line -> line.contains("NBT keys")));
+        assertTrue(lines.stream().anyMatch(line -> line.contains("Face UVs")));
+        assertTrue(lines.stream().anyMatch(line -> line.contains("Texture names")));
 
         assertTrue(Coarctatio.debugOverlayLine().startsWith("Coarctatio: ~"));
     }
 
     @Test
-    void theReportSeparatesMeasuredBytesFromEstimatedOnes() {
-        MemoryReport.recordSpriteBytes(4L * 1024 * 1024);
-        MemoryReport.recordClassLoaderBytes(512L * 1024);
-        MemoryReport.recordPackedStates(1000);
-        MemoryReport.recordRemapperEntries(3);
+    void theReportListsEstimatedSavingsAndTheHeap() {
+        MemoryReport.recordRemapperEntries(300);
 
         List<String> lines = MemoryReport.lines();
         assertEquals("Coarctatio memory saved", lines.get(0));
-        assertTrue(lines.stream().anyMatch(line -> line.contains("Texture pixel data") && line.contains("measured")));
-        assertTrue(lines.stream().anyMatch(line -> line.contains("Block state tables") && line.contains("estimated")));
+        assertTrue(lines.stream().anyMatch(line -> line.contains("Remapper caches") && line.contains("estimated")));
         assertTrue(lines.stream().anyMatch(line -> line.contains("TOTAL")));
         assertTrue(lines.stream().anyMatch(line -> line.contains("Heap now")));
         assertTrue(MemoryReport.totalBytes() > 0);
@@ -123,18 +108,4 @@ class CoarctatioCoreTest {
         assertNotNull(Mixins.construct(MemoryReport.class));
     }
 
-    @Test
-    void definingIntoAnotherPackageReusesWhatIsAlreadyThere() {
-        // Checks the shipped property map is found.
-        Class<?> defined = ClassDefineTool.defineClass(ImmutableMap.class, "com.google.common.collect.CoarctatioPropertyMap");
-        assertNotNull(defined);
-        assertSame(defined, ClassDefineTool.defineClass(ImmutableMap.class, "com.google.common.collect.CoarctatioPropertyMap"));
-        // Checks an unshipped class is refused.
-        assertNull(ClassDefineTool.defineClass(ImmutableMap.class, "com.google.common.collect.NotOurs"));
-        assertNotNull(Mixins.construct(ClassDefineTool.class));
-        // Bytes that are not a class are refused
-        assertNull(Mixins.call(ClassDefineTool.class, "defineWithLookup", ImmutableMap.class, new byte[] {1, 2, 3}));
-        // Checks a closed module host.
-        assertNull(ClassDefineTool.defineClass(String.class, "com.google.common.collect.CoarctatioPropertyMap"));
-    }
 }

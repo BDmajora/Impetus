@@ -28,6 +28,7 @@ import org.jetbrains.annotations.Nullable;
 import com.bdmajora.impetus.ImpetusVintage;
 import com.bdmajora.impetus.impl.render.terrain.compile.VintageChunkBuildContext;
 import com.bdmajora.impetus.impl.render.terrain.compile.task.ChunkBuilderMeshingTask;
+import com.bdmajora.impetus.engine.impl.gui.ImpetusGameOptions.MeshTranslucencySorting;
 import com.bdmajora.impetus.impl.render.terrain.sprite.SpriteUtil;
 import com.bdmajora.impetus.impl.world.WorldSlice;
 import com.bdmajora.impetus.impl.world.cloned.ChunkRenderContext;
@@ -68,7 +69,9 @@ public class VintageRenderSectionManager extends RenderSectionManager {
     // Creates a manager with a command list.
     public static VintageRenderSectionManager create(ChunkVertexType vertexType, WorldClient world, int renderDistance, CommandList commandList,
                                                      @Nullable MeshTerrainConfig meshTerrain, @Nullable MeshTerrainShading meshShading) {
-        return new VintageRenderSectionManager(VintageRenderPassConfigurationBuilder.build(vertexType), world, renderDistance, commandList, 0, 16,
+        var configuration = meshTerrain == null ? VintageRenderPassConfigurationBuilder.build(vertexType)
+                : VintageRenderPassConfigurationBuilder.build(vertexType, meshTerrain.sorting() == MeshTranslucencySorting.QUADS);
+        return new VintageRenderSectionManager(configuration, world, renderDistance, commandList, 0, 16,
                 meshTerrain, meshShading);
     }
 

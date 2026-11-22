@@ -29,7 +29,8 @@ public final class SimulationDistance {
         for (EntityPlayer player : world.playerEntities) {
             int playerX = MathHelper.floor(player.posX) >> 4;
             int playerZ = MathHelper.floor(player.posZ) >> 4;
-            if (Math.abs(chunkX - playerX) <= radius && Math.abs(chunkZ - playerZ) <= radius) {
+            // long math: an int difference of far-apart chunks wraps, and abs(MIN_VALUE) stays negative, i.e. "in range"
+            if (Math.abs((long) chunkX - playerX) <= radius && Math.abs((long) chunkZ - playerZ) <= radius) {
                 return true;
             }
         }

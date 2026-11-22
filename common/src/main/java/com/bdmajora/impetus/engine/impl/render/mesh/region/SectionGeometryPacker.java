@@ -7,7 +7,6 @@ import com.bdmajora.impetus.engine.impl.render.chunk.data.BuiltSectionMeshParts;
 import com.bdmajora.impetus.engine.impl.render.chunk.terrain.TerrainRenderPass;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.impl.MeshChunkVertex;
 import com.bdmajora.impetus.engine.impl.render.chunk.vertex.format.impl.MeshVertexLayout;
-import it.unimi.dsi.fastutil.longs.LongArrays;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -27,18 +26,18 @@ public final class SectionGeometryPacker {
     }
 
     // Packs a build whose passes use a mesh layout and returns null otherwise.
-    public static SectionGeometry packForMeshBackend(Map<TerrainRenderPass, BuiltSectionMeshParts> meshes, float cameraX, float cameraY, float cameraZ) {
+    public static SectionGeometry packForMeshBackend(Map<TerrainRenderPass, BuiltSectionMeshParts> meshes) {
         java.util.Objects.requireNonNull(meshes, "meshes");
         for (TerrainRenderPass pass : meshes.keySet()) {
             if (!(pass.vertexType() instanceof MeshVertexLayout)) {
                 return null;
             }
         }
-        return pack(meshes, cameraX, cameraY, cameraZ);
+        return pack(meshes);
     }
 
     // Packs the passes of a build and returns null when nothing was built.
-    public static SectionGeometry pack(Map<TerrainRenderPass, BuiltSectionMeshParts> meshes, float cameraX, float cameraY, float cameraZ) {
+    public static SectionGeometry pack(Map<TerrainRenderPass, BuiltSectionMeshParts> meshes) {
         java.util.Objects.requireNonNull(meshes, "meshes");
         int stride = 0;
         int translucentQuads = 0;
@@ -50,7 +49,7 @@ public final class SectionGeometryPacker {
             for (ModelQuadFacing facing : ModelQuadFacing.VALUES) {
                 int quads = quadsIn(entry.getValue(), facing);
 
-                if (entry.getKey().isSorted()) {
+                if (entry.getKey().isReverseOrder()) {
                     translucentQuads += quads;
                 } else {
                     opaquePerFacing[facing.ordinal()] += quads;
@@ -76,7 +75,7 @@ public final class SectionGeometryPacker {
         try {
             long base = MemoryUtil.memAddress(output.getDirectBuffer());
 
-            writeTranslucent(meshes, base, translucentQuads, stride, cameraX, cameraY, cameraZ);
+            writeTranslucent(meshes, base, translucentQuads, stride);
 
             long cursor = base + (long) translucentQuads * quadBytes;
             short[] quadsPerFacing = new short[ModelQuadFacing.COUNT];
@@ -86,7 +85,7 @@ public final class SectionGeometryPacker {
                 quadsPerFacing[facing.ordinal()] = (short) budget;
 
                 for (var entry : meshes.entrySet()) {
-                    if (entry.getKey().isSorted() || budget == 0) {
+                    if (entry.getKey().isReverseOrder() || budget == 0) {
                         continue;
                     }
 
@@ -107,58 +106,23 @@ public final class SectionGeometryPacker {
         }
     }
 
-    // Copies the translucent quads ordered from the farthest.
-    private static void writeTranslucent(Map<TerrainRenderPass, BuiltSectionMeshParts> meshes, long destination, int quadCount, int stride,
-                                         float cameraX, float cameraY, float cameraZ) {
-        if (quadCount == 0) {
-            return;
-        }
-
+    // Copies translucent vertices in source order so the uploaded indices can address them.
+    private static void writeTranslucent(Map<TerrainRenderPass, BuiltSectionMeshParts> meshes, long destination, int quadCount, int stride) {
         int quadBytes = stride * 4;
-        long[] sources = new long[quadCount];
-        long[] keys = new long[quadCount];
-        int index = 0;
-
         for (var entry : meshes.entrySet()) {
-            if (!entry.getKey().isSorted()) {
+            if (!entry.getKey().isReverseOrder()) {
                 continue;
             }
-
             for (ModelQuadFacing facing : ModelQuadFacing.VALUES) {
-                long quad = rangeAddress(entry.getValue(), facing, stride);
-                int quads = quadsIn(entry.getValue(), facing);
-
-                for (int i = 0; i < quads && index < quadCount; i++, quad += quadBytes) {
-                    sources[index] = quad;
-                    keys[index] = ((long) Float.floatToRawIntBits(distanceSquared(quad, stride, cameraX, cameraY, cameraZ)) << 32) | index;
-                    index++;
+                int quads = Math.min(quadsIn(entry.getValue(), facing), quadCount);
+                if (quads > 0) {
+                    long bytes = (long) quads * quadBytes;
+                    MemoryUtil.memCopy(rangeAddress(entry.getValue(), facing, stride), destination, bytes);
+                    destination += bytes;
+                    quadCount -= quads;
                 }
             }
         }
-
-        LongArrays.radixSort(keys);
-
-        for (int i = 0; i < quadCount; i++) {
-            long source = sources[(int) keys[i]];
-            MemoryUtil.memCopy(source, destination + (long) (quadCount - 1 - i) * quadBytes, quadBytes);
-        }
-    }
-
-    // Returns the squared distance from the camera to the center of a quad.
-    static float distanceSquared(long quad, int stride, float cameraX, float cameraY, float cameraZ) {
-        float x = 0.0f, y = 0.0f, z = 0.0f;
-
-        for (int vertex = 0; vertex < 4; vertex++) {
-            long ptr = quad + (long) vertex * stride;
-            x += MeshChunkVertex.decodePosition(MeshChunkVertex.readPackedX(ptr));
-            y += MeshChunkVertex.decodePosition(MeshChunkVertex.readPackedY(ptr));
-            z += MeshChunkVertex.decodePosition(MeshChunkVertex.readPackedZ(ptr));
-        }
-
-        float dx = x * 0.25f - cameraX;
-        float dy = y * 0.25f - cameraY;
-        float dz = z * 0.25f - cameraZ;
-        return dx * dx + dy * dy + dz * dz;
     }
 
     // Returns the quads of a pass in a facing.

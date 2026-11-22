@@ -67,8 +67,10 @@ GTX 16 series (Turing) card or newer.
 Put the jar in your `mods` folder. Cleanroom already provides Mixin and MixinExtras, so you do not need to install
 them separately. Impetus turns off Cleanroom's Kirino renderer at startup so that the two do not both draw terrain.
 
-Coarctatio uses VintageFix's on-demand model loading by default to cut startup work. If you are upgrading and
-`config/impetus-coarctatio.cfg` contains `dynamicModels=false`, set it to `true` to enable the feature.
+Impetus works alongside VintageFix and FermiumMixins. It ships none of the memory features VintageFix provides
+(on-demand models, texture stitching, block state maps, resource pack caches and the like) and none of the patches
+FermiumMixins provides, so install VintageFix for those. Impetus tells VintageFix that it renders terrain, the same
+way Celeritas does, so VintageFix leaves its vanilla chunk renderer patches off.
 
 Remove Phosphor and Alfheim if you have them installed. Impetus has its own lighting engine, and running two
 lighting engines at once corrupts world lighting. Impetus tries to disable them when it finds them, but you should

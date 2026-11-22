@@ -130,6 +130,8 @@ public abstract class SimpleWorldRenderer<WORLD, SECTIONMANAGER extends RenderSe
 
         if (this.renderSectionManager.needsUpdate()) {
             this.renderSectionManager.update(viewport, frame, spectator);
+        } else {
+            this.renderSectionManager.updateTranslucency(viewport);
         }
 
         if (updateChunksImmediately) {

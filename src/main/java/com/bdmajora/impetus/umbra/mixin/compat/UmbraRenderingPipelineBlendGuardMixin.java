@@ -79,4 +79,18 @@ public abstract class UmbraRenderingPipelineBlendGuardMixin {
     private void impetus$releaseAtWorldFinish(CallbackInfo ci) {
         BlendOverrideGuard.release();
     }
+
+    // The composite passes apply their blend overrides inside finishWorldRendering, after the HEAD release; a lock taken there would
+    // cancel every enableBlend of the HUD and screens until the next world frame, so it is dropped again once the world is done.
+    @Inject(method = "finishWorldRendering()V", at = @At("RETURN"))
+    private void impetus$releaseAfterWorldFinish(CallbackInfo ci) {
+        BlendOverrideGuard.release();
+    }
+
+    // A pack unloaded while a program kept blending locked off would leave every later enableBlend cancelled with no pipeline left to
+    // release it, so stars draw opaque and translucency breaks until restart; dropping the lock with the pipeline ends that.
+    @Inject(method = "destroy()V", at = @At("HEAD"))
+    private void impetus$releaseAtDestroy(CallbackInfo ci) {
+        BlendOverrideGuard.release();
+    }
 }

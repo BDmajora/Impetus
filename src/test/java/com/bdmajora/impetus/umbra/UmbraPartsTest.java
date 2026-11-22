@@ -60,6 +60,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -313,5 +314,69 @@ class UmbraPartsTest {
         Mixins.call(pipeline, "impetus$releaseAtHandEnd", Mixins.ci());
         Mixins.call(pipeline, "impetus$releaseAtWorldFinish", Mixins.ci());
         assertNotNull(Mixins.instance(GlStateManagerBlendGuardMixin.class));
+    }
+
+    @Test
+    void aBlendLockTakenByTheCompositePassesIsDroppedOnceTheWorldIsDone() {
+        ProgramBlendStateBlendGuardMixin program = Mixins.instance(ProgramBlendStateBlendGuardMixin.class);
+        UmbraRenderingPipelineBlendGuardMixin pipeline = Mixins.instance(UmbraRenderingPipelineBlendGuardMixin.class);
+        Mockito.doReturn(true).when(program).hasDirectives();
+        when(TestGl.gl().glGetInteger(GL11.GL_BLEND)).thenReturn(0);
+        // HEAD of finishWorldRendering releases, then a composite pass with "blend.composite = off" locks again
+        Mixins.call(pipeline, "impetus$releaseAtWorldFinish", Mixins.ci());
+        Mixins.call(program, "impetus$beforeBlendApply", new int[] {0}, Mixins.ci());
+        Mixins.call(program, "impetus$afterBlendApply", new int[] {0}, Mixins.ci());
+        assertTrue(enableIsCancelled());
+        // Without the RETURN release the HUD's enableBlend would be swallowed until the next frame
+        Mixins.call(pipeline, "impetus$releaseAfterWorldFinish", Mixins.ci());
+        assertFalse(enableIsCancelled());
+    }
+
+    @Test
+    void unloadingThePackWhileLockedGivesBlendingBack() {
+        ProgramBlendStateBlendGuardMixin program = Mixins.instance(ProgramBlendStateBlendGuardMixin.class);
+        Mockito.doReturn(true).when(program).hasDirectives();
+        when(TestGl.gl().glGetInteger(GL11.GL_BLEND)).thenReturn(0);
+        Mixins.call(program, "impetus$beforeBlendApply", new int[] {0, 1}, Mixins.ci());
+        Mixins.call(program, "impetus$afterBlendApply", new int[] {0, 1}, Mixins.ci());
+        assertTrue(enableIsCancelled());
+        // Still locked after any number of vanilla enables: nothing else in the game releases it
+        for (int i = 0; i < 3; i++) {
+            assertTrue(enableIsCancelled());
+        }
+        Mixins.call(Mixins.instance(UmbraRenderingPipelineBlendGuardMixin.class), "impetus$releaseAtDestroy", Mixins.ci());
+        assertFalse(enableIsCancelled());
+        // Destroying twice, or with nothing locked, is harmless
+        Mixins.call(Mixins.instance(UmbraRenderingPipelineBlendGuardMixin.class), "impetus$releaseAtDestroy", Mixins.ci());
+        assertFalse(enableIsCancelled());
+    }
+
+    @Test
+    void aProgramWithoutDirectivesOrThatLeftBlendingOnNeverLocks() {
+        ProgramBlendStateBlendGuardMixin program = Mixins.instance(ProgramBlendStateBlendGuardMixin.class);
+        // No directives: the GL query is not even made
+        Mockito.doReturn(false).when(program).hasDirectives();
+        Mixins.call(program, "impetus$beforeBlendApply", new int[0], Mixins.ci());
+        Mixins.call(program, "impetus$afterBlendApply", new int[0], Mixins.ci());
+        assertFalse(enableIsCancelled());
+        verify(TestGl.gl(), never()).glGetInteger(GL11.GL_BLEND);
+        // Directives that leave blending on
+        Mockito.doReturn(true).when(program).hasDirectives();
+        when(TestGl.gl().glGetInteger(GL11.GL_BLEND)).thenReturn(1);
+        Mixins.call(program, "impetus$beforeBlendApply", new int[] {0}, Mixins.ci());
+        Mixins.call(program, "impetus$afterBlendApply", new int[] {0}, Mixins.ci());
+        assertFalse(enableIsCancelled());
+        // An apply that ends without its HEAD half (another mixin threw in between) does not lock either
+        BlendOverrideGuard.release();
+        when(TestGl.gl().glGetInteger(GL11.GL_BLEND)).thenReturn(0);
+        Mixins.call(program, "impetus$afterBlendApply", new int[] {0}, Mixins.ci());
+        assertFalse(enableIsCancelled());
+    }
+
+    // Runs the enableBlend guard once and reports whether it swallowed the call.
+    private static boolean enableIsCancelled() {
+        CallbackInfo ci = Mixins.ci();
+        Mixins.call(GlStateManagerBlendGuardMixin.class, "impetus$deferEnableBlend", ci);
+        return ci.isCancelled();
     }
 }

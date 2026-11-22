@@ -16,6 +16,18 @@ import static org.junit.jupiter.api.Assertions.*;
 class TranslucentSorterTest {
     private static final float[][] UNIT_UP = facingY(0, 0, 1, 0, 1);
 
+    @Test
+    void shallowWaterSlopeAndFlatFaceStayOnSeparatePlanes() {
+        float[][] slope = facingY(0, 0, 1, 0, 1);
+        for (float[] vertex : slope) {
+            vertex[1] = (vertex[0] - 0.5f) * 0.01f;
+        }
+        QuadSet quads = set(UNIT_UP, slope);
+        assertFalse(quads.isCoplanar(0, 1));
+        assertFalse(quads.hasParallelNormal(0, 1, quads.normalDot(0, 1)));
+        assertNotSame(SortState.NONE, analyze(UNIT_UP, slope));
+    }
+
     private static SortState analyze(float[][]... quads) {
         return record(quads).getSortState();
     }
@@ -184,6 +196,8 @@ class TranslucentSorterTest {
         assertTrue(tree.crossesCutPlane(0, 0, 5, 0, 0, 0.9));
         // Checks half open planes.
         assertTrue(tree.crossesCutPlane(0, 0, 0.5, 0, 0, 1));
+        assertArrayEquals(new int[]{1, 0}, tree.order(0, 0, Math.nextDown(1f)));
+        assertArrayEquals(new int[]{0, 1}, tree.order(0, 0, 1));
         assertFalse(tree.crossesCutPlane(0, 0, 1, 0, 0, 2));
         assertFalse(tree.crossesCutPlane(-9, -9, 0.5, 9, 9, 0.9));
 
@@ -206,6 +220,17 @@ class TranslucentSorterTest {
         assertArrayEquals(new int[]{2, 0, 3, 1}, layered.order(0, 1, 0));
         // A cycle with nothing to cut and nothing touching has no tree at all
         assertNull(PartitionTree.build(set(pinwheel(0))));
+    }
+
+    @Test
+    void slopedQuadsUseTheirCornersForSeeThroughDependencies() {
+        float[][] lower = {{0, 0, 0}, {0, 0, 1}, {1, 1, 1}, {1, 1, 0}};
+        float[][] upper = {{0, 0.25f, 0}, {0, 0.25f, 1}, {1, 1.25f, 1}, {1, 1.25f, 0}};
+        QuadSet quads = set(upper, lower);
+
+        assertFalse(quads.isSeenThrough(0, 1));
+        assertTrue(quads.isSeenThrough(1, 0));
+        assertArrayEquals(new int[]{1, 0}, TranslucentSorter.topologicalOrder(quads));
     }
 
     @Test

@@ -7,9 +7,6 @@ import com.bdmajora.testing.Statics;
 import com.google.common.collect.ImmutableList;
 import it.unimi.dsi.fastutil.floats.FloatArrays;
 import it.unimi.dsi.fastutil.ints.IntArrays;
-import net.minecraft.client.renderer.block.model.ItemCameraTransforms;
-import net.minecraft.client.renderer.block.model.ItemOverrideList;
-import net.minecraft.client.renderer.block.model.ItemTransformVec3f;
 import net.minecraft.launchwrapper.Launch;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -169,67 +166,16 @@ class DeduplicationTest {
     @Test
     void theBakeScopedPoolsOpenAndCloseWithTheReload() {
         ModelCaches.open();
-        int[] quad = {1, 2, 3, 4};
-        assertSame(quad, ModelCaches.QUADS.deduplicate(quad));
-        assertSame(quad, ModelCaches.QUADS.deduplicate(new int[] {1, 2, 3, 4}));
-        assertSame(ModelCaches.VARIANTS.deduplicate("normal"), ModelCaches.VARIANTS.deduplicate(new String("normal")));
         float[] uv = {0f, 0f, 16f, 16f};
         assertSame(uv, ModelCaches.FACE_UVS.deduplicate(uv));
         assertSame(uv, ModelCaches.FACE_UVS.deduplicate(new float[] {0f, 0f, 16f, 16f}));
         assertSame(ModelCaches.MODEL_TEXTURES.deduplicate("#all"), ModelCaches.MODEL_TEXTURES.deduplicate(new String("#all")));
 
-        // Quads a mod subclassed are counted by class so an empty pool can be explained
-        assertEquals("none", ModelCaches.skippedSummary());
-        ModelCaches.recordSkippedQuad(String.class);
-        ModelCaches.recordSkippedQuad(String.class);
-        ModelCaches.recordSkippedQuad(Integer.class);
-        assertEquals("2x java.lang.String, 1x java.lang.Integer", ModelCaches.skippedSummary());
-
         // Checks closing the model caches.
         ModelCaches.close();
-        assertSame(quad, ModelCaches.QUADS.deduplicate(quad));
-        assertSame(ModelCaches.VARIANTS.deduplicate("inventory"), ModelCaches.VARIANTS.deduplicate(new String("inventory")));
-        ModelCaches.open();
-        assertEquals("none", ModelCaches.skippedSummary());
+        float[] other = {1f, 1f, 2f, 2f};
+        assertSame(other, ModelCaches.FACE_UVS.deduplicate(other));
         assertNotNull(Mixins.construct(ModelCaches.class));
     }
 
-    @Test
-    @SuppressWarnings("deprecation")
-    void cameraTransformsAreComparedByTheirEightVectors() {
-        TransformCaches.open();
-        // Checks the shared transform instances.
-        assertSame(ItemCameraTransforms.DEFAULT, TransformCaches.TRANSFORMS.deduplicate(ItemCameraTransforms.DEFAULT));
-        ItemTransformVec3f vector = vector(3f);
-        ItemCameraTransforms first = transforms(vector);
-        assertSame(first, TransformCaches.TRANSFORMS.deduplicate(first));
-        // Checks shared instances collapse.
-        assertSame(first, TransformCaches.TRANSFORMS.deduplicate(transforms(vector)));
-        assertNotSame(first, TransformCaches.TRANSFORMS.deduplicate(transforms(vector(2f))));
-        assertNotNull(TransformCaches.TRANSFORMS.deduplicate(transforms(vector(3f))));
-        assertNull(TransformCaches.TRANSFORMS.deduplicate(null));
-
-        // Checks the override lists.
-        assertNull(TransformCaches.deduplicate(null));
-        assertSame(ItemOverrideList.NONE, TransformCaches.deduplicate(new ItemOverrideList(ImmutableList.of())));
-        ItemOverrideList populated = new ItemOverrideList(ImmutableList.of(
-                new net.minecraft.client.renderer.block.model.ItemOverride(
-                        new net.minecraft.util.ResourceLocation("minecraft:stone"), com.google.common.collect.ImmutableMap.of())));
-        assertSame(populated, TransformCaches.deduplicate(populated));
-        TransformCaches.close();
-        assertNotNull(Mixins.construct(TransformCaches.class));
-    }
-
-    @SuppressWarnings("deprecation")
-    private static ItemTransformVec3f vector(float scale) {
-        return new ItemTransformVec3f(
-                new org.lwjgl.util.vector.Vector3f(0f, 0f, 0f),
-                new org.lwjgl.util.vector.Vector3f(0f, 0f, 0f),
-                new org.lwjgl.util.vector.Vector3f(scale, scale, scale));
-    }
-
-    @SuppressWarnings("deprecation")
-    private static ItemCameraTransforms transforms(ItemTransformVec3f vector) {
-        return new ItemCameraTransforms(vector, vector, vector, vector, vector, vector, vector, vector);
-    }
 }

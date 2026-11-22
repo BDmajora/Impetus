@@ -43,7 +43,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
-// Runs entity ticks and random ticks and spawning on worker threads.
+// Runs entity ticks and random ticks on worker threads.
 public final class ParallelProcessor {
     // Shift from chunk coordinates to section coordinates.
     private static final int SECTION_SHIFT = 2;
@@ -58,8 +58,6 @@ public final class ParallelProcessor {
     public static volatile boolean entities;
     // Whether random ticks run in parallel.
     public static volatile boolean randomTicks;
-    // Whether spawning runs in parallel.
-    public static volatile boolean spawning;
     // Whether entities of other mods tick in parallel.
     public static volatile boolean moddedEntities;
     // Configured worker count or zero for automatic.
@@ -69,8 +67,6 @@ public final class ParallelProcessor {
     public static final CostModel ENTITY_COST = new CostModel(25_000D);
     // Cost model of random ticks.
     public static final CostModel RANDOM_TICK_COST = new CostModel(20_000D);
-    // Cost model of spawning.
-    public static final CostModel SPAWN_COST = new CostModel(100_000D);
 
     // Entity classes that always tick on the main thread.
     private static final Class<?>[] BLOCKED_CLASSES = {
@@ -104,7 +100,6 @@ public final class ParallelProcessor {
         boolean on = INSTALLED && settings.enabled;
         entities = on && settings.entities;
         randomTicks = on && settings.randomTicks;
-        spawning = on && settings.spawning;
         moddedEntities = settings.moddedEntities;
         configuredThreads = settings.threads;
         SyncEntityRules.load(settings.synchronizedEntities);
@@ -123,11 +118,6 @@ public final class ParallelProcessor {
     // Returns whether the world ticks random blocks in parallel.
     public static boolean isRandomTickingActive(World world) {
         return randomTicks && !shuttingDown && !world.isRemote && ((ParallelWorld) world).impetus$isParallel();
-    }
-
-    // Returns whether the world spawns in parallel.
-    public static boolean isSpawningActive(World world) {
-        return spawning && !shuttingDown && !world.isRemote && ((ParallelWorld) world).impetus$isParallel();
     }
 
     // Returns whether the current thread is a worker.

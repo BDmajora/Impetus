@@ -69,7 +69,7 @@ impetus.options.texel_interpolation.name=Texel Interpolation
 impetus.options.texel_interpolation.value=Nearest
 impetus.options.texel_interpolation.tooltip=Texel interpolation is fixed to nearest-neighbor sampling for vanilla pixel-art textures.
 impetus.options.improved_transparency.name=Improved Transparency
-impetus.options.improved_transparency.tooltip=Sorts see-through blocks such as water, ice and stained glass so they draw in the right order when they overlap. Turning this off can raise frame rates near large bodies of water but causes layering errors.
+impetus.options.improved_transparency.tooltip=Sorts overlapping water, ice and stained glass faces for correct blending as the camera moves.
 impetus.options.block_transparency.name=Block Transparency...
 impetus.options.fluid_culling.name=Fluid Culling
 impetus.options.fluid_culling.value=Optimized
@@ -105,7 +105,6 @@ impetus.options.buttons.donate=Support Sodium!
 impetus.options.buttons.open=Open
 impetus.options.control_failed=Error
 sodium.console.game_restart=The game must be restarted to apply one or more video settings!
-sodium.console.broken_nvidia_driver=Your NVIDIA graphics drivers are out of date!\n* This will cause severe performance issues and crashes when Impetus is installed.\n* Please update your graphics drivers to the latest version (version 536.23 or newer.)
 sodium.console.pojav_launcher=PojavLauncher is not supported when using Impetus.\n* You are very likely to run into extreme performance issues graphical bugs and crashes.\n* You will be on your own if you decide to continue -- we will not help you with any bugs or crashes!
 sodium.console.core_shaders_error=The following resource packs are incompatible with Impetus:
 sodium.console.core_shaders_warn=The following resource packs may be incompatible with Impetus:
@@ -275,7 +274,7 @@ impetus.options.extras.booster.enabled.tooltip=Speeds up how drawing work is han
 
 
 impetus.options.extras.parallel.enabled.name=Multithreaded Ticking
-impetus.options.extras.parallel.enabled.tooltip=Ticks mobs, crops and mob spawning across several CPU cores in singleplayer. Players, projectiles and a few sensitive entities always stay on the main thread.\n\nTakes effect after a restart.
+impetus.options.extras.parallel.enabled.tooltip=Ticks mobs and crops across several CPU cores in singleplayer. Players, projectiles and a few sensitive entities always stay on the main thread.\n\nTakes effect after a restart.
 
 impetus.options.extras.baked.enabled.name=Fast Chests & Signs
 impetus.options.extras.baked.enabled.tooltip=Draws chests, ender chests, signs, beds and shulker boxes as part of the world instead of one at a time, which can greatly raise frame rates in rooms full of storage. Opening animations still play.

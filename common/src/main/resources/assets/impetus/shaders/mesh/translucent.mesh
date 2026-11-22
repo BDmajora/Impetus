@@ -2,13 +2,13 @@
 #extension GL_ARB_shading_language_include : enable
 #extension GL_NV_mesh_shader : require
 #extension GL_NV_gpu_shader5 : require
+#extension GL_NV_shader_buffer_load : require
 
-#define WRITABLE_TERRAIN
 #import <impetus:mesh/scene.glsl>
 #import <impetus:mesh/vertex_format.glsl>
 #import <impetus:include/dynamic_light.glsl>
 
-// Translucent quads, one thread each and 32 per meshlet, emitted in arena order; under SORT_QUADS each meshlet also swaps out-of-order neighbours in the arena, an odd-even transposition sort that converges over frames
+// Translucent quads, one thread each and 32 per meshlet.
 layout(local_size_x = 32) in;
 layout(triangles, max_vertices = 128, max_primitives = 64) out;
 
@@ -17,7 +17,7 @@ taskNV in Task {
     uint quadCount;
     float fade;
 #ifdef SORT_QUADS
-    uint jiggle;
+    uint useSortedOrder;
 #endif
 };
 
@@ -29,13 +29,7 @@ layout(location = 1) out Interpolants {
 
 layout(binding = 1) uniform sampler2D texLight;
 
-#ifdef SORT_QUADS
-// Squared camera distance of each thread's quad; negative marks a slot that must not move
-shared float quadDepth[32];
-#endif
-
-// Writes one vertex and returns its camera-relative position
-vec3 emitVertex(uint quad, uint corner) {
+void emitVertex(uint quad, uint corner) {
     Vertex v = terrainData[(quad << 2) + corner];
     uint slot = (gl_LocalInvocationID.x << 2) + corner;
 
@@ -50,53 +44,21 @@ vec3 emitVertex(uint quad, uint corner) {
     light.x = max(light.x, impetus_dynamicLightLevel(position + renderOffset.xyz) * (16.0 / 256.0));
     OUT[slot].tint = decodeVertexColour(v) * textureLod(texLight, light, 0.0).rgb;
     OUT[slot].fogAmount = 1.0 - fade * (1.0 - computeFog(relative, clip.w));
-
-    return relative;
 }
-
-// Collapses a slot's four vertices behind the camera so the jiggle quad, which belongs to whatever precedes this section, never draws
-void hideSlot() {
-    for (uint corner = 0u; corner < 4u; corner++) {
-        gl_MeshVerticesNV[(gl_LocalInvocationID.x << 2) + corner].gl_Position = vec4(1.0, 1.0, 1.0, -1.0);
-    }
-}
-
-#ifdef SORT_QUADS
-void swapQuads(uint a, uint b) {
-    for (uint corner = 0u; corner < 4u; corner++) {
-        Vertex first = terrainData[(a << 2) + corner];
-        terrainData[(a << 2) + corner] = terrainData[(b << 2) + corner];
-        terrainData[(b << 2) + corner] = first;
-    }
-}
-
-// Half the threads compare a pair each and put the farther quad first; the result shows from the next frame on
-void sortPairs() {
-    barrier();
-    memoryBarrierShared();
-
-    if (gl_LocalInvocationID.x < 16u) {
-        uint first = gl_LocalInvocationID.x << 1;
-        float near = quadDepth[first];
-        float far = quadDepth[first + 1u];
-
-        if (near > 0.0001 && far > 0.0001 && near < far) {
-            uint base = floatBitsToUint(originAndBase.w) + (gl_WorkGroupID.x << 5);
-            swapQuads(base + first, base + first + 1u);
-        }
-    }
-}
-#endif
 
 void main() {
     uint index = gl_GlobalInvocationID.x;
 
-#ifdef SORT_QUADS
-    quadDepth[gl_LocalInvocationID.x] = -1.0;
-#endif
-
     if (index < quadCount) {
-        uint quad = floatBitsToUint(originAndBase.w) + index;
+        uint base = floatBitsToUint(originAndBase.w);
+        uint quad = base + index;
+#ifdef SORT_QUADS
+        if (useSortedOrder != 0u) {
+            // Four 16-byte vertices per quad.
+            uvec2 address = impetus_translucentOrderAddress(base, quadCount, index);
+            quad = base + impetus_translucentQuad(translucentOrder[address.x], address.y);
+        }
+#endif
         uint primitive = gl_LocalInvocationID.x << 1;
         uint vertex = gl_LocalInvocationID.x << 2;
 
@@ -112,24 +74,11 @@ void main() {
         gl_MeshPrimitivesNV[primitive].gl_PrimitiveID = payload;
         gl_MeshPrimitivesNV[primitive + 1u].gl_PrimitiveID = payload;
 
-#ifdef SORT_QUADS
-        if (index < jiggle) {
-            hideSlot();
-        } else {
-            vec3 centre = (emitVertex(quad, 0u) + emitVertex(quad, 1u) + emitVertex(quad, 2u) + emitVertex(quad, 3u)) * 0.25;
-            quadDepth[gl_LocalInvocationID.x] = dot(centre, centre);
-        }
-#else
         emitVertex(quad, 0u);
         emitVertex(quad, 1u);
         emitVertex(quad, 2u);
         emitVertex(quad, 3u);
-#endif
     }
-
-#ifdef SORT_QUADS
-    sortPairs();
-#endif
 
     if (gl_LocalInvocationID.x == 0u) {
         // Two triangles per remaining quad, capped at the meshlet's 64

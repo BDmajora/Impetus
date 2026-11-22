@@ -35,44 +35,7 @@ class LaunchCleanupTest {
     void freshConfigAndLatches() {
         Statics.set(Launch.class, "minecraftHome", dir.toFile());
         Mixins.set(CoarctatioConfig.class, "instance", null);
-        Mixins.set(ClassLoaderCleaner.class, "done", false);
         Mixins.set(RemapperCompactor.class, "done", false);
-    }
-
-    @Test
-    void theResourceCacheIsWeakenedRatherThanCleared() {
-        LaunchClassLoader loader = new LaunchClassLoader(new URL[0]);
-        Statics.set(Launch.class, "classLoader", loader);
-        Map<String, byte[]> cache = Mixins.get(loader, "resourceCache");
-        cache.put("com.example.Mod", new byte[1024]);
-        long before = MemoryReport.totalBytes();
-
-        ClassLoaderCleaner.run();
-        Map<String, byte[]> weakened = Mixins.get(loader, "resourceCache");
-        assertNotSame(cache, weakened);
-        // Checks the weak entries.
-        assertArrayEquals(new byte[1024], weakened.get("com.example.Mod"));
-        assertTrue(MemoryReport.totalBytes() > before);
-
-        // Checks the latch.
-        ClassLoaderCleaner.run();
-        assertSame(weakened, Mixins.get(loader, "resourceCache"));
-
-        // The negative cache is reported when it can be reached
-        assertTrue(ClassLoaderCleaner.negativeResourceCacheSize() >= 0);
-        assertNotNull(Mixins.construct(ClassLoaderCleaner.class));
-    }
-
-    @Test
-    void nothingIsTouchedWithoutALoaderOrWithTheSwitchOff() {
-        Statics.set(Launch.class, "classLoader", null);
-        ClassLoaderCleaner.run();
-        Mixins.set(ClassLoaderCleaner.class, "done", false);
-
-        CoarctatioConfig.get().weakenClassLoaderCache = false;
-        ClassLoaderCleaner.run();
-        // With no loader at all the size is unknown rather than zero
-        assertEquals(-1, ClassLoaderCleaner.negativeResourceCacheSize());
     }
 
     @Test

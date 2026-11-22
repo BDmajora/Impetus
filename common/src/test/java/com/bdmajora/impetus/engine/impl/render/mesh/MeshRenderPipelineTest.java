@@ -242,7 +242,7 @@ class MeshRenderPipelineTest {
     @Test
     void sceneBlockMatchesTheShaderLayout() {
         // Checks the block size.
-        assertEquals(256, MeshRenderPipeline.SCENE_BYTES);
+        assertEquals(272, MeshRenderPipeline.SCENE_BYTES);
         assertEquals(16, MeshRenderPipeline.align(16, 16));
         assertEquals(32, MeshRenderPipeline.align(17, 16));
     }

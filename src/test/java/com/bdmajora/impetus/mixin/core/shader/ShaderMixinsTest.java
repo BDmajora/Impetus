@@ -47,6 +47,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GL14;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -425,8 +426,16 @@ class ShaderMixinsTest {
         VertexBuffer stars = mock(VertexBuffer.class);
         pack("");
         Mixins.call(sky, "impetus$suppressCelestialBody", textures, sun);
-        Mixins.call(sky, "impetus$suppressStarVbo", stars, GL11.GL_QUADS);
-        Mixins.call(sky, "impetus$suppressStarList", 7);
+        com.llamalad7.mixinextras.injector.wrapoperation.Operation<Void> drawVbo = args -> {
+            ((VertexBuffer) args[0]).drawArrays((int) args[1]);
+            return null;
+        };
+        com.llamalad7.mixinextras.injector.wrapoperation.Operation<Void> drawList = args -> {
+            GlStateManager.callList((int) args[0]);
+            return null;
+        };
+        Mixins.call(sky, "impetus$drawStarVbo", stars, GL11.GL_QUADS, drawVbo);
+        Mixins.call(sky, "impetus$drawStarList", 7, drawList);
         verify(textures).bindTexture(sun);
         verify(stars).drawArrays(GL11.GL_QUADS);
         gl11.verify(() -> GL11.glCallList(7));
@@ -434,8 +443,8 @@ class ShaderMixinsTest {
         Mixins.call(sky, "impetus$suppressCelestialBody", textures, sun);
         Mixins.call(sky, "impetus$suppressCelestialBody", textures, moon);
         Mixins.call(sky, "impetus$suppressCelestialBody", textures, other);
-        Mixins.call(sky, "impetus$suppressStarVbo", stars, GL11.GL_QUADS);
-        Mixins.call(sky, "impetus$suppressStarList", 7);
+        Mixins.call(sky, "impetus$drawStarVbo", stars, GL11.GL_QUADS, drawVbo);
+        Mixins.call(sky, "impetus$drawStarList", 7, drawList);
         verify(textures, times(2)).bindTexture(new ResourceLocation("dynamic/impetus_transparent_1"));
         verify(textures).bindTexture(other);
         verify(textures, times(1)).getDynamicTextureLocation(eq("impetus_transparent"), any(DynamicTexture.class));
@@ -443,6 +452,181 @@ class ShaderMixinsTest {
         gl11.verify(() -> GL11.glCallList(7), times(1));
         assertTrue(cancels(sky, "impetus$suppressSky", 0.5F, 0));
         Statics.set(RenderGlobalMixin.class, "impetus$transparent", null);
+    }
+
+    @Test
+    void lowerSkyDrawsItsVboOrItsDisplayList() {
+        var sky = Mixins.instance(RenderGlobalMixin.class);
+        var lowerSky = mock(VertexBuffer.class);
+        Mixins.set(sky, "sky2VBO", lowerSky);
+        var drawList = Mc.<Void>operation();
+
+        Mixins.set(sky, "vboEnabled", true);
+        Mixins.call(sky, "impetus$drawLowerSky", -1, drawList);
+        assertEquals(0, drawList.count());
+        var order = Mockito.inOrder(lowerSky);
+        order.verify(lowerSky).bindBuffer();
+        order.verify(lowerSky).drawArrays(GL11.GL_QUADS);
+        order.verify(lowerSky).unbindBuffer();
+        gl11.verify(() -> GL11.glVertexPointer(3, GL11.GL_FLOAT, 12, 0L));
+        gl11.verify(() -> GL11.glDisableClientState(GL11.GL_VERTEX_ARRAY));
+
+        Mixins.set(sky, "vboEnabled", false);
+        Mixins.call(sky, "impetus$drawLowerSky", 7, drawList);
+        Mixins.call(sky, "impetus$drawLowerSky", -1, drawList);
+        assertEquals(1, drawList.count());
+        verify(lowerSky, times(1)).drawArrays(GL11.GL_QUADS);
+    }
+
+    @Test
+    void vanillaStarsUseAdditiveBlendingAndRestoreItAfterDrawing() {
+        var sky = Mixins.instance(RenderGlobalMixin.class);
+        var stars = mock(VertexBuffer.class);
+        var draw = Mc.<Void>operation();
+        try (var gl14 = Mockito.mockStatic(GL14.class)) {
+            Mixins.call(sky, "impetus$drawStarVbo", stars, GL11.GL_QUADS, draw);
+            Mixins.call(sky, "impetus$drawStarList", 7, draw);
+            assertEquals(2, draw.count());
+            gl11.verify(() -> GL11.glPushAttrib(GL11.GL_COLOR_BUFFER_BIT), times(2));
+            gl11.verify(() -> GL11.glEnable(GL11.GL_BLEND), times(2));
+            gl14.verify(() -> GL14.glBlendEquation(GL14.GL_FUNC_ADD), times(2));
+            gl14.verify(() -> GL14.glBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ONE, GL11.GL_ZERO), times(2));
+            gl11.verify(GL11::glPopAttrib, times(2));
+        }
+    }
+
+    @Test
+    void lowerSkyFallsBackToTheListWhenTheVboIsMissingAndSkipsInvalidLists() {
+        var sky = Mixins.instance(RenderGlobalMixin.class);
+        var drawList = Mc.<Void>operation();
+        // VBOs on but the lower sky buffer never built (resource reload in progress): vanilla's list, when it is a real one
+        Mixins.set(sky, "vboEnabled", true);
+        Mixins.set(sky, "sky2VBO", null);
+        Mixins.call(sky, "impetus$drawLowerSky", 5, drawList);
+        assertEquals(1, drawList.count());
+        assertEquals(5, drawList.last()[0]);
+        // -1 is vanilla's "never generated" and 0 is not a list name: neither reaches glCallList
+        Mixins.call(sky, "impetus$drawLowerSky", -1, drawList);
+        Mixins.call(sky, "impetus$drawLowerSky", 0, drawList);
+        Mixins.set(sky, "vboEnabled", false);
+        Mixins.call(sky, "impetus$drawLowerSky", 0, drawList);
+        Mixins.call(sky, "impetus$drawLowerSky", Integer.MIN_VALUE, drawList);
+        assertEquals(1, drawList.count());
+        gl11.verify(() -> GL11.glEnableClientState(anyInt()), never());
+    }
+
+    @Test
+    void lowerSkyVboDrawSetsTheVertexStateUpInOrderAndUndoesItWhenTheDrawThrows() {
+        var sky = Mixins.instance(RenderGlobalMixin.class);
+        var lowerSky = mock(VertexBuffer.class);
+        Mixins.set(sky, "vboEnabled", true);
+        Mixins.set(sky, "sky2VBO", lowerSky);
+        var drawList = Mc.<Void>operation();
+        Mockito.doThrow(new IllegalStateException("driver lost")).when(lowerSky).drawArrays(GL11.GL_QUADS);
+        var thrown = assertThrows(IllegalStateException.class, () -> Mixins.call(sky, "impetus$drawLowerSky", 7, drawList));
+        assertEquals("driver lost", thrown.getMessage());
+        // Vanilla's list is not drawn on top of the VBO even though one exists
+        assertEquals(0, drawList.count());
+        var order = Mockito.inOrder(lowerSky);
+        order.verify(lowerSky).bindBuffer();
+        order.verify(lowerSky).drawArrays(GL11.GL_QUADS);
+        order.verify(lowerSky).unbindBuffer();
+        gl11.verify(() -> GL11.glEnableClientState(GL11.GL_VERTEX_ARRAY));
+        gl11.verify(() -> GL11.glVertexPointer(3, GL11.GL_FLOAT, 3 * Float.BYTES, 0L));
+        gl11.verify(() -> GL11.glDisableClientState(GL11.GL_VERTEX_ARRAY));
+    }
+
+    @Test
+    void lowerSkyBindFailureLeavesNoClientStateBehind() {
+        var sky = Mixins.instance(RenderGlobalMixin.class);
+        var lowerSky = mock(VertexBuffer.class);
+        Mixins.set(sky, "vboEnabled", true);
+        Mixins.set(sky, "sky2VBO", lowerSky);
+        Mockito.doThrow(new IllegalStateException("deleted")).when(lowerSky).bindBuffer();
+        assertThrows(IllegalStateException.class, () -> Mixins.call(sky, "impetus$drawLowerSky", -1, Mc.<Void>operation()));
+        gl11.verify(() -> GL11.glEnableClientState(anyInt()), never());
+        verify(lowerSky, never()).drawArrays(anyInt());
+        verify(lowerSky, never()).unbindBuffer();
+    }
+
+    @Test
+    void starsSwitchedOffByThePackTouchNoGlState() {
+        var sky = Mixins.instance(RenderGlobalMixin.class);
+        var draw = Mc.<Void>operation();
+        pack("stars = false");
+        withPipeline();
+        try (var gl14 = Mockito.mockStatic(GL14.class)) {
+            Mixins.call(sky, "impetus$drawStarVbo", mock(VertexBuffer.class), GL11.GL_QUADS, draw);
+            Mixins.call(sky, "impetus$drawStarList", 7, draw);
+            assertEquals(0, draw.count());
+            gl11.verify(() -> GL11.glPushAttrib(anyInt()), never());
+            gl14.verifyNoInteractions();
+        }
+    }
+
+    @Test
+    void aLoadedPackWhosePipelineIsGoneDoesNotHideVanillaStars() {
+        // Pack selected but its pipeline not built yet (or torn down): its switches do not apply, vanilla additive stars draw
+        var sky = Mixins.instance(RenderGlobalMixin.class);
+        var draw = Mc.<Void>operation();
+        pack("stars = false");
+        try (var gl14 = Mockito.mockStatic(GL14.class)) {
+            Mixins.call(sky, "impetus$drawStarVbo", mock(VertexBuffer.class), GL11.GL_QUADS, draw);
+            Mixins.call(sky, "impetus$drawStarList", 7, draw);
+            assertEquals(2, draw.count());
+            gl11.verify(() -> GL11.glPushAttrib(GL11.GL_COLOR_BUFFER_BIT), times(2));
+            gl14.verify(() -> GL14.glBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ONE, GL11.GL_ZERO), times(2));
+        }
+    }
+
+    @Test
+    void starsUnderAShaderPackKeepThePacksBlendState() {
+        var sky = Mixins.instance(RenderGlobalMixin.class);
+        var draw = Mc.<Void>operation();
+        pack("");
+        withPipeline();
+        try (var gl14 = Mockito.mockStatic(GL14.class)) {
+            Mixins.call(sky, "impetus$drawStarVbo", mock(VertexBuffer.class), GL11.GL_QUADS, draw);
+            Mixins.call(sky, "impetus$drawStarList", 9, draw);
+            assertEquals(2, draw.count());
+            gl11.verify(() -> GL11.glPushAttrib(anyInt()), never());
+            gl11.verify(() -> GL11.glEnable(anyInt()), never());
+            gl14.verifyNoInteractions();
+        }
+    }
+
+    @Test
+    void aStarDrawThatThrowsStillRestoresTheBlendAttributes() {
+        var sky = Mixins.instance(RenderGlobalMixin.class);
+        com.llamalad7.mixinextras.injector.wrapoperation.Operation<Void> failing = args -> {
+            throw new IllegalStateException("list deleted");
+        };
+        try (var gl14 = Mockito.mockStatic(GL14.class)) {
+            assertThrows(IllegalStateException.class, () -> Mixins.call(sky, "impetus$drawStarList", 7, failing));
+            assertThrows(IllegalStateException.class,
+                    () -> Mixins.call(sky, "impetus$drawStarVbo", mock(VertexBuffer.class), GL11.GL_QUADS, failing));
+            // Every push is matched by a pop, so a failed frame cannot leave additive blending on for the GUI
+            gl11.verify(() -> GL11.glPushAttrib(GL11.GL_COLOR_BUFFER_BIT), times(2));
+            gl11.verify(GL11::glPopAttrib, times(2));
+            // The blend set-up happens before the draw, the restore after it
+            var order = Mockito.inOrder(GL11.class, GL14.class);
+            order.verify(gl11, () -> GL11.glPushAttrib(GL11.GL_COLOR_BUFFER_BIT));
+            order.verify(gl11, () -> GL11.glEnable(GL11.GL_BLEND));
+            order.verify(gl14, () -> GL14.glBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ONE, GL11.GL_ZERO));
+            order.verify(gl11, GL11::glPopAttrib);
+        }
+    }
+
+    @Test
+    void theVanillaStarVboArgumentsReachTheOriginalUnchanged() {
+        var sky = Mixins.instance(RenderGlobalMixin.class);
+        var stars = mock(VertexBuffer.class);
+        var draw = Mc.<Void>operation();
+        try (var gl14 = Mockito.mockStatic(GL14.class)) {
+            Mixins.call(sky, "impetus$drawStarVbo", stars, GL11.GL_QUADS, draw);
+        }
+        assertSame(stars, draw.last()[0]);
+        assertEquals(GL11.GL_QUADS, draw.last()[1]);
     }
 
     @Test

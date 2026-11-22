@@ -8,12 +8,6 @@ import java.util.BitSet;
 
 // Chooses and computes the draw order of translucent quads.
 public final class TranslucentSorter {
-    // Distance of the imaginary camera along the shared normal.
-    static final int FAKE_STATIC_CAMERA_OFFSET = 1000;
-
-    // Dot product from which two normals count as parallel.
-    private static final float PARALLEL_THRESHOLD = 0.98f;
-
     // Prevents instantiation
     private TranslucentSorter() {
     }
@@ -37,23 +31,35 @@ public final class TranslucentSorter {
 
     // Returns the quads ordered along a shared normal.
     public static int[] sortNormalRelative(float[] centers, int quadCount, float nx, float ny, float nz, BitSet flipped) {
-        float camX = centers[0] + nx * FAKE_STATIC_CAMERA_OFFSET;
-        float camY = centers[1] + ny * FAKE_STATIC_CAMERA_OFFSET;
-        float camZ = centers[2] + nz * FAKE_STATIC_CAMERA_OFFSET;
-
-        float[] distances = new float[quadCount];
-
+        int[] group = new int[quadCount];
         for (int quadIdx = 0; quadIdx < quadCount; quadIdx++) {
-            int centerIdx = quadIdx * 3;
-
-            float qX = centers[centerIdx] - camX;
-            float qY = centers[centerIdx + 1] - camY;
-            float qZ = centers[centerIdx + 2] - camZ;
-
-            distances[quadIdx] = (nx * qX + ny * qY + nz * qZ) * (flipped.get(quadIdx) ? 1 : -1);
+            group[quadIdx] = quadIdx;
         }
+        return sortNormalRelative(centers, group, nx, ny, nz, flipped);
+    }
 
-        return MergeSort.mergeSort(distances);
+    static int[] sortNormalRelative(float[] centers, int[] group, float nx, float ny, float nz, BitSet flipped) {
+        float[] distances = new float[group.length];
+        for (int i = 0; i < group.length; i++) {
+            int offset = group[i] * 3;
+            float projection = nx * centers[offset] + ny * centers[offset + 1] + nz * centers[offset + 2];
+            distances[i] = flipped.get(i) ? projection : -projection;
+        }
+        // The two windings can be emitted independently with back-face culling.
+        int[] order = MergeSort.mergeSort(distances);
+        int[] quads = new int[group.length];
+        int front = 0;
+        for (int quad : order) {
+            if (!flipped.get(quad)) {
+                quads[front++] = group[quad];
+            }
+        }
+        for (int quad : order) {
+            if (flipped.get(quad)) {
+                quads[front++] = group[quad];
+            }
+        }
+        return quads;
     }
 
     // Returns the draw order of a state for a camera position or null.
@@ -105,7 +111,7 @@ public final class TranslucentSorter {
 
             float dot = quads.normalDot(quadIdx, reference);
 
-            if (Math.abs(dot) < PARALLEL_THRESHOLD) {
+            if (!quads.hasParallelNormal(quadIdx, reference, dot)) {
                 allParallel = false;
                 break;
             }

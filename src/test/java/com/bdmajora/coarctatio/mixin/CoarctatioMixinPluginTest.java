@@ -53,80 +53,26 @@ class CoarctatioMixinPluginTest {
         assertFalse(applies(plugin, "util.ResourceLocationMixin"));
 
         assertTrue(applies(plugin, "nbt.NBTTagCompoundMixin"));
-        assertTrue(applies(plugin, "state.BlockStateContainerMixin"));
+        assertTrue(applies(plugin, "nbt.NBTTagListPoolMixin"));
         assertTrue(applies(plugin, "core.LockCodeMixin"));
-        assertTrue(applies(plugin, "client.texture.StitcherMixin"));
-        assertTrue(applies(plugin, "forge.OreDictionaryMixin"));
-        assertTrue(applies(plugin, "client.model.part.BlockPartMixin"));
-        assertTrue(applies(plugin, "world.TemplateManagerMixin"));
-        assertTrue(applies(plugin, "forge.JarDiscovererMixin"));
+        assertTrue(applies(plugin, "item.ItemStackCapabilityMixin"));
+        assertTrue(applies(plugin, "world.AnvilChunkLoaderMixin"));
+        assertTrue(applies(plugin, "world.ChunkMixin"));
+        assertTrue(applies(plugin, "client.SoundHandlerMixin"));
         assertTrue(applies(plugin, "forge.ModCandidateMixin"));
-        assertTrue(applies(plugin, "client.model.bake.ItemLayerModelQuadMixin"));
+        // The part pools and the reload hook that opens them share one switch
+        assertTrue(applies(plugin, "client.model.part.BlockPartMixin"));
+        assertTrue(applies(plugin, "client.ModelManagerMixin"));
+        config.canonicalizeModelParts = false;
+        assertFalse(applies(plugin, "client.ModelManagerMixin"));
+        assertFalse(applies(plugin, "client.model.part.ModelBlockMixin"));
         // Off by default
         assertFalse(applies(plugin, "events.TickEventMixin"));
         assertFalse(applies(plugin, "client.model.ModelLoaderRegistryMissingMixin"));
 
-        // Checks the resource manager features.
-        config.stacklessResourceExceptions = false;
-        config.resourceExistenceCache = true;
-        assertTrue(applies(plugin, "client.resources.SimpleReloadableResourceManagerMixin"));
-        config.resourceExistenceCache = false;
-        assertFalse(applies(plugin, "client.resources.SimpleReloadableResourceManagerMixin"));
-
-        // Checks the model manager lifecycle.
-        config.poolQuadVertexData = true;
-        config.dynamicModels = false;
-        assertTrue(applies(plugin, "client.ModelManagerMixin"));
-        config.dynamicModels = true;
-        assertFalse(applies(plugin, "client.ModelManagerMixin"));
-        // The dynamic-model mixins and the item prebake hang off that same switch
-        assertTrue(applies(plugin, "client.model.dynamic.DynamicModelsSomethingMixin"));
-        assertTrue(applies(plugin, "client.model.dynamic.RenderItemPrebakeMixin"));
-        config.dynamicModelsPrebakeItems = false;
-        assertFalse(applies(plugin, "client.model.dynamic.RenderItemPrebakeMixin"));
-        config.resourceExistenceCache = true;
-        assertFalse(applies(plugin, "client.model.dynamic.FileResourcePackAccessor"));
-        // Checks the prefetch is replaced.
-        assertFalse(applies(plugin, "client.model.ModelLoaderPrefetchMixin"));
-        config.dynamicModels = false;
-        assertTrue(applies(plugin, "client.model.ModelLoaderPrefetchMixin"));
-        assertTrue(applies(plugin, "client.model.ModelBakeryPrefetchMixin"));
-        assertTrue(applies(plugin, "client.model.ModelBlockAnimationPrefetchMixin"));
-        // Checks the shared accessors.
-        assertTrue(applies(plugin, "client.model.dynamic.SimpleReloadableResourceManagerAccessor"));
-        assertTrue(applies(plugin, "client.model.dynamic.LegacyV2AdapterAccessor"));
-        config.resourceExistenceCache = false;
-        assertTrue(applies(plugin, "client.model.dynamic.AbstractResourcePackAccessor"));
-        config.parallelModelLoad = false;
-        assertFalse(applies(plugin, "client.model.ModelBakeryPrefetchMixin"));
-        assertFalse(applies(plugin, "client.model.dynamic.FallbackResourceManagerAccessor"));
-        assertFalse(applies(plugin, "client.model.dynamic.FileResourcePackAccessor"));
-
         // Checks an unknown mixin.
         assertTrue(applies(plugin, "something.UnknownMixin"));
         assertTrue(plugin.shouldApplyMixin("net.minecraft.world.World", "com.example.Foreign"));
-    }
-
-    @Test
-    void freshConfigEnablesTheOnDemandPipelineWithoutFreeingItsSpritePixels() {
-        CoarctatioMixinPlugin plugin = new CoarctatioMixinPlugin();
-        plugin.onLoad("com.bdmajora.coarctatio.mixin");
-        assertTrue(applies(plugin, "client.model.dynamic.ModelManagerDynamicMixin"));
-        assertTrue(applies(plugin, "client.model.dynamic.ItemModelMesherForgeDynamicMixin"));
-        assertTrue(applies(plugin, "client.model.dynamic.TextureMapWeakSpriteMixin"));
-        assertTrue(applies(plugin, "client.model.dynamic.StitcherDropMixin"));
-        assertTrue(applies(plugin, "client.model.dynamic.RenderItemPrebakeMixin"));
-        assertFalse(applies(plugin, "client.texture.TextureMapMixin"));
-        assertFalse(applies(plugin, "client.model.ModelBakeryPrefetchMixin"));
-
-        CoarctatioConfig.get().dynamicModels = false;
-        assertFalse(applies(plugin, "client.model.dynamic.ModelManagerDynamicMixin"));
-        assertFalse(applies(plugin, "client.model.dynamic.ItemModelMesherForgeDynamicMixin"));
-        assertFalse(applies(plugin, "client.model.dynamic.TextureMapWeakSpriteMixin"));
-        assertFalse(applies(plugin, "client.model.dynamic.StitcherDropMixin"));
-        assertFalse(applies(plugin, "client.model.dynamic.RenderItemPrebakeMixin"));
-        assertTrue(applies(plugin, "client.texture.TextureMapMixin"));
-        assertTrue(applies(plugin, "client.model.ModelBakeryPrefetchMixin"));
     }
 
     @Test
@@ -142,7 +88,7 @@ class CoarctatioMixinPluginTest {
             // Checks the defaults.
             when(service.getClassTracker()).thenReturn(null);
             List<String> defaults = plugin.getMixins();
-            assertEquals(List.of("forge.ASMDataMixin", "forge.ModCandidateMixin", "forge.JarDiscovererMixin"), defaults);
+            assertEquals(List.of("forge.ASMDataMixin", "forge.ModCandidateMixin"), defaults);
 
             config.recycleEvents = true;
             when(service.getClassTracker()).thenReturn(tracker);
@@ -154,12 +100,11 @@ class CoarctatioMixinPluginTest {
             // Checks a target loaded early.
             when(tracker.isClassLoaded("net.minecraftforge.fml.common.discovery.ModCandidate")).thenReturn(true);
             when(tracker.isClassLoaded("net.minecraftforge.event.ForgeEventFactory")).thenReturn(true);
-            assertEquals(List.of("forge.ASMDataMixin", "forge.JarDiscovererMixin"), plugin.getMixins());
+            assertEquals(List.of("forge.ASMDataMixin"), plugin.getMixins());
 
             // With every guarded feature off the json's list stands alone
             config.recycleEvents = false;
             config.internLoaderStrings = false;
-            config.modScanCache = false;
             assertNull(plugin.getMixins());
         }
     }

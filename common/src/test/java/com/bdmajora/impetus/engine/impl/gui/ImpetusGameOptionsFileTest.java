@@ -157,4 +157,69 @@ class ImpetusGameOptionsFileTest {
         }
         assertThrows(NullPointerException.class, () -> ImpetusGameOptions.MeshStatistics.NONE.includes(null));
     }
+
+    // The simulation distance round-trips, a missing key keeps the default, and out of range values are clamped where read.
+    @Test
+    void simulationDistanceSurvivesTheFileAndIsClampedOnRead() throws IOException {
+        Files.createDirectories(this.path.getParent());
+        Files.writeString(this.path, "{}");
+        assertEquals(10, ImpetusGameOptions.load(this.name).getSimulationDistance());
+        Files.writeString(this.path, "{\"simulation_distance\":12}");
+        ImpetusGameOptions options = ImpetusGameOptions.load(this.name);
+        assertEquals(12, options.getSimulationDistance());
+        options.setSimulationDistance(7);
+        ImpetusGameOptions.writeToDisk(options);
+        assertEquals(7, ImpetusGameOptions.load(this.name).getSimulationDistance());
+        // A hand-edited value outside 5..32 loads, and every reader sees it clamped
+        Files.writeString(this.path, "{\"simulation_distance\":1000}");
+        assertEquals(ImpetusGameOptions.MAX_SIMULATION_DISTANCE, ImpetusGameOptions.load(this.name).getSimulationDistance());
+        Files.writeString(this.path, "{\"simulation_distance\":-3}");
+        assertEquals(ImpetusGameOptions.MIN_SIMULATION_DISTANCE, ImpetusGameOptions.load(this.name).getSimulationDistance());
+        Files.writeString(this.path, "{\"simulation_distance\":" + Integer.MIN_VALUE + "}");
+        assertEquals(ImpetusGameOptions.MIN_SIMULATION_DISTANCE, ImpetusGameOptions.load(this.name).getSimulationDistance());
+    }
+
+    // A simulation distance that is not an int falls back to every default and leaves the file alone.
+    @Test
+    void anUnreadableSimulationDistanceFallsBackWithoutRewriting() throws IOException {
+        Files.createDirectories(this.path.getParent());
+        for (String bad : new String[] {"\"far\"", "12.5", "99999999999", "true", "[10]", "{}"}) {
+            String json = "{\"simulation_distance\":" + bad + ",\"quality\":{\"cloud_height\":300}}";
+            Files.writeString(this.path, json);
+            ImpetusGameOptions options = ImpetusGameOptions.load(this.name);
+            assertEquals(10, options.getSimulationDistance(), bad);
+            assertEquals(128, options.quality.cloudHeight, bad);
+            assertEquals(json, Files.readString(this.path), bad);
+        }
+        // null for a primitive is Gson's "leave the default"
+        Files.writeString(this.path, "{\"simulation_distance\":null}");
+        assertEquals(10, ImpetusGameOptions.load(this.name).getSimulationDistance());
+    }
+
+    // Constants are never written to the file, and the written file names only instance settings.
+    @Test
+    void staticConstantsStayOutOfTheFile() throws IOException {
+        Files.createDirectories(this.path.getParent());
+        ImpetusGameOptions.writeToDisk(ImpetusGameOptions.load(this.name));
+        String json = Files.readString(this.path);
+        assertTrue(json.contains("\"simulation_distance\": 10"), json);
+        assertFalse(json.contains("min_simulation_distance"), json);
+        assertFalse(json.contains("max_simulation_distance"), json);
+        // A file that still carries them (hand-edited, or from a build that wrote statics) loads without touching the constants
+        Files.writeString(this.path, "{\"m_i_n__s_i_m_u_l_a_t_i_o_n__d_i_s_t_a_n_c_e\":1,\"min_simulation_distance\":1,\"max_simulation_distance\":2}");
+        assertEquals(10, ImpetusGameOptions.load(this.name).getSimulationDistance());
+        assertEquals(5, ImpetusGameOptions.MIN_SIMULATION_DISTANCE);
+        assertEquals(32, ImpetusGameOptions.MAX_SIMULATION_DISTANCE);
+    }
+
+    // The setter clamps both ends and the edge values themselves are kept.
+    @Test
+    void theSetterClampsAtBothEnds() {
+        ImpetusGameOptions options = new ImpetusGameOptions();
+        for (int[] pair : new int[][] {{Integer.MIN_VALUE, 5}, {-1, 5}, {0, 5}, {4, 5}, {5, 5}, {6, 6}, {31, 31}, {32, 32}, {33, 32}, {Integer.MAX_VALUE, 32}}) {
+            options.setSimulationDistance(pair[0]);
+            assertEquals(pair[1], options.simulationDistance, () -> "set " + pair[0]);
+            assertEquals(pair[1], options.getSimulationDistance());
+        }
+    }
 }

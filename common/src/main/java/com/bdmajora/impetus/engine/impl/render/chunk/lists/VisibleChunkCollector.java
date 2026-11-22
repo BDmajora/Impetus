@@ -11,6 +11,7 @@ import com.bdmajora.impetus.engine.impl.render.chunk.PackedSectionMetadata;
 import com.bdmajora.impetus.engine.impl.render.chunk.RenderSection;
 import java.util.ArrayDeque;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.EnumMap;
 import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.OcclusionCuller;
 import com.bdmajora.impetus.engine.impl.render.chunk.occlusion.SectionLattice;
@@ -187,6 +188,27 @@ public class VisibleChunkCollector implements OcclusionCuller.Visitor {
         Arrays.sort(heap);
 
         return heap;
+    }
+
+    // Orders the region and geometry lists independently of the order of the occlusion walk.
+    void sortGeometry() {
+        int cameraSectionX = this.cameraX >> 4;
+        int cameraSectionY = this.cameraY >> 4;
+        int cameraSectionZ = this.cameraZ >> 4;
+        int regionX = cameraSectionX >> RenderRegion.REGION_WIDTH_SH;
+        int regionY = cameraSectionY >> RenderRegion.REGION_HEIGHT_SH;
+        int regionZ = cameraSectionZ >> RenderRegion.REGION_LENGTH_SH;
+        this.sortedRenderLists.sort(Comparator.comparingInt(list -> {
+            var region = list.getRegion();
+            return Math.abs((region.getChunkX() >> RenderRegion.REGION_WIDTH_SH) - regionX)
+                    + Math.abs((region.getChunkY() >> RenderRegion.REGION_HEIGHT_SH) - regionY)
+                    + Math.abs((region.getChunkZ() >> RenderRegion.REGION_LENGTH_SH) - regionZ);
+        }));
+
+        int[] keys = new int[RenderRegion.REGION_SIZE];
+        for (var list : this.sortedRenderLists) {
+            list.sortGeometry(cameraSectionX, cameraSectionY, cameraSectionZ, keys);
+        }
     }
 
     // Creates the sorted render lists.

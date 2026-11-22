@@ -89,6 +89,14 @@ public class QuadArena {
         return stream.upload(this.buffer, byteOffset(quadAddress), byteLength((int) quadCount));
     }
 
+    public long beginUpload(UploadStream stream, int quadAddress, int offset, int length) {
+        long allocationBytes = this.allocator.getSize(quadAddress) * this.bytesPerQuad();
+        if (offset < 0 || length <= 0 || length > allocationBytes - offset) {
+            throw new IllegalArgumentException("Upload runs past the end of the quad allocation");
+        }
+        return stream.upload(this.buffer, byteOffset(quadAddress) + offset, length);
+    }
+
     // Returns the bytes that the arena occupies in video memory.
     public long getResidentBytes() {
         if (this.buffer instanceof SparseBindlessBuffer sparse) {

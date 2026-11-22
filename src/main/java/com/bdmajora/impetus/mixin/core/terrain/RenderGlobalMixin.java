@@ -16,6 +16,7 @@ import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.BlockRenderLayer;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.world.WorldProvider;
 import com.bdmajora.impetus.ImpetusVintage;
 import com.bdmajora.impetus.engine.impl.gl.device.RenderDevice;
@@ -340,7 +341,13 @@ public abstract class RenderGlobalMixin implements SimpleWorldRenderer.Provider<
 
     @Inject(method = "renderEntities", at = @At("HEAD"))
     private void impetus$applyEntityDistance(CallbackInfo ci) {
-        Entity.setRenderDistanceWeight(ImpetusVintage.options().quality.entityDistance / 100.0D);
+        // Vanilla scales entity reach with render distance in setupTerrain, which Impetus overwrites, so that factor lives here;
+        // the slider multiplies it like modern Minecraft's entityDistanceScaling. Without it entities vanished up to 2.5x
+        // closer than vanilla at high render distances.
+        // The percentage is clamped to the slider's 50..500 so a hand-edited 0 or negative cannot hide every entity.
+        double renderDistanceScale = MathHelper.clamp(this.mc.gameSettings.renderDistanceChunks / 8.0D, 1.0D, 2.5D);
+        int percent = Math.clamp(ImpetusVintage.options().quality.entityDistance, 50, 500);
+        Entity.setRenderDistanceWeight(renderDistanceScale * percent / 100.0D);
     }
 
     // Runs inside renderEntities.

@@ -54,36 +54,10 @@ public final class Splice implements LauncherSessionListener {
         TARGETS.put("net.minecraftforge.event.world.BlockEvent",
                 com.bdmajora.coarctatio.events.RecyclableEvent.class);
 
-        // The resource managers and packs the dynamic model loader lists paths from
-        TARGETS.put("net.minecraft.client.resources.SimpleReloadableResourceManager",
-                com.bdmajora.coarctatio.mixin.client.model.dynamic.SimpleReloadableResourceManagerAccessor.class);
-        TARGETS.put("net.minecraft.client.resources.FallbackResourceManager",
-                com.bdmajora.coarctatio.mixin.client.model.dynamic.FallbackResourceManagerAccessor.class);
-        TARGETS.put("net.minecraft.client.resources.AbstractResourcePack",
-                com.bdmajora.coarctatio.mixin.client.model.dynamic.AbstractResourcePackAccessor.class);
-        TARGETS.put("net.minecraft.client.resources.LegacyV2Adapter",
-                com.bdmajora.coarctatio.mixin.client.model.dynamic.LegacyV2AdapterAccessor.class);
-        TARGETS.put("net.minecraft.client.resources.FileResourcePack",
-                com.bdmajora.coarctatio.mixin.client.model.dynamic.FileResourcePackAccessor.class);
-
-        // Splices the bakery's item variant table.
-        TARGETS.put("net.minecraft.client.renderer.block.model.ModelBakery",
-                com.bdmajora.coarctatio.mixin.client.model.dynamic.ModelBakeryAccessor.class);
-
-        // Splices the event bus id and owner.
-        TARGETS.put("net.minecraftforge.fml.common.eventhandler.EventBus",
-                com.bdmajora.coarctatio.mixin.client.model.dynamic.EventBusAccessor.class);
-        TARGETS.put("net.minecraftforge.client.event.ModelBakeEvent", BakeEventContext.class);
-        FIELD_ALIASES.put("setModContainer", "splice$lastMod");
-
         // Splices the model box quads.
         TARGETS.put("net.minecraft.client.model.ModelBox", com.bdmajora.extras.client.bakedentities.ModelBoxAccess.class);
         REAL_FIELDS.put("impetus$getQuads", "quadList");
     }
-
-    // The two interfaces of the ModelBakeEvent context mixin.
-    public interface BakeEventContext extends net.minecraftforge.fml.common.eventhandler.IContextSetter,
-            com.bdmajora.coarctatio.client.model.dynamic.BakeEventDispatcher.ContextAwareBakeEvent {}
 
     @Override
     public void launcherSessionOpened(LauncherSession session) {

@@ -655,8 +655,6 @@ public final class ExtrasConfig {
         public boolean moddedEntities = false;
         // Switch of the random ticks option.
         public boolean randomTicks = true;
-        // Switch of the spawning option.
-        public boolean spawning = true;
         // Text of the synchronized entities option.
         public String[] synchronizedEntities = DEFAULT_SYNCHRONIZED.clone();
     }

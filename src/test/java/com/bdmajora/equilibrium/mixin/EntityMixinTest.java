@@ -13,7 +13,6 @@ import com.bdmajora.equilibrium.mixin.entity.fast_retrieval.WorldMixin;
 import com.bdmajora.equilibrium.mixin.entity.fast_spawn_preparation.EntityEntryMixin;
 import com.bdmajora.equilibrium.mixin.entity.flag_cache.EntityDataManagerMixin;
 import com.bdmajora.equilibrium.mixin.entity.tracker_vertical_range.EntityTrackerEntryMixin;
-import com.bdmajora.equilibrium.mixin.entity.xp_orb_merging.EntityXPOrbMixin;
 import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
 import com.bdmajora.testing.ShadowStubs;
@@ -268,61 +267,6 @@ class EntityMixinTest {
         player.posY = 200.0D;
         assertFalse((boolean) Mixins.call(tracker, "equilibrium$alsoCheckVertical", true, player));
         assertFalse((boolean) Mixins.call(tracker, "equilibrium$alsoCheckVertical", false, player));
-    }
-
-    @Test
-    void experienceOrbsMergeOnceASecond() {
-        EntityXPOrbMixin orb = Mixins.instance(EntityXPOrbMixin.class);
-        EntityXPOrb self = (EntityXPOrb) (Object) orb;
-        World world = mock(World.class);
-        Mixins.set(world, "isRemote", false);
-        Mixins.set(orb, "world", world);
-        Mixins.set(orb, "xpValue", 3);
-        self.ticksExisted = 20;
-        self.xpOrbAge = 100;
-        Mockito.doReturn(new AxisAlignedBB(0, 0, 0, 1, 1, 1)).when(self).getEntityBoundingBox();
-
-        // Nothing nearby leaves the orb alone
-        when(world.getEntitiesWithinAABB(Mockito.eq(EntityXPOrb.class), any(), any())).thenReturn(List.of());
-        Mixins.call(orb, "equilibrium$absorbNeighbours", Mixins.ci());
-        assertEquals(3, (int) Mixins.get(orb, "xpValue"));
-
-        // Neighbours are absorbed and the survivor keeps the youngest age
-        EntityXPOrbMixin otherMixin = Mixins.instance(EntityXPOrbMixin.class);
-        Mixins.set(otherMixin, "xpValue", 5);
-        EntityXPOrb other = (EntityXPOrb) (Object) otherMixin;
-        other.xpOrbAge = 40;
-        when(world.getEntitiesWithinAABB(Mockito.eq(EntityXPOrb.class), any(), any())).thenReturn(List.of(other));
-        Mixins.call(orb, "equilibrium$absorbNeighbours", Mixins.ci());
-        assertEquals(8, (int) Mixins.get(orb, "xpValue"));
-        assertEquals(40, self.xpOrbAge);
-        Mockito.verify(other).setDead();
-
-        // Checks the skipped ticks.
-        self.ticksExisted = 21;
-        Mixins.call(orb, "equilibrium$absorbNeighbours", Mixins.ci());
-        assertEquals(8, (int) Mixins.get(orb, "xpValue"));
-        self.ticksExisted = 40;
-        self.isDead = true;
-        Mixins.call(orb, "equilibrium$absorbNeighbours", Mixins.ci());
-        assertEquals(8, (int) Mixins.get(orb, "xpValue"));
-        self.isDead = false;
-        Mixins.set(world, "isRemote", true);
-        Mixins.call(orb, "equilibrium$absorbNeighbours", Mixins.ci());
-        assertEquals(8, (int) Mixins.get(orb, "xpValue"));
-
-        // Checks the pickup cooldown.
-        EntityPlayer player = mock(EntityPlayer.class);
-        World playerWorld = mock(World.class);
-        Mixins.set(playerWorld, "isRemote", false);
-        Mixins.set(player, "world", playerWorld);
-        player.xpCooldown = 40;
-        Mixins.call(orb, "equilibrium$noPickupCooldown", player, Mixins.ci());
-        assertEquals(0, player.xpCooldown);
-        Mixins.set(playerWorld, "isRemote", true);
-        player.xpCooldown = 40;
-        Mixins.call(orb, "equilibrium$noPickupCooldown", player, Mixins.ci());
-        assertEquals(40, player.xpCooldown);
     }
 
     @Test

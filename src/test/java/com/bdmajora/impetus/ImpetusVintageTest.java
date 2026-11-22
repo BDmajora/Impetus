@@ -2,9 +2,7 @@ package com.bdmajora.impetus;
 
 import com.bdmajora.coarctatio.Coarctatio;
 import com.bdmajora.coarctatio.CoarctatioConfig;
-import com.bdmajora.coarctatio.client.model.dynamic.compat.CtmModelWrapping;
 import com.bdmajora.coarctatio.gui.CoarctatioStatsCommand;
-import com.bdmajora.coarctatio.launch.ClassLoaderCleaner;
 import com.bdmajora.coarctatio.launch.RemapperCompactor;
 import com.bdmajora.dynamiclights.DynamicLights;
 import com.bdmajora.equilibrium.gui.EquilibriumStatsCommand;
@@ -111,7 +109,6 @@ class ImpetusVintageTest {
         ModContainer container = Loader.instance().getIndexedModList().get(ImpetusVintage.MODID);
         when(container.getVersion()).thenReturn("1.2.3");
         CoarctatioConfig coarctatio = Mc.uninitialized(CoarctatioConfig.class);
-        coarctatio.dynamicModels = true;
         coarctatio.clearPoolsOnWorldLeave = true;
         coarctatio.showDebugOverlay = true;
         Mixins.set(CoarctatioConfig.class, "instance", coarctatio);
@@ -132,8 +129,7 @@ class ImpetusVintageTest {
             Launch.blackboard = new HashMap<>();
         }
         Object deobfuscated = Launch.blackboard.getOrDefault("fml.deobfuscatedEnvironment", false);
-        try (MockedStatic<CtmModelWrapping> ctm = Mockito.mockStatic(CtmModelWrapping.class);
-             MockedStatic<Fulgor> fulgorHooks = Mockito.mockStatic(Fulgor.class);
+        try (MockedStatic<Fulgor> fulgorHooks = Mockito.mockStatic(Fulgor.class);
              MockedStatic<RemapperCompactor> remapper = Mockito.mockStatic(RemapperCompactor.class);
              MockedStatic<Extras> extras = Mockito.mockStatic(Extras.class);
              MockedStatic<DynamicLights> lights = Mockito.mockStatic(DynamicLights.class);
@@ -145,7 +141,6 @@ class ImpetusVintageTest {
              MockedStatic<DhCompat> dh = Mockito.mockStatic(DhCompat.class);
              MockedStatic<Umbra> umbra = Mockito.mockStatic(Umbra.class);
              MockedStatic<ResourcePackScanner> scanner = Mockito.mockStatic(ResourcePackScanner.class);
-             MockedStatic<ClassLoaderCleaner> cleaner = Mockito.mockStatic(ClassLoaderCleaner.class);
              MockedStatic<Coarctatio> coarctatioHooks = Mockito.mockStatic(Coarctatio.class);
              MockedStatic<ImpetusToastRenderer> toasts = Mockito.mockStatic(ImpetusToastRenderer.class);
              MockedStatic<AutosaveIndicator> autosave = Mockito.mockStatic(AutosaveIndicator.class);
@@ -155,7 +150,6 @@ class ImpetusVintageTest {
             mod.onConstruct(mock(FMLConstructionEvent.class));
             assertEquals("1.2.3", ImpetusVintage.VERSION);
             verify(bus).register(mod);
-            ctm.verify(CtmModelWrapping::register);
             fulgorHooks.verify(Fulgor::detectCompatibility);
             dh.verifyNoInteractions();
             remapper.verify(RemapperCompactor::run);
@@ -163,9 +157,6 @@ class ImpetusVintageTest {
             lights.verify(DynamicLights::initialize);
             checks.verify(StartupChecks::installCrashDialog);
             checks.verify(() -> StartupChecks.runAsync(any()));
-            coarctatio.dynamicModels = false;
-            mod.onConstruct(mock(FMLConstructionEvent.class));
-            ctm.verify(CtmModelWrapping::register, times(1));
 
             // Initialises the mod.
             Launch.blackboard.put("fml.deobfuscatedEnvironment", true);
@@ -181,7 +172,6 @@ class ImpetusVintageTest {
             dh.verify(DhCompat::run);
             umbra.verify(() -> Umbra.initialize(home));
             scanner.verify(() -> ResourcePackScanner.scanIfChanged(client));
-            cleaner.verify(ClassLoaderCleaner::run);
             Launch.blackboard.put("fml.deobfuscatedEnvironment", false);
             mod.onInit(mock(FMLInitializationEvent.class));
             verify(commands, times(1)).registerCommand(any(TogglePassCommand.class));
@@ -376,6 +366,52 @@ class ImpetusVintageTest {
         Object screen = api.openMainIrisScreenObj("not a screen");
         assertInstanceOf(ShaderPackSelectScreen.class, screen);
         assertSame(open, Mixins.get(screen, "parent"));
+    }
+
+    @Test
+    void theIrisApiCopesWithNoParentAndNoOpenScreen() {
+        client.currentScreen = null;
+        Object screen = IrisApi.getInstance().openMainIrisScreenObj(null);
+        assertInstanceOf(ShaderPackSelectScreen.class, screen);
+        assertNull(Mixins.get(screen, "parent"));
+        // Every call makes a fresh screen, so reopening never shows a stale one
+        assertNotSame(screen, IrisApi.getInstance().openMainIrisScreenObj(null));
+    }
+
+    @Test
+    void theIrisApiShapeIsWhatOtherModsLinkAgainst() throws Exception {
+        // Public interfaces with only abstract instance methods plus the static getInstance; the answering class stays hidden
+        for (Class<?> api : List.of(IrisApi.class, net.irisshaders.iris.api.v0.IrisApiConfig.class)) {
+            assertTrue(api.isInterface() && java.lang.reflect.Modifier.isPublic(api.getModifiers()), api.getName());
+            for (Method method : api.getDeclaredMethods()) {
+                if (method.isSynthetic()) {
+                    continue;
+                }
+                boolean isStatic = java.lang.reflect.Modifier.isStatic(method.getModifiers());
+                assertTrue(isStatic ? method.getName().equals("getInstance") : !method.isDefault(), method.toString());
+            }
+        }
+        Class<?> internal = Class.forName("net.irisshaders.iris.api.v0.IrisApiInternal");
+        assertFalse(java.lang.reflect.Modifier.isPublic(internal.getModifiers()));
+        assertTrue(java.lang.reflect.Modifier.isFinal(internal.getModifiers()));
+        for (var constructor : internal.getDeclaredConstructors()) {
+            assertTrue(java.lang.reflect.Modifier.isPrivate(constructor.getModifiers()));
+        }
+        // getInstance is invokestatic on an interface: the declared return type is the interface, never the hidden class
+        assertEquals(IrisApi.class, IrisApi.class.getDeclaredMethod("getInstance").getReturnType());
+        assertNotNull(IrisApi.getInstance().getConfig());
+    }
+
+    @Test
+    void theIrisApiAsksUmbraEveryTimeInsteadOfCaching() {
+        IrisApi api = IrisApi.getInstance();
+        try (MockedStatic<Umbra> umbra = Mockito.mockStatic(Umbra.class)) {
+            umbra.when(Umbra::isShaderPackInUse).thenReturn(true, false, true);
+            assertTrue(api.isShaderPackInUse());
+            assertFalse(api.isShaderPackInUse());
+            assertTrue(api.isShaderPackInUse());
+            umbra.verify(Umbra::isShaderPackInUse, Mockito.times(3));
+        }
     }
 
     @Test

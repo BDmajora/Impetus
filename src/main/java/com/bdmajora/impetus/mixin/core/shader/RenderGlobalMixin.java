@@ -28,6 +28,11 @@ import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;
 import com.bdmajora.impetus.umbra.pipeline.VanillaFeatureToggles;
 import com.bdmajora.impetus.umbra.shaderpack.loading.ProgramId;
 import com.bdmajora.impetus.umbra.uniforms.CelestialUniforms;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL14;
+import org.spongepowered.asm.mixin.Shadow;
 
 import static com.bdmajora.impetus.lwjgl.LWJGLServiceProvider.LWJGL;
 
@@ -42,9 +47,16 @@ public class RenderGlobalMixin {
             "Lnet/minecraft/client/renderer/RenderGlobal;starVBO:Lnet/minecraft/client/renderer/vertex/VertexBuffer;";
     // Display list of the stars.
     private static final String STAR_LIST_FIELD = "Lnet/minecraft/client/renderer/RenderGlobal;starGLCallList:I";
+    private static final String WORLD_HORIZON = "Lnet/minecraft/client/multiplayer/WorldClient;getHorizon()D";
     // Name of the moon texture field.
     private static final String MOON_TEXTURES_FIELD =
             "Lnet/minecraft/client/renderer/RenderGlobal;MOON_PHASES_TEXTURES:Lnet/minecraft/util/ResourceLocation;";
+
+    @Shadow
+    private boolean vboEnabled;
+
+    @Shadow
+    private VertexBuffer sky2VBO;
 
     // Runs around the call of VertexBuffer.bindBuffer in renderSky.
     @Inject(method = "renderSky(FI)V",
@@ -246,27 +258,72 @@ public class RenderGlobalMixin {
         manager.bindTexture(location);
     }
 
-    // Skips the star VBO draw when the pack turns stars off.
-    @Redirect(method = "renderSky(FI)V",
-            slice = @Slice(from = @At(value = "FIELD", target = STAR_VBO_FIELD, opcode = Opcodes.GETFIELD)),
+    // Draws the stars with additive blending in the fixed-function sky.
+    @WrapOperation(method = "renderSky(FI)V",
+            slice = @Slice(from = @At(value = "FIELD", target = STAR_VBO_FIELD, opcode = Opcodes.GETFIELD),
+                    to = @At(value = "INVOKE", target = WORLD_HORIZON)),
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/vertex/VertexBuffer;drawArrays(I)V", ordinal = 0),
             require = 0)
-    private void impetus$suppressStarVbo(VertexBuffer buffer, int mode) {
-        if (VanillaFeatureToggles.shouldRenderStars()) {
-            buffer.drawArrays(mode);
-        }
+    private void impetus$drawStarVbo(VertexBuffer buffer, int mode, Operation<Void> original) {
+        impetus$drawStars(() -> original.call(buffer, mode));
     }
 
-    // Skips the star display list on the non VBO path.
-    @Redirect(method = "renderSky(FI)V",
-            slice = @Slice(from = @At(value = "FIELD", target = STAR_LIST_FIELD, opcode = Opcodes.GETFIELD)),
+    // Draws the star display list with the same blend state.
+    @WrapOperation(method = "renderSky(FI)V",
+            slice = @Slice(from = @At(value = "FIELD", target = STAR_LIST_FIELD, opcode = Opcodes.GETFIELD),
+                    to = @At(value = "INVOKE", target = WORLD_HORIZON)),
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/client/renderer/GlStateManager;callList(I)V", ordinal = 0),
             require = 0)
-    private void impetus$suppressStarList(int list) {
-        if (VanillaFeatureToggles.shouldRenderStars()) {
-            GlStateManager.callList(list);
+    private void impetus$drawStarList(int list, Operation<Void> original) {
+        impetus$drawStars(() -> original.call(list));
+    }
+
+    @Unique
+    private static void impetus$drawStars(Runnable draw) {
+        if (!VanillaFeatureToggles.shouldRenderStars()) {
+            return;
+        }
+        if (Umbra.getRenderingPipeline() != null) {
+            draw.run();
+            return;
+        }
+
+        // Scope raw GL changes so the state manager's blend cache stays valid.
+        GL11.glPushAttrib(GL11.GL_COLOR_BUFFER_BIT);
+        try {
+            GL11.glEnable(GL11.GL_BLEND);
+            GL14.glBlendEquation(GL14.GL_FUNC_ADD);
+            GL14.glBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ONE, GL11.GL_ZERO);
+            draw.run();
+        } finally {
+            GL11.glPopAttrib();
+        }
+    }
+
+    // The final lower-sky draw uses a display list even when only the VBO was built.
+    @WrapOperation(method = "renderSky(FI)V",
+            slice = @Slice(from = @At(value = "INVOKE", target = "Lnet/minecraft/world/WorldProvider;isSkyColored()Z")),
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/GlStateManager;callList(I)V"),
+            require = 0)
+    private void impetus$drawLowerSky(int list, Operation<Void> original) {
+        if (!this.vboEnabled || this.sky2VBO == null) {
+            if (list > 0) {
+                original.call(list);
+            }
+            return;
+        }
+
+        VertexBuffer buffer = this.sky2VBO;
+        buffer.bindBuffer();
+        GlStateManager.glEnableClientState(GL11.GL_VERTEX_ARRAY);
+        try {
+            GlStateManager.glVertexPointer(3, GL11.GL_FLOAT, 3 * Float.BYTES, 0);
+            buffer.drawArrays(GL11.GL_QUADS);
+        } finally {
+            buffer.unbindBuffer();
+            GlStateManager.glDisableClientState(GL11.GL_VERTEX_ARRAY);
         }
     }
 

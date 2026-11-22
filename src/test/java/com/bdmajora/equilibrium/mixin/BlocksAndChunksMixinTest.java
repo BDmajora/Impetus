@@ -5,16 +5,12 @@ import com.bdmajora.equilibrium.common.crafting.CraftingCache;
 import com.bdmajora.equilibrium.common.hopper.HopperInventoryCache;
 import com.bdmajora.equilibrium.common.world.TileEntityAccess;
 import com.bdmajora.equilibrium.mixin.ai.goal_selector.EntityAITasksMixin;
-import com.bdmajora.equilibrium.mixin.ai.pathfinding_chunk_load.ChunkCacheMixin;
-import com.bdmajora.equilibrium.mixin.ai.pathfinding_chunk_load.PathNavigateMixin;
-import com.bdmajora.equilibrium.common.ai.NavigationChunkGuard;
 import com.bdmajora.equilibrium.mixin.alloc.entity_tracker.EntityTrackerEntryMixin;
 import com.bdmajora.equilibrium.mixin.block.crafting_cache.CraftingManagerMixin;
 import com.bdmajora.equilibrium.mixin.block.furnace_recipes.FurnaceRecipesMixin;
 import com.bdmajora.equilibrium.mixin.block.hopper.TileEntityHopperMixin;
 import com.bdmajora.equilibrium.mixin.block.redstone_wire.BlockRedstoneWireMixin;
 import com.bdmajora.equilibrium.mixin.block.spawner_check_cache.MobSpawnerBaseLogicMixin;
-import com.bdmajora.equilibrium.mixin.chunk.no_validation.ChunkMixin;
 import com.bdmajora.equilibrium.mixin.collections.mob_spawning.WorldEntitySpawnerMixin;
 import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
@@ -70,7 +66,6 @@ class BlocksAndChunksMixinTest {
     @AfterEach
     void forgetStubs() {
         ShadowStubs.clear();
-        NavigationChunkGuard.set(false);
     }
 
     @Test
@@ -99,41 +94,6 @@ class BlocksAndChunksMixinTest {
         var other = Mixins.ci();
         Mixins.call(looks, "equilibrium$dropLookTasks", 1, mock(EntityAIBase.class), other);
         assertFalse(other.isCancelled());
-    }
-
-    @Test
-    void pathfindingOnlySeesLoadedChunksWhileNavigating() {
-        PathNavigateMixin navigate = Mixins.instance(PathNavigateMixin.class);
-        ChunkCacheMixin cache = Mixins.instance(ChunkCacheMixin.class);
-        World world = mock(World.class);
-        Mixins.set(world, "isRemote", false);
-        IChunkProvider provider = mock(IChunkProvider.class);
-        when(world.getChunkProvider()).thenReturn(provider);
-        Chunk loaded = mock(Chunk.class);
-        when(provider.getLoadedChunk(1, 2)).thenReturn(loaded);
-        Chunk generated = mock(Chunk.class);
-
-        // Outside a path search the original lookup runs
-        int[] originals = new int[1];
-        com.llamalad7.mixinextras.injector.wrapoperation.Operation<Chunk> original = args -> {
-            originals[0]++;
-            return generated;
-        };
-        assertSame(generated, Mixins.call(cache, "equilibrium$loadedOnlyWhileNavigating", world, 1, 2, original));
-        // The navigation flag is set for the length of the ChunkCache construction
-        com.llamalad7.mixinextras.injector.wrapoperation.Operation<ChunkCache> building = args -> {
-            assertTrue(NavigationChunkGuard.isNavigating());
-            assertSame(loaded, Mixins.call(cache, "equilibrium$loadedOnlyWhileNavigating", world, 1, 2, original));
-            assertNull(Mixins.call(cache, "equilibrium$loadedOnlyWhileNavigating", world, 3, 4, original));
-            return null;
-        };
-        Mixins.call(navigate, "equilibrium$flagNavigationCache", world, BlockPos.ORIGIN, BlockPos.ORIGIN, 1, building);
-        assertFalse(NavigationChunkGuard.isNavigating());
-        assertEquals(1, originals[0]);
-        // Checks a client world.
-        Mixins.set(world, "isRemote", true);
-        NavigationChunkGuard.set(true);
-        assertSame(generated, Mixins.call(cache, "equilibrium$loadedOnlyWhileNavigating", world, 1, 2, original));
     }
 
     @Test
@@ -372,44 +332,4 @@ class BlocksAndChunksMixinTest {
         Mixins.call(spawner, "equilibrium$remember", Mixins.<Boolean>cir(true));
     }
 
-    @Test
-    void chunkReadsSkipTheDebugAndValidationWork() {
-        ChunkMixin chunk = Mixins.instance(ChunkMixin.class);
-        World world = mock(World.class);
-        when(world.getWorldType()).thenReturn(WorldType.DEFAULT);
-        Mixins.set(chunk, "world", world);
-        ExtendedBlockStorage[] sections = new ExtendedBlockStorage[16];
-        ExtendedBlockStorage section = new ExtendedBlockStorage(0, true);
-        section.set(1, 2, 3, Blocks.STONE.getDefaultState());
-        sections[0] = section;
-        sections[1] = Chunk.NULL_BLOCK_STORAGE;
-        Mixins.set(chunk, "storageArrays", sections);
-        Mixins.call(chunk, "equilibrium$resolveWorldType", Mixins.ci());
-        assertEquals(Blocks.STONE.getDefaultState(), chunk.getBlockState(1, 2, 3));
-        assertEquals(Blocks.AIR.getDefaultState(), chunk.getBlockState(1, 18, 3));
-        assertEquals(Blocks.AIR.getDefaultState(), chunk.getBlockState(1, -1, 3));
-        assertEquals(Blocks.AIR.getDefaultState(), chunk.getBlockState(1, 300, 3));
-        // A read that throws is still reported with vanilla's crash report
-        Mixins.set(chunk, "storageArrays", null);
-        assertThrows(net.minecraft.util.ReportedException.class, () -> chunk.getBlockState(1, 2, 3));
-
-        // Checks the debug world.
-        when(world.getWorldType()).thenReturn(WorldType.DEBUG_ALL_BLOCK_STATES);
-        Mixins.call(chunk, "equilibrium$resolveWorldType", Mixins.ci());
-        assertEquals(Blocks.BARRIER.getDefaultState(), chunk.getBlockState(0, 60, 0));
-        assertEquals(Blocks.AIR.getDefaultState(), chunk.getBlockState(0, 50, 0));
-        assertNotNull(chunk.getBlockState(0, 70, 0));
-        // A chunk built without a world reads its sections rather than failing in its constructor
-        Mixins.set(chunk, "world", null);
-        Mixins.set(chunk, "storageArrays", sections);
-        Mixins.call(chunk, "equilibrium$resolveWorldType", Mixins.ci());
-        assertEquals(Blocks.STONE.getDefaultState(), chunk.getBlockState(1, 2, 3));
-
-        // The tile entity map is swapped for the long-keyed one unless Cubic Chunks is present
-        Mc.forge();
-        var mapped = Mixins.instance(com.bdmajora.equilibrium.mixin.chunk.tile_entity_map.ChunkMixin.class);
-        Mixins.set(mapped, "tileEntities", new HashMap<BlockPos, net.minecraft.tileentity.TileEntity>());
-        Mixins.call(mapped, "equilibrium$useLongKeyedMap", world, 0, 0, Mixins.ci());
-        assertInstanceOf(BlockPosLongMap.class, Mixins.get(mapped, "tileEntities"));
-    }
 }

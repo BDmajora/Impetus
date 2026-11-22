@@ -44,14 +44,4 @@ class LocationMixinsTest {
         assertSame(path, Mixins.get(location, "path"));
     }
 
-    @Test
-    void theVariantOfAModelLocationIsInternedWhole() {
-        ModelCaches.open();
-        String variant = ModelCaches.VARIANTS.deduplicate("inventory");
-
-        ModelResourceLocationMixin location = Mixins.instance(ModelResourceLocationMixin.class);
-        Mixins.set(location, "variant", new String("inventory"));
-        Mixins.call(location, "coarctatio$internVariant", 0, new String[0], Mixins.ci());
-        assertSame(variant, Mixins.get(location, "variant"));
-    }
 }

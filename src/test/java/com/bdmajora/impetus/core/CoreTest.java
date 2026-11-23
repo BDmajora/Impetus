@@ -69,6 +69,7 @@ class CoreTest {
             ImpetusLoadingPlugin plugin = new ImpetusLoadingPlugin();
             chain.verify(TransformerChain::makeConcurrent);
             registrar.verify(ImpetusMixinRegistrar::hijackSupersededLighting);
+            registrar.verify(ImpetusMixinRegistrar::suppressVanillaFrustumFix);
             registrar.verify(ImpetusMixinRegistrar::queueImpetusConfigs);
             linux.verifyNoInteractions();
             plugin.injectData(Map.of());

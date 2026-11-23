@@ -17,8 +17,10 @@ final class ImpetusMixinRegistrar {
 
     // Fulgor logger.
     private static final Logger FULGOR_LOGGER = LogManager.getLogger("Fulgor");
+    private static final Logger LOGGER = LogManager.getLogger("Impetus");
 
     private static final Map<String, String> SUPERSEDED_LIGHTING_MODS = supersededLightingMods();
+    private static final String VANILLA_FRUSTUM_FIX = "mixins/bugfixes/mixins.world.culling.frustum.json";
 
     // Creates an impetus mixin registrar with default state.
     private ImpetusMixinRegistrar() { }
@@ -38,6 +40,16 @@ final class ImpetusMixinRegistrar {
     static void queueImpetusConfigs() {
         for (String config : mixinConfigs()) {
             Mixins.addConfiguration(config);
+        }
+    }
+
+    // Universal Tweaks redirects a Set.size() call in vanilla setupTerrain.
+    static void suppressVanillaFrustumFix() {
+        Config.blacklist(VANILLA_FRUSTUM_FIX);
+        // Blacklisting also needs to cover a config that was queued by an earlier coremod.
+        boolean queued = Mixins.getConfigs().removeIf(config -> VANILLA_FRUSTUM_FIX.equals(config.getName()));
+        if (queued || ModDiscoverer.isModPresent("universaltweaks")) {
+            LOGGER.info("Universal Tweaks' vanilla frustum patch is disabled because Impetus renders terrain");
         }
     }
 

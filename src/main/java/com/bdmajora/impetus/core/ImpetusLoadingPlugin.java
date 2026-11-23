@@ -13,6 +13,7 @@ public class ImpetusLoadingPlugin implements IFMLLoadingPlugin {
     public ImpetusLoadingPlugin() {
         TransformerChain.makeConcurrent();
         ImpetusMixinRegistrar.hijackSupersededLighting();
+        ImpetusMixinRegistrar.suppressVanillaFrustumFix();
         ImpetusMixinRegistrar.queueImpetusConfigs();
         com.bdmajora.impetus.engine.impl.compat.probe.GraphicsAdapterProbe.prefetch();
     }

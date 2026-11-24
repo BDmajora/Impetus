@@ -19,6 +19,7 @@
     "async.WorldParallelTickMixin",
     "async.WorldServerParallelMixin",
     "async.WorldWriteLockMixin",
+    "compat.BetterNetherStructureManagerMixin",
     "misc.EntityDataManagerTypeGuardMixin",
     "misc.FramebufferBlitBlendMixin",
     "misc.MinecraftServerMixin",

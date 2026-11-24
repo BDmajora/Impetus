@@ -2,6 +2,7 @@ package com.bdmajora.impetus.mixin;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import com.bdmajora.impetus.core.HbmCompat;
 import com.bdmajora.impetus.core.VintageFixCompat;
 import com.bdmajora.impetus.engine.impl.util.MixinClassValidator;
 import org.objectweb.asm.tree.ClassNode;
@@ -24,6 +25,8 @@ public class ImpetusVintageMixinPlugin implements IMixinConfigPlugin {
     @Override
     public void onLoad(String mixinPackage) {
         VintageFixCompat.claimChunkRenderer();
+        // Every config is queued and none is prepared yet while the first one loads its plugin.
+        HbmCompat.withdrawTerrainHook();
     }
 
     // Returns the ref mapper config.

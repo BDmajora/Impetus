@@ -92,6 +92,15 @@ public final class ModCompatibility {
                 "mixin.world.block_entity_ticking",
                 "mixin.world.explosions"));
 
+        // VS overwrites getEntitiesInAABBexcluding to also search the ship under the box, and redirects getBlockDensity's
+        // rayTraceBlocks so explosions see ship blocks. Equilibrium overwrites both at the same priority, so one side silently
+        // replaced the other: ship entities went missing from lookups, or explosion exposure ignored ships.
+        conflicts.put("valkyrienskies", new Conflict("Valkyrien Skies",
+                "org.valkyrienskies.mod.common.ValkyrienSkiesMod",
+                "it overwrites the same entity lookup and explosion exposure raycast to make them see ships",
+                "mixin.entity.fast_retrieval",
+                "mixin.world.explosions.entity_raycast"));
+
         conflicts.put("betterfps", new Conflict("BetterFps",
                 "guichaguri.betterfps.tweaker.BetterFpsTweaker",
                 "its math transformer replaces the same sine table",
@@ -107,10 +116,15 @@ public final class ModCompatibility {
 
     // Returns the overrides of every present mod.
     public static List<Override> detect() {
+        return detect(ModCompatibility.class.getClassLoader());
+    }
+
+    // Detection against one loader, so tests can show a marker without putting it on the shared class path.
+    static List<Override> detect(ClassLoader loader) {
         List<Override> overrides = new ArrayList<>();
 
         for (Conflict conflict : CONFLICTS) {
-            if (!isClassPresent(conflict.marker)) {
+            if (!isClassPresent(conflict.marker, loader)) {
                 continue;
             }
 
@@ -125,12 +139,17 @@ public final class ModCompatibility {
         return overrides;
     }
 
-    // Returns whether the class can be found.
-    private static boolean isClassPresent(String name) {
+    // Looks the class file up instead of loading it: a marker can be a @Mod class, and loading one while coremods run
+    // would define it before Mixin and the mod's own transformers are ready for it.
+    // A lookup that throws counts as absent: the mixin plugin calls this while coremods load, where a throw ends the launch.
+    private static boolean isClassPresent(String name, ClassLoader loader) {
+        if (loader == null) {
+            return false;
+        }
         try {
-            Class.forName(name, false, ModCompatibility.class.getClassLoader());
-            return true;
-        } catch (ClassNotFoundException | LinkageError e) {
+            return loader.getResource(name.replace('.', '/') + ".class") != null;
+        } catch (RuntimeException e) {
+            Equilibrium.LOGGER.warn("Could not look for {}; treating it as absent", name, e);
             return false;
         }
     }

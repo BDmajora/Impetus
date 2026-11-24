@@ -1,6 +1,7 @@
 package com.bdmajora.extras.mixin.lightmap;
 
 import com.bdmajora.extras.Extras;
+import com.bdmajora.extras.client.LightmapGamma;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.client.renderer.EntityRenderer;
@@ -72,7 +73,6 @@ public abstract class EntityRendererLightmapMixin {
     // Packs every input of the lightmap into one key.
     private static long impetus$key(World world, EntityPlayerSP player) {
         long sun = (long) (world.getSunBrightness(1.0F) * 255.0F) & 0xFF;
-        long gamma = (long) (Minecraft.getMinecraft().gameSettings.gammaSetting * 255.0F) & 0x1FF;
         long lightning = world.getLastLightningBolt() > 0 ? 1L : 0L;
         long dimension = world.provider.getDimensionType().getId() == 1 ? 1L : 0L;
         long nightVision = 0L;
@@ -81,7 +81,11 @@ public abstract class EntityRendererLightmapMixin {
             int duration = effect.getDuration();
             nightVision = duration > 200 ? 0x3FFL : (0x200L | (duration & 0xFF));
         }
-        return sun | gamma << 8 | lightning << 17 | dimension << 18 | nightVision << 19;
+        // Read through any gamma hook another coremod put into updateLightmap, or the key misses its changes.
+        // Kept as exact float bits: vanilla extrapolates gamma past 1, and the old 9 bit (gamma * 255) field wrapped every ~2.0,
+        // so fullbright values collided with dark ones and the cache kept the wrong lightmap.
+        long gamma = Float.floatToIntBits(LightmapGamma.read(Minecraft.getMinecraft())) & 0xFFFFFFFFL;
+        return sun | lightning << 8 | dimension << 9 | nightVision << 10 | gamma << 20;
     }
 
     // Returns whether a dimension supplies its own lightmap colors.

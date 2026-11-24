@@ -23,6 +23,7 @@ import com.bdmajora.impetus.engine.impl.gl.device.RenderDevice;
 import com.bdmajora.impetus.engine.impl.render.terrain.SimpleWorldRenderer;
 import com.bdmajora.impetus.engine.impl.render.viewport.ViewportProvider;
 import com.bdmajora.impetus.impl.compat.littletiles.LittleTilesCompat;
+import com.bdmajora.impetus.impl.compat.thaumicaugmentation.ThaumicAugmentationCompat;
 import com.bdmajora.impetus.impl.render.clouds.SodiumCloudRenderer;
 import com.bdmajora.impetus.umbra.Umbra;
 import com.bdmajora.impetus.umbra.pipeline.UmbraRenderingPipeline;
@@ -324,6 +325,9 @@ public abstract class RenderGlobalMixin implements SimpleWorldRenderer.Provider<
                 TileEntityRendererDispatcher.instance.drawBatch(pass);
             }
         }
+
+        // The cancel below skips the vanilla tail, where Thaumic Augmentation's transformer put its shader TESR drain.
+        ThaumicAugmentationCompat.onRenderEntities(pass);
 
         this.mc.entityRenderer.disableLightmap();
         this.mc.profiler.endSection();

@@ -167,7 +167,6 @@ class EquilibriumCommonTest {
         Statics.set(CraftingManager.class, "REGISTRY", registry);
         try {
             Mixins.set(CraftingCache.class, "registrySize", -1);
-            Mixins.set(CraftingCache.class, "lastMatch", null);
             Mixins.<Map<?, ?>>get(CraftingCache.class, "CACHE").clear();
             World world = mock(World.class);
             IRecipe apple = mock(IRecipe.class);
@@ -188,11 +187,11 @@ class EquilibriumCommonTest {
             Mockito.verify(apple, Mockito.times(2)).matches(apples, world);
             assertSame(stone, CraftingCache.findMatchingRecipe(stones, world));
             assertSame(apple, CraftingCache.findMatchingRecipe(apples, world));
-            Mockito.verify(stone, Mockito.times(1)).matches(apples, world);
+            Mockito.verify(stone, Mockito.never()).matches(apples, world);
             // Checks a cached miss.
             assertNull(CraftingCache.findMatchingRecipe(empty, world));
             assertNull(CraftingCache.findMatchingRecipe(empty, world));
-            Mockito.verify(apple, Mockito.times(3)).matches(empty, world);
+            Mockito.verify(apple, Mockito.times(1)).matches(empty, world);
             Mockito.verify(stone, Mockito.times(1)).matches(empty, world);
             // A cached recipe that stops matching falls back to a scan
             when(stone.matches(stones, world)).thenReturn(false);
@@ -207,7 +206,7 @@ class EquilibriumCommonTest {
             // A registry size change drops everything
             registry.register(2, new ResourceLocation("test", "third"), mock(IRecipe.class));
             assertNull(CraftingCache.findMatchingRecipe(empty, world));
-            Mockito.verify(apple, Mockito.times(4)).matches(empty, world);
+            Mockito.verify(apple, Mockito.times(2)).matches(empty, world);
             // Filling past the capacity evicts the eldest shape
             Map<?, ?> cache = Mixins.get(CraftingCache.class, "CACHE");
             for (int i = 0; i < 4100; i++) {
@@ -225,7 +224,6 @@ class EquilibriumCommonTest {
         } finally {
             Statics.set(CraftingManager.class, "REGISTRY", original);
             Mixins.set(CraftingCache.class, "registrySize", -1);
-            Mixins.set(CraftingCache.class, "lastMatch", null);
         }
     }
 
@@ -266,5 +264,43 @@ class EquilibriumCommonTest {
         corrupt[40000] += 1f;
         assertThrows(IllegalStateException.class, () -> CompactSineLUT.init(corrupt));
         CompactSineLUT.init(vanilla);
+    }
+
+    // When two recipes fit a grid the first registered one wins, whatever was crafted before.
+    @Test
+    void anEarlierCraftDoesNotChangeWhichRecipeWins() {
+        RegistryNamespaced<ResourceLocation, IRecipe> original = CraftingManager.REGISTRY;
+        RegistryNamespaced<ResourceLocation, IRecipe> registry = new RegistryNamespaced<>();
+        Statics.set(CraftingManager.class, "REGISTRY", registry);
+        try {
+            Mixins.set(CraftingCache.class, "registrySize", -1);
+            Mixins.<Map<?, ?>>get(CraftingCache.class, "CACHE").clear();
+            World world = mock(World.class);
+            IRecipe specific = mock(IRecipe.class);
+            IRecipe general = mock(IRecipe.class);
+            registry.register(0, new ResourceLocation("test", "specific"), specific);
+            registry.register(1, new ResourceLocation("test", "general"), general);
+            for (boolean tagged : new boolean[] {false, true}) {
+                InventoryCrafting onlyGeneral = new InventoryCrafting(mock(Container.class), 2, 2);
+                InventoryCrafting both = new InventoryCrafting(mock(Container.class), 2, 2);
+                ItemStack first = new ItemStack(Blocks.STONE);
+                ItemStack second = new ItemStack(Items.APPLE);
+                if (tagged) {
+                    first.setTagCompound(new NBTTagCompound());
+                    second.setTagCompound(new NBTTagCompound());
+                }
+                onlyGeneral.setInventorySlotContents(0, first);
+                both.setInventorySlotContents(0, second);
+                when(general.matches(onlyGeneral, world)).thenReturn(true);
+                when(general.matches(both, world)).thenReturn(true);
+                when(specific.matches(both, world)).thenReturn(true);
+                assertSame(general, CraftingCache.findMatchingRecipe(onlyGeneral, world));
+                assertSame(specific, CraftingCache.findMatchingRecipe(both, world));
+                assertSame(general, CraftingCache.findMatchingRecipe(onlyGeneral, world));
+            }
+        } finally {
+            Statics.set(CraftingManager.class, "REGISTRY", original);
+            Mixins.set(CraftingCache.class, "registrySize", -1);
+        }
     }
 }

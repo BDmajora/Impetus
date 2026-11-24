@@ -117,6 +117,9 @@ class FulgorCoreTest {
 
     @Test
     void theStatisticsReportBothEngines() {
+        // The counters are shared by every test of the process
+        AsyncLightStats.BLOCK_CHANGES.reset();
+        AsyncLightStats.INITIAL_LIGHTS.reset();
         FulgorConfig.get().asyncLightUpdates = false;
         Fulgor.recordScheduled();
         Fulgor.recordScheduled();

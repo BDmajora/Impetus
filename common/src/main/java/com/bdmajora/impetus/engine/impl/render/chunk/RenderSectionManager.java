@@ -786,10 +786,10 @@ public abstract class RenderSectionManager {
         boolean changed = render.setInfo(info);
 
         if (changed) {
-            if (!(info instanceof MinecraftBuiltRenderSectionData<?, ?> data)) {
-                this.sectionsWithGlobalEntities.remove(render);
-            } else if (!data.globalBlockEntities.isEmpty()) {
+            if (info instanceof MinecraftBuiltRenderSectionData<?, ?> data && !data.globalBlockEntities.isEmpty()) {
                 this.sectionsWithGlobalEntities.add(render);
+            } else {
+                this.sectionsWithGlobalEntities.remove(render);
             }
         }
 

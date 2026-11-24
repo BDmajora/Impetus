@@ -51,6 +51,7 @@ class BoosterTest {
         gl.put(GL.class, TestCaps.install(caps));
         reset();
         StreamingUploader.enabled = true;
+        StreamingUploader.beginGameLoop();
     }
 
     @AfterEach
@@ -71,6 +72,7 @@ class BoosterTest {
         java.util.Arrays.fill(Mixins.<long[]>get(StreamingUploader.class, "fences"), 0L);
         Mixins.<java.util.Map<?, ?>>get(StreamingUploader.class, "VERTEX_ARRAYS").clear();
         StreamingUploader.formatCache = false;
+        Mixins.set(StreamingUploader.class, "renderThread", Thread.currentThread());
     }
 
     @SuppressWarnings("unchecked")
@@ -260,6 +262,51 @@ class BoosterTest {
         gl(GL11.class).verify(() -> GL11.glDrawArrays(GL11.GL_QUADS, (int) first, 4));
         assertEquals(30, StreamingUploader.alignUp(29, 10));
         assertEquals(30, StreamingUploader.alignUp(30, 10));
+    }
+
+    @Test
+    void theModelFormatDrawnWhileLoadingLeavesNoVertexArrayBehind() {
+        // NTM's loading format and the entity model format are one cache key
+        assertEquals(DefaultVertexFormats.POSITION_TEX_NORMAL, DefaultVertexFormats.OLDMODEL_POSITION_TEX_NORMAL);
+        StreamingUploader.formatCache = true;
+        lack("OpenGL44");
+        lack("GL_ARB_buffer_storage");
+        Mixins.set(StreamingUploader.class, "renderThread", null);
+        gl(GL15.class).when(GL15::glGenBuffers).thenReturn(7);
+        gl(GL30.class).when(GL30::glGenVertexArrays).thenReturn(11);
+        assertFalse(StreamingUploader.draw(model(DefaultVertexFormats.POSITION_TEX_NORMAL)));
+        assertEquals(-1, (int) Mixins.<Integer>get(StreamingUploader.class, "buffer"));
+        gl(GL30.class).verify(GL30::glGenVertexArrays, Mockito.never());
+
+        // The first model drawn in the game builds its array in the game's own context
+        StreamingUploader.beginGameLoop();
+        assertTrue(StreamingUploader.draw(model(DefaultVertexFormats.OLDMODEL_POSITION_TEX_NORMAL)));
+        gl(GL30.class).verify(GL30::glGenVertexArrays, Mockito.times(1));
+        gl(GL11.class).verify(() -> GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, 3));
+    }
+
+    @Test
+    void onlyTheThreadThatRunsTheGameLoopStreams() throws Exception {
+        boolean[] handled = {true};
+        Thread other = new Thread(() -> {
+            StreamingUploader.beginGameLoop();
+            handled[0] = StreamingUploader.draw(quad());
+        });
+        other.start();
+        other.join();
+        assertFalse(handled[0]);
+        assertSame(Thread.currentThread(), Mixins.<Thread>get(StreamingUploader.class, "renderThread"));
+    }
+
+    // Returns a triangle of the format.
+    private static BufferBuilder model(net.minecraft.client.renderer.vertex.VertexFormat format) {
+        BufferBuilder builder = new BufferBuilder(64);
+        builder.begin(GL11.GL_TRIANGLES, format);
+        for (int i = 0; i < 3; i++) {
+            builder.pos(i, 0, 0).tex(0, 0).normal(0, 1, 0).endVertex();
+        }
+        builder.finishDrawing();
+        return builder;
     }
 
     @Test

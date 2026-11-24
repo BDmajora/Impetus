@@ -36,8 +36,9 @@ public final class TileEntityLightTicker {
             return;
         }
 
+        // A paused world keeps unloaded block entities in its list, and ticking one would track it again
         WorldClient world = Minecraft.getMinecraft().world;
-        if (world == null) {
+        if (world == null || Minecraft.getMinecraft().isGamePaused()) {
             return;
         }
 

@@ -37,13 +37,27 @@ class LightQueueTest {
         // Checks a task in flight.
         assertTrue(queue.hasPendingWork(0, 0));
         assertTrue(queue.hasPendingLightWork(ChunkPos.asLong(0, 0)));
-        assertNotNull(queue.getPendingWorkFuture(ChunkPos.asLong(0, 0)));
+        assertNotNull(queue.getInFlightFuture(ChunkPos.asLong(0, 0)));
         queue.completeTask(first);
         assertTrue(first.onComplete.isDone());
         assertFalse(queue.hasPendingWork(0, 0));
         assertNotNull(queue.removeFirstBlockChangeTask());
         assertNull(queue.removeFirstBlockChangeTask());
-        assertNull(queue.getPendingWorkFuture(ChunkPos.asLong(9, 9)));
+        assertNull(queue.getInFlightFuture(ChunkPos.asLong(9, 9)));
+        // Queued work is not in flight, and only the load setup may be dropped without leaving the light wrong
+        long key = ChunkPos.asLong(5, 5);
+        assertFalse(queue.hasQueuedLightWork(key));
+        queue.queueChunkLoadInit(5, 5, null, null);
+        assertNull(queue.getInFlightFuture(key));
+        assertFalse(queue.hasQueuedLightWork(key));
+        queue.queueEdgeCheckAllSections(5, 5, true);
+        assertTrue(queue.hasQueuedLightWork(key));
+        queue.removeChunk(5, 5);
+        queue.queueEdgeCheckAllSections(5, 5, false);
+        assertTrue(queue.hasQueuedLightWork(key));
+        queue.removeChunk(5, 5);
+        queue.queueBlockChange(80, 64, 80);
+        assertTrue(queue.hasQueuedLightWork(key));
     }
 
     @Test

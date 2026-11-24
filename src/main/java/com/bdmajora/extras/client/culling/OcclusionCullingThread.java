@@ -41,9 +41,10 @@ public final class OcclusionCullingThread extends Thread {
 
     // Starts the thread when it is not running.
     public static void ensureRunning() {
-        if (instance == null) {
+        // An interrupted worker ends, and without another one the inbox would collect chunks forever
+        if (instance == null || instance.getState() == State.TERMINATED) {
             synchronized (OcclusionCullingThread.class) {
-                if (instance == null) {
+                if (instance == null || instance.getState() == State.TERMINATED) {
                     OcclusionCullingThread thread = new OcclusionCullingThread();
                     thread.start();
                     instance = thread;

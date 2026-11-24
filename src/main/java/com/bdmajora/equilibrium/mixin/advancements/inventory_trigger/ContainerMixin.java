@@ -36,7 +36,9 @@ public abstract class ContainerMixin {
     @Inject(method = "detectAndSendChanges", at = @At(value = "INVOKE", target = "Lnet/minecraft/util/NonNullList;set(ILjava/lang/Object;)Ljava/lang/Object;", shift = At.Shift.AFTER))
     private void equilibrium$recordPrevious(CallbackInfo ci, @Local(ordinal = 1) ItemStack replacement, @Share("previous") LocalRef<ItemStack> ref) {
         ItemStack previous = ref.get();
-        if (previous != null && ItemStack.areItemsEqual(previous, replacement)) {
+        // A stack whose tag changed counts as new, as predicates can test the tag
+        if (previous != null && ItemStack.areItemsEqual(previous, replacement)
+                && ItemStack.areItemStackTagsEqual(previous, replacement)) {
             ((PreviousStackSize) (Object) replacement).equilibrium$setPreviousCount(previous.getCount());
         }
     }

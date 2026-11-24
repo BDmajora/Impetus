@@ -573,6 +573,11 @@ class DynamicLightsCoreTest {
         Mixins.set(client, "world", world);
         instance.onClientTick(end);
         Mockito.verify((DynamicLightSource) lit).impetus$dynamicLightTick();
+        // A paused world may still list an unloaded block entity, which must not be tracked again
+        when(client.isGamePaused()).thenReturn(true);
+        instance.onClientTick(end);
+        Mockito.verify((DynamicLightSource) lit).impetus$dynamicLightTick();
+        when(client.isGamePaused()).thenReturn(false);
         // A list that shrinks underneath the walk stops it rather than throwing
         List<TileEntity> shrinking = mock();
         when(shrinking.size()).thenReturn(4);

@@ -211,8 +211,8 @@ class FulgorAsyncMixinTest {
         Mockito.verify(manager).queueChunkLoadInit(Mockito.anyInt(), Mockito.anyInt(), any(), any());
         assertEquals(5, sections[4].getBlockLight().get(1, 2, 3));
 
-        // Unloading waits for the chunk's pending work and then takes it out of the queues
-        when(manager.awaitPendingWork(Mockito.anyInt(), Mockito.anyInt())).thenReturn(false);
+        // A chunk unloading with unfinished light is no longer ready and leaves the queues
+        when(manager.finishForUnload(Mockito.anyInt(), Mockito.anyInt())).thenReturn(false);
         chunk.fulgor$setLightReady(true);
         Mixins.call(chunk, "fulgor$onUnload", Mixins.ci());
         assertFalse(chunk.fulgor$isLightReady());

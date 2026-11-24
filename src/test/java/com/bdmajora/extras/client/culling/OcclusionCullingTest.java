@@ -816,4 +816,25 @@ class OcclusionCullingTest {
         Mixins.set(client, "world", mock(WorldClient.class));
         assertTrue(OcclusionCulling.status().startsWith("Occlusion: "), OcclusionCulling.status());
     }
+
+    // An interrupted worker ends. Without a replacement nothing drains the inbox, which then keeps every chunk ever loaded.
+    @Test
+    void aWorkerThatEndedIsReplaced() throws InterruptedException {
+        OcclusionCullingThread ended = Mixins.construct(OcclusionCullingThread.class);
+        ended.start();
+        ended.interrupt();
+        ended.join(5000L);
+        assertEquals(Thread.State.TERMINATED, ended.getState());
+        Mixins.set(OcclusionCullingThread.class, "instance", ended);
+        OcclusionCullingThread.ensureRunning();
+        OcclusionCullingThread replacement = Mixins.get(OcclusionCullingThread.class, "instance");
+        try {
+            assertNotSame(ended, replacement);
+            OcclusionCullingThread.ensureRunning();
+            assertSame(replacement, Mixins.get(OcclusionCullingThread.class, "instance"));
+        } finally {
+            replacement.interrupt();
+            replacement.join(5000L);
+        }
+    }
 }

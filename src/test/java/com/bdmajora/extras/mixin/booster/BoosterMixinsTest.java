@@ -59,4 +59,13 @@ class BoosterMixinsTest {
         Mixins.call(uploader, "impetus$streamDraw", new BufferBuilder(16), vanilla);
         assertFalse(vanilla.isCancelled());
     }
+
+    @Test
+    void theGameLoopOpensTheUploader() {
+        Mixins.set(StreamingUploader.class, "renderThread", null);
+        MinecraftGameLoopMixin loop = Mixins.instance(MinecraftGameLoopMixin.class);
+        Mixins.call(loop, "impetus$beginStreaming", Mixins.ci());
+        assertSame(Thread.currentThread(), Mixins.<Thread>get(StreamingUploader.class, "renderThread"));
+        Mixins.set(StreamingUploader.class, "renderThread", null);
+    }
 }

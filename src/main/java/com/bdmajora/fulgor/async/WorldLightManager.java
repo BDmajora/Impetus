@@ -320,46 +320,34 @@ public final class WorldLightManager {
         return (this.skyQueue != null && this.skyQueue.hasPendingLightWork(key)) || this.blockQueue.hasPendingLightWork(key);
     }
 
-    // Waits for the pending work.
-    public boolean awaitPendingWork(int cx, int cz) {
+    // Waits for a task already running on an unloading chunk and returns whether the chunk's light is complete.
+    // Queued work is never waited for: it runs behind the whole backlog, and the server unloads up to 100 chunks per tick, so
+    // lowering the render distance while chunks were still being lit blocked one tick for up to 100 time limits. A chunk
+    // with unfinished light is saved without it and lit again when it next loads.
+    public boolean finishForUnload(int cx, int cz) {
         long key = ChunkPos.asLong(cx, cz);
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(50L);
-
-        while (true) {
-            Future<Void> pending = getPendingWorkFuture(key);
-            if (pending == null) {
-                return true;
-            }
-            long remaining = deadline - System.nanoTime();
-            if (remaining <= 0L) {
-                break;
-            }
-            try {
-                pending.get(remaining, TimeUnit.NANOSECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                Fulgor.LOGGER.warn("Interrupted while waiting for light work on chunk ({}, {})", cx, cz);
-                return false;
-            } catch (Exception e) {
-                break;
-            }
-        }
-
-        Fulgor.LOGGER.warn("Timed out waiting for light work on chunk ({}, {})", cx, cz);
-        return false;
+        return awaitInFlight(this.skyQueue, key, deadline) && awaitInFlight(this.blockQueue, key, deadline)
+                && !this.initialLighting.hasPending(key)
+                && (this.skyQueue == null || !this.skyQueue.hasQueuedLightWork(key))
+                && !this.blockQueue.hasQueuedLightWork(key);
     }
 
-    // Returns the pending work future.
-    private Future<Void> getPendingWorkFuture(long key) {
-        Future<Void> future = this.skyQueue == null ? null : this.skyQueue.getPendingWorkFuture(key);
-        if (future != null) {
-            return future;
+    // Waits until the deadline for the task a lane is running on a chunk and returns whether none is left.
+    private static boolean awaitInFlight(LightQueue queue, long key, long deadline) {
+        Future<Void> running = queue == null ? null : queue.getInFlightFuture(key);
+        if (running == null) {
+            return true;
         }
-        future = this.blockQueue.getPendingWorkFuture(key);
-        if (future != null) {
-            return future;
+        try {
+            running.get(Math.max(0L, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            Fulgor.LOGGER.warn("Timed out waiting for light work on chunk ({}, {})", (int) key, (int) (key >> 32));
         }
-        return this.initialLighting.getPendingFuture(key);
+        return false;
     }
 
     // Shuts down.

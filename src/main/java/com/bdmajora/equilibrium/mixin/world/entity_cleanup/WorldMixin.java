@@ -9,7 +9,11 @@ import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 
 // Mixin that changes World.
 @Mixin(World.class)
@@ -55,7 +59,7 @@ public abstract class WorldMixin implements UnloadedEntityRemover {
     @Override
     public void equilibrium$removeUnloaded() {
         if (!this.unloadedEntityList.isEmpty()) {
-            this.loadedEntityList.removeAll(this.unloadedEntityList);
+            this.loadedEntityList.removeAll(new HashSet<>(this.unloadedEntityList));
             for (Entity entity : this.unloadedEntityList) {
                 int chunkX = entity.chunkCoordX;
                 int chunkZ = entity.chunkCoordZ;
@@ -72,8 +76,11 @@ public abstract class WorldMixin implements UnloadedEntityRemover {
             for (TileEntity tile : this.tileEntitiesToBeRemoved) {
                 tile.onChunkUnload();
             }
-            this.tickableTileEntities.removeAll(this.tileEntitiesToBeRemoved);
-            this.loadedTileEntityList.removeAll(this.tileEntitiesToBeRemoved);
+            // A list would be searched once per loaded block entity
+            Set<TileEntity> removed = Collections.newSetFromMap(new IdentityHashMap<>());
+            removed.addAll(this.tileEntitiesToBeRemoved);
+            this.tickableTileEntities.removeAll(removed);
+            this.loadedTileEntityList.removeAll(removed);
             this.tileEntitiesToBeRemoved.clear();
         }
     }

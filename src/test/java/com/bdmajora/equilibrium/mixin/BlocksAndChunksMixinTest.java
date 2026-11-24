@@ -2,8 +2,6 @@ package com.bdmajora.equilibrium.mixin;
 
 import com.bdmajora.equilibrium.common.collections.BlockPosLongMap;
 import com.bdmajora.equilibrium.common.crafting.CraftingCache;
-import com.bdmajora.equilibrium.common.hopper.HopperInventoryCache;
-import com.bdmajora.equilibrium.common.world.TileEntityAccess;
 import com.bdmajora.equilibrium.mixin.ai.goal_selector.EntityAITasksMixin;
 import com.bdmajora.equilibrium.mixin.alloc.entity_tracker.EntityTrackerEntryMixin;
 import com.bdmajora.equilibrium.mixin.block.crafting_cache.CraftingManagerMixin;
@@ -104,7 +102,6 @@ class BlocksAndChunksMixinTest {
         Statics.set(CraftingManager.class, "REGISTRY", registry);
         try {
             Mixins.set(CraftingCache.class, "registrySize", -1);
-            Mixins.set(CraftingCache.class, "lastMatch", null);
             Mixins.<Map<?, ?>>get(CraftingCache.class, "CACHE").clear();
             World world = mock(World.class);
             IRecipe recipe = mock(IRecipe.class);
@@ -124,7 +121,6 @@ class BlocksAndChunksMixinTest {
 
             // Checks the grid fallback.
             when(recipe.matches(matrix, world)).thenReturn(false);
-            Mixins.set(CraftingCache.class, "lastMatch", null);
             var empty = Mixins.<NonNullList<ItemStack>>cir();
             Mixins.call(CraftingManagerMixin.class, "equilibrium$cachedRemaining", matrix, world, empty);
             assertEquals(4, empty.getReturnValue().size());
@@ -132,7 +128,6 @@ class BlocksAndChunksMixinTest {
         } finally {
             Statics.set(CraftingManager.class, "REGISTRY", original);
             Mixins.set(CraftingCache.class, "registrySize", -1);
-            Mixins.set(CraftingCache.class, "lastMatch", null);
         }
     }
 
@@ -190,17 +185,13 @@ class BlocksAndChunksMixinTest {
     }
 
     @Test
-    void hoppersResolveBothSidesThroughTheirCaches() {
+    void hoppersResolveTheLiveInventoryOnBothSides() {
         TileEntityHopperMixin hopper = Mixins.instance(TileEntityHopperMixin.class);
-        assertSame(hopper.equilibrium$sourceCache(), hopper.equilibrium$sourceCache());
-        assertSame(hopper.equilibrium$destinationCache(), hopper.equilibrium$destinationCache());
-        assertNotSame(hopper.equilibrium$sourceCache(), hopper.equilibrium$destinationCache());
-
-        World world = Mc.mock(World.class, TileEntityAccess.class);
+        World world = mock(World.class);
         Mixins.set(world, "rand", new Random(1));
         when(world.getBlockState(any())).thenReturn(Blocks.FURNACE.getDefaultState());
         TileEntityFurnace furnace = mock(TileEntityFurnace.class);
-        when(((TileEntityAccess) world).equilibrium$getExistingTileEntity(any())).thenReturn(furnace);
+        when(world.getTileEntity(any())).thenReturn(furnace);
         Mockito.doReturn(world).when(hopper).getWorld();
         Mockito.doReturn(2.0D).when(hopper).getXPos();
         Mockito.doReturn(3.0D).when(hopper).getYPos();
@@ -210,7 +201,20 @@ class BlocksAndChunksMixinTest {
         assertSame(furnace, Mixins.call(hopper, "getInventoryForHopperTransfer"));
         assertSame(furnace, Mixins.call(TileEntityHopperMixin.class, "getSourceInventory", hopper));
 
-        // Checks a hopper without caches.
+        // The neighbouring chunk unloads and reloads: the old furnace is never invalidated, yet nothing may reach it any more
+        assertFalse(furnace.isInvalid());
+        TileEntityFurnace reloaded = mock(TileEntityFurnace.class);
+        when(world.getTileEntity(any())).thenReturn(reloaded);
+        assertSame(reloaded, Mixins.call(hopper, "getInventoryForHopperTransfer"));
+        assertSame(reloaded, Mixins.call(TileEntityHopperMixin.class, "getSourceInventory", hopper));
+        // A block entity that appears after the hopper first looked is found without a block change
+        when(world.getTileEntity(any())).thenReturn(null);
+        when(world.getEntitiesInAABBexcluding(any(), any(), any())).thenReturn(java.util.List.of());
+        assertNull(Mixins.call(hopper, "getInventoryForHopperTransfer"));
+        when(world.getTileEntity(any())).thenReturn(reloaded);
+        assertSame(reloaded, Mixins.call(hopper, "getInventoryForHopperTransfer"));
+
+        // Checks a hopper that is not this mixin.
         TileEntityHopper cartless = mock(TileEntityHopper.class);
         when(cartless.getWorld()).thenReturn(world);
         when(cartless.getXPos()).thenReturn(2.0D);

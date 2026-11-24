@@ -109,7 +109,7 @@ class RecoveryPathsTest {
         assertFalse(coordinator.restartAfterEdgeOverflow(task, 0, 0, "Sky"));
         assertThrows(IllegalArgumentException.class,
                 () -> coordinator.queueRecovery(0, 0, chunk, new Boolean[16], -1));
-        assertNotNull(coordinator.getPendingFuture(ChunkPos.asLong(0, 0)));
+        assertTrue(coordinator.hasPending(ChunkPos.asLong(0, 0)));
         coordinator.removeChunk(0, 0);
         assertFalse(coordinator.hasPending(ChunkPos.asLong(0, 0)));
     }

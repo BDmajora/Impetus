@@ -4,6 +4,7 @@ import com.bdmajora.equilibrium.common.world.ChunkAccess;
 import com.bdmajora.equilibrium.common.world.UnloadedEntityRemover;
 import com.bdmajora.equilibrium.mixin.math.fast_blockpos.BlockPosMixin;
 import com.bdmajora.equilibrium.mixin.math.sine_lut.MathHelperMixin;
+import com.bdmajora.equilibrium.mixin.util.chunk_access.ChunkProviderClientMixin;
 import com.bdmajora.equilibrium.mixin.util.chunk_access.WorldMixin;
 import com.bdmajora.equilibrium.mixin.world.chunk_gen_limit.PlayerChunkMapMixin;
 import com.bdmajora.equilibrium.mixin.world.entity_cleanup.WorldServerMixin;
@@ -26,7 +27,9 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.init.Blocks;
 import net.minecraft.server.management.PlayerChunkMap;
 import net.minecraft.tileentity.TileEntity;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
@@ -107,29 +110,6 @@ class WorldMixinTest {
         assertEquals(0, inlineHeight.getHeight(100, 100));
         Mockito.doReturn(63).when((World) (Object) inlineHeight).getSeaLevel();
         assertEquals(64, inlineHeight.getHeight(-30000001, 0));
-    }
-
-    @Test
-    void existingTileEntitiesAreReadWithoutCreatingThem() {
-        var world = Mixins.instanceWith(com.bdmajora.equilibrium.mixin.util.block_entity_retrieval.WorldMixin.class, ChunkAccess.class);
-        BlockPos pos = new BlockPos(1, 2, 3);
-        Chunk chunk = mock(Chunk.class);
-        TileEntity tile = mock(TileEntity.class);
-        Mockito.doReturn(false).when((World) (Object) world).isOutsideBuildHeight(pos);
-        Mockito.doReturn(chunk).when((ChunkAccess) world).equilibrium$getLoadedChunk(0, 0);
-        when(chunk.getTileEntity(pos, Chunk.EnumCreateEntityType.CHECK)).thenReturn(tile);
-        assertSame(tile, world.equilibrium$getExistingTileEntity(pos));
-        // An invalidated tile entity is not handed out
-        when(tile.isInvalid()).thenReturn(true);
-        assertNull(world.equilibrium$getExistingTileEntity(pos));
-        when(chunk.getTileEntity(pos, Chunk.EnumCreateEntityType.CHECK)).thenReturn(null);
-        assertNull(world.equilibrium$getExistingTileEntity(pos));
-        // Checks out of range and unloaded reads.
-        Mockito.doReturn(true).when((World) (Object) world).isOutsideBuildHeight(pos);
-        assertNull(world.equilibrium$getExistingTileEntity(pos));
-        Mockito.doReturn(false).when((World) (Object) world).isOutsideBuildHeight(pos);
-        Mockito.doReturn(null).when((ChunkAccess) world).equilibrium$getLoadedChunk(0, 0);
-        assertNull(world.equilibrium$getExistingTileEntity(pos));
     }
 
     @Test
@@ -367,5 +347,140 @@ class WorldMixinTest {
         IntCacheMixin.resetIntCache();
         assertNotSame(bigger, IntCacheMixin.getIntCache(2000));
         assertTrue(IntCacheMixin.getCacheSizes().contains("tallocated"));
+    }
+
+    // A full chunk resend replaces the client's chunk without unloading it, and the lookup cache must not hand out the old one.
+    @Test
+    void aReplacedClientChunkIsNotServedFromTheLookupCache() {
+        WorldMixin world = Mixins.instance(WorldMixin.class);
+        IChunkProvider chunks = mock(IChunkProvider.class);
+        Mixins.set(world, "chunkProvider", chunks);
+        Chunk old = chunkAt(3, 4);
+        Chunk fresh = chunkAt(3, 4);
+        when(chunks.provideChunk(3, 4)).thenReturn(old);
+        when(chunks.getLoadedChunk(3, 4)).thenReturn(old);
+        assertSame(old, world.equilibrium$getChunkCached(3, 4));
+        assertSame(old, world.equilibrium$getLoadedChunk(3, 4));
+
+        ChunkProviderClientMixin provider = Mixins.instance(ChunkProviderClientMixin.class);
+        Long2ObjectOpenHashMap<Chunk> loaded = new Long2ObjectOpenHashMap<>();
+        Mixins.set(provider, "loadedChunks", loaded);
+        World clientWorld = mock(World.class);
+        Mixins.set(provider, "world", clientWorld);
+        TileEntity stale = mock(TileEntity.class);
+        when(old.getTileEntityMap()).thenReturn(java.util.Map.of(new BlockPos(48, 64, 64), stale));
+        // A first load replaces nothing
+        Mixins.call(provider, "equilibrium$retireReplacedChunk", 3, 4, Mixins.cir());
+        assertSame(old, world.equilibrium$getChunkCached(3, 4));
+        loaded.put(ChunkPos.asLong(3, 4), old);
+        Mixins.call(provider, "equilibrium$retireReplacedChunk", 9, 9, Mixins.cir());
+        assertTrue(old.isLoaded());
+        Mixins.call(provider, "equilibrium$retireReplacedChunk", 3, 4, Mixins.cir());
+        assertFalse(old.isLoaded());
+        // Its block entities leave the world, as the packet brings new ones
+        Mockito.verify(clientWorld, Mockito.times(1)).markTileEntityForRemoval(stale);
+
+        when(chunks.provideChunk(3, 4)).thenReturn(fresh);
+        when(chunks.getLoadedChunk(3, 4)).thenReturn(fresh);
+        assertSame(fresh, world.equilibrium$getLoadedChunk(3, 4));
+        assertSame(fresh, world.equilibrium$getChunkCached(3, 4));
+    }
+
+    // Returns a loaded chunk whose loaded flag follows markLoaded.
+    private static Chunk chunkAt(int x, int z) {
+        Chunk chunk = mock(Chunk.class);
+        Mixins.set(chunk, "x", x);
+        Mixins.set(chunk, "z", z);
+        boolean[] loaded = {true};
+        when(chunk.isLoaded()).thenAnswer(invocation -> loaded[0]);
+        Mockito.doAnswer(invocation -> loaded[0] = invocation.getArgument(0)).when(chunk).markLoaded(Mockito.anyBoolean());
+        return chunk;
+    }
+
+    // An emptied dimension queues every block entity it had at once.
+    @Test
+    void removingManyUnloadedBlockEntitiesStaysLinear() {
+        var world = Mixins.instance(com.bdmajora.equilibrium.mixin.world.entity_cleanup.WorldMixin.class);
+        List<TileEntity> loaded = new ArrayList<>();
+        List<TileEntity> removed = new ArrayList<>();
+        for (int i = 0; i < 60_000; i++) {
+            TileEntity tile = new TileEntity() { };
+            loaded.add(tile);
+            removed.add(tile);
+        }
+        TileEntity kept = new TileEntity() { };
+        loaded.add(kept);
+        java.util.Collections.reverse(removed);
+        List<TileEntity> tickable = new ArrayList<>(loaded);
+        Mixins.set(world, "loadedEntityList", new ArrayList<>());
+        Mixins.set(world, "unloadedEntityList", new ArrayList<>());
+        Mixins.set(world, "loadedTileEntityList", loaded);
+        Mixins.set(world, "tickableTileEntities", tickable);
+        Mixins.set(world, "tileEntitiesToBeRemoved", removed);
+        long start = System.nanoTime();
+        world.equilibrium$removeUnloaded();
+        long millis = (System.nanoTime() - start) / 1_000_000L;
+        assertEquals(List.of(kept), loaded);
+        assertEquals(List.of(kept), tickable);
+        assertTrue(removed.isEmpty());
+        assertTrue(millis < 1000L, "removing 60000 block entities took " + millis + " ms");
+    }
+
+    // One slow pass may not take a whole tick, but every tick has to make progress.
+    @Test
+    void chunkUnloadsStopOnceTheTickHasNoTimeLeft() {
+        var provider = Mixins.instance(com.bdmajora.equilibrium.mixin.world.chunk_unload_budget.ChunkProviderServerMixin.class);
+        for (int pass = 0; pass < 3; pass++) {
+            Mixins.call(provider, "equilibrium$beginUnloading", Mixins.cir());
+            long start = System.nanoTime();
+            int unloaded = 0;
+            // The loop of ChunkProviderServer.tick with chunks that take 4 ms each
+            while (unloaded < (int) Mixins.<Integer>call(provider, "equilibrium$unloadLimit", 100)) {
+                java.util.concurrent.locks.LockSupport.parkNanos(4_000_000L);
+                unloaded++;
+            }
+            long millis = (System.nanoTime() - start) / 1_000_000L;
+            assertTrue(unloaded >= 1 && unloaded <= 5, unloaded + " chunks");
+            assertTrue(millis < 200L, millis + " ms");
+        }
+        // Fast chunks are not held back, and a tick whose time is already gone still unloads one
+        Mixins.call(provider, "equilibrium$beginUnloading", Mixins.cir());
+        assertEquals(100, (int) Mixins.<Integer>call(provider, "equilibrium$unloadLimit", 100));
+        Mixins.set(provider, "equilibrium$unloadDeadline", System.nanoTime() - 1L);
+        assertEquals(1, (int) Mixins.<Integer>call(provider, "equilibrium$unloadLimit", 100));
+    }
+
+    @Test
+    void theChunkWriterDoesNotRestBetweenWrites() {
+        var writer = Mixins.instance(com.bdmajora.equilibrium.mixin.world.chunk_writer.ThreadedFileIOBaseMixin.class);
+        assertEquals(0L, (long) Mixins.<Long>call(writer, "equilibrium$noRestBetweenWrites", 10L));
+    }
+
+    // The constants above must exist exactly once, or the hooks would change something else or fail to apply.
+    @Test
+    void theUnloadAndWriterConstantsExistOnceInTheGame() throws Exception {
+        assertEquals(1, constants("net/minecraft/world/gen/ChunkProviderServer", "tick", 100));
+        assertEquals(1, constants("net/minecraft/world/storage/ThreadedFileIOBase", "processQueue", 10L));
+    }
+
+    // Returns how often a method of a class loads a constant.
+    private static int constants(String owner, String method, Object value) throws Exception {
+        var node = new org.objectweb.asm.tree.ClassNode();
+        try (var in = World.class.getClassLoader().getResourceAsStream(owner + ".class")) {
+            new org.objectweb.asm.ClassReader(in.readAllBytes()).accept(node, 0);
+        }
+        int count = 0;
+        for (var candidate : node.methods) {
+            if (!candidate.name.equals(method)) {
+                continue;
+            }
+            for (var insn : candidate.instructions) {
+                if (insn instanceof org.objectweb.asm.tree.LdcInsnNode ldc && value.equals(ldc.cst)
+                        || insn instanceof org.objectweb.asm.tree.IntInsnNode push && value.equals(push.operand)) {
+                    count++;
+                }
+            }
+        }
+        return count;
     }
 }

@@ -146,6 +146,17 @@ class AdvancementsMixinTest {
         ItemStack other = new ItemStack(Items.DIAMOND, 7);
         Mixins.call(container, "equilibrium$recordPrevious", Mixins.ci(), other, ref);
         assertEquals(0, ((PreviousStackSize) (Object) other).equilibrium$previousCount());
+        // A new tag on the same stack is a new stack to a predicate that tests the tag
+        ItemStack tagged = new ItemStack(Items.APPLE, 2);
+        tagged.setTagCompound(new net.minecraft.nbt.NBTTagCompound());
+        tagged.getTagCompound().setBoolean("marked", true);
+        Mixins.call(container, "equilibrium$recordPrevious", Mixins.ci(), tagged, ref);
+        assertEquals(0, ((PreviousStackSize) (Object) tagged).equilibrium$previousCount());
+        ItemStack taggedMore = tagged.copy();
+        taggedMore.setCount(3);
+        ref.set(tagged);
+        Mixins.call(container, "equilibrium$recordPrevious", Mixins.ci(), taggedMore, ref);
+        assertEquals(2, ((PreviousStackSize) (Object) taggedMore).equilibrium$previousCount());
         ref.set(null);
         Mixins.call(container, "equilibrium$recordPrevious", Mixins.ci(), replacement, ref);
         assertEquals(2, ((PreviousStackSize) (Object) replacement).equilibrium$previousCount());

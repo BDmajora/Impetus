@@ -188,4 +188,77 @@ class WorldLightManagerTest {
         assertEquals(15, fixture.blockLight(source));
         manager.shutdown();
     }
+
+    // Lowering the render distance unloads up to 100 chunks in one server tick while their light still waits in a long queue.
+    @Test
+    void unloadingChunksDoesNotWaitForTheLightBacklog() {
+        AsyncWorld fixture = new AsyncWorld(true);
+        for (int x = 0; x < 10; x++) {
+            for (int z = 0; z < 10; z++) {
+                fixture.chunk(x, z);
+            }
+        }
+        WorldLightManager manager = manager(fixture, true);
+        for (int x = 0; x < 10; x++) {
+            for (int z = 0; z < 10; z++) {
+                assertTrue(manager.forceRelightChunk(x, z));
+            }
+        }
+
+        // No worker runs, so any wait for queued work lasts until its time limit.
+        long start = System.nanoTime();
+        for (int x = 0; x < 10; x++) {
+            for (int z = 0; z < 10; z++) {
+                assertFalse(manager.finishForUnload(x, z));
+                manager.removeChunkFromQueues(x, z);
+                manager.unregisterChunk(x, z);
+            }
+        }
+        long millis = (System.nanoTime() - start) / 1_000_000L;
+        assertTrue(millis < 1000L, "unloading 100 chunks blocked the server tick for " + millis + " ms");
+        assertFalse(manager.hasUpdates());
+        assertNull(manager.getLoadedChunk(0, 0));
+    }
+
+    // A task a worker is already running may still write the chunk, so only that one is waited for.
+    @Test
+    void unloadingWaitsForTheRunningTaskOnly() throws Exception {
+        for (boolean sky : new boolean[] {true, false}) {
+            AsyncWorld fixture = neighbourhood();
+            WorldLightManager manager = manager(fixture, true);
+            assertTrue(manager.finishForUnload(0, 0));
+            manager.queueBlockChange(1, 64, 1);
+            assertFalse(manager.finishForUnload(0, 0));
+
+            LightQueue lane = Mixins.get(manager, sky ? "skyQueue" : "blockQueue");
+            LightQueue other = Mixins.get(manager, sky ? "blockQueue" : "skyQueue");
+            other.removeChunk(0, 0);
+            ChunkTasks running = lane.removeFirstTask();
+            // Nobody finishes the task, so the wait ends at its limit and the light does not count as complete
+            assertFalse(manager.finishForUnload(0, 0));
+
+            Thread worker = new Thread(() -> lane.completeTask(running));
+            worker.start();
+            worker.join();
+            assertTrue(manager.finishForUnload(0, 0));
+
+            // An interrupted wait gives up and keeps the interrupt
+            manager.queueBlockChange(1, 64, 1);
+            lane.removeFirstTask();
+            Thread.currentThread().interrupt();
+            assertFalse(manager.finishForUnload(0, 0));
+            assertTrue(Thread.interrupted());
+        }
+    }
+
+    // A world without sky light has no sky lane to ask.
+    @Test
+    void unloadingWithoutASkyLaneAsksTheBlockLane() {
+        WorldLightManager manager = manager(neighbourhood(), false);
+        assertTrue(manager.finishForUnload(0, 0));
+        manager.queueChunkLoadInit(0, 0, manager.getLoadedChunk(0, 0), new Boolean[16]);
+        assertTrue(manager.finishForUnload(0, 0));
+        manager.queueBlockChange(1, 64, 1);
+        assertFalse(manager.finishForUnload(0, 0));
+    }
 }

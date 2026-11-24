@@ -42,13 +42,14 @@
     "math.fast_blockpos.EnumFacingMixin",
     "math.fast_util.EnumFacingMixin",
     "math.sine_lut.MathHelperMixin",
-    "util.block_entity_retrieval.WorldMixin",
     "util.chunk_access.WorldMixin",
     "util.data_storage.EntityMixin",
     "util.data_storage.WorldMixin",
     "world.block_entity_ticking.sleeping.brewing_stand.TileEntityBrewingStandMixin",
     "world.block_entity_ticking.sleeping.furnace.TileEntityFurnaceMixin",
     "world.chunk_gen_limit.PlayerChunkMapMixin",
+    "world.chunk_unload_budget.ChunkProviderServerMixin",
+    "world.chunk_writer.ThreadedFileIOBaseMixin",
     "world.entity_cleanup.WorldMixin",
     "world.entity_cleanup.WorldServerMixin",
     "world.entity_tick_budget.WorldMixin",
@@ -66,6 +67,9 @@
     "worldgen.chunk_copy.ChunkMixin",
     "worldgen.chunk_copy.ExtendedBlockStorageAccessor",
     "worldgen.int_cache.IntCacheMixin"
+  ],
+  "client": [
+    "util.chunk_access.ChunkProviderClientMixin"
   ],
   "injectors": {
     "defaultRequire": 1

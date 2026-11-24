@@ -16,6 +16,7 @@
     "StateImplementationMixin",
     "TileEntityRendererDispatcherMixin",
     "WorldClientMixin",
+    "WorldTileEntityMixin",
     "lightsource.EntityHangingMixin",
     "lightsource.EntityLivingBaseMixin",
     "lightsource.EntityMinecartMixin",

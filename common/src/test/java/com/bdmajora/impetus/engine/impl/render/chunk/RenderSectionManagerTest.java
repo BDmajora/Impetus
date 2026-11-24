@@ -372,4 +372,62 @@ class RenderSectionManagerTest {
         assertEquals(2, manager.builds.get());
         assertEquals(2, manager.getVisibleChunkCount());
     }
+
+    // Loads a 32 chunk square and drops to 8, over and over. Nothing of the unloaded chunks may stay behind.
+    @Test
+    void repeatedRenderDistanceDropsLeaveNothingBehind() throws ReflectiveOperationException {
+        manager = new TestSectionManager(commands, 8, 0, 2, false, AsyncOcclusionMode.NONE, -1);
+        Viewport viewport = Sections.viewport(8, 8, 8);
+        var field = RenderSectionManager.class.getDeclaredField("regions");
+        field.setAccessible(true);
+        var regions = (com.bdmajora.impetus.engine.impl.render.chunk.region.RenderRegionManager) field.get(manager);
+        int idsAtRest = -1;
+        for (int cycle = 0; cycle < 3; cycle++) {
+            for (int x = -32; x <= 32; x++) {
+                for (int z = -32; z <= 32; z++) {
+                    manager.onChunkAdded(x, z);
+                }
+            }
+            assertEquals(65 * 65 * 2, manager.getTotalSections());
+            frames(viewport, cycle * 4 + 1, true);
+            for (int x = -32; x <= 32; x++) {
+                for (int z = -32; z <= 32; z++) {
+                    if (Math.max(Math.abs(x), Math.abs(z)) > 8) {
+                        manager.onChunkRemoved(x, z);
+                    }
+                }
+            }
+            frames(viewport, cycle * 4 + 3, true);
+            assertEquals(17 * 17 * 2, manager.getTotalSections());
+            var loaded = new java.util.HashSet<>();
+            manager.getAllRenderSections().forEach(section -> loaded.add(section.getRegion()));
+            assertEquals(loaded, new java.util.HashSet<>(regions.getLoadedRegions()));
+            // Region ids are reused instead of growing the per search tables
+            if (idsAtRest < 0) {
+                idsAtRest = regions.getRegionIdsLength();
+            }
+            assertTrue(regions.getRegionIdsLength() <= idsAtRest);
+        }
+    }
+
+    // Breaking the last global block entity of a section drops the section from the list walked every frame.
+    @Test
+    void aSectionThatLostItsGlobalBlockEntitiesIsDropped() {
+        manager = new TestSectionManager(commands, 4, 0, 1, false, AsyncOcclusionMode.NONE, -1);
+        manager.globalEntities.add(PositionUtil.packSection(0, 0, 0));
+        manager.onChunkAdded(0, 0);
+        Viewport viewport = Sections.viewport(8, 8, 8);
+        frames(viewport, 1, true);
+        assertEquals(1, manager.getSectionsWithGlobalEntities().size());
+        manager.globalEntities.clear();
+        manager.scheduleRebuild(0, 0, 0, false);
+        frames(viewport, 3, true);
+        assertTrue(manager.getSectionsWithGlobalEntities().isEmpty());
+        manager.globalEntities.add(PositionUtil.packSection(0, 0, 0));
+        manager.scheduleRebuild(0, 0, 0, false);
+        frames(viewport, 5, true);
+        assertEquals(1, manager.getSectionsWithGlobalEntities().size());
+        manager.onChunkRemoved(0, 0);
+        assertTrue(manager.getSectionsWithGlobalEntities().isEmpty());
+    }
 }

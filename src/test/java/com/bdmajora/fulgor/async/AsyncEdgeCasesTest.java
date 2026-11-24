@@ -108,26 +108,17 @@ class AsyncEdgeCasesTest {
         Chunk chunk = fixture.chunks.get(AsyncWorld.key(0, 0));
         manager.registerChunk(chunk);
         assertFalse(manager.hasPendingLightWork(0, 0));
-        assertNull(Mixins.call(manager, "getPendingWorkFuture", net.minecraft.util.math.ChunkPos.asLong(0, 0)));
-        // A forced relight queues the chunk on both lanes and can be waited on
+        // A forced relight queues the chunk on both lanes
         assertTrue(manager.forceRelightChunk(0, 0));
         assertTrue(manager.hasPendingLightWork(0, 0));
-        assertNotNull(Mixins.call(manager, "getPendingWorkFuture", net.minecraft.util.math.ChunkPos.asLong(0, 0)));
         assertFalse(manager.forceRelightChunk(9, 9));
-        // Waiting completes once the lanes have run
-        Thread worker = new Thread(() -> {
-            for (int i = 0; i < 20 && manager.hasUpdates(); i++) {
-                manager.processClientUpdates();
-            }
-        });
-        worker.start();
-        assertTrue(manager.awaitPendingWork(0, 0));
-        try {
-            worker.join(5000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+        // The server side fixture runs real workers, so the chunk settles on its own
+        long deadline = System.nanoTime() + 5_000_000_000L;
+        while (manager.hasUpdates() && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
         }
         assertFalse(manager.hasUpdates());
+        assertTrue(manager.finishForUnload(0, 0));
         manager.shutdown();
     }
 

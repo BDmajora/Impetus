@@ -7,8 +7,6 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.chunk.Chunk;
 
-import java.util.concurrent.Future;
-
 // Tracks the first light of each chunk across the sky and block lanes until it is published.
 final class InitialLightCoordinator {
     // Largest number of edge recovery attempts of a chunk.
@@ -250,14 +248,6 @@ final class InitialLightCoordinator {
     boolean hasPending(long chunkCoordinate) {
         synchronized (this.lock) {
             return this.completions.containsKey(chunkCoordinate);
-        }
-    }
-
-    // Returns the future of the pending completion of a chunk or null.
-    Future<Void> getPendingFuture(long chunkCoordinate) {
-        synchronized (this.lock) {
-            Completion completion = this.completions.get(chunkCoordinate);
-            return completion == null ? null : completion.future;
         }
     }
 

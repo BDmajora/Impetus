@@ -33,6 +33,9 @@ public final class StreamingUploader {
     // Vertex array of each format.
     private static final Map<VertexFormat, Integer> VERTEX_ARRAYS = new HashMap<>();
 
+    // Thread that runs the game loop or null while the game still loads.
+    private static volatile Thread renderThread;
+
     // Number of regions of the buffer.
     private static final int REGIONS = 4;
     // Size of one region.
@@ -59,9 +62,20 @@ public final class StreamingUploader {
     private StreamingUploader() {
     }
 
+    // Allows streaming from the calling thread.
+    // Loading runs the client thread on a shared context and the splash thread on the window's, and they swap when it ends.
+    // Vertex arrays are not shared between contexts, so one cached while loading is missing afterwards and everything of its
+    // format draws nothing. NTM CE compiles POSITION_TEX_NORMAL display lists in postInit, which equals the format of every
+    // ModelRenderer: all entity models became empty display lists.
+    public static void beginGameLoop() {
+        if (renderThread == null) {
+            renderThread = Thread.currentThread();
+        }
+    }
+
     // Uploads the vertices and draws them and returns whether it handled the draw.
     public static boolean draw(BufferBuilder builder) {
-        if (!enabled || unavailable) {
+        if (!enabled || unavailable || Thread.currentThread() != renderThread) {
             return false;
         }
 

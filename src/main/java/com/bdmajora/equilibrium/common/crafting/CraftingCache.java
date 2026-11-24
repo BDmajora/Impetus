@@ -26,8 +26,6 @@ public final class CraftingCache {
     };
     // Size of the recipe registry when the cache was filled.
     private static int registrySize = -1;
-    // Recipe that matched last.
-    private static IRecipe lastMatch;
 
     // Prevents instantiation
     private CraftingCache() {
@@ -38,12 +36,7 @@ public final class CraftingCache {
         int size = CraftingManager.REGISTRY.getKeys().size();
         if (size != registrySize) {
             CACHE.clear();
-            lastMatch = null;
             registrySize = size;
-        }
-        IRecipe previous = lastMatch;
-        if (previous != null && previous.matches(matrix, world)) {
-            return previous;
         }
         CraftMatrixKey key = CraftMatrixKey.of(matrix);
         if (key == null) {
@@ -54,7 +47,6 @@ public final class CraftingCache {
             return null;
         }
         if (cached != null && cached.matches(matrix, world)) {
-            lastMatch = cached;
             return cached;
         }
         IRecipe found = scan(matrix, world);
@@ -66,7 +58,6 @@ public final class CraftingCache {
     private static IRecipe scan(InventoryCrafting matrix, World world) {
         for (IRecipe recipe : CraftingManager.REGISTRY) {
             if (recipe.matches(matrix, world)) {
-                lastMatch = recipe;
                 return recipe;
             }
         }

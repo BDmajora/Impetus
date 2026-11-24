@@ -464,4 +464,32 @@ class DynamicLightsMixinTest {
         assertTrue(plugin.shouldApplyMixin("net.minecraft.entity.Entity",
                 "com.bdmajora.dynamiclights.mixin.lightsource.EntityMixin"));
     }
+
+    // Chunk unload drops block entities without invalidating them, and each reload brings a new one to the same place.
+    @Test
+    void unloadedBlockEntitiesStopBeingLightSources() {
+        WorldClient world = clientWorld();
+        boolean[] lit = {true};
+        int before = DynamicLights.engine().getLightSourcesCount();
+        com.bdmajora.dynamiclights.mixin.WorldTileEntityMixin unloading = Mixins.instance(com.bdmajora.dynamiclights.mixin.WorldTileEntityMixin.class);
+        for (int reload = 0; reload < 5; reload++) {
+            TileEntityMixin tile = Mixins.instance(TileEntityMixin.class);
+            net.minecraft.tileentity.TileEntity self = (net.minecraft.tileentity.TileEntity) (Object) tile;
+            Mixins.set(tile, "world", world);
+            Mixins.set(tile, "pos", new BlockPos(4, 64, 4));
+            DynamicLightHandlers.registerTileEntityHandler(self.getClass(), any -> lit[0] ? 9 : 0);
+            tile.impetus$dynamicLightTick();
+            assertEquals(before + 1, DynamicLights.engine().getLightSourcesCount());
+            // The server side of an integrated game shares the engine and must not touch it
+            Mixins.set(unloading, "isRemote", false);
+            Mixins.call(unloading, "impetus$untrackUnloadedLight", self, Mixins.ci());
+            assertEquals(before + 1, DynamicLights.engine().getLightSourcesCount());
+            Mixins.set(unloading, "isRemote", true);
+            Mixins.call(unloading, "impetus$untrackUnloadedLight", self, Mixins.ci());
+            assertEquals(before, DynamicLights.engine().getLightSourcesCount());
+        }
+        // Handlers are shared by every test of the process and cannot be taken back, so this one goes dark
+        lit[0] = false;
+        Mixins.call(unloading, "impetus$untrackUnloadedLight", mock(net.minecraft.tileentity.TileEntity.class), Mixins.ci());
+    }
 }

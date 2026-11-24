@@ -614,4 +614,47 @@ class SmallMixinsTest {
         }
         assertTrue(file.toFile().length() > 0, file.toString());
     }
+
+    // Vanilla only retries a cancelled chunk unload after an autosave, so rarer autosaves must not keep chunks loaded.
+    @Test
+    void cancelledChunkUnloadsAreRetriedWhenAutosavesAreRare() {
+        MinecraftServerMixin mixin = Mixins.instance(MinecraftServerMixin.class);
+        net.minecraft.server.MinecraftServer server = (net.minecraft.server.MinecraftServer) (Object) mixin;
+        net.minecraft.world.WorldServer world = Mockito.mock(net.minecraft.world.WorldServer.class);
+        net.minecraft.world.gen.ChunkProviderServer chunks = Mockito.mock(net.minecraft.world.gen.ChunkProviderServer.class);
+        net.minecraft.server.management.PlayerChunkMap watched = Mockito.mock(net.minecraft.server.management.PlayerChunkMap.class);
+        Mockito.when(world.getChunkProvider()).thenReturn(chunks);
+        Mockito.when(world.getPlayerChunkMap()).thenReturn(watched);
+        Mockito.when(chunks.canSave()).thenReturn(true);
+        net.minecraft.world.chunk.Chunk near = Mockito.mock(net.minecraft.world.chunk.Chunk.class);
+        net.minecraft.world.chunk.Chunk far = Mockito.mock(net.minecraft.world.chunk.Chunk.class);
+        Mixins.set(far, "x", 40);
+        Mockito.when(watched.contains(0, 0)).thenReturn(true);
+        Mockito.when(chunks.getLoadedChunks()).thenReturn(java.util.Arrays.asList(near, null, far));
+        Mixins.set(server, "worlds", new net.minecraft.world.WorldServer[] {null, world});
+
+        int sweeps = 0;
+        for (int interval : new int[] {900, 100, 0, 901, 36000}) {
+            config.extra.autosaveInterval = interval;
+            for (int tick : new int[] {1, 899, 900, 901, 1800}) {
+                Mockito.doReturn(tick).when(server).getTickCounter();
+                Mixins.call(mixin, "impetus$retryChunkUnloads", Mixins.ci());
+                if ((interval == 0 || interval > 900) && tick % 900 == 0) {
+                    sweeps++;
+                }
+                Mockito.verify(chunks, Mockito.times(sweeps)).queueUnload(far);
+            }
+        }
+        assertEquals(6, sweeps);
+        Mockito.verify(chunks, Mockito.never()).queueUnload(near);
+
+        // A world that may not save keeps its chunks, as they could not be written
+        Mockito.doReturn(900).when(server).getTickCounter();
+        Mockito.when(chunks.canSave()).thenReturn(false);
+        Mixins.call(mixin, "impetus$retryChunkUnloads", Mixins.ci());
+        Mockito.when(chunks.canSave()).thenReturn(true);
+        world.disableLevelSaving = true;
+        Mixins.call(mixin, "impetus$retryChunkUnloads", Mixins.ci());
+        Mockito.verify(chunks, Mockito.times(sweeps)).queueUnload(far);
+    }
 }

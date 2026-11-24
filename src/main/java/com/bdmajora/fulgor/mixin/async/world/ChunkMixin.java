@@ -139,8 +139,7 @@ public abstract class ChunkMixin implements AsyncLitChunk {
             return;
         }
         if (!this.world.isRemote) {
-            boolean workFinished = manager.awaitPendingWork(this.x, this.z);
-            if (!workFinished || manager.hasPendingLightWork(this.x, this.z)) {
+            if (!manager.finishForUnload(this.x, this.z)) {
                 this.fulgor$lightReady = false;
             }
         }

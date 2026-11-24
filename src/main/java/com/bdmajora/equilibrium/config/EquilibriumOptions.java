@@ -177,11 +177,9 @@ public final class EquilibriumOptions {
         builder.add("mixin.block", true,
                 "Optimizations related to blocks");
         builder.add("mixin.block.hopper", true,
-                "Hoppers remember the inventory above them and the one they face, instead of searching "
-                        + "the world for both on every transfer attempt. An idle hopper attempts a "
-                        + "transfer every tick, and each attempt that finds nothing costs a full entity "
-                        + "query over the block.")
-                .requires("mixin.util.block_entity_retrieval", true)
+                "Hoppers skip the entity query for an inventory while the world holds no inventory entity. "
+                        + "An idle hopper attempts a transfer every tick, and each attempt that finds "
+                        + "nothing costs a full entity query over the block.")
                 .requires("mixin.util.data_storage", true);
         builder.add("mixin.block.redstone_wire", true,
                 "Redstone wire power calculation reads each neighbouring block once instead of twice, "
@@ -270,9 +268,6 @@ public final class EquilibriumOptions {
         builder.add("mixin.util", true,
                 "Various utilities for other mixins. These add no optimization on their own; turning "
                         + "one off disables everything that depends on it.");
-        builder.add("mixin.util.block_entity_retrieval", true,
-                "Allows looking up a tile entity that already exists without constructing and "
-                        + "registering one as a side effect of asking.");
         builder.add("mixin.util.data_storage", true,
                 "Stores Equilibrium's per-world scratch data. None of it is saved; it exists so the "
                         + "other optimizations have somewhere to keep their counters.");
@@ -282,6 +277,12 @@ public final class EquilibriumOptions {
 
         builder.add("mixin.world", true,
                 "Various world related optimizations");
+        builder.add("mixin.world.chunk_unload_budget", true,
+                "Limits the time one tick spends unloading chunks. Vanilla unloads up to 100 however long they take, "
+                        + "so lowering the render distance stalled the server for several ticks.");
+        builder.add("mixin.world.chunk_writer", true,
+                "Writes saved chunks without resting 10 ms after each one. Unloaded chunks no longer pile up in "
+                        + "memory faster than they are written.");
         builder.add("mixin.world.chunk_gen_limit", false,
                 "Chunk sending generates up to 49 chunks per tick as long as it stays under 50 ms, "
                         + "which is the whole tick. The cap becomes 24 chunks and 25 ms so terrain "

@@ -289,14 +289,17 @@ public final class LightQueue {
         return changesLightValues(this.tasksByChunk.get(key)) || changesLightValues(this.inFlightTasks.get(key));
     }
 
-    // Returns the pending work future.
-    synchronized Future<Void> getPendingWorkFuture(long key) {
+    // Returns the future of the task being run for a chunk or null.
+    synchronized Future<Void> getInFlightFuture(long key) {
         ChunkTasks inFlight = this.inFlightTasks.get(key);
-        if (inFlight != null) {
-            return inFlight.onComplete;
-        }
+        return inFlight == null ? null : inFlight.onComplete;
+    }
+
+    // Returns whether dropping a chunk's queued task would leave its light wrong. The load setup alone changes no light.
+    synchronized boolean hasQueuedLightWork(long key) {
         ChunkTasks queued = this.tasksByChunk.get(key);
-        return queued == null ? null : queued.onComplete;
+        return queued != null && (changesLightValues(queued)
+                || queued.queuedEdgeChecksSky != null || queued.queuedEdgeChecksBlock != null);
     }
 
     // Blocks until work is signalled.

@@ -3,12 +3,10 @@ package com.bdmajora.equilibrium.common;
 import com.bdmajora.equilibrium.common.entity.EntityTickBudget;
 import com.bdmajora.equilibrium.common.entity.ReducedRadiusQuery;
 import com.bdmajora.equilibrium.common.hopper.HopperEntityLookup;
-import com.bdmajora.equilibrium.common.hopper.HopperInventoryCache;
 import com.bdmajora.equilibrium.common.world.ChunkAccess;
 import com.bdmajora.equilibrium.common.world.ChunkSectionCursor;
 import com.bdmajora.equilibrium.common.world.FastRayCaster;
 import com.bdmajora.equilibrium.common.world.InventoryEntityTracker;
-import com.bdmajora.equilibrium.common.world.TileEntityAccess;
 import com.bdmajora.testing.Mc;
 import com.bdmajora.testing.Mixins;
 import net.minecraft.block.state.IBlockState;
@@ -270,71 +268,22 @@ class EquilibriumWorldTest {
     }
 
     @Test
-    void hopperCachesResolveTileEntitiesAndSkipEmptyEntityQueries() {
-        World world = Mc.mock(World.class, TileEntityAccess.class, InventoryEntityTracker.class);
+    void hopperEntityLookupSkipsTheQueryWithoutInventoryEntities() {
+        World world = Mc.mock(World.class, InventoryEntityTracker.class);
         Mixins.set(world, "rand", new Random(1));
-        BlockPos furnacePos = new BlockPos(1, 2, 3);
-        BlockPos chestPos = new BlockPos(1, 3, 3);
-        BlockPos stonePos = new BlockPos(1, 4, 3);
-        BlockPos airPos = new BlockPos(1, 5, 3);
-        when(world.getBlockState(any())).thenReturn(Blocks.AIR.getDefaultState());
-        when(world.getBlockState(furnacePos)).thenReturn(Blocks.FURNACE.getDefaultState());
-        when(world.getBlockState(chestPos)).thenReturn(Blocks.CHEST.getDefaultState());
-        when(world.getBlockState(stonePos)).thenReturn(Blocks.STONE.getDefaultState());
-        TileEntityFurnace furnace = mock(TileEntityFurnace.class);
-        TileEntityChest chest = mock(TileEntityChest.class);
-        TileEntityAccess access = (TileEntityAccess) world;
-        when(access.equilibrium$getExistingTileEntity(furnacePos)).thenReturn(furnace);
-        when(access.equilibrium$getExistingTileEntity(chestPos)).thenReturn(chest);
-        when(world.getTileEntity(chestPos)).thenReturn(chest);
-
-        HopperInventoryCache cache = new HopperInventoryCache();
-        assertSame(furnace, cache.get(world, 1.2, 2.9, 3.5));
-        assertSame(furnace, cache.get(world, 1.2, 2.9, 3.5));
-        Mockito.verify(access, Mockito.times(1)).equilibrium$getExistingTileEntity(furnacePos);
-        // Checks an invalidated tile entity.
-        when(furnace.isInvalid()).thenReturn(true);
-        TileEntityFurnace replacement = mock(TileEntityFurnace.class);
-        when(access.equilibrium$getExistingTileEntity(furnacePos)).thenReturn(replacement);
-        assertSame(replacement, cache.get(world, 1.2, 2.9, 3.5));
-        // Checks chests are never cached.
-        assertNotNull(cache.get(world, 1.5, 3.5, 3.5));
-        assertNotNull(cache.get(world, 1.5, 3.5, 3.5));
-        Mockito.verify(access, Mockito.times(2)).equilibrium$getExistingTileEntity(chestPos);
-        when(access.equilibrium$getExistingTileEntity(chestPos)).thenReturn(null);
-        assertNull(cache.get(world, 1.5, 3.5, 3.5));
-        // Checks blocks without an inventory.
-        assertNull(cache.get(world, 1.5, 4.5, 3.5));
-        assertNull(cache.get(world, 1.5, 4.5, 3.5));
-        when(access.equilibrium$getExistingTileEntity(furnacePos)).thenReturn(null);
-        cache.clear();
-        assertNull(cache.get(world, 1.2, 2.9, 3.5));
-        assertNull(cache.get(world, 1.2, 2.9, 3.5));
-        Mockito.verify(access, Mockito.times(3)).equilibrium$getExistingTileEntity(furnacePos);
-        cache.clear();
-        // Checks the entity search.
-        assertNull(cache.get(world, 1.5, 5.5, 3.5));
-        Mockito.verify(world, Mockito.never()).getEntitiesInAABBexcluding(any(), any(), any());
-        when(((InventoryEntityTracker) world).equilibrium$mayHaveInventoryEntities()).thenReturn(true);
-        when(world.getEntitiesInAABBexcluding(any(), any(), any())).thenReturn(new ArrayList<>());
-        assertNull(cache.get(world, 1.5, 5.5, 3.5));
         Entity minecart = Mc.mock(Entity.class, IInventory.class);
         when(world.getEntitiesInAABBexcluding(any(), any(), any())).thenReturn(List.of(minecart));
+        assertNull(HopperEntityLookup.findInventoryEntity(world, 1.5, 5.5, 3.5));
+        Mockito.verify(world, Mockito.never()).getEntitiesInAABBexcluding(any(), any(), any());
+        when(((InventoryEntityTracker) world).equilibrium$mayHaveInventoryEntities()).thenReturn(true);
         assertSame(minecart, HopperEntityLookup.findInventoryEntity(world, 1.5, 5.5, 3.5));
+        when(world.getEntitiesInAABBexcluding(any(), any(), any())).thenReturn(new ArrayList<>());
+        assertNull(HopperEntityLookup.findInventoryEntity(world, 1.5, 5.5, 3.5));
 
-        // A plain world without the mixin interfaces uses the vanilla lookups
+        // A plain world without the tracker always asks
         World plain = mock(World.class);
         Mixins.set(plain, "rand", new Random(1));
-        when(plain.getBlockState(any())).thenReturn(Blocks.FURNACE.getDefaultState());
-        when(plain.getTileEntity(any())).thenReturn(furnace);
         when(plain.getEntitiesInAABBexcluding(any(), any(), any())).thenReturn(List.of(minecart));
-        HopperInventoryCache plainCache = new HopperInventoryCache();
-        assertSame(furnace, plainCache.get(plain, 0.5, 0.5, 0.5));
         assertSame(minecart, HopperEntityLookup.findInventoryEntity(plain, 0.5, 0.5, 0.5));
-        // Checks a rotated hopper.
-        TileEntityFurnace other = mock(TileEntityFurnace.class);
-        when(plain.getTileEntity(new BlockPos(1, 0, 0))).thenReturn(other);
-        assertSame(other, plainCache.get(plain, 1.5, 0.5, 0.5));
-        assertSame(furnace, plainCache.get(plain, 0.5, 0.5, 0.5));
     }
 }
